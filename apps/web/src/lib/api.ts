@@ -3,7 +3,9 @@
  * Usa NEXT_PUBLIC_API_URL para apuntar al backend de Render.
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ??
+  "https://evaluacion-desempeno-api.onrender.com";
 
 // Warn in browser console if using fallback URL
 if (typeof window !== "undefined" && !process.env.NEXT_PUBLIC_API_URL) {
