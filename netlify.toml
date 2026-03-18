@@ -1,7 +1,17 @@
 [build]
   base = "apps/web"
-  command = "npm install -g pnpm && pnpm install && pnpm run build"
+  command = "npm install -g pnpm && pnpm install --frozen-lockfile && pnpm run build"
   publish = ".next"
+
+[build.environment]
+  # Set this to your actual Render API URL after deploying
+  NEXT_PUBLIC_API_URL = "https://ascenda-api.onrender.com"
+  NODE_VERSION = "20"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
