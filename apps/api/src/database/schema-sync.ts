@@ -14,6 +14,7 @@ import { DataSource } from 'typeorm';
 
 // Import all entities that need to exist in the DB
 import { Tenant } from '../modules/tenants/entities/tenant.entity';
+import { User } from '../modules/users/entities/user.entity';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -29,7 +30,7 @@ const dataSource = new DataSource({
     process.env.NODE_ENV === 'production'
       ? { rejectUnauthorized: false }
       : false,
-  entities: [Tenant],
+  entities: [Tenant, User],
   synchronize: true, // only here in this migrate script, NOT in the app
   logging: true,
 });
