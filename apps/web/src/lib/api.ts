@@ -1,18 +1,15 @@
 /**
- * API client centralizado para EvaPro.
- * Usa NEXT_PUBLIC_API_URL para apuntar al backend de Render.
+ * Centralised API base URL.
+ * NEXT_PUBLIC_API_URL is set at build-time by Netlify env var.
+ * Falls back to the production Render URL if not configured.
  */
-
 const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ||
   "https://evaluacion-desempeno-api.onrender.com";
 
-// Warn in browser console if using fallback URL
-if (typeof window !== "undefined" && !process.env.NEXT_PUBLIC_API_URL) {
-  console.warn(
-    "[EvaPro] NEXT_PUBLIC_API_URL is not set — falling back to",
-    BASE_URL,
-  );
+// Log which URL is used (visible in browser console for debugging)
+if (typeof window !== "undefined") {
+  console.info("[EvaPro] API base URL:", BASE_URL);
 }
 
 export interface AuthTokens {
