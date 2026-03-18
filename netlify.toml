@@ -1,6 +1,6 @@
 [build]
   base = "apps/web"
-  command = "npm install -g pnpm && pnpm install --frozen-lockfile && pnpm run build"
+  command = "pnpm install --frozen-lockfile && pnpm run build"
   publish = ".next"
 
 [build.environment]
