@@ -3,7 +3,15 @@
  * Usa NEXT_PUBLIC_API_URL para apuntar al backend de Render.
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+// Warn in browser console if using fallback URL
+if (typeof window !== "undefined" && !process.env.NEXT_PUBLIC_API_URL) {
+  console.warn(
+    "[EvaPro] NEXT_PUBLIC_API_URL is not set — falling back to",
+    BASE_URL,
+  );
+}
 
 export interface AuthTokens {
   access_token: string;
@@ -33,16 +41,17 @@ async function request<T>(
   token?: string,
 ): Promise<T> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const url = `${BASE_URL}${path}`;
+  const res = await fetch(url, { ...options, headers });
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(error.message ?? 'Error en la solicitud');
+    throw new Error(error.message ?? "Error en la solicitud");
   }
 
   // 204 No Content
@@ -53,24 +62,26 @@ async function request<T>(
 export const api = {
   auth: {
     login: (email: string, password: string, tenantSlug?: string) =>
-      request<AuthTokens>('/auth/login', {
-        method: 'POST',
+      request<AuthTokens>("/auth/login", {
+        method: "POST",
         body: JSON.stringify({ email, password, tenantSlug }),
       }),
   },
 
   tenants: {
-    list: (token: string) =>
-      request<Tenant[]>('/tenants', {}, token),
+    list: (token: string) => request<Tenant[]>("/tenants", {}, token),
     create: (data: Partial<Tenant>, token: string) =>
-      request<Tenant>('/tenants', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }, token),
+      request<Tenant>(
+        "/tenants",
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        },
+        token,
+      ),
   },
 
   health: {
-    check: () =>
-      request<{ status: string }>('/'),
+    check: () => request<{ status: string }>("/"),
   },
 };

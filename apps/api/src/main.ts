@@ -5,9 +5,15 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // CORS – allow requests from the frontend (configured via env var in production)
+  // CORS – support comma-separated list of allowed origins via FRONTEND_URL
+  // NOTE: credentials:true requires a specific origin (not '*')
+  const frontendUrl = process.env.FRONTEND_URL;
+  const allowedOrigins = frontendUrl
+    ? frontendUrl.split(',').map((u) => u.trim())
+    : null;
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL ?? '*',
+    origin: allowedOrigins ?? true, // true = reflect request origin (permissive, dev-friendly)
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -17,7 +23,7 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true, // strip unknown properties
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false, // don't reject unknown – avoids breaking legacy clients
       transform: true, // auto-transform payloads to DTO class instances
     }),
   );
@@ -25,5 +31,6 @@ async function bootstrap() {
   const port = parseInt(process.env.PORT ?? '3000', 10);
   await app.listen(port);
   console.log(`API running on port ${port}`);
+  console.log(`CORS allowed origins: ${allowedOrigins ? allowedOrigins.join(', ') : 'all (reflect)'}`);
 }
 void bootstrap();
