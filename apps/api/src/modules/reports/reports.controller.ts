@@ -16,7 +16,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 
 @Controller('reports')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('super_admin', 'tenant_admin', 'manager')
+@Roles('super_admin', 'tenant_admin', 'manager', 'external')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 

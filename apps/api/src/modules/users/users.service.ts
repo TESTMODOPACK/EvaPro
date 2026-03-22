@@ -191,7 +191,7 @@ export class UsersService {
         }
 
         const role = roleIdx >= 0 ? (cols[roleIdx] || 'employee') : 'employee';
-        const validRoles = ['employee', 'manager', 'tenant_admin'];
+        const validRoles = ['employee', 'manager', 'tenant_admin', 'external'];
         if (!validRoles.includes(role)) {
           errors.push({ row: rowNum, message: `Rol inválido: ${role}` });
           continue;

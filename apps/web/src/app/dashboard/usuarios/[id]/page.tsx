@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { api, UserData, UserNoteData, PerformanceHistoryEntry } from '@/lib/api';
+import { getRoleLabel, getRoleColor } from '@/lib/roles';
 
 function Spinner() {
   return (
@@ -152,14 +153,7 @@ export default function UserProfilePage() {
   if (loading) return <Spinner />;
   if (!user) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Usuario no encontrado</div>;
 
-  const roleMap: Record<string, { label: string; color: string }> = {
-    tenant_admin: { label: 'Admin', color: '#ef4444' },
-    manager: { label: 'Manager', color: '#f59e0b' },
-    employee: { label: 'Empleado', color: '#6366f1' },
-    super_admin: { label: 'Super Admin', color: '#ef4444' },
-    external: { label: 'Externo', color: '#64748b' },
-  };
-  const roleInfo = roleMap[user.role] || { label: user.role, color: '#64748b' };
+  const roleInfo = { label: getRoleLabel(user.role), color: getRoleColor(user.role) };
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -209,7 +203,7 @@ export default function UserProfilePage() {
                 <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{user.position || '—'}</span>
               </div>
               <div>
-                <div style={labelStyle}>Manager</div>
+                <div style={labelStyle}>Encargado de Equipo</div>
                 <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
                   {manager ? `${manager.firstName} ${manager.lastName}` : '—'}
                 </span>

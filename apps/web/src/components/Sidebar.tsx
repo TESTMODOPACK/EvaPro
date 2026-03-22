@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
+import { getRoleLabel, canAccessPage } from '@/lib/roles';
 
 interface NavItem {
   href: string;
@@ -157,12 +158,7 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
           Principal
         </div>
         {navItems.filter((item) => {
-          // Only super_admin can see Organizaciones
-          if (item.href === '/dashboard/tenants' && user?.role !== 'super_admin') return false;
-          // Only admin/manager can see Usuarios
-          if (item.href === '/dashboard/plantillas' && !['super_admin', 'tenant_admin'].includes(user?.role || '')) return false;
-          if (item.href === '/dashboard/usuarios' && !['super_admin', 'tenant_admin', 'manager'].includes(user?.role || '')) return false;
-          return true;
+          return canAccessPage(user?.role || '', item.href);
         }).map((item) => {
           const isActive = currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href));
           return (
@@ -208,7 +204,7 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
             {user?.email}
           </div>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-            {user?.role?.replace('_', ' ')}
+            {user?.role ? getRoleLabel(user.role) : ''}
           </div>
         </div>
         <button

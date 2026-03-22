@@ -3,9 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
-
-const roleLabel: Record<string, string> = { super_admin: 'Super Admin', tenant_admin: 'Administrador', manager: 'Manager', employee: 'Empleado', external: 'Externo' };
-const roleBadge: Record<string, string> = { super_admin: 'badge-danger', tenant_admin: 'badge-danger', manager: 'badge-warning', employee: 'badge-accent', external: 'badge-accent' };
+import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -237,9 +235,9 @@ export default function UsuariosPage() {
                 value={form.role}
                 onChange={(e) => updateField('role', e.target.value)}
               >
-                <option value="employee">Empleado</option>
-                <option value="manager">Manager</option>
-                <option value="tenant_admin">Administrador</option>
+                {ASSIGNABLE_ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -254,7 +252,7 @@ export default function UsuariosPage() {
                   .filter((m: any) => m.id !== editingId)
                   .map((m: any) => (
                     <option key={m.id} value={m.id}>
-                      {m.firstName} {m.lastName} ({roleLabel[m.role] || m.role})
+                      {m.firstName} {m.lastName} ({getRoleLabel(m.role)})
                     </option>
                   ))}
               </select>
@@ -380,8 +378,8 @@ export default function UsuariosPage() {
                         )}
                       </td>
                       <td>
-                        <span className={`badge ${roleBadge[u.role] || 'badge-accent'}`}>
-                          {roleLabel[u.role] || u.role}
+                        <span className={`badge ${getRoleBadge(u.role)}`}>
+                          {getRoleLabel(u.role)}
                         </span>
                       </td>
                       <td>

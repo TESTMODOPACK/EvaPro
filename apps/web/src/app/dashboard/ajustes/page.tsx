@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useCurrentUser, useUpdateUser } from '@/hooks/useUsers';
+import { getRoleLabel } from '@/lib/roles';
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -141,7 +142,7 @@ export default function AjustesPage() {
               <input
                 className="input"
                 type="text"
-                value={user?.role || ''}
+                value={user?.role ? getRoleLabel(user.role) : ''}
                 readOnly
                 style={{ opacity: 0.7, cursor: 'not-allowed' }}
               />
