@@ -8,9 +8,13 @@ import {
   useLaunchCycle,
   useCloseCycle,
 } from '@/hooks/useCycles';
+import { usePeerAssignments, useAddPeerAssignment, useRemovePeerAssignment } from '@/hooks/usePeerAssignments';
+import { useUsers } from '@/hooks/useUsers';
+import { useAuthStore } from '@/store/auth.store';
+import Link from 'next/link';
 
 const relationLabels: Record<string, string> = {
-  self: 'Autoevaluaci\u00f3n',
+  self: 'Autoevaluación',
   manager: 'Jefatura',
   peer: 'Par',
   direct_report: 'Reporte directo',
@@ -47,17 +51,26 @@ export default function CycleDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
+  const user = useAuthStore((s) => s.user);
   const { data: cycle, isLoading, isError } = useCycleById(id);
   const { data: assignments } = useCycleAssignments(id);
   const launchCycle = useLaunchCycle();
   const closeCycle = useCloseCycle();
 
+  // Peer assignment hooks
+  const { data: peerAssignments } = usePeerAssignments(id);
+  const addPeer = useAddPeerAssignment();
+  const removePeer = useRemovePeerAssignment();
+  const { data: usersData } = useUsers();
+
   const [launching, setLaunching] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [peerEvaluateeId, setPeerEvaluateeId] = useState('');
+  const [peerEvaluatorId, setPeerEvaluatorId] = useState('');
 
   const handleLaunch = async () => {
     const confirmed = window.confirm(
-      '\u00bfEst\u00e1s seguro de que quieres lanzar este ciclo? Las evaluaciones se enviar\u00e1n a todos los participantes.',
+      '¿Estás seguro de que quieres lanzar este ciclo? Las evaluaciones se enviarán a todos los participantes.',
     );
     if (!confirmed) return;
     setLaunching(true);
@@ -70,7 +83,7 @@ export default function CycleDetailPage() {
 
   const handleClose = async () => {
     const confirmed = window.confirm(
-      '\u00bfCerrar este ciclo? No se podr\u00e1n enviar m\u00e1s evaluaciones.',
+      '¿Cerrar este ciclo? No se podrán enviar más evaluaciones.',
     );
     if (!confirmed) return;
     setClosing(true);
@@ -79,6 +92,17 @@ export default function CycleDetailPage() {
     } finally {
       setClosing(false);
     }
+  };
+
+  const handleAddPeer = async () => {
+    if (!peerEvaluateeId || !peerEvaluatorId) return;
+    await addPeer.mutateAsync({ cycleId: id, evaluateeId: peerEvaluateeId, evaluatorId: peerEvaluatorId });
+    setPeerEvaluateeId('');
+    setPeerEvaluatorId('');
+  };
+
+  const handleRemovePeer = async (peerAssignmentId: string) => {
+    await removePeer.mutateAsync({ cycleId: id, id: peerAssignmentId });
   };
 
   if (isLoading) {
@@ -110,6 +134,10 @@ export default function CycleDetailPage() {
     (a: any) => a.status === 'completed' || a.status === 'submitted',
   ).length;
   const progressPct = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0;
+
+  const peerList: any[] = Array.isArray(peerAssignments) ? peerAssignments : [];
+  const usersList: any[] = Array.isArray(usersData) ? usersData : (usersData as any)?.data ?? [];
+  const showPeerSection = cycle.status === 'draft' && (cycle.type === '270' || cycle.type === '360');
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -271,6 +299,158 @@ export default function CycleDetailPage() {
         </div>
       )}
 
+      {/* Peer assignment section for 270/360 draft cycles */}
+      {showPeerSection && (
+        <div
+          className="card animate-fade-up"
+          style={{ padding: 0, overflow: 'hidden', marginBottom: '1.5rem' }}
+        >
+          <div
+            style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Asignaci&oacute;n de Evaluadores Par</h2>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+              Selecciona qu&eacute; pares evaluar&aacute;n a cada empleado
+            </p>
+          </div>
+
+          {peerList.length > 0 && (
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Evaluado</th>
+                    <th>Evaluador (par)</th>
+                    <th>Eliminar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {peerList.map((pa: any) => (
+                    <tr key={pa.id}>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                          {pa.evaluatee?.firstName || pa.evaluatee?.email || pa.evaluateeId || '\u2014'}
+                          {pa.evaluatee?.lastName ? ` ${pa.evaluatee.lastName}` : ''}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                          {pa.evaluator?.firstName || pa.evaluator?.email || pa.evaluatorId || '\u2014'}
+                          {pa.evaluator?.lastName ? ` ${pa.evaluator.lastName}` : ''}
+                        </div>
+                      </td>
+                      <td>
+                        <button
+                          className="btn-ghost"
+                          onClick={() => handleRemovePeer(pa.id)}
+                          disabled={removePeer.isPending}
+                          style={{
+                            fontSize: '0.78rem',
+                            color: 'var(--danger)',
+                            padding: '0.25rem 0.5rem',
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {peerList.length === 0 && (
+            <div style={{ padding: '1.25rem 1.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              No hay evaluadores par asignados a&uacute;n.
+            </div>
+          )}
+
+          {/* Add peer form */}
+          <div
+            style={{
+              padding: '1rem 1.5rem',
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              gap: '0.75rem',
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: '160px' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
+                Evaluado
+              </label>
+              <select
+                value={peerEvaluateeId}
+                onChange={(e) => {
+                  setPeerEvaluateeId(e.target.value);
+                  if (e.target.value === peerEvaluatorId) setPeerEvaluatorId('');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: 'var(--radius-sm, 0.375rem)',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <option value="">Seleccionar evaluado</option>
+                {usersList.map((u: any) => (
+                  <option key={u.id} value={u.id}>
+                    {u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: 1, minWidth: '160px' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
+                Evaluador / Par
+              </label>
+              <select
+                value={peerEvaluatorId}
+                onChange={(e) => setPeerEvaluatorId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: 'var(--radius-sm, 0.375rem)',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <option value="">Seleccionar evaluador</option>
+                {usersList
+                  .filter((u: any) => u.id !== peerEvaluateeId)
+                  .map((u: any) => (
+                    <option key={u.id} value={u.id}>
+                      {u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <button
+              className="btn-primary"
+              onClick={handleAddPeer}
+              disabled={!peerEvaluateeId || !peerEvaluatorId || addPeer.isPending}
+              style={{
+                fontSize: '0.85rem',
+                padding: '0.5rem 1.25rem',
+                opacity: !peerEvaluateeId || !peerEvaluatorId ? 0.5 : 1,
+              }}
+            >
+              {addPeer.isPending ? 'Agregando...' : 'Agregar'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Assignments table */}
       {(cycle.status === 'active' || cycle.status === 'closed' || cycle.status === 'draft') &&
         assignmentList.length > 0 && (
@@ -298,6 +478,7 @@ export default function CycleDetailPage() {
                     <th>Relaci&oacute;n</th>
                     <th>Estado</th>
                     {cycle.status === 'closed' && <th>Resultado</th>}
+                    {cycle.status === 'active' && <th>Acción</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -305,19 +486,19 @@ export default function CycleDetailPage() {
                     <tr key={a.id}>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                          {a.evaluatee?.firstName || a.evaluatee?.email || a.evaluateeId || '—'}
+                          {a.evaluatee?.firstName || a.evaluatee?.email || a.evaluateeId || '\u2014'}
                           {a.evaluatee?.lastName ? ` ${a.evaluatee.lastName}` : ''}
                         </div>
                       </td>
                       <td>
                         <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                          {a.evaluator?.firstName || a.evaluator?.email || a.evaluatorId || '—'}
+                          {a.evaluator?.firstName || a.evaluator?.email || a.evaluatorId || '\u2014'}
                           {a.evaluator?.lastName ? ` ${a.evaluator.lastName}` : ''}
                         </div>
                       </td>
                       <td>
                         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          {relationLabels[a.relationType] || a.relationType || '—'}
+                          {relationLabels[a.relationType] || a.relationType || '\u2014'}
                         </span>
                       </td>
                       <td>
@@ -333,7 +514,28 @@ export default function CycleDetailPage() {
                             </span>
                           ) : (
                             <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                              —
+                              &#x2014;
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {cycle.status === 'active' && (
+                        <td>
+                          {a.evaluatorId === user?.userId && a.status !== 'completed' ? (
+                            <Link
+                              href={`/dashboard/evaluaciones/${id}/responder/${a.id}`}
+                              className="btn-primary"
+                              style={{ padding: '0.3rem 0.75rem', fontSize: '0.78rem' }}
+                            >
+                              Responder
+                            </Link>
+                          ) : a.status === 'completed' ? (
+                            <span style={{ color: 'var(--success)', fontSize: '0.78rem', fontWeight: 600 }}>
+                              Completada
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                              &#x2014;
                             </span>
                           )}
                         </td>

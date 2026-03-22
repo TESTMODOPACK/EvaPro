@@ -215,6 +215,7 @@ export default function DashboardPage() {
                     <th>Evaluado</th>
                     <th>Ciclo</th>
                     <th>Estado</th>
+                    <th>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -234,6 +235,15 @@ export default function DashboardPage() {
                         <span className={`badge ${statusBadge[ev.status] || 'badge-accent'}`}>
                           {statusLabel[ev.status] || ev.status}
                         </span>
+                      </td>
+                      <td>
+                        <Link
+                          href={`/dashboard/evaluaciones/${ev.cycleId}/responder/${ev.id}`}
+                          className="btn-primary"
+                          style={{ padding: '0.3rem 0.75rem', fontSize: '0.78rem' }}
+                        >
+                          Responder
+                        </Link>
                       </td>
                     </tr>
                   ))}
