@@ -117,7 +117,13 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0 0.5rem', marginBottom: '0.5rem' }}>
           Principal
         </div>
-        {navItems.map((item) => {
+        {navItems.filter((item) => {
+          // Only super_admin can see Organizaciones
+          if (item.href === '/dashboard/tenants' && user?.role !== 'super_admin') return false;
+          // Only admin/manager can see Usuarios
+          if (item.href === '/dashboard/usuarios' && !['super_admin', 'tenant_admin', 'manager'].includes(user?.role || '')) return false;
+          return true;
+        }).map((item) => {
           const isActive = currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href));
           return (
             <Link

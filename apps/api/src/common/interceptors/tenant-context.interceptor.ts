@@ -12,10 +12,10 @@ export class TenantContextInterceptor implements NestInterceptor {
     
     // Si hay un usuario autenticado con tenant_id, lo configuramos en la sesión de base de datos
     if (user && user.tenantId) {
-      await this.dataSource.query(`SET LOCAL app.current_tenant_id = '${user.tenantId}'`);
+      await this.dataSource.query('SET LOCAL app.current_tenant_id = $1', [user.tenantId]);
     } else {
       // Por defecto para requests no autenticados o rutas públicas
-      await this.dataSource.query(`SET LOCAL app.current_tenant_id = ''`);
+      await this.dataSource.query('SET LOCAL app.current_tenant_id = $1', ['']);
     }
 
     return next.handle();

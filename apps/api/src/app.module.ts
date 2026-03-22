@@ -7,6 +7,11 @@ import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
+import { EvaluationsModule } from './modules/evaluations/evaluations.module';
+import { TemplatesModule } from './modules/templates/templates.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -18,6 +23,11 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     AuthModule,
     TenantsModule,
     UsersModule,
+    EvaluationsModule,
+    TemplatesModule,
+    AuditModule,
+    ReportsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [
