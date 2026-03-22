@@ -121,7 +121,30 @@ async function seed() {
       console.log(`✅  Tenant created: ${tenant.name} (${tenant.id})`);
     }
 
-    /* ── Admin User ─────────────────────────────────────── */
+    /* ── Super Admin ────────────────────────────────────── */
+    let superAdmin = await userRepo.findOne({
+      where: { email: 'superadmin@evapro.demo', tenantId: tenant.id },
+    });
+    if (superAdmin) {
+      console.log('   User "superadmin@evapro.demo" already exists — skipping.');
+    } else {
+      const pwHash = await bcrypt.hash('EvaPro2026!', 10);
+      superAdmin = userRepo.create({
+        email: 'superadmin@evapro.demo',
+        passwordHash: pwHash,
+        firstName: 'Super',
+        lastName: 'Admin',
+        role: 'super_admin',
+        department: 'Tecnología',
+        position: 'Super Administrador',
+        isActive: true,
+        tenantId: tenant.id,
+      });
+      superAdmin = await userRepo.save(superAdmin);
+      console.log('✅  Super Admin created: superadmin@evapro.demo');
+    }
+
+    /* ── Admin User (Encargado del Sistema) ───────────── */
     let admin = await userRepo.findOne({
       where: { email: 'admin@evapro.demo', tenantId: tenant.id },
     });
@@ -135,8 +158,8 @@ async function seed() {
         firstName: 'Admin',
         lastName: 'EvaPro',
         role: 'tenant_admin',
-        department: 'Tecnología',
-        position: 'Administrador del Sistema',
+        department: 'Recursos Humanos',
+        position: 'Encargado del Sistema',
         isActive: true,
         tenantId: tenant.id,
       });
@@ -210,11 +233,11 @@ async function seed() {
       console.log('✅  Default template created: Competencias Generales');
     }
 
-    console.log('\n📋  Demo credentials:');
-    console.log('   Empresa (slug): demo');
-    console.log('   Admin:    admin@evapro.demo / EvaPro2026!');
-    console.log('   Manager:  carlos.lopez@evapro.demo / EvaPro2026!');
-    console.log('   Employees: ana.martinez, luis.rodriguez, sandra.torres @evapro.demo / EvaPro2026!');
+    console.log('\n📋  Demo credentials (empresa: demo, password: EvaPro2026!):');
+    console.log('   Super Admin:          superadmin@evapro.demo');
+    console.log('   Enc. del Sistema:     admin@evapro.demo');
+    console.log('   Enc. de Equipo:       carlos.lopez@evapro.demo');
+    console.log('   Colaboradores:        ana.martinez, luis.rodriguez, sandra.torres @evapro.demo');
   } catch (err) {
     console.error('❌  Seed failed:', err);
     process.exit(1);
