@@ -3,7 +3,8 @@ services:
     name: ascenda-api
     env: node
     # pnpm install without --prod so that devDependencies (nest CLI) are available during build
-    buildCommand: pnpm install && pnpm run db:migrate:prod && pnpm run db:seed && npx turbo run build --filter=@repo/api
+    # schema-sync + seed removed — run manually only when schema changes
+    buildCommand: pnpm install && npx turbo run build --filter=@repo/api
     startCommand: node apps/api/dist/main
     envVars:
       - key: NODE_ENV
