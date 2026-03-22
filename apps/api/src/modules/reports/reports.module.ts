@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
+import { Objective } from '../objectives/entities/objective.entity';
 import { User } from '../users/entities/user.entity';
 import { ReportsService } from './reports.service';
 import { ReportsController } from './reports.controller';
@@ -13,6 +14,7 @@ import { ReportsController } from './reports.controller';
       EvaluationCycle,
       EvaluationAssignment,
       EvaluationResponse,
+      Objective,
       User,
     ]),
   ],

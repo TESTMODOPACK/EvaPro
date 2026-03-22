@@ -12,6 +12,8 @@ import { TemplatesModule } from './modules/templates/templates.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
+import { ObjectivesModule } from './modules/objectives/objectives.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -28,6 +30,8 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     AuditModule,
     ReportsModule,
     NotificationsModule,
+    FeedbackModule,
+    ObjectivesModule,
   ],
   controllers: [AppController],
   providers: [

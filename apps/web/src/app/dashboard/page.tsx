@@ -4,6 +4,9 @@ import { useAuthStore } from '@/store/auth.store';
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { usePendingEvaluations } from '@/hooks/useEvaluations';
 import { useCycles } from '@/hooks/useCycles';
+import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
+import { useFeedbackSummary } from '@/hooks/useFeedback';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 function Spinner() {
   return (
@@ -50,13 +53,15 @@ export default function DashboardPage() {
   const { data: stats, isLoading: loadingStats } = useDashboardStats();
   const { data: pendingEvals, isLoading: loadingPending } = usePendingEvaluations();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
+  const { data: perfHistory } = usePerformanceHistory(user?.userId ?? null);
+  const { data: feedbackSummary } = useFeedbackSummary();
 
   const activeCycle = cycles?.find((c: any) => c.status === 'active');
 
   const kpis = [
     {
       label: 'Evaluaciones activas',
-      value: stats ? String(stats.totalAssignments) : '–',
+      value: stats ? String(stats.totalAssignments) : '\u2013',
       color: '#6366f1',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -68,7 +73,7 @@ export default function DashboardPage() {
     },
     {
       label: 'Empleados evaluados',
-      value: stats ? String(stats.completedAssignments) : '–',
+      value: stats ? String(stats.completedAssignments) : '\u2013',
       color: '#10b981',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -81,7 +86,7 @@ export default function DashboardPage() {
     },
     {
       label: 'Puntuacion promedio',
-      value: stats?.averageScore ? Number(stats.averageScore).toFixed(1) : '–',
+      value: stats?.averageScore ? Number(stats.averageScore).toFixed(1) : '\u2013',
       color: '#f59e0b',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -91,7 +96,7 @@ export default function DashboardPage() {
     },
     {
       label: 'Pendientes de completar',
-      value: stats ? String(stats.pendingAssignments) : '–',
+      value: stats ? String(stats.pendingAssignments) : '\u2013',
       color: '#ef4444',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -102,6 +107,15 @@ export default function DashboardPage() {
     },
   ];
 
+  // Performance history chart data
+  const perfData: any[] = Array.isArray(perfHistory) ? perfHistory : [];
+
+  // Feedback summary counters
+  const positiveCount = feedbackSummary?.positive ?? 0;
+  const neutralCount = feedbackSummary?.neutral ?? 0;
+  const constructiveCount = feedbackSummary?.constructive ?? 0;
+  const totalFeedback = positiveCount + neutralCount + constructiveCount;
+
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
       {/* Header */}
@@ -110,7 +124,7 @@ export default function DashboardPage() {
           Bienvenido de vuelta
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          {user?.email} · {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          {user?.email} &middot; {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
       </div>
 
@@ -182,7 +196,7 @@ export default function DashboardPage() {
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Asignaciones por completar</p>
             </div>
             <a href="/dashboard/evaluaciones" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
-              Ver todas →
+              Ver todas &rarr;
             </a>
           </div>
 
@@ -213,7 +227,7 @@ export default function DashboardPage() {
                         </div>
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                        {ev.cycle?.name || '–'}
+                        {ev.cycle?.name || '\u2013'}
                       </td>
                       <td>
                         <span className={`badge ${statusBadge[ev.status] || 'badge-accent'}`}>
@@ -303,6 +317,142 @@ export default function DashboardPage() {
                 </a>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Performance Trend + Feedback cards */}
+      <div
+        className="animate-fade-up-delay-2"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 340px',
+          gap: '1.25rem',
+          marginTop: '1.25rem',
+        }}
+      >
+        {/* Tendencia de Desempeno */}
+        <div className="card" style={{ padding: '1.4rem' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
+            Tendencia de Desempe&ntilde;o
+          </h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+            Puntuaci&oacute;n promedio por ciclo
+          </p>
+          {perfData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={perfData}>
+                <XAxis
+                  dataKey="cycleName"
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                  axisLine={{ stroke: 'var(--border)' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  domain={[0, 10]}
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                  axisLine={{ stroke: 'var(--border)' }}
+                  tickLine={false}
+                  width={30}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '0.5rem',
+                    fontSize: '0.8rem',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="avgOverall"
+                  stroke="#6366f1"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: '#6366f1', stroke: '#6366f1' }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              Sin historial de desempe&ntilde;o a&uacute;n
+            </div>
+          )}
+        </div>
+
+        {/* Mi Feedback */}
+        <div className="card" style={{ padding: '1.4rem' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
+            Mi Feedback
+          </h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+            Resumen de feedback recibido
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Positivo */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '50%',
+                background: 'rgba(16, 185, 129, 0.15)', color: '#10b981',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 800, fontSize: '0.9rem', flexShrink: 0,
+              }}>
+                {positiveCount}
+              </div>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Positivo</span>
+            </div>
+
+            {/* Neutral */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '50%',
+                background: 'rgba(156, 163, 175, 0.15)', color: '#9ca3af',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 800, fontSize: '0.9rem', flexShrink: 0,
+              }}>
+                {neutralCount}
+              </div>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Neutral</span>
+            </div>
+
+            {/* Constructivo */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '50%',
+                background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 800, fontSize: '0.9rem', flexShrink: 0,
+              }}>
+                {constructiveCount}
+              </div>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Constructivo</span>
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: '1.25rem',
+            paddingTop: '1rem',
+            borderTop: '1px solid var(--border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Total: <strong style={{ color: 'var(--text-primary)' }}>{totalFeedback}</strong>
+            </span>
+            <a
+              href="/dashboard/feedback"
+              style={{
+                fontSize: '0.78rem',
+                color: 'var(--accent-hover)',
+                textDecoration: 'none',
+                fontWeight: 600,
+              }}
+            >
+              Ver feedback &rarr;
+            </a>
           </div>
         </div>
       </div>

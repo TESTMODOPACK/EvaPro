@@ -46,6 +46,22 @@ export class ReportsController {
     return this.reportsService.teamResults(cycleId, managerId, req.user.tenantId);
   }
 
+  @Get('users/:userId/performance-history')
+  performanceHistory(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Request() req: any,
+  ) {
+    return this.reportsService.getPerformanceHistory(req.user.tenantId, userId);
+  }
+
+  @Get('analytics')
+  analytics(
+    @Query('cycleId') cycleId: string,
+    @Request() req: any,
+  ) {
+    return this.reportsService.getAnalytics(req.user.tenantId, cycleId);
+  }
+
   @Get('cycle/:cycleId/export')
   async exportResults(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,

@@ -20,6 +20,11 @@ import { EvaluationResponse } from '../modules/evaluations/entities/evaluation-r
 import { FormTemplate } from '../modules/templates/entities/form-template.entity';
 import { BulkImport } from '../modules/users/entities/bulk-import.entity';
 import { AuditLog } from '../modules/audit/entities/audit-log.entity';
+import { PeerAssignment } from '../modules/evaluations/entities/peer-assignment.entity';
+import { CheckIn } from '../modules/feedback/entities/checkin.entity';
+import { QuickFeedback } from '../modules/feedback/entities/quick-feedback.entity';
+import { Objective } from '../modules/objectives/entities/objective.entity';
+import { ObjectiveUpdate } from '../modules/objectives/entities/objective-update.entity';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const isProduction = process.env.NODE_ENV === 'production';
@@ -41,6 +46,11 @@ async function runSchemaSync() {
     await pgClient.connect();
     // Drop in reverse-FK order
     await pgClient.query(`
+      DROP TABLE IF EXISTS objective_updates CASCADE;
+      DROP TABLE IF EXISTS objectives CASCADE;
+      DROP TABLE IF EXISTS quick_feedbacks CASCADE;
+      DROP TABLE IF EXISTS checkins CASCADE;
+      DROP TABLE IF EXISTS peer_assignments CASCADE;
       DROP TABLE IF EXISTS audit_logs CASCADE;
       DROP TABLE IF EXISTS bulk_imports CASCADE;
       DROP TABLE IF EXISTS evaluation_responses CASCADE;
@@ -55,6 +65,10 @@ async function runSchemaSync() {
       DROP TYPE IF EXISTS evaluation_cycles_type_enum CASCADE;
       DROP TYPE IF EXISTS evaluation_cycles_status_enum CASCADE;
       DROP TYPE IF EXISTS bulk_imports_status_enum CASCADE;
+      DROP TYPE IF EXISTS checkins_status_enum CASCADE;
+      DROP TYPE IF EXISTS quick_feedbacks_sentiment_enum CASCADE;
+      DROP TYPE IF EXISTS objectives_type_enum CASCADE;
+      DROP TYPE IF EXISTS objectives_status_enum CASCADE;
     `);
     console.log('✅  Tables dropped.');
   } catch (err) {
@@ -78,6 +92,11 @@ async function runSchemaSync() {
       EvaluationResponse,
       BulkImport,
       AuditLog,
+      PeerAssignment,
+      CheckIn,
+      QuickFeedback,
+      Objective,
+      ObjectiveUpdate,
     ],
     synchronize: true,
     logging: false,

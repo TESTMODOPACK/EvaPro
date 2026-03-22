@@ -16,6 +16,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { EvaluationsService } from './evaluations.service';
 import { CreateCycleDto, UpdateCycleDto } from './dto/cycle.dto';
 import { SaveResponseDto, SubmitResponseDto } from './dto/response.dto';
+import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignment.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -79,6 +80,47 @@ export class EvaluationsController {
     @Request() req: any,
   ) {
     return this.evaluationsService.closeCycle(id, req.user.tenantId, req.user.userId);
+  }
+
+  // ─── Peer Assignments (pre-launch) ──────────────────────────────────────
+
+  @Get('evaluation-cycles/:cycleId/peer-assignments')
+  getPeerAssignments(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.getPeerAssignments(req.user.tenantId, cycleId);
+  }
+
+  @Post('evaluation-cycles/:cycleId/peer-assignments')
+  @Roles('super_admin', 'tenant_admin')
+  addPeerAssignment(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+    @Body() dto: AddPeerAssignmentDto,
+  ) {
+    return this.evaluationsService.addPeerAssignment(req.user.tenantId, cycleId, dto);
+  }
+
+  @Post('evaluation-cycles/:cycleId/peer-assignments/bulk')
+  @Roles('super_admin', 'tenant_admin')
+  bulkAddPeerAssignments(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+    @Body() dto: BulkPeerAssignmentDto,
+  ) {
+    return this.evaluationsService.bulkAddPeerAssignments(req.user.tenantId, cycleId, dto);
+  }
+
+  @Delete('evaluation-cycles/:cycleId/peer-assignments/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('super_admin', 'tenant_admin')
+  removePeerAssignment(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.removePeerAssignment(req.user.tenantId, cycleId, id);
   }
 
   // ─── Assignments ──────────────────────────────────────────────────────────

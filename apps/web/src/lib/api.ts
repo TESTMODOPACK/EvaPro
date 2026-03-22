@@ -76,6 +76,58 @@ export interface CycleSummary {
   departmentBreakdown: { department: string; avgScore: string; count: number }[];
 }
 
+export interface PeerAssignmentData {
+  id: string; tenantId: string; cycleId: string;
+  evaluateeId: string; evaluatorId: string;
+  evaluatee?: UserData; evaluator?: UserData; createdAt: string;
+}
+
+export interface CheckInData {
+  id: string; tenantId: string; managerId: string; employeeId: string;
+  scheduledDate: string; topic: string; notes: string | null;
+  actionItems: { text: string; completed: boolean }[];
+  status: 'scheduled' | 'completed' | 'cancelled';
+  completedAt: string | null; createdAt: string;
+  manager?: UserData; employee?: UserData;
+}
+
+export interface QuickFeedbackData {
+  id: string; tenantId: string; fromUserId: string; toUserId: string;
+  message: string; sentiment: 'positive' | 'neutral' | 'constructive';
+  category: string | null; isAnonymous: boolean; createdAt: string;
+  fromUser?: UserData; toUser?: UserData;
+}
+
+export interface ObjectiveData {
+  id: string; tenantId: string; userId: string;
+  title: string; description: string | null;
+  type: 'OKR' | 'KPI' | 'SMART'; progress: number;
+  targetDate: string | null; status: string;
+  cycleId: string | null; createdAt: string; updatedAt: string;
+}
+
+export interface ObjectiveUpdateData {
+  id: string; objectiveId: string; progressValue: number;
+  notes: string | null; createdBy: string; createdAt: string;
+}
+
+export interface PerformanceHistoryEntry {
+  cycleId: string; cycleName: string; startDate: string; endDate: string;
+  avgSelf: number | null; avgManager: number | null;
+  avgPeer: number | null; avgOverall: number | null;
+  completedObjectives: number;
+}
+
+export interface FeedbackSummary {
+  positive: number; neutral: number; constructive: number; total: number;
+}
+
+export interface AnalyticsData {
+  scoreDistribution: { range: string; count: number }[];
+  departmentComparison: { department: string; avgScore: string; count: number }[];
+  teamBenchmarks: { managerId: string; managerName: string; avgScore: string; teamSize: number }[];
+}
+
 // ─── Request helper ─────────────────────────────────────────────────────────
 
 async function request<T>(
@@ -197,6 +249,53 @@ export const api = {
       request<TemplateData>(`/templates/${id}/duplicate`, { method: "POST" }, token),
   },
 
+  peerAssignments: {
+    list: (token: string, cycleId: string) =>
+      request<PeerAssignmentData[]>(`/evaluation-cycles/${cycleId}/peer-assignments`, {}, token),
+    add: (token: string, cycleId: string, data: { evaluateeId: string; evaluatorId: string }) =>
+      request<PeerAssignmentData>(`/evaluation-cycles/${cycleId}/peer-assignments`, { method: "POST", body: JSON.stringify(data) }, token),
+    bulkAdd: (token: string, cycleId: string, assignments: { evaluateeId: string; evaluatorId: string }[]) =>
+      request<PeerAssignmentData[]>(`/evaluation-cycles/${cycleId}/peer-assignments/bulk`, { method: "POST", body: JSON.stringify({ assignments }) }, token),
+    remove: (token: string, cycleId: string, id: string) =>
+      request<void>(`/evaluation-cycles/${cycleId}/peer-assignments/${id}`, { method: "DELETE" }, token),
+  },
+
+  feedback: {
+    createCheckIn: (token: string, data: any) =>
+      request<CheckInData>("/feedback/checkins", { method: "POST", body: JSON.stringify(data) }, token),
+    listCheckIns: (token: string) =>
+      request<CheckInData[]>("/feedback/checkins", {}, token),
+    updateCheckIn: (token: string, id: string, data: any) =>
+      request<CheckInData>(`/feedback/checkins/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    completeCheckIn: (token: string, id: string) =>
+      request<CheckInData>(`/feedback/checkins/${id}/complete`, { method: "POST" }, token),
+    sendQuickFeedback: (token: string, data: any) =>
+      request<QuickFeedbackData>("/feedback/quick", { method: "POST", body: JSON.stringify(data) }, token),
+    receivedFeedback: (token: string) =>
+      request<QuickFeedbackData[]>("/feedback/quick/received", {}, token),
+    givenFeedback: (token: string) =>
+      request<QuickFeedbackData[]>("/feedback/quick/given", {}, token),
+    summary: (token: string) =>
+      request<FeedbackSummary>("/feedback/quick/summary", {}, token),
+  },
+
+  objectives: {
+    list: (token: string, userId?: string) =>
+      request<ObjectiveData[]>(`/objectives${userId ? `?userId=${userId}` : ""}`, {}, token),
+    getById: (token: string, id: string) =>
+      request<ObjectiveData>(`/objectives/${id}`, {}, token),
+    create: (token: string, data: any) =>
+      request<ObjectiveData>("/objectives", { method: "POST", body: JSON.stringify(data) }, token),
+    update: (token: string, id: string, data: any) =>
+      request<ObjectiveData>(`/objectives/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    remove: (token: string, id: string) =>
+      request<void>(`/objectives/${id}`, { method: "DELETE" }, token),
+    addProgress: (token: string, id: string, data: any) =>
+      request<ObjectiveUpdateData>(`/objectives/${id}/progress`, { method: "POST", body: JSON.stringify(data) }, token),
+    history: (token: string, id: string) =>
+      request<ObjectiveUpdateData[]>(`/objectives/${id}/history`, {}, token),
+  },
+
   reports: {
     cycleSummary: (token: string, cycleId: string) =>
       request<CycleSummary>(`/reports/cycle/${cycleId}/summary`, {}, token),
@@ -206,6 +305,10 @@ export const api = {
       request<any>(`/reports/cycle/${cycleId}/team/${managerId}`, {}, token),
     exportCsv: (token: string, cycleId: string) =>
       `${BASE_URL}/reports/cycle/${cycleId}/export?format=csv`,
+    performanceHistory: (token: string, userId: string) =>
+      request<{ userId: string; history: PerformanceHistoryEntry[] }>(`/reports/users/${userId}/performance-history`, {}, token),
+    analytics: (token: string, cycleId: string) =>
+      request<AnalyticsData>(`/reports/analytics?cycleId=${cycleId}`, {}, token),
   },
 
   dashboard: {

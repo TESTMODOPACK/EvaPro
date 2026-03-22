@@ -11,8 +11,10 @@ import { EvaluationAssignment, AssignmentStatus, RelationType } from './entities
 import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { User } from '../users/entities/user.entity';
+import { PeerAssignment } from './entities/peer-assignment.entity';
 import { CreateCycleDto, UpdateCycleDto } from './dto/cycle.dto';
 import { SaveResponseDto, SubmitResponseDto } from './dto/response.dto';
+import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignment.dto';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
@@ -28,6 +30,8 @@ export class EvaluationsService {
     private readonly templateRepo: Repository<FormTemplate>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(PeerAssignment)
+    private readonly peerAssignmentRepo: Repository<PeerAssignment>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
   ) {}
@@ -86,6 +90,61 @@ export class EvaluationsService {
       throw new BadRequestException('No se puede eliminar un ciclo activo');
     }
     await this.cycleRepo.remove(cycle);
+  }
+
+  // ─── Peer Assignments (pre-launch) ──────────────────────────────────────
+
+  async addPeerAssignment(tenantId: string, cycleId: string, dto: AddPeerAssignmentDto): Promise<PeerAssignment> {
+    const cycle = await this.findCycleById(cycleId, tenantId);
+    if (cycle.status !== CycleStatus.DRAFT) {
+      throw new BadRequestException('Solo se pueden asignar pares en ciclos en borrador');
+    }
+    if (dto.evaluateeId === dto.evaluatorId) {
+      throw new BadRequestException('El evaluado y el evaluador no pueden ser la misma persona');
+    }
+    const pa = this.peerAssignmentRepo.create({
+      tenantId,
+      cycleId,
+      evaluateeId: dto.evaluateeId,
+      evaluatorId: dto.evaluatorId,
+    });
+    return this.peerAssignmentRepo.save(pa);
+  }
+
+  async bulkAddPeerAssignments(tenantId: string, cycleId: string, dto: BulkPeerAssignmentDto): Promise<PeerAssignment[]> {
+    const cycle = await this.findCycleById(cycleId, tenantId);
+    if (cycle.status !== CycleStatus.DRAFT) {
+      throw new BadRequestException('Solo se pueden asignar pares en ciclos en borrador');
+    }
+    const entities = dto.assignments
+      .filter((a) => a.evaluateeId !== a.evaluatorId)
+      .map((a) =>
+        this.peerAssignmentRepo.create({
+          tenantId,
+          cycleId,
+          evaluateeId: a.evaluateeId,
+          evaluatorId: a.evaluatorId,
+        }),
+      );
+    return this.peerAssignmentRepo.save(entities);
+  }
+
+  async getPeerAssignments(tenantId: string, cycleId: string): Promise<PeerAssignment[]> {
+    return this.peerAssignmentRepo.find({
+      where: { tenantId, cycleId },
+      relations: ['evaluatee', 'evaluator'],
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  async removePeerAssignment(tenantId: string, cycleId: string, id: string): Promise<void> {
+    const pa = await this.peerAssignmentRepo.findOne({ where: { id, tenantId, cycleId } });
+    if (!pa) throw new NotFoundException('Asignación de par no encontrada');
+    const cycle = await this.findCycleById(cycleId, tenantId);
+    if (cycle.status !== CycleStatus.DRAFT) {
+      throw new BadRequestException('Solo se pueden modificar pares en ciclos en borrador');
+    }
+    await this.peerAssignmentRepo.remove(pa);
   }
 
   // ─── Cycle Launch ─────────────────────────────────────────────────────────
@@ -150,6 +209,48 @@ export class EvaluationsService {
             status: AssignmentStatus.PENDING,
             dueDate,
           });
+        }
+      }
+
+      // Peer assignments (270° and 360°) — from manual admin selection
+      if (cycle.type === CycleType.DEGREE_270 || cycle.type === CycleType.DEGREE_360) {
+        const peerAssignments = await this.peerAssignmentRepo.find({
+          where: { cycleId: id, tenantId },
+        });
+        for (const pa of peerAssignments) {
+          assignments.push({
+            tenantId,
+            cycleId: id,
+            evaluateeId: pa.evaluateeId,
+            evaluatorId: pa.evaluatorId,
+            relationType: RelationType.PEER,
+            status: AssignmentStatus.PENDING,
+            dueDate,
+          });
+        }
+      }
+
+      // Direct report assignments (360° only) — auto-calculated from org structure
+      if (cycle.type === CycleType.DEGREE_360) {
+        const evaluableUsers = activeUsers.filter(
+          (u) => u.role !== 'super_admin' && u.role !== 'external',
+        );
+        for (const user of evaluableUsers) {
+          // Find subordinates who report to this user
+          const subordinates = activeUsers.filter(
+            (u) => u.managerId === user.id && u.id !== user.id,
+          );
+          for (const sub of subordinates) {
+            assignments.push({
+              tenantId,
+              cycleId: id,
+              evaluateeId: user.id,
+              evaluatorId: sub.id,
+              relationType: RelationType.DIRECT_REPORT,
+              status: AssignmentStatus.PENDING,
+              dueDate,
+            });
+          }
         }
       }
 

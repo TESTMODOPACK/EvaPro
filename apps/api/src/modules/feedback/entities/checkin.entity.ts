@@ -1,0 +1,75 @@
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  Index,
+  ManyToOne,
+  JoinColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { Tenant } from '../../tenants/entities/tenant.entity';
+import { User } from '../../users/entities/user.entity';
+
+export enum CheckInStatus {
+  SCHEDULED = 'scheduled',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
+}
+
+@Entity('checkins')
+@Index('idx_checkins_manager', ['managerId'])
+@Index('idx_checkins_employee', ['employeeId'])
+export class CheckIn {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'uuid', name: 'tenant_id' })
+  tenantId: string;
+
+  @ManyToOne(() => Tenant)
+  @JoinColumn({ name: 'tenant_id' })
+  tenant: Tenant;
+
+  @Column({ type: 'uuid', name: 'manager_id' })
+  managerId: string;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'manager_id' })
+  manager: User;
+
+  @Column({ type: 'uuid', name: 'employee_id' })
+  employeeId: string;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'employee_id' })
+  employee: User;
+
+  @Column({ type: 'date', name: 'scheduled_date' })
+  scheduledDate: Date;
+
+  @Column({ type: 'varchar', length: 300 })
+  topic: string;
+
+  @Column({ type: 'text', nullable: true })
+  notes: string;
+
+  @Column({ type: 'jsonb', name: 'action_items', default: [] })
+  actionItems: { text: string; completed: boolean }[];
+
+  @Column({
+    type: 'enum',
+    enum: CheckInStatus,
+    default: CheckInStatus.SCHEDULED,
+  })
+  status: CheckInStatus;
+
+  @Column({ type: 'timestamptz', name: 'completed_at', nullable: true })
+  completedAt: Date;
+
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
+}
