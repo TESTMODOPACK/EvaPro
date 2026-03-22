@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
 
 const roleLabel: Record<string, string> = { super_admin: 'Super Admin', tenant_admin: 'Administrador', manager: 'Manager', employee: 'Empleado', external: 'Externo' };
@@ -42,6 +43,7 @@ const emptyForm = {
 };
 
 export default function UsuariosPage() {
+  const router = useRouter();
   const { data: paginated, isLoading } = useUsers();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
@@ -339,10 +341,13 @@ export default function UsuariosPage() {
                   return (
                     <tr key={u.id}>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}
+                          onClick={() => router.push(`/dashboard/usuarios/${u.id}`)}
+                        >
                           <Avatar name={fullName} />
                           <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.875rem' }}>{fullName}</div>
+                            <div style={{ fontWeight: 600, color: 'var(--accent)', fontSize: '0.875rem' }}>{fullName}</div>
                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{u.email}</div>
                           </div>
                         </div>
@@ -386,6 +391,13 @@ export default function UsuariosPage() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button
+                            className="btn-ghost"
+                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                            onClick={() => router.push(`/dashboard/usuarios/${u.id}`)}
+                          >
+                            Perfil
+                          </button>
                           <button
                             className="btn-ghost"
                             style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}

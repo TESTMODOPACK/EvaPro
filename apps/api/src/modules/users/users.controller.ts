@@ -95,4 +95,49 @@ export class UsersController {
   ) {
     return this.usersService.remove(id, req.user.tenantId);
   }
+
+  // ─── User Notes (HR Reports) ───────────────────────────────────────────────
+
+  /** GET /users/:id/notes */
+  @Get(':id/notes')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  listNotes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.usersService.listNotes(req.user.tenantId, id);
+  }
+
+  /** POST /users/:id/notes */
+  @Post(':id/notes')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  createNote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body: { title: string; content: string; category?: string; isConfidential?: boolean },
+  ) {
+    return this.usersService.createNote(req.user.tenantId, id, req.user.userId, body);
+  }
+
+  /** PATCH /users/:id/notes/:noteId */
+  @Patch(':id/notes/:noteId')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  updateNote(
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @Request() req: any,
+    @Body() body: { title?: string; content?: string; category?: string; isConfidential?: boolean },
+  ) {
+    return this.usersService.updateNote(noteId, req.user.tenantId, body);
+  }
+
+  /** DELETE /users/:id/notes/:noteId */
+  @Delete(':id/notes/:noteId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('super_admin', 'tenant_admin')
+  deleteNote(
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @Request() req: any,
+  ) {
+    return this.usersService.deleteNote(noteId, req.user.tenantId);
+  }
 }

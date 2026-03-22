@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
+import { UserNote } from './entities/user-note.entity';
 import { BulkImport, ImportStatus } from './entities/bulk-import.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -17,6 +18,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(UserNote)
+    private readonly noteRepo: Repository<UserNote>,
     @InjectRepository(BulkImport)
     private readonly bulkImportRepo: Repository<BulkImport>,
     private readonly auditService: AuditService,
@@ -245,5 +248,53 @@ export class UsersService {
     const imp = await this.bulkImportRepo.findOne({ where: { id, tenantId } });
     if (!imp) throw new NotFoundException('Importación no encontrada');
     return imp;
+  }
+
+  // ─── User Notes (HR Reports) ───────────────────────────────────────────────
+
+  async listNotes(tenantId: string, userId: string): Promise<UserNote[]> {
+    return this.noteRepo.find({
+      where: { tenantId, userId },
+      relations: ['author'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createNote(
+    tenantId: string,
+    userId: string,
+    authorId: string,
+    data: { title: string; content: string; category?: string; isConfidential?: boolean },
+  ): Promise<UserNote> {
+    const note = this.noteRepo.create({
+      tenantId,
+      userId,
+      authorId,
+      title: data.title,
+      content: data.content,
+      category: data.category || 'general',
+      isConfidential: data.isConfidential || false,
+    });
+    return this.noteRepo.save(note);
+  }
+
+  async updateNote(
+    noteId: string,
+    tenantId: string,
+    data: { title?: string; content?: string; category?: string; isConfidential?: boolean },
+  ): Promise<UserNote> {
+    const note = await this.noteRepo.findOne({ where: { id: noteId, tenantId } });
+    if (!note) throw new NotFoundException('Nota no encontrada');
+    if (data.title !== undefined) note.title = data.title;
+    if (data.content !== undefined) note.content = data.content;
+    if (data.category !== undefined) note.category = data.category;
+    if (data.isConfidential !== undefined) note.isConfidential = data.isConfidential;
+    return this.noteRepo.save(note);
+  }
+
+  async deleteNote(noteId: string, tenantId: string): Promise<void> {
+    const note = await this.noteRepo.findOne({ where: { id: noteId, tenantId } });
+    if (!note) throw new NotFoundException('Nota no encontrada');
+    await this.noteRepo.remove(note);
   }
 }

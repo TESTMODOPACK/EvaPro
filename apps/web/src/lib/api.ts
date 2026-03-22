@@ -63,6 +63,13 @@ export interface DashboardStats {
   averageScore: string | null;
 }
 
+export interface UserNoteData {
+  id: string; tenantId: string; userId: string; authorId: string;
+  category: string; title: string; content: string;
+  isConfidential: boolean; createdAt: string; updatedAt: string;
+  author?: UserData;
+}
+
 export interface BulkImportData {
   id: string; tenantId: string; type: string; status: string;
   totalRows: number; successRows: number; errorRows: number;
@@ -193,6 +200,14 @@ export const api = {
       request<BulkImportData>("/users/bulk-import", { method: "POST", body: JSON.stringify({ csv }) }, token),
     getBulkImport: (token: string, id: string) =>
       request<BulkImportData>(`/users/bulk-imports/${id}`, {}, token),
+    listNotes: (token: string, userId: string) =>
+      request<UserNoteData[]>(`/users/${userId}/notes`, {}, token),
+    createNote: (token: string, userId: string, data: { title: string; content: string; category?: string; isConfidential?: boolean }) =>
+      request<UserNoteData>(`/users/${userId}/notes`, { method: "POST", body: JSON.stringify(data) }, token),
+    updateNote: (token: string, userId: string, noteId: string, data: any) =>
+      request<UserNoteData>(`/users/${userId}/notes/${noteId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    deleteNote: (token: string, userId: string, noteId: string) =>
+      request<void>(`/users/${userId}/notes/${noteId}`, { method: "DELETE" }, token),
   },
 
   cycles: {
