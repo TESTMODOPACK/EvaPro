@@ -17,8 +17,8 @@ export function useAddPeerAssignment() {
   const token = useAuthStore((s) => s.token);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ cycleId, evaluateeId, evaluatorId }: { cycleId: string; evaluateeId: string; evaluatorId: string }) =>
-      api.peerAssignments.add(token!, cycleId, { evaluateeId, evaluatorId }),
+    mutationFn: ({ cycleId, evaluateeId, evaluatorId, relationType }: { cycleId: string; evaluateeId: string; evaluatorId: string; relationType?: string }) =>
+      api.peerAssignments.add(token!, cycleId, { evaluateeId, evaluatorId, relationType }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['peerAssignments', vars.cycleId] }),
   });
 }

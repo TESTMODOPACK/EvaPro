@@ -1,5 +1,6 @@
-import { IsArray, IsUUID, ValidateNested } from 'class-validator';
+import { IsArray, IsEnum, IsOptional, IsUUID, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { RelationType } from '../entities/evaluation-assignment.entity';
 
 export class AddPeerAssignmentDto {
   @IsUUID()
@@ -7,6 +8,10 @@ export class AddPeerAssignmentDto {
 
   @IsUUID()
   evaluatorId: string;
+
+  @IsEnum(RelationType)
+  @IsOptional()
+  relationType?: RelationType;
 }
 
 export class BulkPeerAssignmentDto {

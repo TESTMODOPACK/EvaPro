@@ -258,7 +258,7 @@ export const api = {
   peerAssignments: {
     list: (token: string, cycleId: string) =>
       request<PeerAssignmentData[]>(`/evaluation-cycles/${cycleId}/peer-assignments`, {}, token),
-    add: (token: string, cycleId: string, data: { evaluateeId: string; evaluatorId: string }) =>
+    add: (token: string, cycleId: string, data: { evaluateeId: string; evaluatorId: string; relationType?: string }) =>
       request<PeerAssignmentData>(`/evaluation-cycles/${cycleId}/peer-assignments`, { method: "POST", body: JSON.stringify(data) }, token),
     bulkAdd: (token: string, cycleId: string, assignments: { evaluateeId: string; evaluatorId: string }[]) =>
       request<PeerAssignmentData[]>(`/evaluation-cycles/${cycleId}/peer-assignments/bulk`, { method: "POST", body: JSON.stringify({ assignments }) }, token),

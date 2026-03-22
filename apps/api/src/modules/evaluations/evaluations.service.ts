@@ -97,9 +97,11 @@ export class EvaluationsService {
   async addPeerAssignment(tenantId: string, cycleId: string, dto: AddPeerAssignmentDto): Promise<PeerAssignment> {
     const cycle = await this.findCycleById(cycleId, tenantId);
     if (cycle.status !== CycleStatus.DRAFT) {
-      throw new BadRequestException('Solo se pueden asignar pares en ciclos en borrador');
+      throw new BadRequestException('Solo se pueden asignar evaluadores en ciclos en borrador');
     }
-    if (dto.evaluateeId === dto.evaluatorId) {
+    const relationType = dto.relationType ?? RelationType.PEER;
+    // Self-evaluation allows same person
+    if (relationType !== RelationType.SELF && dto.evaluateeId === dto.evaluatorId) {
       throw new BadRequestException('El evaluado y el evaluador no pueden ser la misma persona');
     }
     const pa = this.peerAssignmentRepo.create({
@@ -107,6 +109,7 @@ export class EvaluationsService {
       cycleId,
       evaluateeId: dto.evaluateeId,
       evaluatorId: dto.evaluatorId,
+      relationType,
     });
     return this.peerAssignmentRepo.save(pa);
   }
@@ -114,18 +117,17 @@ export class EvaluationsService {
   async bulkAddPeerAssignments(tenantId: string, cycleId: string, dto: BulkPeerAssignmentDto): Promise<PeerAssignment[]> {
     const cycle = await this.findCycleById(cycleId, tenantId);
     if (cycle.status !== CycleStatus.DRAFT) {
-      throw new BadRequestException('Solo se pueden asignar pares en ciclos en borrador');
+      throw new BadRequestException('Solo se pueden asignar evaluadores en ciclos en borrador');
     }
-    const entities = dto.assignments
-      .filter((a) => a.evaluateeId !== a.evaluatorId)
-      .map((a) =>
-        this.peerAssignmentRepo.create({
-          tenantId,
-          cycleId,
-          evaluateeId: a.evaluateeId,
-          evaluatorId: a.evaluatorId,
-        }),
-      );
+    const entities = dto.assignments.map((a) =>
+      this.peerAssignmentRepo.create({
+        tenantId,
+        cycleId,
+        evaluateeId: a.evaluateeId,
+        evaluatorId: a.evaluatorId,
+        relationType: a.relationType ?? RelationType.PEER,
+      }),
+    );
     return this.peerAssignmentRepo.save(entities);
   }
 
@@ -166,12 +168,13 @@ export class EvaluationsService {
       throw new BadRequestException('La plantilla asignada no existe');
     }
 
-    const activeUsers = await this.userRepo.find({
-      where: { tenantId, isActive: true },
+    // Read all manual pre-assignments configured by the admin
+    const preAssignments = await this.peerAssignmentRepo.find({
+      where: { cycleId: id, tenantId },
     });
 
-    if (activeUsers.length === 0) {
-      throw new BadRequestException('No hay usuarios activos para evaluar');
+    if (preAssignments.length === 0) {
+      throw new BadRequestException('Debe configurar al menos una asignación antes de lanzar el ciclo');
     }
 
     // Use a transaction for atomicity
@@ -180,88 +183,27 @@ export class EvaluationsService {
     await queryRunner.startTransaction();
 
     try {
-      const assignments: Partial<EvaluationAssignment>[] = [];
       const dueDate = cycle.endDate;
 
-      for (const user of activeUsers) {
-        // Skip super_admin and external users from evaluation
-        if (user.role === 'super_admin' || user.role === 'external') continue;
-
-        // Self-evaluation (all cycle types)
-        assignments.push({
-          tenantId,
-          cycleId: id,
-          evaluateeId: user.id,
-          evaluatorId: user.id,
-          relationType: RelationType.SELF,
-          status: AssignmentStatus.PENDING,
-          dueDate,
-        });
-
-        // Manager evaluation (180° and above)
-        if (cycle.type !== CycleType.DEGREE_90 && user.managerId) {
-          assignments.push({
-            tenantId,
-            cycleId: id,
-            evaluateeId: user.id,
-            evaluatorId: user.managerId,
-            relationType: RelationType.MANAGER,
-            status: AssignmentStatus.PENDING,
-            dueDate,
-          });
-        }
-      }
-
-      // Peer assignments (270° and 360°) — from manual admin selection
-      if (cycle.type === CycleType.DEGREE_270 || cycle.type === CycleType.DEGREE_360) {
-        const peerAssignments = await this.peerAssignmentRepo.find({
-          where: { cycleId: id, tenantId },
-        });
-        for (const pa of peerAssignments) {
-          assignments.push({
-            tenantId,
-            cycleId: id,
-            evaluateeId: pa.evaluateeId,
-            evaluatorId: pa.evaluatorId,
-            relationType: RelationType.PEER,
-            status: AssignmentStatus.PENDING,
-            dueDate,
-          });
-        }
-      }
-
-      // Direct report assignments (360° only) — auto-calculated from org structure
-      if (cycle.type === CycleType.DEGREE_360) {
-        const evaluableUsers = activeUsers.filter(
-          (u) => u.role !== 'super_admin' && u.role !== 'external',
-        );
-        for (const user of evaluableUsers) {
-          // Find subordinates who report to this user
-          const subordinates = activeUsers.filter(
-            (u) => u.managerId === user.id && u.id !== user.id,
-          );
-          for (const sub of subordinates) {
-            assignments.push({
-              tenantId,
-              cycleId: id,
-              evaluateeId: user.id,
-              evaluatorId: sub.id,
-              relationType: RelationType.DIRECT_REPORT,
-              status: AssignmentStatus.PENDING,
-              dueDate,
-            });
-          }
-        }
-      }
+      // Convert all pre-assignments to evaluation assignments
+      const assignments: Partial<EvaluationAssignment>[] = preAssignments.map((pa) => ({
+        tenantId,
+        cycleId: id,
+        evaluateeId: pa.evaluateeId,
+        evaluatorId: pa.evaluatorId,
+        relationType: pa.relationType,
+        status: AssignmentStatus.PENDING,
+        dueDate,
+      }));
 
       // Bulk insert assignments
       await queryRunner.manager.save(EvaluationAssignment, assignments);
 
       // Update cycle status
       cycle.status = CycleStatus.ACTIVE;
-      cycle.totalEvaluated = activeUsers.filter(
-        (u) => u.role !== 'super_admin' && u.role !== 'external',
-      ).length;
+      // Count unique evaluatees
+      const uniqueEvaluatees = new Set(preAssignments.map((pa) => pa.evaluateeId));
+      cycle.totalEvaluated = uniqueEvaluatees.size;
       await queryRunner.manager.save(EvaluationCycle, cycle);
 
       await queryRunner.commitTransaction();

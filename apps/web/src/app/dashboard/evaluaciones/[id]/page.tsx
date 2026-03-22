@@ -67,6 +67,7 @@ export default function CycleDetailPage() {
   const [closing, setClosing] = useState(false);
   const [peerEvaluateeId, setPeerEvaluateeId] = useState('');
   const [peerEvaluatorId, setPeerEvaluatorId] = useState('');
+  const [peerRelationType, setPeerRelationType] = useState('self');
 
   const handleLaunch = async () => {
     const confirmed = window.confirm(
@@ -95,8 +96,10 @@ export default function CycleDetailPage() {
   };
 
   const handleAddPeer = async () => {
-    if (!peerEvaluateeId || !peerEvaluatorId) return;
-    await addPeer.mutateAsync({ cycleId: id, evaluateeId: peerEvaluateeId, evaluatorId: peerEvaluatorId });
+    if (!peerEvaluateeId) return;
+    const evaluatorId = peerRelationType === 'self' ? peerEvaluateeId : peerEvaluatorId;
+    if (!evaluatorId) return;
+    await addPeer.mutateAsync({ cycleId: id, evaluateeId: peerEvaluateeId, evaluatorId, relationType: peerRelationType });
     setPeerEvaluateeId('');
     setPeerEvaluatorId('');
   };
@@ -137,7 +140,7 @@ export default function CycleDetailPage() {
 
   const peerList: any[] = Array.isArray(peerAssignments) ? peerAssignments : [];
   const usersList: any[] = Array.isArray(usersData) ? usersData : (usersData as any)?.data ?? [];
-  const showPeerSection = cycle.status === 'draft' && (cycle.type === '270' || cycle.type === '360');
+  const showPeerSection = cycle.status === 'draft';
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -311,9 +314,9 @@ export default function CycleDetailPage() {
               borderBottom: '1px solid var(--border)',
             }}
           >
-            <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Asignaci&oacute;n de Evaluadores Par</h2>
+            <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Asignaci&oacute;n de Evaluadores</h2>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-              Selecciona qu&eacute; pares evaluar&aacute;n a cada empleado
+              Configura qui&eacute;n eval&uacute;a a qui&eacute;n antes de lanzar el ciclo
             </p>
           </div>
 
@@ -323,7 +326,8 @@ export default function CycleDetailPage() {
                 <thead>
                   <tr>
                     <th>Evaluado</th>
-                    <th>Evaluador (par)</th>
+                    <th>Evaluador</th>
+                    <th>Relaci&oacute;n</th>
                     <th>Eliminar</th>
                   </tr>
                 </thead>
@@ -341,6 +345,11 @@ export default function CycleDetailPage() {
                           {pa.evaluator?.firstName || pa.evaluator?.email || pa.evaluatorId || '\u2014'}
                           {pa.evaluator?.lastName ? ` ${pa.evaluator.lastName}` : ''}
                         </div>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                          {relationLabels[pa.relationType] || pa.relationType || '\u2014'}
+                        </span>
                       </td>
                       <td>
                         <button
@@ -365,11 +374,11 @@ export default function CycleDetailPage() {
 
           {peerList.length === 0 && (
             <div style={{ padding: '1.25rem 1.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              No hay evaluadores par asignados a&uacute;n.
+              No hay evaluadores asignados a&uacute;n. Agrega las asignaciones antes de lanzar el ciclo.
             </div>
           )}
 
-          {/* Add peer form */}
+          {/* Add assignment form */}
           <div
             style={{
               padding: '1rem 1.5rem',
@@ -380,6 +389,25 @@ export default function CycleDetailPage() {
               flexWrap: 'wrap',
             }}
           >
+            <div style={{ minWidth: '140px' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
+                Relaci&oacute;n
+              </label>
+              <select
+                value={peerRelationType}
+                onChange={(e) => setPeerRelationType(e.target.value)}
+                style={{
+                  width: '100%', padding: '0.5rem 0.75rem',
+                  borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)',
+                  background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem',
+                }}
+              >
+                <option value="self">Autoevaluaci&oacute;n</option>
+                <option value="manager">Jefatura</option>
+                <option value="peer">Par</option>
+                <option value="direct_report">Reporte directo</option>
+              </select>
+            </div>
             <div style={{ flex: 1, minWidth: '160px' }}>
               <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
                 Evaluado
@@ -391,13 +419,9 @@ export default function CycleDetailPage() {
                   if (e.target.value === peerEvaluatorId) setPeerEvaluatorId('');
                 }}
                 style={{
-                  width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: 'var(--radius-sm, 0.375rem)',
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-surface)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.85rem',
+                  width: '100%', padding: '0.5rem 0.75rem',
+                  borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)',
+                  background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem',
                 }}
               >
                 <option value="">Seleccionar evaluado</option>
@@ -408,41 +432,38 @@ export default function CycleDetailPage() {
                 ))}
               </select>
             </div>
-            <div style={{ flex: 1, minWidth: '160px' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                Evaluador / Par
-              </label>
-              <select
-                value={peerEvaluatorId}
-                onChange={(e) => setPeerEvaluatorId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: 'var(--radius-sm, 0.375rem)',
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-surface)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.85rem',
-                }}
-              >
-                <option value="">Seleccionar evaluador</option>
-                {usersList
-                  .filter((u: any) => u.id !== peerEvaluateeId)
-                  .map((u: any) => (
-                    <option key={u.id} value={u.id}>
-                      {u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email}
-                    </option>
-                  ))}
-              </select>
-            </div>
+            {peerRelationType !== 'self' && (
+              <div style={{ flex: 1, minWidth: '160px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
+                  Evaluador
+                </label>
+                <select
+                  value={peerEvaluatorId}
+                  onChange={(e) => setPeerEvaluatorId(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)',
+                    background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem',
+                  }}
+                >
+                  <option value="">Seleccionar evaluador</option>
+                  {usersList
+                    .filter((u: any) => u.id !== peerEvaluateeId)
+                    .map((u: any) => (
+                      <option key={u.id} value={u.id}>
+                        {u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
             <button
               className="btn-primary"
               onClick={handleAddPeer}
-              disabled={!peerEvaluateeId || !peerEvaluatorId || addPeer.isPending}
+              disabled={!peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) || addPeer.isPending}
               style={{
-                fontSize: '0.85rem',
-                padding: '0.5rem 1.25rem',
-                opacity: !peerEvaluateeId || !peerEvaluatorId ? 0.5 : 1,
+                fontSize: '0.85rem', padding: '0.5rem 1.25rem',
+                opacity: !peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) ? 0.5 : 1,
               }}
             >
               {addPeer.isPending ? 'Agregando...' : 'Agregar'}

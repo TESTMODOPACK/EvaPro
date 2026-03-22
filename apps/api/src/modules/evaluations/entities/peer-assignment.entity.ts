@@ -11,9 +11,10 @@ import {
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { EvaluationCycle } from './evaluation-cycle.entity';
 import { User } from '../../users/entities/user.entity';
+import { RelationType } from './evaluation-assignment.entity';
 
 @Entity('peer_assignments')
-@Unique('uq_peer_assignment', ['cycleId', 'evaluateeId', 'evaluatorId'])
+@Unique('uq_peer_assignment', ['cycleId', 'evaluateeId', 'evaluatorId', 'relationType'])
 @Index('idx_peer_assignments_cycle', ['cycleId'])
 export class PeerAssignment {
   @PrimaryGeneratedColumn('uuid')
@@ -46,6 +47,14 @@ export class PeerAssignment {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'evaluator_id' })
   evaluator: User;
+
+  @Column({
+    type: 'enum',
+    enum: RelationType,
+    name: 'relation_type',
+    default: RelationType.PEER,
+  })
+  relationType: RelationType;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
