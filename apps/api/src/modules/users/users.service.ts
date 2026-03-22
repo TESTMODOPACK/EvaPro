@@ -70,12 +70,13 @@ export class UsersService {
     page = 1,
     limit = 50,
   ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
-    const [data, total] = await this.userRepository.findAndCount({
-      where: { tenantId },
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const qb = this.userRepository.createQueryBuilder('user')
+      .where('user.tenantId = :tenantId', { tenantId })
+      .andWhere('user.role != :excluded', { excluded: 'super_admin' })
+      .orderBy('user.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+    const [data, total] = await qb.getManyAndCount();
     return { data, total, page, limit };
   }
 
