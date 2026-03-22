@@ -38,6 +38,7 @@ const emptyForm = {
   role: 'employee',
   department: '',
   position: '',
+  managerId: '',
 };
 
 export default function UsuariosPage() {
@@ -56,7 +57,20 @@ export default function UsuariosPage() {
   const totalUsers = users.length;
   const activeUsers = users.filter((u: any) => u.isActive).length;
   const inactiveUsers = totalUsers - activeUsers;
-  const managers = users.filter((u: any) => u.role === 'manager').length;
+  const managersCount = users.filter((u: any) => u.role === 'manager' || u.role === 'tenant_admin').length;
+
+  // Helper to get manager name from id
+  const getManagerName = (managerId: string | null) => {
+    if (!managerId) return null;
+    const mgr = users.find((u: any) => u.id === managerId);
+    if (!mgr) return null;
+    return `${mgr.firstName || ''} ${mgr.lastName || ''}`.trim() || mgr.email;
+  };
+
+  // Users who can be managers
+  const managerOptions = users.filter((u: any) =>
+    u.isActive && (u.role === 'manager' || u.role === 'tenant_admin'),
+  );
 
   const handleCreate = async () => {
     if (!form.email || !form.firstName || !form.lastName || (!editingId && !form.password)) return;
@@ -69,6 +83,7 @@ export default function UsuariosPage() {
           role: form.role,
           department: form.department || undefined,
           position: form.position || undefined,
+          managerId: form.managerId || null,
         };
         if (form.password) data.password = form.password;
         await updateUser.mutateAsync({ id: editingId, data });
@@ -81,6 +96,7 @@ export default function UsuariosPage() {
           role: form.role,
           department: form.department || null,
           position: form.position || null,
+          managerId: form.managerId || undefined,
         });
       }
       setForm(emptyForm);
@@ -103,12 +119,13 @@ export default function UsuariosPage() {
       role: u.role || 'employee',
       department: u.department || '',
       position: u.position || '',
+      managerId: u.managerId || '',
     });
     setShowCreateForm(true);
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Eliminar a ${name}?`)) return;
+    if (!confirm(`¿Eliminar a ${name}?`)) return;
     try {
       await removeUser.mutateAsync(id);
     } catch (err: any) {
@@ -131,18 +148,28 @@ export default function UsuariosPage() {
     width: '100%',
   };
 
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontSize: '0.72rem',
+    fontWeight: 600,
+    color: 'var(--text-muted)',
+    marginBottom: '0.25rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  };
+
   return (
-    <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Usuarios</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Gestiona empleados y sus roles en la organizacion
+            Gestiona empleados, roles y jerarquías de la organización
           </p>
         </div>
         <button
           className="btn-primary"
-          onClick={() => setShowCreateForm(!showCreateForm)}
+          onClick={() => { setShowCreateForm(!showCreateForm); if (showCreateForm) { setEditingId(null); setForm(emptyForm); } }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -151,72 +178,105 @@ export default function UsuariosPage() {
         </button>
       </div>
 
-      {/* Create form (inline) */}
+      {/* Create/Edit form */}
       {showCreateForm && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>{editingId ? 'Editar usuario' : 'Nuevo usuario'}</h3>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>
+            {editingId ? 'Editar usuario' : 'Nuevo usuario'}
+          </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <input
-              style={{ ...inputStyle, ...(editingId ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
-              placeholder="Email *"
-              type="email"
-              value={form.email}
-              onChange={(e) => updateField('email', e.target.value)}
-              readOnly={!!editingId}
-            />
-            <input
-              style={inputStyle}
-              placeholder={editingId ? 'Nueva password (dejar vacío para no cambiar)' : 'Password *'}
-              type="password"
-              value={form.password}
-              onChange={(e) => updateField('password', e.target.value)}
-            />
-            <input
-              style={inputStyle}
-              placeholder="Nombre *"
-              value={form.firstName}
-              onChange={(e) => updateField('firstName', e.target.value)}
-            />
-            <input
-              style={inputStyle}
-              placeholder="Apellido *"
-              value={form.lastName}
-              onChange={(e) => updateField('lastName', e.target.value)}
-            />
-            <select
-              style={inputStyle}
-              value={form.role}
-              onChange={(e) => updateField('role', e.target.value)}
-            >
-              <option value="employee">Empleado</option>
-              <option value="manager">Manager</option>
-              <option value="tenant_admin">Administrador</option>
-            </select>
-            <input
-              style={inputStyle}
-              placeholder="Departamento"
-              value={form.department}
-              onChange={(e) => updateField('department', e.target.value)}
-            />
-            <input
-              style={inputStyle}
-              placeholder="Cargo / Posicion"
-              value={form.position}
-              onChange={(e) => updateField('position', e.target.value)}
-            />
+            <div>
+              <label style={labelStyle}>Email *</label>
+              <input
+                style={{ ...inputStyle, ...(editingId ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
+                placeholder="usuario@empresa.com"
+                type="email"
+                value={form.email}
+                onChange={(e) => updateField('email', e.target.value)}
+                readOnly={!!editingId}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>{editingId ? 'Nueva contraseña (opcional)' : 'Contraseña *'}</label>
+              <input
+                style={inputStyle}
+                placeholder={editingId ? 'Dejar vacío para no cambiar' : 'Mínimo 6 caracteres'}
+                type="password"
+                value={form.password}
+                onChange={(e) => updateField('password', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Nombre *</label>
+              <input
+                style={inputStyle}
+                placeholder="Nombre"
+                value={form.firstName}
+                onChange={(e) => updateField('firstName', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Apellido *</label>
+              <input
+                style={inputStyle}
+                placeholder="Apellido"
+                value={form.lastName}
+                onChange={(e) => updateField('lastName', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Rol</label>
+              <select
+                style={inputStyle}
+                value={form.role}
+                onChange={(e) => updateField('role', e.target.value)}
+              >
+                <option value="employee">Empleado</option>
+                <option value="manager">Manager</option>
+                <option value="tenant_admin">Administrador</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Jefatura directa</label>
+              <select
+                style={inputStyle}
+                value={form.managerId}
+                onChange={(e) => updateField('managerId', e.target.value)}
+              >
+                <option value="">Sin jefatura asignada</option>
+                {managerOptions
+                  .filter((m: any) => m.id !== editingId)
+                  .map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.firstName} {m.lastName} ({roleLabel[m.role] || m.role})
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Departamento</label>
+              <input
+                style={inputStyle}
+                placeholder="Ej: Tecnología, Ventas, RRHH"
+                value={form.department}
+                onChange={(e) => updateField('department', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Cargo</label>
+              <input
+                style={inputStyle}
+                placeholder="Ej: Desarrollador Senior"
+                value={form.position}
+                onChange={(e) => updateField('position', e.target.value)}
+              />
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-            <button
-              className="btn-primary"
-              onClick={handleCreate}
-              disabled={creating}
-            >
+            <button className="btn-primary" onClick={handleCreate} disabled={creating}>
               {creating ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear usuario'}
             </button>
-            <button
-              className="btn-ghost"
-              onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}
-            >
+            <button className="btn-ghost" onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}>
               Cancelar
             </button>
           </div>
@@ -229,7 +289,7 @@ export default function UsuariosPage() {
           { label: 'Total usuarios', value: String(totalUsers), color: 'var(--accent-hover)' },
           { label: 'Activos', value: String(activeUsers), color: 'var(--success)' },
           { label: 'Inactivos', value: String(inactiveUsers), color: 'var(--text-muted)' },
-          { label: 'Managers', value: String(managers), color: 'var(--warning)' },
+          { label: 'Managers / Admins', value: String(managersCount), color: 'var(--warning)' },
         ].map((s, i) => (
           <div key={i} className="card" style={{ padding: '0.875rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span style={{ fontSize: '1.35rem', fontWeight: 800, color: s.color }}>{s.value}</span>
@@ -252,7 +312,9 @@ export default function UsuariosPage() {
               <thead>
                 <tr>
                   <th>Usuario</th>
+                  <th>Cargo</th>
                   <th>Departamento</th>
+                  <th>Jefatura</th>
                   <th>Rol</th>
                   <th>Estado</th>
                   <th>Acciones</th>
@@ -261,6 +323,7 @@ export default function UsuariosPage() {
               <tbody>
                 {users.map((u: any) => {
                   const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
+                  const managerName = getManagerName(u.managerId);
                   return (
                     <tr key={u.id}>
                       <td>
@@ -268,11 +331,37 @@ export default function UsuariosPage() {
                           <Avatar name={fullName} />
                           <div>
                             <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.875rem' }}>{fullName}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{u.email}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{u.email}</div>
                           </div>
                         </div>
                       </td>
-                      <td>{u.department || '–'}</td>
+                      <td>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                          {u.position || '–'}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.82rem' }}>
+                          {u.department || '–'}
+                        </span>
+                      </td>
+                      <td>
+                        {managerName ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-hover)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                              <circle cx="9" cy="7" r="4" />
+                            </svg>
+                            <span style={{ fontSize: '0.82rem', color: 'var(--accent-hover)', fontWeight: 500 }}>
+                              {managerName}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                            Sin jefatura
+                          </span>
+                        )}
+                      </td>
                       <td>
                         <span className={`badge ${roleBadge[u.role] || 'badge-accent'}`}>
                           {roleLabel[u.role] || u.role}
