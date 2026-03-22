@@ -273,7 +273,7 @@ function RegularDashboard() {
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>
-          Bienvenido de vuelta
+          {user?.role === 'external' ? 'Panel de Revision' : 'Bienvenido de vuelta'}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           {user?.email} &middot; {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -447,46 +447,48 @@ function RegularDashboard() {
             )}
           </div>
 
-          {/* Quick actions */}
-          <div className="card" style={{ padding: '1.4rem' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>Acciones rapidas</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              {[
-                { label: 'Nueva evaluacion', icon: '+', href: '/dashboard/evaluaciones' },
-                { label: 'Agregar usuario', icon: '>', href: '/dashboard/usuarios' },
-                { label: 'Ver reportes', icon: '#', href: '/dashboard/reportes' },
-              ].map((action, i) => (
-                <Link
-                  key={i}
-                  href={action.href}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    padding: '0.65rem 0.875rem',
-                    background: 'var(--bg-surface)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text-secondary)',
-                    textDecoration: 'none',
-                    fontSize: '0.85rem',
-                    fontWeight: 500,
-                    transition: 'var(--transition)',
-                  }}
-                >
-                  <span style={{ fontSize: '1rem', fontWeight: 700 }}>{action.icon}</span>
-                  {action.label}
-                </Link>
-              ))}
+          {/* Quick actions — only for tenant_admin */}
+          {user?.role === 'tenant_admin' && (
+            <div className="card" style={{ padding: '1.4rem' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>Acciones rapidas</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {[
+                  { label: 'Nueva evaluacion', icon: '+', href: '/dashboard/evaluaciones' },
+                  { label: 'Agregar usuario', icon: '>', href: '/dashboard/usuarios' },
+                  { label: 'Ver reportes', icon: '#', href: '/dashboard/reportes' },
+                ].map((action, i) => (
+                  <Link
+                    key={i}
+                    href={action.href}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.75rem',
+                      padding: '0.65rem 0.875rem',
+                      background: 'var(--bg-surface)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
+                      textDecoration: 'none',
+                      fontSize: '0.85rem',
+                      fontWeight: 500,
+                      transition: 'var(--transition)',
+                    }}
+                  >
+                    <span style={{ fontSize: '1rem', fontWeight: 700 }}>{action.icon}</span>
+                    {action.label}
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Performance Trend + Feedback cards */}
+      {/* Performance Trend + Feedback cards — hide feedback for employee/external */}
       <div
         className="animate-fade-up-delay-2"
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 340px',
+          gridTemplateColumns: (user?.role === 'tenant_admin' || user?.role === 'manager') ? '1fr 340px' : '1fr',
           gap: '1.25rem',
           marginTop: '1.25rem',
         }}
@@ -541,8 +543,8 @@ function RegularDashboard() {
           )}
         </div>
 
-        {/* Mi Feedback */}
-        <div className="card" style={{ padding: '1.4rem' }}>
+        {/* Mi Feedback — only for tenant_admin and manager */}
+        {(user?.role === 'tenant_admin' || user?.role === 'manager') && <div className="card" style={{ padding: '1.4rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
             Mi Feedback
           </h3>
@@ -614,7 +616,7 @@ function RegularDashboard() {
               Ver feedback &rarr;
             </Link>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

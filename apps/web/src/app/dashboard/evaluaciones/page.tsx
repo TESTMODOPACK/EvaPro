@@ -1,6 +1,7 @@
 'use client';
 
 import { useCycles } from '@/hooks/useCycles';
+import { useAuthStore } from '@/store/auth.store';
 import Link from 'next/link';
 
 const typeLabels: Record<string, string> = {
@@ -39,6 +40,8 @@ function Spinner() {
 
 export default function EvaluacionesPage() {
   const { data: cycles, isLoading } = useCycles();
+  const userRole = useAuthStore((s) => s.user?.role);
+  const isAdmin = userRole === 'tenant_admin';
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -47,17 +50,19 @@ export default function EvaluacionesPage() {
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Evaluaciones</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Gestiona los ciclos de evaluacion de desempeno
+            {isAdmin ? 'Gestiona los ciclos de evaluacion de desempeno' : 'Tus ciclos de evaluacion'}
           </p>
         </div>
-        <Link href="/dashboard/evaluaciones/nuevo" style={{ textDecoration: 'none' }}>
-          <button className="btn-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Nuevo ciclo
-          </button>
-        </Link>
+        {isAdmin && (
+          <Link href="/dashboard/evaluaciones/nuevo" style={{ textDecoration: 'none' }}>
+            <button className="btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Nuevo ciclo
+            </button>
+          </Link>
+        )}
       </div>
 
       {/* Loading */}
