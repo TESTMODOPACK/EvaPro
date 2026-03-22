@@ -21,7 +21,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 
 @Controller('templates')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('super_admin', 'tenant_admin')
 export class TemplatesController {
   constructor(private readonly templatesService: TemplatesService) {}
 
@@ -39,11 +38,13 @@ export class TemplatesController {
   }
 
   @Post()
+  @Roles('super_admin', 'tenant_admin')
   create(@Request() req: any, @Body() dto: CreateTemplateDto) {
     return this.templatesService.create(req.user.tenantId, req.user.userId, dto);
   }
 
   @Patch(':id')
+  @Roles('super_admin', 'tenant_admin')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -54,6 +55,7 @@ export class TemplatesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('super_admin', 'tenant_admin')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -62,6 +64,7 @@ export class TemplatesController {
   }
 
   @Post(':id/duplicate')
+  @Roles('super_admin', 'tenant_admin')
   duplicate(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,

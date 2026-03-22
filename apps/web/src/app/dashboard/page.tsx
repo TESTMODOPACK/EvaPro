@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { usePendingEvaluations } from '@/hooks/useEvaluations';
@@ -108,7 +109,7 @@ export default function DashboardPage() {
   ];
 
   // Performance history chart data
-  const perfData: any[] = Array.isArray(perfHistory) ? perfHistory : [];
+  const perfData: any[] = Array.isArray(perfHistory?.history) ? perfHistory.history : [];
 
   // Feedback summary counters
   const positiveCount = feedbackSummary?.positive ?? 0;
@@ -195,9 +196,9 @@ export default function DashboardPage() {
               <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Evaluaciones pendientes</h2>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Asignaciones por completar</p>
             </div>
-            <a href="/dashboard/evaluaciones" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
+            <Link href="/dashboard/evaluaciones" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
               Ver todas &rarr;
-            </a>
+            </Link>
           </div>
 
           {loadingPending ? (
@@ -294,7 +295,7 @@ export default function DashboardPage() {
                 { label: 'Agregar usuario', icon: '>', href: '/dashboard/usuarios' },
                 { label: 'Ver reportes', icon: '#', href: '/dashboard/reportes' },
               ].map((action, i) => (
-                <a
+                <Link
                   key={i}
                   href={action.href}
                   style={{
@@ -309,12 +310,10 @@ export default function DashboardPage() {
                     fontWeight: 500,
                     transition: 'var(--transition)',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                 >
                   <span style={{ fontSize: '1rem', fontWeight: 700 }}>{action.icon}</span>
                   {action.label}
-                </a>
+                </Link>
               ))}
             </div>
           </div>
@@ -442,7 +441,7 @@ export default function DashboardPage() {
             <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
               Total: <strong style={{ color: 'var(--text-primary)' }}>{totalFeedback}</strong>
             </span>
-            <a
+            <Link
               href="/dashboard/feedback"
               style={{
                 fontSize: '0.78rem',
@@ -452,7 +451,7 @@ export default function DashboardPage() {
               }}
             >
               Ver feedback &rarr;
-            </a>
+            </Link>
           </div>
         </div>
       </div>
