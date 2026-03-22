@@ -15,6 +15,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryTenant, setRecoveryTenant] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [recoveryStep, setRecoveryStep] = useState<"email" | "code">("email");
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryMsg, setRecoveryMsg] = useState("");
 
   // If already authenticated with a real token, go straight to dashboard
   useEffect(() => {
@@ -62,6 +71,63 @@ export default function LoginPage() {
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  const BASE_URL =
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://evaluacion-desempeno-api.onrender.com";
+
+  async function handleRequestCode() {
+    if (!recoveryEmail) { setRecoveryMsg("Ingresa tu correo electrónico"); return; }
+    setRecoveryLoading(true);
+    setRecoveryMsg("");
+    try {
+      const res = await fetch(`${BASE_URL}/auth/request-reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: recoveryEmail, tenantSlug: recoveryTenant || undefined }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Error al solicitar recuperación");
+      }
+      setRecoveryStep("code");
+      setRecoveryMsg("Se envió un código a tu correo electrónico.");
+    } catch (err: any) {
+      setRecoveryMsg(err.message || "Error al solicitar recuperación");
+    } finally {
+      setRecoveryLoading(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!recoveryCode || !newPassword) { setRecoveryMsg("Completa todos los campos"); return; }
+    if (newPassword.length < 6) { setRecoveryMsg("La contraseña debe tener al menos 6 caracteres"); return; }
+    setRecoveryLoading(true);
+    setRecoveryMsg("");
+    try {
+      const res = await fetch(`${BASE_URL}/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: recoveryEmail, code: recoveryCode, newPassword, tenantSlug: recoveryTenant || undefined }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Código inválido o expirado");
+      }
+      setRecoveryMsg("Contraseña actualizada. Ya puedes iniciar sesión.");
+      setTimeout(() => {
+        setShowRecovery(false);
+        setRecoveryStep("email");
+        setRecoveryCode("");
+        setNewPassword("");
+        setRecoveryMsg("");
+      }, 2000);
+    } catch (err: any) {
+      setRecoveryMsg(err.message || "Error al restablecer contraseña");
+    } finally {
+      setRecoveryLoading(false);
     }
   }
 
@@ -242,15 +308,49 @@ export default function LoginPage() {
 
             <div>
               <label style={labelStyle}>Contraseña</label>
-              <input
-                className="input"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  className="input"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  style={{ paddingRight: "2.5rem" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    right: "0.6rem",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-muted)",
+                    padding: "0.25rem",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
 
             <button
@@ -271,7 +371,159 @@ export default function LoginPage() {
               {loading ? "Verificando…" : "Ingresar"}
             </button>
           </form>
+
+          <div style={{ textAlign: "center", marginTop: "1rem" }}>
+            <button
+              type="button"
+              onClick={() => { setShowRecovery(true); setRecoveryMsg(""); setRecoveryStep("email"); }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--accent)",
+                fontSize: "0.85rem",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
         </div>
+
+        {/* Password Recovery Modal */}
+        {showRecovery && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: "1rem",
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowRecovery(false); }}
+          >
+            <div className="card" style={{ padding: "2rem", width: "100%", maxWidth: "400px" }}>
+              <h3 style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "0.25rem" }}>
+                Recuperar contraseña
+              </h3>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1.5rem" }}>
+                {recoveryStep === "email"
+                  ? "Ingresa tu correo para recibir un código de recuperación"
+                  : "Ingresa el código que recibiste y tu nueva contraseña"}
+              </p>
+
+              {recoveryMsg && (
+                <div style={{
+                  padding: "0.6rem 0.8rem",
+                  background: recoveryMsg.includes("envió") || recoveryMsg.includes("actualizada")
+                    ? "rgba(16,185,129,0.12)"
+                    : "rgba(239,68,68,0.12)",
+                  border: `1px solid ${recoveryMsg.includes("envió") || recoveryMsg.includes("actualizada") ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
+                  borderRadius: "var(--radius-sm)",
+                  color: recoveryMsg.includes("envió") || recoveryMsg.includes("actualizada") ? "#10b981" : "var(--danger)",
+                  fontSize: "0.82rem",
+                  marginBottom: "1rem",
+                }}>
+                  {recoveryMsg}
+                </div>
+              )}
+
+              {recoveryStep === "email" ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div>
+                    <label style={labelStyle}>Empresa</label>
+                    <input
+                      className="input"
+                      type="text"
+                      placeholder="slug de tu empresa"
+                      value={recoveryTenant}
+                      onChange={(e) => setRecoveryTenant(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Correo electrónico</label>
+                    <input
+                      className="input"
+                      type="email"
+                      placeholder="correo@empresa.com"
+                      value={recoveryEmail}
+                      onChange={(e) => setRecoveryEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button
+                    className="btn-primary"
+                    onClick={handleRequestCode}
+                    disabled={recoveryLoading}
+                    style={{ padding: "0.65rem 1.25rem" }}
+                  >
+                    {recoveryLoading ? "Enviando..." : "Enviar código"}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div>
+                    <label style={labelStyle}>Código de recuperación</label>
+                    <input
+                      className="input"
+                      type="text"
+                      placeholder="Ej: 482910"
+                      value={recoveryCode}
+                      onChange={(e) => setRecoveryCode(e.target.value)}
+                      maxLength={6}
+                      style={{ letterSpacing: "0.3em", textAlign: "center", fontSize: "1.2rem", fontWeight: 700 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Nueva contraseña</label>
+                    <input
+                      className="input"
+                      type="password"
+                      placeholder="Mínimo 6 caracteres"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      minLength={6}
+                    />
+                  </div>
+                  <button
+                    className="btn-primary"
+                    onClick={handleResetPassword}
+                    disabled={recoveryLoading}
+                    style={{ padding: "0.65rem 1.25rem" }}
+                  >
+                    {recoveryLoading ? "Guardando..." : "Restablecer contraseña"}
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => { setRecoveryStep("email"); setRecoveryMsg(""); }}
+                    style={{ fontSize: "0.82rem" }}
+                  >
+                    Volver a solicitar código
+                  </button>
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowRecovery(false)}
+                style={{
+                  marginTop: "1rem",
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  fontSize: "0.82rem",
+                  cursor: "pointer",
+                  width: "100%",
+                  textAlign: "center",
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
 
         <p
           style={{

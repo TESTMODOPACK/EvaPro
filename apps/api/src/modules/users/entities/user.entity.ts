@@ -50,6 +50,12 @@ export class User {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  @Column({ type: 'varchar', length: 10, nullable: true, name: 'reset_code' })
+  resetCode: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'reset_code_expires' })
+  resetCodeExpires: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }
