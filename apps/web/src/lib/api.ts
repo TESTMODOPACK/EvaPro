@@ -209,6 +209,16 @@ export const api = {
     cancel: (token: string, id: string) =>
       request<void>(`/subscriptions/${id}`, { method: "DELETE" }, token),
     stats: (token: string) => request<any>("/subscriptions/stats", {}, token),
+    mySubscription: (token: string) => request<any>("/subscriptions/my-subscription", {}, token),
+    plans: {
+      list: (token: string) => request<any[]>("/subscriptions/plans", {}, token),
+      create: (token: string, data: any) =>
+        request<any>("/subscriptions/plans", { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) =>
+        request<any>(`/subscriptions/plans/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      deactivate: (token: string, id: string) =>
+        request<void>(`/subscriptions/plans/${id}`, { method: "DELETE" }, token),
+    },
   },
 
   users: {

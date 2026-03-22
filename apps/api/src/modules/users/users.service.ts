@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -12,6 +13,7 @@ import { BulkImport, ImportStatus } from './entities/bulk-import.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuditService } from '../audit/audit.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class UsersService {
@@ -23,6 +25,7 @@ export class UsersService {
     @InjectRepository(BulkImport)
     private readonly bulkImportRepo: Repository<BulkImport>,
     private readonly auditService: AuditService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   // ─── Auth helper ──────────────────────────────────────────────────────────
@@ -77,6 +80,19 @@ export class UsersService {
   }
 
   async create(tenantId: string, dto: CreateUserDto): Promise<User> {
+    // Check plan limits
+    const sub = await this.subscriptionsService.findByTenantId(tenantId);
+    if (sub && sub.plan) {
+      const currentCount = await this.userRepository.count({
+        where: { tenantId, isActive: true },
+      });
+      if (currentCount >= sub.plan.maxEmployees) {
+        throw new ForbiddenException(
+          `Límite de usuarios alcanzado para el plan "${sub.plan.name}". Máximo: ${sub.plan.maxEmployees}`,
+        );
+      }
+    }
+
     const existing = await this.findByEmail(dto.email, tenantId);
     if (existing) {
       throw new ConflictException(

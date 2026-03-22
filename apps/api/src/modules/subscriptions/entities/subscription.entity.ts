@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
+import { SubscriptionPlan } from './subscription-plan.entity';
 
 @Entity('subscriptions')
 @Index('idx_sub_tenant', ['tenantId'])
@@ -23,14 +24,15 @@ export class Subscription {
   @JoinColumn({ name: 'tenant_id' })
   tenant: Tenant;
 
-  @Column({ type: 'varchar', length: 50, name: 'plan_name', default: 'starter' })
-  planName: string; // starter | pro | enterprise | custom
+  @Column({ type: 'uuid', name: 'plan_id' })
+  planId: string;
+
+  @ManyToOne(() => SubscriptionPlan)
+  @JoinColumn({ name: 'plan_id' })
+  plan: SubscriptionPlan;
 
   @Column({ type: 'varchar', length: 30, default: 'active' })
-  status: string; // active | suspended | cancelled | trial
-
-  @Column({ type: 'int', name: 'max_employees', default: 50 })
-  maxEmployees: number;
+  status: string; // active | trial | suspended | cancelled | expired
 
   @Column({ type: 'date', name: 'start_date' })
   startDate: Date;
@@ -40,9 +42,6 @@ export class Subscription {
 
   @Column({ type: 'date', name: 'trial_ends_at', nullable: true })
   trialEndsAt: Date | null;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'monthly_price', nullable: true })
-  monthlyPrice: number | null;
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;

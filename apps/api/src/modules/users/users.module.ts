@@ -6,11 +6,13 @@ import { BulkImport } from './entities/bulk-import.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { AuditModule } from '../audit/audit.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, UserNote, BulkImport]),
     AuditModule,
+    SubscriptionsModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],
