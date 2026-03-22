@@ -86,6 +86,8 @@ function formatDate(d: string) {
 
 function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[]; selectedCycleId: string; onCycleChange: (id: string) => void }) {
   const token = useAuthStore((s) => s.token)!;
+  const userRole = useAuthStore((s) => s.user?.role);
+  const isAdmin = userRole === 'tenant_admin' || userRole === 'super_admin';
   const [nineBoxData, setNineBoxData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -167,7 +169,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
           ))}
         </select>
 
-        {selectedCycleId && (
+        {selectedCycleId && isAdmin && (
           <button className="btn-primary" onClick={handleGenerate} disabled={generating}>
             {generating ? 'Generando...' : 'Generar evaluaci\u00f3n de talento'}
           </button>
@@ -255,14 +257,14 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                           <tr key={a.id} style={{ cursor: 'pointer' }}>
                             {!isEditing ? (
                               <>
-                                <td onClick={() => startEdit(a)} style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
-                                <td onClick={() => startEdit(a)}>{u.department || '—'}</td>
-                                <td onClick={() => startEdit(a)}>{u.position || '—'}</td>
-                                <td onClick={() => startEdit(a)}>{a.performanceScore ?? '—'}</td>
-                                <td onClick={() => startEdit(a)}>{a.potentialScore ?? '—'}</td>
-                                <td onClick={() => startEdit(a)}><span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL[a.talentPool] || a.talentPool}</span></td>
-                                <td onClick={() => startEdit(a)}>{READINESS_LABEL[a.readiness] || a.readiness || '—'}</td>
-                                <td onClick={() => startEdit(a)}>{a.flightRisk ? <span className={`badge ${RISK_BADGE[a.flightRisk]}`}>{RISK_LABEL[a.flightRisk]}</span> : '—'}</td>
+                                <td onClick={() => isAdmin && startEdit(a)} style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
+                                <td onClick={() => isAdmin && startEdit(a)}>{u.department || '—'}</td>
+                                <td onClick={() => isAdmin && startEdit(a)}>{u.position || '—'}</td>
+                                <td onClick={() => isAdmin && startEdit(a)}>{a.performanceScore ?? '—'}</td>
+                                <td onClick={() => isAdmin && startEdit(a)}>{a.potentialScore ?? '—'}</td>
+                                <td onClick={() => isAdmin && startEdit(a)}><span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL[a.talentPool] || a.talentPool}</span></td>
+                                <td onClick={() => isAdmin && startEdit(a)}>{READINESS_LABEL[a.readiness] || a.readiness || '—'}</td>
+                                <td onClick={() => isAdmin && startEdit(a)}>{a.flightRisk ? <span className={`badge ${RISK_BADGE[a.flightRisk]}`}>{RISK_LABEL[a.flightRisk]}</span> : '—'}</td>
                               </>
                             ) : (
                               <td colSpan={8}>
