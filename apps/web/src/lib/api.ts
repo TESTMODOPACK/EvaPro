@@ -145,6 +145,12 @@ async function request<T>(
   const res = await fetch(url, { ...options, headers });
 
   if (!res.ok) {
+    // If 401 Unauthorized, clear stale/demo auth and redirect to login
+    if (res.status === 401 && typeof window !== "undefined") {
+      localStorage.removeItem("evapro-auth");
+      window.location.href = "/login";
+      throw new Error("Sesión expirada");
+    }
     const error = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(error.message ?? "Error en la solicitud");
   }

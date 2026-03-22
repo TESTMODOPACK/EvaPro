@@ -10,9 +10,23 @@ const DEMO_USER = {
   userId: "demo-user-id",
   email: "admin@evapro.demo",
   tenantId: "demo-tenant-id",
-  role: "admin",
+  role: "tenant_admin",
 };
 const DEMO_TOKEN = "demo-token";
+
+// Clear stale auth on login page load
+if (typeof window !== "undefined") {
+  const stored = localStorage.getItem("evapro-auth");
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      // If token is the fake demo token or expired, clear it
+      if (parsed?.state?.token === "demo-token") {
+        localStorage.removeItem("evapro-auth");
+      }
+    } catch { /* ignore */ }
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter();
