@@ -119,37 +119,43 @@ export class TenantsService {
       recentTenantsWithUsers.push({ ...t, userCount });
     }
 
-    // Subscription breakdown by plan
-    const subscriptionsByPlan = await this.subscriptionRepo
-      .createQueryBuilder('s')
-      .leftJoin('s.plan', 'p')
-      .select('p.name', 'plan')
-      .addSelect('s.status', 'status')
-      .addSelect('COUNT(s.id)', 'count')
-      .groupBy('p.name, s.status')
-      .getRawMany();
+    // Subscription breakdown by plan (may fail if tables don't exist yet)
+    let subscriptionsByPlan: any[] = [];
+    try {
+      subscriptionsByPlan = await this.subscriptionRepo
+        .createQueryBuilder('s')
+        .leftJoin('s.plan', 'p')
+        .select('p.name', 'plan')
+        .addSelect('s.status', 'status')
+        .addSelect('COUNT(s.id)', 'count')
+        .groupBy('p.name, s.status')
+        .getRawMany();
+    } catch { /* table may not exist yet */ }
 
     // Daily accesses (login events from audit log, last 7 days)
-    const dailyAccesses = await this.auditLogRepo
-      .createQueryBuilder('l')
-      .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
-      .addSelect('COUNT(l.id)', 'count')
-      .where("l.action ILIKE '%login%'")
-      .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
-      .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
-      .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
-      .getRawMany();
+    let dailyAccesses: any[] = [];
+    let recentFailures: any[] = [];
+    try {
+      dailyAccesses = await this.auditLogRepo
+        .createQueryBuilder('l')
+        .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
+        .addSelect('COUNT(l.id)', 'count')
+        .where("l.action ILIKE '%login%'")
+        .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
+        .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
+        .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
+        .getRawMany();
 
-    // System failures (error events from audit log, last 7 days)
-    const recentFailures = await this.auditLogRepo
-      .createQueryBuilder('l')
-      .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
-      .addSelect('COUNT(l.id)', 'count')
-      .where("l.action ILIKE '%error%' OR l.action ILIKE '%fail%'")
-      .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
-      .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
-      .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
-      .getRawMany();
+      recentFailures = await this.auditLogRepo
+        .createQueryBuilder('l')
+        .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
+        .addSelect('COUNT(l.id)', 'count')
+        .where("l.action ILIKE '%error%' OR l.action ILIKE '%fail%'")
+        .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
+        .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
+        .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
+        .getRawMany();
+    } catch { /* table may not exist yet */ }
 
     const totalFailures = recentFailures.reduce((sum: number, r: any) => sum + Number(r.count), 0);
     const todayAccesses = dailyAccesses.find((d: any) => d.date === new Date().toISOString().slice(0, 10));
