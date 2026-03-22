@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useUsers, useCreateUser, useRemoveUser } from '@/hooks/useUsers';
+import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
 
-const roleLabel: Record<string, string> = { admin: 'Administrador', manager: 'Manager', employee: 'Empleado' };
-const roleBadge: Record<string, string> = { admin: 'badge-danger', manager: 'badge-warning', employee: 'badge-accent' };
+const roleLabel: Record<string, string> = { super_admin: 'Super Admin', tenant_admin: 'Administrador', manager: 'Manager', employee: 'Empleado', external: 'Externo' };
+const roleBadge: Record<string, string> = { super_admin: 'badge-danger', tenant_admin: 'badge-danger', manager: 'badge-warning', employee: 'badge-accent', external: 'badge-accent' };
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -43,9 +43,11 @@ const emptyForm = {
 export default function UsuariosPage() {
   const { data: paginated, isLoading } = useUsers();
   const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
   const removeUser = useRemoveUser();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
 
@@ -57,25 +59,52 @@ export default function UsuariosPage() {
   const managers = users.filter((u: any) => u.role === 'manager').length;
 
   const handleCreate = async () => {
-    if (!form.email || !form.firstName || !form.lastName || !form.password) return;
+    if (!form.email || !form.firstName || !form.lastName || (!editingId && !form.password)) return;
     setCreating(true);
     try {
-      await createUser.mutateAsync({
-        email: form.email,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        password: form.password,
-        role: form.role,
-        department: form.department || null,
-        position: form.position || null,
-      });
+      if (editingId) {
+        const data: any = {
+          firstName: form.firstName,
+          lastName: form.lastName,
+          role: form.role,
+          department: form.department || undefined,
+          position: form.position || undefined,
+        };
+        if (form.password) data.password = form.password;
+        await updateUser.mutateAsync({ id: editingId, data });
+      } else {
+        await createUser.mutateAsync({
+          email: form.email,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          password: form.password,
+          role: form.role,
+          department: form.department || null,
+          position: form.position || null,
+        });
+      }
       setForm(emptyForm);
       setShowCreateForm(false);
+      setEditingId(null);
     } catch (err: any) {
-      alert(err.message || 'Error al crear usuario');
+      alert(err.message || 'Error al guardar usuario');
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleEdit = (u: any) => {
+    setEditingId(u.id);
+    setForm({
+      email: u.email,
+      firstName: u.firstName || '',
+      lastName: u.lastName || '',
+      password: '',
+      role: u.role || 'employee',
+      department: u.department || '',
+      position: u.position || '',
+    });
+    setShowCreateForm(true);
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -125,18 +154,19 @@ export default function UsuariosPage() {
       {/* Create form (inline) */}
       {showCreateForm && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>Nuevo usuario</h3>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>{editingId ? 'Editar usuario' : 'Nuevo usuario'}</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <input
-              style={inputStyle}
+              style={{ ...inputStyle, ...(editingId ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
               placeholder="Email *"
               type="email"
               value={form.email}
               onChange={(e) => updateField('email', e.target.value)}
+              readOnly={!!editingId}
             />
             <input
               style={inputStyle}
-              placeholder="Password *"
+              placeholder={editingId ? 'Nueva password (dejar vacío para no cambiar)' : 'Password *'}
               type="password"
               value={form.password}
               onChange={(e) => updateField('password', e.target.value)}
@@ -160,7 +190,7 @@ export default function UsuariosPage() {
             >
               <option value="employee">Empleado</option>
               <option value="manager">Manager</option>
-              <option value="admin">Administrador</option>
+              <option value="tenant_admin">Administrador</option>
             </select>
             <input
               style={inputStyle}
@@ -181,11 +211,11 @@ export default function UsuariosPage() {
               onClick={handleCreate}
               disabled={creating}
             >
-              {creating ? 'Creando...' : 'Crear usuario'}
+              {creating ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear usuario'}
             </button>
             <button
               className="btn-ghost"
-              onClick={() => { setShowCreateForm(false); setForm(emptyForm); }}
+              onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}
             >
               Cancelar
             </button>
@@ -255,7 +285,11 @@ export default function UsuariosPage() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          <button className="btn-ghost" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}>
+                          <button
+                            className="btn-ghost"
+                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                            onClick={() => handleEdit(u)}
+                          >
                             Editar
                           </button>
                           <button
