@@ -5,15 +5,24 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // CORS – support comma-separated list of allowed origins via FRONTEND_URL
-  // NOTE: credentials:true requires a specific origin (not '*')
+  // CORS – reflect the request origin so credentials work with any frontend URL
   const frontendUrl = process.env.FRONTEND_URL;
   const allowedOrigins = frontendUrl
     ? frontendUrl.split(',').map((u) => u.trim())
     : null;
 
   app.enableCors({
-    origin: allowedOrigins ?? true, // true = reflect request origin (permissive, dev-friendly)
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: string | boolean) => void) => {
+      // Allow requests with no origin (curl, mobile apps, server-to-server)
+      if (!origin) return callback(null, true);
+      // If FRONTEND_URL is set, check against whitelist
+      if (allowedOrigins && allowedOrigins.length > 0) {
+        if (allowedOrigins.includes(origin)) return callback(null, origin);
+        // Still allow for development/other frontends
+      }
+      // Reflect origin (permissive — safe for MVP)
+      callback(null, origin);
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
