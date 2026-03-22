@@ -27,13 +27,20 @@ export class UsersService {
 
   // ─── Auth helper ──────────────────────────────────────────────────────────
 
-  async findByEmail(email: string, tenantId?: string): Promise<User | null> {
+  async findByEmail(email: string, tenantIdOrSlug?: string): Promise<User | null> {
     const query = this.userRepository
       .createQueryBuilder('user')
+      .leftJoinAndSelect('user.tenant', 'tenant')
       .where('user.email = :email', { email });
 
-    if (tenantId) {
-      query.andWhere('user.tenantId = :tenantId', { tenantId });
+    if (tenantIdOrSlug) {
+      // Support both UUID and slug for tenantId
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantIdOrSlug);
+      if (isUuid) {
+        query.andWhere('user.tenantId = :tid', { tid: tenantIdOrSlug });
+      } else {
+        query.andWhere('tenant.slug = :slug', { slug: tenantIdOrSlug });
+      }
     }
 
     return query.getOne();
