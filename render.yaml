@@ -4,7 +4,7 @@ services:
     env: node
     # pnpm install without --prod so that devDependencies (nest CLI) are available during build
     # schema-sync + seed removed — run manually only when schema changes
-    buildCommand: pnpm install && npx turbo run build --filter=@repo/api
+    buildCommand: pnpm install && npx turbo run build --filter=@repo/api && node apps/api/dist/database/seed.js || true
     startCommand: node apps/api/dist/main
     envVars:
       - key: NODE_ENV
