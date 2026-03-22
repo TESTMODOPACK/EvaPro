@@ -4,14 +4,8 @@
   publish = ".next"
 
 [build.environment]
-  # Set this to your actual Render API URL after deploying
-  NEXT_PUBLIC_API_URL = "https://ascenda-api.onrender.com"
+  NEXT_PUBLIC_API_URL = "https://evaluacion-desempeno-api.onrender.com"
   NODE_VERSION = "20"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
