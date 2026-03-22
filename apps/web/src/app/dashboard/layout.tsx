@@ -8,15 +8,17 @@ import Sidebar from '@/components/Sidebar';
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, token, logout } = useAuthStore();
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Reject demo tokens or missing auth
+    if (!isAuthenticated || token === 'demo-token' || !token) {
+      logout();
       router.replace('/login');
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, token, router, logout]);
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || token === 'demo-token' || !token) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span className="spinner" />

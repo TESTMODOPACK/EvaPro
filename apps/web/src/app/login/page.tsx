@@ -4,105 +4,76 @@ import { useState, FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuthStore, decodeJwtPayload } from "@/store/auth.store";
-
-/** Demo session used as fallback when the API is unreachable */
-const DEMO_USER = {
-  userId: "demo-user-id",
-  email: "admin@evapro.demo",
-  tenantId: "demo-tenant-id",
-  role: "tenant_admin",
-};
-const DEMO_TOKEN = "demo-token";
-
-// Clear stale auth on login page load
-if (typeof window !== "undefined") {
-  const stored = localStorage.getItem("evapro-auth");
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      // If token is the fake demo token or expired, clear it
-      if (parsed?.state?.token === "demo-token") {
-        localStorage.removeItem("evapro-auth");
-      }
-    } catch { /* ignore */ }
-  }
-}
+import { getRoleLabel } from "@/lib/roles";
 
 export default function LoginPage() {
   const router = useRouter();
   const { setAuth, isAuthenticated } = useAuthStore();
 
-  const [tenantSlug, setTenantSlug] = useState("demo");
-  const [email, setEmail] = useState("admin@evapro.demo");
-  const [password, setPassword] = useState("EvaPro2026!");
+  const [tenantSlug, setTenantSlug] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("Verificando conexión…");
 
-  // If already authenticated, go straight to dashboard
+  // If already authenticated with a real token, go straight to dashboard
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace("/dashboard");
-    }
-  }, [isAuthenticated, router]);
-
-  // Auto-login on mount
-  useEffect(() => {
-    let cancelled = false;
-
-    async function autoLogin() {
-      setLoading(true);
-      setStatus("Conectando con el servidor…");
-
-      try {
-        const { access_token } = await api.auth.login(
-          "admin@evapro.demo",
-          "EvaPro2026!",
-          "demo",
-        );
-        if (cancelled) return;
-        const user = decodeJwtPayload(access_token);
-        if (!user) throw new Error("Token inválido");
-        setAuth(access_token, user);
-        router.replace("/dashboard");
-      } catch {
-        if (cancelled) return;
-        // API unreachable or credentials wrong → enter demo mode
-        console.warn("[EvaPro] API login failed — entering demo mode");
-        setStatus("Accediendo en modo demostración…");
-        setAuth(DEMO_TOKEN, DEMO_USER);
-        router.replace("/dashboard");
+      const stored = localStorage.getItem("evapro-auth");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed?.state?.token && parsed.state.token !== "demo-token") {
+            router.replace("/dashboard");
+            return;
+          }
+        } catch { /* ignore */ }
       }
+      // Clear stale demo tokens
+      useAuthStore.getState().logout();
     }
-
-    void autoLogin();
-    return () => {
-      cancelled = true;
-    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (!email || !password) {
+      setError("Ingresa tu correo y contraseña");
+      return;
+    }
+
     setLoading(true);
     try {
       const { access_token } = await api.auth.login(
-        email,
+        email.trim(),
         password,
-        tenantSlug || undefined,
+        tenantSlug.trim() || undefined,
       );
       const user = decodeJwtPayload(access_token);
       if (!user) throw new Error("Token inválido");
       setAuth(access_token, user);
       router.replace("/dashboard");
-    } catch {
-      // Fallback: demo mode so user can always access the dashboard
-      setAuth(DEMO_TOKEN, DEMO_USER);
-      router.replace("/dashboard");
+    } catch (err: any) {
+      if (err?.message?.includes("fetch") || err?.message?.includes("network")) {
+        setError("No se pudo conectar al servidor. Intenta más tarde.");
+      } else {
+        setError("Credenciales incorrectas. Verifica tu correo y contraseña.");
+      }
     } finally {
       setLoading(false);
     }
   }
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    color: "var(--text-secondary)",
+    marginBottom: "0.4rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  };
 
   return (
     <main
@@ -202,7 +173,7 @@ export default function LoginPage() {
               fontSize: "1.15rem",
             }}
           >
-            Iniciando sesión…
+            Iniciar sesión
           </h2>
           <p
             style={{
@@ -211,21 +182,8 @@ export default function LoginPage() {
               marginBottom: "1.75rem",
             }}
           >
-            {status}
+            Ingresa tus credenciales para acceder al sistema
           </p>
-
-          {/* Loading spinner while auto-logging in */}
-          {loading && !error && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                padding: "1rem",
-              }}
-            >
-              <span className="spinner" style={{ width: "32px", height: "32px" }} />
-            </div>
-          )}
 
           {error && (
             <div
@@ -242,104 +200,77 @@ export default function LoginPage() {
                 gap: "0.5rem",
               }}
             >
-              <span>⚠</span> {error}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              {error}
             </div>
           )}
 
-          {/* Manual form as fallback – shown only if loading is done */}
-          {!loading && (
-            <form
-              onSubmit={handleSubmit}
-              style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+          <form
+            onSubmit={handleSubmit}
+            style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+          >
+            <div>
+              <label style={labelStyle}>Empresa</label>
+              <input
+                className="input"
+                type="text"
+                placeholder="slug de tu empresa (ej: demo)"
+                value={tenantSlug}
+                onChange={(e) => setTenantSlug(e.target.value)}
+                autoCapitalize="none"
+                autoComplete="organization"
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Correo electrónico</label>
+              <input
+                className="input"
+                type="email"
+                placeholder="correo@empresa.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Contraseña</label>
+              <input
+                className="input"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading}
+              style={{
+                marginTop: "0.5rem",
+                padding: "0.75rem 1.5rem",
+                fontSize: "0.925rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+              }}
             >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "0.8rem",
-                    fontWeight: 600,
-                    color: "var(--text-secondary)",
-                    marginBottom: "0.4rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Empresa (slug)
-                </label>
-                <input
-                  className="input"
-                  type="text"
-                  placeholder="mi-empresa"
-                  value={tenantSlug}
-                  onChange={(e) => setTenantSlug(e.target.value)}
-                  autoCapitalize="none"
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "0.8rem",
-                    fontWeight: 600,
-                    color: "var(--text-secondary)",
-                    marginBottom: "0.4rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Correo electrónico
-                </label>
-                <input
-                  className="input"
-                  type="email"
-                  placeholder="correo@empresa.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "0.8rem",
-                    fontWeight: 600,
-                    color: "var(--text-secondary)",
-                    marginBottom: "0.4rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Contraseña
-                </label>
-                <input
-                  className="input"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={loading}
-                style={{
-                  marginTop: "0.5rem",
-                  padding: "0.75rem 1.5rem",
-                  fontSize: "0.925rem",
-                }}
-              >
-                Ingresar
-              </button>
-            </form>
-          )}
+              {loading && <span className="spinner" style={{ width: "18px", height: "18px" }} />}
+              {loading ? "Verificando…" : "Ingresar"}
+            </button>
+          </form>
         </div>
 
         <p

@@ -90,7 +90,7 @@ export class UsersService {
     return saved;
   }
 
-  async update(id: string, tenantId: string, dto: UpdateUserDto): Promise<User> {
+  async update(id: string, tenantId: string, dto: UpdateUserDto, callerRole?: string): Promise<User> {
     const user = await this.findById(id);
     if (user.tenantId !== tenantId) {
       throw new NotFoundException('Usuario no encontrado');
@@ -102,7 +102,14 @@ export class UsersService {
     if (dto.firstName !== undefined) user.firstName = dto.firstName;
     if (dto.lastName !== undefined) user.lastName = dto.lastName;
     if (dto.email !== undefined) user.email = dto.email;
-    if (dto.role !== undefined) user.role = dto.role;
+    // Only super_admin and tenant_admin can change roles
+    if (dto.role !== undefined) {
+      const canChangeRole = callerRole === 'super_admin' || callerRole === 'tenant_admin';
+      if (canChangeRole) {
+        user.role = dto.role;
+      }
+      // Silently ignore role changes from unauthorized users
+    }
     if (dto.managerId !== undefined) user.managerId = dto.managerId;
     if (dto.department !== undefined) user.department = dto.department;
     if (dto.position !== undefined) user.position = dto.position;

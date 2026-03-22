@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
+import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 
 function Avatar({ name }: { name: string }) {
@@ -42,6 +43,8 @@ const emptyForm = {
 
 export default function UsuariosPage() {
   const router = useRouter();
+  const currentUserRole = useAuthStore((s) => s.user?.role || '');
+  const isAdmin = currentUserRole === 'super_admin' || currentUserRole === 'tenant_admin';
   const { data: paginated, isLoading } = useUsers();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
@@ -171,15 +174,17 @@ export default function UsuariosPage() {
             Gestiona empleados, roles y jerarquías de la organización
           </p>
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => { setShowCreateForm(!showCreateForm); if (showCreateForm) { setEditingId(null); setForm(emptyForm); } }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Agregar usuario
-        </button>
+        {isAdmin && (
+          <button
+            className="btn-primary"
+            onClick={() => { setShowCreateForm(!showCreateForm); if (showCreateForm) { setEditingId(null); setForm(emptyForm); } }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Agregar usuario
+          </button>
+        )}
       </div>
 
       {/* Create/Edit form */}
@@ -396,20 +401,24 @@ export default function UsuariosPage() {
                           >
                             Perfil
                           </button>
-                          <button
-                            className="btn-ghost"
-                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
-                            onClick={() => handleEdit(u)}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            className="btn-ghost"
-                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: 'var(--danger)' }}
-                            onClick={() => handleDelete(u.id, fullName)}
-                          >
-                            Eliminar
-                          </button>
+                          {isAdmin && (
+                            <button
+                              className="btn-ghost"
+                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                              onClick={() => handleEdit(u)}
+                            >
+                              Editar
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <button
+                              className="btn-ghost"
+                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: 'var(--danger)' }}
+                              onClick={() => handleDelete(u.id, fullName)}
+                            >
+                              Eliminar
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

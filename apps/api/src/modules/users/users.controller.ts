@@ -82,7 +82,7 @@ export class UsersController {
     @Request() req: any,
     @Body() dto: UpdateUserDto,
   ) {
-    return this.usersService.update(id, req.user.tenantId, dto);
+    return this.usersService.update(id, req.user.tenantId, dto, req.user.role);
   }
 
   /** DELETE /users/:id  (soft delete – deactivates) */
