@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useCycles } from '@/hooks/useCycles';
 import { useCycleSummary } from '@/hooks/useReports';
 import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -29,9 +30,29 @@ export default function ReportesPage() {
     ? Math.max(...summary.departmentBreakdown.map((d: any) => Number(d.avgScore) || 0))
     : 10;
 
-  const exportUrl = selectedCycleId
-    ? `${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=csv`
-    : null;
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleExport = async (format: 'csv' | 'pdf') => {
+    if (!selectedCycleId || !token) return;
+    setExporting(format);
+    try {
+      const url = `${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=${format}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error al exportar');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `reporte-${selectedCycleId}.${format === 'pdf' ? 'pdf' : 'csv'}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (err: any) {
+      alert(err.message || 'Error al exportar');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const selectStyle: React.CSSProperties = {
     padding: '0.5rem 0.75rem',
@@ -191,23 +212,29 @@ export default function ReportesPage() {
 
               {/* Export actions */}
               <div className="animate-fade-up-delay-3" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                {exportUrl && (
-                  <a
-                    href={`${exportUrl}${token ? `&token=${token}` : ''}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ textDecoration: 'none' }}
-                  >
-                    <button className="btn-ghost">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                      </svg>
-                      Exportar CSV
-                    </button>
-                  </a>
-                )}
+                <button
+                  className="btn-ghost"
+                  onClick={() => handleExport('csv')}
+                  disabled={exporting === 'csv'}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  {exporting === 'csv' ? 'Exportando...' : 'Exportar CSV'}
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={() => handleExport('pdf')}
+                  disabled={exporting === 'pdf'}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  {exporting === 'pdf' ? 'Exportando...' : 'Exportar PDF'}
+                </button>
               </div>
             </>
           )}

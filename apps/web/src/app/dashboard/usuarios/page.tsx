@@ -54,6 +54,10 @@ export default function UsuariosPage() {
 
   const users = paginated?.data || [];
 
+  // Extract unique departments and positions for dropdown suggestions
+  const departments = Array.from(new Set(users.map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  const positions = Array.from(new Set(users.map((u: any) => u.position).filter(Boolean))).sort() as string[];
+
   const totalUsers = users.length;
   const activeUsers = users.filter((u: any) => u.isActive).length;
   const inactiveUsers = totalUsers - activeUsers;
@@ -257,19 +261,27 @@ export default function UsuariosPage() {
               <label style={labelStyle}>Departamento</label>
               <input
                 style={inputStyle}
-                placeholder="Ej: Tecnología, Ventas, RRHH"
+                list="dept-options"
+                placeholder="Seleccionar o escribir nuevo"
                 value={form.department}
                 onChange={(e) => updateField('department', e.target.value)}
               />
+              <datalist id="dept-options">
+                {departments.map((d) => <option key={d} value={d} />)}
+              </datalist>
             </div>
             <div>
               <label style={labelStyle}>Cargo</label>
               <input
                 style={inputStyle}
-                placeholder="Ej: Desarrollador Senior"
+                list="pos-options"
+                placeholder="Seleccionar o escribir nuevo"
                 value={form.position}
                 onChange={(e) => updateField('position', e.target.value)}
               />
+              <datalist id="pos-options">
+                {positions.map((p) => <option key={p} value={p} />)}
+              </datalist>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>

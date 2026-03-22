@@ -154,6 +154,81 @@ export class ReportsService {
     return rows.join('\n');
   }
 
+  async exportPdfHtml(cycleId: string, tenantId: string): Promise<string> {
+    const summary = await this.cycleSummary(cycleId, tenantId);
+    const assignments = await this.assignmentRepo.find({
+      where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED },
+      relations: ['evaluatee', 'evaluator'],
+    });
+
+    const tableRows = [];
+    for (const a of assignments) {
+      const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      tableRows.push(`
+        <tr>
+          <td>${a.evaluatee.firstName} ${a.evaluatee.lastName}</td>
+          <td>${a.evaluator.firstName} ${a.evaluator.lastName}</td>
+          <td>${a.relationType}</td>
+          <td>${resp?.overallScore ?? '–'}</td>
+          <td>${resp?.submittedAt ? new Date(resp.submittedAt).toLocaleDateString('es-ES') : '–'}</td>
+        </tr>`);
+    }
+
+    const deptRows = (summary.departmentBreakdown || []).map((d: any) =>
+      `<tr><td>${d.department}</td><td>${d.avgScore}</td><td>${d.count}</td></tr>`
+    ).join('');
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Reporte - ${summary.cycle.name}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 2rem; color: #1a1a2e; max-width: 900px; margin: 0 auto; }
+    h1 { color: #6366f1; margin-bottom: 0.25rem; }
+    h2 { color: #334155; margin-top: 2rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }
+    .subtitle { color: #64748b; margin-bottom: 2rem; }
+    .kpis { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+    .kpi { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.5rem; min-width: 150px; }
+    .kpi-value { font-size: 1.5rem; font-weight: 800; color: #6366f1; }
+    .kpi-label { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+    th { background: #f1f5f9; text-align: left; padding: 0.6rem 0.8rem; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 0.5rem 0.8rem; border-bottom: 1px solid #e2e8f0; }
+    tr:nth-child(even) { background: #fafafa; }
+    .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; font-size: 0.75rem; color: #94a3b8; text-align: center; }
+    @media print { body { padding: 0; } .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <button class="no-print" onclick="window.print()" style="background:#6366f1;color:white;border:none;padding:0.5rem 1.5rem;border-radius:6px;cursor:pointer;font-weight:600;margin-bottom:1rem;">Imprimir / Guardar PDF</button>
+  <h1>Reporte de Evaluación</h1>
+  <p class="subtitle">${summary.cycle.name} — ${new Date(summary.cycle.startDate).toLocaleDateString('es-ES')} al ${new Date(summary.cycle.endDate).toLocaleDateString('es-ES')}</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-value">${summary.averageScore || '–'}</div><div class="kpi-label">Promedio Global</div></div>
+    <div class="kpi"><div class="kpi-value">${summary.completedAssignments}/${summary.totalAssignments}</div><div class="kpi-label">Completadas</div></div>
+    <div class="kpi"><div class="kpi-value">${summary.completionRate}%</div><div class="kpi-label">Tasa de Completado</div></div>
+  </div>
+
+  ${deptRows ? `
+  <h2>Promedio por Departamento</h2>
+  <table>
+    <thead><tr><th>Departamento</th><th>Promedio</th><th>Personas</th></tr></thead>
+    <tbody>${deptRows}</tbody>
+  </table>` : ''}
+
+  <h2>Detalle de Evaluaciones</h2>
+  <table>
+    <thead><tr><th>Evaluado</th><th>Evaluador</th><th>Relación</th><th>Puntaje</th><th>Fecha</th></tr></thead>
+    <tbody>${tableRows.join('')}</tbody>
+  </table>
+
+  <div class="footer">Generado por EvaPro — ${new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+</body>
+</html>`;
+  }
+
   // ─── Performance History ────────────────────────────────────────────────
 
   async getPerformanceHistory(tenantId: string, userId: string) {

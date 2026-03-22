@@ -69,17 +69,16 @@ export class ReportsController {
     @Request() req: any,
     @Res() res: Response,
   ) {
-    const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId);
-
     if (format === 'pdf') {
-      // PDF generation with basic HTML approach for now
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename=report-${cycleId}.csv`);
-      return res.send(csv);
+      const html = await this.reportsService.exportPdfHtml(cycleId, req.user.tenantId);
+      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.html`);
+      return res.send(html);
     }
 
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=report-${cycleId}.csv`);
+    const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.csv`);
     return res.send(csv);
   }
 }
