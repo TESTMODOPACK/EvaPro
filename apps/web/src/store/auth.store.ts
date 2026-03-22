@@ -8,6 +8,8 @@ export interface AuthUser {
   email: string;
   tenantId: string;
   role: string;
+  firstName: string;
+  lastName: string;
 }
 
 interface AuthState {
@@ -52,6 +54,8 @@ export function decodeJwtPayload(token: string): AuthUser | null {
       email: payload.email,
       tenantId: payload.tenantId,
       role: payload.role,
+      firstName: payload.firstName || '',
+      lastName: payload.lastName || '',
     };
   } catch {
     return null;

@@ -260,11 +260,11 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '0.875rem', fontWeight: 700, color: 'white', flexShrink: 0,
         }}>
-          {user?.email?.charAt(0).toUpperCase()}
+          {(user?.firstName || user?.email || '?').charAt(0).toUpperCase()}
         </div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {user?.email}
+            {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
           </div>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
             {user?.role ? getRoleLabel(user.role) : ''}

@@ -41,7 +41,9 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       tenantId: user.tenantId,
-      role: user.role
+      role: user.role,
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
     };
 
     // Log successful login

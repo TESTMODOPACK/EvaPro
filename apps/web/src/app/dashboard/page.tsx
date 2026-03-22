@@ -273,10 +273,12 @@ function RegularDashboard() {
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>
-          {user?.role === 'external' ? 'Panel de Revision' : 'Bienvenido de vuelta'}
+          {user?.role === 'external'
+            ? 'Panel de Revision'
+            : `Hola, ${user?.firstName || user?.email?.split('@')[0] || 'usuario'}`}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          {user?.email} &middot; {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
       </div>
 
