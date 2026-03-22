@@ -15,6 +15,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { ObjectivesModule } from './modules/objectives/objectives.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { TalentModule } from './modules/talent/talent.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -34,6 +35,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     FeedbackModule,
     ObjectivesModule,
     SubscriptionsModule,
+    TalentModule,
   ],
   controllers: [AppController],
   providers: [

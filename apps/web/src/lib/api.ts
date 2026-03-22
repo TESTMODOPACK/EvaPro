@@ -221,6 +221,35 @@ export const api = {
     },
   },
 
+  talent: {
+    generate: (token: string, cycleId: string) =>
+      request<any[]>(`/talent/generate/${cycleId}`, { method: "POST" }, token),
+    findByCycle: (token: string, cycleId: string) =>
+      request<any[]>(`/talent/cycle/${cycleId}`, {}, token),
+    nineBox: (token: string, cycleId: string) =>
+      request<any>(`/talent/cycle/${cycleId}/nine-box`, {}, token),
+    segmentation: (token: string, cycleId: string) =>
+      request<any>(`/talent/cycle/${cycleId}/segmentation`, {}, token),
+    update: (token: string, id: string, data: any) =>
+      request<any>(`/talent/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    userHistory: (token: string, userId: string) =>
+      request<any[]>(`/talent/user/${userId}`, {}, token),
+    calibration: {
+      list: (token: string, cycleId?: string) =>
+        request<any[]>(`/talent/calibration${cycleId ? `?cycleId=${cycleId}` : ''}`, {}, token),
+      create: (token: string, data: any) =>
+        request<any>("/talent/calibration", { method: "POST", body: JSON.stringify(data) }, token),
+      detail: (token: string, id: string) =>
+        request<any>(`/talent/calibration/${id}`, {}, token),
+      populate: (token: string, id: string) =>
+        request<any[]>(`/talent/calibration/${id}/populate`, { method: "POST" }, token),
+      updateEntry: (token: string, entryId: string, data: any) =>
+        request<any>(`/talent/calibration/entry/${entryId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      complete: (token: string, id: string) =>
+        request<void>(`/talent/calibration/${id}/complete`, { method: "POST" }, token),
+    },
+  },
+
   users: {
     list: (token: string, page = 1, limit = 50) =>
       request<PaginatedResponse<UserData>>(`/users?page=${page}&limit=${limit}`, {}, token),
