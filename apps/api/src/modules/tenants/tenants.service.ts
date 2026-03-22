@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Tenant } from './entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
+import { AuditLog } from '../audit/entities/audit-log.entity';
+import { Subscription } from '../subscriptions/entities/subscription.entity';
 
 @Injectable()
 export class TenantsService {
@@ -12,6 +14,10 @@ export class TenantsService {
     private readonly tenantRepository: Repository<Tenant>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepo: Repository<AuditLog>,
+    @InjectRepository(Subscription)
+    private readonly subscriptionRepo: Repository<Subscription>,
   ) {}
 
   async findBySlug(slug: string): Promise<Tenant> {
@@ -113,6 +119,41 @@ export class TenantsService {
       recentTenantsWithUsers.push({ ...t, userCount });
     }
 
+    // Subscription breakdown by plan
+    const subscriptionsByPlan = await this.subscriptionRepo
+      .createQueryBuilder('s')
+      .leftJoin('s.plan', 'p')
+      .select('p.name', 'plan')
+      .addSelect('s.status', 'status')
+      .addSelect('COUNT(s.id)', 'count')
+      .groupBy('p.name, s.status')
+      .getRawMany();
+
+    // Daily accesses (login events from audit log, last 7 days)
+    const dailyAccesses = await this.auditLogRepo
+      .createQueryBuilder('l')
+      .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
+      .addSelect('COUNT(l.id)', 'count')
+      .where("l.action ILIKE '%login%'")
+      .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
+      .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
+      .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
+      .getRawMany();
+
+    // System failures (error events from audit log, last 7 days)
+    const recentFailures = await this.auditLogRepo
+      .createQueryBuilder('l')
+      .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
+      .addSelect('COUNT(l.id)', 'count')
+      .where("l.action ILIKE '%error%' OR l.action ILIKE '%fail%'")
+      .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
+      .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
+      .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
+      .getRawMany();
+
+    const totalFailures = recentFailures.reduce((sum: number, r: any) => sum + Number(r.count), 0);
+    const todayAccesses = dailyAccesses.find((d: any) => d.date === new Date().toISOString().slice(0, 10));
+
     return {
       totalTenants,
       activeTenants,
@@ -120,6 +161,11 @@ export class TenantsService {
       activeUsers,
       usersPerPlan,
       recentTenants: recentTenantsWithUsers,
+      subscriptionsByPlan,
+      dailyAccesses,
+      todayAccesses: todayAccesses ? Number(todayAccesses.count) : 0,
+      recentFailures,
+      totalFailures7d: totalFailures,
     };
   }
 
