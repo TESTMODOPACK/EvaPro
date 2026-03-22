@@ -34,15 +34,20 @@ export const ASSIGNABLE_ROLES = [
 
 /** Sidebar visibility rules per page path */
 export const SIDEBAR_ACCESS: Record<string, string[]> = {
+  // Super admin pages (system administration)
   '/dashboard':              ['super_admin', 'tenant_admin', 'manager', 'employee', 'external'],
-  '/dashboard/evaluaciones': ['super_admin', 'tenant_admin', 'manager', 'employee', 'external'],
-  '/dashboard/usuarios':     ['super_admin', 'tenant_admin', 'manager'],
   '/dashboard/tenants':      ['super_admin'],
-  '/dashboard/reportes':     ['super_admin', 'tenant_admin', 'manager', 'external'],
-  '/dashboard/analytics':    ['super_admin', 'tenant_admin', 'manager', 'external'],
-  '/dashboard/plantillas':   ['super_admin', 'tenant_admin'],
-  '/dashboard/objetivos':    ['super_admin', 'tenant_admin', 'manager', 'employee'],
-  '/dashboard/feedback':     ['super_admin', 'tenant_admin', 'manager', 'employee'],
+  '/dashboard/audit-log':    ['super_admin'],
+  '/dashboard/system-metrics': ['super_admin'],
+  '/dashboard/subscriptions': ['super_admin'],
+  // Tenant user pages (not for super_admin)
+  '/dashboard/evaluaciones': ['tenant_admin', 'manager', 'employee', 'external'],
+  '/dashboard/usuarios':     ['tenant_admin', 'manager'],
+  '/dashboard/reportes':     ['tenant_admin', 'manager', 'external'],
+  '/dashboard/analytics':    ['tenant_admin', 'manager', 'external'],
+  '/dashboard/plantillas':   ['tenant_admin'],
+  '/dashboard/objetivos':    ['tenant_admin', 'manager', 'employee'],
+  '/dashboard/feedback':     ['tenant_admin', 'manager', 'employee'],
   '/dashboard/ajustes':      ['super_admin', 'tenant_admin', 'manager', 'employee', 'external'],
 };
 

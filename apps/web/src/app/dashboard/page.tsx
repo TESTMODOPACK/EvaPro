@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { useDashboardStats } from '@/hooks/useDashboard';
@@ -7,6 +8,7 @@ import { usePendingEvaluations } from '@/hooks/useEvaluations';
 import { useCycles } from '@/hooks/useCycles';
 import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
 import { useFeedbackSummary } from '@/hooks/useFeedback';
+import { api } from '@/lib/api';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 function Spinner() {
@@ -16,6 +18,155 @@ function Spinner() {
     </div>
   );
 }
+
+// ─── Super Admin Dashboard ──────────────────────────────────────────────────
+
+function SuperAdminDashboard() {
+  const token = useAuthStore((s) => s.token);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    api.tenants.systemStats(token)
+      .then(setStats)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const kpis = [
+    { label: 'Total organizaciones', value: stats?.totalTenants ?? 0, color: '#6366f1' },
+    { label: 'Usuarios globales', value: stats?.totalUsers ?? 0, color: '#10b981' },
+    { label: 'Orgs activas', value: stats?.activeTenants ?? 0, color: '#f59e0b' },
+    { label: 'Usuarios activos', value: stats?.activeUsers ?? 0, color: '#8b5cf6' },
+  ];
+
+  const recentTenants: any[] = stats?.recentTenants ?? [];
+
+  const planBadge: Record<string, string> = {
+    starter: 'badge-accent',
+    pro: 'badge-warning',
+    enterprise: 'badge-success',
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
+      {/* Header */}
+      <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>
+          Panel del Sistema
+        </h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          Administraci&oacute;n central de EvaPro
+        </p>
+      </div>
+
+      {error && (
+        <div style={{
+          padding: '1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+          borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.875rem', marginBottom: '1.5rem',
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* KPI Cards */}
+      <div
+        className="animate-fade-up-delay-1"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '1rem',
+          marginBottom: '2rem',
+        }}
+      >
+        {kpis.map((kpi, i) => (
+          <div key={i} className="card" style={{ padding: '1.4rem', position: 'relative', overflow: 'hidden' }}>
+            <div style={{
+              position: 'absolute', top: '-20px', right: '-20px',
+              width: '80px', height: '80px', borderRadius: '50%',
+              background: `${kpi.color}18`,
+            }} />
+            <div style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.3rem', color: kpi.color }}>
+              {kpi.value}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              {kpi.label}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick nav */}
+      <div className="animate-fade-up-delay-1" style={{ display: 'flex', gap: '0.75rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+        {[
+          { label: 'Organizaciones', href: '/dashboard/tenants' },
+          { label: 'Suscripciones', href: '/dashboard/subscriptions' },
+          { label: 'Log del Sistema', href: '/dashboard/audit-log' },
+          { label: 'Metricas de Uso', href: '/dashboard/system-metrics' },
+        ].map((nav, i) => (
+          <Link key={i} href={nav.href} className="btn-ghost" style={{ fontSize: '0.85rem', textDecoration: 'none' }}>
+            {nav.label}
+          </Link>
+        ))}
+      </div>
+
+      {/* Recent tenants table */}
+      <div className="card animate-fade-up-delay-2" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{
+          padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div>
+            <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Ultimas organizaciones</h2>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Registros mas recientes</p>
+          </div>
+          <Link href="/dashboard/tenants" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
+            Ver todas &rarr;
+          </Link>
+        </div>
+
+        {recentTenants.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            Sin organizaciones registradas
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Plan</th>
+                  <th>Usuarios</th>
+                  <th>Creado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentTenants.slice(0, 10).map((t: any, i: number) => (
+                  <tr key={t.id || i}>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</td>
+                    <td>
+                      <span className={`badge ${planBadge[t.plan] ?? 'badge-accent'}`}>{t.plan}</span>
+                    </td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{t.userCount ?? t.maxEmployees ?? '-'}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      {new Date(t.createdAt).toLocaleDateString('es-ES')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Regular Dashboard (existing) ───────────────────────────────────────────
 
 function ScoreBar({ score }: { score: number }) {
   const pct = (score / 10) * 100;
@@ -49,7 +200,7 @@ const statusBadge: Record<string, string> = {
   completed: 'badge-success',
 };
 
-export default function DashboardPage() {
+function RegularDashboard() {
   const user = useAuthStore((s) => s.user);
   const { data: stats, isLoading: loadingStats } = useDashboardStats();
   const { data: pendingEvals, isLoading: loadingPending } = usePendingEvaluations();
@@ -215,7 +366,7 @@ export default function DashboardPage() {
                     <th>Evaluado</th>
                     <th>Ciclo</th>
                     <th>Estado</th>
-                    <th>Acción</th>
+                    <th>Acci&oacute;n</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -467,4 +618,16 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+}
+
+// ─── Main export: route by role ─────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const user = useAuthStore((s) => s.user);
+
+  if (user?.role === 'super_admin') {
+    return <SuperAdminDashboard />;
+  }
+
+  return <RegularDashboard />;
 }

@@ -30,4 +30,27 @@ export class AuditService {
     } as any);
     await this.auditRepo.save(entry);
   }
+
+  async findAll(
+    page: number,
+    limit: number,
+    action?: string,
+    tenantId?: string,
+  ): Promise<{ data: AuditLog[]; total: number; page: number; limit: number }> {
+    const qb = this.auditRepo.createQueryBuilder('log');
+
+    if (action) {
+      qb.andWhere('log.action ILIKE :action', { action: `%${action}%` });
+    }
+    if (tenantId) {
+      qb.andWhere('log.tenantId = :tenantId', { tenantId });
+    }
+
+    qb.orderBy('log.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit };
+  }
 }

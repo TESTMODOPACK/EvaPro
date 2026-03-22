@@ -1,7 +1,7 @@
 import {
   Controller,
-  Post,
   Get,
+  Post,
   Patch,
   Delete,
   Body,
@@ -11,50 +11,45 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { SubscriptionsService } from './subscriptions.service';
 
-@Controller('tenants')
+@Controller('subscriptions')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('super_admin')
-export class TenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
+export class SubscriptionsController {
+  constructor(private readonly subscriptionsService: SubscriptionsService) {}
 
-  @Get('system-stats')
-  getSystemStats() {
-    return this.tenantsService.getSystemStats();
-  }
-
-  @Get('usage-metrics')
-  getUsageMetrics() {
-    return this.tenantsService.getUsageMetrics();
+  @Get('stats')
+  getStats() {
+    return this.subscriptionsService.getStats();
   }
 
   @Get()
   findAll() {
-    return this.tenantsService.findAll();
+    return this.subscriptionsService.findAll();
   }
 
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tenantsService.findById(id);
+    return this.subscriptionsService.findById(id);
   }
 
   @Post()
   create(@Body() dto: any) {
-    return this.tenantsService.create(dto);
+    return this.subscriptionsService.create(dto);
   }
 
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
-    return this.tenantsService.update(id, dto);
+    return this.subscriptionsService.update(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  deactivate(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tenantsService.deactivate(id);
+  cancel(@Param('id', ParseUUIDPipe) id: string) {
+    return this.subscriptionsService.cancel(id);
   }
 }

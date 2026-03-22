@@ -179,8 +179,36 @@ export const api = {
 
   tenants: {
     list: (token: string) => request<Tenant[]>("/tenants", {}, token),
-    create: (data: Partial<Tenant>, token: string) =>
-      request<Tenant>("/tenants", { method: "POST", body: JSON.stringify(data) }, token),
+    getById: (token: string, id: string) => request<Tenant>(`/tenants/${id}`, {}, token),
+    create: (data: any, token: string) =>
+      request<any>("/tenants", { method: "POST", body: JSON.stringify(data) }, token),
+    update: (token: string, id: string, data: any) =>
+      request<Tenant>(`/tenants/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    deactivate: (token: string, id: string) =>
+      request<void>(`/tenants/${id}`, { method: "DELETE" }, token),
+    systemStats: (token: string) => request<any>("/tenants/system-stats", {}, token),
+    usageMetrics: (token: string) => request<any>("/tenants/usage-metrics", {}, token),
+  },
+
+  auditLogs: {
+    list: (token: string, page = 1, limit = 50, action?: string, tenantId?: string) => {
+      let url = `/audit-logs?page=${page}&limit=${limit}`;
+      if (action) url += `&action=${encodeURIComponent(action)}`;
+      if (tenantId) url += `&tenantId=${tenantId}`;
+      return request<any>(url, {}, token);
+    },
+  },
+
+  subscriptions: {
+    list: (token: string) => request<any[]>("/subscriptions", {}, token),
+    getById: (token: string, id: string) => request<any>(`/subscriptions/${id}`, {}, token),
+    create: (token: string, data: any) =>
+      request<any>("/subscriptions", { method: "POST", body: JSON.stringify(data) }, token),
+    update: (token: string, id: string, data: any) =>
+      request<any>(`/subscriptions/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    cancel: (token: string, id: string) =>
+      request<void>(`/subscriptions/${id}`, { method: "DELETE" }, token),
+    stats: (token: string) => request<any>("/subscriptions/stats", {}, token),
   },
 
   users: {
