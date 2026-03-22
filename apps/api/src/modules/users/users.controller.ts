@@ -49,7 +49,9 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.usersService.findById(id);
+    // super_admin can see any user; others only their tenant's users
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.findByIdScoped(id, tenantId);
   }
 
   /** POST /users */
@@ -93,7 +95,7 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.usersService.remove(id, req.user.tenantId);
+    return this.usersService.remove(id, req.user.tenantId, req.user.role);
   }
 
   // ─── User Notes (HR Reports) ───────────────────────────────────────────────

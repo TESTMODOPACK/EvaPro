@@ -12,8 +12,15 @@ export class TenantContextInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
+    // super_admin operates across all tenants — skip tenant context
+    if (user && user.role === 'super_admin') {
+      await this.dataSource.query(
+        `SELECT set_config('app.current_tenant_id', '', true)`,
+      );
+      return next.handle();
+    }
+
     if (user && user.tenantId && UUID_REGEX.test(user.tenantId)) {
-      // set_config() accepts parameterized values unlike SET
       await this.dataSource.query(
         `SELECT set_config('app.current_tenant_id', $1, true)`,
         [user.tenantId],

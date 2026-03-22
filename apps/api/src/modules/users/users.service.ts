@@ -52,6 +52,14 @@ export class UsersService {
     return user;
   }
 
+  async findByIdScoped(id: string, tenantId?: string): Promise<User> {
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    const user = await this.userRepository.findOne({ where });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+    return user;
+  }
+
   // ─── CRUD ─────────────────────────────────────────────────────────────────
 
   async findAll(
@@ -99,7 +107,8 @@ export class UsersService {
 
   async update(id: string, tenantId: string, dto: UpdateUserDto, callerRole?: string): Promise<User> {
     const user = await this.findById(id);
-    if (user.tenantId !== tenantId) {
+    // super_admin can update any user; others only their own tenant
+    if (callerRole !== 'super_admin' && user.tenantId !== tenantId) {
       throw new NotFoundException('Usuario no encontrado');
     }
 
@@ -126,9 +135,9 @@ export class UsersService {
     return this.userRepository.save(user);
   }
 
-  async remove(id: string, tenantId: string): Promise<void> {
+  async remove(id: string, tenantId: string, callerRole?: string): Promise<void> {
     const user = await this.findById(id);
-    if (user.tenantId !== tenantId) {
+    if (callerRole !== 'super_admin' && user.tenantId !== tenantId) {
       throw new NotFoundException('Usuario no encontrado');
     }
     user.isActive = false;

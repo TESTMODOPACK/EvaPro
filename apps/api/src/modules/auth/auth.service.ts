@@ -18,11 +18,20 @@ export class AuthService {
 
   async validateUser(email: string, pass: string, tenantId?: string): Promise<any> {
     const user = await this.usersService.findByEmail(email, tenantId);
-    if (user && user.passwordHash && (await bcrypt.compare(pass, user.passwordHash))) {
-      const { passwordHash, ...result } = user;
-      return result;
+    if (!user || !user.passwordHash || !(await bcrypt.compare(pass, user.passwordHash))) {
+      return null;
     }
-    return null;
+
+    // Check user is active
+    if (!user.isActive) return null;
+
+    // Check tenant is active (super_admin may not have a tenant relation loaded)
+    if (user.role !== 'super_admin' && user.tenant && !user.tenant.isActive) {
+      return null;
+    }
+
+    const { passwordHash, ...result } = user;
+    return result;
   }
 
   async login(user: any) {
