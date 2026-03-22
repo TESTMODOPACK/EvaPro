@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UnauthorizedException, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Req, UnauthorizedException, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
@@ -35,7 +35,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto) {
+  async login(@Body() loginDto: LoginDto, @Req() req: any) {
     const user = await this.authService.validateUser(
       loginDto.email,
       loginDto.password,
@@ -46,7 +46,8 @@ export class AuthController {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.authService.login(user);
+    const ip = req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress;
+    return this.authService.login(user, typeof ip === 'string' ? ip : ip?.[0]);
   }
 
   @Post('request-reset')

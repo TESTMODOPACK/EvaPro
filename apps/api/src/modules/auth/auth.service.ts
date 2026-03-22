@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import * as nodemailer from 'nodemailer';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class AuthService {
@@ -14,6 +15,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   async validateUser(email: string, pass: string, tenantId?: string): Promise<any> {
@@ -34,13 +36,25 @@ export class AuthService {
     return result;
   }
 
-  async login(user: any) {
+  async login(user: any, ipAddress?: string) {
     const payload = {
       sub: user.id,
       email: user.email,
       tenantId: user.tenantId,
       role: user.role
     };
+
+    // Log successful login
+    await this.auditService.log(
+      user.tenantId || null,
+      user.id,
+      'login',
+      'User',
+      user.id,
+      { email: user.email, role: user.role },
+      ipAddress,
+    );
+
     return {
       access_token: this.jwtService.sign(payload),
     };
