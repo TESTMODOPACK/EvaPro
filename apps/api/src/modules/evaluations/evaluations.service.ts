@@ -401,8 +401,8 @@ export class EvaluationsService {
     if (numericValues.length === 0) return null;
 
     const avg = numericValues.reduce((sum, v) => sum + v, 0) / numericValues.length;
-    // Normalize to 0-100 scale (assuming 1-5 scale questions)
-    const normalized = ((avg - 1) / 4) * 100;
+    // Normalize to 0-10 scale (scale questions are 1-5, so 1→2, 5→10)
+    const normalized = (avg / 5) * 10;
     return Math.round(normalized * 100) / 100;
   }
 
