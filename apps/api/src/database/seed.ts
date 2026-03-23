@@ -317,6 +317,37 @@ async function seed() {
       console.log('✅  Default template created: Competencias Generales');
     }
 
+    /* ── Recalculate all scores to 0-10 scale ──────────── */
+    const responseRepo = dataSource.getRepository(EvaluationResponse);
+    const allResponses = await responseRepo.find();
+    let recalcCount = 0;
+    for (const resp of allResponses) {
+      if (!resp.answers || typeof resp.answers !== 'object') continue;
+
+      const numericValues = Object.values(resp.answers).filter(
+        (v): v is number => typeof v === 'number',
+      );
+      if (numericValues.length === 0) continue;
+
+      const avg = numericValues.reduce((sum: number, v: number) => sum + v, 0) / numericValues.length;
+      // Normalize to 0-10 scale (scale questions are 1-5)
+      const newScore = Math.round(((avg / 5) * 10) * 100) / 100;
+      const oldScore = resp.overallScore != null ? Number(resp.overallScore) : null;
+
+      // Only update if score changed or was on old 0-100 scale
+      if (oldScore === null || oldScore > 10 || Math.abs(oldScore - newScore) > 0.01) {
+        resp.overallScore = newScore;
+        await responseRepo.save(resp);
+        recalcCount++;
+        console.log(`   Recalculated score for response ${resp.id}: ${oldScore} -> ${newScore}`);
+      }
+    }
+    if (recalcCount > 0) {
+      console.log(`✅  Recalculated ${recalcCount} evaluation scores to 0-10 scale`);
+    } else {
+      console.log('   All scores already on 0-10 scale — no recalculation needed.');
+    }
+
     console.log('\n📋  Demo credentials (empresa: demo, password: EvaPro2026!):');
     console.log('   Super Admin:          superadmin@evapro.demo');
     console.log('   Enc. del Sistema:     admin@evapro.demo');
