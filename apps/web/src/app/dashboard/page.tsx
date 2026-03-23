@@ -624,6 +624,186 @@ function RegularDashboard() {
   );
 }
 
+// ─── Employee Dashboard ─────────────────────────────────────────────────────
+
+function EmployeeDashboard() {
+  const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.token);
+  const { data: pendingEvals, isLoading: loadingPending } = usePendingEvaluations();
+  const { data: perfHistory } = usePerformanceHistory(user?.userId ?? null);
+  const [objectives, setObjectives] = useState<any[]>([]);
+  const [loadingObj, setLoadingObj] = useState(true);
+  const [feedbackCount, setFeedbackCount] = useState({ positive: 0, neutral: 0, constructive: 0 });
+
+  // Fetch objectives for this user
+  useEffect(() => {
+    if (!token || !user?.userId) return;
+    api.objectives.list(token, user.userId)
+      .then((data: any) => setObjectives(Array.isArray(data) ? data : (data?.data || [])))
+      .catch(() => {})
+      .finally(() => setLoadingObj(false));
+  }, [token, user?.userId]);
+
+  // Fetch feedback summary
+  useEffect(() => {
+    if (!token) return;
+    api.feedback.summary(token)
+      .then((data: any) => {
+        if (data) setFeedbackCount({ positive: data.positive || 0, neutral: data.neutral || 0, constructive: data.constructive || 0 });
+      })
+      .catch(() => {});
+  }, [token]);
+
+  const perfData: any[] = Array.isArray(perfHistory?.history) ? perfHistory.history : [];
+  const pendingList = pendingEvals || [];
+  const activeObjectives = objectives.filter((o: any) => o.status === 'active');
+  const totalFeedback = feedbackCount.positive + feedbackCount.neutral + feedbackCount.constructive;
+
+  return (
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
+      {/* Header */}
+      <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>
+          Hola, {user?.firstName || user?.email?.split('@')[0] || 'usuario'}
+        </h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
+
+      {/* Quick KPIs */}
+      <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Evaluaciones pendientes</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pendingList.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pendingList.length}</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Objetivos activos</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{activeObjectives.length}</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Feedback recibido</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{totalFeedback}</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Ultimo puntaje</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>
+            {perfData.length > 0 ? Number(perfData[perfData.length - 1].avgOverall || 0).toFixed(1) : '--'}
+          </div>
+        </div>
+      </div>
+
+      {/* Pending evaluations */}
+      <div className="animate-fade-up-delay-2" style={{ marginBottom: '1.5rem' }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Mis evaluaciones pendientes</h2>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Evaluaciones que debes completar</p>
+            </div>
+          </div>
+          {loadingPending ? <Spinner /> : pendingList.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              No tienes evaluaciones pendientes
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Evaluado</th>
+                    <th>Tipo</th>
+                    <th>Ciclo</th>
+                    <th>Accion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingList.map((ev: any, i: number) => (
+                    <tr key={ev.id || i}>
+                      <td style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                        {ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : 'Sin asignar'}
+                        {ev.evaluateeId === user?.userId && <span className="badge badge-accent" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>Autoevaluacion</span>}
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                        {ev.relationType === 'self' ? 'Autoevaluacion' : ev.relationType === 'manager' ? 'Jefatura' : ev.relationType === 'peer' ? 'Par' : ev.relationType || '--'}
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{ev.cycle?.name || '--'}</td>
+                      <td>
+                        <Link
+                          href={`/dashboard/evaluaciones/${ev.cycleId}/responder/${ev.id}`}
+                          className="btn-primary"
+                          style={{ padding: '0.3rem 0.75rem', fontSize: '0.78rem' }}
+                        >
+                          Responder
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom grid: Performance trend + Objectives */}
+      <div className="animate-fade-up-delay-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+        {/* Performance trend */}
+        <div className="card" style={{ padding: '1.4rem' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>Mi historial de desempeno</h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>Evolucion de tu puntaje por ciclo</p>
+          {perfData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={perfData}>
+                <XAxis dataKey="cycleName" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} />
+                <YAxis domain={[0, 10]} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} width={25} />
+                <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '0.5rem', fontSize: '0.8rem' }} />
+                <Line type="monotone" dataKey="avgOverall" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4, fill: '#6366f1' }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              Aun no tienes historial de evaluaciones
+            </div>
+          )}
+        </div>
+
+        {/* Active objectives */}
+        <div className="card" style={{ padding: '1.4rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div>
+              <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.1rem' }}>Mis objetivos</h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{activeObjectives.length} activos</p>
+            </div>
+            <Link href="/dashboard/objetivos" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
+              Ver todos &rarr;
+            </Link>
+          </div>
+          {loadingObj ? <Spinner /> : activeObjectives.length === 0 ? (
+            <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              No tienes objetivos activos
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {activeObjectives.slice(0, 4).map((obj: any) => (
+                <div key={obj.id} style={{ padding: '0.6rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{obj.title}</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6366f1' }}>{obj.progress || 0}%</span>
+                  </div>
+                  <div style={{ height: '4px', borderRadius: '999px', background: 'var(--border)' }}>
+                    <div style={{ height: '100%', width: `${obj.progress || 0}%`, background: '#6366f1', borderRadius: '999px', transition: 'width 0.6s ease' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main export: route by role ─────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -631,6 +811,10 @@ export default function DashboardPage() {
 
   if (user?.role === 'super_admin') {
     return <SuperAdminDashboard />;
+  }
+
+  if (user?.role === 'employee') {
+    return <EmployeeDashboard />;
   }
 
   return <RegularDashboard />;
