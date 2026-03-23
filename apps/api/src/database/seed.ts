@@ -49,28 +49,28 @@ const DEMO_TEMPLATE_SECTIONS = [
     questions: [
       {
         id: 'q1',
-        text: 'Calidad del trabajo: ¿El colaborador entrega trabajo de alta calidad?',
+        text: 'Calidad del trabajo: El colaborador entrega trabajo de alta calidad?',
         type: 'scale',
         scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
         required: true,
       },
       {
         id: 'q2',
-        text: 'Comunicación: ¿Se comunica de forma clara y efectiva?',
+        text: 'Comunicacion: Se comunica de forma clara y efectiva?',
         type: 'scale',
         scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
         required: true,
       },
       {
         id: 'q3',
-        text: 'Trabajo en equipo: ¿Colabora efectivamente con otros?',
+        text: 'Trabajo en equipo: Colabora efectivamente con otros?',
         type: 'scale',
         scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
         required: true,
       },
       {
         id: 'q4',
-        text: 'Iniciativa: ¿Propone mejoras y toma acción proactiva?',
+        text: 'Iniciativa: Propone mejoras y toma accion proactiva?',
         type: 'scale',
         scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
         required: true,
@@ -83,13 +83,13 @@ const DEMO_TEMPLATE_SECTIONS = [
     questions: [
       {
         id: 'q5',
-        text: '¿Cuáles son las principales fortalezas del colaborador?',
+        text: 'Cuales son las principales fortalezas del colaborador?',
         type: 'text',
         required: true,
       },
       {
         id: 'q6',
-        text: '¿En qué áreas podría mejorar?',
+        text: 'En que areas podria mejorar?',
         type: 'text',
         required: true,
       },
@@ -144,7 +144,7 @@ async function seed() {
         description: 'Plan gratuito para comenzar',
         maxEmployees: 50,
         monthlyPrice: 0,
-        features: ['Evaluaciones 90°/180°', 'Hasta 50 usuarios', 'Reportes básicos'],
+        features: ['Evaluaciones 90/180', 'Hasta 50 usuarios', 'Reportes basicos'],
         isActive: true,
         displayOrder: 1,
       });
@@ -154,11 +154,11 @@ async function seed() {
       // Create Pro and Enterprise plans too
       await planRepo.save(planRepo.create({
         name: 'Pro', code: 'pro', description: 'Plan profesional con todas las evaluaciones',
-        maxEmployees: 200, monthlyPrice: 49, features: ['Evaluaciones 360°', 'Hasta 200 usuarios', 'Analytics', 'Calibración', 'Nine Box'],
+        maxEmployees: 200, monthlyPrice: 49, features: ['Evaluaciones 360', 'Hasta 200 usuarios', 'Analytics', 'Calibracion', 'Nine Box'],
         isActive: true, displayOrder: 2,
       }));
       await planRepo.save(planRepo.create({
-        name: 'Enterprise', code: 'enterprise', description: 'Plan empresarial sin límites',
+        name: 'Enterprise', code: 'enterprise', description: 'Plan empresarial sin limites',
         maxEmployees: 9999, monthlyPrice: 199, features: ['Todo incluido', 'Usuarios ilimitados', 'IA', 'Soporte dedicado', 'API'],
         isActive: true, displayOrder: 3,
       }));
@@ -194,7 +194,7 @@ async function seed() {
         firstName: 'Super',
         lastName: 'Admin',
         role: 'super_admin',
-        department: 'Tecnología',
+        department: 'Tecnologia',
         position: 'Super Administrador',
         isActive: true,
         tenantId: tenant.id,
@@ -236,7 +236,7 @@ async function seed() {
         email: 'carlos.lopez@evapro.demo',
         passwordHash: pwHash,
         firstName: 'Carlos',
-        lastName: 'López',
+        lastName: 'Lopez',
         role: 'manager',
         department: 'Producto',
         position: 'Product Manager',
@@ -249,8 +249,8 @@ async function seed() {
 
     /* ── Employees ──────────────────────────────────────── */
     const employees = [
-      { email: 'ana.martinez@evapro.demo', firstName: 'Ana', lastName: 'Martínez', department: 'Diseño', position: 'UX Designer' },
-      { email: 'luis.rodriguez@evapro.demo', firstName: 'Luis', lastName: 'Rodríguez', department: 'DevOps', position: 'DevOps Engineer' },
+      { email: 'ana.martinez@evapro.demo', firstName: 'Ana', lastName: 'Martinez', department: 'Diseno', position: 'UX Designer' },
+      { email: 'luis.rodriguez@evapro.demo', firstName: 'Luis', lastName: 'Rodriguez', department: 'DevOps', position: 'DevOps Engineer' },
       { email: 'sandra.torres@evapro.demo', firstName: 'Sandra', lastName: 'Torres', department: 'QA', position: 'QA Analyst' },
     ];
 
@@ -274,6 +274,31 @@ async function seed() {
       }
     }
 
+    /* ── Fix encoding for existing users ─────────────────── */
+    // Use ASCII-safe names to avoid double-encoding issues
+    const nameFixMap: Record<string, { firstName: string; lastName: string; department: string; position: string }> = {
+      'carlos.lopez@evapro.demo': { firstName: 'Carlos', lastName: 'Lopez', department: 'Producto', position: 'Product Manager' },
+      'ana.martinez@evapro.demo': { firstName: 'Ana', lastName: 'Martinez', department: 'Diseno', position: 'UX Designer' },
+      'luis.rodriguez@evapro.demo': { firstName: 'Luis', lastName: 'Rodriguez', department: 'DevOps', position: 'DevOps Engineer' },
+      'sandra.torres@evapro.demo': { firstName: 'Sandra', lastName: 'Torres', department: 'QA', position: 'QA Analyst' },
+      'admin@evapro.demo': { firstName: 'Admin', lastName: 'EvaPro', department: 'Recursos Humanos', position: 'Encargado del Sistema' },
+      'superadmin@evapro.demo': { firstName: 'Super', lastName: 'Admin', department: 'Sistemas', position: 'Super Administrador' },
+    };
+    for (const [email, fix] of Object.entries(nameFixMap)) {
+      const user = await userRepo.findOne({ where: { email, tenantId: tenant.id } });
+      if (user) {
+        let changed = false;
+        if (user.firstName !== fix.firstName) { user.firstName = fix.firstName; changed = true; }
+        if (user.lastName !== fix.lastName) { user.lastName = fix.lastName; changed = true; }
+        if (user.department !== fix.department) { user.department = fix.department; changed = true; }
+        if (user.position !== fix.position) { user.position = fix.position; changed = true; }
+        if (changed) {
+          await userRepo.save(user);
+          console.log(`   Fixed data for: ${email}`);
+        }
+      }
+    }
+
     /* ── Default Template ───────────────────────────────── */
     const existingTemplate = await templateRepo.findOne({
       where: { name: 'Competencias Generales', tenantId: tenant.id },
@@ -283,7 +308,7 @@ async function seed() {
         templateRepo.create({
           tenantId: tenant.id,
           name: 'Competencias Generales',
-          description: 'Plantilla estándar de evaluación con competencias laborales básicas y espacio para comentarios.',
+          description: 'Plantilla estandar de evaluacion con competencias laborales basicas y espacio para comentarios.',
           sections: DEMO_TEMPLATE_SECTIONS,
           isDefault: true,
           createdBy: admin.id,
