@@ -52,7 +52,7 @@ export class SubscriptionsController {
   // ─── My Subscription (for tenant_admin) ────────────────────────────────
 
   @Get('my-subscription')
-  @Roles('tenant_admin', 'manager', 'employee')
+  @Roles('tenant_admin', 'manager', 'employee', 'external')
   mySubscription(@Request() req: any) {
     return this.subscriptionsService.findMySubscription(req.user.tenantId);
   }
