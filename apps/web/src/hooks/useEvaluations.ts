@@ -13,6 +13,15 @@ export function usePendingEvaluations() {
   });
 }
 
+export function useMyCompletedEvaluations() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['evaluations', 'completed'],
+    queryFn: () => api.evaluations.completed(token!),
+    enabled: !!token,
+  });
+}
+
 export function useEvaluationDetail(assignmentId: string) {
   const token = useAuthStore((s) => s.token);
   return useQuery({

@@ -138,6 +138,11 @@ export class EvaluationsController {
     return this.evaluationsService.findPendingForUser(req.user.userId, req.user.tenantId);
   }
 
+  @Get('evaluations/completed')
+  findCompleted(@Request() req: any) {
+    return this.evaluationsService.findCompletedForUser(req.user.userId, req.user.tenantId);
+  }
+
   @Get('evaluations/:assignmentId')
   getAssignmentDetail(
     @Param('assignmentId', ParseUUIDPipe) assignmentId: string,

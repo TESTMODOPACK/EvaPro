@@ -258,6 +258,14 @@ export class EvaluationsService {
     });
   }
 
+  async findCompletedForUser(userId: string, tenantId: string): Promise<EvaluationAssignment[]> {
+    return this.assignmentRepo.find({
+      where: { evaluatorId: userId, tenantId, status: AssignmentStatus.COMPLETED },
+      relations: ['evaluatee', 'cycle'],
+      order: { completedAt: 'DESC' },
+    });
+  }
+
   async getAssignmentDetail(assignmentId: string, tenantId: string) {
     const assignment = await this.assignmentRepo.findOne({
       where: { id: assignmentId, tenantId },
