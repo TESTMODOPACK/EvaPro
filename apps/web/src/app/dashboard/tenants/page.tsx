@@ -25,6 +25,7 @@ const emptyForm = {
   slug: '',
   rut: '',
   ownerType: 'company',
+  planId: '',
   adminEmail: '',
   adminPassword: '',
   adminFirstName: '',
@@ -43,6 +44,15 @@ export default function TenantsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
+  const [plans, setPlans] = useState<any[]>([]);
+
+  // Fetch available subscription plans
+  useEffect(() => {
+    if (!token) return;
+    api.subscriptions.plans.list(token)
+      .then((p: any[]) => setPlans(p.filter((pl: any) => pl.isActive)))
+      .catch(() => {});
+  }, [token]);
 
   const fetchTenants = () => {
     if (!token) return;
@@ -70,13 +80,17 @@ export default function TenantsPage() {
       return;
     }
     if (!validateRut(form.rut)) {
-      setError('RUT inválido. Verifique el formato y dígito verificador.');
+      setError('RUT invalido. Verifique el formato y digito verificador.');
+      return;
+    }
+    if (!form.planId) {
+      setError('Debe seleccionar un plan de suscripcion');
       return;
     }
     setSaving(true);
     setError('');
     try {
-      await api.tenants.create({
+      const result = await api.tenants.create({
         name: form.name,
         slug: form.slug,
         rut: form.rut,
@@ -88,10 +102,27 @@ export default function TenantsPage() {
           adminLastName: form.adminLastName,
         } : {}),
       }, token);
-      setSuccess('Organizacion creada correctamente');
+
+      // Create subscription for the new tenant
+      const tenantId = result?.tenant?.id;
+      if (tenantId && form.planId) {
+        try {
+          await api.subscriptions.create(token, {
+            tenantId,
+            planId: form.planId,
+            status: 'active',
+            startDate: new Date().toISOString().slice(0, 10),
+          });
+        } catch {
+          // Subscription creation failed but org was created
+          setError('Organizacion creada, pero hubo un error asignando la suscripcion. Asignela manualmente desde Suscripciones.');
+        }
+      }
+
+      setSuccess('Organizacion creada correctamente con suscripcion asignada');
       resetForm();
       fetchTenants();
-      setTimeout(() => setSuccess(''), 3000);
+      setTimeout(() => setSuccess(''), 4000);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -140,6 +171,7 @@ export default function TenantsPage() {
       slug: t.slug,
       rut: t.rut ? formatRut(t.rut) : '',
       ownerType: t.ownerType,
+      planId: '',
       adminEmail: '',
       adminPassword: '',
       adminFirstName: '',
@@ -220,6 +252,28 @@ export default function TenantsPage() {
                 <option value="consultant">Consultor</option>
               </select>
             </div>
+            {!editingId && (
+              <div>
+                <label style={labelStyle}>Plan de suscripcion *</label>
+                <select
+                  style={{ ...inputStyle, borderColor: !form.planId ? 'var(--warning)' : 'var(--border)' }}
+                  value={form.planId}
+                  onChange={(e) => setForm({ ...form, planId: e.target.value })}
+                >
+                  <option value="">Seleccionar plan...</option>
+                  {plans.map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — hasta {p.maxEmployees} usuarios {p.monthlyPrice > 0 ? `($${p.monthlyPrice}/mes)` : '(Gratuito)'}
+                    </option>
+                  ))}
+                </select>
+                {plans.length === 0 && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--warning)', marginTop: '0.3rem' }}>
+                    No hay planes creados. Vaya a Suscripciones para crear planes primero.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Admin fields (only for create) */}
@@ -278,6 +332,8 @@ export default function TenantsPage() {
                     <th>Nombre</th>
                     <th>RUT</th>
                     <th>Slug</th>
+                    <th>Plan</th>
+                    <th>Max Emp.</th>
                     <th>Estado</th>
                     <th>Creado</th>
                     <th>Acciones</th>
@@ -289,6 +345,8 @@ export default function TenantsPage() {
                       <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{t.rut ? formatRut(t.rut) : '-'}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t.slug}</td>
+                      <td><span className={`badge ${planColor[t.plan] || 'badge-accent'}`}>{t.plan || '—'}</span></td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{t.maxEmployees}</td>
                       <td>
                         <span className={`badge ${t.isActive ? 'badge-success' : 'badge-danger'}`}>
                           {t.isActive ? 'Activo' : 'Inactivo'}
