@@ -176,14 +176,14 @@ export default function UsuariosPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Download CSV template
+  // Download CSV template (Spanish column names mapped to backend English names)
   const downloadTemplate = () => {
-    const header = 'email,first_name,last_name,password,role,department,position,hire_date';
-    const example1 = 'juan.perez@empresa.cl,Juan,Perez,Clave123!,employee,Tecnologia,Desarrollador,2024-01-15';
-    const example2 = 'maria.garcia@empresa.cl,Maria,Garcia,Clave123!,manager,Ventas,Jefa de Ventas,2023-06-01';
-    const example3 = 'carlos.lopez@empresa.cl,Carlos,Lopez,,employee,RRHH,Analista,';
+    const header = 'correo,nombre,apellido,contrasena,rol,departamento,cargo,fecha_ingreso';
+    const example1 = 'juan.perez@empresa.cl,Juan,Perez,Clave123!,colaborador,Tecnologia,Desarrollador,15-01-2024';
+    const example2 = 'maria.garcia@empresa.cl,Maria,Garcia,Clave123!,encargado_equipo,Ventas,Jefa de Ventas,01-06-2023';
+    const example3 = 'carlos.lopez@empresa.cl,Carlos,Lopez,,colaborador,RRHH,Analista,';
     const csv = [header, example1, example2, example3].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'plantilla_usuarios_evapro.csv';
@@ -191,14 +191,146 @@ export default function UsuariosPage() {
     URL.revokeObjectURL(link.href);
   };
 
-  // Handle file upload
+  // Map Spanish CSV columns to English backend columns
+  const COLUMN_MAP: Record<string, string> = {
+    correo: 'email', email: 'email',
+    nombre: 'first_name', first_name: 'first_name',
+    apellido: 'last_name', last_name: 'last_name',
+    contrasena: 'password', password: 'password',
+    rol: 'role', role: 'role',
+    departamento: 'department', department: 'department',
+    cargo: 'position', position: 'position',
+    fecha_ingreso: 'hire_date', hire_date: 'hire_date',
+  };
+
+  // Map Spanish role names to backend codes
+  const ROLE_MAP: Record<string, string> = {
+    colaborador: 'employee', employee: 'employee',
+    encargado_equipo: 'manager', manager: 'manager',
+    encargado_sistema: 'tenant_admin', tenant_admin: 'tenant_admin',
+    asesor_externo: 'external', external: 'external',
+  };
+
+  // Validate CSV content and return errors + converted content
+  const [csvErrors, setCsvErrors] = useState<string[]>([]);
+  const [csvPreviewRows, setCsvPreviewRows] = useState<string[][]>([]);
+
+  const validateAndParseCSV = (text: string): { valid: boolean; errors: string[]; converted: string; previewRows: string[][] } => {
+    const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const errors: string[] = [];
+    const previewRows: string[][] = [];
+
+    if (lines.length < 2) {
+      return { valid: false, errors: ['El archivo debe tener al menos el encabezado y una fila de datos.'], converted: '', previewRows: [] };
+    }
+
+    // Parse header
+    const rawHeader = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+    const mappedHeader = rawHeader.map(h => COLUMN_MAP[h] || h);
+
+    // Check required columns
+    const requiredCols = ['email', 'first_name', 'last_name'];
+    for (const col of requiredCols) {
+      if (!mappedHeader.includes(col)) {
+        const spanishName = col === 'email' ? 'correo' : col === 'first_name' ? 'nombre' : 'apellido';
+        errors.push(`Columna requerida faltante: "${spanishName}" (o "${col}").`);
+      }
+    }
+
+    if (errors.length > 0) {
+      return { valid: false, errors, converted: '', previewRows: [] };
+    }
+
+    const emailIdx = mappedHeader.indexOf('email');
+    const fnIdx = mappedHeader.indexOf('first_name');
+    const lnIdx = mappedHeader.indexOf('last_name');
+    const roleIdx = mappedHeader.indexOf('role');
+    const dateIdx = mappedHeader.indexOf('hire_date');
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const dateRegex = /^\d{2}-\d{2}-\d{4}$/;
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const validRoles = ['employee', 'manager', 'tenant_admin', 'external', 'colaborador', 'encargado_equipo', 'encargado_sistema', 'asesor_externo'];
+
+    const convertedLines: string[] = [mappedHeader.join(',')];
+    const seenEmails = new Set<string>();
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+      const rowNum = i + 1;
+
+      // Basic field count check
+      if (cols.length < 3) {
+        errors.push(`Fila ${rowNum}: Muy pocos campos (${cols.length}). Se esperan al menos 3 (correo, nombre, apellido).`);
+        continue;
+      }
+
+      // Validate email
+      const email = cols[emailIdx] || '';
+      if (!email) {
+        errors.push(`Fila ${rowNum}: Correo electronico vacio.`);
+      } else if (!emailRegex.test(email)) {
+        errors.push(`Fila ${rowNum}: Correo electronico invalido: "${email}".`);
+      } else if (seenEmails.has(email.toLowerCase())) {
+        errors.push(`Fila ${rowNum}: Correo duplicado en el archivo: "${email}".`);
+      } else {
+        seenEmails.add(email.toLowerCase());
+      }
+
+      // Validate name
+      if (!cols[fnIdx]) errors.push(`Fila ${rowNum}: Nombre vacio.`);
+      if (!cols[lnIdx]) errors.push(`Fila ${rowNum}: Apellido vacio.`);
+
+      // Validate role if provided
+      if (roleIdx >= 0 && cols[roleIdx]) {
+        const rawRole = cols[roleIdx].toLowerCase();
+        if (!validRoles.includes(rawRole)) {
+          errors.push(`Fila ${rowNum}: Rol invalido: "${cols[roleIdx]}". Valores permitidos: colaborador, encargado_equipo, encargado_sistema, asesor_externo.`);
+        } else {
+          // Map to backend code
+          cols[roleIdx] = ROLE_MAP[rawRole] || rawRole;
+        }
+      }
+
+      // Validate and convert date if provided (DD-MM-YYYY to YYYY-MM-DD)
+      if (dateIdx >= 0 && cols[dateIdx]) {
+        const dateVal = cols[dateIdx];
+        if (dateRegex.test(dateVal)) {
+          const [dd, mm, yyyy] = dateVal.split('-');
+          const d = parseInt(dd), m = parseInt(mm), y = parseInt(yyyy);
+          if (m < 1 || m > 12) errors.push(`Fila ${rowNum}: Mes invalido en fecha: "${dateVal}".`);
+          else if (d < 1 || d > 31) errors.push(`Fila ${rowNum}: Dia invalido en fecha: "${dateVal}".`);
+          else cols[dateIdx] = `${yyyy}-${mm}-${dd}`;
+        } else if (!isoDateRegex.test(dateVal)) {
+          errors.push(`Fila ${rowNum}: Formato de fecha invalido: "${dateVal}". Use DD-MM-AAAA (ej: 15-01-2024).`);
+        }
+      }
+
+      convertedLines.push(cols.join(','));
+      if (previewRows.length < 5) previewRows.push(cols);
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      converted: convertedLines.join('\n'),
+      previewRows,
+    };
+  };
+
+  // Handle file upload with validation
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      setCsvContent(text || '');
+      if (!text) return;
+      const result = validateAndParseCSV(text);
+      setCsvErrors(result.errors);
+      setCsvPreviewRows(result.previewRows);
+      // Store the converted (English columns + ISO dates) version
+      setCsvContent(result.valid ? result.converted : '');
       setBulkResult(null);
     };
     reader.readAsText(file);
@@ -214,7 +346,6 @@ export default function UsuariosPage() {
       const result = await api.users.bulkImport(token, csvContent);
       setBulkResult(result);
       if (result.status === 'completed' || result.status === 'completed_with_errors') {
-        // Refresh users list
         window.location.reload();
       }
     } catch (err: any) {
@@ -405,7 +536,7 @@ export default function UsuariosPage() {
           <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem' }}>
             <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>1. Descargar plantilla CSV</div>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-              Descargue la plantilla, completela con los datos de sus empleados y vuelva a subirla.
+              Descargue la plantilla con datos de ejemplo, completela con los datos de sus empleados y vuelva a subirla.
             </p>
             <button className="btn-ghost" onClick={downloadTemplate} style={{ fontSize: '0.82rem' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -419,35 +550,63 @@ export default function UsuariosPage() {
 
           {/* Columns reference */}
           <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Columnas del CSV</div>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.75rem' }}>Referencia de columnas</div>
             <div className="table-wrapper" style={{ fontSize: '0.78rem' }}>
               <table>
                 <thead>
                   <tr>
                     <th>Columna</th>
-                    <th>Requerida</th>
+                    <th>Obligatoria</th>
                     <th>Descripcion</th>
+                    <th>Ejemplo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    ['email', 'Si', 'Correo electronico del usuario'],
-                    ['first_name', 'Si', 'Nombre'],
-                    ['last_name', 'Si', 'Apellido'],
-                    ['password', 'No', 'Contrasena (default: EvaPro2026!)'],
-                    ['role', 'No', 'employee, manager, tenant_admin (default: employee)'],
-                    ['department', 'No', 'Departamento (ej: Tecnologia, Ventas)'],
-                    ['position', 'No', 'Cargo (ej: Desarrollador Senior)'],
-                    ['hire_date', 'No', 'Fecha de ingreso (YYYY-MM-DD)'],
-                  ].map(([col, req, desc]) => (
+                    ['correo', 'Si', 'Correo electronico del usuario', 'juan@empresa.cl'],
+                    ['nombre', 'Si', 'Nombre del usuario', 'Juan'],
+                    ['apellido', 'Si', 'Apellido del usuario', 'Perez'],
+                    ['contrasena', 'No', 'Si se deja vacia, se asigna: EvaPro2026!', 'MiClave123!'],
+                    ['rol', 'No', 'Ver tabla de roles abajo. Default: colaborador', 'colaborador'],
+                    ['departamento', 'No', 'Area o departamento de trabajo', 'Tecnologia'],
+                    ['cargo', 'No', 'Puesto o cargo del usuario', 'Desarrollador Senior'],
+                    ['fecha_ingreso', 'No', 'Formato: DD-MM-AAAA', '15-01-2024'],
+                  ].map(([col, req, desc, ej]) => (
                     <tr key={col}>
-                      <td><code style={{ background: 'rgba(99,102,241,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>{col}</code></td>
-                      <td style={{ color: req === 'Si' ? 'var(--danger)' : 'var(--text-muted)' }}>{req}</td>
+                      <td><code style={{ background: 'rgba(99,102,241,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px', fontWeight: 600 }}>{col}</code></td>
+                      <td style={{ color: req === 'Si' ? 'var(--danger)' : 'var(--text-muted)', fontWeight: req === 'Si' ? 600 : 400 }}>{req}</td>
                       <td style={{ color: 'var(--text-secondary)' }}>{desc}</td>
+                      <td style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{ej}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Roles detail box */}
+            <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.15)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#6366f1', marginBottom: '0.5rem' }}>Valores permitidos para la columna "rol"</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', fontSize: '0.78rem' }}>
+                {[
+                  ['colaborador', 'Empleado base (default si se deja vacio)'],
+                  ['encargado_equipo', 'Jefe de equipo / Manager'],
+                  ['encargado_sistema', 'Administrador de la organizacion (RRHH)'],
+                  ['asesor_externo', 'Evaluador externo (solo lectura)'],
+                ].map(([code, desc]) => (
+                  <div key={code} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                    <code style={{ background: 'rgba(99,102,241,0.15)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{code}</code>
+                    <span style={{ color: 'var(--text-secondary)' }}>{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Date format box */}
+            <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(245,158,11,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#f59e0b', marginBottom: '0.3rem' }}>Formato de fecha</div>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0 }}>
+                Use el formato <strong>DD-MM-AAAA</strong> (dia-mes-ano). Ejemplo: <code style={{ background: 'rgba(245,158,11,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>15-01-2024</code> para el 15 de enero de 2024. Si no se indica fecha, el campo queda vacio.
+              </p>
             </div>
           </div>
 
@@ -460,24 +619,75 @@ export default function UsuariosPage() {
               onChange={handleFileUpload}
               style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}
             />
-            {csvContent && (
-              <div style={{ marginTop: '0.75rem' }}>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                  Vista previa ({csvContent.trim().split('\n').length - 1} filas de datos):
+
+            {/* Validation errors */}
+            {csvErrors.length > 0 && (
+              <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(239,68,68,0.08)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--danger)', marginBottom: '0.4rem' }}>
+                  Se encontraron {csvErrors.length} error{csvErrors.length !== 1 ? 'es' : ''} en el archivo:
                 </div>
-                <pre style={{
-                  padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)', fontSize: '0.72rem', color: 'var(--text-secondary)',
-                  overflow: 'auto', maxHeight: '150px', whiteSpace: 'pre',
-                }}>
-                  {csvContent.split('\n').slice(0, 6).join('\n')}
-                  {csvContent.split('\n').length > 6 ? '\n...' : ''}
-                </pre>
+                <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                  {csvErrors.map((err, i) => (
+                    <div key={i} style={{ fontSize: '0.78rem', color: 'var(--danger)', padding: '0.15rem 0', display: 'flex', gap: '0.4rem', alignItems: 'flex-start' }}>
+                      <span style={{ color: 'var(--danger)', fontWeight: 700, flexShrink: 0 }}>x</span>
+                      <span>{err}</span>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem', marginBottom: 0 }}>
+                  Corrija los errores en el archivo CSV y vuelva a subirlo.
+                </p>
+              </div>
+            )}
+
+            {/* Preview table when valid */}
+            {csvContent && csvErrors.length === 0 && csvPreviewRows.length > 0 && (
+              <div style={{ marginTop: '0.75rem' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--success)', fontWeight: 600, marginBottom: '0.4rem' }}>
+                  Archivo valido — {csvContent.trim().split('\n').length - 1} usuarios para importar
+                </div>
+                <div className="table-wrapper" style={{ fontSize: '0.75rem' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Correo</th>
+                        <th>Nombre</th>
+                        <th>Apellido</th>
+                        <th>Rol</th>
+                        <th>Departamento</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csvPreviewRows.map((row, i) => {
+                        const h = csvContent.split('\n')[0].split(',');
+                        const emailI = h.indexOf('email');
+                        const fnI = h.indexOf('first_name');
+                        const lnI = h.indexOf('last_name');
+                        const rI = h.indexOf('role');
+                        const dI = h.indexOf('department');
+                        return (
+                          <tr key={i}>
+                            <td>{row[emailI] || '--'}</td>
+                            <td>{row[fnI] || '--'}</td>
+                            <td>{row[lnI] || '--'}</td>
+                            <td>{row[rI] || 'employee'}</td>
+                            <td>{row[dI] || '--'}</td>
+                          </tr>
+                        );
+                      })}
+                      {csvContent.trim().split('\n').length - 1 > 5 && (
+                        <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          ...y {csvContent.trim().split('\n').length - 1 - 5} filas mas
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Result */}
+          {/* Server result */}
           {bulkResult && (
             <div style={{
               padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem',
@@ -485,7 +695,7 @@ export default function UsuariosPage() {
               border: `1px solid ${bulkResult.status === 'completed' ? 'rgba(16,185,129,0.25)' : bulkResult.status === 'failed' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
             }}>
               <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.4rem', color: bulkResult.status === 'completed' ? 'var(--success)' : bulkResult.status === 'failed' ? 'var(--danger)' : 'var(--warning)' }}>
-                {bulkResult.status === 'completed' ? 'Importacion completada' : bulkResult.status === 'failed' ? 'Importacion fallida' : 'Importacion con errores'}
+                {bulkResult.status === 'completed' ? 'Importacion completada exitosamente' : bulkResult.status === 'failed' ? 'Importacion fallida' : 'Importacion completada con errores'}
               </div>
               <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
                 Total: {bulkResult.totalRows} | Exitosos: {bulkResult.successRows} | Errores: {bulkResult.errorRows}
@@ -508,11 +718,11 @@ export default function UsuariosPage() {
             <button
               className="btn-primary"
               onClick={handleBulkImport}
-              disabled={bulkLoading || !csvContent.trim()}
+              disabled={bulkLoading || !csvContent.trim() || csvErrors.length > 0}
             >
-              {bulkLoading ? 'Importando...' : 'Importar usuarios'}
+              {bulkLoading ? 'Importando...' : `Importar ${csvContent ? csvContent.trim().split('\\n').length - 1 : 0} usuarios`}
             </button>
-            <button className="btn-ghost" onClick={() => { setShowBulkImport(false); setCsvContent(''); setBulkResult(null); }}>
+            <button className="btn-ghost" onClick={() => { setShowBulkImport(false); setCsvContent(''); setBulkResult(null); setCsvErrors([]); setCsvPreviewRows([]); }}>
               Cancelar
             </button>
           </div>
