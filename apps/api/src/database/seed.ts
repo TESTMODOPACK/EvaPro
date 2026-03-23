@@ -14,6 +14,8 @@ import { EvaluationAssignment } from '../modules/evaluations/entities/evaluation
 import { EvaluationResponse } from '../modules/evaluations/entities/evaluation-response.entity';
 import { BulkImport } from '../modules/users/entities/bulk-import.entity';
 import { AuditLog } from '../modules/audit/entities/audit-log.entity';
+import { SubscriptionPlan } from '../modules/subscriptions/entities/subscription-plan.entity';
+import { Subscription } from '../modules/subscriptions/entities/subscription.entity';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -32,6 +34,7 @@ const dataSource = new DataSource({
   entities: [
     Tenant, User, FormTemplate, EvaluationCycle,
     EvaluationAssignment, EvaluationResponse, BulkImport, AuditLog,
+    SubscriptionPlan, Subscription,
   ],
   synchronize: false,
   logging: false,
@@ -127,6 +130,54 @@ async function seed() {
       });
       tenant = await tenantRepo.save(tenant);
       console.log(`✅  Tenant created: ${tenant.name} (${tenant.id})`);
+    }
+
+    /* ── Default Plan + Subscription ──────────────────────── */
+    const planRepo = dataSource.getRepository(SubscriptionPlan);
+    const subRepo = dataSource.getRepository(Subscription);
+
+    let starterPlan = await planRepo.findOne({ where: { code: 'starter' } });
+    if (!starterPlan) {
+      starterPlan = planRepo.create({
+        name: 'Starter',
+        code: 'starter',
+        description: 'Plan gratuito para comenzar',
+        maxEmployees: 50,
+        monthlyPrice: 0,
+        features: ['Evaluaciones 90°/180°', 'Hasta 50 usuarios', 'Reportes básicos'],
+        isActive: true,
+        displayOrder: 1,
+      });
+      starterPlan = await planRepo.save(starterPlan);
+      console.log('✅  Plan "Starter" created');
+
+      // Create Pro and Enterprise plans too
+      await planRepo.save(planRepo.create({
+        name: 'Pro', code: 'pro', description: 'Plan profesional con todas las evaluaciones',
+        maxEmployees: 200, monthlyPrice: 49, features: ['Evaluaciones 360°', 'Hasta 200 usuarios', 'Analytics', 'Calibración', 'Nine Box'],
+        isActive: true, displayOrder: 2,
+      }));
+      await planRepo.save(planRepo.create({
+        name: 'Enterprise', code: 'enterprise', description: 'Plan empresarial sin límites',
+        maxEmployees: 9999, monthlyPrice: 199, features: ['Todo incluido', 'Usuarios ilimitados', 'IA', 'Soporte dedicado', 'API'],
+        isActive: true, displayOrder: 3,
+      }));
+      console.log('✅  Plans "Pro" and "Enterprise" created');
+    }
+
+    // Ensure tenant has an active subscription
+    let subscription = await subRepo.findOne({ where: { tenantId: tenant.id } });
+    if (!subscription) {
+      subscription = subRepo.create({
+        tenantId: tenant.id,
+        planId: starterPlan.id,
+        status: 'active',
+        startDate: new Date(),
+      });
+      await subRepo.save(subscription);
+      console.log('✅  Subscription created for demo tenant (Starter plan)');
+    } else {
+      console.log('   Subscription already exists for demo tenant — skipping.');
     }
 
     /* ── Super Admin ────────────────────────────────────── */

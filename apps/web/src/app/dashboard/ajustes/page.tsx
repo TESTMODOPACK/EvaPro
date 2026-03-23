@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useCurrentUser, useUpdateUser } from '@/hooks/useUsers';
 import { getRoleLabel } from '@/lib/roles';
-import { useAuthStore } from '@/store/auth.store';
-import { api } from '@/lib/api';
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -18,8 +16,6 @@ const labelStyle: React.CSSProperties = {
 
 export default function AjustesPage() {
   const { data: user, isLoading } = useCurrentUser();
-  const authUser = useAuthStore((s) => s.user);
-  const token = useAuthStore((s) => s.token);
   const updateUser = useUpdateUser();
 
   const [firstName, setFirstName] = useState('');
@@ -29,8 +25,6 @@ export default function AjustesPage() {
   const [newPassword, setNewPassword] = useState('');
   const [saved, setSaved] = useState(false);
   const [passwordSaved, setPasswordSaved] = useState(false);
-  const [mySub, setMySub] = useState<any>(null);
-  const [userCount, setUserCount] = useState<number>(0);
 
   // Populate form once user loads
   useEffect(() => {
@@ -40,13 +34,6 @@ export default function AjustesPage() {
       setPosition(user.position || '');
     }
   }, [user]);
-
-  // Fetch subscription for tenant_admin
-  useEffect(() => {
-    if (!token || authUser?.role === 'super_admin') return;
-    api.subscriptions.mySubscription(token).then((sub) => setMySub(sub)).catch(() => {});
-    api.users.list(token, 1, 1).then((res) => setUserCount(res.total || 0)).catch(() => {});
-  }, [token, authUser?.role]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -325,80 +312,6 @@ export default function AjustesPage() {
         </form>
       </div>
 
-      {/* Subscription Section — visible only for tenant users */}
-      {authUser?.role !== 'super_admin' && (
-        <div
-          className="card animate-fade-up-delay-2"
-          style={{ padding: '1.75rem', marginTop: '1.5rem' }}
-        >
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-            Mi Suscripci&oacute;n
-          </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.5rem' }}>
-            Plan y l&iacute;mites de tu organizaci&oacute;n
-          </p>
-
-          {mySub && mySub.plan ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Plan</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent)' }}>{mySub.plan.name}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Estado</div>
-                  <span className={`badge ${mySub.status === 'active' ? 'badge-success' : mySub.status === 'trial' ? 'badge-warning' : 'badge-danger'}`}>
-                    {mySub.status === 'active' ? 'Activa' : mySub.status === 'trial' ? 'En trial' : mySub.status === 'suspended' ? 'Suspendida' : mySub.status}
-                  </span>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Vencimiento</div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {mySub.endDate ? new Date(mySub.endDate).toLocaleDateString('es-ES') : 'Sin vencimiento'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Usage bar */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    Usuarios: {userCount} / {mySub.plan.maxEmployees}
-                  </span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    {mySub.plan.maxEmployees > 0 ? Math.round((userCount / mySub.plan.maxEmployees) * 100) : 0}%
-                  </span>
-                </div>
-                <div style={{ height: '8px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%',
-                    width: mySub.plan.maxEmployees > 0 ? `${Math.min((userCount / mySub.plan.maxEmployees) * 100, 100)}%` : '0%',
-                    background: (userCount / mySub.plan.maxEmployees) > 0.9 ? 'var(--danger)' : (userCount / mySub.plan.maxEmployees) > 0.7 ? 'var(--warning)' : 'var(--success)',
-                    borderRadius: '999px',
-                    transition: 'width 0.6s ease',
-                  }} />
-                </div>
-              </div>
-
-              {mySub.plan.features && mySub.plan.features.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem' }}>Caracter&iacute;sticas incluidas</div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {mySub.plan.features.map((f: string, i: number) => (
-                      <span key={i} className="badge badge-accent" style={{ fontSize: '0.75rem' }}>{f}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Sin plan asignado</p>
-              <p style={{ fontSize: '0.85rem' }}>Contacte al administrador del sistema para asignar un plan a su organizaci&oacute;n</p>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
