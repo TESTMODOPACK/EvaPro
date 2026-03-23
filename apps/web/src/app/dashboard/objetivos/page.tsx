@@ -11,7 +11,7 @@ import {
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel } from '@/lib/roles';
 
-type FilterStatus = 'all' | 'active' | 'completed' | 'abandoned';
+type FilterStatus = 'all' | 'draft' | 'active' | 'completed' | 'abandoned';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
 
 const typeBadge: Record<string, string> = {
@@ -21,12 +21,14 @@ const typeBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  active: 'Activo',
+  draft: 'Ingresado',
+  active: 'En progreso',
   completed: 'Completado',
   abandoned: 'Abandonado',
 };
 
 const statusBadge: Record<string, string> = {
+  draft: 'badge-warning',
   active: 'badge-success',
   completed: 'badge-accent',
   abandoned: 'badge-danger',
@@ -34,10 +36,32 @@ const statusBadge: Record<string, string> = {
 
 const filterPills: { key: FilterStatus; label: string }[] = [
   { key: 'all', label: 'Todos' },
-  { key: 'active', label: 'Activos' },
+  { key: 'draft', label: 'Ingresados' },
+  { key: 'active', label: 'En progreso' },
   { key: 'completed', label: 'Completados' },
   { key: 'abandoned', label: 'Abandonados' },
 ];
+
+/** Returns days until target date. Negative = overdue */
+function daysUntil(targetDate: string | null): number | null {
+  if (!targetDate) return null;
+  const target = new Date(targetDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/** Returns deadline alert config based on days remaining */
+function deadlineAlert(days: number | null, status: string): { color: string; text: string; icon: string } | null {
+  if (days === null || status === 'completed' || status === 'abandoned') return null;
+  if (days < 0) return { color: 'var(--danger)', text: `Vencido hace ${Math.abs(days)} dia${Math.abs(days) !== 1 ? 's' : ''}`, icon: '!' };
+  if (days === 0) return { color: 'var(--danger)', text: 'Vence hoy', icon: '!' };
+  if (days <= 3) return { color: 'var(--danger)', text: `Vence en ${days} dia${days !== 1 ? 's' : ''}`, icon: '!' };
+  if (days <= 7) return { color: 'var(--warning)', text: `Vence en ${days} dias`, icon: '~' };
+  if (days <= 15) return { color: '#f59e0b', text: `Vence en ${days} dias`, icon: '' };
+  return null;
+}
 
 function Spinner() {
   return (
@@ -361,9 +385,24 @@ export default function ObjetivosPage() {
             const progress = Number(obj.progress) || 0;
             const color = progressColor(progress);
             const isExpanded = expandedId === obj.id;
+            const days = daysUntil(obj.targetDate);
+            const alert = deadlineAlert(days, obj.status);
 
             return (
-              <div key={obj.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
+              <div key={obj.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', borderLeft: alert ? `3px solid ${alert.color}` : undefined }}>
+                {/* Deadline alert banner */}
+                {alert && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.4rem 0.6rem', marginBottom: '0.6rem',
+                    background: `${alert.color}12`, borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.75rem', fontWeight: 600, color: alert.color,
+                  }}>
+                    <span style={{ fontSize: '0.9rem' }}>{alert.icon === '!' ? '\u26a0' : '\u23f0'}</span>
+                    {alert.text}
+                  </div>
+                )}
+
                 {/* Title + badges */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.6rem' }}>
                   <h3 style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.4, flex: 1, marginRight: '0.5rem' }}>
@@ -396,8 +435,14 @@ export default function ObjetivosPage() {
 
                 {/* Target date */}
                 {obj.targetDate && (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                    Meta: {formatDate(obj.targetDate)}
+                  <p style={{ fontSize: '0.75rem', color: days !== null && days < 0 ? 'var(--danger)' : 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: days !== null && days <= 7 ? 600 : 400 }}>
+                    Fecha limite: {formatDate(obj.targetDate)}
+                    {days !== null && days >= 0 && obj.status !== 'completed' && obj.status !== 'abandoned' && (
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> ({days} dias restantes)</span>
+                    )}
+                    {days !== null && days < 0 && obj.status !== 'completed' && obj.status !== 'abandoned' && (
+                      <span style={{ color: 'var(--danger)', fontWeight: 600 }}> (vencido)</span>
+                    )}
                   </p>
                 )}
 
