@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { formatRutInput, validateRut, formatRut } from '@/lib/rut';
 
 function Spinner() {
   return (
@@ -22,6 +23,7 @@ const planColor: Record<string, string> = {
 const emptyForm = {
   name: '',
   slug: '',
+  rut: '',
   plan: 'starter',
   maxEmployees: 50,
   ownerType: 'company',
@@ -65,8 +67,12 @@ export default function TenantsPage() {
   };
 
   const handleCreate = async () => {
-    if (!token || !form.name || !form.slug) {
-      setError('Nombre y slug son obligatorios');
+    if (!token || !form.name || !form.slug || !form.rut) {
+      setError('Nombre, slug y RUT son obligatorios');
+      return;
+    }
+    if (!validateRut(form.rut)) {
+      setError('RUT inv\u00e1lido. Verifique el formato y d\u00edgito verificador.');
       return;
     }
     setSaving(true);
@@ -75,6 +81,7 @@ export default function TenantsPage() {
       await api.tenants.create({
         name: form.name,
         slug: form.slug,
+        rut: form.rut,
         plan: form.plan,
         maxEmployees: Number(form.maxEmployees),
         ownerType: form.ownerType,
@@ -104,6 +111,7 @@ export default function TenantsPage() {
       await api.tenants.update(token, editingId, {
         name: form.name,
         slug: form.slug,
+        rut: form.rut,
         plan: form.plan,
         maxEmployees: Number(form.maxEmployees),
         ownerType: form.ownerType,
@@ -136,6 +144,7 @@ export default function TenantsPage() {
     setForm({
       name: t.name,
       slug: t.slug,
+      rut: t.rut ? formatRut(t.rut) : '',
       plan: t.plan,
       maxEmployees: t.maxEmployees,
       ownerType: t.ownerType,
@@ -207,6 +216,10 @@ export default function TenantsPage() {
             <div>
               <label style={labelStyle}>Slug *</label>
               <input style={inputStyle} value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="mi-empresa" />
+            </div>
+            <div>
+              <label style={labelStyle}>RUT Empresa *</label>
+              <input style={inputStyle} value={form.rut} onChange={(e) => setForm({ ...form, rut: formatRutInput(e.target.value) })} placeholder="76.123.456-7" maxLength={12} />
             </div>
             <div>
               <label style={labelStyle}>Plan</label>
@@ -283,6 +296,7 @@ export default function TenantsPage() {
                 <thead>
                   <tr>
                     <th>Nombre</th>
+                    <th>RUT</th>
                     <th>Slug</th>
                     <th>Plan</th>
                     <th>Max empleados</th>
@@ -295,6 +309,7 @@ export default function TenantsPage() {
                   {tenants.map((t) => (
                     <tr key={t.id}>
                       <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{t.rut ? formatRut(t.rut) : '-'}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t.slug}</td>
                       <td>
                         <span className={`badge ${planColor[t.plan] ?? 'badge-accent'}`}>{t.plan}</span>

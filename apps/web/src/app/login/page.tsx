@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuthStore, decodeJwtPayload } from "@/store/auth.store";
 import { getRoleLabel } from "@/lib/roles";
+import { formatRutInput, validateRut, normalizeRut } from "@/lib/rut";
 
 export default function LoginPage() {
   const router = useRouter();
   const { setAuth, isAuthenticated } = useAuthStore();
 
-  const [tenantSlug, setTenantSlug] = useState("");
+  const [tenantRut, setTenantRut] = useState("");
+  const [rutError, setRutError] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,12 +54,20 @@ export default function LoginPage() {
       return;
     }
 
+    // Validate RUT if provided
+    const rutValue = tenantRut.trim();
+    if (rutValue && !validateRut(rutValue)) {
+      setRutError("RUT inválido. Verifique el formato y dígito verificador.");
+      return;
+    }
+
     setLoading(true);
     try {
+      const tenantIdentifier = rutValue ? normalizeRut(rutValue) : undefined;
       const { access_token } = await api.auth.login(
         email.trim(),
         password,
-        tenantSlug.trim() || undefined,
+        tenantIdentifier,
       );
       const user = decodeJwtPayload(access_token);
       if (!user) throw new Error("Token inválido");
@@ -280,16 +290,18 @@ export default function LoginPage() {
             style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
           >
             <div>
-              <label style={labelStyle}>Empresa</label>
+              <label style={labelStyle}>RUT Empresa</label>
               <input
                 className="input"
                 type="text"
-                placeholder="slug de tu empresa (ej: demo)"
-                value={tenantSlug}
-                onChange={(e) => setTenantSlug(e.target.value)}
+                placeholder="Ej: 76.123.456-7"
+                value={tenantRut}
+                onChange={(e) => { setTenantRut(formatRutInput(e.target.value)); setRutError(""); }}
                 autoCapitalize="none"
                 autoComplete="organization"
+                maxLength={12}
               />
+              {rutError && <p style={{ color: "var(--danger)", fontSize: "0.78rem", marginTop: "0.25rem" }}>{rutError}</p>}
             </div>
 
             <div>
@@ -434,13 +446,14 @@ export default function LoginPage() {
               {recoveryStep === "email" ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                   <div>
-                    <label style={labelStyle}>Empresa</label>
+                    <label style={labelStyle}>RUT Empresa</label>
                     <input
                       className="input"
                       type="text"
-                      placeholder="slug de tu empresa"
+                      placeholder="Ej: 76.123.456-7"
                       value={recoveryTenant}
-                      onChange={(e) => setRecoveryTenant(e.target.value)}
+                      onChange={(e) => setRecoveryTenant(formatRutInput(e.target.value))}
+                      maxLength={12}
                     />
                   </div>
                   <div>

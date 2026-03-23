@@ -15,7 +15,7 @@ export interface AuthTokens { access_token: string }
 export interface UserProfile { userId: string; email: string; tenantId: string; role: string }
 
 export interface Tenant {
-  id: string; name: string; slug: string; plan: string;
+  id: string; name: string; slug: string; rut: string | null; plan: string;
   ownerType: string; maxEmployees: number; isActive: boolean; createdAt: string;
 }
 

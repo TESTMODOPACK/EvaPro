@@ -14,6 +14,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { looksLikeRut, normalizeRut } from '../../common/utils/rut-validator';
 
 @Injectable()
 export class UsersService {
@@ -37,11 +38,14 @@ export class UsersService {
       .where('user.email = :email', { email });
 
     if (tenantIdOrSlug) {
-      // Support both UUID and slug for tenantId
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantIdOrSlug);
       if (isUuid) {
         query.andWhere('user.tenantId = :tid', { tid: tenantIdOrSlug });
+      } else if (looksLikeRut(tenantIdOrSlug)) {
+        // RUT lookup
+        query.andWhere('tenant.rut = :rut', { rut: normalizeRut(tenantIdOrSlug) });
       } else {
+        // Slug lookup
         query.andWhere('tenant.slug = :slug', { slug: tenantIdOrSlug });
       }
     }

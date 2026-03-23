@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Tenant } from './entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
+import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 
@@ -34,14 +35,32 @@ export class TenantsService {
     return tenant;
   }
 
+  async findByRut(rut: string): Promise<Tenant | null> {
+    const normalized = normalizeRut(rut);
+    return this.tenantRepository.findOne({ where: { rut: normalized } });
+  }
+
   async create(dto: any): Promise<any> {
     // Check slug uniqueness
     const existing = await this.tenantRepository.findOne({ where: { slug: dto.slug } });
     if (existing) throw new ConflictException('El slug ya existe');
 
+    // Validate and normalize RUT if provided
+    let rut: string | null = null;
+    if (dto.rut) {
+      const normalized = normalizeRut(dto.rut);
+      if (!validateRut(normalized)) {
+        throw new BadRequestException('RUT inválido. Verifique el formato y dígito verificador.');
+      }
+      const existingRut = await this.tenantRepository.findOne({ where: { rut: normalized } });
+      if (existingRut) throw new ConflictException('Ya existe una organización con ese RUT');
+      rut = normalized;
+    }
+
     const tenant = this.tenantRepository.create({
       name: dto.name,
       slug: dto.slug,
+      rut,
       plan: dto.plan || 'starter',
       ownerType: dto.ownerType || 'company',
       maxEmployees: dto.maxEmployees || 50,
@@ -74,6 +93,19 @@ export class TenantsService {
   async update(id: string, dto: any): Promise<Tenant> {
     const tenant = await this.findById(id);
     if (dto.name !== undefined) tenant.name = dto.name;
+    if (dto.rut !== undefined) {
+      if (dto.rut) {
+        const normalized = normalizeRut(dto.rut);
+        if (!validateRut(normalized)) {
+          throw new BadRequestException('RUT inválido');
+        }
+        const existingRut = await this.tenantRepository.findOne({ where: { rut: normalized } });
+        if (existingRut && existingRut.id !== id) throw new ConflictException('RUT ya registrado');
+        tenant.rut = normalized;
+      } else {
+        tenant.rut = null;
+      }
+    }
     if (dto.plan !== undefined) tenant.plan = dto.plan;
     if (dto.maxEmployees !== undefined) tenant.maxEmployees = dto.maxEmployees;
     if (dto.ownerType !== undefined) tenant.ownerType = dto.ownerType;
