@@ -24,8 +24,6 @@ const emptyForm = {
   name: '',
   slug: '',
   rut: '',
-  plan: 'starter',
-  maxEmployees: 50,
   ownerType: 'company',
   adminEmail: '',
   adminPassword: '',
@@ -82,8 +80,6 @@ export default function TenantsPage() {
         name: form.name,
         slug: form.slug,
         rut: form.rut,
-        plan: form.plan,
-        maxEmployees: Number(form.maxEmployees),
         ownerType: form.ownerType,
         ...(form.adminEmail ? {
           adminEmail: form.adminEmail,
@@ -112,8 +108,6 @@ export default function TenantsPage() {
         name: form.name,
         slug: form.slug,
         rut: form.rut,
-        plan: form.plan,
-        maxEmployees: Number(form.maxEmployees),
         ownerType: form.ownerType,
       });
       setSuccess('Organizacion actualizada');
@@ -145,8 +139,6 @@ export default function TenantsPage() {
       name: t.name,
       slug: t.slug,
       rut: t.rut ? formatRut(t.rut) : '',
-      plan: t.plan,
-      maxEmployees: t.maxEmployees,
       ownerType: t.ownerType,
       adminEmail: '',
       adminPassword: '',
@@ -222,18 +214,6 @@ export default function TenantsPage() {
               <input style={inputStyle} value={form.rut} onChange={(e) => setForm({ ...form, rut: formatRutInput(e.target.value) })} placeholder="76.123.456-7" maxLength={12} />
             </div>
             <div>
-              <label style={labelStyle}>Plan</label>
-              <select style={inputStyle} value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })}>
-                <option value="starter">Starter</option>
-                <option value="pro">Pro</option>
-                <option value="enterprise">Enterprise</option>
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Max empleados</label>
-              <input style={inputStyle} type="number" value={form.maxEmployees} onChange={(e) => setForm({ ...form, maxEmployees: Number(e.target.value) })} />
-            </div>
-            <div>
               <label style={labelStyle}>Tipo propietario</label>
               <select style={inputStyle} value={form.ownerType} onChange={(e) => setForm({ ...form, ownerType: e.target.value })}>
                 <option value="company">Empresa</option>
@@ -298,8 +278,6 @@ export default function TenantsPage() {
                     <th>Nombre</th>
                     <th>RUT</th>
                     <th>Slug</th>
-                    <th>Plan</th>
-                    <th>Max empleados</th>
                     <th>Estado</th>
                     <th>Creado</th>
                     <th>Acciones</th>
@@ -311,10 +289,6 @@ export default function TenantsPage() {
                       <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{t.rut ? formatRut(t.rut) : '-'}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t.slug}</td>
-                      <td>
-                        <span className={`badge ${planColor[t.plan] ?? 'badge-accent'}`}>{t.plan}</span>
-                      </td>
-                      <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{t.maxEmployees}</td>
                       <td>
                         <span className={`badge ${t.isActive ? 'badge-success' : 'badge-danger'}`}>
                           {t.isActive ? 'Activo' : 'Inactivo'}
