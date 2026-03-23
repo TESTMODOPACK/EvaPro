@@ -324,28 +324,45 @@ async function seed() {
     for (const resp of allResponses) {
       if (!resp.answers || typeof resp.answers !== 'object') continue;
 
-      const numericValues = Object.values(resp.answers).filter(
-        (v): v is number => typeof v === 'number',
-      );
-      if (numericValues.length === 0) continue;
+      // Extract numeric values (handle both number and string-number types)
+      const numericValues: number[] = [];
+      for (const v of Object.values(resp.answers)) {
+        if (typeof v === 'number' && !isNaN(v)) {
+          numericValues.push(v);
+        } else if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
+          const n = Number(v);
+          // Only include if it looks like a scale answer (1-5 or 1-10)
+          if (n >= 1 && n <= 10) numericValues.push(n);
+        }
+      }
+
+      console.log(`   Response ${resp.id}: answers=${JSON.stringify(resp.answers)}, numericValues=[${numericValues}], currentScore=${resp.overallScore}`);
+
+      if (numericValues.length === 0) {
+        // If there are no numeric values but the response was submitted, set a default
+        if (resp.submittedAt && resp.overallScore === null) {
+          console.log(`   WARNING: Response ${resp.id} was submitted but has no numeric answers`);
+        }
+        continue;
+      }
 
       const avg = numericValues.reduce((sum: number, v: number) => sum + v, 0) / numericValues.length;
       // Normalize to 0-10 scale (scale questions are 1-5)
       const newScore = Math.round(((avg / 5) * 10) * 100) / 100;
       const oldScore = resp.overallScore != null ? Number(resp.overallScore) : null;
 
-      // Only update if score changed or was on old 0-100 scale
-      if (oldScore === null || oldScore > 10 || Math.abs(oldScore - newScore) > 0.01) {
-        resp.overallScore = newScore;
-        await responseRepo.save(resp);
-        recalcCount++;
-        console.log(`   Recalculated score for response ${resp.id}: ${oldScore} -> ${newScore}`);
-      }
+      // Always update: force recalculation
+      resp.overallScore = newScore;
+      await responseRepo.save(resp);
+      recalcCount++;
+      console.log(`   Recalculated: ${resp.id}: ${oldScore} -> ${newScore} (avg=${avg.toFixed(2)} from ${numericValues.length} values)`);
     }
     if (recalcCount > 0) {
-      console.log(`✅  Recalculated ${recalcCount} evaluation scores to 0-10 scale`);
+      console.log(`   Recalculated ${recalcCount} evaluation scores to 0-10 scale`);
+    } else if (allResponses.length === 0) {
+      console.log('   No evaluation responses found to recalculate.');
     } else {
-      console.log('   All scores already on 0-10 scale — no recalculation needed.');
+      console.log('   No numeric answers found in responses — scores may need manual review.');
     }
 
     console.log('\n📋  Demo credentials (empresa: demo, password: EvaPro2026!):');

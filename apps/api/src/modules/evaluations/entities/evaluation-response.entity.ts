@@ -33,7 +33,7 @@ export class EvaluationResponse {
   @Column({ type: 'jsonb', default: {} })
   answers: any;
 
-  @Column({ type: 'decimal', precision: 4, scale: 2, nullable: true, name: 'overall_score' })
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, name: 'overall_score' })
   overallScore: number | null;
 
   @Column({ type: 'timestamptz', nullable: true, name: 'submitted_at' })

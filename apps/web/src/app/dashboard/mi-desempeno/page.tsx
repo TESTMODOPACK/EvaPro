@@ -43,6 +43,11 @@ export default function MiDesempenoPage() {
   const cycles = history?.cycles || [];
   const latestScore = cycles.length > 0 ? cycles[cycles.length - 1] : null;
 
+  // Calculate score from completed evaluations if no cycle history yet
+  const completedWithScore = completed.filter((e: any) => e.response?.overallScore != null);
+  const latestCompleted = completedWithScore.length > 0 ? completedWithScore[0] : null;
+  const displayScore = latestScore?.avgOverall ?? latestCompleted?.response?.overallScore ?? null;
+
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
@@ -60,11 +65,18 @@ export default function MiDesempenoPage() {
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem' }}>
             {'\u00DAltimo puntaje'}
           </div>
-          {latestScore ? (
+          {displayScore != null ? (
             <div style={{ marginTop: '0.25rem' }}>
-              <ScoreBadge score={latestScore.avgOverall} size="lg" />
+              <ScoreBadge score={displayScore} size="lg" />
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-                {latestScore.cycleName}
+                {latestScore?.cycleName || latestCompleted?.cycle?.name || 'Evaluacion reciente'}
+              </div>
+            </div>
+          ) : completed.length > 0 ? (
+            <div style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>
+              Pendiente de calculo
+              <div style={{ fontSize: '0.72rem', marginTop: '0.2rem' }}>
+                ({completed.length} evaluacion(es) completada(s))
               </div>
             </div>
           ) : (

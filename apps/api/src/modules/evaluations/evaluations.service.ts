@@ -393,15 +393,21 @@ export class EvaluationsService {
   private calculateScore(answers: any, templateId: string | null): number | null {
     if (!answers || typeof answers !== 'object') return null;
 
-    // Extract numeric answers (scale questions) and average them
-    const numericValues = Object.values(answers).filter(
-      (v): v is number => typeof v === 'number',
-    );
+    // Extract numeric answers (handle both number and string-number types)
+    const numericValues: number[] = [];
+    for (const v of Object.values(answers)) {
+      if (typeof v === 'number' && !isNaN(v)) {
+        numericValues.push(v);
+      } else if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
+        const n = Number(v);
+        if (n >= 1 && n <= 10) numericValues.push(n);
+      }
+    }
 
     if (numericValues.length === 0) return null;
 
     const avg = numericValues.reduce((sum, v) => sum + v, 0) / numericValues.length;
-    // Normalize to 0-10 scale (scale questions are 1-5, so 1→2, 5→10)
+    // Normalize to 0-10 scale (scale questions are 1-5)
     const normalized = (avg / 5) * 10;
     return Math.round(normalized * 100) / 100;
   }
