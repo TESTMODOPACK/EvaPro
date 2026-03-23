@@ -57,6 +57,12 @@ export default function UsuariosPage() {
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Bulk import state
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [csvContent, setCsvContent] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<any>(null);
   const [maxEmployees, setMaxEmployees] = useState<number>(0);
   const [planName, setPlanName] = useState<string>('');
 
@@ -170,6 +176,54 @@ export default function UsuariosPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Download CSV template
+  const downloadTemplate = () => {
+    const header = 'email,first_name,last_name,password,role,department,position,hire_date';
+    const example1 = 'juan.perez@empresa.cl,Juan,Perez,Clave123!,employee,Tecnologia,Desarrollador,2024-01-15';
+    const example2 = 'maria.garcia@empresa.cl,Maria,Garcia,Clave123!,manager,Ventas,Jefa de Ventas,2023-06-01';
+    const example3 = 'carlos.lopez@empresa.cl,Carlos,Lopez,,employee,RRHH,Analista,';
+    const csv = [header, example1, example2, example3].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'plantilla_usuarios_evapro.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  // Handle file upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setCsvContent(text || '');
+      setBulkResult(null);
+    };
+    reader.readAsText(file);
+  };
+
+  // Submit bulk import
+  const handleBulkImport = async () => {
+    if (!token || !csvContent.trim()) return;
+    setBulkLoading(true);
+    setBulkResult(null);
+    setErrorMsg('');
+    try {
+      const result = await api.users.bulkImport(token, csvContent);
+      setBulkResult(result);
+      if (result.status === 'completed' || result.status === 'completed_with_errors') {
+        // Refresh users list
+        window.location.reload();
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error al importar usuarios');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const inputStyle: React.CSSProperties = {
     padding: '0.5rem 0.75rem',
     background: 'var(--bg-surface)',
@@ -201,15 +255,28 @@ export default function UsuariosPage() {
           </p>
         </div>
         {isAdmin && (
-          <button
-            className="btn-primary"
-            onClick={() => { setShowCreateForm(!showCreateForm); if (showCreateForm) { setEditingId(null); setForm(emptyForm); } }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Agregar usuario
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              className="btn-ghost"
+              onClick={() => { setShowBulkImport(!showBulkImport); setShowCreateForm(false); setBulkResult(null); setCsvContent(''); }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Carga masiva
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => { setShowCreateForm(!showCreateForm); setShowBulkImport(false); if (showCreateForm) { setEditingId(null); setForm(emptyForm); } }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Agregar usuario
+            </button>
+          </div>
         )}
       </div>
 
@@ -320,6 +387,132 @@ export default function UsuariosPage() {
               {creating ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear usuario'}
             </button>
             <button className="btn-ghost" onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk import panel */}
+      {showBulkImport && isAdmin && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.5rem' }}>Carga masiva de usuarios</h3>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            Suba un archivo CSV con los datos de los usuarios. La contrasena por defecto sera <code style={{ background: 'var(--bg-surface)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>EvaPro2026!</code> si no se especifica.
+          </p>
+
+          {/* Step 1: Download template */}
+          <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>1. Descargar plantilla CSV</div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+              Descargue la plantilla, completela con los datos de sus empleados y vuelva a subirla.
+            </p>
+            <button className="btn-ghost" onClick={downloadTemplate} style={{ fontSize: '0.82rem' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Descargar plantilla
+            </button>
+          </div>
+
+          {/* Columns reference */}
+          <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Columnas del CSV</div>
+            <div className="table-wrapper" style={{ fontSize: '0.78rem' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Columna</th>
+                    <th>Requerida</th>
+                    <th>Descripcion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ['email', 'Si', 'Correo electronico del usuario'],
+                    ['first_name', 'Si', 'Nombre'],
+                    ['last_name', 'Si', 'Apellido'],
+                    ['password', 'No', 'Contrasena (default: EvaPro2026!)'],
+                    ['role', 'No', 'employee, manager, tenant_admin (default: employee)'],
+                    ['department', 'No', 'Departamento (ej: Tecnologia, Ventas)'],
+                    ['position', 'No', 'Cargo (ej: Desarrollador Senior)'],
+                    ['hire_date', 'No', 'Fecha de ingreso (YYYY-MM-DD)'],
+                  ].map(([col, req, desc]) => (
+                    <tr key={col}>
+                      <td><code style={{ background: 'rgba(99,102,241,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>{col}</code></td>
+                      <td style={{ color: req === 'Si' ? 'var(--danger)' : 'var(--text-muted)' }}>{req}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Step 2: Upload file */}
+          <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>2. Subir archivo CSV</div>
+            <input
+              type="file"
+              accept=".csv,.txt"
+              onChange={handleFileUpload}
+              style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}
+            />
+            {csvContent && (
+              <div style={{ marginTop: '0.75rem' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                  Vista previa ({csvContent.trim().split('\n').length - 1} filas de datos):
+                </div>
+                <pre style={{
+                  padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)', fontSize: '0.72rem', color: 'var(--text-secondary)',
+                  overflow: 'auto', maxHeight: '150px', whiteSpace: 'pre',
+                }}>
+                  {csvContent.split('\n').slice(0, 6).join('\n')}
+                  {csvContent.split('\n').length > 6 ? '\n...' : ''}
+                </pre>
+              </div>
+            )}
+          </div>
+
+          {/* Result */}
+          {bulkResult && (
+            <div style={{
+              padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem',
+              background: bulkResult.status === 'completed' ? 'rgba(16,185,129,0.1)' : bulkResult.status === 'failed' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+              border: `1px solid ${bulkResult.status === 'completed' ? 'rgba(16,185,129,0.25)' : bulkResult.status === 'failed' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
+            }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.4rem', color: bulkResult.status === 'completed' ? 'var(--success)' : bulkResult.status === 'failed' ? 'var(--danger)' : 'var(--warning)' }}>
+                {bulkResult.status === 'completed' ? 'Importacion completada' : bulkResult.status === 'failed' ? 'Importacion fallida' : 'Importacion con errores'}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                Total: {bulkResult.totalRows} | Exitosos: {bulkResult.successRows} | Errores: {bulkResult.errorRows}
+              </div>
+              {bulkResult.errors && bulkResult.errors.length > 0 && (
+                <div style={{ marginTop: '0.5rem', fontSize: '0.78rem' }}>
+                  {bulkResult.errors.slice(0, 10).map((err: any, i: number) => (
+                    <div key={i} style={{ color: 'var(--danger)', marginTop: '0.2rem' }}>
+                      Fila {err.row}: {err.message}
+                    </div>
+                  ))}
+                  {bulkResult.errors.length > 10 && <div style={{ color: 'var(--text-muted)', marginTop: '0.2rem' }}>...y {bulkResult.errors.length - 10} errores mas</div>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              className="btn-primary"
+              onClick={handleBulkImport}
+              disabled={bulkLoading || !csvContent.trim()}
+            >
+              {bulkLoading ? 'Importando...' : 'Importar usuarios'}
+            </button>
+            <button className="btn-ghost" onClick={() => { setShowBulkImport(false); setCsvContent(''); setBulkResult(null); }}>
               Cancelar
             </button>
           </div>
