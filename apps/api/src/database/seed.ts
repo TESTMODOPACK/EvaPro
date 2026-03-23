@@ -106,7 +106,14 @@ async function seed() {
     /* ── Tenant ─────────────────────────────────────────── */
     let tenant = await tenantRepo.findOne({ where: { slug: 'demo' } });
     if (tenant) {
-      console.log('   Tenant "demo" already exists — skipping.');
+      // Update RUT if missing
+      if (!tenant.rut) {
+        tenant.rut = '76123456-0';
+        await tenantRepo.save(tenant);
+        console.log('   Tenant "demo" updated with RUT 76123456-0');
+      } else {
+        console.log('   Tenant "demo" already exists — skipping.');
+      }
     } else {
       tenant = tenantRepo.create({
         name: 'Demo Company',
