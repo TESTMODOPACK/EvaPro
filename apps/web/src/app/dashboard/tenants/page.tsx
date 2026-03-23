@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { formatCLP } from '@/lib/format';
 import { formatRutInput, validateRut, formatRut } from '@/lib/rut';
 
 function Spinner() {
@@ -293,7 +294,7 @@ export default function TenantsPage() {
                 <option value="">{editingId ? 'Sin cambio' : 'Seleccionar plan...'}</option>
                 {plans.map((p: any) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} — hasta {p.maxEmployees} usuarios {p.monthlyPrice > 0 ? `($${p.monthlyPrice}/mes)` : '(Gratuito)'}
+                    {p.name} — hasta {p.maxEmployees} usuarios {p.monthlyPrice > 0 ? `(${formatCLP(p.monthlyPrice)}/mes)` : '(Gratuito)'}
                   </option>
                 ))}
               </select>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { formatCLP } from '@/lib/format';
 
 function Spinner() {
   return (
@@ -496,10 +497,10 @@ export default function SubscriptionsPage() {
                         </td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{plan.maxEmployees ?? '-'}</td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          {plan.monthlyPrice != null ? `$${plan.monthlyPrice}` : '-'}
+                          {plan.monthlyPrice != null ? formatCLP(plan.monthlyPrice) : '-'}
                         </td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          {plan.yearlyPrice != null ? `$${plan.yearlyPrice}` : '-'}
+                          {plan.yearlyPrice != null ? formatCLP(plan.yearlyPrice) : '-'}
                         </td>
                         <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {Array.isArray(plan.features) ? plan.features.join(', ') : (plan.features ?? '-')}

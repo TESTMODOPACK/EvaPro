@@ -1,9 +1,12 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, canAccessPage } from '@/lib/roles';
+import { api } from '@/lib/api';
+import { formatRut } from '@/lib/rut';
 
 interface NavItem {
   href: string;
@@ -203,7 +206,28 @@ const superAdminNavItems: NavItem[] = [
 
 export default function Sidebar({ currentPath }: { currentPath: string }) {
   const router  = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, token, logout } = useAuthStore();
+  const [orgInfo, setOrgInfo] = useState<{ name: string; rut: string | null } | null>(null);
+
+  // Load org info for non-super_admin users
+  useEffect(() => {
+    if (!token || user?.role === 'super_admin') return;
+    api.users.me(token)
+      .then(() => api.subscriptions.mySubscription(token))
+      .then((sub: any) => {
+        if (sub?.tenant) {
+          setOrgInfo({ name: sub.tenant.name, rut: sub.tenant.rut });
+        }
+      })
+      .catch(() => {
+        // Try getting tenant info from a simpler endpoint
+        api.subscriptions.mySubscription(token)
+          .then((sub: any) => {
+            if (sub?.tenant) setOrgInfo({ name: sub.tenant.name, rut: sub.tenant.rut });
+          })
+          .catch(() => {});
+      });
+  }, [token, user?.role]);
 
   function handleLogout() {
     logout();
@@ -245,6 +269,24 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
           </div>
         </div>
       </div>
+
+      {/* Organization info for non-super_admin */}
+      {user?.role !== 'super_admin' && orgInfo && (
+        <div style={{
+          padding: '0.6rem 1.25rem',
+          borderBottom: '1px solid var(--border)',
+          background: 'rgba(99, 102, 241, 0.05)',
+        }}>
+          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {orgInfo.name}
+          </div>
+          {orgInfo.rut && (
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500, fontFamily: 'monospace' }}>
+              RUT: {formatRut(orgInfo.rut)}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '1rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.125rem', overflowY: 'auto' }}>

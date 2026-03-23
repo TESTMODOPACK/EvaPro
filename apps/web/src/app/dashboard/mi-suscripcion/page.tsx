@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { formatRut } from '@/lib/rut';
+import { formatCLP } from '@/lib/format';
 
 function Spinner() {
   return (
@@ -88,7 +89,7 @@ export default function MiSuscripcionPage() {
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Precio mensual</div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{plan.monthlyPrice ? `$${plan.monthlyPrice}` : 'Gratuito'}</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{plan.monthlyPrice ? formatCLP(plan.monthlyPrice) : 'Gratuito'}</div>
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Max empleados</div>
