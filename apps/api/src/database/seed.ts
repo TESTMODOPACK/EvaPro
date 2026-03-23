@@ -16,6 +16,7 @@ import { BulkImport } from '../modules/users/entities/bulk-import.entity';
 import { AuditLog } from '../modules/audit/entities/audit-log.entity';
 import { SubscriptionPlan } from '../modules/subscriptions/entities/subscription-plan.entity';
 import { Subscription } from '../modules/subscriptions/entities/subscription.entity';
+import { Competency } from '../modules/development/entities/competency.entity';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -34,7 +35,7 @@ const dataSource = new DataSource({
   entities: [
     Tenant, User, FormTemplate, EvaluationCycle,
     EvaluationAssignment, EvaluationResponse, BulkImport, AuditLog,
-    SubscriptionPlan, Subscription,
+    SubscriptionPlan, Subscription, Competency,
   ],
   synchronize: false,
   logging: false,
@@ -315,6 +316,26 @@ async function seed() {
         }),
       );
       console.log('✅  Default template created: Competencias Generales');
+    }
+
+    /* ── Default Competencies ────────────────────────────── */
+    const compRepo = dataSource.getRepository(Competency);
+    const existingComps = await compRepo.count({ where: { tenantId: tenant.id } });
+    if (existingComps === 0) {
+      const defaultCompetencies = [
+        { name: 'Liderazgo', category: 'Gestion', description: 'Capacidad de guiar, motivar e inspirar a equipos hacia el logro de objetivos' },
+        { name: 'Comunicacion', category: 'Blanda', description: 'Habilidad para transmitir ideas de forma clara, efectiva y asertiva' },
+        { name: 'Trabajo en equipo', category: 'Blanda', description: 'Capacidad de colaborar y contribuir activamente al logro colectivo' },
+        { name: 'Resolucion de problemas', category: 'Tecnica', description: 'Habilidad para analizar situaciones complejas y encontrar soluciones efectivas' },
+        { name: 'Adaptabilidad', category: 'Blanda', description: 'Flexibilidad para ajustarse a cambios y nuevas situaciones' },
+        { name: 'Orientacion a resultados', category: 'Gestion', description: 'Enfoque en cumplir objetivos y metas con calidad y eficiencia' },
+        { name: 'Conocimiento tecnico', category: 'Tecnica', description: 'Dominio de las herramientas, tecnologias y procesos del area' },
+        { name: 'Creatividad e innovacion', category: 'Blanda', description: 'Capacidad de generar ideas nuevas y proponer mejoras' },
+      ];
+      for (const c of defaultCompetencies) {
+        await compRepo.save(compRepo.create({ ...c, tenantId: tenant.id, isActive: true }));
+      }
+      console.log('   Default competencies created (8)');
     }
 
     /* ── Recalculate all scores to 0-10 scale ──────────── */

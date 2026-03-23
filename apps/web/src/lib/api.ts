@@ -412,6 +412,35 @@ export const api = {
       request<DashboardStats>("/dashboard/stats", {}, token),
   },
 
+  development: {
+    competencies: {
+      list: (token: string) => request<any[]>("/development/competencies", {}, token),
+      create: (token: string, data: any) => request<any>("/development/competencies", { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) => request<any>(`/development/competencies/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      deactivate: (token: string, id: string) => request<void>(`/development/competencies/${id}`, { method: "DELETE" }, token),
+    },
+    plans: {
+      list: (token: string) => request<any[]>("/development/plans", {}, token),
+      getById: (token: string, id: string) => request<any>(`/development/plans/${id}`, {}, token),
+      create: (token: string, data: any) => request<any>("/development/plans", { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) => request<any>(`/development/plans/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      activate: (token: string, id: string) => request<any>(`/development/plans/${id}/activate`, { method: "POST" }, token),
+      complete: (token: string, id: string) => request<any>(`/development/plans/${id}/complete`, { method: "POST" }, token),
+    },
+    actions: {
+      create: (token: string, planId: string, data: any) => request<any>(`/development/plans/${planId}/actions`, { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) => request<any>(`/development/actions/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      complete: (token: string, id: string) => request<any>(`/development/actions/${id}/complete`, { method: "POST" }, token),
+      remove: (token: string, id: string) => request<void>(`/development/actions/${id}`, { method: "DELETE" }, token),
+    },
+    comments: {
+      list: (token: string, planId: string) => request<any[]>(`/development/plans/${planId}/comments`, {}, token),
+      create: (token: string, planId: string, data: any) => request<any>(`/development/plans/${planId}/comments`, { method: "POST", body: JSON.stringify(data) }, token),
+      remove: (token: string, planId: string, commentId: string) => request<void>(`/development/plans/${planId}/comments/${commentId}`, { method: "DELETE" }, token),
+    },
+    suggest: (token: string, userId: string, cycleId: string) => request<any>(`/development/suggest/${userId}/${cycleId}`, {}, token),
+  },
+
   health: {
     check: () => request<{ status: string }>("/"),
   },
