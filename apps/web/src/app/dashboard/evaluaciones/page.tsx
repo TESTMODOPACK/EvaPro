@@ -5,10 +5,10 @@ import { useAuthStore } from '@/store/auth.store';
 import Link from 'next/link';
 
 const typeLabels: Record<string, string> = {
-  '90': '90\u00B0',
-  '180': '180\u00B0',
-  '270': '270\u00B0',
-  '360': '360\u00B0',
+  '90': '90°',
+  '180': '180°',
+  '270': '270°',
+  '360': '360°',
 };
 
 const statusLabels: Record<string, string> = {

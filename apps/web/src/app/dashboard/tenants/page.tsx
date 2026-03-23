@@ -72,7 +72,7 @@ export default function TenantsPage() {
       return;
     }
     if (!validateRut(form.rut)) {
-      setError('RUT inv\u00e1lido. Verifique el formato y d\u00edgito verificador.');
+      setError('RUT inválido. Verifique el formato y dígito verificador.');
       return;
     }
     setSaving(true);

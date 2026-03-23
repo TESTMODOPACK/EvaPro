@@ -59,10 +59,10 @@ export default function NuevoCicloPage() {
   };
 
   const typeLabels: Record<string, string> = {
-    '90': '90\u00b0',
-    '180': '180\u00b0',
-    '270': '270\u00b0',
-    '360': '360\u00b0',
+    '90': '90°',
+    '180': '180°',
+    '270': '270°',
+    '360': '360°',
   };
 
   const selectedTemplate = Array.isArray(templates)
@@ -178,7 +178,7 @@ export default function NuevoCicloPage() {
               <input
                 className="input"
                 type="text"
-                placeholder="Ej. Evaluaci\u00f3n Semestral Q1 2026"
+                placeholder="Ej. Evaluación Semestral Q1 2026"
                 value={form.name}
                 onChange={(e) => set('name', e.target.value)}
               />
@@ -188,7 +188,7 @@ export default function NuevoCicloPage() {
               <textarea
                 className="input"
                 rows={4}
-                placeholder="Describe el prop\u00f3sito de este ciclo de evaluaci\u00f3n..."
+                placeholder="Describe el propósito de este ciclo de evaluación..."
                 value={form.description}
                 onChange={(e) => set('description', e.target.value)}
                 style={{ resize: 'vertical', minHeight: '100px' }}
@@ -447,7 +447,7 @@ export default function NuevoCicloPage() {
               disabled={createCycle.isPending}
               style={{ opacity: createCycle.isPending ? 0.6 : 1 }}
             >
-              {createCycle.isPending ? 'Creando...' : 'Crear ciclo de evaluaci\u00f3n'}
+              {createCycle.isPending ? 'Creando...' : 'Crear ciclo de evaluación'}
             </button>
           )}
         </div>

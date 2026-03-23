@@ -9,7 +9,7 @@ import {
 } from '@/hooks/useEvaluations';
 
 const relationLabels: Record<string, string> = {
-  self: 'Autoevaluaci\u00f3n',
+  self: 'Autoevaluación',
   manager: 'Jefatura',
   peer: 'Par',
   direct_report: 'Reporte directo',
@@ -84,7 +84,7 @@ export default function ResponderEvaluacionPage() {
 
   const handleSubmit = async () => {
     const confirmed = window.confirm(
-      '\u00bfEnviar esta evaluaci\u00f3n? No podr\u00e1s modificar las respuestas despu\u00e9s de enviarla.',
+      '¿Enviar esta evaluación? No podrás modificar las respuestas después de enviarla.',
     );
     if (!confirmed) return;
     try {
@@ -270,7 +270,7 @@ export default function ResponderEvaluacionPage() {
           style={{ padding: '1.75rem', marginBottom: '1.5rem' }}
         >
           <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-            {section.title || `Secci\u00f3n ${sIdx + 1}`}
+            {section.title || `Sección ${sIdx + 1}`}
           </h2>
           {section.description && (
             <p
@@ -444,7 +444,7 @@ export default function ResponderEvaluacionPage() {
           disabled={submitResponse.isPending}
           style={{ opacity: submitResponse.isPending ? 0.6 : 1 }}
         >
-          {submitResponse.isPending ? 'Enviando...' : 'Enviar evaluaci\u00f3n'}
+          {submitResponse.isPending ? 'Enviando...' : 'Enviar evaluación'}
         </button>
       </div>
 

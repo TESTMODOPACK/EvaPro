@@ -77,13 +77,13 @@ export default function CalibracionPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>Calibraci\u00f3n</h1>
+          <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>Calibración</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '.875rem', marginTop: '.25rem' }}>
-            Sesiones de calibraci\u00f3n de evaluaciones
+            Sesiones de calibración de evaluaciones
           </p>
         </div>
         <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancelar' : 'Nueva sesi\u00f3n'}
+          {showForm ? 'Cancelar' : 'Nueva sesión'}
         </button>
       </div>
 
@@ -91,7 +91,7 @@ export default function CalibracionPage() {
       {showForm && (
         <div className="card animate-fade-up" style={{ marginBottom: '1.5rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>
-            Nueva sesi\u00f3n de calibraci\u00f3n
+            Nueva sesión de calibración
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>
@@ -100,7 +100,7 @@ export default function CalibracionPage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ej: Calibraci\u00f3n Q1 2026"
+                placeholder="Ej: Calibración Q1 2026"
                 style={{
                   width: '100%', padding: '.5rem .75rem', borderRadius: 'var(--radius-sm)',
                   border: '1px solid var(--border)', background: 'var(--bg-surface)',
@@ -131,7 +131,7 @@ export default function CalibracionPage() {
                 type="text"
                 value={form.department}
                 onChange={(e) => setForm({ ...form, department: e.target.value })}
-                placeholder="Ej: Tecnolog\u00eda"
+                placeholder="Ej: Tecnología"
                 style={{
                   width: '100%', padding: '.5rem .75rem', borderRadius: 'var(--radius-sm)',
                   border: '1px solid var(--border)', background: 'var(--bg-surface)',
@@ -156,7 +156,7 @@ export default function CalibracionPage() {
           </div>
           <div style={{ marginTop: '1rem', display: 'flex', gap: '.5rem' }}>
             <button className="btn-primary" onClick={handleCreate} disabled={creating || !form.name || !form.cycleId}>
-              {creating ? 'Creando...' : 'Crear sesi\u00f3n'}
+              {creating ? 'Creando...' : 'Crear sesión'}
             </button>
             <button className="btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
           </div>
@@ -168,7 +168,7 @@ export default function CalibracionPage() {
         <Spinner />
       ) : sessions.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
-          No hay sesiones de calibraci\u00f3n creadas a\u00fan.
+          No hay sesiones de calibración creadas aún.
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>

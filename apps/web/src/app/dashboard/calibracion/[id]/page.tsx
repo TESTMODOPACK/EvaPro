@@ -98,7 +98,7 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
     try {
       await api.talent.calibration.complete(token, params.id);
       await fetchSession();
-      setSuccessMsg('Sesi\u00f3n de calibraci\u00f3n completada exitosamente.');
+      setSuccessMsg('Sesión de calibración completada exitosamente.');
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch { /* ignore */ }
     setCompleting(false);
@@ -116,7 +116,7 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
   if (!session) {
     return (
       <div className="animate-fade-up" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-        No se encontr\u00f3 la sesi\u00f3n de calibraci\u00f3n.
+        No se encontró la sesión de calibración.
       </div>
     );
   }
@@ -151,7 +151,7 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
       {entries.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
           <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            No hay participantes cargados en esta sesi\u00f3n.
+            No hay participantes cargados en esta sesión.
           </p>
           <button className="btn-primary" onClick={handlePopulate} disabled={populating}>
             {populating ? 'Cargando participantes...' : 'Cargar participantes'}
@@ -171,9 +171,9 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
                 <th>Score ajustado</th>
                 <th>Potencial original</th>
                 <th>Potencial ajustado</th>
-                <th>Justificaci\u00f3n</th>
+                <th>Justificación</th>
                 <th>Estado</th>
-                <th>Acci\u00f3n</th>
+                <th>Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -251,7 +251,7 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
         <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn-primary" onClick={handleComplete} disabled={completing}
             style={{ background: 'var(--success)', padding: '.6rem 1.5rem' }}>
-            {completing ? 'Completando...' : 'Completar calibraci\u00f3n'}
+            {completing ? 'Completando...' : 'Completar calibración'}
           </button>
         </div>
       )}

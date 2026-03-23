@@ -44,8 +44,8 @@ const RISK_LABEL: Record<string, string> = {
 
 const READINESS_LABEL: Record<string, string> = {
   ready_now: 'Listo ahora',
-  ready_1_year: 'En 1 a\u00f1o',
-  ready_2_years: 'En 2 a\u00f1os',
+  ready_1_year: 'En 1 año',
+  ready_2_years: 'En 2 años',
   not_ready: 'No listo',
 };
 
@@ -172,7 +172,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 
         {selectedCycleId && isAdmin && (
           <button className="btn-primary" onClick={handleGenerate} disabled={generating}>
-            {generating ? 'Generando...' : 'Generar evaluaci\u00f3n de talento'}
+            {generating ? 'Generando...' : 'Generar evaluación de talento'}
           </button>
         )}
       </div>
@@ -189,7 +189,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontWeight: 700, fontSize: '.85rem', color: 'var(--text-secondary)', letterSpacing: '.05em',
             }}>
-              Desempe\u00f1o (Bajo → Alto)
+              Desempeño (Bajo → Alto)
             </div>
 
             <div style={{ flex: 1 }}>
@@ -288,8 +288,8 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                                     >
                                       <option value="">—</option>
                                       <option value="ready_now">Listo ahora</option>
-                                      <option value="ready_1_year">En 1 a\u00f1o</option>
-                                      <option value="ready_2_years">En 2 a\u00f1os</option>
+                                      <option value="ready_1_year">En 1 año</option>
+                                      <option value="ready_2_years">En 2 años</option>
                                       <option value="not_ready">No listo</option>
                                     </select>
                                   </label>
@@ -458,7 +458,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
 
           {assessments.length === 0 && !loading && (
             <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-              No hay evaluaciones de talento para este ciclo. Genera una evaluaci\u00f3n primero desde la pesta\u00f1a Nine Box.
+              No hay evaluaciones de talento para este ciclo. Genera una evaluación primero desde la pestaña Nine Box.
             </p>
           )}
         </>
@@ -466,7 +466,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
 
       {!loading && !selectedCycleId && (
         <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-          Selecciona un ciclo para ver la segmentaci\u00f3n de talento.
+          Selecciona un ciclo para ver la segmentación de talento.
         </p>
       )}
     </div>
@@ -499,7 +499,7 @@ export default function TalentoPage() {
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>Talento</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '.875rem', marginTop: '.25rem' }}>
-          Gesti\u00f3n de talento: Nine Box y segmentaci\u00f3n
+          Gestión de talento: Nine Box y segmentación
         </p>
       </div>
 
@@ -507,7 +507,7 @@ export default function TalentoPage() {
       <div style={{ display: 'flex', gap: '0', marginBottom: '1.5rem', borderBottom: '2px solid var(--border)' }}>
         {([
           { key: 'ninebox' as const, label: 'Nine Box' },
-          { key: 'segmentation' as const, label: 'Segmentaci\u00f3n' },
+          { key: 'segmentation' as const, label: 'Segmentación' },
         ]).map((t) => (
           <button
             key={t.key}
