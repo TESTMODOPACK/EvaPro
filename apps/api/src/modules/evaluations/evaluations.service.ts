@@ -258,12 +258,23 @@ export class EvaluationsService {
     });
   }
 
-  async findCompletedForUser(userId: string, tenantId: string): Promise<EvaluationAssignment[]> {
-    return this.assignmentRepo.find({
+  async findCompletedForUser(userId: string, tenantId: string): Promise<any[]> {
+    const assignments = await this.assignmentRepo.find({
       where: { evaluatorId: userId, tenantId, status: AssignmentStatus.COMPLETED },
       relations: ['evaluatee', 'cycle'],
       order: { completedAt: 'DESC' },
     });
+
+    // Load responses for each assignment to get overallScore
+    const results = [];
+    for (const a of assignments) {
+      const response = await this.responseRepo.findOne({
+        where: { assignmentId: a.id },
+        select: ['id', 'overallScore', 'submittedAt'],
+      });
+      results.push({ ...a, response: response || null });
+    }
+    return results;
   }
 
   async getAssignmentDetail(assignmentId: string, tenantId: string) {
