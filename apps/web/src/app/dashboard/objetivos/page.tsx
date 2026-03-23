@@ -151,26 +151,57 @@ export default function ObjetivosPage() {
 
           {/* Types explanation */}
           <div style={{ marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Tipos de objetivo</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-              <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.15)' }}>
-                <span className="badge badge-accent" style={{ marginBottom: '0.4rem', display: 'inline-block' }}>OKR</span>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  <strong>Objectives & Key Results.</strong> Define un objetivo ambicioso con resultados clave medibles. Ideal para metas estrategicas trimestrales.
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.75rem' }}>Tipos de objetivo</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+              {/* OKR */}
+              <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <span className="badge badge-accent">OKR</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Meta con resultados clave</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
+                  Define <strong>que quieres lograr</strong> (el objetivo) y <strong>como sabras que lo lograste</strong> (los resultados clave).
+                  Se usa cuando la meta es grande y necesitas dividirla en pasos medibles.
                 </p>
+                <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  <strong style={{ color: '#6366f1' }}>Ejemplo:</strong> "Mejorar la satisfaccion del cliente" con resultados clave como:
+                  aumentar NPS de 60 a 80, reducir tiempo de respuesta a menos de 2 horas, lograr 95% de resolucion en primer contacto.
+                </div>
               </div>
-              <div style={{ padding: '0.75rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
-                <span className="badge badge-warning" style={{ marginBottom: '0.4rem', display: 'inline-block' }}>KPI</span>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  <strong>Key Performance Indicator.</strong> Metrica numerica continua. Ideal para indicadores operativos que se miden regularmente (ej: ventas mensuales, tickets resueltos).
+
+              {/* KPI */}
+              <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <span className="badge badge-warning">KPI</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Indicador numerico de rendimiento</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
+                  Es un <strong>numero que se mide de forma continua</strong> para saber si el trabajo va bien.
+                  Se actualiza periodicamente (semanal, mensual) y permite detectar tendencias.
                 </p>
+                <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(245,158,11,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  <strong style={{ color: '#f59e0b' }}>Ejemplo:</strong> "Ventas mensuales: alcanzar $5.000.000", "Tickets resueltos por semana: 30",
+                  "Tasa de retencion de clientes: mantener sobre 90%".
+                </div>
               </div>
-              <div style={{ padding: '0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)' }}>
-                <span className="badge badge-success" style={{ marginBottom: '0.4rem', display: 'inline-block' }}>SMART</span>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  <strong>Specific, Measurable, Achievable, Relevant, Time-bound.</strong> Objetivo concreto con fecha limite clara. Ideal para proyectos o entregables puntuales.
+
+              {/* SMART */}
+              <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <span className="badge badge-success">SMART</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Tarea concreta con fecha limite</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
+                  Es un objetivo <strong>especifico, medible, alcanzable, relevante y con plazo definido</strong>.
+                  Se usa para tareas o proyectos puntuales que tienen un inicio y un fin claro.
                 </p>
+                <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(16,185,129,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  <strong style={{ color: '#10b981' }}>Ejemplo:</strong> "Completar la certificacion de seguridad antes del 30 de junio",
+                  "Implementar el nuevo sistema de facturacion en 3 meses", "Capacitar a 20 personas en el nuevo proceso antes de diciembre".
+                </div>
               </div>
+
             </div>
           </div>
 
@@ -275,9 +306,9 @@ export default function ObjetivosPage() {
                   onChange={(e) => setForm({ ...form, type: e.target.value as ObjType })}
                   style={{ width: '100%' }}
                 >
-                  <option value="OKR">OKR</option>
-                  <option value="KPI">KPI</option>
-                  <option value="SMART">SMART</option>
+                  <option value="OKR">OKR — Meta con resultados clave</option>
+                  <option value="KPI">KPI — Indicador numerico</option>
+                  <option value="SMART">SMART — Tarea concreta con plazo</option>
                 </select>
               </div>
               <div>
