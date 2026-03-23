@@ -384,6 +384,12 @@ export const api = {
       request<ObjectiveUpdateData>(`/objectives/${id}/progress`, { method: "POST", body: JSON.stringify(data) }, token),
     history: (token: string, id: string) =>
       request<ObjectiveUpdateData[]>(`/objectives/${id}/history`, {}, token),
+    listComments: (token: string, objectiveId: string) =>
+      request<any[]>(`/objectives/${objectiveId}/comments`, {}, token),
+    createComment: (token: string, objectiveId: string, data: { content: string; type?: string; attachmentUrl?: string; attachmentName?: string }) =>
+      request<any>(`/objectives/${objectiveId}/comments`, { method: "POST", body: JSON.stringify(data) }, token),
+    deleteComment: (token: string, objectiveId: string, commentId: string) =>
+      request<void>(`/objectives/${objectiveId}/comments/${commentId}`, { method: "DELETE" }, token),
   },
 
   reports: {

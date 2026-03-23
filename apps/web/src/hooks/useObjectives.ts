@@ -66,3 +66,34 @@ export function useObjectiveHistory(id: string) {
     enabled: !!token && !!id,
   });
 }
+
+// ─── Comments ─────────────────────────────────────────────────────────────────
+
+export function useObjectiveComments(objectiveId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['objectives', objectiveId, 'comments'],
+    queryFn: () => api.objectives.listComments(token!, objectiveId!),
+    enabled: !!token && !!objectiveId,
+  });
+}
+
+export function useCreateObjectiveComment() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ objectiveId, data }: { objectiveId: string; data: { content: string; type?: string; attachmentUrl?: string; attachmentName?: string } }) =>
+      api.objectives.createComment(token!, objectiveId, data),
+    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ['objectives', vars.objectiveId, 'comments'] }),
+  });
+}
+
+export function useDeleteObjectiveComment() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ objectiveId, commentId }: { objectiveId: string; commentId: string }) =>
+      api.objectives.deleteComment(token!, objectiveId, commentId),
+    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ['objectives', vars.objectiveId, 'comments'] }),
+  });
+}

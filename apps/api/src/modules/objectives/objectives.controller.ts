@@ -26,13 +26,31 @@ export class ObjectivesController {
 
   @Post()
   create(@Request() req: any, @Body() dto: CreateObjectiveDto) {
-    return this.objectivesService.create(req.user.tenantId, req.user.userId, dto);
+    const role = req.user.role;
+    // tenant_admin and manager can assign to others via dto.userId
+    // employee always creates for themselves
+    let targetUserId = req.user.userId;
+    if ((role === 'tenant_admin' || role === 'manager') && (dto as any).userId) {
+      targetUserId = (dto as any).userId;
+    }
+    return this.objectivesService.create(req.user.tenantId, targetUserId, dto);
   }
 
   @Get()
-  findAll(@Request() req: any, @Query('userId') userId?: string) {
-    const targetUserId = userId || req.user.userId;
-    return this.objectivesService.findByUser(req.user.tenantId, targetUserId);
+  findAll(@Request() req: any, @Query('userId') filterUserId?: string) {
+    const role = req.user.role;
+    const tenantId = req.user.tenantId;
+
+    if (role === 'tenant_admin' || role === 'super_admin') {
+      return this.objectivesService.findAll(tenantId, filterUserId);
+    }
+
+    if (role === 'manager') {
+      return this.objectivesService.findByManager(tenantId, req.user.userId);
+    }
+
+    // employee, external: only own
+    return this.objectivesService.findByUser(tenantId, req.user.userId);
   }
 
   @Get(':id')
@@ -78,5 +96,38 @@ export class ObjectivesController {
     @Request() req: any,
   ) {
     return this.objectivesService.getProgressHistory(req.user.tenantId, id);
+  }
+
+  // ─── Comments ───────────────────────────────────────────────────────────────
+
+  @Get(':id/comments')
+  listComments(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.listComments(req.user.tenantId, id);
+  }
+
+  @Post(':id/comments')
+  createComment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() data: { content: string; type?: string; attachmentUrl?: string; attachmentName?: string },
+  ) {
+    return this.objectivesService.createComment(
+      req.user.tenantId, id, req.user.userId, data,
+    );
+  }
+
+  @Delete(':id/comments/:commentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteComment(
+    @Param('id', ParseUUIDPipe) _id: string,
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.deleteComment(
+      req.user.tenantId, commentId, req.user.userId, req.user.role,
+    );
   }
 }
