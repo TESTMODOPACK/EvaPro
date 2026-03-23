@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
+import { api } from '@/lib/api';
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -43,6 +44,7 @@ const emptyForm = {
 
 export default function UsuariosPage() {
   const router = useRouter();
+  const token = useAuthStore((s) => s.token);
   const currentUserRole = useAuthStore((s) => s.user?.role || '');
   const isAdmin = currentUserRole === 'super_admin' || currentUserRole === 'tenant_admin';
   const { data: paginated, isLoading } = useUsers();
@@ -54,6 +56,22 @@ export default function UsuariosPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [maxEmployees, setMaxEmployees] = useState<number>(0);
+  const [planName, setPlanName] = useState<string>('');
+
+  // Fetch subscription limits
+  useEffect(() => {
+    if (!token || currentUserRole === 'super_admin') return;
+    api.subscriptions.mySubscription(token)
+      .then((sub: any) => {
+        if (sub?.plan) {
+          setMaxEmployees(sub.plan.maxEmployees || 0);
+          setPlanName(sub.plan.name || '');
+        }
+      })
+      .catch(() => {});
+  }, [token, currentUserRole]);
 
   const users = paginated?.data || [];
 
@@ -81,6 +99,14 @@ export default function UsuariosPage() {
 
   const handleCreate = async () => {
     if (!form.email || !form.firstName || !form.lastName || (!editingId && !form.password)) return;
+    setErrorMsg('');
+
+    // Check limit before creating
+    if (!editingId && maxEmployees > 0 && activeUsers >= maxEmployees) {
+      setErrorMsg(`Limite de usuarios alcanzado para el plan "${planName}". Maximo: ${maxEmployees}. Contacte al administrador del sistema para ampliar su plan.`);
+      return;
+    }
+
     setCreating(true);
     try {
       if (editingId) {
@@ -110,7 +136,7 @@ export default function UsuariosPage() {
       setShowCreateForm(false);
       setEditingId(null);
     } catch (err: any) {
-      alert(err.message || 'Error al guardar usuario');
+      setErrorMsg(err.message || 'Error al guardar usuario');
     } finally {
       setCreating(false);
     }
@@ -297,6 +323,46 @@ export default function UsuariosPage() {
               Cancelar
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Subscription usage warning */}
+      {maxEmployees > 0 && (
+        <div className="animate-fade-up-delay-1" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Usuarios: {activeUsers} / {maxEmployees} ({planName})
+            </span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: activeUsers >= maxEmployees ? 'var(--danger)' : activeUsers / maxEmployees > 0.8 ? 'var(--warning)' : 'var(--success)' }}>
+              {Math.round((activeUsers / maxEmployees) * 100)}%
+            </span>
+          </div>
+          <div style={{ height: '6px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${Math.min((activeUsers / maxEmployees) * 100, 100)}%`,
+              background: activeUsers >= maxEmployees ? 'var(--danger)' : activeUsers / maxEmployees > 0.8 ? 'var(--warning)' : 'var(--success)',
+              borderRadius: '999px', transition: 'width 0.6s ease',
+            }} />
+          </div>
+          {activeUsers >= maxEmployees && (
+            <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: '0.5rem', fontWeight: 500 }}>
+              Has alcanzado el limite de usuarios de tu plan. Contacta al administrador del sistema para ampliar tu suscripcion.
+            </p>
+          )}
+          {activeUsers / maxEmployees > 0.8 && activeUsers < maxEmployees && (
+            <p style={{ color: 'var(--warning)', fontSize: '0.82rem', marginTop: '0.5rem', fontWeight: 500 }}>
+              Estas cerca del limite de usuarios de tu plan ({maxEmployees - activeUsers} disponibles).
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Error message */}
+      {errorMsg && (
+        <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg('')} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontWeight: 700, fontSize: '1rem' }}>x</button>
         </div>
       )}
 
