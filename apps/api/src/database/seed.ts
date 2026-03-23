@@ -111,7 +111,7 @@ async function seed() {
       tenant = tenantRepo.create({
         name: 'Demo Company',
         slug: 'demo',
-        rut: '76123456-7',
+        rut: '76123456-0',
         plan: 'starter',
         ownerType: 'company',
         maxEmployees: 50,
