@@ -45,14 +45,22 @@ export default function TenantsPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
 
-  // Fetch available subscription plans
+  // Fetch available subscription plans and existing subscriptions
   useEffect(() => {
     if (!token) return;
     api.subscriptions.plans.list(token)
       .then((p: any[]) => setPlans(p.filter((pl: any) => pl.isActive)))
       .catch(() => {});
+    api.subscriptions.list(token)
+      .then(setSubscriptions)
+      .catch(() => {});
   }, [token]);
+
+  // Helper: get active subscription for a tenant
+  const getSubscription = (tenantId: string) =>
+    subscriptions.find((s: any) => s.tenantId === tenantId && s.status !== 'cancelled');
 
   const fetchTenants = () => {
     if (!token) return;
@@ -141,9 +149,31 @@ export default function TenantsPage() {
         rut: form.rut,
         ownerType: form.ownerType,
       });
+
+      // Update or create subscription if plan changed
+      if (form.planId) {
+        const existingSub = getSubscription(editingId);
+        if (existingSub) {
+          // Update existing subscription
+          if (existingSub.planId !== form.planId) {
+            await api.subscriptions.update(token, existingSub.id, { planId: form.planId });
+          }
+        } else {
+          // Create new subscription
+          await api.subscriptions.create(token, {
+            tenantId: editingId,
+            planId: form.planId,
+            status: 'active',
+            startDate: new Date().toISOString().slice(0, 10),
+          });
+        }
+      }
+
       setSuccess('Organizacion actualizada');
       resetForm();
       fetchTenants();
+      // Refresh subscriptions
+      api.subscriptions.list(token).then(setSubscriptions).catch(() => {});
       setTimeout(() => setSuccess(''), 3000);
     } catch (e: any) {
       setError(e.message);
@@ -166,12 +196,13 @@ export default function TenantsPage() {
   };
 
   const startEdit = (t: Tenant) => {
+    const sub = getSubscription(t.id);
     setForm({
       name: t.name,
       slug: t.slug,
       rut: t.rut ? formatRut(t.rut) : '',
       ownerType: t.ownerType,
-      planId: '',
+      planId: sub?.planId || '',
       adminEmail: '',
       adminPassword: '',
       adminFirstName: '',
@@ -252,28 +283,31 @@ export default function TenantsPage() {
                 <option value="consultant">Consultor</option>
               </select>
             </div>
-            {!editingId && (
-              <div>
-                <label style={labelStyle}>Plan de suscripcion *</label>
-                <select
-                  style={{ ...inputStyle, borderColor: !form.planId ? 'var(--warning)' : 'var(--border)' }}
-                  value={form.planId}
-                  onChange={(e) => setForm({ ...form, planId: e.target.value })}
-                >
-                  <option value="">Seleccionar plan...</option>
-                  {plans.map((p: any) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — hasta {p.maxEmployees} usuarios {p.monthlyPrice > 0 ? `($${p.monthlyPrice}/mes)` : '(Gratuito)'}
-                    </option>
-                  ))}
-                </select>
-                {plans.length === 0 && (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--warning)', marginTop: '0.3rem' }}>
-                    No hay planes creados. Vaya a Suscripciones para crear planes primero.
-                  </p>
-                )}
-              </div>
-            )}
+            <div>
+              <label style={labelStyle}>Plan de suscripcion {!editingId && '*'}</label>
+              <select
+                style={{ ...inputStyle, borderColor: !form.planId ? 'var(--warning)' : 'var(--border)' }}
+                value={form.planId}
+                onChange={(e) => setForm({ ...form, planId: e.target.value })}
+              >
+                <option value="">{editingId ? 'Sin cambio' : 'Seleccionar plan...'}</option>
+                {plans.map((p: any) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — hasta {p.maxEmployees} usuarios {p.monthlyPrice > 0 ? `($${p.monthlyPrice}/mes)` : '(Gratuito)'}
+                  </option>
+                ))}
+              </select>
+              {plans.length === 0 && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--warning)', marginTop: '0.3rem' }}>
+                  No hay planes creados. Vaya a Suscripciones para crear planes primero.
+                </p>
+              )}
+              {editingId && !getSubscription(editingId) && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.3rem' }}>
+                  Esta organizacion no tiene suscripcion. Seleccione un plan para asignarla.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Admin fields (only for create) */}
@@ -345,8 +379,21 @@ export default function TenantsPage() {
                       <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{t.rut ? formatRut(t.rut) : '-'}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t.slug}</td>
-                      <td><span className={`badge ${planColor[t.plan] || 'badge-accent'}`}>{t.plan || '—'}</span></td>
-                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{t.maxEmployees}</td>
+                      {(() => {
+                        const sub = getSubscription(t.id);
+                        const pName = sub?.plan?.name || t.plan || '—';
+                        const pCode = sub?.plan?.code || t.plan || '';
+                        const maxEmp = sub?.plan?.maxEmployees || t.maxEmployees;
+                        return (
+                          <>
+                            <td>
+                              <span className={`badge ${planColor[pCode] || 'badge-accent'}`}>{pName}</span>
+                              {!sub && <span style={{ fontSize: '0.7rem', color: 'var(--danger)', display: 'block', marginTop: '0.2rem' }}>Sin suscripcion</span>}
+                            </td>
+                            <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{maxEmp}</td>
+                          </>
+                        );
+                      })()}
                       <td>
                         <span className={`badge ${t.isActive ? 'badge-success' : 'badge-danger'}`}>
                           {t.isActive ? 'Activo' : 'Inactivo'}
