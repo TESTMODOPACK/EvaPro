@@ -8,6 +8,8 @@ import {
   useDeleteObjective,
   useAddObjectiveProgress,
 } from '@/hooks/useObjectives';
+import { useAuthStore } from '@/store/auth.store';
+import { getRoleLabel } from '@/lib/roles';
 
 type FilterStatus = 'all' | 'active' | 'completed' | 'abandoned';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
@@ -57,6 +59,11 @@ function formatDate(d: string | null) {
 }
 
 export default function ObjetivosPage() {
+  const userRole = useAuthStore((s) => s.user?.role || '');
+  const isAdmin = userRole === 'tenant_admin';
+  const isManager = userRole === 'manager';
+  const canCreate = isAdmin || isManager;
+
   const { data: objectives, isLoading } = useObjectives();
   const createObjective = useCreateObjective();
   const deleteObjective = useDeleteObjective();
@@ -64,6 +71,7 @@ export default function ObjetivosPage() {
 
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [showForm, setShowForm] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [progressForm, setProgressForm] = useState<{ value: number; notes: string }>({ value: 50, notes: '' });
   const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '' });
@@ -105,17 +113,111 @@ export default function ObjetivosPage() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
-      <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+      <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Mis Objetivos</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
+            {isAdmin ? 'Objetivos de la organizacion' : isManager ? 'Objetivos del equipo' : 'Mis Objetivos'}
+          </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Gestiona y da seguimiento a tus objetivos
+            {isAdmin
+              ? 'Define y supervisa los objetivos de todos los colaboradores'
+              : isManager
+                ? 'Gestiona los objetivos de tu equipo y los tuyos propios'
+                : 'Visualiza y actualiza el progreso de tus objetivos asignados'}
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancelar' : '+ Nuevo Objetivo'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+            {showGuide ? 'Ocultar guia' : 'Como funciona'}
+          </button>
+          {canCreate && (
+            <button className="btn-primary" onClick={() => { setShowForm(!showForm); setShowGuide(false); }}>
+              {showForm ? 'Cancelar' : '+ Nuevo Objetivo'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Guide / Explainer */}
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid #6366f1' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: '#6366f1' }}>
+            Guia de uso: Objetivos
+          </h3>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
+            Los objetivos permiten definir metas medibles para cada colaborador, alineadas con la estrategia de la organizacion.
+            Se pueden vincular a ciclos de evaluacion para medir el cumplimiento en las revisiones de desempeno.
+          </p>
+
+          {/* Types explanation */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Tipos de objetivo</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+              <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                <span className="badge badge-accent" style={{ marginBottom: '0.4rem', display: 'inline-block' }}>OKR</span>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                  <strong>Objectives & Key Results.</strong> Define un objetivo ambicioso con resultados clave medibles. Ideal para metas estrategicas trimestrales.
+                </p>
+              </div>
+              <div style={{ padding: '0.75rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                <span className="badge badge-warning" style={{ marginBottom: '0.4rem', display: 'inline-block' }}>KPI</span>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                  <strong>Key Performance Indicator.</strong> Metrica numerica continua. Ideal para indicadores operativos que se miden regularmente (ej: ventas mensuales, tickets resueltos).
+                </p>
+              </div>
+              <div style={{ padding: '0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                <span className="badge badge-success" style={{ marginBottom: '0.4rem', display: 'inline-block' }}>SMART</span>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                  <strong>Specific, Measurable, Achievable, Relevant, Time-bound.</strong> Objetivo concreto con fecha limite clara. Ideal para proyectos o entregables puntuales.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Role permissions */}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Que puede hacer cada perfil</div>
+            <div className="table-wrapper" style={{ fontSize: '0.78rem' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Accion</th>
+                    <th>Enc. del Sistema</th>
+                    <th>Enc. de Equipo</th>
+                    <th>Colaborador</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>Crear objetivos</td><td style={{ color: 'var(--success)' }}>Si (para cualquiera)</td><td style={{ color: 'var(--success)' }}>Si (para su equipo)</td><td style={{ color: 'var(--text-muted)' }}>No</td></tr>
+                  <tr><td>Ver objetivos</td><td style={{ color: 'var(--success)' }}>Todos</td><td style={{ color: 'var(--success)' }}>Su equipo + propios</td><td style={{ color: 'var(--success)' }}>Solo los suyos</td></tr>
+                  <tr><td>Actualizar progreso</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si (solo los suyos)</td></tr>
+                  <tr><td>Eliminar objetivos</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si (su equipo)</td><td style={{ color: 'var(--text-muted)' }}>No</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Workflow */}
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Flujo de trabajo</div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.78rem' }}>
+              {[
+                { step: '1', label: 'Crear objetivo', desc: 'El encargado define titulo, tipo y fecha' },
+                { step: '2', label: 'En progreso', desc: 'El colaborador actualiza el % de avance' },
+                { step: '3', label: 'Completar', desc: 'Al llegar al 100% se marca como completado' },
+              ].map((s, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {i > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>&rarr;</span>}
+                  <div style={{ padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: 700, color: '#6366f1' }}>Paso {s.step}: {s.label}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{s.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter pills */}
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
@@ -284,15 +386,17 @@ export default function ObjetivosPage() {
                   >
                     {isExpanded ? 'Cerrar' : 'Actualizar'}
                   </button>
-                  <button
-                    className="btn-ghost"
-                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--danger)' }}
-                    onClick={() => {
-                      if (confirm('Eliminar este objetivo?')) deleteObjective.mutate(obj.id);
-                    }}
-                  >
-                    Eliminar
-                  </button>
+                  {canCreate && (
+                    <button
+                      className="btn-ghost"
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--danger)' }}
+                      onClick={() => {
+                        if (confirm('Eliminar este objetivo?')) deleteObjective.mutate(obj.id);
+                      }}
+                    >
+                      Eliminar
+                    </button>
+                  )}
                 </div>
 
                 {/* Inline progress update */}
