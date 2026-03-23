@@ -119,7 +119,8 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 
   function getBoxUsers(box: number): any[] {
     if (!nineBoxData || !nineBoxData.boxes) return [];
-    const b = nineBoxData.boxes.find((bx: any) => bx.box === box);
+    // boxes is an object keyed by position number, not an array
+    const b = nineBoxData.boxes[box];
     return b?.users || [];
   }
 
@@ -369,8 +370,8 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
   const POOLS_ORDER = ['star', 'high_performer', 'core_player', 'high_potential', 'enigma', 'risk', 'inconsistent', 'underperformer', 'dysfunctional'];
 
   const poolCounts: Record<string, number> = {};
-  if (segData && segData.pools) {
-    for (const p of segData.pools) poolCounts[p.pool] = p.count;
+  if (segData && segData.byPool) {
+    Object.assign(poolCounts, segData.byPool);
   } else if (assessments.length) {
     for (const a of assessments) {
       poolCounts[a.talentPool] = (poolCounts[a.talentPool] || 0) + 1;
