@@ -813,9 +813,11 @@ export default function DashboardPage() {
     return <SuperAdminDashboard />;
   }
 
-  if (user?.role === 'employee') {
-    return <EmployeeDashboard />;
+  // Solo el Encargado del Sistema ve el dashboard administrativo completo
+  if (user?.role === 'tenant_admin') {
+    return <RegularDashboard />;
   }
 
-  return <RegularDashboard />;
+  // Manager, Employee, External ven dashboard personal
+  return <EmployeeDashboard />;
 }

@@ -338,9 +338,11 @@ function AdminEvaluationsView() {
 export default function EvaluacionesPage() {
   const userRole = useAuthStore((s) => s.user?.role);
 
-  if (userRole === 'employee') {
-    return <EmployeeEvaluationsView />;
+  // Solo el Encargado del Sistema ve la vista administrativa de ciclos
+  if (userRole === 'tenant_admin') {
+    return <AdminEvaluationsView />;
   }
 
-  return <AdminEvaluationsView />;
+  // Encargado de Equipo, Colaborador y Asesor Externo ven sus evaluaciones personales
+  return <EmployeeEvaluationsView />;
 }
