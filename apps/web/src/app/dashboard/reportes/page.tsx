@@ -5,6 +5,7 @@ import { useCycles } from '@/hooks/useCycles';
 import { useCycleSummary } from '@/hooks/useReports';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import { getScoreLabel, getScoreColor } from '@/lib/scales';
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -129,8 +130,8 @@ export default function ReportesPage() {
                 {[
                   {
                     label: 'Promedio global',
-                    value: summary.averageScore ? `${Number(summary.averageScore).toFixed(1)} / 10` : '–',
-                    color: '#f59e0b',
+                    value: summary.averageScore ? `${Number(summary.averageScore).toFixed(1)} — ${getScoreLabel(Number(summary.averageScore))}` : '–',
+                    color: summary.averageScore ? getScoreColor(Number(summary.averageScore)) : '#f59e0b',
                   },
                   {
                     label: 'Evaluados',

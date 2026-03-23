@@ -9,6 +9,7 @@ import { useCycles } from '@/hooks/useCycles';
 import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
 import { useFeedbackSummary } from '@/hooks/useFeedback';
 import { api } from '@/lib/api';
+import { ScoreBadge } from '@/components/ScoreBadge';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 function Spinner() {
@@ -687,8 +688,11 @@ function EmployeeDashboard() {
         </div>
         <div className="card" style={{ padding: '1.25rem' }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Ultimo puntaje</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>
-            {perfData.length > 0 ? Number(perfData[perfData.length - 1].avgOverall || 0).toFixed(1) : '--'}
+          <div style={{ marginTop: '0.25rem' }}>
+            {perfData.length > 0
+              ? <ScoreBadge score={perfData[perfData.length - 1].avgOverall} size="lg" />
+              : <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-muted)' }}>--</span>
+            }
           </div>
         </div>
       </div>

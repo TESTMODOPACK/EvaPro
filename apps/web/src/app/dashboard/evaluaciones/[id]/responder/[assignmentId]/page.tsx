@@ -7,6 +7,7 @@ import {
   useSaveResponse,
   useSubmitResponse,
 } from '@/hooks/useEvaluations';
+import { ScaleLegend } from '@/components/ScoreBadge';
 
 const relationLabels: Record<string, string> = {
   self: 'Autoevaluación',
@@ -260,6 +261,11 @@ export default function ResponderEvaluacionPage() {
               : '0%'}
           </span>
         </div>
+      </div>
+
+      {/* Scale legend */}
+      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
+        <ScaleLegend />
       </div>
 
       {/* Sections + Questions */}

@@ -3,6 +3,7 @@
 import { useCycles } from '@/hooks/useCycles';
 import { usePendingEvaluations, useMyCompletedEvaluations } from '@/hooks/useEvaluations';
 import { useAuthStore } from '@/store/auth.store';
+import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
 import Link from 'next/link';
 
 const typeLabels: Record<string, string> = {
@@ -93,6 +94,11 @@ function EmployeeEvaluationsView() {
         </div>
       </div>
 
+      {/* Scale legend */}
+      <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.5rem' }}>
+        <ScaleLegend />
+      </div>
+
       {/* Pending evaluations */}
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -177,9 +183,7 @@ function EmployeeEvaluationsView() {
                     <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{relationLabels[ev.relationType] || ev.relationType}</td>
                     <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{ev.cycle?.name || '--'}</td>
                     <td>
-                      <span style={{ fontWeight: 700, color: '#6366f1', fontSize: '0.9rem' }}>
-                        {ev.response?.overallScore != null ? Number(ev.response.overallScore).toFixed(1) : '--'}
-                      </span>
+                      <ScoreBadge score={ev.response?.overallScore} size="sm" />
                     </td>
                     <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                       {ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-ES') : '--'}
