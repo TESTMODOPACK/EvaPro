@@ -252,7 +252,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                     </thead>
                     <tbody>
                       {selectedUsers.map((a: any) => {
-                        const u = a.user || {};
+                        const u = a.user || a;
                         const isEditing = editingId === a.id;
                         return (
                           <tr key={a.id} style={{ cursor: 'pointer' }}>
@@ -438,7 +438,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
                 </thead>
                 <tbody>
                   {assessments.map((a: any) => {
-                    const u = a.user || {};
+                    const u = a.user || a;
                     return (
                       <tr key={a.id}>
                         <td style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
