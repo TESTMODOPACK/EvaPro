@@ -40,9 +40,11 @@ const NINE_BOX_LABELS: Record<number, string> = {
   9: 'Estrella',
 };
 
+// Score scale is 0-10 (from evaluation responses)
+// Low: 0-3.9, Medium: 4.0-7.0, High: 7.1-10
 function getLevel(score: number): 'low' | 'medium' | 'high' {
-  if (score < 40) return 'low';
-  if (score <= 70) return 'medium';
+  if (score < 4) return 'low';
+  if (score <= 7) return 'medium';
   return 'high';
 }
 

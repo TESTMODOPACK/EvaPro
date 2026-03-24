@@ -240,8 +240,8 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                     <thead>
                       <tr>
                         <th>Nombre</th><th>Departamento</th><th>Cargo</th>
-                        <th>{`Desempe\u00f1o`}</th><th>Potencial</th><th>Clasificaci\u00f3n</th>
-                        <th>Preparaci\u00f3n</th><th>Riesgo de Fuga</th>
+                        <th>{`Desempe\u00f1o`}</th><th>Potencial</th><th>{`Clasificaci\u00f3n`}</th>
+                        <th>{`Preparaci\u00f3n`}</th><th>Riesgo de Fuga</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -265,9 +265,9 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                               <td colSpan={8}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr auto', gap: '.75rem', alignItems: 'end', padding: '.5rem 0' }}>
                                   <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>
-                                    Potencial (0-100)
+                                    Potencial (0-10)
                                     <input
-                                      type="number" min={0} max={100}
+                                      type="number" min={0} max={10} step={0.5}
                                       value={editForm.potentialScore}
                                       onChange={(e) => setEditForm({ ...editForm, potentialScore: +e.target.value })}
                                       style={{ width: '100%', padding: '.4rem .5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', marginTop: '.25rem' }}
