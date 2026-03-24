@@ -26,6 +26,7 @@ export default function CalibracionPage() {
   const [cycles, setCycles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: '', cycleId: '', department: '', notes: '' });
 
@@ -76,6 +77,98 @@ export default function CalibracionPage() {
           {showForm ? 'Cancelar' : `Nueva sesi\u00f3n`}
         </button>
       </div>
+
+      {/* Guide toggle */}
+      <div style={{ marginBottom: '1rem' }}>
+        <button
+          className="btn-ghost"
+          onClick={() => setShowGuide(!showGuide)}
+          style={{ fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '.4rem' }}
+        >
+          {showGuide ? '\u25B2' : '\u25BC'}{' '}
+          {showGuide ? `Ocultar gu\u00eda de uso` : `Ver gu\u00eda de uso`}
+        </button>
+      </div>
+
+      {/* Collapsible guide */}
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
+          <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+            {`Gu\u00eda de uso: Calibraci\u00f3n de Evaluaciones`}
+          </h2>
+
+          {/* 1. Qué es */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 .25rem', fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)' }}>
+              {`\u00bfQu\u00e9 es la calibraci\u00f3n?`}
+            </p>
+            <p style={{ margin: 0, fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+              {`Es un proceso donde el comit\u00e9 de liderazgo revisa y ajusta los puntajes de las evaluaciones para garantizar equidad y consistencia entre equipos. Se utiliza principalmente en evaluaciones 360\u00b0.`}
+            </p>
+          </div>
+
+          {/* 2. Cuándo se usa */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 .25rem', fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)' }}>
+              {`\u00bfCu\u00e1ndo se usa?`}
+            </p>
+            <p style={{ margin: 0, fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+              {`Despu\u00e9s de que todas las evaluaciones del ciclo est\u00e1n completadas, antes de entregar los resultados. Es una etapa del ciclo de evaluaci\u00f3n que se activa autom\u00e1ticamente en evaluaciones 360\u00b0.`}
+            </p>
+          </div>
+
+          {/* 3. Flujo */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 .25rem', fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)' }}>
+              {`Flujo de calibraci\u00f3n:`}
+            </p>
+            <ol style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <li>{`Se crea una sesi\u00f3n de calibraci\u00f3n vinculada a un ciclo cerrado o en etapa de calibraci\u00f3n`}</li>
+              <li>{`Se agregan los colaboradores a calibrar`}</li>
+              <li>{`El comit\u00e9 revisa puntajes y puede hacer ajustes justificados`}</li>
+              <li>{`Si el ajuste es mayor a 1 punto, se requiere justificaci\u00f3n obligatoria`}</li>
+              <li>{`Se cierra la sesi\u00f3n y los puntajes calibrados quedan como definitivos`}</li>
+            </ol>
+          </div>
+
+          {/* 4. Reglas de negocio */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 .25rem', fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)' }}>
+              {`Reglas de negocio:`}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <li>{`Solo administradores pueden crear y gestionar sesiones de calibraci\u00f3n`}</li>
+              <li>{`Ajustes mayores a 1 punto requieren justificaci\u00f3n escrita`}</li>
+              <li>{`Los puntajes originales se preservan para auditor\u00eda`}</li>
+              <li>{`Recomendado para organizaciones con m\u00e1s de 10 personas evaluadas`}</li>
+            </ul>
+          </div>
+
+          {/* 5. Conexión con otras funciones */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 .25rem', fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)' }}>
+              {`Conexi\u00f3n con otras funciones:`}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <li><strong>{`Ciclos de Evaluaci\u00f3n`}</strong>{`: la calibraci\u00f3n es una etapa del ciclo 360\u00b0`}</li>
+              <li><strong>{`Reportes`}</strong>{`: los puntajes calibrados se reflejan en analytics y reportes`}</li>
+              <li><strong>{`Talento (Nine Box)`}</strong>{`: el resultado calibrado alimenta la matriz de talento`}</li>
+            </ul>
+          </div>
+
+          {/* 6. Permisos */}
+          <div>
+            <p style={{ margin: '0 0 .25rem', fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)' }}>
+              {`Permisos:`}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <li><strong>{`Administrador`}</strong>{`: Crea sesiones, ajusta puntajes, cierra calibraci\u00f3n`}</li>
+              <li><strong>{`Encargado de Equipo`}</strong>{`: Puede participar como observador`}</li>
+              <li><strong>{`Colaborador`}</strong>{`: No tiene acceso a esta funci\u00f3n`}</li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Info card */}
       <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>

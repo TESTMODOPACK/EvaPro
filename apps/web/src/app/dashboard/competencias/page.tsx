@@ -38,6 +38,7 @@ export default function CompetenciasPage() {
   const { token, user } = useAuthStore();
   const isAdmin = user?.role === 'tenant_admin';
 
+  const [showGuide, setShowGuide] = useState(false);
   const [loading, setLoading] = useState(true);
   const [competencies, setCompetencies] = useState<any[]>([]);
   const [error, setError] = useState('');
@@ -149,12 +150,57 @@ export default function CompetenciasPage() {
         </div>
       )}
 
-      {/* Info card */}
-      <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)' }}>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          Define las competencias que se utilizan en los planes de desarrollo. Estas competencias se vinculan a las acciones del PDI.
-        </p>
-      </div>
+      {/* Guide toggle */}
+      <button
+        onClick={() => setShowGuide(!showGuide)}
+        style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0, textAlign: 'left' }}
+      >
+        {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfC\u00f3mo funciona el cat\u00e1logo de competencias?'}
+      </button>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+            {'Gu\u00eda de uso: Cat\u00e1logo de Competencias'}
+          </h3>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
+            {'El cat\u00e1logo de competencias define las habilidades y conocimientos clave que la organizaci\u00f3n necesita desarrollar en sus colaboradores. Cada competencia se clasifica por categor\u00eda y se vincula directamente con las acciones de los Planes de Desarrollo Individual (PDI).'}
+          </p>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Categor\u00edas disponibles'}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <span className="badge badge-accent">{'T\u00e9cnica'}</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{'Habilidades espec\u00edficas del rol (programaci\u00f3n, an\u00e1lisis de datos, dise\u00f1o)'}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.4rem' }}>
+              <span className="badge badge-success">Blanda</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{'Habilidades interpersonales (comunicaci\u00f3n, trabajo en equipo, empat\u00eda)'}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.4rem' }}>
+              <span className="badge badge-warning">{'Gesti\u00f3n'}</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{'Capacidades de administraci\u00f3n (planificaci\u00f3n, organizaci\u00f3n, toma de decisiones)'}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.4rem' }}>
+              <span className="badge badge-danger">Liderazgo</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{'Competencias de direcci\u00f3n (visi\u00f3n estrat\u00e9gica, motivaci\u00f3n, delegaci\u00f3n)'}</span>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Conexi\u00f3n con otras funciones'}</div>
+            <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <li><strong>Planes de Desarrollo (PDI):</strong>{' Las acciones del PDI se vinculan a competencias espec\u00edficas del cat\u00e1logo'}</li>
+              <li><strong>{'Evaluaci\u00f3n de Talento:'}</strong>{' Las brechas de competencia identificadas en el Nine Box sugieren acciones de desarrollo'}</li>
+              <li><strong>Objetivos:</strong>{' Los objetivos de tipo OKR pueden alinearse con el desarrollo de competencias clave'}</li>
+            </ul>
+          </div>
+
+          <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' Solo el Administrador puede crear, editar y eliminar competencias. Los Encargados de Equipo y Colaboradores pueden ver el cat\u00e1logo al crear acciones en sus PDI.'}
+          </div>
+        </div>
+      )}
 
       {/* Create form */}
       {showCreate && (

@@ -477,6 +477,7 @@ export default function TalentoPage() {
   const [cycles, setCycles] = useState<any[]>([]);
   const [loadingCycles, setLoadingCycles] = useState(true);
   const [selectedCycleId, setSelectedCycleId] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -497,6 +498,87 @@ export default function TalentoPage() {
           {`Matriz Nine Box, segmentaci\u00f3n por clasificaci\u00f3n y gesti\u00f3n del talento organizacional`}
         </p>
       </div>
+
+      {/* Guide toggle button */}
+      <div style={{ marginBottom: '1rem' }}>
+        <button
+          className="btn-ghost"
+          onClick={() => setShowGuide(!showGuide)}
+          style={{ fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '.5rem' }}
+        >
+          <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: showGuide ? 'rotate(90deg)' : 'rotate(0deg)' }}>{'\u25B6'}</span>
+          {showGuide ? 'Ocultar gu\u00eda de uso' : 'Ver gu\u00eda de uso'}
+        </button>
+      </div>
+
+      {/* Collapsible guide card */}
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '1.25rem' }}>
+            {`Gu\u00eda de uso: Gesti\u00f3n de Talento (Nine Box)`}
+          </h3>
+
+          {/* Section 1 */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <p style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--accent)', marginBottom: '.35rem' }}>
+              {`\u00bfQu\u00e9 es el Nine Box?`}
+            </p>
+            <p style={{ fontSize: '.84rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
+              {`Es una herramienta visual que clasifica a los colaboradores en una matriz de 3x3 combinando dos ejes: Desempe\u00f1o (basado en evaluaciones) y Potencial (evaluaci\u00f3n del encargado). Permite identificar talento clave, colaboradores de alto potencial y \u00e1reas que requieren intervenci\u00f3n.`}
+            </p>
+          </div>
+
+          {/* Section 2 */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <p style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--accent)', marginBottom: '.35rem' }}>
+              {`\u00bfC\u00f3mo se calculan los ejes?`}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <li><strong>{`Desempe\u00f1o:`}</strong>{` Puntaje promedio de las evaluaciones completadas (escala 0-10)`}</li>
+              <li><strong>{'Potencial:'}</strong>{` Evaluaci\u00f3n manual del encargado/administrador`}</li>
+              <li><strong>{`Clasificaci\u00f3n autom\u00e1tica seg\u00fan umbrales:`}</strong>{` Bajo (<4), Medio (4-7), Alto (>7)`}</li>
+            </ul>
+          </div>
+
+          {/* Section 3 */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <p style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--accent)', marginBottom: '.35rem' }}>
+              {'Los 9 cuadrantes:'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <li><strong>{'Cuadrante 1 (Alto-Alto):'}</strong>{` Estrella / Top Talent \u2192 promover y retener`}</li>
+              <li><strong>{'Cuadrante 2 (Alto-Bajo):'}</strong>{` Alto potencial, bajo rendimiento \u2192 desarrollar`}</li>
+              <li><strong>{'Cuadrante 3 (Bajo-Alto):'}</strong>{` Buen rendimiento, bajo potencial \u2192 reconocer`}</li>
+              <li><strong>{'Cuadrante 4-9:'}</strong>{` Combinaciones intermedias con acciones sugeridas`}</li>
+            </ul>
+          </div>
+
+          {/* Section 4 */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <p style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--accent)', marginBottom: '.35rem' }}>
+              {`Conexi\u00f3n con otras funciones:`}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <li><strong>{'Evaluaciones:'}</strong>{` El puntaje de desempe\u00f1o viene de las evaluaciones completadas`}</li>
+              <li><strong>{'Planes de Desarrollo (PDI):'}</strong>{` Los colaboradores en cuadrantes de mejora se vinculan con acciones de desarrollo`}</li>
+              <li><strong>{`Calibraci\u00f3n:`}</strong>{` Los puntajes pueden ser calibrados antes de alimentar el Nine Box`}</li>
+              <li><strong>{'Competencias:'}</strong>{` Las brechas identificadas se conectan con el cat\u00e1logo de competencias`}</li>
+            </ul>
+          </div>
+
+          {/* Section 5 */}
+          <div>
+            <p style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--accent)', marginBottom: '.35rem' }}>
+              {'Permisos:'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <li><strong>{'Administrador:'}</strong>{` Ve toda la organizaci\u00f3n, crea evaluaciones de potencial`}</li>
+              <li><strong>{'Encargado de Equipo:'}</strong>{` Ve su equipo, eval\u00faa potencial de sus reportes directos`}</li>
+              <li><strong>{'Colaborador:'}</strong>{` No tiene acceso a esta funci\u00f3n`}</li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Info card */}
       <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>

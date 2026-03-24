@@ -47,6 +47,7 @@ export default function AnalyticsPage() {
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const { data: analytics, isLoading: loadingAnalytics } = useAnalytics(selectedCycleId);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Prefer closed cycles, sort them first
   const sortedCycles = cycles
@@ -85,6 +86,49 @@ export default function AnalyticsPage() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           {'Distribuci\u00f3n de puntajes, comparaci\u00f3n por departamento y referencias de equipo'}
         </p>
+      </div>
+
+      {/* Guide toggle */}
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button
+          onClick={() => setShowGuide(!showGuide)}
+          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}
+        >
+          {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfQu\u00e9 muestra esta p\u00e1gina?'}
+        </button>
+
+        {showGuide && (
+          <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+              {'Gu\u00eda de uso: An\u00e1lisis Avanzado'}
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
+              {'Esta p\u00e1gina presenta visualizaciones estad\u00edsticas de los resultados de evaluaci\u00f3n por ciclo. Selecciona un ciclo para ver las m\u00e9tricas. Los datos se alimentan de las evaluaciones completadas.'}
+            </p>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Gr\u00e1ficos disponibles'}</div>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                <li><strong>{'Distribuci\u00f3n de Puntajes:'}</strong>{' Histograma con rangos de 0.5 puntos (escala 0-10). Muestra cu\u00e1ntas evaluaciones caen en cada rango. Rojo = bajo (<4), Amarillo = medio (4-7), Verde = alto (>7).'}</li>
+                <li><strong>{'Comparaci\u00f3n por Departamento:'}</strong>{' Puntaje promedio de cada departamento. Permite identificar \u00e1reas de la organizaci\u00f3n con mejor o menor desempe\u00f1o.'}</li>
+                <li><strong>{'Rendimiento por Equipo:'}</strong>{' Ranking de encargados de equipo ordenado por puntaje promedio de sus colaboradores. Incluye tama\u00f1o del equipo.'}</li>
+              </ul>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Conexi\u00f3n con otras funciones'}</div>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                <li><strong>{'Ciclos de Evaluaci\u00f3n:'}</strong>{' Los datos provienen de las evaluaciones completadas en cada ciclo'}</li>
+                <li><strong>{'Calibraci\u00f3n:'}</strong>{' Si hubo calibraci\u00f3n, los puntajes ajustados se reflejan aqu\u00ed'}</li>
+                <li><strong>Talento (Nine Box):</strong>{' Los puntajes de desempe\u00f1o vistos aqu\u00ed alimentan el eje de desempe\u00f1o del Nine Box'}</li>
+              </ul>
+            </div>
+
+            <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' Solo Administradores y Encargados de Equipo pueden acceder a esta p\u00e1gina. Los Colaboradores ven sus resultados individuales en "Mi Desempe\u00f1o".'}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Cycle selector */}

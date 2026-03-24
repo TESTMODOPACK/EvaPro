@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useCycles } from '@/hooks/useCycles';
 import { usePendingEvaluations, useMyCompletedEvaluations } from '@/hooks/useEvaluations';
 import { useAuthStore } from '@/store/auth.store';
@@ -177,6 +178,7 @@ function AdminEvaluationsView() {
   const { data: cycles, isLoading } = useCycles();
   const userRole = useAuthStore((s) => s.user?.role);
   const isAdmin = userRole === 'tenant_admin';
+  const [showGuide, setShowGuide] = useState(false);
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -188,17 +190,119 @@ function AdminEvaluationsView() {
             {isAdmin ? 'Gestiona los ciclos de evaluacion de desempeno' : 'Ciclos de evaluacion'}
           </p>
         </div>
-        {isAdmin && (
-          <Link href="/dashboard/evaluaciones/nuevo" style={{ textDecoration: 'none' }}>
-            <button className="btn-primary">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Nuevo ciclo
-            </button>
-          </Link>
-        )}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+            {showGuide ? 'Ocultar gu\u00eda' : 'C\u00f3mo funciona'}
+          </button>
+          {isAdmin && (
+            <Link href="/dashboard/evaluaciones/nuevo" style={{ textDecoration: 'none' }}>
+              <button className="btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Nuevo ciclo
+              </button>
+            </Link>
+          )}
+        </div>
       </div>
+
+      {/* Guide / Explainer */}
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+            {'Gu\u00eda de uso: Ciclos de Evaluaci\u00f3n'}
+          </h3>
+
+          {/* Section 1 */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              {'\u00bfQu\u00e9 es un ciclo de evaluaci\u00f3n?'}
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+              {'Un ciclo agrupa las evaluaciones de desempe\u00f1o de un per\u00edodo. Se configura el tipo (90\u00b0, 180\u00b0, 270\u00b0, 360\u00b0), se asignan evaluadores y se procesan los resultados.'}
+            </p>
+          </div>
+
+          {/* Section 2 - Types */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              {'Tipos de evaluaci\u00f3n'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>{'90\u00b0:'}</strong>{' Solo el encargado eval\u00faa al colaborador'}
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>{'180\u00b0:'}</strong>{' Autoevaluaci\u00f3n + evaluaci\u00f3n del encargado'}
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>{'270\u00b0:'}</strong>{' 180\u00b0 + evaluaci\u00f3n de pares'}
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>{'360\u00b0:'}</strong>{' 270\u00b0 + calibraci\u00f3n + entrega de feedback'}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3 - Stages */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {'Etapas del ciclo'}
+              <span className="badge badge-accent" style={{ fontSize: '0.6rem' }}>B3.14 - NUEVO</span>
+            </div>
+            <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
+              <li>{'Al crear un ciclo se generan etapas autom\u00e1ticas seg\u00fan el tipo'}</li>
+              <li>{'Cada etapa debe completarse antes de avanzar a la siguiente'}</li>
+              <li style={{ marginTop: '0.25rem' }}>
+                {'Etapas: '}
+                <strong>{'Autoevaluaci\u00f3n \u2192 Evaluaci\u00f3n Encargado \u2192 Evaluaci\u00f3n Pares \u2192 Calibraci\u00f3n \u2192 Entrega Feedback \u2192 Cierre'}</strong>
+              </li>
+            </ul>
+          </div>
+
+          {/* Section 4 - Flow */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Flujo</div>
+            <ol style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
+              <li>{'Crear ciclo (borrador)'}</li>
+              <li>{'Asignar evaluadores'}</li>
+              <li>{'Lanzar ciclo (se notifica a evaluadores)'}</li>
+              <li>{'Evaluadores completan formularios por etapa'}</li>
+              <li>{'Calibraci\u00f3n (360\u00b0)'}</li>
+              <li>{'Cierre y visualizaci\u00f3n de resultados'}</li>
+            </ol>
+          </div>
+
+          {/* Section 5 - Anonymity */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {'Anonimato configurable'}
+              <span className="badge badge-accent" style={{ fontSize: '0.6rem' }}>B2.13 - NUEVO</span>
+            </div>
+            <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
+              <li>{'En la configuraci\u00f3n del ciclo se puede definir qu\u00e9 tipos de evaluador son an\u00f3nimos'}</li>
+              <li>{'Por defecto: pares y externos son an\u00f3nimos, encargado y autoevaluaci\u00f3n son visibles'}</li>
+            </ul>
+          </div>
+
+          {/* Section 6 - Permissions */}
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Permisos</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Administrador:</strong>{' Crea ciclos, asigna evaluadores, avanza etapas, cierra'}
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>{'Encargado de Equipo:'}</strong>{' Ve asignaciones de su equipo, completa evaluaciones'}
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>{'Colaborador:'}</strong>{' Completa su autoevaluaci\u00f3n, ve resultados al cierre'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <Spinner />

@@ -429,6 +429,7 @@ function QuickFeedbackTab() {
 
 export default function FeedbackPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('checkins');
+  const [showGuide, setShowGuide] = useState(false);
 
   const tabBtn = (tab: ActiveTab, label: string) => (
     <button
@@ -450,6 +451,88 @@ export default function FeedbackPage() {
           {'Check-ins 1:1 y retroalimentaci\u00f3n r\u00e1pida entre colaboradores'}
         </p>
       </div>
+
+      {/* Guide toggle */}
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button
+          className="btn-ghost"
+          onClick={() => setShowGuide(!showGuide)}
+          style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <span style={{ transition: 'transform 0.2s', transform: showGuide ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>{'\u25B6'}</span>
+          {'\uD83D\uDCD6 Gu\u00eda de uso: Feedback y Reuniones 1:1'}
+        </button>
+      </div>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem', padding: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>
+            {'Gu\u00eda de uso: Feedback y Reuniones 1:1'}
+          </h3>
+
+          {/* Section 1 */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+              {'\u00bfQu\u00e9 incluye esta funci\u00f3n?'}
+            </p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              {'Dos herramientas complementarias: Check-ins (reuniones 1:1 entre encargado y colaborador) y Quick Feedback (retroalimentaci\u00f3n r\u00e1pida entre cualquier miembro del equipo).'}
+            </p>
+          </div>
+
+          {/* Section 2 */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+              {'Check-ins (Reuniones 1:1):'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <li>{'Son reuniones de seguimiento peri\u00f3dicas entre encargado y colaborador'}</li>
+              <li>{'El encargado solo puede crear check-ins con sus reportes directos (se valida la relaci\u00f3n managerId)'}</li>
+              <li>{'El administrador puede crear check-ins con cualquier colaborador'}</li>
+              <li>{'Se registra: fecha, tema, notas y acciones de seguimiento'}</li>
+              <li>{'El sistema env\u00eda recordatorio autom\u00e1tico si no hay check-in en 14 d\u00edas'}</li>
+            </ul>
+          </div>
+
+          {/* Section 3 */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+              {'Quick Feedback (Retroalimentaci\u00f3n r\u00e1pida) - Feedback 360\u00b0:'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <li>{'Cualquier usuario puede enviar feedback a cualquier otro usuario'}</li>
+              <li>{'Tipos de sentimiento: Positivo, Neutral, Constructivo'}</li>
+              <li>{'Opci\u00f3n de env\u00edo an\u00f3nimo'}</li>
+              <li>{'Visibilidad configurable (NUEVO B2.12): P\u00fablico (todos ven), Privado (solo emisor/receptor), Solo encargado (receptor y su encargado)'}</li>
+              <li>{'Categor\u00edas personalizables'}</li>
+            </ul>
+          </div>
+
+          {/* Section 4 */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+              {'Conexi\u00f3n con otras funciones:'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <li>{'Evaluaciones: el feedback recibido complementa las evaluaciones formales'}</li>
+              <li>{'Planes de Desarrollo: el feedback constructivo puede motivar acciones de mejora'}</li>
+              <li>{'Notificaciones: se recibe notificaci\u00f3n autom\u00e1tica al recibir feedback'}</li>
+            </ul>
+          </div>
+
+          {/* Section 5 */}
+          <div>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+              {'Permisos:'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <li>{'Administrador: Crea check-ins con cualquiera, ve todo el feedback'}</li>
+              <li>{'Encargado de Equipo: Crea check-ins con sus reportes directos, env\u00eda/recibe feedback'}</li>
+              <li>{'Colaborador: Ve sus check-ins, env\u00eda/recibe feedback'}</li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Info card */}
       <div className="card animate-fade-up" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>

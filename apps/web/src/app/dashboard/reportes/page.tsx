@@ -31,6 +31,7 @@ export default function ReportesPage() {
     ? Math.max(...summary.departmentBreakdown.map((d: any) => Number(d.avgScore) || 0))
     : 10;
 
+  const [showGuide, setShowGuide] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
 
   const handleExport = async (format: 'csv' | 'pdf') => {
@@ -71,8 +72,51 @@ export default function ReportesPage() {
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Reportes</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Analisis de desempeno por ciclo
+          {'An\u00e1lisis de desempe\u00f1o por ciclo'}
         </p>
+      </div>
+
+      {/* Guide toggle */}
+      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
+        <button
+          onClick={() => setShowGuide(!showGuide)}
+          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}
+        >
+          {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfQu\u00e9 incluyen los reportes?'}
+        </button>
+
+        {showGuide && (
+          <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+              {'Gu\u00eda de uso: Reportes'}
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
+              {'Los reportes consolidan los resultados de un ciclo de evaluaci\u00f3n. Selecciona un ciclo para ver el resumen ejecutivo con m\u00e9tricas clave, desglose por departamento y la posibilidad de exportar los datos.'}
+            </p>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Contenido del reporte'}</div>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                <li><strong>Resumen ejecutivo:</strong>{' Total de evaluaciones, puntaje promedio general, tasa de completitud'}</li>
+                <li><strong>Desglose por departamento:</strong>{' Puntaje promedio, cantidad de evaluaciones y barra comparativa por cada \u00e1rea'}</li>
+                <li><strong>{'Exportaci\u00f3n:'}</strong>{' Descarga en formato CSV (para Excel) o PDF (para presentaciones)'}</li>
+              </ul>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Conexi\u00f3n con otras funciones'}</div>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                <li><strong>{'An\u00e1lisis Avanzado:'}</strong>{' Para gr\u00e1ficos m\u00e1s detallados (distribuci\u00f3n, benchmarks) usa la p\u00e1gina de An\u00e1lisis'}</li>
+                <li><strong>{'Calibraci\u00f3n:'}</strong>{' Los puntajes calibrados se reflejan autom\u00e1ticamente en los reportes'}</li>
+                <li><strong>{'Desempe\u00f1o individual:'}</strong>{' Haz clic en un colaborador para ver su historial detallado'}</li>
+              </ul>
+            </div>
+
+            <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' Solo Administradores y Encargados de Equipo pueden acceder a los reportes. Los Encargados ven solo los datos de su equipo.'}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Cycle selector */}
