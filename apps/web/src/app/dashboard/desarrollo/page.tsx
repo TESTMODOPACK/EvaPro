@@ -346,7 +346,7 @@ export default function DesarrolloPage() {
       {/* Info card */}
       <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)' }}>
         <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          Los Planes de Desarrollo Individual (PDI) permiten definir acciones concretas para el crecimiento profesional de cada colaborador, vinculadas a competencias y evaluaciones de desempe\u00f1o.
+          Los Planes de Desarrollo Individual (PDI) permiten definir acciones concretas para el crecimiento profesional de cada colaborador, vinculadas a competencias y evaluaciones de desempe{'\u00f1'}o.
         </p>
       </div>
 

@@ -23,7 +23,7 @@ export class DevelopmentController {
   // ─── Competencies ──────────────────────────────────────────────────────
 
   @Get('competencies')
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   findAllCompetencies(@Request() req: any) {
     return this.developmentService.findAllCompetencies(req.user.tenantId);
   }
