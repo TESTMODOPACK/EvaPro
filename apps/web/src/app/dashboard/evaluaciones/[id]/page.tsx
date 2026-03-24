@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   useCycleById,
@@ -11,6 +11,7 @@ import {
 import { usePeerAssignments, useAddPeerAssignment, useRemovePeerAssignment } from '@/hooks/usePeerAssignments';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 import Link from 'next/link';
 import {
   relationTypeLabel as relationLabels,
@@ -37,11 +38,44 @@ export default function CycleDetailPage() {
   const removePeer = useRemovePeerAssignment();
   const { data: usersData } = useUsers();
 
+  const token = useAuthStore((s) => s.token);
   const [launching, setLaunching] = useState(false);
   const [closing, setClosing] = useState(false);
   const [peerEvaluateeId, setPeerEvaluateeId] = useState('');
   const [peerEvaluatorId, setPeerEvaluatorId] = useState('');
-  const [peerRelationType, setPeerRelationType] = useState('self');
+  const [peerRelationType, setPeerRelationType] = useState('');
+  const [allowedRelations, setAllowedRelations] = useState<{ value: string; label: string }[]>([]);
+  const [autoGenerating, setAutoGenerating] = useState(false);
+  const [autoGenResult, setAutoGenResult] = useState<{ created: number } | null>(null);
+
+  // Fetch allowed relations when cycle loads
+  useEffect(() => {
+    if (!cycle || !token || cycle.status !== 'draft') return;
+    api.peerAssignments.allowedRelations(token, id).then((rels) => {
+      setAllowedRelations(rels);
+      if (rels.length > 0 && !peerRelationType) setPeerRelationType(rels[0].value);
+    }).catch(() => {});
+  }, [cycle?.id, cycle?.status, cycle?.type, token]);
+
+  const handleAutoGenerate = async () => {
+    if (!token) return;
+    const confirmed = window.confirm(
+      '\u00bfGenerar asignaciones autom\u00e1ticamente seg\u00fan el tipo de ciclo y estructura organizacional?\n\nSe crear\u00e1n autoevaluaciones, evaluaciones de jefe directo y reportes directos seg\u00fan corresponda. Las asignaciones de pares deben agregarse manualmente.',
+    );
+    if (!confirmed) return;
+    setAutoGenerating(true);
+    setAutoGenResult(null);
+    try {
+      const result = await api.peerAssignments.autoGenerate(token, id);
+      setAutoGenResult(result);
+      // Refetch peer assignments
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || 'Error al generar asignaciones');
+    } finally {
+      setAutoGenerating(false);
+    }
+  };
 
   const handleLaunch = async () => {
     const confirmed = window.confirm(
@@ -288,10 +322,25 @@ export default function CycleDetailPage() {
               borderBottom: '1px solid var(--border)',
             }}
           >
-            <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Asignaci&oacute;n de Evaluadores</h2>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-              Configura qui&eacute;n eval&uacute;a a qui&eacute;n antes de lanzar el ciclo
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>{'Asignaci\u00f3n de Evaluadores'}</h2>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                  {'Configura qui\u00e9n eval\u00faa a qui\u00e9n antes de lanzar el ciclo'}
+                </p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--accent)', marginTop: '0.25rem', fontWeight: 600 }}>
+                  {'Tipo: '}{cycle.type === '90' ? '90\u00b0 (solo jefe)' : cycle.type === '180' ? '180\u00b0 (jefe + auto)' : cycle.type === '270' ? '270\u00b0 (jefe + auto + pares)' : '360\u00b0 (todos)'}{' \u2014 Relaciones permitidas: '}{allowedRelations.map((r) => r.label).join(', ') || 'Cargando...'}
+                </p>
+              </div>
+              <button
+                className="btn-primary"
+                onClick={handleAutoGenerate}
+                disabled={autoGenerating}
+                style={{ fontSize: '0.82rem', padding: '0.45rem 1rem', whiteSpace: 'nowrap' }}
+              >
+                {autoGenerating ? 'Generando...' : '\u26a1 Generar Asignaciones'}
+              </button>
+            </div>
           </div>
 
           {peerList.length > 0 && (
@@ -348,7 +397,7 @@ export default function CycleDetailPage() {
 
           {peerList.length === 0 && (
             <div style={{ padding: '1.25rem 1.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              No hay evaluadores asignados a&uacute;n. Agrega las asignaciones antes de lanzar el ciclo.
+              {'No hay evaluadores asignados a\u00fan. Usa "Generar Asignaciones" o agrega manualmente antes de lanzar el ciclo.'}
             </div>
           )}
 
@@ -365,7 +414,7 @@ export default function CycleDetailPage() {
           >
             <div style={{ minWidth: '140px' }}>
               <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                Relaci&oacute;n
+                {'Relaci\u00f3n'}
               </label>
               <select
                 value={peerRelationType}
@@ -376,10 +425,9 @@ export default function CycleDetailPage() {
                   background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem',
                 }}
               >
-                <option value="self">Autoevaluaci&oacute;n</option>
-                <option value="manager">Jefatura</option>
-                <option value="peer">Par</option>
-                <option value="direct_report">Reporte directo</option>
+                {allowedRelations.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
               </select>
             </div>
             <div style={{ flex: 1, minWidth: '160px' }}>
@@ -401,7 +449,7 @@ export default function CycleDetailPage() {
                 <option value="">Seleccionar evaluado</option>
                 {usersList.map((u: any) => (
                   <option key={u.id} value={u.id}>
-                    {u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email}
+                    {u.firstName ? `${u.firstName} ${u.lastName || ''}${u.position ? ` - ${u.position}` : ''}` : u.email}
                   </option>
                 ))}
               </select>
@@ -425,7 +473,7 @@ export default function CycleDetailPage() {
                     .filter((u: any) => u.id !== peerEvaluateeId)
                     .map((u: any) => (
                       <option key={u.id} value={u.id}>
-                        {u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email}
+                        {u.firstName ? `${u.firstName} ${u.lastName || ''}${u.position ? ` - ${u.position}` : ''}` : u.email}
                       </option>
                     ))}
                 </select>

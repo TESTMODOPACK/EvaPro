@@ -100,6 +100,81 @@ export class EvaluationsService {
     await this.cycleRepo.remove(cycle);
   }
 
+  // ─── Allowed relation types per cycle type ──────────────────────────────
+
+  private readonly ALLOWED_RELATIONS: Record<string, RelationType[]> = {
+    [CycleType.DEGREE_90]: [RelationType.MANAGER],
+    [CycleType.DEGREE_180]: [RelationType.MANAGER, RelationType.SELF],
+    [CycleType.DEGREE_270]: [RelationType.MANAGER, RelationType.SELF, RelationType.PEER],
+    [CycleType.DEGREE_360]: [RelationType.MANAGER, RelationType.SELF, RelationType.PEER, RelationType.DIRECT_REPORT],
+  };
+
+  private getAllowedRelations(cycleType: CycleType): RelationType[] {
+    return this.ALLOWED_RELATIONS[cycleType] || [];
+  }
+
+  private async validatePeerAssignment(
+    tenantId: string,
+    cycle: EvaluationCycle,
+    evaluateeId: string,
+    evaluatorId: string,
+    relationType: RelationType,
+  ): Promise<void> {
+    // 1. Validate relationType is allowed for this cycle type
+    const allowed = this.getAllowedRelations(cycle.type as CycleType);
+    if (!allowed.includes(relationType)) {
+      const typeLabel = { '90': '90°', '180': '180°', '270': '270°', '360': '360°' }[cycle.type] || cycle.type;
+      throw new BadRequestException(
+        `La relaci\u00f3n "${relationType}" no est\u00e1 permitida en evaluaciones ${typeLabel}. Permitidas: ${allowed.join(', ')}`,
+      );
+    }
+
+    // 2. Self-evaluation: evaluatee === evaluator
+    if (relationType === RelationType.SELF) {
+      if (evaluateeId !== evaluatorId) {
+        throw new BadRequestException('En autoevaluaci\u00f3n, el evaluado y evaluador deben ser la misma persona');
+      }
+      return;
+    }
+
+    // 3. Cannot be same person (non-self)
+    if (evaluateeId === evaluatorId) {
+      throw new BadRequestException('El evaluado y el evaluador no pueden ser la misma persona');
+    }
+
+    // 4. Manager relation: validate evaluator is the actual manager of evaluatee
+    if (relationType === RelationType.MANAGER) {
+      const evaluatee = await this.userRepo.findOne({
+        where: { id: evaluateeId, tenantId },
+        select: ['id', 'managerId'],
+      });
+      if (!evaluatee) {
+        throw new NotFoundException('Evaluado no encontrado');
+      }
+      if (evaluatee.managerId !== evaluatorId) {
+        throw new BadRequestException(
+          'El evaluador asignado como "jefe" no es el jefe directo del evaluado',
+        );
+      }
+    }
+
+    // 5. Direct report: validate evaluator reports to evaluatee
+    if (relationType === RelationType.DIRECT_REPORT) {
+      const evaluator = await this.userRepo.findOne({
+        where: { id: evaluatorId, tenantId },
+        select: ['id', 'managerId'],
+      });
+      if (!evaluator) {
+        throw new NotFoundException('Evaluador no encontrado');
+      }
+      if (evaluator.managerId !== evaluateeId) {
+        throw new BadRequestException(
+          'El evaluador asignado como "reporte directo" no reporta al evaluado',
+        );
+      }
+    }
+  }
+
   // ─── Peer Assignments (pre-launch) ──────────────────────────────────────
 
   async addPeerAssignment(tenantId: string, cycleId: string, dto: AddPeerAssignmentDto): Promise<PeerAssignment> {
@@ -108,15 +183,13 @@ export class EvaluationsService {
       throw new BadRequestException('Solo se pueden asignar evaluadores en ciclos en borrador');
     }
     const relationType = dto.relationType ?? RelationType.PEER;
-    // Self-evaluation allows same person
-    if (relationType !== RelationType.SELF && dto.evaluateeId === dto.evaluatorId) {
-      throw new BadRequestException('El evaluado y el evaluador no pueden ser la misma persona');
-    }
+    await this.validatePeerAssignment(tenantId, cycle, dto.evaluateeId, dto.evaluatorId, relationType);
+
     const pa = this.peerAssignmentRepo.create({
       tenantId,
       cycleId,
       evaluateeId: dto.evaluateeId,
-      evaluatorId: dto.evaluatorId,
+      evaluatorId: relationType === RelationType.SELF ? dto.evaluateeId : dto.evaluatorId,
       relationType,
     });
     return this.peerAssignmentRepo.save(pa);
@@ -127,12 +200,19 @@ export class EvaluationsService {
     if (cycle.status !== CycleStatus.DRAFT) {
       throw new BadRequestException('Solo se pueden asignar evaluadores en ciclos en borrador');
     }
+
+    // Validate all assignments before saving
+    for (const a of dto.assignments) {
+      const relationType = a.relationType ?? RelationType.PEER;
+      await this.validatePeerAssignment(tenantId, cycle, a.evaluateeId, a.evaluatorId, relationType);
+    }
+
     const entities = dto.assignments.map((a) =>
       this.peerAssignmentRepo.create({
         tenantId,
         cycleId,
         evaluateeId: a.evaluateeId,
-        evaluatorId: a.evaluatorId,
+        evaluatorId: a.relationType === RelationType.SELF ? a.evaluateeId : a.evaluatorId,
         relationType: a.relationType ?? RelationType.PEER,
       }),
     );
@@ -149,6 +229,105 @@ export class EvaluationsService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  // ─── Auto-generate assignments based on cycle type + org structure ─────
+
+  async autoGenerateAssignments(tenantId: string, cycleId: string): Promise<{ created: number; skipped: number }> {
+    const cycle = await this.findCycleById(cycleId, tenantId);
+    if (cycle.status !== CycleStatus.DRAFT) {
+      throw new BadRequestException('Solo se pueden generar asignaciones en ciclos en borrador');
+    }
+
+    const allowedRelations = this.getAllowedRelations(cycle.type as CycleType);
+    const users = await this.userRepo.find({
+      where: { tenantId, isActive: true },
+      select: ['id', 'managerId', 'role'],
+    });
+
+    // Exclude super_admin and external from evaluatees
+    const evaluatees = users.filter((u) => u.role !== 'super_admin' && u.role !== 'external');
+
+    // Get existing peer assignments to avoid duplicates
+    const existing = await this.peerAssignmentRepo.find({
+      where: { tenantId, cycleId },
+      select: ['evaluateeId', 'evaluatorId', 'relationType'],
+    });
+    const existingSet = new Set(
+      existing.map((e) => `${e.evaluateeId}|${e.evaluatorId}|${e.relationType}`),
+    );
+
+    const toCreate: Partial<PeerAssignment>[] = [];
+
+    for (const evaluatee of evaluatees) {
+      // Self-evaluation
+      if (allowedRelations.includes(RelationType.SELF)) {
+        const key = `${evaluatee.id}|${evaluatee.id}|${RelationType.SELF}`;
+        if (!existingSet.has(key)) {
+          toCreate.push({
+            tenantId,
+            cycleId,
+            evaluateeId: evaluatee.id,
+            evaluatorId: evaluatee.id,
+            relationType: RelationType.SELF,
+          });
+        }
+      }
+
+      // Manager evaluation
+      if (allowedRelations.includes(RelationType.MANAGER) && evaluatee.managerId) {
+        const key = `${evaluatee.id}|${evaluatee.managerId}|${RelationType.MANAGER}`;
+        if (!existingSet.has(key)) {
+          toCreate.push({
+            tenantId,
+            cycleId,
+            evaluateeId: evaluatee.id,
+            evaluatorId: evaluatee.managerId,
+            relationType: RelationType.MANAGER,
+          });
+        }
+      }
+
+      // Direct reports evaluate upward (360° only)
+      if (allowedRelations.includes(RelationType.DIRECT_REPORT)) {
+        const directReports = users.filter((u) => u.managerId === evaluatee.id && u.role !== 'super_admin' && u.role !== 'external');
+        for (const dr of directReports) {
+          const key = `${evaluatee.id}|${dr.id}|${RelationType.DIRECT_REPORT}`;
+          if (!existingSet.has(key)) {
+            toCreate.push({
+              tenantId,
+              cycleId,
+              evaluateeId: evaluatee.id,
+              evaluatorId: dr.id,
+              relationType: RelationType.DIRECT_REPORT,
+            });
+          }
+        }
+      }
+    }
+
+    // Note: PEER assignments are NOT auto-generated (admin must select peers manually)
+
+    if (toCreate.length === 0) {
+      return { created: 0, skipped: evaluatees.length };
+    }
+
+    const entities = toCreate.map((pa) => this.peerAssignmentRepo.create(pa));
+    await this.peerAssignmentRepo.save(entities);
+
+    return { created: toCreate.length, skipped: 0 };
+  }
+
+  async getAllowedRelationsForCycle(tenantId: string, cycleId: string) {
+    const cycle = await this.findCycleById(cycleId, tenantId);
+    const allowed = this.getAllowedRelations(cycle.type as CycleType);
+    const labels: Record<string, string> = {
+      [RelationType.SELF]: 'Autoevaluaci\u00f3n',
+      [RelationType.MANAGER]: 'Jefe directo',
+      [RelationType.PEER]: 'Par / Colega',
+      [RelationType.DIRECT_REPORT]: 'Reporte directo',
+    };
+    return allowed.map((r) => ({ value: r, label: labels[r] || r }));
   }
 
   async getPeerAssignments(tenantId: string, cycleId: string): Promise<PeerAssignment[]> {

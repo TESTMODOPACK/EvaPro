@@ -348,6 +348,10 @@ export const api = {
       request<PeerAssignmentData[]>(`/evaluation-cycles/${cycleId}/peer-assignments/bulk`, { method: "POST", body: JSON.stringify({ assignments }) }, token),
     remove: (token: string, cycleId: string, id: string) =>
       request<void>(`/evaluation-cycles/${cycleId}/peer-assignments/${id}`, { method: "DELETE" }, token),
+    allowedRelations: (token: string, cycleId: string) =>
+      request<{ value: string; label: string }[]>(`/evaluation-cycles/${cycleId}/allowed-relations`, {}, token),
+    autoGenerate: (token: string, cycleId: string) =>
+      request<{ created: number; skipped: number }>(`/evaluation-cycles/${cycleId}/auto-generate`, { method: "POST" }, token),
   },
 
   feedback: {

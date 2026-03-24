@@ -126,6 +126,24 @@ export class EvaluationsController {
     return this.evaluationsService.removePeerAssignment(req.user.tenantId, cycleId, id);
   }
 
+  @Get('evaluation-cycles/:cycleId/allowed-relations')
+  @Roles('super_admin', 'tenant_admin')
+  getAllowedRelations(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.getAllowedRelationsForCycle(req.user.tenantId, cycleId);
+  }
+
+  @Post('evaluation-cycles/:cycleId/auto-generate')
+  @Roles('super_admin', 'tenant_admin')
+  autoGenerateAssignments(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.autoGenerateAssignments(req.user.tenantId, cycleId);
+  }
+
   // ─── Assignments — admin + manager can view all; employees see own ────────
   @Get('evaluation-cycles/:cycleId/assignments')
   @Roles('super_admin', 'tenant_admin', 'manager')
