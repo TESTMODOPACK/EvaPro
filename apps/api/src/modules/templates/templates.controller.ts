@@ -71,4 +71,19 @@ export class TemplatesController {
   ) {
     return this.templatesService.duplicate(id, req.user.tenantId, req.user.userId);
   }
+
+  @Post('import-csv')
+  @Roles('super_admin', 'tenant_admin')
+  importCsv(
+    @Request() req: any,
+    @Body() body: { name: string; description?: string; csvData: string },
+  ) {
+    return this.templatesService.importFromCsv(
+      req.user.tenantId,
+      req.user.userId,
+      body.name,
+      body.description || '',
+      body.csvData,
+    );
+  }
 }

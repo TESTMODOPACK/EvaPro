@@ -8,6 +8,8 @@ import {
   useRemoveTemplate,
   useDuplicateTemplate,
 } from '@/hooks/useTemplates';
+import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -82,7 +84,8 @@ function Spinner() {
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PlantillasPage() {
-  const { data: templates, isLoading } = useTemplates();
+  const token = useAuthStore((s) => s.token);
+  const { data: templates, isLoading, refetch: reloadTemplates } = useTemplates();
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
   const removeTemplate = useRemoveTemplate();
@@ -94,6 +97,14 @@ export default function PlantillasPage() {
   const [description, setDescription] = useState('');
   const [sections, setSections] = useState<Section[]>([emptySection()]);
   const [saving, setSaving] = useState(false);
+
+  // CSV Import
+  const [showImport, setShowImport] = useState(false);
+  const [csvName, setCsvName] = useState('');
+  const [csvDesc, setCsvDesc] = useState('');
+  const [csvData, setCsvData] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
 
   // ─── Handlers ───────────────────────────────────────────────────────
 
@@ -449,13 +460,121 @@ export default function PlantillasPage() {
             Formularios de evaluación reutilizables con secciones y preguntas
           </p>
         </div>
-        <button className="btn-primary" onClick={handleNew}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Nueva plantilla
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn-ghost" onClick={() => setShowImport(!showImport)} style={{ fontSize: '0.82rem' }}>
+            {'\u2B06 Importar CSV'}
+          </button>
+          <button className="btn-primary" onClick={handleNew}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Nueva plantilla
+          </button>
+        </div>
       </div>
+
+      {/* CSV Import Panel */}
+      {showImport && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+            {'Importar Plantilla desde CSV'}
+          </h3>
+
+          {/* Help section */}
+          <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>{'Formato del archivo CSV:'}</p>
+            <p style={{ margin: '0 0 0.5rem' }}>{'El archivo debe tener 4 columnas separadas por coma. La primera fila es el encabezado:'}</p>
+            <code style={{ display: 'block', padding: '0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', lineHeight: 1.8, whiteSpace: 'pre-wrap', border: '1px solid var(--border)' }}>
+              {'seccion,pregunta,tipo,requerida\n'}
+              {'Competencias T\u00e9cnicas,Domina las herramientas del cargo,scale,si\n'}
+              {'Competencias T\u00e9cnicas,Se mantiene actualizado en su \u00e1rea,scale,si\n'}
+              {'Habilidades Blandas,Comunicaci\u00f3n efectiva con el equipo,scale,si\n'}
+              {'Comentarios,\u00bfCu\u00e1les son sus principales fortalezas?,text,si\n'}
+              {'Comentarios,\u00bfEn qu\u00e9 \u00e1reas puede mejorar?,text,no'}
+            </code>
+            <div style={{ marginTop: '0.75rem' }}>
+              <p style={{ margin: '0 0 0.3rem' }}><strong>seccion:</strong>{' Agrupa las preguntas. Preguntas con la misma secci\u00f3n quedan juntas.'}</p>
+              <p style={{ margin: '0 0 0.3rem' }}><strong>pregunta:</strong>{' Texto de la pregunta que ver\u00e1 el evaluador.'}</p>
+              <p style={{ margin: '0 0 0.3rem' }}><strong>tipo:</strong>{' "scale" (escala 1-5: Deficiente a Excelente) o "text" (respuesta abierta).'}</p>
+              <p style={{ margin: 0 }}><strong>requerida:</strong>{' "si" o "no". Si se omite, se asume "si".'}</p>
+            </div>
+          </div>
+
+          {importError && (
+            <div style={{ padding: '0.75rem', marginBottom: '1rem', background: 'rgba(239,68,68,0.1)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.82rem' }}>
+              {importError}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <input
+              type="text"
+              placeholder="Nombre de la plantilla"
+              value={csvName}
+              onChange={(e) => setCsvName(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="text"
+              placeholder={'Descripci\u00f3n (opcional)'}
+              value={csvDesc}
+              onChange={(e) => setCsvDesc(e.target.value)}
+              style={inputStyle}
+            />
+            <textarea
+              placeholder={'Pega aqu\u00ed el contenido CSV (o carga un archivo abajo)'}
+              value={csvData}
+              onChange={(e) => setCsvData(e.target.value)}
+              rows={8}
+              style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '0.78rem', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <label style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setCsvData(ev.target?.result as string || '');
+                      reader.readAsText(file);
+                    }
+                  }}
+                />
+                <span className="btn-ghost" style={{ fontSize: '0.82rem' }}>{'\ud83d\udcc1 Cargar archivo CSV'}</span>
+              </label>
+              <div style={{ flex: 1 }} />
+              <button className="btn-ghost" onClick={() => { setShowImport(false); setImportError(''); }} style={{ fontSize: '0.82rem' }}>
+                Cancelar
+              </button>
+              <button
+                className="btn-primary"
+                disabled={importing || !csvName.trim() || !csvData.trim()}
+                onClick={async () => {
+                  setImporting(true);
+                  setImportError('');
+                  try {
+                    await api.templates.importCsv(token!, { name: csvName.trim(), description: csvDesc.trim(), csvData });
+                    setShowImport(false);
+                    setCsvName('');
+                    setCsvDesc('');
+                    setCsvData('');
+                    reloadTemplates();
+                  } catch (err: any) {
+                    setImportError(err.message || 'Error al importar CSV');
+                  } finally {
+                    setImporting(false);
+                  }
+                }}
+              >
+                {importing ? 'Importando...' : 'Importar plantilla'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <Spinner />

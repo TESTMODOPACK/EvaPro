@@ -139,6 +139,109 @@ const DEMO_TEMPLATE_SECTIONS = [
   },
 ];
 
+/* ── System Templates (global, tenantId = null) ────────────────────────── */
+const SCALE_LABELS = { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' };
+const scale = () => ({ min: 1, max: 5, labels: SCALE_LABELS });
+
+const SYSTEM_TEMPLATES = [
+  {
+    name: 'Evaluaci\u00f3n de Liderazgo',
+    description: 'Plantilla para evaluar competencias de liderazgo y gesti\u00f3n de equipos. Ideal para encargados y gerentes.',
+    sections: [
+      { id: 'lid1', title: 'Visi\u00f3n Estrat\u00e9gica', questions: [
+        { id: 'l1', text: 'Define objetivos claros y alineados con la estrategia de la organizaci\u00f3n', type: 'scale', scale: scale(), required: true },
+        { id: 'l2', text: 'Anticipa riesgos y oportunidades del entorno', type: 'scale', scale: scale(), required: true },
+        { id: 'l3', text: 'Comunica la visi\u00f3n de forma inspiradora al equipo', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'lid2', title: 'Gesti\u00f3n de Personas', questions: [
+        { id: 'l4', text: 'Delega responsabilidades de forma efectiva', type: 'scale', scale: scale(), required: true },
+        { id: 'l5', text: 'Desarrolla el talento de sus colaboradores', type: 'scale', scale: scale(), required: true },
+        { id: 'l6', text: 'Gestiona conflictos de manera constructiva', type: 'scale', scale: scale(), required: true },
+        { id: 'l7', text: 'Reconoce y valora los logros del equipo', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'lid3', title: 'Toma de Decisiones', questions: [
+        { id: 'l8', text: 'Toma decisiones oportunas basadas en datos', type: 'scale', scale: scale(), required: true },
+        { id: 'l9', text: 'Asume responsabilidad por los resultados', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'lid4', title: 'Comentarios de Liderazgo', questions: [
+        { id: 'l10', text: '\u00bfCu\u00e1l es la mayor fortaleza de liderazgo de esta persona?', type: 'text', required: true },
+        { id: 'l11', text: '\u00bfQu\u00e9 acci\u00f3n concreta mejorar\u00eda su liderazgo?', type: 'text', required: true },
+      ]},
+    ],
+  },
+  {
+    name: 'Evaluaci\u00f3n T\u00e9cnica',
+    description: 'Plantilla para evaluar competencias t\u00e9cnicas y espec\u00edficas del cargo. Para roles operativos y especialistas.',
+    sections: [
+      { id: 'tec1', title: 'Conocimiento T\u00e9cnico', questions: [
+        { id: 't1', text: 'Domina las herramientas y tecnolog\u00edas requeridas por el cargo', type: 'scale', scale: scale(), required: true },
+        { id: 't2', text: 'Se mantiene actualizado en su \u00e1rea de especialidad', type: 'scale', scale: scale(), required: true },
+        { id: 't3', text: 'Aplica mejores pr\u00e1cticas y est\u00e1ndares de la industria', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'tec2', title: 'Resoluci\u00f3n de Problemas', questions: [
+        { id: 't4', text: 'Identifica la causa ra\u00edz de los problemas t\u00e9cnicos', type: 'scale', scale: scale(), required: true },
+        { id: 't5', text: 'Propone soluciones innovadoras y eficientes', type: 'scale', scale: scale(), required: true },
+        { id: 't6', text: 'Documenta su trabajo y comparte conocimiento', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'tec3', title: 'Productividad', questions: [
+        { id: 't7', text: 'Cumple con los plazos comprometidos', type: 'scale', scale: scale(), required: true },
+        { id: 't8', text: 'La calidad de sus entregables es consistente', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'tec4', title: 'Comentarios T\u00e9cnicos', questions: [
+        { id: 't9', text: '\u00bfEn qu\u00e9 \u00e1rea t\u00e9cnica destaca m\u00e1s?', type: 'text', required: true },
+        { id: 't10', text: '\u00bfQu\u00e9 capacitaci\u00f3n o certificaci\u00f3n le beneficiar\u00eda?', type: 'text', required: false },
+      ]},
+    ],
+  },
+  {
+    name: 'Evaluaci\u00f3n 360\u00b0 Completa',
+    description: 'Plantilla integral para evaluaci\u00f3n 360\u00b0 que cubre competencias transversales, liderazgo, trabajo en equipo y desarrollo profesional.',
+    sections: [
+      { id: '360a', title: 'Competencias Transversales', questions: [
+        { id: 'f1', text: 'Se comunica de forma clara y respetuosa', type: 'scale', scale: scale(), required: true },
+        { id: 'f2', text: 'Colabora efectivamente con personas de distintas \u00e1reas', type: 'scale', scale: scale(), required: true },
+        { id: 'f3', text: 'Demuestra integridad y \u00e9tica profesional', type: 'scale', scale: scale(), required: true },
+        { id: 'f4', text: 'Se adapta positivamente a los cambios', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: '360b', title: 'Orientaci\u00f3n a Resultados', questions: [
+        { id: 'f5', text: 'Cumple sus compromisos y metas asignadas', type: 'scale', scale: scale(), required: true },
+        { id: 'f6', text: 'Prioriza actividades seg\u00fan impacto organizacional', type: 'scale', scale: scale(), required: true },
+        { id: 'f7', text: 'Busca continuamente mejorar sus procesos de trabajo', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: '360c', title: 'Desarrollo y Aprendizaje', questions: [
+        { id: 'f8', text: 'Busca activamente oportunidades de aprendizaje', type: 'scale', scale: scale(), required: true },
+        { id: 'f9', text: 'Acepta y aplica retroalimentaci\u00f3n constructiva', type: 'scale', scale: scale(), required: true },
+        { id: 'f10', text: 'Comparte conocimiento con sus compa\u00f1eros', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: '360d', title: 'Retroalimentaci\u00f3n Abierta', questions: [
+        { id: 'f11', text: '\u00bfCu\u00e1les son las 3 principales fortalezas de esta persona?', type: 'text', required: true },
+        { id: 'f12', text: '\u00bfQu\u00e9 deber\u00eda dejar de hacer o cambiar?', type: 'text', required: true },
+        { id: 'f13', text: '\u00bfQu\u00e9 consejo le dar\u00edas para su desarrollo profesional?', type: 'text', required: false },
+      ]},
+    ],
+  },
+  {
+    name: 'Evaluaci\u00f3n de Servicio al Cliente',
+    description: 'Plantilla para evaluar competencias de atenci\u00f3n y servicio. Para roles de soporte, ventas y atenci\u00f3n al p\u00fablico.',
+    sections: [
+      { id: 'srv1', title: 'Atenci\u00f3n al Cliente', questions: [
+        { id: 's1', text: 'Atiende a los clientes con amabilidad y empat\u00eda', type: 'scale', scale: scale(), required: true },
+        { id: 's2', text: 'Resuelve consultas de forma r\u00e1pida y efectiva', type: 'scale', scale: scale(), required: true },
+        { id: 's3', text: 'Maneja quejas y reclamos con profesionalismo', type: 'scale', scale: scale(), required: true },
+        { id: 's4', text: 'Supera las expectativas del cliente', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'srv2', title: 'Conocimiento del Producto/Servicio', questions: [
+        { id: 's5', text: 'Domina las caracter\u00edsticas de los productos/servicios', type: 'scale', scale: scale(), required: true },
+        { id: 's6', text: 'Identifica oportunidades de venta o mejora', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'srv3', title: 'Comentarios de Servicio', questions: [
+        { id: 's7', text: '\u00bfQu\u00e9 hace bien esta persona al atender clientes?', type: 'text', required: true },
+        { id: 's8', text: '\u00bfC\u00f3mo podr\u00eda mejorar la experiencia del cliente?', type: 'text', required: true },
+      ]},
+    ],
+  },
+];
+
 /* ── Helper: calculate score on 0-10 scale (1-5 scale answers) ──────────── */
 function calcScore(answers: Record<string, any>): number {
   const vals: number[] = [];
@@ -339,6 +442,22 @@ async function seed() {
         }),
       );
       console.log('\u2705  Default template created: Competencias Generales');
+    }
+
+    /* ── System Templates (global, available to all tenants) ───────────── */
+    for (const tpl of SYSTEM_TEMPLATES) {
+      const exists = await templateRepo.findOne({ where: { name: tpl.name, tenantId: tenant.id } });
+      if (!exists) {
+        await templateRepo.save(templateRepo.create({
+          tenantId: tenant.id,
+          name: tpl.name,
+          description: tpl.description,
+          sections: tpl.sections,
+          isDefault: false,
+          createdBy: admin.id,
+        }));
+        console.log(`\u2705  System template created: ${tpl.name}`);
+      }
     }
 
     /* ── Competencias por defecto ─────────────────────────────────────────── */

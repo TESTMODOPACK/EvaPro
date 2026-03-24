@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { FormTemplate } from './entities/form-template.entity';
@@ -62,6 +62,116 @@ export class TemplatesService {
       throw new NotFoundException('No se pueden eliminar plantillas globales');
     }
     await this.templateRepo.remove(template);
+  }
+
+  /**
+   * Import template from CSV.
+   *
+   * Expected CSV format (with header):
+   *   seccion,pregunta,tipo,requerida
+   *   Competencias Técnicas,Domina herramientas del cargo,scale,si
+   *   Competencias Técnicas,Se mantiene actualizado,scale,si
+   *   Comentarios,¿Cuáles son sus fortalezas?,text,si
+   *
+   * - seccion: groups questions into sections
+   * - tipo: "scale" (1-5) or "text" (open answer)
+   * - requerida: "si" or "no"
+   */
+  async importFromCsv(
+    tenantId: string,
+    userId: string,
+    name: string,
+    description: string,
+    csvData: string,
+  ): Promise<FormTemplate> {
+    const lines = csvData.trim().split('\n');
+    if (lines.length < 2) {
+      throw new BadRequestException('El CSV debe tener al menos un encabezado y una fila de datos');
+    }
+
+    const header = lines[0].toLowerCase().split(',').map((h) => h.trim());
+    const secIdx = header.indexOf('seccion');
+    const pregIdx = header.indexOf('pregunta');
+    const tipoIdx = header.indexOf('tipo');
+    const reqIdx = header.indexOf('requerida');
+
+    if (secIdx === -1 || pregIdx === -1) {
+      throw new BadRequestException(
+        'El CSV debe contener las columnas: seccion, pregunta. Opcionales: tipo, requerida',
+      );
+    }
+
+    const scaleConfig = {
+      min: 1, max: 5,
+      labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' },
+    };
+
+    const sectionsMap = new Map<string, any[]>();
+    const errors: string[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',').map((c) => c.trim());
+      const rowNum = i + 1;
+      const seccion = cols[secIdx];
+      const pregunta = cols[pregIdx];
+
+      if (!seccion || !pregunta) {
+        errors.push(`Fila ${rowNum}: seccion y pregunta son requeridos`);
+        continue;
+      }
+
+      const tipo = tipoIdx >= 0 ? (cols[tipoIdx] || 'scale').toLowerCase() : 'scale';
+      if (!['scale', 'text'].includes(tipo)) {
+        errors.push(`Fila ${rowNum}: tipo debe ser "scale" o "text", se encontró "${tipo}"`);
+        continue;
+      }
+
+      const requerida = reqIdx >= 0 ? cols[reqIdx]?.toLowerCase() : 'si';
+      const required = requerida !== 'no';
+
+      if (!sectionsMap.has(seccion)) {
+        sectionsMap.set(seccion, []);
+      }
+
+      const questions = sectionsMap.get(seccion)!;
+      const qId = `q${i}`;
+      const question: any = { id: qId, text: pregunta, type: tipo, required };
+      if (tipo === 'scale') {
+        question.scale = scaleConfig;
+      }
+      questions.push(question);
+    }
+
+    if (sectionsMap.size === 0) {
+      throw new BadRequestException(
+        errors.length > 0
+          ? `No se pudo importar. Errores: ${errors.join('; ')}`
+          : 'El CSV no contiene datos válidos',
+      );
+    }
+
+    const sections: any[] = [];
+    let secIndex = 0;
+    for (const [title, questions] of sectionsMap) {
+      secIndex++;
+      sections.push({ id: `sec${secIndex}`, title, questions });
+    }
+
+    const template = this.templateRepo.create({
+      tenantId,
+      name,
+      description: description || `Plantilla importada desde CSV (${sections.length} secciones, ${lines.length - 1} preguntas)`,
+      sections,
+      isDefault: false,
+      createdBy: userId,
+    });
+
+    const saved = await this.templateRepo.save(template);
+
+    return {
+      ...saved,
+      ...(errors.length > 0 ? { importWarnings: errors } as any : {}),
+    };
   }
 
   async duplicate(id: string, tenantId: string, userId: string): Promise<FormTemplate> {
