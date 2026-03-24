@@ -345,9 +345,6 @@ export default function UsuariosPage() {
     try {
       const result = await api.users.bulkImport(token, csvContent);
       setBulkResult(result);
-      if (result.status === 'completed' || result.status === 'completed_with_errors') {
-        window.location.reload();
-      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Error al importar usuarios');
     } finally {
@@ -702,13 +699,21 @@ export default function UsuariosPage() {
               </div>
               {bulkResult.errors && bulkResult.errors.length > 0 && (
                 <div style={{ marginTop: '0.5rem', fontSize: '0.78rem' }}>
-                  {bulkResult.errors.slice(0, 10).map((err: any, i: number) => (
+                  {bulkResult.errors.map((err: any, i: number) => (
                     <div key={i} style={{ color: 'var(--danger)', marginTop: '0.2rem' }}>
                       Fila {err.row}: {err.message}
                     </div>
                   ))}
-                  {bulkResult.errors.length > 10 && <div style={{ color: 'var(--text-muted)', marginTop: '0.2rem' }}>...y {bulkResult.errors.length - 10} errores mas</div>}
                 </div>
+              )}
+              {bulkResult.successRows > 0 && (
+                <button
+                  className="btn-primary"
+                  style={{ marginTop: '0.75rem', fontSize: '0.8rem', padding: '0.35rem 0.8rem' }}
+                  onClick={() => window.location.reload()}
+                >
+                  Cerrar y actualizar lista
+                </button>
               )}
             </div>
           )}

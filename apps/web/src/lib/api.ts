@@ -390,6 +390,12 @@ export const api = {
       request<any>(`/objectives/${objectiveId}/comments`, { method: "POST", body: JSON.stringify(data) }, token),
     deleteComment: (token: string, objectiveId: string, commentId: string) =>
       request<void>(`/objectives/${objectiveId}/comments/${commentId}`, { method: "DELETE" }, token),
+    submitForApproval: (token: string, id: string) =>
+      request<ObjectiveData>(`/objectives/${id}/submit-for-approval`, { method: "POST" }, token),
+    approve: (token: string, id: string) =>
+      request<ObjectiveData>(`/objectives/${id}/approve`, { method: "POST" }, token),
+    reject: (token: string, id: string) =>
+      request<ObjectiveData>(`/objectives/${id}/reject`, { method: "POST" }, token),
   },
 
   reports: {

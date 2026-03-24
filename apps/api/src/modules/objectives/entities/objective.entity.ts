@@ -19,6 +19,7 @@ export enum ObjectiveType {
 
 export enum ObjectiveStatus {
   DRAFT = 'draft',
+  PENDING_APPROVAL = 'pending_approval',
   ACTIVE = 'active',
   COMPLETED = 'completed',
   ABANDONED = 'abandoned',

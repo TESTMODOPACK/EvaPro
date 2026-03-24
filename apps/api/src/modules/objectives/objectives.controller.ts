@@ -87,6 +87,39 @@ export class ObjectivesController {
     return this.objectivesService.update(tenantId, id, dto);
   }
 
+  @Post(':id/submit-for-approval')
+  async submitForApproval(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    const { role, userId, tenantId } = req.user;
+    if (role === 'employee') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (objective.userId !== userId) {
+        throw new ForbiddenException('Solo puedes enviar tus propios objetivos a aprobaci\u00f3n');
+      }
+    }
+    return this.objectivesService.submitForApproval(tenantId, id);
+  }
+
+  @Post(':id/approve')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.approve(req.user.tenantId, id);
+  }
+
+  @Post(':id/reject')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  reject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.reject(req.user.tenantId, id);
+  }
+
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('super_admin', 'tenant_admin', 'manager')

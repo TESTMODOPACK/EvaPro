@@ -10,12 +10,15 @@ import {
   useObjectiveComments,
   useCreateObjectiveComment,
   useDeleteObjectiveComment,
+  useSubmitForApproval,
+  useApproveObjective,
+  useRejectObjective,
 } from '@/hooks/useObjectives';
 import { useAuthStore } from '@/store/auth.store';
 import { useUsers } from '@/hooks/useUsers';
 import { getRoleLabel } from '@/lib/roles';
 
-type FilterStatus = 'all' | 'draft' | 'active' | 'completed' | 'abandoned';
+type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
 type CommentType = 'comentario' | 'felicitacion' | 'seguimiento' | 'adjunto';
 
@@ -26,7 +29,8 @@ const typeBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  draft: 'Ingresado',
+  draft: 'Borrador',
+  pending_approval: 'Pendiente de aprobaci\u00f3n',
   active: 'En progreso',
   completed: 'Completado',
   abandoned: 'Abandonado',
@@ -34,6 +38,7 @@ const statusLabel: Record<string, string> = {
 
 const statusBadge: Record<string, string> = {
   draft: 'badge-warning',
+  pending_approval: 'badge-ghost',
   active: 'badge-success',
   completed: 'badge-accent',
   abandoned: 'badge-danger',
@@ -41,7 +46,8 @@ const statusBadge: Record<string, string> = {
 
 const filterPills: { key: FilterStatus; label: string }[] = [
   { key: 'all', label: 'Todos' },
-  { key: 'draft', label: 'Ingresados' },
+  { key: 'draft', label: 'Borradores' },
+  { key: 'pending_approval', label: 'Por aprobar' },
   { key: 'active', label: 'En progreso' },
   { key: 'completed', label: 'Completados' },
   { key: 'abandoned', label: 'Abandonados' },
@@ -278,6 +284,9 @@ export default function ObjetivosPage() {
   const updateObjective = useUpdateObjective();
   const deleteObjective = useDeleteObjective();
   const addProgress = useAddObjectiveProgress();
+  const submitForApproval = useSubmitForApproval();
+  const approveObjective = useApproveObjective();
+  const rejectObjective = useRejectObjective();
 
   // Fetch users for assignment (admin/manager only)
   const { data: usersData } = useUsers(1, 200);
@@ -363,8 +372,16 @@ export default function ObjetivosPage() {
     );
   }
 
+  function handleSubmitForApproval(id: string) {
+    submitForApproval.mutate(id);
+  }
+
   function handleApprove(id: string) {
-    updateObjective.mutate({ id, data: { status: 'active' } });
+    approveObjective.mutate(id);
+  }
+
+  function handleReject(id: string) {
+    rejectObjective.mutate(id);
   }
 
   return (
@@ -770,16 +787,37 @@ export default function ObjetivosPage() {
                   >
                     {isExpanded ? 'Cerrar' : 'Actualizar'}
                   </button>
-                  {/* Approve button for draft objectives (admin/manager) */}
-                  {canApprove && obj.status === 'draft' && (
+                  {/* Submit for approval button (employee, draft only) */}
+                  {isEmployee && obj.status === 'draft' && obj.userId === userId && (
                     <button
                       className="btn-ghost"
-                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--success)', fontWeight: 600 }}
-                      onClick={() => handleApprove(obj.id)}
-                      disabled={updateObjective.isPending}
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--accent)', fontWeight: 600 }}
+                      onClick={() => handleSubmitForApproval(obj.id)}
+                      disabled={submitForApproval.isPending}
                     >
-                      Aprobar
+                      {'Enviar a aprobaci\u00f3n'}
                     </button>
+                  )}
+                  {/* Approve button for pending_approval objectives (admin/manager) */}
+                  {canApprove && obj.status === 'pending_approval' && (
+                    <>
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--success)', fontWeight: 600 }}
+                        onClick={() => handleApprove(obj.id)}
+                        disabled={approveObjective.isPending}
+                      >
+                        Aprobar
+                      </button>
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--danger)', fontWeight: 600 }}
+                        onClick={() => handleReject(obj.id)}
+                        disabled={rejectObjective.isPending}
+                      >
+                        Rechazar
+                      </button>
+                    </>
                   )}
                   {canDelete && (
                     <button

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -32,6 +33,14 @@ export class DevelopmentService {
   // ─── Competencies ──────────────────────────────────────────────────────
 
   async createCompetency(tenantId: string, dto: Partial<Competency>) {
+    if (dto.name) {
+      const existing = await this.competencyRepo.findOne({
+        where: { tenantId, name: dto.name, isActive: true },
+      });
+      if (existing) {
+        throw new ConflictException(`Ya existe una competencia con el nombre "${dto.name}"`);
+      }
+    }
     const competency = this.competencyRepo.create({
       ...dto,
       tenantId,

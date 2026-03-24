@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -74,14 +75,16 @@ export class UsersService {
     page = 1,
     limit = 50,
   ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(Math.max(1, limit), 100);
     const qb = this.userRepository.createQueryBuilder('user')
       .where('user.tenantId = :tenantId', { tenantId })
       .andWhere('user.role != :excluded', { excluded: 'super_admin' })
       .orderBy('user.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .skip((safePage - 1) * safeLimit)
+      .take(safeLimit);
     const [data, total] = await qb.getManyAndCount();
-    return { data, total, page, limit };
+    return { data, total, page: safePage, limit: safeLimit };
   }
 
   async create(tenantId: string, dto: CreateUserDto): Promise<User> {
@@ -103,6 +106,16 @@ export class UsersService {
       throw new ConflictException(
         `Ya existe un usuario con el email ${dto.email}`,
       );
+    }
+
+    if (dto.managerId) {
+      const manager = await this.userRepository.findOne({ where: { id: dto.managerId, tenantId } });
+      if (!manager) {
+        throw new NotFoundException('Manager no encontrado en esta organizaci\u00f3n');
+      }
+      if (manager.role !== 'manager' && manager.role !== 'tenant_admin') {
+        throw new BadRequestException('El usuario seleccionado como manager debe tener rol de manager o administrador');
+      }
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);

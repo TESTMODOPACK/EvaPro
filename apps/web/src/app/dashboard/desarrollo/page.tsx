@@ -126,6 +126,12 @@ export default function DesarrolloPage() {
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editActionForm, setEditActionForm] = useState<ActionForm>(emptyActionForm);
 
+  // Suggest from assessment
+  const [cycles, setCycles] = useState<any[]>([]);
+  const [suggestCycleId, setSuggestCycleId] = useState('');
+  const [suggestResult, setSuggestResult] = useState<any>(null);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+
   useEffect(() => {
     if (!token) return;
     loadData();
@@ -135,15 +141,20 @@ export default function DesarrolloPage() {
     setLoading(true);
     setError('');
     try {
-      const [plansRes, usersRes, compsRes] = await Promise.all([
+      const promises: Promise<any>[] = [
         api.development.plans.list(token!),
-        api.users.list(token!),
+        api.users.list(token!).catch(() => []),
         api.development.competencies.list(token!),
-      ]);
+      ];
+      if (canCreate) {
+        promises.push(api.cycles.list(token!).catch(() => []));
+      }
+      const [plansRes, usersRes, compsRes, cyclesRes] = await Promise.all(promises);
       setPlans(Array.isArray(plansRes) ? plansRes : []);
       const userData = Array.isArray(usersRes) ? usersRes : (usersRes as any)?.data || [];
       setUsers(userData);
       setCompetencies(Array.isArray(compsRes) ? compsRes : []);
+      if (cyclesRes) setCycles(Array.isArray(cyclesRes) ? cyclesRes : []);
     } catch (e: any) {
       setError(e.message || 'Error al cargar datos');
     } finally {
@@ -171,6 +182,20 @@ export default function DesarrolloPage() {
       alert(e.message || 'Error al crear plan');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleSuggest() {
+    if (!token || !planForm.userId || !suggestCycleId) return;
+    setSuggestLoading(true);
+    setSuggestResult(null);
+    try {
+      const result = await api.development.suggest(token, planForm.userId, suggestCycleId);
+      setSuggestResult(result);
+    } catch (e: any) {
+      alert(e.message || 'No se encontr\u00f3 evaluaci\u00f3n de talento para este usuario y ciclo');
+    } finally {
+      setSuggestLoading(false);
     }
   }
 
@@ -425,6 +450,51 @@ export default function DesarrolloPage() {
                 />
               </label>
             </div>
+            {/* Suggest from assessment */}
+            {planForm.userId && cycles.length > 0 && (
+              <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                  {'Sugerir acciones desde evaluaci\u00f3n de talento'}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select
+                    value={suggestCycleId}
+                    onChange={(e) => { setSuggestCycleId(e.target.value); setSuggestResult(null); }}
+                    style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', flex: 1 }}
+                  >
+                    <option value="">{'Seleccionar ciclo...'}</option>
+                    {cycles.filter((c: any) => c.status === 'closed').map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.6rem' }}
+                    onClick={handleSuggest}
+                    disabled={suggestLoading || !suggestCycleId}
+                  >
+                    {suggestLoading ? 'Consultando...' : 'Sugerir'}
+                  </button>
+                </div>
+                {suggestResult && (
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.82rem' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--accent)' }}>
+                      {'Puntaje: '}{suggestResult.performanceScore}{' \u2014 \u00c1rea de enfoque: '}{suggestResult.focusArea}
+                    </div>
+                    {suggestResult.suggestedCompetencies?.length > 0 && (
+                      <div style={{ marginTop: '0.35rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {suggestResult.suggestedCompetencies.map((c: any) => (
+                          <span key={c.id} className="badge badge-accent" style={{ fontSize: '0.75rem' }}>
+                            {c.name} ({c.suggestedActionTypes?.join(', ')})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
               <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>Cancelar</button>
               <button type="submit" className="btn-primary" disabled={creating}>

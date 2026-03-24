@@ -58,6 +58,33 @@ export function useAddObjectiveProgress() {
   });
 }
 
+export function useSubmitForApproval() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.objectives.submitForApproval(token!, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['objectives'] }),
+  });
+}
+
+export function useApproveObjective() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.objectives.approve(token!, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['objectives'] }),
+  });
+}
+
+export function useRejectObjective() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.objectives.reject(token!, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['objectives'] }),
+  });
+}
+
 export function useObjectiveHistory(id: string) {
   const token = useAuthStore((s) => s.token);
   return useQuery({

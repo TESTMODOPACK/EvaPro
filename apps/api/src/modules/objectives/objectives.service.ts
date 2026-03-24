@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Objective, ObjectiveStatus } from './entities/objective.entity';
@@ -93,6 +93,33 @@ export class ObjectivesService {
     if (dto.status !== undefined) obj.status = dto.status;
     if (dto.targetDate !== undefined) obj.targetDate = new Date(dto.targetDate);
     if (dto.progress !== undefined) obj.progress = dto.progress;
+    return this.objectiveRepo.save(obj);
+  }
+
+  async submitForApproval(tenantId: string, id: string): Promise<Objective> {
+    const obj = await this.findById(tenantId, id);
+    if (obj.status !== ObjectiveStatus.DRAFT) {
+      throw new BadRequestException('Solo objetivos en estado borrador pueden enviarse a aprobaci\u00f3n');
+    }
+    obj.status = ObjectiveStatus.PENDING_APPROVAL;
+    return this.objectiveRepo.save(obj);
+  }
+
+  async approve(tenantId: string, id: string): Promise<Objective> {
+    const obj = await this.findById(tenantId, id);
+    if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
+      throw new BadRequestException('Solo objetivos pendientes de aprobaci\u00f3n pueden ser aprobados');
+    }
+    obj.status = ObjectiveStatus.ACTIVE;
+    return this.objectiveRepo.save(obj);
+  }
+
+  async reject(tenantId: string, id: string): Promise<Objective> {
+    const obj = await this.findById(tenantId, id);
+    if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
+      throw new BadRequestException('Solo objetivos pendientes de aprobaci\u00f3n pueden ser rechazados');
+    }
+    obj.status = ObjectiveStatus.DRAFT;
     return this.objectiveRepo.save(obj);
   }
 

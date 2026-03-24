@@ -52,6 +52,9 @@ export class EvaluationsService {
   }
 
   async createCycle(tenantId: string, userId: string, dto: CreateCycleDto): Promise<EvaluationCycle> {
+    if (new Date(dto.startDate) >= new Date(dto.endDate)) {
+      throw new BadRequestException('La fecha de inicio debe ser anterior a la fecha de fin');
+    }
     const cycle = this.cycleRepo.create({
       tenantId,
       name: dto.name,
@@ -71,6 +74,11 @@ export class EvaluationsService {
 
   async updateCycle(id: string, tenantId: string, dto: UpdateCycleDto): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
+    const effectiveStart = dto.startDate ? new Date(dto.startDate) : cycle.startDate;
+    const effectiveEnd = dto.endDate ? new Date(dto.endDate) : cycle.endDate;
+    if (effectiveStart >= effectiveEnd) {
+      throw new BadRequestException('La fecha de inicio debe ser anterior a la fecha de fin');
+    }
     Object.assign(cycle, {
       ...(dto.name !== undefined && { name: dto.name }),
       ...(dto.type !== undefined && { type: dto.type }),
