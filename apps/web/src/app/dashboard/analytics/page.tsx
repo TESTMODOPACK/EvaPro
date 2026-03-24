@@ -23,8 +23,8 @@ function Spinner() {
 }
 
 function bucketColor(range: string): string {
-  // Parse the first number of the range to determine color
-  const match = range.match(/(\d+)/);
+  // Parse the first number of the range (0-10 scale) to determine color
+  const match = range.match(/([\d.]+)/);
   if (!match) return 'var(--accent)';
   const num = Number(match[1]);
   if (num < 4) return 'var(--danger)';
@@ -81,9 +81,9 @@ export default function AnalyticsPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Analytics</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{'An\u00e1lisis Avanzado'}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Distribucion de puntajes, comparacion por departamento y benchmarks de equipo
+          {'Distribuci\u00f3n de puntajes, comparaci\u00f3n por departamento y benchmarks de equipo'}
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export default function AnalyticsPage() {
           <Spinner />
         ) : !sortedCycles.length ? (
           <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay ciclos disponibles</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{'No hay ciclos disponibles'}</p>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -120,7 +120,7 @@ export default function AnalyticsPage() {
       {!selectedCycleId && !loadingCycles && sortedCycles.length > 0 && (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            Selecciona un ciclo para ver el analisis
+            {'Selecciona un ciclo para ver el an\u00e1lisis'}
           </p>
         </div>
       )}
@@ -132,7 +132,7 @@ export default function AnalyticsPage() {
             <Spinner />
           ) : !analytics ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos de analytics para este ciclo</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{'Sin datos de an\u00e1lisis para este ciclo'}</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -141,7 +141,7 @@ export default function AnalyticsPage() {
               {analytics.scoreDistribution && analytics.scoreDistribution.length > 0 && (
                 <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
                   <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-                    Distribucion de Puntajes
+                    {'Distribuci\u00f3n de Puntajes'}
                   </h2>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
                     Cantidad de evaluaciones por rango de puntaje
@@ -176,7 +176,7 @@ export default function AnalyticsPage() {
               {analytics.departmentComparison && analytics.departmentComparison.length > 0 && (
                 <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
                   <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-                    Comparacion por Departamento
+                    {'Comparaci\u00f3n por Departamento'}
                   </h2>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
                     Puntaje promedio por departamento
@@ -227,7 +227,7 @@ export default function AnalyticsPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr>
-                          {['Manager', 'Puntaje Promedio', 'Tamano Equipo'].map((h) => (
+                          {['Manager', 'Puntaje Promedio', 'Tama\u00f1o Equipo'].map((h) => (
                             <th
                               key={h}
                               style={{

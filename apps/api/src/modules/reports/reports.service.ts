@@ -285,7 +285,7 @@ export class ReportsService {
   // ─── Analytics ──────────────────────────────────────────────────────────
 
   async getAnalytics(tenantId: string, cycleId: string) {
-    // Score distribution (buckets of 10)
+    // Score distribution (buckets of 0.5 in scale 0-10)
     const responses = await this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
@@ -295,12 +295,13 @@ export class ReportsService {
       .select('r.overall_score', 'score')
       .getRawMany();
 
-    const buckets = Array.from({ length: 10 }, (_, i) => ({
-      range: `${i * 10}-${i * 10 + 10}`,
+    const buckets = Array.from({ length: 20 }, (_, i) => ({
+      range: `${(i * 0.5).toFixed(1)}-${((i + 1) * 0.5).toFixed(1)}`,
       count: 0,
     }));
     for (const r of responses) {
-      const idx = Math.min(Math.floor(Number(r.score) / 10), 9);
+      const score = Number(r.score);
+      const idx = Math.min(Math.floor(score / 0.5), 19);
       buckets[idx].count++;
     }
 
