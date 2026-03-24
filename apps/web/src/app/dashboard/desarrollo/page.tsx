@@ -346,13 +346,14 @@ export default function DesarrolloPage() {
   if (loading) return <Spinner />;
 
   return (
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
     <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>{pageTitle}</h1>
           <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
-            Gesti\u00f3n de planes de desarrollo individual (PDI)
+            {'Gesti\u00f3n de planes de desarrollo individual (PDI)'}
           </p>
         </div>
         {canCreate && (
@@ -370,9 +371,23 @@ export default function DesarrolloPage() {
 
       {/* Info card */}
       <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)' }}>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          Los Planes de Desarrollo Individual (PDI) permiten definir acciones concretas para el crecimiento profesional de cada colaborador, vinculadas a competencias y evaluaciones de desempe{'\u00f1'}o.
+        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.5rem' }}>
+          {'\u00bfQu\u00e9 son los Planes de Desarrollo Individual (PDI)?'}
         </p>
+        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          {'Los PDI permiten definir acciones concretas para el crecimiento profesional de cada colaborador. Cada plan se compone de acciones espec\u00edficas (cursos, mentor\u00edas, proyectos, talleres, lecturas o rotaciones) vinculadas a competencias del cat\u00e1logo organizacional.'}
+        </p>
+        <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+            {'\u00bfC\u00f3mo se conecta con otras funcionalidades?'}
+          </p>
+          <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+            <li><strong>{'Evaluaciones de Desempe\u00f1o'}</strong>{': Los resultados de las evaluaciones identifican \u00e1reas de mejora que se traducen en acciones del PDI.'}</li>
+            <li><strong>{'Evaluaci\u00f3n de Talento (9-Box)'}</strong>{': La matriz de talento sugiere autom\u00e1ticamente competencias y acciones seg\u00fan el cuadrante del colaborador.'}</li>
+            <li><strong>{'Cat\u00e1logo de Competencias'}</strong>{': Las acciones del plan se vinculan a competencias espec\u00edficas para medir el progreso por \u00e1rea.'}</li>
+            <li><strong>{'Objetivos'}</strong>{': Los objetivos individuales pueden alinearse con las acciones de desarrollo para un seguimiento integral.'}</li>
+          </ul>
+        </div>
       </div>
 
       {/* Create form */}
@@ -398,7 +413,7 @@ export default function DesarrolloPage() {
                 </select>
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                T\u00edtulo
+                {'T\u00edtulo'}
                 <input
                   value={planForm.title}
                   onChange={(e) => setPlanForm({ ...planForm, title: e.target.value })}
@@ -421,7 +436,7 @@ export default function DesarrolloPage() {
               </label>
             </div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Descripci\u00f3n
+              {'Descripci\u00f3n'}
               <textarea
                 value={planForm.description}
                 onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
@@ -822,7 +837,7 @@ export default function DesarrolloPage() {
                   {/* Comments list */}
                   {planComments.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      Sin comentarios a\u00fan
+                      {'Sin comentarios a\u00fan'}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -870,6 +885,7 @@ export default function DesarrolloPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

@@ -126,6 +126,7 @@ export default function CompetenciasPage() {
   if (loading) return <Spinner />;
 
   return (
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
     <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -320,6 +321,7 @@ export default function CompetenciasPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
