@@ -26,12 +26,16 @@ async function main() {
     await client.connect();
     console.log('[cleanup] Connected to database');
 
-    // ── B3.14: Cycle stages (FK → evaluation_cycles) ──────────────────────
-    const stagesTables = ['cycle_stages'];
-    for (const table of stagesTables) {
+    // ── B2/B3: Tables with new columns that conflict on ALTER (existing rows lack new NOT NULL cols)
+    const b2b3Tables = [
+      'key_results',        // B2.10: new entity, has tenant_id NOT NULL
+      'notifications',      // B3.16: new entity
+      'cycle_stages',       // B3.14: new entity
+    ];
+    for (const table of b2b3Tables) {
       try {
         await client.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
-        console.log(`[cleanup] Dropped B3 table: ${table}`);
+        console.log(`[cleanup] Dropped B2/B3 table: ${table}`);
       } catch (err: any) {
         console.log(`[cleanup] Could not drop ${table}: ${err.message}`);
       }
@@ -83,6 +87,25 @@ async function main() {
         console.log(`[cleanup] Dropped legacy table: ${table}`);
       } catch (err: any) {
         console.log(`[cleanup] Could not drop ${table}: ${err.message}`);
+      }
+    }
+
+    // ── Pre-add nullable/default columns to avoid TypeORM ALTER conflicts on existing data
+    const columnFixes = [
+      { table: 'objectives', column: 'parent_objective_id', sql: 'ALTER TABLE "objectives" ADD COLUMN IF NOT EXISTS "parent_objective_id" uuid NULL' },
+      { table: 'objectives', column: 'weight', sql: 'ALTER TABLE "objectives" ADD COLUMN IF NOT EXISTS "weight" numeric(5,2) DEFAULT 0' },
+      { table: 'quick_feedbacks', column: 'visibility', sql: `ALTER TABLE "quick_feedbacks" ADD COLUMN IF NOT EXISTS "visibility" varchar DEFAULT 'public'` },
+      { table: 'calibration_entries', column: 'change_log', sql: `ALTER TABLE "calibration_entries" ADD COLUMN IF NOT EXISTS "change_log" jsonb DEFAULT '[]'` },
+      { table: 'evaluation_cycles', column: 'status_cancelled', sql: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'cancelled' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'evaluation_cycles_status_enum')) THEN ALTER TYPE "evaluation_cycles_status_enum" ADD VALUE IF NOT EXISTS 'cancelled'; END IF; END $$;` },
+    ];
+
+    for (const fix of columnFixes) {
+      try {
+        await client.query(fix.sql);
+        console.log(`[cleanup] Pre-fixed column: ${fix.table}.${fix.column}`);
+      } catch (err: any) {
+        // Ignore if column/type already exists
+        console.log(`[cleanup] Column fix skipped (${fix.table}.${fix.column}): ${err.message}`);
       }
     }
 
