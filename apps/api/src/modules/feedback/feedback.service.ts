@@ -121,7 +121,7 @@ export class FeedbackService {
     if (this.resend && ci.manager?.email) {
       try {
         await this.resend.emails.send({
-          from: 'EvaPro <noreply@evapro.cl>',
+          from: process.env.RESEND_FROM_EMAIL || 'EvaPro <onboarding@resend.dev>',
           to: ci.manager.email,
           subject: `Check-in rechazado: ${ci.topic}`,
           html: `<p><strong>${ci.employee.firstName} ${ci.employee.lastName}</strong> ha rechazado el check-in programado para el ${new Date(ci.scheduledDate).toLocaleDateString('es-CL')}${ci.scheduledTime ? ' a las ' + ci.scheduledTime : ''}.</p><p><strong>Motivo:</strong> ${dto.reason}</p><p style="color:#64748b;font-size:12px;">— EvaPro</p>`,
@@ -176,7 +176,7 @@ export class FeedbackService {
 
     try {
       await this.resend.emails.send({
-        from: 'EvaPro <noreply@evapro.cl>',
+        from: process.env.RESEND_FROM_EMAIL || 'EvaPro <onboarding@resend.dev>',
         to: employee.email,
         subject: `Nueva reuni\u00f3n 1:1: ${checkIn.topic}`,
         html: `
