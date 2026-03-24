@@ -7,6 +7,7 @@ import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity
 import { EvaluationAssignment, AssignmentStatus, RelationType } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
+import { FormTemplate } from '../templates/entities/form-template.entity';
 import { User } from '../users/entities/user.entity';
 
 @Injectable()
@@ -22,6 +23,8 @@ export class ReportsService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Objective)
     private readonly objectiveRepo: Repository<Objective>,
+    @InjectRepository(FormTemplate)
+    private readonly templateRepo: Repository<FormTemplate>,
   ) {}
 
   async cycleSummary(cycleId: string, tenantId: string) {
@@ -425,5 +428,178 @@ export class ReportsService {
         teamSize: parseInt(t.teamSize),
       })),
     };
+  }
+
+  // ─── C1: Competency Radar (section-level scores per evaluatee) ─────────
+
+  async competencyRadar(cycleId: string, userId: string, tenantId: string) {
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+    if (!cycle) throw new NotFoundException('Ciclo no encontrado');
+
+    // Get the template to know section/question structure
+    let template: FormTemplate | null = null;
+    if (cycle.templateId) {
+      template = await this.templateRepo.findOne({ where: { id: cycle.templateId } });
+    }
+    if (!template || !template.sections) {
+      return { userId, cycleId, sections: [], message: 'Sin plantilla asociada al ciclo' };
+    }
+
+    // Get completed responses for this user in this cycle
+    const assignments = await this.assignmentRepo.find({
+      where: { cycleId, evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
+    });
+
+    const responses: any[] = [];
+    for (const a of assignments) {
+      const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      if (resp) responses.push({ relationType: a.relationType, answers: resp.answers || {} });
+    }
+
+    // Build section-level averages
+    const sections = template.sections.map((sec: any) => {
+      const scaleQuestions = (sec.questions || []).filter((q: any) => q.type === 'scale');
+      if (scaleQuestions.length === 0) return null;
+
+      const questionIds = scaleQuestions.map((q: any) => q.id);
+      const byRelation: Record<string, { sum: number; count: number }> = {};
+      let allSum = 0;
+      let allCount = 0;
+
+      for (const resp of responses) {
+        const rel = resp.relationType || 'unknown';
+        if (!byRelation[rel]) byRelation[rel] = { sum: 0, count: 0 };
+
+        for (const qId of questionIds) {
+          const val = Number(resp.answers[qId]);
+          if (!isNaN(val) && val > 0) {
+            byRelation[rel].sum += val;
+            byRelation[rel].count++;
+            allSum += val;
+            allCount++;
+          }
+        }
+      }
+
+      const relationScores: Record<string, number> = {};
+      for (const [rel, data] of Object.entries(byRelation)) {
+        relationScores[rel] = data.count > 0 ? Math.round((data.sum / data.count) * 100) / 100 : 0;
+      }
+
+      return {
+        section: sec.title || sec.id,
+        overall: allCount > 0 ? Math.round((allSum / allCount) * 100) / 100 : 0,
+        maxScale: scaleQuestions[0]?.scale?.max || 5,
+        byRelation: relationScores,
+        questionCount: scaleQuestions.length,
+      };
+    }).filter(Boolean);
+
+    return { userId, cycleId, sections };
+  }
+
+  // ─── C2: Self vs Others comparison ─────────────────────────────────────
+
+  async selfVsOthers(cycleId: string, userId: string, tenantId: string) {
+    const assignments = await this.assignmentRepo.find({
+      where: { cycleId, evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
+    });
+
+    let selfScore: number | null = null;
+    const otherScores: { relationType: string; score: number }[] = [];
+
+    for (const a of assignments) {
+      const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      if (!resp || resp.overallScore == null) continue;
+
+      if (a.relationType === RelationType.SELF) {
+        selfScore = Number(resp.overallScore);
+      } else {
+        otherScores.push({ relationType: a.relationType, score: Number(resp.overallScore) });
+      }
+    }
+
+    const othersAvg = otherScores.length > 0
+      ? Math.round((otherScores.reduce((s, o) => s + o.score, 0) / otherScores.length) * 100) / 100
+      : null;
+
+    const byRelation: Record<string, number> = {};
+    for (const o of otherScores) {
+      if (!byRelation[o.relationType]) byRelation[o.relationType] = 0;
+      // Simple: count per relation may be >1, average them
+    }
+    // Group and average by relation type
+    const grouped: Record<string, number[]> = {};
+    for (const o of otherScores) {
+      if (!grouped[o.relationType]) grouped[o.relationType] = [];
+      grouped[o.relationType].push(o.score);
+    }
+    const byRelationAvg: Record<string, number> = {};
+    for (const [rel, scores] of Object.entries(grouped)) {
+      byRelationAvg[rel] = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100;
+    }
+
+    const gap = selfScore != null && othersAvg != null
+      ? Math.round((selfScore - othersAvg) * 100) / 100
+      : null;
+
+    return {
+      userId,
+      cycleId,
+      selfScore,
+      othersAvg,
+      gap,
+      byRelation: byRelationAvg,
+      interpretation: gap != null
+        ? gap > 1 ? 'El colaborador se autoevalúa significativamente más alto que sus evaluadores'
+          : gap < -1 ? 'El colaborador se autoevalúa significativamente más bajo que sus evaluadores'
+            : 'La autoevaluación es consistente con la evaluación de otros'
+        : null,
+    };
+  }
+
+  // ─── C4: Performance Heatmap (department × score ranges) ───────────────
+
+  async performanceHeatmap(cycleId: string, tenantId: string) {
+    const raw = await this.responseRepo
+      .createQueryBuilder('r')
+      .innerJoin('r.assignment', 'a')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .where('a.cycleId = :cycleId', { cycleId })
+      .andWhere('r.tenantId = :tenantId', { tenantId })
+      .andWhere('r.overall_score IS NOT NULL')
+      .select('u.department', 'department')
+      .addSelect('r.overall_score', 'score')
+      .addSelect("u.first_name || ' ' || u.last_name", 'name')
+      .addSelect('u.id', 'userId')
+      .getRawMany();
+
+    // Group by department
+    const deptMap: Record<string, { scores: number[]; users: { name: string; userId: string; score: number }[] }> = {};
+    for (const r of raw) {
+      const dept = r.department || 'Sin departamento';
+      if (!deptMap[dept]) deptMap[dept] = { scores: [], users: [] };
+      const score = Number(r.score);
+      deptMap[dept].scores.push(score);
+      deptMap[dept].users.push({ name: r.name, userId: r.userId, score });
+    }
+
+    const heatmap = Object.entries(deptMap).map(([dept, data]) => {
+      const avg = data.scores.reduce((a, b) => a + b, 0) / data.scores.length;
+      const low = data.scores.filter((s) => s < 4).length;
+      const mid = data.scores.filter((s) => s >= 4 && s < 7).length;
+      const high = data.scores.filter((s) => s >= 7).length;
+      return {
+        department: dept,
+        avgScore: Math.round(avg * 100) / 100,
+        total: data.scores.length,
+        low,
+        mid,
+        high,
+        users: data.users.sort((a, b) => b.score - a.score),
+      };
+    }).sort((a, b) => b.avgScore - a.avgScore);
+
+    return { cycleId, heatmap };
   }
 }

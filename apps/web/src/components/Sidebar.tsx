@@ -139,6 +139,7 @@ const tenantNavSections: NavSection[] = [
       { href: '/dashboard/calibracion', label: 'Calibraci\u00f3n', icon: icons.calibration },
       { href: '/dashboard/reportes', label: 'Reportes', icon: icons.reports },
       { href: '/dashboard/analytics', label: 'An\u00e1lisis Avanzado', icon: icons.analytics },
+      { href: '/dashboard/informes', label: 'Informes Avanzados', icon: icons.reports },
     ],
   },
   {

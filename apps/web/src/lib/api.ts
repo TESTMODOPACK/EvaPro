@@ -427,6 +427,12 @@ export const api = {
       request<{ userId: string; history: PerformanceHistoryEntry[] }>(`/reports/users/${userId}/performance-history`, {}, token),
     analytics: (token: string, cycleId: string) =>
       request<AnalyticsData>(`/reports/analytics?cycleId=${cycleId}`, {}, token),
+    competencyRadar: (token: string, cycleId: string, userId: string) =>
+      request<any>(`/reports/cycle/${cycleId}/competency-radar/${userId}`, {}, token),
+    selfVsOthers: (token: string, cycleId: string, userId: string) =>
+      request<any>(`/reports/cycle/${cycleId}/self-vs-others/${userId}`, {}, token),
+    heatmap: (token: string, cycleId: string) =>
+      request<any>(`/reports/cycle/${cycleId}/heatmap`, {}, token),
   },
 
   dashboard: {

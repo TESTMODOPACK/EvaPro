@@ -62,6 +62,35 @@ export class ReportsController {
     return this.reportsService.getAnalytics(req.user.tenantId, cycleId);
   }
 
+  // C1: Competency radar chart data
+  @Get('cycle/:cycleId/competency-radar/:userId')
+  competencyRadar(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Request() req: any,
+  ) {
+    return this.reportsService.competencyRadar(cycleId, userId, req.user.tenantId);
+  }
+
+  // C2: Self vs Others comparison
+  @Get('cycle/:cycleId/self-vs-others/:userId')
+  selfVsOthers(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Request() req: any,
+  ) {
+    return this.reportsService.selfVsOthers(cycleId, userId, req.user.tenantId);
+  }
+
+  // C4: Performance heatmap
+  @Get('cycle/:cycleId/heatmap')
+  performanceHeatmap(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+  ) {
+    return this.reportsService.performanceHeatmap(cycleId, req.user.tenantId);
+  }
+
   @Get('cycle/:cycleId/export')
   async exportResults(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
