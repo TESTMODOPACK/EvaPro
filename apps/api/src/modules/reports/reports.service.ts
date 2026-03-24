@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus, RelationType } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
@@ -172,79 +174,130 @@ export class ReportsService {
     return rows.join('\n');
   }
 
-  async exportPdfHtml(cycleId: string, tenantId: string): Promise<string> {
+  async exportPdf(cycleId: string, tenantId: string): Promise<Buffer> {
     const summary = await this.cycleSummary(cycleId, tenantId);
     const assignments = await this.assignmentRepo.find({
       where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED },
       relations: ['evaluatee', 'evaluator'],
     });
 
-    const tableRows = [];
+    const relationLabels: Record<string, string> = {
+      self: 'Autoevaluaci\u00f3n',
+      manager: 'Encargado',
+      peer: 'Par',
+      direct_report: 'Reporte directo',
+      external: 'Externo',
+    };
+
+    // Build evaluation detail rows
+    const evalRows: string[][] = [];
     for (const a of assignments) {
       const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
-      tableRows.push(`
-        <tr>
-          <td>${a.evaluatee.firstName} ${a.evaluatee.lastName}</td>
-          <td>${a.evaluator.firstName} ${a.evaluator.lastName}</td>
-          <td>${a.relationType}</td>
-          <td>${resp?.overallScore ?? '–'}</td>
-          <td>${resp?.submittedAt ? new Date(resp.submittedAt).toLocaleDateString('es-ES') : '–'}</td>
-        </tr>`);
+      evalRows.push([
+        `${a.evaluatee.firstName} ${a.evaluatee.lastName}`,
+        `${a.evaluator.firstName} ${a.evaluator.lastName}`,
+        relationLabels[a.relationType] || a.relationType,
+        resp?.overallScore != null ? Number(resp.overallScore).toFixed(1) : '\u2013',
+        resp?.submittedAt ? new Date(resp.submittedAt).toLocaleDateString('es-CL') : '\u2013',
+      ]);
     }
 
-    const deptRows = (summary.departmentBreakdown || []).map((d: any) =>
-      `<tr><td>${d.department}</td><td>${d.avgScore}</td><td>${d.count}</td></tr>`
-    ).join('');
+    // Create PDF
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+    const accent = [99, 102, 241]; // #6366f1
+    const pageWidth = doc.internal.pageSize.getWidth();
 
-    return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>Reporte - ${summary.cycle.name}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 2rem; color: #1a1a2e; max-width: 900px; margin: 0 auto; }
-    h1 { color: #6366f1; margin-bottom: 0.25rem; }
-    h2 { color: #334155; margin-top: 2rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }
-    .subtitle { color: #64748b; margin-bottom: 2rem; }
-    .kpis { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
-    .kpi { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.5rem; min-width: 150px; }
-    .kpi-value { font-size: 1.5rem; font-weight: 800; color: #6366f1; }
-    .kpi-label { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
-    th { background: #f1f5f9; text-align: left; padding: 0.6rem 0.8rem; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; }
-    td { padding: 0.5rem 0.8rem; border-bottom: 1px solid #e2e8f0; }
-    tr:nth-child(even) { background: #fafafa; }
-    .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; font-size: 0.75rem; color: #94a3b8; text-align: center; }
-    @media print { body { padding: 0; } .no-print { display: none; } }
-  </style>
-</head>
-<body>
-  <button class="no-print" onclick="window.print()" style="background:#6366f1;color:white;border:none;padding:0.5rem 1.5rem;border-radius:6px;cursor:pointer;font-weight:600;margin-bottom:1rem;">Imprimir / Guardar PDF</button>
-  <h1>Reporte de Evaluación</h1>
-  <p class="subtitle">${summary.cycle.name} — ${new Date(summary.cycle.startDate).toLocaleDateString('es-ES')} al ${new Date(summary.cycle.endDate).toLocaleDateString('es-ES')}</p>
+    // ─── Header ───
+    doc.setFillColor(accent[0], accent[1], accent[2]);
+    doc.rect(0, 0, pageWidth, 28, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Reporte de Evaluaci\u00f3n', 14, 13);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(summary.cycle.name, 14, 20);
+    const dateRange = `${new Date(summary.cycle.startDate).toLocaleDateString('es-CL')} al ${new Date(summary.cycle.endDate).toLocaleDateString('es-CL')}`;
+    doc.text(dateRange, 14, 25);
 
-  <div class="kpis">
-    <div class="kpi"><div class="kpi-value">${summary.averageScore || '–'}</div><div class="kpi-label">Promedio Global</div></div>
-    <div class="kpi"><div class="kpi-value">${summary.completedAssignments}/${summary.totalAssignments}</div><div class="kpi-label">Completadas</div></div>
-    <div class="kpi"><div class="kpi-value">${summary.completionRate}%</div><div class="kpi-label">Tasa de Completado</div></div>
-  </div>
+    // ─── KPIs ───
+    let y = 36;
+    doc.setTextColor(30, 30, 60);
+    const kpiData = [
+      { label: 'Promedio Global', value: summary.averageScore || '\u2013' },
+      { label: 'Completadas', value: `${summary.completedAssignments}/${summary.totalAssignments}` },
+      { label: 'Tasa Completado', value: `${summary.completionRate}%` },
+    ];
+    const kpiWidth = (pageWidth - 28 - 20) / 3;
+    kpiData.forEach((kpi, i) => {
+      const x = 14 + i * (kpiWidth + 10);
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(x, y, kpiWidth, 18, 2, 2, 'FD');
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(accent[0], accent[1], accent[2]);
+      doc.text(String(kpi.value), x + kpiWidth / 2, y + 9, { align: 'center' });
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text(kpi.label, x + kpiWidth / 2, y + 15, { align: 'center' });
+    });
+    y += 26;
 
-  ${deptRows ? `
-  <h2>Promedio por Departamento</h2>
-  <table>
-    <thead><tr><th>Departamento</th><th>Promedio</th><th>Personas</th></tr></thead>
-    <tbody>${deptRows}</tbody>
-  </table>` : ''}
+    // ─── Department Comparison ───
+    const deptData = (summary.departmentBreakdown || []);
+    if (deptData.length > 0) {
+      doc.setTextColor(51, 65, 85);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Promedio por Departamento', 14, y);
+      y += 2;
+      autoTable(doc, {
+        startY: y,
+        head: [['Departamento', 'Promedio', 'Personas']],
+        body: deptData.map((d: any) => [d.department || 'Sin depto.', d.avgScore, d.count]),
+        margin: { left: 14, right: 14 },
+        headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 8, textColor: [30, 30, 60] },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        styles: { cellPadding: 2.5, lineColor: [226, 232, 240], lineWidth: 0.25 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+    }
 
-  <h2>Detalle de Evaluaciones</h2>
-  <table>
-    <thead><tr><th>Evaluado</th><th>Evaluador</th><th>Relación</th><th>Puntaje</th><th>Fecha</th></tr></thead>
-    <tbody>${tableRows.join('')}</tbody>
-  </table>
+    // ─── Evaluation Detail ───
+    doc.setTextColor(51, 65, 85);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Detalle de Evaluaciones', 14, y);
+    y += 2;
+    autoTable(doc, {
+      startY: y,
+      head: [['Evaluado', 'Evaluador', 'Relaci\u00f3n', 'Puntaje', 'Fecha']],
+      body: evalRows,
+      margin: { left: 14, right: 14 },
+      headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 8, textColor: [30, 30, 60] },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+      styles: { cellPadding: 2.5, lineColor: [226, 232, 240], lineWidth: 0.25 },
+      columnStyles: { 3: { halign: 'center' }, 4: { halign: 'center' } },
+    });
 
-  <div class="footer">Generado por EvaPro — ${new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
-</body>
-</html>`;
+    // ─── Footer ───
+    const pageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      const footerY = doc.internal.pageSize.getHeight() - 8;
+      doc.text(`Generado por EvaPro \u2014 ${new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })}`, 14, footerY);
+      doc.text(`P\u00e1gina ${p} de ${pageCount}`, pageWidth - 14, footerY, { align: 'right' });
+    }
+
+    // Return as Buffer
+    const arrayBuffer = doc.output('arraybuffer');
+    return Buffer.from(arrayBuffer);
   }
 
   // ─── Performance History ────────────────────────────────────────────────

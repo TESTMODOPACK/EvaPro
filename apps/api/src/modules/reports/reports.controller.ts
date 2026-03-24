@@ -70,10 +70,10 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     if (format === 'pdf') {
-      const html = await this.reportsService.exportPdfHtml(cycleId, req.user.tenantId);
-      res.setHeader('Content-Type', 'text/html');
-      res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.html`);
-      return res.send(html);
+      const pdfBuffer = await this.reportsService.exportPdf(cycleId, req.user.tenantId);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.pdf`);
+      return res.send(pdfBuffer);
     }
 
     const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId);
