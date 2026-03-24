@@ -62,25 +62,58 @@ export default function CalibracionPage() {
   if (!token) return null;
 
   return (
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
     <div className="animate-fade-up">
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>Calibración</h1>
+          <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{`Calibraci\u00f3n de Evaluaciones`}</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '.875rem', marginTop: '.25rem' }}>
-            Sesiones de calibración de evaluaciones
+            {`Sesiones colaborativas para ajustar y validar puntajes de desempe\u00f1o y potencial`}
           </p>
         </div>
         <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancelar' : 'Nueva sesión'}
+          {showForm ? 'Cancelar' : `Nueva sesi\u00f3n`}
         </button>
+      </div>
+
+      {/* Info card */}
+      <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
+        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.5rem' }}>
+          {`\u00bfQu\u00e9 es la Calibraci\u00f3n y a qui\u00e9n est\u00e1 dirigida?`}
+        </p>
+        <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          {`La calibraci\u00f3n es un proceso donde el Administrador del Sistema re\u00fane a los l\u00edderes para revisar, discutir y ajustar los puntajes de desempe\u00f1o y potencial de los colaboradores, asegurando equidad y consistencia en las evaluaciones.`}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.75rem' }}>
+          <div>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {`Dirigido a`}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+              <li>{`Administrador del Sistema: crea y modera las sesiones`}</li>
+              <li>{`Encargados de Equipo: participan ajustando puntajes de sus reportes`}</li>
+            </ul>
+          </div>
+          <div>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {`Flujo de trabajo`}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+              <li><strong>{'1. Crear sesi\u00f3n'}</strong>{` \u2192 seleccionar ciclo y departamento`}</li>
+              <li><strong>{'2. Cargar participantes'}</strong>{` \u2192 importa puntajes desde Gesti\u00f3n de Talento`}</li>
+              <li><strong>{'3. Ajustar puntajes'}</strong>{` \u2192 modificar desempe\u00f1o, potencial y justificar`}</li>
+              <li><strong>{'4. Completar'}</strong>{` \u2192 aplica ajustes a la Matriz Nine Box autom\u00e1ticamente`}</li>
+            </ul>
+          </div>
+        </div>
       </div>
 
       {/* Create form */}
       {showForm && (
         <div className="card animate-fade-up" style={{ marginBottom: '1.5rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>
-            Nueva sesión de calibración
+            {`Nueva sesi\u00f3n de calibraci\u00f3n`}
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>
@@ -89,7 +122,7 @@ export default function CalibracionPage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ej: Calibración Q1 2026"
+                placeholder={`Ej: Calibraci\u00f3n Q1 2026`}
                 style={{
                   width: '100%', padding: '.5rem .75rem', borderRadius: 'var(--radius-sm)',
                   border: '1px solid var(--border)', background: 'var(--bg-surface)',
@@ -120,7 +153,7 @@ export default function CalibracionPage() {
                 type="text"
                 value={form.department}
                 onChange={(e) => setForm({ ...form, department: e.target.value })}
-                placeholder="Ej: Tecnología"
+                placeholder={`Ej: Tecnolog\u00eda`}
                 style={{
                   width: '100%', padding: '.5rem .75rem', borderRadius: 'var(--radius-sm)',
                   border: '1px solid var(--border)', background: 'var(--bg-surface)',
@@ -145,7 +178,7 @@ export default function CalibracionPage() {
           </div>
           <div style={{ marginTop: '1rem', display: 'flex', gap: '.5rem' }}>
             <button className="btn-primary" onClick={handleCreate} disabled={creating || !form.name || !form.cycleId}>
-              {creating ? 'Creando...' : 'Crear sesión'}
+              {creating ? 'Creando...' : `Crear sesi\u00f3n`}
             </button>
             <button className="btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
           </div>
@@ -157,12 +190,12 @@ export default function CalibracionPage() {
         <Spinner />
       ) : sessions.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
-          No hay sesiones de calibración creadas aún.
+          {`No hay sesiones de calibraci\u00f3n creadas a\u00fan.`}
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
           {sessions.map((s: any) => {
-            const cycleName = s.cycle?.name || cycles.find((c: any) => c.id === s.cycleId)?.name || '—';
+            const cycleName = s.cycle?.name || cycles.find((c: any) => c.id === s.cycleId)?.name || '\u2014';
             return (
               <div
                 key={s.id}
@@ -189,6 +222,7 @@ export default function CalibracionPage() {
           })}
         </div>
       )}
+    </div>
     </div>
   );
 }

@@ -31,7 +31,6 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
     try {
       const data = await api.talent.calibration.detail(token, params.id);
       setSession(data);
-      // Initialise edit state for each entry
       const es: typeof editState = {};
       if (data.entries) {
         for (const entry of data.entries) {
@@ -81,7 +80,7 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
     try {
       await api.talent.calibration.complete(token, params.id);
       await fetchSession();
-      setSuccessMsg('Sesión de calibración completada exitosamente.');
+      setSuccessMsg(`Sesi\u00f3n de calibraci\u00f3n completada exitosamente. Los ajustes se aplicaron a la Matriz Nine Box.`);
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch { /* ignore */ }
     setCompleting(false);
@@ -98,8 +97,10 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
   if (loading) return <Spinner />;
   if (!session) {
     return (
-      <div className="animate-fade-up" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-        No se encontró la sesión de calibración.
+      <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
+        <div className="animate-fade-up" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+          {`No se encontr\u00f3 la sesi\u00f3n de calibraci\u00f3n.`}
+        </div>
       </div>
     );
   }
@@ -107,6 +108,7 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
   const entries = session.entries || [];
 
   return (
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
     <div className="animate-fade-up">
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
@@ -123,6 +125,13 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
         </div>
       </div>
 
+      {/* Info card */}
+      <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
+        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          {`Ajusta los puntajes de desempe\u00f1o y potencial de cada colaborador. Al completar la sesi\u00f3n, los puntajes ajustados se aplicar\u00e1n autom\u00e1ticamente a la Matriz Nine Box y se recalcular\u00e1 la clasificaci\u00f3n de talento.`}
+        </p>
+      </div>
+
       {/* Success message */}
       {successMsg && (
         <div className="card animate-fade-up" style={{ background: 'var(--success)', color: '#fff', marginBottom: '1rem', padding: '.75rem 1rem', fontWeight: 600 }}>
@@ -134,7 +143,7 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
       {entries.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
           <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            No hay participantes cargados en esta sesión.
+            {`No hay participantes cargados en esta sesi\u00f3n.`}
           </p>
           <button className="btn-primary" onClick={handlePopulate} disabled={populating}>
             {populating ? 'Cargando participantes...' : 'Cargar participantes'}
@@ -148,15 +157,15 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
           <table>
             <thead>
               <tr>
-                <th>Empleado</th>
+                <th>Colaborador</th>
                 <th>Departamento</th>
-                <th>Score original</th>
-                <th>Score ajustado</th>
-                <th>Potencial original</th>
-                <th>Potencial ajustado</th>
-                <th>Justificación</th>
+                <th>{`Desempe\u00f1o Original`}</th>
+                <th>{`Desempe\u00f1o Ajustado`}</th>
+                <th>Potencial Original</th>
+                <th>Potencial Ajustado</th>
+                <th>{`Justificaci\u00f3n`}</th>
                 <th>Estado</th>
-                <th>Acción</th>
+                <th>{`Acci\u00f3n`}</th>
               </tr>
             </thead>
             <tbody>
@@ -167,11 +176,14 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
                 return (
                   <tr key={entry.id}>
                     <td style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
-                    <td>{u.department || '—'}</td>
-                    <td>{entry.originalScore ?? '—'}</td>
+                    <td>{u.department || '\u2014'}</td>
+                    <td>{entry.originalScore ?? '\u2014'}</td>
                     <td>
                       <input
                         type="number"
+                        min={0}
+                        max={10}
+                        step={0.5}
                         value={es.adjustedScore}
                         onChange={(e) => updateEntry(entry.id, 'adjustedScore', e.target.value === '' ? '' : +e.target.value)}
                         style={{
@@ -181,10 +193,13 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
                         }}
                       />
                     </td>
-                    <td>{entry.originalPotential ?? '—'}</td>
+                    <td>{entry.originalPotential ?? '\u2014'}</td>
                     <td>
                       <input
                         type="number"
+                        min={0}
+                        max={10}
+                        step={0.5}
                         value={es.adjustedPotential}
                         onChange={(e) => updateEntry(entry.id, 'adjustedPotential', e.target.value === '' ? '' : +e.target.value)}
                         style={{
@@ -199,6 +214,7 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
                         value={es.rationale}
                         onChange={(e) => updateEntry(entry.id, 'rationale', e.target.value)}
                         rows={1}
+                        placeholder={`Justificaci\u00f3n del ajuste...`}
                         style={{
                           width: '100%', minWidth: '150px', padding: '.3rem .5rem', borderRadius: 'var(--radius-sm)',
                           border: '1px solid var(--border)', background: 'var(--bg-surface)',
@@ -234,10 +250,11 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
         <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn-primary" onClick={handleComplete} disabled={completing}
             style={{ background: 'var(--success)', padding: '.6rem 1.5rem' }}>
-            {completing ? 'Completando...' : 'Completar calibración'}
+            {completing ? 'Completando...' : `Completar calibraci\u00f3n`}
           </button>
         </div>
       )}
+    </div>
     </div>
   );
 }
