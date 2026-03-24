@@ -31,6 +31,8 @@ async function main() {
       'key_results',        // B2.10: new entity, has tenant_id NOT NULL
       'notifications',      // B3.16: new entity
       'cycle_stages',       // B3.14: new entity
+      'meeting_locations',  // Check-in meeting locations
+      'checkins',           // CheckIn has new columns (scheduledTime, locationId, etc.)
     ];
     for (const table of b2b3Tables) {
       try {

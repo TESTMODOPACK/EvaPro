@@ -28,6 +28,7 @@ import { CycleStage } from '../modules/evaluations/entities/cycle-stage.entity';
 // ── Entities: Phase 2 ────────────────────────────────────────────────────
 import { CheckIn } from '../modules/feedback/entities/checkin.entity';
 import { QuickFeedback } from '../modules/feedback/entities/quick-feedback.entity';
+import { MeetingLocation } from '../modules/feedback/entities/meeting-location.entity';
 import { Objective } from '../modules/objectives/entities/objective.entity';
 import { ObjectiveUpdate } from '../modules/objectives/entities/objective-update.entity';
 import { ObjectiveComment } from '../modules/objectives/entities/objective-comment.entity';
@@ -142,7 +143,7 @@ async function runSchemaSync() {
       EvaluationCycle, EvaluationAssignment, EvaluationResponse,
       BulkImport, AuditLog, PeerAssignment, CycleStage,
       // Phase 2
-      CheckIn, QuickFeedback,
+      CheckIn, QuickFeedback, MeetingLocation,
       Objective, ObjectiveUpdate, ObjectiveComment, KeyResult,
       // Phase 3
       UserNote, SubscriptionPlan, Subscription,

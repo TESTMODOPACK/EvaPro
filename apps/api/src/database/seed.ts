@@ -24,6 +24,7 @@ import { CycleStage } from '../modules/evaluations/entities/cycle-stage.entity';
 // ── Phase 2 ────────────────────────────────────────────────────────────────
 import { CheckIn } from '../modules/feedback/entities/checkin.entity';
 import { QuickFeedback } from '../modules/feedback/entities/quick-feedback.entity';
+import { MeetingLocation } from '../modules/feedback/entities/meeting-location.entity';
 import { Objective } from '../modules/objectives/entities/objective.entity';
 import { ObjectiveUpdate } from '../modules/objectives/entities/objective-update.entity';
 import { ObjectiveComment } from '../modules/objectives/entities/objective-comment.entity';
@@ -65,7 +66,7 @@ const dataSource = new DataSource({
     EvaluationCycle, EvaluationAssignment, EvaluationResponse,
     BulkImport, AuditLog, PeerAssignment, CycleStage,
     // Phase 2
-    CheckIn, QuickFeedback,
+    CheckIn, QuickFeedback, MeetingLocation,
     Objective, ObjectiveUpdate, ObjectiveComment, KeyResult,
     // Phase 3
     UserNote, SubscriptionPlan, Subscription,
@@ -477,6 +478,22 @@ async function seed() {
         await compRepo.save(compRepo.create({ ...c, tenantId: tenant.id, isActive: true }));
       }
       console.log(`\u2705  Default competencies created (${defaultCompetencies.length})`);
+    }
+
+    /* ── Meeting Locations ──────────────────────────────────────────────── */
+    const locationRepo = dataSource.getRepository(MeetingLocation);
+    const existingLocations = await locationRepo.count({ where: { tenantId: tenant.id } });
+    if (existingLocations === 0) {
+      const locations = [
+        { tenantId: tenant.id, name: 'Sala de Reuniones Principal', type: 'physical', address: 'Piso 3, Oficina 301', capacity: 10 },
+        { tenantId: tenant.id, name: 'Oficina Gerencia', type: 'physical', address: 'Piso 4, Oficina 401', capacity: 4 },
+        { tenantId: tenant.id, name: 'Google Meet', type: 'virtual', address: 'https://meet.google.com' },
+        { tenantId: tenant.id, name: 'Microsoft Teams', type: 'virtual', address: 'https://teams.microsoft.com' },
+      ];
+      for (const loc of locations) {
+        await locationRepo.save(locationRepo.create(loc as any));
+      }
+      console.log('  \u2714 Meeting locations created');
     }
 
     /* ── Demo Evaluation Cycle (Q1 2026, closed) ─────────────────────────── */

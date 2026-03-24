@@ -10,11 +10,13 @@ import {
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
+import { MeetingLocation } from './meeting-location.entity';
 
 export enum CheckInStatus {
   SCHEDULED = 'scheduled',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
+  REJECTED = 'rejected',
 }
 
 @Entity('checkins')
@@ -48,6 +50,16 @@ export class CheckIn {
   @Column({ type: 'date', name: 'scheduled_date' })
   scheduledDate: Date;
 
+  @Column({ type: 'time', name: 'scheduled_time', nullable: true, comment: 'Hora de la reuni\u00f3n HH:mm' })
+  scheduledTime: string;
+
+  @Column({ type: 'uuid', name: 'location_id', nullable: true })
+  locationId: string;
+
+  @ManyToOne(() => MeetingLocation, { nullable: true })
+  @JoinColumn({ name: 'location_id' })
+  location: MeetingLocation;
+
   @Column({ type: 'varchar', length: 300 })
   topic: string;
 
@@ -66,6 +78,15 @@ export class CheckIn {
 
   @Column({ type: 'timestamptz', name: 'completed_at', nullable: true })
   completedAt: Date;
+
+  @Column({ type: 'text', name: 'rejection_reason', nullable: true })
+  rejectionReason: string;
+
+  @Column({ type: 'uuid', name: 'rejected_by', nullable: true })
+  rejectedBy: string;
+
+  @Column({ type: 'boolean', name: 'email_sent', default: false })
+  emailSent: boolean;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;

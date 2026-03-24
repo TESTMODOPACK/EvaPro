@@ -1,22 +1,32 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CheckIn, CheckInStatus } from './entities/checkin.entity';
 import { QuickFeedback, Sentiment } from './entities/quick-feedback.entity';
-import { CreateCheckInDto, UpdateCheckInDto } from './dto/create-checkin.dto';
+import { MeetingLocation } from './entities/meeting-location.entity';
+import { CreateCheckInDto, UpdateCheckInDto, RejectCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
 import { User } from '../users/entities/user.entity';
+import { Resend } from 'resend';
 
 @Injectable()
 export class FeedbackService {
+  private resend: Resend | null = null;
+
   constructor(
     @InjectRepository(CheckIn)
     private readonly checkInRepo: Repository<CheckIn>,
     @InjectRepository(QuickFeedback)
     private readonly quickFeedbackRepo: Repository<QuickFeedback>,
+    @InjectRepository(MeetingLocation)
+    private readonly locationRepo: Repository<MeetingLocation>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-  ) {}
+  ) {
+    if (process.env.RESEND_API_KEY) {
+      this.resend = new Resend(process.env.RESEND_API_KEY);
+    }
+  }
 
   // ─── Check-ins ────────────────────────────────────────────────────────────
 
@@ -43,12 +53,19 @@ export class FeedbackService {
       managerId,
       employeeId: dto.employeeId,
       scheduledDate: new Date(dto.scheduledDate),
+      scheduledTime: dto.scheduledTime || null,
+      locationId: dto.locationId || null,
       topic: dto.topic,
       notes: dto.notes,
       actionItems: [],
       status: CheckInStatus.SCHEDULED,
-    });
-    return this.checkInRepo.save(ci);
+    } as Partial<CheckIn>);
+    const saved = await this.checkInRepo.save(ci as CheckIn);
+
+    // Send email invitation if Resend is configured
+    await this.sendCheckInInvitation(saved as CheckIn, tenantId);
+
+    return saved as CheckIn;
   }
 
   async updateCheckIn(tenantId: string, id: string, dto: UpdateCheckInDto): Promise<CheckIn> {
@@ -56,6 +73,8 @@ export class FeedbackService {
     if (!ci) throw new NotFoundException('Check-in no encontrado');
     if (dto.topic !== undefined) ci.topic = dto.topic;
     if (dto.notes !== undefined) ci.notes = dto.notes;
+    if (dto.scheduledTime !== undefined) ci.scheduledTime = dto.scheduledTime;
+    if (dto.locationId !== undefined) ci.locationId = dto.locationId;
     if (dto.actionItems !== undefined) ci.actionItems = dto.actionItems;
     return this.checkInRepo.save(ci);
   }
@@ -74,9 +93,150 @@ export class FeedbackService {
       : [{ tenantId, employeeId: userId }];
     return this.checkInRepo.find({
       where,
-      relations: ['manager', 'employee'],
+      relations: ['manager', 'employee', 'location'],
       order: { scheduledDate: 'DESC' },
     });
+  }
+
+  // ─── Check-in Rejection ──────────────────────────────────────────────────
+
+  async rejectCheckIn(tenantId: string, checkInId: string, userId: string, dto: RejectCheckInDto): Promise<CheckIn> {
+    const ci = await this.checkInRepo.findOne({
+      where: { id: checkInId, tenantId },
+      relations: ['manager', 'employee'],
+    });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+    if (ci.employeeId !== userId) {
+      throw new ForbiddenException('Solo el colaborador asignado puede rechazar este check-in');
+    }
+    if (ci.status !== CheckInStatus.SCHEDULED) {
+      throw new BadRequestException('Solo se pueden rechazar check-ins programados');
+    }
+    ci.status = CheckInStatus.REJECTED;
+    ci.rejectionReason = dto.reason;
+    ci.rejectedBy = userId;
+    const saved = await this.checkInRepo.save(ci);
+
+    // Send rejection email to manager if Resend configured
+    if (this.resend && ci.manager?.email) {
+      try {
+        await this.resend.emails.send({
+          from: 'EvaPro <noreply@evapro.cl>',
+          to: ci.manager.email,
+          subject: `Check-in rechazado: ${ci.topic}`,
+          html: `<p><strong>${ci.employee.firstName} ${ci.employee.lastName}</strong> ha rechazado el check-in programado para el ${new Date(ci.scheduledDate).toLocaleDateString('es-CL')}${ci.scheduledTime ? ' a las ' + ci.scheduledTime : ''}.</p><p><strong>Motivo:</strong> ${dto.reason}</p><p style="color:#64748b;font-size:12px;">— EvaPro</p>`,
+        });
+      } catch (e) {
+        console.error('[Resend] Error sending rejection email:', e);
+      }
+    }
+
+    return saved;
+  }
+
+  // ─── Email Invitation ──────────────────────────────────────────────────
+
+  private async sendCheckInInvitation(checkIn: CheckIn, tenantId: string): Promise<void> {
+    const employee = await this.userRepo.findOne({ where: { id: checkIn.employeeId } });
+    const manager = await this.userRepo.findOne({ where: { id: checkIn.managerId } });
+    if (!employee || !manager) return;
+
+    let locationName = '';
+    if (checkIn.locationId) {
+      const loc = await this.locationRepo.findOne({ where: { id: checkIn.locationId } });
+      locationName = loc ? loc.name + (loc.address ? ` (${loc.address})` : '') : '';
+    }
+
+    // Generate .ics (iCalendar) content
+    const dateStr = new Date(checkIn.scheduledDate).toISOString().split('T')[0].replace(/-/g, '');
+    const timeStr = checkIn.scheduledTime ? checkIn.scheduledTime.replace(':', '') + '00' : '090000';
+    const endTimeH = checkIn.scheduledTime ? parseInt(checkIn.scheduledTime.split(':')[0]) + 1 : 10;
+    const endTimeStr = `${String(endTimeH).padStart(2, '0')}${checkIn.scheduledTime ? checkIn.scheduledTime.split(':')[1] : '00'}00`;
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//EvaPro//Check-in//ES',
+      'METHOD:REQUEST',
+      'BEGIN:VEVENT',
+      `DTSTART:${dateStr}T${timeStr}`,
+      `DTEND:${dateStr}T${endTimeStr}`,
+      `SUMMARY:Check-in 1:1 - ${checkIn.topic}`,
+      `DESCRIPTION:Reuni\u00f3n 1:1 con ${manager.firstName} ${manager.lastName}\\nTema: ${checkIn.topic}`,
+      locationName ? `LOCATION:${locationName}` : '',
+      `ORGANIZER;CN=${manager.firstName} ${manager.lastName}:mailto:${manager.email}`,
+      `ATTENDEE;CN=${employee.firstName} ${employee.lastName}:mailto:${employee.email}`,
+      `UID:${checkIn.id}@evapro`,
+      'STATUS:CONFIRMED',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].filter(Boolean).join('\r\n');
+
+    if (!this.resend || !employee.email) return;
+
+    try {
+      await this.resend.emails.send({
+        from: 'EvaPro <noreply@evapro.cl>',
+        to: employee.email,
+        subject: `Nueva reuni\u00f3n 1:1: ${checkIn.topic}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:500px;">
+            <h2 style="color:#6366f1;">Reuni\u00f3n 1:1 Programada</h2>
+            <p><strong>Tema:</strong> ${checkIn.topic}</p>
+            <p><strong>Fecha:</strong> ${new Date(checkIn.scheduledDate).toLocaleDateString('es-CL')}</p>
+            <p><strong>Hora:</strong> ${checkIn.scheduledTime || 'Por confirmar'}</p>
+            ${locationName ? `<p><strong>Lugar:</strong> ${locationName}</p>` : ''}
+            <p><strong>Encargado:</strong> ${manager.firstName} ${manager.lastName}</p>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:1rem 0;">
+            <p style="color:#64748b;font-size:12px;">Puedes aceptar o rechazar esta cita desde EvaPro.</p>
+          </div>`,
+        attachments: [{
+          filename: 'checkin.ics',
+          content: Buffer.from(icsContent).toString('base64'),
+          contentType: 'text/calendar',
+        }],
+      });
+      await this.checkInRepo.update(checkIn.id, { emailSent: true });
+    } catch (e) {
+      console.error('[Resend] Error sending check-in invitation:', e);
+    }
+  }
+
+  // ─── Meeting Locations ──────────────────────────────────────────────────
+
+  async findLocations(tenantId: string): Promise<MeetingLocation[]> {
+    return this.locationRepo.find({
+      where: { tenantId, isActive: true },
+      order: { type: 'ASC', name: 'ASC' },
+    });
+  }
+
+  async createLocation(tenantId: string, data: { name: string; type: string; address?: string; capacity?: number }): Promise<MeetingLocation> {
+    const loc = this.locationRepo.create({
+      tenantId,
+      name: data.name,
+      type: data.type,
+      address: data.address || null,
+      capacity: data.capacity || null,
+    } as Partial<MeetingLocation>);
+    return this.locationRepo.save(loc as MeetingLocation);
+  }
+
+  async updateLocation(tenantId: string, id: string, data: { name?: string; type?: string; address?: string; capacity?: number }): Promise<MeetingLocation> {
+    const loc = await this.locationRepo.findOne({ where: { id, tenantId } });
+    if (!loc) throw new NotFoundException('Lugar no encontrado');
+    if (data.name !== undefined) loc.name = data.name;
+    if (data.type !== undefined) loc.type = data.type as any;
+    if (data.address !== undefined) loc.address = data.address;
+    if (data.capacity !== undefined) loc.capacity = data.capacity;
+    return this.locationRepo.save(loc);
+  }
+
+  async deactivateLocation(tenantId: string, id: string): Promise<void> {
+    const loc = await this.locationRepo.findOne({ where: { id, tenantId } });
+    if (!loc) throw new NotFoundException('Lugar no encontrado');
+    loc.isActive = false;
+    await this.locationRepo.save(loc);
   }
 
   // ─── Quick Feedback ───────────────────────────────────────────────────────

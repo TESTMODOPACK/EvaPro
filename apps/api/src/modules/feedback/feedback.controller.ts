@@ -3,17 +3,20 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   UseGuards,
   Request,
   ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { FeedbackService } from './feedback.service';
-import { CreateCheckInDto, UpdateCheckInDto } from './dto/create-checkin.dto';
+import { CreateCheckInDto, UpdateCheckInDto, RejectCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
 
 @Controller('feedback')
@@ -56,6 +59,51 @@ export class FeedbackController {
     @Request() req: any,
   ) {
     return this.feedbackService.completeCheckIn(req.user.tenantId, id);
+  }
+
+  @Post('checkins/:id/reject')
+  rejectCheckIn(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: RejectCheckInDto,
+  ) {
+    return this.feedbackService.rejectCheckIn(req.user.tenantId, id, req.user.userId, dto);
+  }
+
+  // ─── Meeting Locations ──────────────────────────────────────────────────
+
+  @Get('meeting-locations')
+  findLocations(@Request() req: any) {
+    return this.feedbackService.findLocations(req.user.tenantId);
+  }
+
+  @Post('meeting-locations')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  createLocation(
+    @Request() req: any,
+    @Body() data: { name: string; type: string; address?: string; capacity?: number },
+  ) {
+    return this.feedbackService.createLocation(req.user.tenantId, data);
+  }
+
+  @Patch('meeting-locations/:id')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  updateLocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() data: { name?: string; type?: string; address?: string; capacity?: number },
+  ) {
+    return this.feedbackService.updateLocation(req.user.tenantId, id, data);
+  }
+
+  @Delete('meeting-locations/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('super_admin', 'tenant_admin')
+  deactivateLocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.feedbackService.deactivateLocation(req.user.tenantId, id);
   }
 
   // ─── Quick Feedback ───────────────────────────────────────────────────────
