@@ -373,6 +373,16 @@ export const api = {
       request<QuickFeedbackData[]>("/feedback/quick/given", {}, token),
     summary: (token: string) =>
       request<FeedbackSummary>("/feedback/quick/summary", {}, token),
+    rejectCheckIn: (token: string, id: string, reason: string) =>
+      request<CheckInData>(`/feedback/checkins/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }, token),
+    listLocations: (token: string) =>
+      request<any[]>("/feedback/meeting-locations", {}, token),
+    createLocation: (token: string, data: any) =>
+      request<any>("/feedback/meeting-locations", { method: "POST", body: JSON.stringify(data) }, token),
+    updateLocation: (token: string, id: string, data: any) =>
+      request<any>(`/feedback/meeting-locations/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    deleteLocation: (token: string, id: string) =>
+      request<void>(`/feedback/meeting-locations/${id}`, { method: "DELETE" }, token),
   },
 
   objectives: {

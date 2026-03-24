@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useCheckIns, useCreateCheckIn, useCompleteCheckIn } from '@/hooks/useFeedback';
+import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
 
-type ActiveTab = 'checkins' | 'quick';
+type ActiveTab = 'checkins' | 'quick' | 'locations';
 type QuickSubTab = 'received' | 'given';
 type Sentiment = 'positive' | 'neutral' | 'constructive';
 
@@ -14,12 +14,14 @@ const statusBadge: Record<string, string> = {
   scheduled: 'badge-warning',
   completed: 'badge-success',
   cancelled: 'badge-danger',
+  rejected: 'badge-danger',
 };
 
 const statusLabel: Record<string, string> = {
   scheduled: 'Programado',
   completed: 'Completado',
   cancelled: 'Cancelado',
+  rejected: 'Rechazado',
 };
 
 const sentimentIcon: Record<Sentiment, { icon: string; color: string }> = {
@@ -49,15 +51,20 @@ function userName(user?: { firstName: string; lastName: string }) {
 function CheckInsTab() {
   const { user } = useAuthStore();
   const role = user?.role || '';
+  const currentUserId = user?.userId || '';
   const canCreateCheckIn = role === 'tenant_admin' || role === 'manager' || role === 'super_admin';
 
   const { data: checkIns, isLoading } = useCheckIns();
   const { data: usersPage } = useUsers();
+  const { data: locations } = useMeetingLocations();
   const createCheckIn = useCreateCheckIn();
   const completeCheckIn = useCompleteCheckIn();
+  const rejectCheckIn = useRejectCheckIn();
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ employeeId: '', scheduledDate: '', topic: '' });
+  const [form, setForm] = useState({ employeeId: '', scheduledDate: '', scheduledTime: '', topic: '', locationId: '' });
+  const [rejectModal, setRejectModal] = useState<{ id: string; topic: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const users = usersPage?.data || [];
 
@@ -66,22 +73,36 @@ function CheckInsTab() {
     : [];
 
   function handleCreate() {
-    if (!form.employeeId || !form.scheduledDate || !form.topic) return;
+    if (!form.employeeId || !form.scheduledDate || !form.scheduledTime || !form.topic) return;
     createCheckIn.mutate(
-      { employeeId: form.employeeId, scheduledDate: form.scheduledDate, topic: form.topic },
+      {
+        employeeId: form.employeeId,
+        scheduledDate: form.scheduledDate,
+        scheduledTime: form.scheduledTime,
+        topic: form.topic,
+        locationId: form.locationId || undefined,
+      },
       {
         onSuccess: () => {
-          setForm({ employeeId: '', scheduledDate: '', topic: '' });
+          setForm({ employeeId: '', scheduledDate: '', scheduledTime: '', topic: '', locationId: '' });
           setShowForm(false);
         },
       },
     );
   }
 
+  function handleReject() {
+    if (!rejectModal || !rejectReason.trim()) return;
+    rejectCheckIn.mutate(
+      { id: rejectModal.id, reason: rejectReason.trim() },
+      { onSuccess: () => { setRejectModal(null); setRejectReason(''); } },
+    );
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-        <h2 style={{ fontWeight: 700, fontSize: '1rem' }}>Check-ins 1:1</h2>
+        <h2 style={{ fontWeight: 700, fontSize: '1rem' }}>{'Check-ins 1:1'}</h2>
         {canCreateCheckIn && (
           <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Cancelar' : '+ Nuevo Check-in'}
@@ -92,56 +113,80 @@ function CheckInsTab() {
       {/* Inline form */}
       {showForm && (
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Empleado
+                {'Colaborador'}
               </label>
-              <select
-                className="input"
-                value={form.employeeId}
-                onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
-                style={{ width: '100%' }}
-              >
-                <option value="">Seleccionar...</option>
+              <select className="input" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} style={{ width: '100%' }}>
+                <option value="">{'Seleccionar...'}</option>
                 {users.map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                  <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}</option>
                 ))}
               </select>
             </div>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Fecha
+                {'Fecha'}
               </label>
-              <input
-                className="input"
-                type="date"
-                value={form.scheduledDate}
-                onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
-                style={{ width: '100%' }}
-              />
+              <input className="input" type="date" value={form.scheduledDate} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                {'Hora'}
+              </label>
+              <input className="input" type="time" value={form.scheduledTime} onChange={(e) => setForm({ ...form, scheduledTime: e.target.value })} style={{ width: '100%' }} />
             </div>
           </div>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-              Tema
-            </label>
-            <input
-              className="input"
-              type="text"
-              placeholder="Tema del check-in..."
-              value={form.topic}
-              onChange={(e) => setForm({ ...form, topic: e.target.value })}
-              style={{ width: '100%' }}
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                {'Tema'}
+              </label>
+              <input className="input" type="text" placeholder="Tema del check-in..." value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                {'Lugar (opcional)'}
+              </label>
+              <select className="input" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })} style={{ width: '100%' }}>
+                <option value="">{'Sin lugar asignado'}</option>
+                {locations && locations.map((l: any) => (
+                  <option key={l.id} value={l.id}>{l.type === 'virtual' ? '\uD83D\uDCBB' : '\uD83C\uDFE2'} {l.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
-          <button
-            className="btn-primary"
-            onClick={handleCreate}
-            disabled={createCheckIn.isPending || !form.employeeId || !form.scheduledDate || !form.topic}
-          >
-            {createCheckIn.isPending ? 'Creando...' : 'Crear Check-in'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button className="btn-primary" onClick={handleCreate} disabled={createCheckIn.isPending || !form.employeeId || !form.scheduledDate || !form.scheduledTime || !form.topic}>
+              {createCheckIn.isPending ? 'Creando...' : 'Crear Check-in'}
+            </button>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              {'Se enviar\u00e1 invitaci\u00f3n por email al colaborador con archivo de calendario (.ics)'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Reject modal */}
+      {rejectModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ padding: '1.5rem', maxWidth: '450px', width: '90%' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.5rem' }}>{'Rechazar Check-in'}</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              {'Rechazar: '}<strong>{rejectModal.topic}</strong>
+            </p>
+            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+              {'Motivo del rechazo'}
+            </label>
+            <textarea className="input" rows={3} placeholder="Indica el motivo del rechazo..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ width: '100%', resize: 'vertical', marginBottom: '1rem' }} />
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button className="btn-ghost" onClick={() => { setRejectModal(null); setRejectReason(''); }}>{'Cancelar'}</button>
+              <button className="btn-primary" style={{ background: 'var(--danger)' }} onClick={handleReject} disabled={rejectCheckIn.isPending || !rejectReason.trim()}>
+                {rejectCheckIn.isPending ? 'Rechazando...' : 'Confirmar Rechazo'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -150,49 +195,51 @@ function CheckInsTab() {
         <Spinner />
       ) : sorted.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            No hay check-ins registrados
-          </p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-            Crea tu primer check-in 1:1
-          </p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{'No hay check-ins registrados'}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{'Crea tu primer check-in 1:1'}</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {sorted.map((ci: any) => (
-            <div
-              key={ci.id}
-              className="card"
-              style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.4rem' }}>
-                  <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{ci.topic}</span>
-                  <span className={`badge ${statusBadge[ci.status] || 'badge-accent'}`}>
-                    {statusLabel[ci.status] || ci.status}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                  <span>{formatDate(ci.scheduledDate)}</span>
-                  <span>Empleado: {userName(ci.employee)}</span>
-                  <span>Manager: {userName(ci.manager)}</span>
-                  {ci.actionItems && ci.actionItems.length > 0 && (
-                    <span style={{ color: 'var(--accent)' }}>
-                      {ci.actionItems.length} accion{ci.actionItems.length !== 1 ? 'es' : ''}
+            <div key={ci.id} className="card" style={{ padding: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{ci.topic}</span>
+                    <span className={`badge ${statusBadge[ci.status] || 'badge-accent'}`}>
+                      {statusLabel[ci.status] || ci.status}
                     </span>
+                    {ci.emailSent && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--success)' }} title="Invitaci\u00f3n enviada por email">{'\u2709\uFE0F Enviado'}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                    <span>{'\uD83D\uDCC5'} {formatDate(ci.scheduledDate)}{ci.scheduledTime ? ` a las ${ci.scheduledTime.slice(0, 5)}` : ''}</span>
+                    <span>{'Colaborador: '}{userName(ci.employee)}</span>
+                    <span>{'Encargado: '}{userName(ci.manager)}</span>
+                    {ci.location && (
+                      <span>{ci.location.type === 'virtual' ? '\uD83D\uDCBB' : '\uD83C\uDFE2'} {ci.location.name}</span>
+                    )}
+                  </div>
+                  {ci.status === 'rejected' && ci.rejectionReason && (
+                    <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--danger)' }}>
+                      <strong>{'Motivo del rechazo:'}</strong> {ci.rejectionReason}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', flexShrink: 0 }}>
+                  {ci.status === 'scheduled' && canCreateCheckIn && (
+                    <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }} onClick={() => completeCheckIn.mutate(ci.id)} disabled={completeCheckIn.isPending}>
+                      {'Completar'}
+                    </button>
+                  )}
+                  {ci.status === 'scheduled' && ci.employeeId === currentUserId && (
+                    <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => setRejectModal({ id: ci.id, topic: ci.topic })}>
+                      {'Rechazar'}
+                    </button>
                   )}
                 </div>
               </div>
-              {ci.status === 'scheduled' && (
-                <button
-                  className="btn-primary"
-                  style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
-                  onClick={() => completeCheckIn.mutate(ci.id)}
-                  disabled={completeCheckIn.isPending}
-                >
-                  Completar
-                </button>
-              )}
             </div>
           ))}
         </div>
@@ -425,6 +472,104 @@ function QuickFeedbackTab() {
   );
 }
 
+/* ─── Meeting Locations Tab ──────────────────────────────────────────────── */
+
+function LocationsTab() {
+  const { data: locations, isLoading } = useMeetingLocations();
+  const createLocation = useCreateLocation();
+  const deleteLocation = useDeleteLocation();
+
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ name: '', type: 'physical', address: '', capacity: '' });
+
+  function handleCreate() {
+    if (!form.name) return;
+    createLocation.mutate(
+      { name: form.name, type: form.type, address: form.address || undefined, capacity: form.capacity ? parseInt(form.capacity) : undefined },
+      { onSuccess: () => { setForm({ name: '', type: 'physical', address: '', capacity: '' }); setShowForm(false); } },
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <h2 style={{ fontWeight: 700, fontSize: '1rem' }}>{'Lugares de Reuni\u00f3n'}</h2>
+        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+          {showForm ? 'Cancelar' : '+ Nuevo Lugar'}
+        </button>
+      </div>
+
+      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+        {'Administra los lugares disponibles para agendar reuniones 1:1. Los lugares aparecen como opciones al crear un check-in.'}
+      </p>
+
+      {showForm && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>{'Nombre'}</label>
+              <input className="input" type="text" placeholder="Ej: Sala de Reuniones 1, Google Meet..." value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>{'Tipo'}</label>
+              <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={{ width: '100%' }}>
+                <option value="physical">{'\uD83C\uDFE2 F\u00edsico'}</option>
+                <option value="virtual">{'\uD83D\uDCBB Virtual'}</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                {form.type === 'virtual' ? 'URL de la sala' : 'Direcci\u00f3n / Ubicaci\u00f3n'}
+              </label>
+              <input className="input" type="text" placeholder={form.type === 'virtual' ? 'https://meet.google.com/...' : 'Piso 3, Oficina 301'} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} style={{ width: '100%' }} />
+            </div>
+            {form.type === 'physical' && (
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>{'Capacidad'}</label>
+                <input className="input" type="number" min="1" placeholder="Ej: 10" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} style={{ width: '100%' }} />
+              </div>
+            )}
+          </div>
+          <button className="btn-primary" onClick={handleCreate} disabled={createLocation.isPending || !form.name}>
+            {createLocation.isPending ? 'Creando...' : 'Crear Lugar'}
+          </button>
+        </div>
+      )}
+
+      {isLoading ? <Spinner /> : !locations || locations.length === 0 ? (
+        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{'No hay lugares registrados'}</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {locations.map((loc: any) => (
+            <div key={loc.id} className="card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                  <span style={{ fontSize: '1rem' }}>{loc.type === 'virtual' ? '\uD83D\uDCBB' : '\uD83C\uDFE2'}</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{loc.name}</span>
+                  <span className={`badge ${loc.type === 'virtual' ? 'badge-accent' : 'badge-warning'}`} style={{ fontSize: '0.65rem' }}>
+                    {loc.type === 'virtual' ? 'Virtual' : 'F\u00edsico'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', gap: '0.75rem' }}>
+                  {loc.address && <span>{loc.address}</span>}
+                  {loc.capacity && <span>{'Capacidad: '}{loc.capacity}</span>}
+                </div>
+              </div>
+              <button className="btn-ghost" style={{ fontSize: '0.75rem', color: 'var(--danger)' }} onClick={() => { if (confirm('\u00bfDesactivar este lugar?')) deleteLocation.mutate(loc.id); }} disabled={deleteLocation.isPending}>
+                {'Desactivar'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 
 export default function FeedbackPage() {
@@ -569,11 +714,14 @@ export default function FeedbackPage() {
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         {tabBtn('checkins', 'Check-ins 1:1')}
         {tabBtn('quick', 'Feedback R\u00e1pido')}
+        {tabBtn('locations', 'Lugares de Reuni\u00f3n')}
       </div>
 
       {/* Content */}
       <div className="animate-fade-up">
-        {activeTab === 'checkins' ? <CheckInsTab /> : <QuickFeedbackTab />}
+        {activeTab === 'checkins' && <CheckInsTab />}
+        {activeTab === 'quick' && <QuickFeedbackTab />}
+        {activeTab === 'locations' && <LocationsTab />}
       </div>
     </div>
   );

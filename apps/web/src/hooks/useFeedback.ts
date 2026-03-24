@@ -78,3 +78,50 @@ export function useFeedbackSummary() {
     enabled: !!token,
   });
 }
+
+export function useRejectCheckIn() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.feedback.rejectCheckIn(token!, id, reason),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] }),
+  });
+}
+
+export function useMeetingLocations() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['feedback', 'locations'],
+    queryFn: () => api.feedback.listLocations(token!),
+    enabled: !!token,
+  });
+}
+
+export function useCreateLocation() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => api.feedback.createLocation(token!, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'locations'] }),
+  });
+}
+
+export function useUpdateLocation() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
+      api.feedback.updateLocation(token!, id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'locations'] }),
+  });
+}
+
+export function useDeleteLocation() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.feedback.deleteLocation(token!, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'locations'] }),
+  });
+}
