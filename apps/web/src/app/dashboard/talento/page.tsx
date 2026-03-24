@@ -14,7 +14,7 @@ const POOL_LABEL: Record<string, string> = {
   enigma: 'Enigma',
   risk: 'Riesgo',
   inconsistent: 'Inconsistente',
-  underperformer: 'Bajo rendimiento',
+  underperformer: 'Bajo rend. con potencial',
   dysfunctional: 'Bajo rendimiento',
 };
 
@@ -44,8 +44,8 @@ const RISK_LABEL: Record<string, string> = {
 
 const READINESS_LABEL: Record<string, string> = {
   ready_now: 'Listo ahora',
-  ready_1_year: 'En 1 a\u00f1o',
-  ready_2_years: 'En 2 a\u00f1os',
+  ready_1_year: 'En 1 año',
+  ready_2_years: 'En 2 años',
   not_ready: 'No listo',
 };
 

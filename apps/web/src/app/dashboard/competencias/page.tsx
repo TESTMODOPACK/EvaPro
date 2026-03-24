@@ -20,9 +20,9 @@ const CATEGORY_BADGE: Record<string, string> = {
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
-  tecnica: 'T\u00e9cnica',
+  tecnica: 'Técnica',
   blanda: 'Blanda',
-  gestion: 'Gesti\u00f3n',
+  gestion: 'Gestión',
   liderazgo: 'Liderazgo',
 };
 

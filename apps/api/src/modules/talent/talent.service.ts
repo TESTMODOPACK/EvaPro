@@ -68,7 +68,7 @@ export class TalentService {
   // ─── Nine Box Calculation ──────────────────────────────────────────────
 
   calculateNineBox(performanceScore: number, potentialScore: number | null): { position: number; pool: string } {
-    const potential = potentialScore ?? 50; // default to medium if not assessed
+    const potential = potentialScore ?? 5; // default to medium on 0-10 scale if not assessed
     const perfLevel = getLevel(performanceScore);
     const potLevel = getLevel(potential);
     return NINE_BOX_MAP[`${perfLevel}-${potLevel}`] || { position: 5, pool: 'core_player' };

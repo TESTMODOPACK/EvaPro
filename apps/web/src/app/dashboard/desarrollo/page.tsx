@@ -23,7 +23,7 @@ const STATUS_BADGE: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = {
   borrador: 'Borrador',
   activo: 'Activo',
-  en_revision: 'En revisi\u00f3n',
+  en_revision: 'En revisión',
   completado: 'Completado',
   cancelado: 'Cancelado',
 };
@@ -44,7 +44,7 @@ const ACTION_TYPE_LABEL: Record<string, string> = {
   proyecto: 'Proyecto',
   taller: 'Taller',
   lectura: 'Lectura',
-  rotacion: 'Rotaci\u00f3n',
+  rotacion: 'Rotación',
   otro: 'Otro',
 };
 
@@ -62,9 +62,9 @@ const PRIORITY_LABEL: Record<string, string> = {
 
 const COMMENT_TYPE_LABEL: Record<string, string> = {
   comentario: 'Comentario',
-  felicitacion: 'Felicitaci\u00f3n',
+  felicitacion: 'Felicitación',
   seguimiento: 'Seguimiento',
-  revision: 'Revisi\u00f3n',
+  revision: 'Revisión',
 };
 
 interface ActionForm {
@@ -326,6 +326,11 @@ export default function DesarrolloPage() {
   function getUserName(userId: string) {
     const u = users.find((x: any) => x.id === userId);
     return u ? `${u.firstName} ${u.lastName}` : userId;
+  }
+
+  function getUserPosition(userId: string) {
+    const u = users.find((x: any) => x.id === userId);
+    return u?.position || '';
   }
 
   function getCompetencyName(id: string) {
@@ -694,15 +699,22 @@ export default function DesarrolloPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                     <div>
                       {(isAdmin || isManager) && (
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                          {getUserName(selectedPlan.userId)}
+                        <div style={{ marginBottom: '0.35rem' }}>
+                          <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                            {getUserName(selectedPlan.userId)}
+                          </span>
+                          {getUserPosition(selectedPlan.userId) && (
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+                              {getUserPosition(selectedPlan.userId)}
+                            </span>
+                          )}
                         </div>
                       )}
-                      <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
                         {selectedPlan.title}
                       </h2>
                       {selectedPlan.description && (
-                        <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        <p style={{ margin: '0.25rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                           {selectedPlan.description}
                         </p>
                       )}

@@ -30,7 +30,7 @@ const typeBadge: Record<string, string> = {
 
 const statusLabel: Record<string, string> = {
   draft: 'Borrador',
-  pending_approval: 'Pendiente de aprobaci\u00f3n',
+  pending_approval: 'Pendiente de aprobación',
   active: 'En progreso',
   completed: 'Completado',
   abandoned: 'Abandonado',
