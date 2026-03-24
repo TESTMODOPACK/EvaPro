@@ -545,25 +545,23 @@ export default function DesarrolloPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {plans.map((plan: any) => {
             const progress = plan.progress ?? 0;
+            const planUser = plan.user || users.find((u: any) => u.id === plan.userId);
+            const userName = planUser ? `${planUser.firstName} ${planUser.lastName}` : getUserName(plan.userId);
+            const userPosition = planUser?.position || '';
             return (
-              <div key={plan.id} className="card animate-fade-up" style={{ cursor: 'pointer' }} onClick={() => openDetail(plan)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <div style={{ flex: 1, minWidth: '200px' }}>
-                    {(isAdmin || isManager) && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                        {getUserName(plan.userId)}
-                      </div>
-                    )}
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {plan.title}
+              <div key={plan.id} className="card animate-fade-up" style={{ cursor: 'pointer', padding: 0, overflow: 'hidden' }} onClick={() => openDetail(plan)}>
+                {/* Card header with user info */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--border)', background: 'rgba(99,102,241,0.03)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.82rem', flexShrink: 0 }}>
+                      {userName.split(' ').map((n: string) => n[0]).slice(0, 2).join('')}
                     </div>
-                    {plan.description && (
-                      <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                        {plan.description}
-                      </div>
-                    )}
+                    <div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>{userName}</div>
+                      {userPosition && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{userPosition}</div>}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <span className={STATUS_BADGE[plan.status] || 'badge'}>
                       {STATUS_LABEL[plan.status] || plan.status}
                     </span>
@@ -572,34 +570,47 @@ export default function DesarrolloPage() {
                     </span>
                   </div>
                 </div>
-                {/* Progress bar */}
-                <div style={{ marginTop: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>Progreso</span>
-                    <span>{progress}%</span>
+                {/* Card body */}
+                <div style={{ padding: '1rem 1.25rem' }}>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                    {plan.title}
                   </div>
-                  <div style={{ height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${progress}%`, background: progress >= 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '3px', transition: 'width 0.3s' }} />
+                  {plan.description && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                      {plan.description}
+                    </div>
+                  )}
+                  {/* Progress bar */}
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
+                      <span>Progreso</span>
+                      <span style={{ fontWeight: 700 }}>{progress}%</span>
+                    </div>
+                    <div style={{ height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${progress}%`, background: progress >= 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '4px', transition: 'width 0.3s' }} />
+                    </div>
                   </div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {plan.targetDate && `Fecha l\u00edmite: ${new Date(plan.targetDate).toLocaleDateString('es-CL')}`}
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
-                    {plan.status === 'borrador' && canCreate && (
-                      <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.25rem 0.5rem' }} onClick={() => handleActivate(plan.id)}>
-                        Activar
+                  {/* Footer info */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {plan.targetDate && <span>{`Fecha l\u00edmite: ${new Date(plan.targetDate).toLocaleDateString('es-CL')}`}</span>}
+                      {plan.actions && <span>{`${plan.actions.length} acci\u00f3n${plan.actions.length !== 1 ? 'es' : ''}`}</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
+                      {plan.status === 'borrador' && canCreate && (
+                        <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} onClick={() => handleActivate(plan.id)}>
+                          Activar
+                        </button>
+                      )}
+                      {plan.status === 'activo' && canCreate && (
+                        <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} onClick={() => handleCompletePlan(plan.id)}>
+                          Completar
+                        </button>
+                      )}
+                      <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }} onClick={() => openDetail(plan)}>
+                        Ver detalle
                       </button>
-                    )}
-                    {plan.status === 'activo' && canCreate && (
-                      <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.25rem 0.5rem' }} onClick={() => handleCompletePlan(plan.id)}>
-                        Completar
-                      </button>
-                    )}
-                    <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.25rem 0.75rem' }} onClick={() => openDetail(plan)}>
-                      Ver detalle
-                    </button>
+                    </div>
                   </div>
                 </div>
               </div>
