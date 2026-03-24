@@ -16,6 +16,12 @@ export enum Sentiment {
   CONSTRUCTIVE = 'constructive',
 }
 
+export enum FeedbackVisibility {
+  PUBLIC = 'public',
+  PRIVATE = 'private',
+  MANAGER_ONLY = 'manager_only',
+}
+
 @Entity('quick_feedbacks')
 @Index('idx_qf_to_user', ['toUserId'])
 @Index('idx_qf_from_user', ['fromUserId'])
@@ -55,6 +61,9 @@ export class QuickFeedback {
 
   @Column({ type: 'boolean', default: false, name: 'is_anonymous' })
   isAnonymous: boolean;
+
+  @Column({ type: 'enum', enum: FeedbackVisibility, default: FeedbackVisibility.PUBLIC, comment: 'public=visible a todos, private=solo emisor/receptor, manager_only=solo receptor y su manager' })
+  visibility: FeedbackVisibility;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;

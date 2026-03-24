@@ -77,19 +77,37 @@ export class ReportsService {
   async individualResults(cycleId: string, userId: string, tenantId: string) {
     const assignments = await this.assignmentRepo.find({
       where: { cycleId, evaluateeId: userId, tenantId },
-      relations: ['evaluator'],
+      relations: ['evaluator', 'cycle'],
     });
+
+    // B2.13: Read anonymity settings from cycle
+    const cycle = assignments[0]?.cycle;
+    const anonymitySettings: Record<string, boolean> = cycle?.settings?.anonymity || {
+      peer: true,
+      direct_report: true,
+      external: true,
+      manager: false,
+      self: false,
+    };
 
     const results = [];
     for (const assignment of assignments) {
       const response = await this.responseRepo.findOne({
         where: { assignmentId: assignment.id },
       });
+
+      // Apply anonymity: hide evaluator name if anonymity is enabled for this relation type
+      const isAnonymous = anonymitySettings[assignment.relationType] ?? false;
+      const evaluatorName = isAnonymous
+        ? null
+        : assignment.evaluator
+          ? `${assignment.evaluator.firstName} ${assignment.evaluator.lastName}`
+          : null;
+
       results.push({
         relationType: assignment.relationType,
-        evaluatorName: assignment.evaluator
-          ? `${assignment.evaluator.firstName} ${assignment.evaluator.lastName}`
-          : null,
+        evaluatorName,
+        isAnonymous,
         status: assignment.status,
         score: response?.overallScore ?? null,
         answers: response?.answers ?? null,

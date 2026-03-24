@@ -90,6 +90,7 @@ export class FeedbackService {
       sentiment: dto.sentiment,
       category: dto.category,
       isAnonymous: dto.isAnonymous ?? false,
+      visibility: dto.visibility,
     });
     return this.quickFeedbackRepo.save(qf);
   }

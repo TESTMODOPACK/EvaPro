@@ -55,6 +55,13 @@ export class ObjectivesController {
     return this.objectivesService.findByUser(tenantId, req.user.userId);
   }
 
+  // B2.11: Objectives at risk (<40% progress)
+  @Get('at-risk')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getAtRisk(@Request() req: any, @Query('userId') filterUserId?: string) {
+    return this.objectivesService.getAtRiskObjectives(req.user.tenantId, filterUserId);
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -193,5 +200,42 @@ export class ObjectivesController {
     return this.objectivesService.deleteComment(
       req.user.tenantId, commentId, req.user.userId, req.user.role,
     );
+  }
+
+  // ─── Key Results (B2.10) ──────────────────────────────────────────────
+
+  @Get(':id/key-results')
+  listKeyResults(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.listKeyResults(req.user.tenantId, id);
+  }
+
+  @Post(':id/key-results')
+  createKeyResult(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() data: { description: string; unit?: string; baseValue?: number; targetValue?: number },
+  ) {
+    return this.objectivesService.createKeyResult(req.user.tenantId, id, data);
+  }
+
+  @Patch('key-results/:krId')
+  updateKeyResult(
+    @Param('krId', ParseUUIDPipe) krId: string,
+    @Request() req: any,
+    @Body() data: { currentValue?: number; description?: string; targetValue?: number; status?: string },
+  ) {
+    return this.objectivesService.updateKeyResult(req.user.tenantId, krId, data as any);
+  }
+
+  @Delete('key-results/:krId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteKeyResult(
+    @Param('krId', ParseUUIDPipe) krId: string,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.deleteKeyResult(req.user.tenantId, krId);
   }
 }

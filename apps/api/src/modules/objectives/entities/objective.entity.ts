@@ -64,6 +64,9 @@ export class Objective {
   @Column({ type: 'enum', enum: ObjectiveStatus, default: ObjectiveStatus.DRAFT })
   status: ObjectiveStatus;
 
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, comment: 'Peso relativo del objetivo (0-100%)' })
+  weight: number;
+
   @Column({ type: 'uuid', name: 'cycle_id', nullable: true })
   cycleId: string;
 

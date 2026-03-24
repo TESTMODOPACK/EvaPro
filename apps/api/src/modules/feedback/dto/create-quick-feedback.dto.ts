@@ -1,5 +1,5 @@
 import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
-import { Sentiment } from '../entities/quick-feedback.entity';
+import { Sentiment, FeedbackVisibility } from '../entities/quick-feedback.entity';
 
 export class CreateQuickFeedbackDto {
   @IsUUID()
@@ -19,4 +19,8 @@ export class CreateQuickFeedbackDto {
   @IsBoolean()
   @IsOptional()
   isAnonymous?: boolean;
+
+  @IsEnum(FeedbackVisibility)
+  @IsOptional()
+  visibility?: FeedbackVisibility;
 }

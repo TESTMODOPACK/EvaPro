@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { ObjectiveType } from '../entities/objective.entity';
 
 export class CreateObjectiveDto {
@@ -21,4 +21,10 @@ export class CreateObjectiveDto {
   @IsUUID()
   @IsOptional()
   cycleId?: string;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  weight?: number;
 }

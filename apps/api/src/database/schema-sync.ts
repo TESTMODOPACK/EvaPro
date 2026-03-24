@@ -30,6 +30,7 @@ import { QuickFeedback } from '../modules/feedback/entities/quick-feedback.entit
 import { Objective } from '../modules/objectives/entities/objective.entity';
 import { ObjectiveUpdate } from '../modules/objectives/entities/objective-update.entity';
 import { ObjectiveComment } from '../modules/objectives/entities/objective-comment.entity';
+import { KeyResult } from '../modules/objectives/entities/key-result.entity';
 
 // ── Entities: Phase 3 (User history & subscriptions) ────────────────────
 import { UserNote } from '../modules/users/entities/user-note.entity';
@@ -138,7 +139,7 @@ async function runSchemaSync() {
       BulkImport, AuditLog, PeerAssignment,
       // Phase 2
       CheckIn, QuickFeedback,
-      Objective, ObjectiveUpdate, ObjectiveComment,
+      Objective, ObjectiveUpdate, ObjectiveComment, KeyResult,
       // Phase 3
       UserNote, SubscriptionPlan, Subscription,
       // Phase 4

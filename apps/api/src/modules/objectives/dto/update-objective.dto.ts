@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ObjectiveStatus, ObjectiveType } from '../entities/objective.entity';
 
 export class UpdateObjectiveDto {
@@ -27,6 +27,12 @@ export class UpdateObjectiveDto {
   @Max(100)
   @IsOptional()
   progress?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  weight?: number;
 }
 
 export class CreateObjectiveUpdateDto {
