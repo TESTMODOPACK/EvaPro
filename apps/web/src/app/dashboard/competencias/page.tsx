@@ -118,7 +118,7 @@ export default function CompetenciasPage() {
   if (!isAdmin) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-        No tienes permisos para acceder a esta secci\u00f3n.
+        {'No tienes permisos para acceder a esta secci\u00f3n.'}
       </div>
     );
   }
@@ -131,10 +131,10 @@ export default function CompetenciasPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-            Cat\u00e1logo de Competencias
+            {'Cat\u00e1logo de Competencias'}
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
-            Gesti\u00f3n de competencias para planes de desarrollo
+            {'Gesti\u00f3n de competencias para planes de desarrollo'}
           </p>
         </div>
         <button className="btn-primary" onClick={() => setShowCreate(!showCreate)}>
@@ -174,21 +174,21 @@ export default function CompetenciasPage() {
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                Categor\u00eda
+                {'Categor\u00eda'}
                 <select
                   value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value })}
                   style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
                 >
-                  <option value="tecnica">T\u00e9cnica</option>
+                  <option value="tecnica">{'T\u00e9cnica'}</option>
                   <option value="blanda">Blanda</option>
-                  <option value="gestion">Gesti\u00f3n</option>
+                  <option value="gestion">{'Gesti\u00f3n'}</option>
                   <option value="liderazgo">Liderazgo</option>
                 </select>
               </label>
             </div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Descripci\u00f3n
+              {'Descripci\u00f3n'}
               <textarea
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -219,8 +219,8 @@ export default function CompetenciasPage() {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(99,102,241,0.03)' }}>
                   <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Nombre</th>
-                  <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Categor\u00eda</th>
-                  <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Descripci\u00f3n</th>
+                  <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>{'Categor\u00eda'}</th>
+                  <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>{'Descripci\u00f3n'}</th>
                   <th style={{ textAlign: 'center', padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Estado</th>
                   <th style={{ textAlign: 'right', padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Acciones</th>
                 </tr>
@@ -243,9 +243,9 @@ export default function CompetenciasPage() {
                             onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                             style={{ padding: '0.35rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
                           >
-                            <option value="tecnica">T\u00e9cnica</option>
+                            <option value="tecnica">{'T\u00e9cnica'}</option>
                             <option value="blanda">Blanda</option>
-                            <option value="gestion">Gesti\u00f3n</option>
+                            <option value="gestion">{'Gesti\u00f3n'}</option>
                             <option value="liderazgo">Liderazgo</option>
                           </select>
                         </td>
