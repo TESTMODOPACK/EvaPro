@@ -618,8 +618,8 @@ export default function DesarrolloPage() {
           onClick={() => { setSelectedPlan(null); setEditingActionId(null); }}
         >
           <div
-            className="card animate-fade-up"
-            style={{ maxWidth: '800px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+            className="animate-fade-up"
+            style={{ maxWidth: '860px', width: '100%', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm, 8px)', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
             onClick={(e) => e.stopPropagation()}
           >
             {detailLoading ? (
@@ -627,58 +627,62 @@ export default function DesarrolloPage() {
             ) : (
               <>
                 {/* Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    {(isAdmin || isManager) && (
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                        {getUserName(selectedPlan.userId)}
-                      </div>
-                    )}
-                    <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                      {selectedPlan.title}
-                    </h2>
-                    {selectedPlan.description && (
-                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        {selectedPlan.description}
-                      </p>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                    <span className={STATUS_BADGE[selectedPlan.status] || 'badge'}>
-                      {STATUS_LABEL[selectedPlan.status] || selectedPlan.status}
-                    </span>
-                    <span className={PRIORITY_BADGE[selectedPlan.priority] || 'badge'}>
-                      {PRIORITY_LABEL[selectedPlan.priority] || selectedPlan.priority}
-                    </span>
+                <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                    <div>
+                      {(isAdmin || isManager) && (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                          {getUserName(selectedPlan.userId)}
+                        </div>
+                      )}
+                      <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {selectedPlan.title}
+                      </h2>
+                      {selectedPlan.description && (
+                        <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          {selectedPlan.description}
+                        </p>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                      <span className={STATUS_BADGE[selectedPlan.status] || 'badge'}>
+                        {STATUS_LABEL[selectedPlan.status] || selectedPlan.status}
+                      </span>
+                      <span className={PRIORITY_BADGE[selectedPlan.priority] || 'badge'}>
+                        {PRIORITY_LABEL[selectedPlan.priority] || selectedPlan.priority}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
+                <div style={{ padding: '1.25rem 1.5rem' }}>
+
                 {/* Info mini-card */}
-                <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                  {selectedPlan.status === 'borrador' && canCreate && `Este plan est\u00e1 en Borrador. Activa el plan para que el colaborador pueda ver y ejecutar sus acciones.`}
-                  {selectedPlan.status === 'activo' && canCreate && `Plan activo. Agrega acciones de desarrollo y marca cada una como completada cuando el colaborador las finalice. Una vez que todas las acciones est\u00e9n listas, puedes marcar el plan como Completado.`}
-                  {selectedPlan.status === 'activo' && !canCreate && `Tu plan est\u00e1 activo. Revisa las acciones asignadas y m\u00e1rcalas como completadas cuando las finalices. Puedes agregar comentarios para comunicarte con tu encargado.`}
-                  {selectedPlan.status === 'completado' && `Este plan ha sido completado exitosamente.`}
+                <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', marginBottom: '1.25rem', fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  {selectedPlan.status === 'borrador' && canCreate && 'Este plan est\u00e1 en Borrador. Activa el plan para que el colaborador pueda ver y ejecutar sus acciones.'}
+                  {selectedPlan.status === 'activo' && canCreate && 'Plan activo. Agrega acciones de desarrollo y marca cada una como completada cuando el colaborador las finalice. Una vez que todas las acciones est\u00e9n listas, puedes marcar el plan como Completado.'}
+                  {selectedPlan.status === 'activo' && !canCreate && 'Tu plan est\u00e1 activo. Revisa las acciones asignadas y m\u00e1rcalas como completadas cuando las finalices. Puedes agregar comentarios para comunicarte con tu encargado.'}
+                  {selectedPlan.status === 'completado' && 'Este plan ha sido completado exitosamente.'}
                   {selectedPlan.status === 'cancelado' && 'Este plan fue cancelado.'}
-                  {selectedPlan.status === 'en_revision' && `Este plan est\u00e1 en revisi\u00f3n por el encargado.`}
+                  {selectedPlan.status === 'en_revision' && 'Este plan est\u00e1 en revisi\u00f3n por el encargado.'}
                 </div>
 
                 {/* Progress */}
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
                     <span>Progreso general</span>
-                    <span>{selectedPlan.progress ?? 0}%</span>
+                    <span style={{ fontWeight: 700 }}>{selectedPlan.progress ?? 0}%</span>
                   </div>
-                  <div style={{ height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${selectedPlan.progress ?? 0}%`, background: (selectedPlan.progress ?? 0) >= 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '4px', transition: 'width 0.3s' }} />
+                  <div style={{ height: '10px', background: 'var(--border)', borderRadius: '5px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${selectedPlan.progress ?? 0}%`, background: (selectedPlan.progress ?? 0) >= 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '5px', transition: 'width 0.3s' }} />
                   </div>
                 </div>
 
                 {/* Actions section */}
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                     <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Acciones ({planActions.length})
+                      {'Acciones de Desarrollo'} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({planActions.length})</span>
                     </h3>
                     {(canCreate || selectedPlan.userId === user?.userId) && (
                       <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowAddAction(!showAddAction)}>
@@ -832,9 +836,11 @@ export default function DesarrolloPage() {
 
                 {/* Comments section */}
                 <div>
-                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Comentarios ({planComments.length})
-                  </h3>
+                  <div style={{ paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)', marginBottom: '0.75rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {'Comentarios y Seguimiento'} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({planComments.length})</span>
+                    </h3>
+                  </div>
 
                   {/* Add comment form */}
                   <form onSubmit={handleAddComment} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -900,8 +906,10 @@ export default function DesarrolloPage() {
                   )}
                 </div>
 
+                </div>{/* close padding div */}
+
                 {/* Action + Close buttons */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     {selectedPlan.status === 'borrador' && canCreate && (
                       <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={() => handleActivate(selectedPlan.id)}>
