@@ -1,22 +1,47 @@
 /**
  * seed.ts — inserts demo tenant + admin user + sample data on first deploy.
+ * Idempotent: checks existence before creating.
  * Run via: pnpm --filter @repo/api run db:seed
+ * OR automatically via start:prod: node dist/database/seed.js
  */
 
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+
+// ── Phase 1 ────────────────────────────────────────────────────────────────
 import { Tenant } from '../modules/tenants/entities/tenant.entity';
 import { User } from '../modules/users/entities/user.entity';
 import { FormTemplate } from '../modules/templates/entities/form-template.entity';
-import { EvaluationCycle } from '../modules/evaluations/entities/evaluation-cycle.entity';
-import { EvaluationAssignment } from '../modules/evaluations/entities/evaluation-assignment.entity';
+import { EvaluationCycle, CycleStatus, CycleType } from '../modules/evaluations/entities/evaluation-cycle.entity';
+import { EvaluationAssignment, AssignmentStatus, RelationType } from '../modules/evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../modules/evaluations/entities/evaluation-response.entity';
 import { BulkImport } from '../modules/users/entities/bulk-import.entity';
 import { AuditLog } from '../modules/audit/entities/audit-log.entity';
+import { PeerAssignment } from '../modules/evaluations/entities/peer-assignment.entity';
+
+// ── Phase 2 ────────────────────────────────────────────────────────────────
+import { CheckIn } from '../modules/feedback/entities/checkin.entity';
+import { QuickFeedback } from '../modules/feedback/entities/quick-feedback.entity';
+import { Objective } from '../modules/objectives/entities/objective.entity';
+import { ObjectiveUpdate } from '../modules/objectives/entities/objective-update.entity';
+import { ObjectiveComment } from '../modules/objectives/entities/objective-comment.entity';
+
+// ── Phase 3 ────────────────────────────────────────────────────────────────
+import { UserNote } from '../modules/users/entities/user-note.entity';
 import { SubscriptionPlan } from '../modules/subscriptions/entities/subscription-plan.entity';
 import { Subscription } from '../modules/subscriptions/entities/subscription.entity';
+
+// ── Phase 4 ────────────────────────────────────────────────────────────────
+import { TalentAssessment } from '../modules/talent/entities/talent-assessment.entity';
+import { CalibrationSession } from '../modules/talent/entities/calibration-session.entity';
+import { CalibrationEntry } from '../modules/talent/entities/calibration-entry.entity';
+
+// ── Phase 5 ────────────────────────────────────────────────────────────────
 import { Competency } from '../modules/development/entities/competency.entity';
+import { DevelopmentPlan } from '../modules/development/entities/development-plan.entity';
+import { DevelopmentAction } from '../modules/development/entities/development-action.entity';
+import { DevelopmentComment } from '../modules/development/entities/development-comment.entity';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -28,20 +53,29 @@ if (!DATABASE_URL) {
 const dataSource = new DataSource({
   type: 'postgres',
   url: DATABASE_URL,
-  ssl:
-    process.env.NODE_ENV === 'production'
-      ? { rejectUnauthorized: false }
-      : false,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   entities: [
-    Tenant, User, FormTemplate, EvaluationCycle,
-    EvaluationAssignment, EvaluationResponse, BulkImport, AuditLog,
-    SubscriptionPlan, Subscription, Competency,
+    // Phase 1
+    Tenant, User, FormTemplate,
+    EvaluationCycle, EvaluationAssignment, EvaluationResponse,
+    BulkImport, AuditLog, PeerAssignment,
+    // Phase 2
+    CheckIn, QuickFeedback,
+    Objective, ObjectiveUpdate, ObjectiveComment,
+    // Phase 3
+    UserNote, SubscriptionPlan, Subscription,
+    // Phase 4
+    TalentAssessment, CalibrationSession, CalibrationEntry,
+    // Phase 5
+    Competency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
   ],
-  synchronize: false,
+  // synchronize:true ensures tables exist before inserting seed data
+  // (safe because cleanup-orphans already dropped conflicting tables)
+  synchronize: true,
   logging: false,
 });
 
-/* ── Demo data ─────────────────────────────────────── */
+/* ── Demo template definition ─────────────────────────────────────────────── */
 
 const DEMO_TEMPLATE_SECTIONS = [
   {
@@ -98,25 +132,41 @@ const DEMO_TEMPLATE_SECTIONS = [
   },
 ];
 
+/* ── Helper: calculate score on 0-10 scale (1-5 scale answers) ──────────── */
+function calcScore(answers: Record<string, any>): number {
+  const vals: number[] = [];
+  for (const v of Object.values(answers)) {
+    if (typeof v === 'number' && !isNaN(v)) vals.push(v);
+  }
+  if (vals.length === 0) return 0;
+  const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+  return Math.round(((avg / 5) * 10) * 100) / 100;
+}
+
 async function seed() {
   try {
-    console.log('🌱  Connecting to database for seeding…');
+    console.log('🌱  Connecting to database for seeding...');
     await dataSource.initialize();
 
     const tenantRepo = dataSource.getRepository(Tenant);
     const userRepo = dataSource.getRepository(User);
     const templateRepo = dataSource.getRepository(FormTemplate);
+    const cycleRepo = dataSource.getRepository(EvaluationCycle);
+    const assignmentRepo = dataSource.getRepository(EvaluationAssignment);
+    const responseRepo = dataSource.getRepository(EvaluationResponse);
+    const planRepo = dataSource.getRepository(SubscriptionPlan);
+    const subRepo = dataSource.getRepository(Subscription);
+    const compRepo = dataSource.getRepository(Competency);
 
-    /* ── Tenant ─────────────────────────────────────────── */
+    /* ── Tenant ──────────────────────────────────────────────────────────── */
     let tenant = await tenantRepo.findOne({ where: { slug: 'demo' } });
     if (tenant) {
-      // Update RUT if missing
       if (!tenant.rut) {
         tenant.rut = '76123456-0';
         await tenantRepo.save(tenant);
         console.log('   Tenant "demo" updated with RUT 76123456-0');
       } else {
-        console.log('   Tenant "demo" already exists — skipping.');
+        console.log('   Tenant "demo" already exists.');
       }
     } else {
       tenant = tenantRepo.create({
@@ -130,43 +180,39 @@ async function seed() {
         settings: {},
       });
       tenant = await tenantRepo.save(tenant);
-      console.log(`✅  Tenant created: ${tenant.name} (${tenant.id})`);
+      console.log(`\u2705  Tenant created: ${tenant.name} (${tenant.id})`);
     }
 
-    /* ── Default Plan + Subscription ──────────────────────── */
-    const planRepo = dataSource.getRepository(SubscriptionPlan);
-    const subRepo = dataSource.getRepository(Subscription);
-
+    /* ── Subscription Plans + Demo Subscription ──────────────────────────── */
     let starterPlan = await planRepo.findOne({ where: { code: 'starter' } });
     if (!starterPlan) {
       starterPlan = planRepo.create({
-        name: 'Starter',
-        code: 'starter',
+        name: 'Starter', code: 'starter',
         description: 'Plan gratuito para comenzar',
-        maxEmployees: 50,
-        monthlyPrice: 0,
+        maxEmployees: 50, monthlyPrice: 0,
         features: ['Evaluaciones 90/180', 'Hasta 50 usuarios', 'Reportes basicos'],
-        isActive: true,
-        displayOrder: 1,
+        isActive: true, displayOrder: 1,
       });
       starterPlan = await planRepo.save(starterPlan);
-      console.log('✅  Plan "Starter" created');
+      console.log('\u2705  Plan "Starter" created');
 
-      // Create Pro and Enterprise plans too
       await planRepo.save(planRepo.create({
-        name: 'Pro', code: 'pro', description: 'Plan profesional con todas las evaluaciones',
-        maxEmployees: 200, monthlyPrice: 49, features: ['Evaluaciones 360', 'Hasta 200 usuarios', 'Analytics', 'Calibracion', 'Nine Box'],
+        name: 'Pro', code: 'pro',
+        description: 'Plan profesional con todas las evaluaciones',
+        maxEmployees: 200, monthlyPrice: 49,
+        features: ['Evaluaciones 360', 'Hasta 200 usuarios', 'Analytics', 'Calibracion', 'Nine Box'],
         isActive: true, displayOrder: 2,
       }));
       await planRepo.save(planRepo.create({
-        name: 'Enterprise', code: 'enterprise', description: 'Plan empresarial sin limites',
-        maxEmployees: 9999, monthlyPrice: 199, features: ['Todo incluido', 'Usuarios ilimitados', 'IA', 'Soporte dedicado', 'API'],
+        name: 'Enterprise', code: 'enterprise',
+        description: 'Plan empresarial sin limites',
+        maxEmployees: 9999, monthlyPrice: 199,
+        features: ['Todo incluido', 'Usuarios ilimitados', 'IA', 'Soporte dedicado', 'API'],
         isActive: true, displayOrder: 3,
       }));
-      console.log('✅  Plans "Pro" and "Enterprise" created');
+      console.log('\u2705  Plans "Pro" and "Enterprise" created');
     }
 
-    // Ensure tenant has an active subscription
     let subscription = await subRepo.findOne({ where: { tenantId: tenant.id } });
     if (!subscription) {
       subscription = subRepo.create({
@@ -176,107 +222,80 @@ async function seed() {
         startDate: new Date(),
       });
       await subRepo.save(subscription);
-      console.log('✅  Subscription created for demo tenant (Starter plan)');
+      console.log('\u2705  Subscription created for demo tenant (Starter plan)');
     } else {
-      console.log('   Subscription already exists for demo tenant — skipping.');
+      console.log('   Subscription already exists for demo tenant.');
     }
 
-    /* ── Super Admin ────────────────────────────────────── */
+    /* ── Super Admin ─────────────────────────────────────────────────────── */
     let superAdmin = await userRepo.findOne({
       where: { email: 'superadmin@evapro.demo', tenantId: tenant.id },
     });
-    if (superAdmin) {
-      console.log('   User "superadmin@evapro.demo" already exists — skipping.');
-    } else {
+    if (!superAdmin) {
       const pwHash = await bcrypt.hash('EvaPro2026!', 10);
       superAdmin = userRepo.create({
-        email: 'superadmin@evapro.demo',
-        passwordHash: pwHash,
-        firstName: 'Super',
-        lastName: 'Admin',
-        role: 'super_admin',
-        department: 'Tecnologia',
-        position: 'Super Administrador',
-        isActive: true,
-        tenantId: tenant.id,
+        email: 'superadmin@evapro.demo', passwordHash: pwHash,
+        firstName: 'Super', lastName: 'Admin',
+        role: 'super_admin', department: 'Tecnologia', position: 'Super Administrador',
+        isActive: true, tenantId: tenant.id,
       });
       superAdmin = await userRepo.save(superAdmin);
-      console.log('✅  Super Admin created: superadmin@evapro.demo');
+      console.log('\u2705  Super Admin created: superadmin@evapro.demo');
     }
 
-    /* ── Admin User (Encargado del Sistema) ───────────── */
+    /* ── Tenant Admin ────────────────────────────────────────────────────── */
     let admin = await userRepo.findOne({
       where: { email: 'admin@evapro.demo', tenantId: tenant.id },
     });
-    if (admin) {
-      console.log('   User "admin@evapro.demo" already exists — skipping.');
-    } else {
+    if (!admin) {
       const passwordHash = await bcrypt.hash('EvaPro2026!', 10);
       admin = userRepo.create({
-        email: 'admin@evapro.demo',
-        passwordHash,
-        firstName: 'Admin',
-        lastName: 'EvaPro',
-        role: 'tenant_admin',
-        department: 'Recursos Humanos',
-        position: 'Encargado del Sistema',
-        isActive: true,
-        tenantId: tenant.id,
+        email: 'admin@evapro.demo', passwordHash,
+        firstName: 'Admin', lastName: 'EvaPro',
+        role: 'tenant_admin', department: 'Recursos Humanos', position: 'Encargado del Sistema',
+        isActive: true, tenantId: tenant.id,
       });
       admin = await userRepo.save(admin);
-      console.log(`✅  Admin created: admin@evapro.demo`);
+      console.log('\u2705  Admin created: admin@evapro.demo');
     }
 
-    /* ── Manager ────────────────────────────────────────── */
+    /* ── Manager ─────────────────────────────────────────────────────────── */
     let manager = await userRepo.findOne({
       where: { email: 'carlos.lopez@evapro.demo', tenantId: tenant.id },
     });
     if (!manager) {
       const pwHash = await bcrypt.hash('EvaPro2026!', 10);
       manager = userRepo.create({
-        email: 'carlos.lopez@evapro.demo',
-        passwordHash: pwHash,
-        firstName: 'Carlos',
-        lastName: 'Lopez',
-        role: 'manager',
-        department: 'Producto',
-        position: 'Product Manager',
-        isActive: true,
-        tenantId: tenant.id,
+        email: 'carlos.lopez@evapro.demo', passwordHash: pwHash,
+        firstName: 'Carlos', lastName: 'Lopez',
+        role: 'manager', department: 'Producto', position: 'Product Manager',
+        isActive: true, tenantId: tenant.id,
       });
       manager = await userRepo.save(manager);
-      console.log('✅  Manager created: carlos.lopez@evapro.demo');
+      console.log('\u2705  Manager created: carlos.lopez@evapro.demo');
     }
 
-    /* ── Employees ──────────────────────────────────────── */
-    const employees = [
+    /* ── Employees ───────────────────────────────────────────────────────── */
+    const employeeDefs = [
       { email: 'ana.martinez@evapro.demo', firstName: 'Ana', lastName: 'Martinez', department: 'Diseno', position: 'UX Designer' },
       { email: 'luis.rodriguez@evapro.demo', firstName: 'Luis', lastName: 'Rodriguez', department: 'DevOps', position: 'DevOps Engineer' },
       { email: 'sandra.torres@evapro.demo', firstName: 'Sandra', lastName: 'Torres', department: 'QA', position: 'QA Analyst' },
     ];
 
-    for (const emp of employees) {
-      const exists = await userRepo.findOne({
-        where: { email: emp.email, tenantId: tenant.id },
-      });
-      if (!exists) {
+    const empUsers: User[] = [];
+    for (const emp of employeeDefs) {
+      let user = await userRepo.findOne({ where: { email: emp.email, tenantId: tenant.id } });
+      if (!user) {
         const pwHash = await bcrypt.hash('EvaPro2026!', 10);
-        await userRepo.save(
-          userRepo.create({
-            ...emp,
-            passwordHash: pwHash,
-            role: 'employee',
-            isActive: true,
-            tenantId: tenant.id,
-            managerId: manager.id,
-          }),
+        user = await userRepo.save(
+          userRepo.create({ ...emp, passwordHash: pwHash, role: 'employee', isActive: true, tenantId: tenant.id, managerId: manager.id }),
         );
-        console.log(`✅  Employee created: ${emp.email}`);
+        console.log(`\u2705  Employee created: ${emp.email}`);
       }
+      empUsers.push(user);
     }
 
-    /* ── Fix encoding for existing users ─────────────────── */
-    // Use ASCII-safe names to avoid double-encoding issues
+    // Ensure ASCII-safe names (fix any old encoding issues)
     const nameFixMap: Record<string, { firstName: string; lastName: string; department: string; position: string }> = {
       'carlos.lopez@evapro.demo': { firstName: 'Carlos', lastName: 'Lopez', department: 'Producto', position: 'Product Manager' },
       'ana.martinez@evapro.demo': { firstName: 'Ana', lastName: 'Martinez', department: 'Diseno', position: 'UX Designer' },
@@ -293,19 +312,16 @@ async function seed() {
         if (user.lastName !== fix.lastName) { user.lastName = fix.lastName; changed = true; }
         if (user.department !== fix.department) { user.department = fix.department; changed = true; }
         if (user.position !== fix.position) { user.position = fix.position; changed = true; }
-        if (changed) {
-          await userRepo.save(user);
-          console.log(`   Fixed data for: ${email}`);
-        }
+        if (changed) { await userRepo.save(user); console.log(`   Fixed data for: ${email}`); }
       }
     }
 
-    /* ── Default Template ───────────────────────────────── */
-    const existingTemplate = await templateRepo.findOne({
+    /* ── Default Template ────────────────────────────────────────────────── */
+    let template = await templateRepo.findOne({
       where: { name: 'Competencias Generales', tenantId: tenant.id },
     });
-    if (!existingTemplate) {
-      await templateRepo.save(
+    if (!template) {
+      template = await templateRepo.save(
         templateRepo.create({
           tenantId: tenant.id,
           name: 'Competencias Generales',
@@ -315,11 +331,10 @@ async function seed() {
           createdBy: admin.id,
         }),
       );
-      console.log('✅  Default template created: Competencias Generales');
+      console.log('\u2705  Default template created: Competencias Generales');
     }
 
-    /* ── Default Competencies ────────────────────────────── */
-    const compRepo = dataSource.getRepository(Competency);
+    /* ── Competencias por defecto ─────────────────────────────────────────── */
     const existingComps = await compRepo.count({ where: { tenantId: tenant.id } });
     if (existingComps === 0) {
       const defaultCompetencies = [
@@ -335,64 +350,145 @@ async function seed() {
       for (const c of defaultCompetencies) {
         await compRepo.save(compRepo.create({ ...c, tenantId: tenant.id, isActive: true }));
       }
-      console.log('   Default competencies created (8)');
+      console.log(`\u2705  Default competencies created (${defaultCompetencies.length})`);
     }
 
-    /* ── Recalculate all scores to 0-10 scale ──────────── */
-    const responseRepo = dataSource.getRepository(EvaluationResponse);
-    const allResponses = await responseRepo.find();
-    let recalcCount = 0;
-    for (const resp of allResponses) {
-      if (!resp.answers || typeof resp.answers !== 'object') continue;
+    /* ── Demo Evaluation Cycle (Q1 2026, closed) ─────────────────────────── */
+    // Only create if no closed cycle exists yet
+    const existingClosedCycle = await cycleRepo.findOne({
+      where: { tenantId: tenant.id, status: CycleStatus.CLOSED },
+    });
 
-      // Extract numeric values (handle both number and string-number types)
-      const numericValues: number[] = [];
-      for (const v of Object.values(resp.answers)) {
-        if (typeof v === 'number' && !isNaN(v)) {
-          numericValues.push(v);
-        } else if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
-          const n = Number(v);
-          // Only include if it looks like a scale answer (1-5 or 1-10)
-          if (n >= 1 && n <= 10) numericValues.push(n);
-        }
-      }
+    if (!existingClosedCycle) {
+      const [ana, luis, sandra] = empUsers;
 
-      console.log(`   Response ${resp.id}: answers=${JSON.stringify(resp.answers)}, numericValues=[${numericValues}], currentScore=${resp.overallScore}`);
+      // Create closed cycle
+      const cycle = await cycleRepo.save(
+        cycleRepo.create({
+          tenantId: tenant.id,
+          name: 'Q1 2026 - Evaluacion de Desempeno',
+          type: CycleType.DEGREE_90,
+          status: CycleStatus.CLOSED,
+          startDate: new Date('2026-01-06'),
+          endDate: new Date('2026-03-14'),
+          templateId: template.id,
+          totalEvaluated: 4,
+          createdBy: admin.id,
+          settings: {},
+        }),
+      );
+      console.log(`\u2705  Demo cycle created: ${cycle.name}`);
 
-      if (numericValues.length === 0) {
-        // If there are no numeric values but the response was submitted, set a default
-        if (resp.submittedAt && resp.overallScore === null) {
-          console.log(`   WARNING: Response ${resp.id} was submitted but has no numeric answers`);
-        }
-        continue;
-      }
+      // Helper: create assignment + response
+      const createCompleted = async (
+        evaluateeId: string,
+        evaluatorId: string,
+        relationType: string,
+        answers: Record<string, any>,
+        completedDaysAgo: number,
+      ) => {
+        const completedAt = new Date();
+        completedAt.setDate(completedAt.getDate() - completedDaysAgo);
+        const overallScore = calcScore(answers);
 
-      const avg = numericValues.reduce((sum: number, v: number) => sum + v, 0) / numericValues.length;
-      // Normalize to 0-10 scale (scale questions are 1-5)
-      const newScore = Math.round(((avg / 5) * 10) * 100) / 100;
-      const oldScore = resp.overallScore != null ? Number(resp.overallScore) : null;
+        const assignment = await assignmentRepo.save(
+          assignmentRepo.create({
+            tenantId: tenant.id,
+            cycleId: cycle.id,
+            evaluateeId,
+            evaluatorId,
+            relationType: relationType as RelationType,
+            status: AssignmentStatus.COMPLETED,
+            dueDate: new Date('2026-03-14'),
+            completedAt,
+          }),
+        );
 
-      // Always update: force recalculation
-      resp.overallScore = newScore;
-      await responseRepo.save(resp);
-      recalcCount++;
-      console.log(`   Recalculated: ${resp.id}: ${oldScore} -> ${newScore} (avg=${avg.toFixed(2)} from ${numericValues.length} values)`);
-    }
-    if (recalcCount > 0) {
-      console.log(`   Recalculated ${recalcCount} evaluation scores to 0-10 scale`);
-    } else if (allResponses.length === 0) {
-      console.log('   No evaluation responses found to recalculate.');
+        await responseRepo.save(
+          responseRepo.create({
+            tenantId: tenant.id,
+            assignmentId: assignment.id,
+            answers,
+            overallScore,
+            submittedAt: completedAt,
+          }),
+        );
+
+        return overallScore;
+      };
+
+      // ── Ana Martinez (UX Designer) — Destacada ─────────────────────────
+      // Self-evaluation: avg(4+5+4+4)/4 = 4.25 → 8.5
+      await createCompleted(ana.id, ana.id, 'self',
+        { q1: 4, q2: 5, q3: 4, q4: 4, q5: 'Calidad de diseno y atencion al detalle', q6: 'Mejorar velocidad de entrega' }, 20);
+      // Manager evaluation: avg(4+4+5+4)/4 = 4.25 → 8.5
+      await createCompleted(ana.id, manager.id, 'manager',
+        { q1: 4, q2: 4, q3: 5, q4: 4, q5: 'Gran colaboradora y proactiva', q6: 'Liderar mas iniciativas' }, 18);
+
+      // ── Luis Rodriguez (DevOps) — Competente ──────────────────────────
+      // Self: avg(3+4+3+3)/4 = 3.25 → 6.5
+      await createCompleted(luis.id, luis.id, 'self',
+        { q1: 3, q2: 4, q3: 3, q4: 3, q5: 'Buen trabajo tecnico y analitico', q6: 'Mejorar documentacion' }, 19);
+      // Manager: avg(3+3+4+3)/4 = 3.25 → 6.5
+      await createCompleted(luis.id, manager.id, 'manager',
+        { q1: 3, q2: 3, q3: 4, q4: 3, q5: 'Tecnico solido y confiable', q6: 'Comunicacion con el equipo' }, 17);
+
+      // ── Sandra Torres (QA) — Excepcional ──────────────────────────────
+      // Self: avg(5+4+5+4)/4 = 4.5 → 9.0
+      await createCompleted(sandra.id, sandra.id, 'self',
+        { q1: 5, q2: 4, q3: 5, q4: 4, q5: 'Cobertura de pruebas exhaustiva', q6: 'Aprender nuevas herramientas de automatizacion' }, 21);
+      // Manager: avg(5+5+5+4)/4 = 4.75 → 9.5
+      await createCompleted(sandra.id, manager.id, 'manager',
+        { q1: 5, q2: 5, q3: 5, q4: 4, q5: 'Calidad extraordinaria, referente del equipo', q6: 'Podria hacer mentoring a otros' }, 19);
+
+      // ── Carlos Lopez (Manager) — Destacado ────────────────────────────
+      // Self: avg(4+4+4+4)/4 = 4.0 → 8.0
+      await createCompleted(manager.id, manager.id, 'self',
+        { q1: 4, q2: 4, q3: 4, q4: 4, q5: 'Buen liderazgo y manejo del equipo', q6: 'Delegar mas y confiar en el equipo' }, 22);
+      // Admin evaluates manager: avg(4+4+4+4)/4 = 4.0 → 8.0
+      await createCompleted(manager.id, admin.id, 'manager',
+        { q1: 4, q2: 4, q3: 4, q4: 4, q5: 'Conduce bien al equipo hacia los objetivos', q6: 'Mejorar comunicacion hacia arriba' }, 20);
+
+      console.log('\u2705  Demo evaluation data created (cycle Q1 2026, 8 assignments, all completed)');
+      console.log('   Scores: Ana=8.5, Luis=6.5, Sandra=9.25 avg, Carlos=8.0');
     } else {
-      console.log('   No numeric answers found in responses — scores may need manual review.');
+      console.log('   Closed cycle already exists — skipping demo evaluation creation.');
+
+      // Still recalculate any null scores in existing responses
+      const allResponses = await responseRepo.find();
+      let recalcCount = 0;
+      for (const resp of allResponses) {
+        if (!resp.answers || typeof resp.answers !== 'object') continue;
+        const numericValues: number[] = [];
+        for (const v of Object.values(resp.answers)) {
+          if (typeof v === 'number' && !isNaN(v)) numericValues.push(v);
+          else if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
+            const n = Number(v);
+            if (n >= 1 && n <= 10) numericValues.push(n);
+          }
+        }
+        if (numericValues.length === 0) continue;
+        const avg = numericValues.reduce((s, v) => s + v, 0) / numericValues.length;
+        const newScore = Math.round(((avg / 5) * 10) * 100) / 100;
+        if (resp.overallScore !== newScore) {
+          resp.overallScore = newScore;
+          await responseRepo.save(resp);
+          recalcCount++;
+        }
+      }
+      if (recalcCount > 0) {
+        console.log(`   Recalculated ${recalcCount} scores to 0-10 scale`);
+      }
     }
 
-    console.log('\n📋  Demo credentials (empresa: demo, password: EvaPro2026!):');
-    console.log('   Super Admin:          superadmin@evapro.demo');
-    console.log('   Enc. del Sistema:     admin@evapro.demo');
-    console.log('   Enc. de Equipo:       carlos.lopez@evapro.demo');
-    console.log('   Colaboradores:        ana.martinez, luis.rodriguez, sandra.torres @evapro.demo');
+    console.log('\n\ud83d\udccb  Demo credentials (password: EvaPro2026!):');
+    console.log('   Super Admin:       superadmin@evapro.demo');
+    console.log('   Enc. del Sistema:  admin@evapro.demo');
+    console.log('   Enc. de Equipo:    carlos.lopez@evapro.demo');
+    console.log('   Colaboradores:     ana.martinez, luis.rodriguez, sandra.torres @evapro.demo');
+
   } catch (err) {
-    console.error('❌  Seed failed:', err);
+    console.error('\u274c  Seed failed:', err);
     process.exit(1);
   } finally {
     if (dataSource.isInitialized) {

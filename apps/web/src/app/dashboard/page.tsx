@@ -61,7 +61,7 @@ function SuperAdminDashboard() {
           Panel del Sistema
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Administraci&oacute;n central de EvaPro
+          {`Administraci\u00f3n central de EvaPro`}
         </p>
       </div>
 
@@ -126,7 +126,7 @@ function SuperAdminDashboard() {
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Registros mas recientes</p>
           </div>
           <Link href="/dashboard/tenants" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
-            Ver todas &rarr;
+            {'Ver todas \u2192'}
           </Link>
         </div>
 
@@ -351,7 +351,7 @@ function RegularDashboard() {
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Asignaciones por completar</p>
             </div>
             <Link href="/dashboard/evaluaciones" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
-              Ver todas &rarr;
+              {'Ver todas \u2192'}
             </Link>
           </div>
 
@@ -369,7 +369,7 @@ function RegularDashboard() {
                     <th>Evaluado</th>
                     <th>Ciclo</th>
                     <th>Estado</th>
-                    <th>Acci&oacute;n</th>
+                    <th>{`Acci\u00f3n`}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -499,10 +499,10 @@ function RegularDashboard() {
         {/* Tendencia de Desempeno */}
         <div className="card" style={{ padding: '1.4rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
-            Tendencia de Desempe&ntilde;o
+            {`Tendencia de Desempe\u00f1o`}
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-            Puntuaci&oacute;n promedio por ciclo
+            {`Puntuaci\u00f3n promedio por ciclo`}
           </p>
           {perfData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
@@ -541,7 +541,7 @@ function RegularDashboard() {
             </ResponsiveContainer>
           ) : (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Sin historial de desempe&ntilde;o a&uacute;n
+              {`Sin historial de desempe\u00f1o a\u00fan`}
             </div>
           )}
         </div>
@@ -616,7 +616,7 @@ function RegularDashboard() {
                 fontWeight: 600,
               }}
             >
-              Ver feedback &rarr;
+              {'Ver feedback \u2192'}
             </Link>
           </div>
         </div>}
@@ -780,7 +780,7 @@ function EmployeeDashboard() {
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{activeObjectives.length} activos</p>
             </div>
             <Link href="/dashboard/objetivos" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
-              Ver todos &rarr;
+              {'Ver todos \u2192'}
             </Link>
           </div>
           {loadingObj ? <Spinner /> : activeObjectives.length === 0 ? (
