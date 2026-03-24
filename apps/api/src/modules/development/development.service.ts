@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -138,15 +139,32 @@ export class DevelopmentService {
   }
 
   async activatePlan(tenantId: string, id: string) {
-    const plan = await this.planRepo.findOne({ where: { id, tenantId } });
+    const plan = await this.planRepo.findOne({
+      where: { id, tenantId },
+      relations: ['actions'],
+    });
     if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
+    if (plan.status !== 'borrador') {
+      throw new BadRequestException('Solo se pueden activar planes en estado borrador');
+    }
+    if (!plan.actions || plan.actions.length === 0) {
+      throw new BadRequestException(
+        'No se puede activar un plan sin acciones de desarrollo. Agrega al menos una acci\u00f3n antes de activar.',
+      );
+    }
     plan.status = 'activo';
     return this.planRepo.save(plan);
   }
 
   async completePlan(tenantId: string, id: string) {
-    const plan = await this.planRepo.findOne({ where: { id, tenantId } });
+    const plan = await this.planRepo.findOne({
+      where: { id, tenantId },
+      relations: ['actions'],
+    });
     if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
+    if (plan.status !== 'activo') {
+      throw new BadRequestException('Solo se pueden completar planes en estado activo');
+    }
     plan.status = 'completado';
     plan.completedAt = new Date();
     return this.planRepo.save(plan);
