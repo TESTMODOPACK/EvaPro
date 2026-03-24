@@ -5,6 +5,7 @@ import {
   PrimaryGeneratedColumn,
   Index,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -66,6 +67,16 @@ export class Objective {
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, comment: 'Peso relativo del objetivo (0-100%)' })
   weight: number;
+
+  @Column({ type: 'uuid', name: 'parent_objective_id', nullable: true, comment: 'Objetivo padre para alineación jerárquica (cascading OKR)' })
+  parentObjectiveId: string | null;
+
+  @ManyToOne(() => Objective, (obj) => obj.children, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'parent_objective_id' })
+  parent: Objective;
+
+  @OneToMany(() => Objective, (obj) => obj.parent)
+  children: Objective[];
 
   @Column({ type: 'uuid', name: 'cycle_id', nullable: true })
   cycleId: string;

@@ -27,6 +27,11 @@ export class ObjectivesService {
   // ─── CRUD ───────────────────────────────────────────────────────────────────
 
   async create(tenantId: string, userId: string, dto: CreateObjectiveDto): Promise<Objective> {
+    // B3.15: Validate parent objective if provided
+    if (dto.parentObjectiveId) {
+      await this.validateParentObjective(tenantId, dto.parentObjectiveId);
+    }
+
     const obj = this.objectiveRepo.create({
       tenantId,
       userId,
@@ -36,6 +41,7 @@ export class ObjectivesService {
       targetDate: dto.targetDate ? new Date(dto.targetDate) : undefined,
       cycleId: dto.cycleId,
       weight: dto.weight ?? 0,
+      parentObjectiveId: dto.parentObjectiveId || null,
       status: ObjectiveStatus.DRAFT,
       progress: 0,
     });
@@ -98,6 +104,15 @@ export class ObjectivesService {
     if (dto.targetDate !== undefined) obj.targetDate = new Date(dto.targetDate);
     if (dto.progress !== undefined) obj.progress = dto.progress;
     if (dto.weight !== undefined) obj.weight = dto.weight;
+    if (dto.parentObjectiveId !== undefined) {
+      if (dto.parentObjectiveId) {
+        if (dto.parentObjectiveId === id) {
+          throw new BadRequestException('Un objetivo no puede ser padre de sí mismo');
+        }
+        await this.validateParentObjective(tenantId, dto.parentObjectiveId, id);
+      }
+      obj.parentObjectiveId = dto.parentObjectiveId || null;
+    }
     return this.objectiveRepo.save(obj);
   }
 
@@ -166,6 +181,9 @@ export class ObjectivesService {
       obj.status = ObjectiveStatus.ACTIVE;
     }
     await this.objectiveRepo.save(obj);
+
+    // B3.15: Propagate progress to parent objective
+    await this.propagateProgressToParent(tenantId, objectiveId);
 
     const update = this.updateRepo.create({
       tenantId,
@@ -252,6 +270,113 @@ export class ObjectivesService {
     }
 
     await this.commentRepo.remove(comment);
+  }
+
+  // ─── Objective Tree / Cascading OKR (B3.15) ────────────────────────────────
+
+  /**
+   * Returns all objectives for a tenant organized as a tree.
+   * Root objectives (parentObjectiveId = null) are at the top,
+   * with children nested recursively.
+   */
+  async getObjectiveTree(tenantId: string): Promise<any[]> {
+    const all = await this.objectiveRepo.find({
+      where: { tenantId },
+      relations: ['user'],
+      order: { createdAt: 'ASC' },
+    });
+
+    const map = new Map<string, any>();
+    for (const obj of all) {
+      map.set(obj.id, {
+        id: obj.id,
+        title: obj.title,
+        description: obj.description,
+        type: obj.type,
+        status: obj.status,
+        progress: obj.progress,
+        weight: Number(obj.weight),
+        targetDate: obj.targetDate,
+        parentObjectiveId: obj.parentObjectiveId,
+        userId: obj.userId,
+        userName: obj.user ? `${obj.user.firstName} ${obj.user.lastName}` : null,
+        userPosition: obj.user?.position || null,
+        children: [],
+      });
+    }
+
+    const roots: any[] = [];
+    for (const node of map.values()) {
+      if (node.parentObjectiveId && map.has(node.parentObjectiveId)) {
+        map.get(node.parentObjectiveId).children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    return roots;
+  }
+
+  /**
+   * Validates that a parent objective exists, belongs to same tenant,
+   * and doesn't create a circular reference.
+   */
+  private async validateParentObjective(tenantId: string, parentId: string, currentId?: string): Promise<void> {
+    const parent = await this.objectiveRepo.findOne({ where: { id: parentId, tenantId } });
+    if (!parent) {
+      throw new BadRequestException('El objetivo padre no existe en esta organización');
+    }
+
+    // Check for circular reference: walk up the chain
+    if (currentId) {
+      let checkId: string | null = parent.parentObjectiveId;
+      const visited = new Set<string>([currentId]);
+      while (checkId) {
+        if (visited.has(checkId)) {
+          throw new BadRequestException('No se puede crear una referencia circular entre objetivos');
+        }
+        visited.add(checkId);
+        const ancestor = await this.objectiveRepo.findOne({ where: { id: checkId, tenantId } });
+        checkId = ancestor?.parentObjectiveId || null;
+      }
+    }
+  }
+
+  /**
+   * When a child objective updates its progress, recalculate the parent's
+   * progress as the weighted average of all its children.
+   */
+  async propagateProgressToParent(tenantId: string, objectiveId: string): Promise<void> {
+    const obj = await this.objectiveRepo.findOne({ where: { id: objectiveId, tenantId } });
+    if (!obj?.parentObjectiveId) return;
+
+    const siblings = await this.objectiveRepo.find({
+      where: { tenantId, parentObjectiveId: obj.parentObjectiveId },
+    });
+
+    if (siblings.length === 0) return;
+
+    const totalWeight = siblings.reduce((sum, s) => sum + Number(s.weight || 0), 0);
+
+    let parentProgress: number;
+    if (totalWeight > 0) {
+      // Weighted average
+      parentProgress = Math.round(
+        siblings.reduce((sum, s) => sum + (s.progress * Number(s.weight || 0)), 0) / totalWeight,
+      );
+    } else {
+      // Simple average if no weights
+      parentProgress = Math.round(
+        siblings.reduce((sum, s) => sum + s.progress, 0) / siblings.length,
+      );
+    }
+
+    await this.objectiveRepo.update(
+      { id: obj.parentObjectiveId, tenantId },
+      { progress: Math.min(100, parentProgress) },
+    );
+
+    // Recurse up the chain
+    await this.propagateProgressToParent(tenantId, obj.parentObjectiveId);
   }
 
   // ─── Key Results (B2.10) ──────────────────────────────────────────────────

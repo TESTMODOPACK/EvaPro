@@ -27,4 +27,8 @@ export class CreateObjectiveDto {
   @Max(100)
   @IsOptional()
   weight?: number;
+
+  @IsUUID()
+  @IsOptional()
+  parentObjectiveId?: string;
 }

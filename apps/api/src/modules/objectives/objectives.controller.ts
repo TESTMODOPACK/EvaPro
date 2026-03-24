@@ -62,6 +62,13 @@ export class ObjectivesController {
     return this.objectivesService.getAtRiskObjectives(req.user.tenantId, filterUserId);
   }
 
+  // B3.15: Hierarchical OKR tree
+  @Get('tree')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getTree(@Request() req: any) {
+    return this.objectivesService.getObjectiveTree(req.user.tenantId);
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
