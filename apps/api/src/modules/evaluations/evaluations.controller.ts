@@ -26,7 +26,7 @@ export class EvaluationsController {
   constructor(private readonly evaluationsService: EvaluationsService) {}
 
   // ─── Cycles ───────────────────────────────────────────────────────────────
-
+  // Read: all authenticated tenant users (each sees their tenant data)
   @Get('evaluation-cycles')
   findAllCycles(@Request() req: any) {
     return this.evaluationsService.findAllCycles(req.user.tenantId);
@@ -40,6 +40,7 @@ export class EvaluationsController {
     return this.evaluationsService.findCycleById(id, req.user.tenantId);
   }
 
+  // Write: admin only
   @Post('evaluation-cycles')
   @Roles('super_admin', 'tenant_admin')
   createCycle(@Request() req: any, @Body() dto: CreateCycleDto) {
@@ -47,6 +48,7 @@ export class EvaluationsController {
   }
 
   @Patch('evaluation-cycles/:id')
+  @Roles('super_admin', 'tenant_admin')
   updateCycle(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -57,6 +59,7 @@ export class EvaluationsController {
 
   @Delete('evaluation-cycles/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('super_admin', 'tenant_admin')
   deleteCycle(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -82,9 +85,9 @@ export class EvaluationsController {
     return this.evaluationsService.closeCycle(id, req.user.tenantId, req.user.userId);
   }
 
-  // ─── Peer Assignments (pre-launch) ──────────────────────────────────────
-
+  // ─── Peer Assignments (pre-launch) — admin only ──────────────────────────
   @Get('evaluation-cycles/:cycleId/peer-assignments')
+  @Roles('super_admin', 'tenant_admin')
   getPeerAssignments(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
@@ -123,9 +126,9 @@ export class EvaluationsController {
     return this.evaluationsService.removePeerAssignment(req.user.tenantId, cycleId, id);
   }
 
-  // ─── Assignments ──────────────────────────────────────────────────────────
-
+  // ─── Assignments — admin + manager can view all; employees see own ────────
   @Get('evaluation-cycles/:cycleId/assignments')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   findAssignments(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
@@ -133,6 +136,7 @@ export class EvaluationsController {
     return this.evaluationsService.findAssignmentsByCycle(cycleId, req.user.tenantId);
   }
 
+  // ─── User's own evaluations — open to all roles (service scopes by userId) ─
   @Get('evaluations/pending')
   findPending(@Request() req: any) {
     return this.evaluationsService.findPendingForUser(req.user.userId, req.user.tenantId);
@@ -151,8 +155,7 @@ export class EvaluationsController {
     return this.evaluationsService.getAssignmentDetail(assignmentId, req.user.tenantId);
   }
 
-  // ─── Responses ────────────────────────────────────────────────────────────
-
+  // ─── Responses — open to all roles (service validates evaluatorId === userId) ─
   @Post('evaluations/:assignmentId/responses')
   saveResponse(
     @Param('assignmentId', ParseUUIDPipe) assignmentId: string,
@@ -186,9 +189,9 @@ export class EvaluationsController {
     );
   }
 
-  // ─── Dashboard Stats ──────────────────────────────────────────────────────
-
+  // ─── Dashboard Stats — admin + manager ───────────────────────────────────
   @Get('dashboard/stats')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   getStats(@Request() req: any) {
     return this.evaluationsService.getStats(req.user.tenantId);
   }

@@ -12,9 +12,11 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { ObjectivesService } from './objectives.service';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
@@ -62,16 +64,32 @@ export class ObjectivesController {
   }
 
   @Patch(':id')
-  update(
+  async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() dto: UpdateObjectiveDto,
   ) {
-    return this.objectivesService.update(req.user.tenantId, id, dto);
+    const { role, userId, tenantId } = req.user;
+
+    // Employees can only update their own objectives
+    if (role === 'employee') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (objective.userId !== userId) {
+        throw new ForbiddenException('Solo puedes modificar tus propios objetivos');
+      }
+    }
+
+    // External advisors cannot update objectives
+    if (role === 'external') {
+      throw new ForbiddenException('Los asesores externos no pueden modificar objetivos');
+    }
+
+    return this.objectivesService.update(tenantId, id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('super_admin', 'tenant_admin', 'manager')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -80,14 +98,27 @@ export class ObjectivesController {
   }
 
   @Post(':id/progress')
-  addProgress(
+  async addProgress(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() dto: CreateObjectiveUpdateDto,
   ) {
-    return this.objectivesService.addProgressUpdate(
-      req.user.tenantId, req.user.userId, id, dto,
-    );
+    const { role, userId, tenantId } = req.user;
+
+    // Employees can only add progress to their own objectives
+    if (role === 'employee') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (objective.userId !== userId) {
+        throw new ForbiddenException('Solo puedes registrar avances en tus propios objetivos');
+      }
+    }
+
+    // External advisors cannot add progress
+    if (role === 'external') {
+      throw new ForbiddenException('Los asesores externos no pueden registrar avances');
+    }
+
+    return this.objectivesService.addProgressUpdate(tenantId, userId, id, dto);
   }
 
   @Get(':id/history')
@@ -98,7 +129,7 @@ export class ObjectivesController {
     return this.objectivesService.getProgressHistory(req.user.tenantId, id);
   }
 
-  // ─── Comments ───────────────────────────────────────────────────────────────
+  // ─── Comments ────────────────────────────────────────────────────────────
 
   @Get(':id/comments')
   listComments(

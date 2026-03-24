@@ -58,7 +58,17 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
 };
 
 export function canAccessPage(role: string, path: string): boolean {
-  const allowed = SIDEBAR_ACCESS[path];
-  if (!allowed) return true; // pages not listed are open
-  return allowed.includes(role);
+  // Exact match
+  const exact = SIDEBAR_ACCESS[path];
+  if (exact) return exact.includes(role);
+
+  // Prefix match for dynamic sub-routes (e.g. /dashboard/evaluaciones/uuid/responder/uuid)
+  // Exclude '/dashboard' itself from prefix matching to avoid it matching everything
+  const prefix = Object.keys(SIDEBAR_ACCESS).find(
+    (k) => k !== '/dashboard' && path.startsWith(k + '/'),
+  );
+  if (prefix) return SIDEBAR_ACCESS[prefix].includes(role);
+
+  // Unknown path: deny by default (security-first; new pages must be listed explicitly)
+  return false;
 }
