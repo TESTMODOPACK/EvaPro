@@ -35,6 +35,7 @@ export class UsersController {
 
   /** GET /users?page=1&limit=50 */
   @Get()
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   findAll(
     @Request() req: any,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,

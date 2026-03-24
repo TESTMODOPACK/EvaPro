@@ -57,9 +57,9 @@ export default function MiSuscripcionPage() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Mi Suscripcion</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{'Mi Suscripci\u00f3n'}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Plan y limites de tu organizacion
+          {'Plan y l\u00edmites de tu organizaci\u00f3n'}
         </p>
       </div>
 
@@ -120,7 +120,7 @@ export default function MiSuscripcionPage() {
             </div>
             {usagePct > 90 && (
               <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: '0.75rem', fontWeight: 500 }}>
-                Estas cerca del limite de usuarios de tu plan. Contacta al administrador para aumentar la capacidad.
+                {'Est\u00e1s cerca del l\u00edmite de usuarios de tu plan. Contacta al administrador para aumentar la capacidad.'}
               </p>
             )}
           </div>
@@ -128,7 +128,7 @@ export default function MiSuscripcionPage() {
           {/* Features card */}
           {plan.features && plan.features.length > 0 && (
             <div className="card animate-fade-up-delay-3" style={{ padding: '1.75rem' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Caracteristicas incluidas</h2>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>{'Caracter\u00edsticas incluidas'}</h2>
               <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
                 {plan.features.map((f: string, i: number) => (
                   <span key={i} className="badge badge-accent" style={{ fontSize: '0.8rem', padding: '0.3rem 0.7rem' }}>

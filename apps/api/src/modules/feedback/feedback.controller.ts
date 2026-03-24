@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { FeedbackService } from './feedback.service';
 import { CreateCheckInDto, UpdateCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
@@ -23,6 +24,7 @@ export class FeedbackController {
   // ─── Check-ins ────────────────────────────────────────────────────────────
 
   @Post('checkins')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   createCheckIn(@Request() req: any, @Body() dto: CreateCheckInDto) {
     return this.feedbackService.createCheckIn(req.user.tenantId, req.user.userId, dto);
   }
@@ -33,6 +35,7 @@ export class FeedbackController {
   }
 
   @Patch('checkins/:id')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   updateCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -42,6 +45,7 @@ export class FeedbackController {
   }
 
   @Post('checkins/:id/complete')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   completeCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -52,6 +56,7 @@ export class FeedbackController {
   // ─── Quick Feedback ───────────────────────────────────────────────────────
 
   @Post('quick')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   sendQuickFeedback(@Request() req: any, @Body() dto: CreateQuickFeedbackDto) {
     return this.feedbackService.createQuickFeedback(req.user.tenantId, req.user.userId, dto);
   }
