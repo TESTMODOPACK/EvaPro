@@ -587,7 +587,7 @@ export default function ObjetivosPage() {
                   <option value="">-- Seleccionar usuario --</option>
                   {allUsers.map((u: any) => (
                     <option key={u.id} value={u.id}>
-                      {u.firstName} {u.lastName} {u.email ? `(${u.email})` : ''}
+                      {u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}
                     </option>
                   ))}
                 </select>
