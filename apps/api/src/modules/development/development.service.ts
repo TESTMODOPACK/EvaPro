@@ -278,40 +278,131 @@ export class DevelopmentService {
 
   // ─── Suggestions ───────────────────────────────────────────────────────
 
+  // Mapping: talentPool → which competency categories are most relevant + action types
+  private readonly POOL_SUGGESTIONS: Record<string, {
+    focusArea: string;
+    priorityCategories: string[];
+    actionTypes: string[];
+    description: string;
+  }> = {
+    // Box 9 - Estrella: high performance + high potential
+    star: {
+      focusArea: 'Liderazgo y visi\u00f3n estrat\u00e9gica',
+      priorityCategories: ['liderazgo', 'gestion'],
+      actionTypes: ['rotacion', 'proyecto', 'mentoring'],
+      description: 'Colaborador estrella. Potenciar liderazgo con rotaciones y proyectos de alto impacto.',
+    },
+    // Box 8 - Alto rendimiento: high performance + medium potential
+    high_performer: {
+      focusArea: 'Desarrollo de potencial',
+      priorityCategories: ['liderazgo', 'gestion', 'blanda'],
+      actionTypes: ['proyecto', 'mentoring', 'rotacion'],
+      description: 'Alto rendimiento con potencial medio. Desarrollar habilidades de gesti\u00f3n para desbloquear su potencial.',
+    },
+    // Box 7 - Alto potencial: medium performance + high potential
+    high_potential: {
+      focusArea: 'Cierre de brechas t\u00e9cnicas',
+      priorityCategories: ['tecnica', 'gestion'],
+      actionTypes: ['curso', 'proyecto', 'taller'],
+      description: 'Alto potencial con desempe\u00f1o medio. Cerrar brechas t\u00e9cnicas para aprovechar su potencial.',
+    },
+    // Box 6 - Enigma: high performance + low potential
+    enigma: {
+      focusArea: 'Ampliaci\u00f3n de perspectiva',
+      priorityCategories: ['blanda', 'liderazgo'],
+      actionTypes: ['rotacion', 'mentoring', 'lectura'],
+      description: 'Buen desempe\u00f1o pero bajo potencial percibido. Ampliar perspectiva con exposici\u00f3n a nuevas \u00e1reas.',
+    },
+    // Box 5 - Profesional clave: medium performance + medium potential
+    core_player: {
+      focusArea: '\u00c1reas de mejora continua',
+      priorityCategories: ['tecnica', 'blanda'],
+      actionTypes: ['curso', 'proyecto', 'lectura'],
+      description: 'Profesional s\u00f3lido. Fortalecer competencias t\u00e9cnicas y blandas para seguir creciendo.',
+    },
+    // Box 4 - Inconsistente: low performance + high potential
+    inconsistent: {
+      focusArea: 'Estabilizaci\u00f3n de desempe\u00f1o',
+      priorityCategories: ['tecnica', 'blanda', 'gestion'],
+      actionTypes: ['mentoring', 'curso', 'taller'],
+      description: 'Potencial alto pero desempe\u00f1o bajo. Requiere acompa\u00f1amiento cercano para estabilizar resultados.',
+    },
+    // Box 3 - Riesgo: medium performance + low potential
+    risk: {
+      focusArea: 'Competencias fundamentales',
+      priorityCategories: ['tecnica', 'blanda'],
+      actionTypes: ['curso', 'taller', 'mentoring'],
+      description: 'Desempe\u00f1o y potencial limitados. Reforzar competencias fundamentales del cargo.',
+    },
+    // Box 2 - Bajo rendimiento con potencial
+    underperformer: {
+      focusArea: '\u00c1reas cr\u00edticas de desempe\u00f1o',
+      priorityCategories: ['tecnica', 'blanda'],
+      actionTypes: ['curso', 'mentoring', 'taller'],
+      description: 'Bajo rendimiento pero con potencial medio. Plan intensivo en \u00e1reas cr\u00edticas.',
+    },
+    // Box 1 - Bajo rendimiento
+    dysfunctional: {
+      focusArea: 'Plan de mejora urgente',
+      priorityCategories: ['tecnica', 'blanda'],
+      actionTypes: ['curso', 'taller', 'mentoring'],
+      description: 'Bajo rendimiento y bajo potencial. Plan de mejora urgente en competencias b\u00e1sicas del cargo.',
+    },
+  };
+
   async suggestPlanFromAssessment(tenantId: string, userId: string, cycleId: string) {
     const assessment = await this.assessmentRepo.findOne({
       where: { tenantId, userId, cycleId },
     });
-    if (!assessment) throw new NotFoundException('Evaluacion de talento no encontrada para este ciclo');
+    if (!assessment) throw new NotFoundException('Evaluaci\u00f3n de talento no encontrada para este ciclo');
 
     const score = Number(assessment.performanceScore);
-    const competencies = await this.competencyRepo.find({
+    const pool = assessment.talentPool || 'core_player';
+    const potential = assessment.potentialScore;
+    const nineBoxPosition = assessment.nineBoxPosition;
+
+    const allCompetencies = await this.competencyRepo.find({
       where: { tenantId, isActive: true },
     });
 
-    let focusArea: string;
-    let suggestedActionTypes: string[];
+    // Get pool-specific suggestions
+    const poolConfig = this.POOL_SUGGESTIONS[pool] || this.POOL_SUGGESTIONS['core_player'];
 
-    if (score < 5) {
-      focusArea = 'areas criticas';
-      suggestedActionTypes = ['curso', 'mentoring', 'taller'];
-    } else if (score <= 7) {
-      focusArea = 'areas de mejora';
-      suggestedActionTypes = ['proyecto', 'curso', 'lectura'];
-    } else {
-      focusArea = 'fortalezas a potenciar';
-      suggestedActionTypes = ['rotacion', 'proyecto', 'mentoring'];
-    }
+    // Filter and sort competencies: priority categories first, then others
+    const priorityCats = poolConfig.priorityCategories;
+    const priorityCompetencies = allCompetencies.filter(
+      (c) => priorityCats.includes(c.category),
+    );
+    const otherCompetencies = allCompetencies.filter(
+      (c) => !priorityCats.includes(c.category),
+    );
 
-    return {
-      performanceScore: score,
-      focusArea,
-      suggestedCompetencies: competencies.map((c) => ({
+    // Build response with priority-sorted competencies
+    const suggestedCompetencies = [
+      ...priorityCompetencies.map((c) => ({
         id: c.id,
         name: c.name,
         category: c.category,
-        suggestedActionTypes,
+        priority: true,
+        suggestedActionTypes: poolConfig.actionTypes,
       })),
+      ...otherCompetencies.map((c) => ({
+        id: c.id,
+        name: c.name,
+        category: c.category,
+        priority: false,
+        suggestedActionTypes: poolConfig.actionTypes.slice(0, 2), // fewer actions for secondary
+      })),
+    ];
+
+    return {
+      performanceScore: score,
+      potentialScore: potential,
+      nineBoxPosition,
+      talentPool: pool,
+      focusArea: poolConfig.focusArea,
+      poolDescription: poolConfig.description,
+      suggestedCompetencies,
     };
   }
 }

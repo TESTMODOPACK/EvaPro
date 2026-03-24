@@ -515,23 +515,61 @@ export default function DesarrolloPage() {
                   </button>
                 </div>
                 {suggestResult && (
-                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', marginBottom: '0.35rem' }}>
-                      {'Resultado de la consulta'}
+                  <div style={{ marginTop: '0.75rem', padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--accent)', marginBottom: '0.5rem' }}>
+                      {'Resultado del an\u00e1lisis de talento'}
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
-                      {`Puntaje de desempe\u00f1o: `}<strong>{suggestResult.performanceScore}</strong>{` \u2014 \u00c1rea de enfoque: `}<strong>{suggestResult.focusArea}</strong>
+                    {/* Summary row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <div style={{ padding: '0.5rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{`Desempe\u00f1o`}</div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>{suggestResult.performanceScore}</div>
+                      </div>
+                      {suggestResult.potentialScore != null && (
+                        <div style={{ padding: '0.5rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Potencial</div>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>{suggestResult.potentialScore}</div>
+                        </div>
+                      )}
+                      {suggestResult.nineBoxPosition && (
+                        <div style={{ padding: '0.5rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Cuadrante</div>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>{suggestResult.nineBoxPosition}</div>
+                        </div>
+                      )}
+                      <div style={{ padding: '0.5rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{'Enfoque'}</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)' }}>{suggestResult.focusArea}</div>
+                      </div>
                     </div>
+                    {/* Pool description */}
+                    {suggestResult.poolDescription && (
+                      <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5, fontStyle: 'italic', borderLeft: '3px solid var(--accent)', paddingLeft: '0.5rem' }}>
+                        {suggestResult.poolDescription}
+                      </p>
+                    )}
+                    {/* Competencies */}
                     {suggestResult.suggestedCompetencies?.length > 0 && (
                       <>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                          {'Competencias y acciones sugeridas:'}
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.4rem' }}>
+                          {'Competencias sugeridas (prioritarias primero):'}
                         </div>
-                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                          {suggestResult.suggestedCompetencies.map((c: any) => (
-                            <span key={c.id} className="badge badge-accent" style={{ fontSize: '0.75rem' }}>
-                              {c.name} ({c.suggestedActionTypes?.join(', ')})
-                            </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                          {suggestResult.suggestedCompetencies.filter((c: any) => c.priority).map((c: any) => (
+                            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem' }}>
+                              <span style={{ color: 'var(--success)', fontWeight: 700 }}>{'\u2605'}</span>
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</span>
+                              <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>{c.category}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>{'\u2192'} {c.suggestedActionTypes?.join(', ')}</span>
+                            </div>
+                          ))}
+                          {suggestResult.suggestedCompetencies.filter((c: any) => !c.priority).map((c: any) => (
+                            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', opacity: 0.7 }}>
+                              <span style={{ color: 'var(--text-muted)' }}>{'\u25cb'}</span>
+                              <span style={{ color: 'var(--text-secondary)' }}>{c.name}</span>
+                              <span className="badge" style={{ fontSize: '0.68rem' }}>{c.category}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>{'\u2192'} {c.suggestedActionTypes?.join(', ')}</span>
+                            </div>
                           ))}
                         </div>
                       </>
