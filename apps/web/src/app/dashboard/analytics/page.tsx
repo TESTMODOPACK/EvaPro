@@ -83,7 +83,7 @@ export default function AnalyticsPage() {
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{'An\u00e1lisis Avanzado'}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {'Distribuci\u00f3n de puntajes, comparaci\u00f3n por departamento y benchmarks de equipo'}
+          {'Distribuci\u00f3n de puntajes, comparaci\u00f3n por departamento y referencias de equipo'}
         </p>
       </div>
 
@@ -218,16 +218,16 @@ export default function AnalyticsPage() {
               {analytics.teamBenchmarks && analytics.teamBenchmarks.length > 0 && (
                 <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
                   <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-                    Benchmarks de Equipo
+                    {'Rendimiento por Equipo'}
                   </h2>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                    Rendimiento promedio por manager, ordenado por puntaje
+                    {'Rendimiento promedio por Encargado de Equipo, ordenado por puntaje'}
                   </p>
                   <div className="table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr>
-                          {['Manager', 'Puntaje Promedio', 'Tama\u00f1o Equipo'].map((h) => (
+                          {['Encargado de Equipo', 'Puntaje Promedio', 'Tama\u00f1o Equipo'].map((h) => (
                             <th
                               key={h}
                               style={{
