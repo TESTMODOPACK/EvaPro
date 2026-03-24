@@ -18,6 +18,7 @@ import { ObjectivesModule } from './modules/objectives/objectives.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { TalentModule } from './modules/talent/talent.module';
 import { DevelopmentModule } from './modules/development/development.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -40,6 +41,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     SubscriptionsModule,
     TalentModule,
     DevelopmentModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [

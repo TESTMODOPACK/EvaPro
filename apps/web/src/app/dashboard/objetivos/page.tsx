@@ -114,10 +114,40 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
   const createComment = useCreateObjectiveComment();
   const deleteComment = useDeleteObjectiveComment();
 
+  const token = useAuthStore((s) => s.token);
   const [content, setContent] = useState('');
   const [type, setType] = useState<CommentType>('comentario');
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [attachmentName, setAttachmentName] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+      const res = await fetch(`${BASE_URL}/uploads`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Error al subir archivo');
+      }
+      const result = await res.json();
+      setAttachmentUrl(result.url);
+      setAttachmentName(result.originalName || file.name);
+    } catch (err: any) {
+      alert(err.message || 'Error al subir el archivo');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
 
   function handleSubmit() {
     if (!content.trim()) return;
@@ -232,24 +262,47 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
             <option value="adjunto">Adjunto</option>
           </select>
           {type === 'adjunto' && (
-            <>
-              <input
-                className="input"
-                type="url"
-                placeholder="URL del adjunto"
-                value={attachmentUrl}
-                onChange={(e) => setAttachmentUrl(e.target.value)}
-                style={{ fontSize: '0.78rem', flex: 1, minWidth: '120px' }}
-              />
-              <input
-                className="input"
-                type="text"
-                placeholder="Nombre del adjunto"
-                value={attachmentName}
-                onChange={(e) => setAttachmentName(e.target.value)}
-                style={{ fontSize: '0.78rem', flex: 1, minWidth: '100px' }}
-              />
-            </>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '180px' }}>
+              {!attachmentUrl ? (
+                <>
+                  <label
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                      padding: '0.3rem 0.7rem', borderRadius: 'var(--radius-sm)',
+                      border: '1px dashed var(--border)', cursor: uploading ? 'wait' : 'pointer',
+                      fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg-surface)',
+                    }}
+                  >
+                    {uploading ? 'Subiendo...' : '\uD83D\uDCCE Cargar archivo'}
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    {'M\u00e1x. 10MB \u2022 PDF, Word, Excel, im\u00e1genes'}
+                  </span>
+                </>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem' }}>
+                  <span style={{ color: 'var(--success)' }}>{'✓'}</span>
+                  <span style={{ color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {attachmentName}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setAttachmentUrl(''); setAttachmentName(''); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '0.8rem', padding: 0 }}
+                    title="Quitar archivo"
+                  >
+                    {'✕'}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           <button
             className="btn-primary"
