@@ -424,7 +424,7 @@ export default function DesarrolloPage() {
                 >
                   <option value="">Seleccionar...</option>
                   {availableUsers.map((u: any) => (
-                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}</option>
                   ))}
                 </select>
               </label>
@@ -483,44 +483,58 @@ export default function DesarrolloPage() {
             </div>
             {/* Suggest from assessment */}
             {planForm.userId && cycles.length > 0 && (
-              <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                  {'Sugerir acciones desde evaluaci\u00f3n de talento'}
+              <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>
+                  {'\u26a1 Sugerencias basadas en Evaluaci\u00f3n de Talento'}
                 </div>
+                <p style={{ margin: '0 0 0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  {'Esta herramienta consulta la Matriz Nine Box del colaborador seleccionado en un ciclo cerrado. Seg\u00fan su clasificaci\u00f3n de talento (Estrella, Alto Potencial, Riesgo, etc.) y su puntaje de desempe\u00f1o, sugiere competencias y tipos de acciones recomendadas para incluir en el plan de desarrollo.'}
+                </p>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {'Ciclo de evaluaci\u00f3n:'}
+                  </label>
                   <select
                     value={suggestCycleId}
                     onChange={(e) => { setSuggestCycleId(e.target.value); setSuggestResult(null); }}
                     style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', flex: 1 }}
                   >
-                    <option value="">{'Seleccionar ciclo...'}</option>
+                    <option value="">{'Seleccionar ciclo cerrado...'}</option>
                     {cycles.filter((c: any) => c.status === 'closed').map((c: any) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                   <button
                     type="button"
-                    className="btn-ghost"
-                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.6rem' }}
+                    className="btn-primary"
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
                     onClick={handleSuggest}
                     disabled={suggestLoading || !suggestCycleId}
                   >
-                    {suggestLoading ? 'Consultando...' : 'Sugerir'}
+                    {suggestLoading ? 'Consultando...' : 'Consultar sugerencias'}
                   </button>
                 </div>
                 {suggestResult && (
-                  <div style={{ marginTop: '0.5rem', fontSize: '0.82rem' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--accent)' }}>
-                      {'Puntaje: '}{suggestResult.performanceScore}{' \u2014 \u00c1rea de enfoque: '}{suggestResult.focusArea}
+                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', marginBottom: '0.35rem' }}>
+                      {'Resultado de la consulta'}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                      {`Puntaje de desempe\u00f1o: `}<strong>{suggestResult.performanceScore}</strong>{` \u2014 \u00c1rea de enfoque: `}<strong>{suggestResult.focusArea}</strong>
                     </div>
                     {suggestResult.suggestedCompetencies?.length > 0 && (
-                      <div style={{ marginTop: '0.35rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        {suggestResult.suggestedCompetencies.map((c: any) => (
-                          <span key={c.id} className="badge badge-accent" style={{ fontSize: '0.75rem' }}>
-                            {c.name} ({c.suggestedActionTypes?.join(', ')})
-                          </span>
-                        ))}
-                      </div>
+                      <>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                          {'Competencias y acciones sugeridas:'}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          {suggestResult.suggestedCompetencies.map((c: any) => (
+                            <span key={c.id} className="badge badge-accent" style={{ fontSize: '0.75rem' }}>
+                              {c.name} ({c.suggestedActionTypes?.join(', ')})
+                            </span>
+                          ))}
+                        </div>
+                      </>
                     )}
                   </div>
                 )}
