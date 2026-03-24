@@ -49,6 +49,9 @@ import { DevelopmentPlan } from '../modules/development/entities/development-pla
 import { DevelopmentAction } from '../modules/development/entities/development-action.entity';
 import { DevelopmentComment } from '../modules/development/entities/development-comment.entity';
 
+// ── B3: Notifications ─────────────────────────────────────────────────────
+import { Notification } from '../modules/notifications/entities/notification.entity';
+
 const DATABASE_URL = process.env.DATABASE_URL;
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -147,6 +150,8 @@ async function runSchemaSync() {
       TalentAssessment, CalibrationSession, CalibrationEntry,
       // Phase 5
       Competency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
+      // B3: Notifications
+      Notification,
     ],
     synchronize: true,
     logging: false,

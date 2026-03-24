@@ -1,13 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThan } from 'typeorm';
+import { Notification, NotificationType } from './entities/notification.entity';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
   private resend: any = null;
 
-  constructor() {
+  constructor(
+    @InjectRepository(Notification)
+    private readonly notifRepo: Repository<Notification>,
+  ) {
     this.initResend();
   }
+
+  // ─── Email (Resend) ─────────────────────────────────────────────────────
 
   private async initResend() {
     const apiKey = process.env.RESEND_API_KEY;
@@ -16,7 +24,6 @@ export class NotificationsService {
       return;
     }
     try {
-      // Dynamic import to avoid build error if not installed
       const resendModule = await import('resend' as string);
       this.resend = new resendModule.Resend(apiKey);
       this.logger.log('Resend email service initialized');
@@ -25,7 +32,7 @@ export class NotificationsService {
     }
   }
 
-  private async send(to: string, subject: string, html: string) {
+  private async sendEmail(to: string, subject: string, html: string) {
     if (!this.resend) {
       this.logger.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
       return;
@@ -43,7 +50,7 @@ export class NotificationsService {
   }
 
   async sendCycleLaunched(email: string, cycleName: string, dueDate: string) {
-    await this.send(
+    await this.sendEmail(
       email,
       `Nueva evaluación: ${cycleName}`,
       `<h2>Has sido asignado a una evaluación</h2>
@@ -54,7 +61,7 @@ export class NotificationsService {
   }
 
   async sendReminder(email: string, cycleName: string, pendingCount: number) {
-    await this.send(
+    await this.sendEmail(
       email,
       `Recordatorio: ${pendingCount} evaluaciones pendientes`,
       `<h2>Evaluaciones pendientes</h2>
@@ -64,7 +71,7 @@ export class NotificationsService {
   }
 
   async sendCycleClosed(email: string, cycleName: string) {
-    await this.send(
+    await this.sendEmail(
       email,
       `Resultados disponibles: ${cycleName}`,
       `<h2>Resultados de evaluación disponibles</h2>
@@ -74,12 +81,99 @@ export class NotificationsService {
   }
 
   async sendInvitation(email: string, tenantName: string) {
-    await this.send(
+    await this.sendEmail(
       email,
       `Invitación a EvaPro — ${tenantName}`,
       `<h2>Has sido invitado a EvaPro</h2>
        <p>Tu organización <strong>${tenantName}</strong> te ha invitado a la plataforma de evaluación de desempeño.</p>
        <p>Ingresa con tu email y contraseña temporal para comenzar.</p>`,
     );
+  }
+
+  // ─── In-App Notifications ──────────────────────────────────────────────
+
+  async create(data: {
+    tenantId: string;
+    userId: string;
+    type: NotificationType;
+    title: string;
+    message: string;
+    metadata?: Record<string, any>;
+  }): Promise<Notification> {
+    const notif = this.notifRepo.create({
+      tenantId: data.tenantId,
+      userId: data.userId,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      metadata: data.metadata || {},
+      isRead: false,
+    });
+    return this.notifRepo.save(notif);
+  }
+
+  /** Bulk create notifications for multiple users */
+  async createBulk(notifications: Array<{
+    tenantId: string;
+    userId: string;
+    type: NotificationType;
+    title: string;
+    message: string;
+    metadata?: Record<string, any>;
+  }>): Promise<void> {
+    if (notifications.length === 0) return;
+    const entities = notifications.map((n) =>
+      this.notifRepo.create({
+        tenantId: n.tenantId,
+        userId: n.userId,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        metadata: n.metadata || {},
+        isRead: false,
+      }),
+    );
+    await this.notifRepo.save(entities);
+  }
+
+  async findByUser(tenantId: string, userId: string, limit = 50): Promise<Notification[]> {
+    return this.notifRepo.find({
+      where: { tenantId, userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+  }
+
+  async countUnread(tenantId: string, userId: string): Promise<number> {
+    return this.notifRepo.count({
+      where: { tenantId, userId, isRead: false },
+    });
+  }
+
+  async markAsRead(tenantId: string, userId: string, notifId: string): Promise<Notification> {
+    const notif = await this.notifRepo.findOne({
+      where: { id: notifId, tenantId, userId },
+    });
+    if (!notif) throw new NotFoundException('Notificación no encontrada');
+    notif.isRead = true;
+    return this.notifRepo.save(notif);
+  }
+
+  async markAllAsRead(tenantId: string, userId: string): Promise<void> {
+    await this.notifRepo.update(
+      { tenantId, userId, isRead: false },
+      { isRead: true },
+    );
+  }
+
+  /** Delete notifications older than N days (cleanup) */
+  async deleteOlderThan(days: number): Promise<number> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const result = await this.notifRepo.delete({
+      createdAt: LessThan(cutoff),
+      isRead: true,
+    });
+    return result.affected || 0;
   }
 }
