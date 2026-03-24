@@ -9,6 +9,7 @@ import { Repository, DataSource } from 'typeorm';
 import { EvaluationCycle, CycleType, CycleStatus } from './entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus, RelationType } from './entities/evaluation-assignment.entity';
 import { EvaluationResponse } from './entities/evaluation-response.entity';
+import { CycleStage, StageType, StageStatus } from './entities/cycle-stage.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { User } from '../users/entities/user.entity';
 import { PeerAssignment } from './entities/peer-assignment.entity';
@@ -32,6 +33,8 @@ export class EvaluationsService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(PeerAssignment)
     private readonly peerAssignmentRepo: Repository<PeerAssignment>,
+    @InjectRepository(CycleStage)
+    private readonly stageRepo: Repository<CycleStage>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
   ) {}
@@ -68,8 +71,176 @@ export class EvaluationsService {
       status: CycleStatus.DRAFT,
     });
     const saved = await this.cycleRepo.save(cycle);
+
+    // B3.14b: Auto-generate stages based on cycle type
+    await this.generateStagesForCycle(saved);
+
     await this.auditService.log(tenantId, userId, 'cycle.created', 'cycle', saved.id);
     return saved;
+  }
+
+  // ─── Cycle Stages (B3.14) ──────────────────────────────────────────────
+
+  /**
+   * Generates the sequential stages for a cycle based on its type.
+   *
+   * Mapping:
+   *   90°  → [Autoevaluación, Evaluación Encargado, Cierre]
+   *   180° → [Autoevaluación, Evaluación Encargado, Cierre]
+   *   270° → [Autoevaluación, Evaluación Encargado, Evaluación de Pares, Cierre]
+   *   360° → [Autoevaluación, Evaluación Encargado, Evaluación de Pares, Calibración, Entrega de Feedback, Cierre]
+   */
+  private async generateStagesForCycle(cycle: EvaluationCycle): Promise<void> {
+    const stageMap: Record<string, Array<{ name: string; type: StageType }>> = {
+      [CycleType.DEGREE_90]: [
+        { name: 'Autoevaluación', type: StageType.SELF_EVALUATION },
+        { name: 'Evaluación del Encargado', type: StageType.MANAGER_EVALUATION },
+        { name: 'Cierre', type: StageType.CLOSED },
+      ],
+      [CycleType.DEGREE_180]: [
+        { name: 'Autoevaluación', type: StageType.SELF_EVALUATION },
+        { name: 'Evaluación del Encargado', type: StageType.MANAGER_EVALUATION },
+        { name: 'Cierre', type: StageType.CLOSED },
+      ],
+      [CycleType.DEGREE_270]: [
+        { name: 'Autoevaluación', type: StageType.SELF_EVALUATION },
+        { name: 'Evaluación del Encargado', type: StageType.MANAGER_EVALUATION },
+        { name: 'Evaluación de Pares', type: StageType.PEER_EVALUATION },
+        { name: 'Cierre', type: StageType.CLOSED },
+      ],
+      [CycleType.DEGREE_360]: [
+        { name: 'Autoevaluación', type: StageType.SELF_EVALUATION },
+        { name: 'Evaluación del Encargado', type: StageType.MANAGER_EVALUATION },
+        { name: 'Evaluación de Pares', type: StageType.PEER_EVALUATION },
+        { name: 'Calibración', type: StageType.CALIBRATION },
+        { name: 'Entrega de Feedback', type: StageType.FEEDBACK_DELIVERY },
+        { name: 'Cierre', type: StageType.CLOSED },
+      ],
+    };
+
+    const stages = stageMap[cycle.type] || stageMap[CycleType.DEGREE_90];
+    const totalStages = stages.length;
+    const cycleDuration = cycle.endDate.getTime() - cycle.startDate.getTime();
+
+    const entities = stages.map((s, i) => {
+      const stageStart = new Date(cycle.startDate.getTime() + (cycleDuration * i) / totalStages);
+      const stageEnd = new Date(cycle.startDate.getTime() + (cycleDuration * (i + 1)) / totalStages);
+      return this.stageRepo.create({
+        tenantId: cycle.tenantId,
+        cycleId: cycle.id,
+        name: s.name,
+        type: s.type,
+        stageOrder: i + 1,
+        startDate: stageStart,
+        endDate: stageEnd,
+        status: i === 0 ? StageStatus.ACTIVE : StageStatus.PENDING,
+      });
+    });
+
+    await this.stageRepo.save(entities);
+  }
+
+  async findStagesByCycle(cycleId: string, tenantId: string): Promise<CycleStage[]> {
+    return this.stageRepo.find({
+      where: { cycleId, tenantId },
+      order: { stageOrder: 'ASC' },
+    });
+  }
+
+  /**
+   * Avanza el ciclo a la siguiente etapa.
+   *
+   * Validaciones:
+   * - La etapa actual debe estar activa
+   * - Para SELF_EVALUATION: todas las autoevaluaciones del ciclo deben estar completadas
+   * - Para MANAGER_EVALUATION: todas las evaluaciones de manager deben estar completadas
+   * - Para PEER_EVALUATION: todas las evaluaciones de pares deben estar completadas
+   * - CALIBRATION y FEEDBACK_DELIVERY: avance manual por admin
+   */
+  async advanceStage(cycleId: string, tenantId: string, userId: string): Promise<CycleStage> {
+    const stages = await this.findStagesByCycle(cycleId, tenantId);
+    if (stages.length === 0) {
+      throw new BadRequestException('Este ciclo no tiene etapas configuradas');
+    }
+
+    const activeStage = stages.find((s) => s.status === StageStatus.ACTIVE);
+    if (!activeStage) {
+      throw new BadRequestException('No hay una etapa activa en este ciclo');
+    }
+
+    // Validate completion requirements for auto-validated stages
+    await this.validateStageCompletion(cycleId, tenantId, activeStage);
+
+    // Complete current stage
+    activeStage.status = StageStatus.COMPLETED;
+    await this.stageRepo.save(activeStage);
+
+    // Activate next stage
+    const nextStage = stages.find((s) => s.stageOrder === activeStage.stageOrder + 1);
+    if (nextStage) {
+      nextStage.status = StageStatus.ACTIVE;
+      await this.stageRepo.save(nextStage);
+
+      // If the next stage is CLOSED, also close the cycle
+      if (nextStage.type === StageType.CLOSED) {
+        await this.cycleRepo.update({ id: cycleId, tenantId }, { status: CycleStatus.CLOSED });
+        nextStage.status = StageStatus.COMPLETED;
+        await this.stageRepo.save(nextStage);
+      }
+
+      await this.auditService.log(tenantId, userId, 'cycle.stage_advanced', 'cycle_stage', nextStage.id, {
+        from: activeStage.name,
+        to: nextStage.name,
+      });
+      return nextStage;
+    }
+
+    return activeStage;
+  }
+
+  private async validateStageCompletion(cycleId: string, tenantId: string, stage: CycleStage): Promise<void> {
+    if (stage.type === StageType.SELF_EVALUATION) {
+      const pendingSelf = await this.assignmentRepo.count({
+        where: { cycleId, tenantId, relationType: RelationType.SELF, status: AssignmentStatus.IN_PROGRESS },
+      });
+      if (pendingSelf > 0) {
+        throw new BadRequestException(
+          `No se puede avanzar: quedan ${pendingSelf} autoevaluación(es) pendiente(s)`,
+        );
+      }
+    }
+
+    if (stage.type === StageType.MANAGER_EVALUATION) {
+      const pendingManager = await this.assignmentRepo.count({
+        where: { cycleId, tenantId, relationType: RelationType.MANAGER, status: AssignmentStatus.IN_PROGRESS },
+      });
+      if (pendingManager > 0) {
+        throw new BadRequestException(
+          `No se puede avanzar: quedan ${pendingManager} evaluación(es) del encargado pendiente(s)`,
+        );
+      }
+    }
+
+    if (stage.type === StageType.PEER_EVALUATION) {
+      const pendingPeer = await this.assignmentRepo.count({
+        where: { cycleId, tenantId, relationType: RelationType.PEER, status: AssignmentStatus.IN_PROGRESS },
+      });
+      if (pendingPeer > 0) {
+        throw new BadRequestException(
+          `No se puede avanzar: quedan ${pendingPeer} evaluación(es) de pares pendiente(s)`,
+        );
+      }
+    }
+    // CALIBRATION and FEEDBACK_DELIVERY: manual advance by admin (no auto-validation)
+  }
+
+  async updateStage(stageId: string, tenantId: string, data: { startDate?: string; endDate?: string; name?: string }): Promise<CycleStage> {
+    const stage = await this.stageRepo.findOne({ where: { id: stageId, tenantId } });
+    if (!stage) throw new NotFoundException('Etapa no encontrada');
+    if (data.startDate) stage.startDate = new Date(data.startDate);
+    if (data.endDate) stage.endDate = new Date(data.endDate);
+    if (data.name) stage.name = data.name;
+    return this.stageRepo.save(stage);
   }
 
   async updateCycle(id: string, tenantId: string, dto: UpdateCycleDto): Promise<EvaluationCycle> {

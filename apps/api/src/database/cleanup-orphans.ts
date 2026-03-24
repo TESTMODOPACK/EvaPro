@@ -26,6 +26,17 @@ async function main() {
     await client.connect();
     console.log('[cleanup] Connected to database');
 
+    // ── B3.14: Cycle stages (FK → evaluation_cycles) ──────────────────────
+    const stagesTables = ['cycle_stages'];
+    for (const table of stagesTables) {
+      try {
+        await client.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
+        console.log(`[cleanup] Dropped B3 table: ${table}`);
+      } catch (err: any) {
+        console.log(`[cleanup] Could not drop ${table}: ${err.message}`);
+      }
+    }
+
     // ── Phase 5: Development tables (new — may not exist yet) ─────────────
     const phase5Tables = [
       'development_comments',

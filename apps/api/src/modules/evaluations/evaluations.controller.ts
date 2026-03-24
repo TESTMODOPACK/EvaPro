@@ -85,6 +85,35 @@ export class EvaluationsController {
     return this.evaluationsService.closeCycle(id, req.user.tenantId, req.user.userId);
   }
 
+  // ─── Cycle Stages (B3.14) ──────────────────────────────────────────────
+
+  @Get('evaluation-cycles/:cycleId/stages')
+  findStages(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.findStagesByCycle(cycleId, req.user.tenantId);
+  }
+
+  @Post('evaluation-cycles/:cycleId/advance-stage')
+  @Roles('super_admin', 'tenant_admin')
+  advanceStage(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.advanceStage(cycleId, req.user.tenantId, req.user.userId);
+  }
+
+  @Patch('evaluation-cycles/stages/:stageId')
+  @Roles('super_admin', 'tenant_admin')
+  updateStage(
+    @Param('stageId', ParseUUIDPipe) stageId: string,
+    @Request() req: any,
+    @Body() data: { startDate?: string; endDate?: string; name?: string },
+  ) {
+    return this.evaluationsService.updateStage(stageId, req.user.tenantId, data);
+  }
+
   // ─── Peer Assignments (pre-launch) — admin only ──────────────────────────
   @Get('evaluation-cycles/:cycleId/peer-assignments')
   @Roles('super_admin', 'tenant_admin')

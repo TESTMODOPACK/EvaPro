@@ -19,6 +19,7 @@ import { EvaluationResponse } from '../modules/evaluations/entities/evaluation-r
 import { BulkImport } from '../modules/users/entities/bulk-import.entity';
 import { AuditLog } from '../modules/audit/entities/audit-log.entity';
 import { PeerAssignment } from '../modules/evaluations/entities/peer-assignment.entity';
+import { CycleStage } from '../modules/evaluations/entities/cycle-stage.entity';
 
 // ── Phase 2 ────────────────────────────────────────────────────────────────
 import { CheckIn } from '../modules/feedback/entities/checkin.entity';
@@ -59,7 +60,7 @@ const dataSource = new DataSource({
     // Phase 1
     Tenant, User, FormTemplate,
     EvaluationCycle, EvaluationAssignment, EvaluationResponse,
-    BulkImport, AuditLog, PeerAssignment,
+    BulkImport, AuditLog, PeerAssignment, CycleStage,
     // Phase 2
     CheckIn, QuickFeedback,
     Objective, ObjectiveUpdate, ObjectiveComment, KeyResult,
