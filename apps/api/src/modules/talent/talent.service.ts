@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TalentAssessment } from './entities/talent-assessment.entity';
@@ -303,6 +303,24 @@ export class TalentService {
   async updateEntry(entryId: string, dto: any, discussedBy: string): Promise<CalibrationEntry> {
     const entry = await this.entryRepo.findOne({ where: { id: entryId } });
     if (!entry) throw new NotFoundException('Entry no encontrada');
+
+    // B1.5: Require rationale if score change exceeds 1 point
+    if (dto.adjustedScore !== undefined) {
+      const scoreDiff = Math.abs(Number(dto.adjustedScore) - Number(entry.originalScore));
+      if (scoreDiff > 1 && (!dto.rationale || dto.rationale.trim().length === 0)) {
+        throw new BadRequestException(
+          `El ajuste de puntaje supera 1 punto (${Number(entry.originalScore).toFixed(1)} → ${Number(dto.adjustedScore).toFixed(1)}). Debe incluir una justificación.`,
+        );
+      }
+    }
+    if (dto.adjustedPotential !== undefined && entry.originalPotential != null) {
+      const potDiff = Math.abs(Number(dto.adjustedPotential) - Number(entry.originalPotential));
+      if (potDiff > 1 && (!dto.rationale || dto.rationale.trim().length === 0)) {
+        throw new BadRequestException(
+          `El ajuste de potencial supera 1 punto. Debe incluir una justificación.`,
+        );
+      }
+    }
 
     if (dto.adjustedScore !== undefined) entry.adjustedScore = dto.adjustedScore;
     if (dto.adjustedPotential !== undefined) entry.adjustedPotential = dto.adjustedPotential;

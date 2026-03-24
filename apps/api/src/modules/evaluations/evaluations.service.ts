@@ -357,6 +357,16 @@ export class EvaluationsService {
       throw new BadRequestException('Solo se puede lanzar un ciclo en estado borrador');
     }
 
+    // B1.2: No duplicate active cycles of same type per tenant
+    const existingActive = await this.cycleRepo.findOne({
+      where: { tenantId, type: cycle.type, status: CycleStatus.ACTIVE },
+    });
+    if (existingActive) {
+      throw new BadRequestException(
+        `Ya existe un ciclo activo del tipo ${cycle.type} ("${existingActive.name}"). Cierre el ciclo activo antes de lanzar uno nuevo.`,
+      );
+    }
+
     if (!cycle.templateId) {
       throw new BadRequestException('El ciclo debe tener una plantilla asignada');
     }
@@ -374,6 +384,23 @@ export class EvaluationsService {
 
     if (preAssignments.length === 0) {
       throw new BadRequestException('Debe configurar al menos una asignación antes de lanzar el ciclo');
+    }
+
+    // B1.3: For 270°/360° cycles, ensure at least 3 peer evaluators per evaluatee (anonymity)
+    if (cycle.type === CycleType.DEGREE_270 || cycle.type === CycleType.DEGREE_360) {
+      const evaluateeIds = [...new Set(preAssignments.map((pa) => pa.evaluateeId))];
+      for (const evaluateeId of evaluateeIds) {
+        const peerCount = preAssignments.filter(
+          (pa) => pa.evaluateeId === evaluateeId && pa.relationType === RelationType.PEER,
+        ).length;
+        if (peerCount < 3) {
+          const user = await this.userRepo.findOne({ where: { id: evaluateeId }, select: ['id', 'firstName', 'lastName'] });
+          const name = user ? `${user.firstName} ${user.lastName}` : evaluateeId;
+          throw new BadRequestException(
+            `El evaluado "${name}" tiene solo ${peerCount} evaluador(es) par(es). Se requieren mínimo 3 para garantizar el anonimato en evaluaciones ${cycle.type}.`,
+          );
+        }
+      }
     }
 
     // Use a transaction for atomicity
@@ -555,6 +582,23 @@ export class EvaluationsService {
     }
     if (assignment.status === AssignmentStatus.COMPLETED) {
       throw new BadRequestException('Esta evaluación ya fue enviada');
+    }
+
+    // B1.4: Manager/peer/direct_report evaluations require self-evaluation to be completed first
+    if (assignment.relationType !== RelationType.SELF) {
+      const selfAssignment = await this.assignmentRepo.findOne({
+        where: {
+          cycleId: assignment.cycleId,
+          tenantId,
+          evaluateeId: assignment.evaluateeId,
+          relationType: RelationType.SELF,
+        },
+      });
+      if (selfAssignment && selfAssignment.status !== AssignmentStatus.COMPLETED) {
+        throw new BadRequestException(
+          'La autoevaluación del colaborador debe completarse antes de que otros evaluadores puedan enviar su evaluación.',
+        );
+      }
     }
 
     // Calculate overall score from scale answers
