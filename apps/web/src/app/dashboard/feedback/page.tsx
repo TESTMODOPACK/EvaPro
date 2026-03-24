@@ -348,7 +348,7 @@ function QuickFeedbackTab() {
               <input
                 className="input"
                 type="text"
-                placeholder="Ej: Liderazgo, Comunicaci\u00f3n..."
+                placeholder={'Ej: Liderazgo, Comunicaci\u00f3n...'}
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 style={{ width: '100%' }}

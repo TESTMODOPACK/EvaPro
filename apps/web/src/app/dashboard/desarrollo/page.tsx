@@ -434,7 +434,7 @@ export default function DesarrolloPage() {
                   value={planForm.title}
                   onChange={(e) => setPlanForm({ ...planForm, title: e.target.value })}
                   required
-                  placeholder="T\u00edtulo del plan"
+                  placeholder={'T\u00edtulo del plan'}
                   style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
                 />
               </label>
@@ -457,7 +457,7 @@ export default function DesarrolloPage() {
                 value={planForm.description}
                 onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
                 rows={2}
-                placeholder="Descripci\u00f3n del plan (opcional)"
+                placeholder={'Descripci\u00f3n del plan (opcional)'}
                 style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }}
               />
             </label>
@@ -695,7 +695,7 @@ export default function DesarrolloPage() {
                           value={actionForm.title}
                           onChange={(e) => setActionForm({ ...actionForm, title: e.target.value })}
                           required
-                          placeholder="T\u00edtulo de la acci\u00f3n"
+                          placeholder={'T\u00edtulo de la acci\u00f3n'}
                           style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
                         />
                         <select
@@ -727,7 +727,7 @@ export default function DesarrolloPage() {
                       <input
                         value={actionForm.description}
                         onChange={(e) => setActionForm({ ...actionForm, description: e.target.value })}
-                        placeholder="Descripci\u00f3n (opcional)"
+                        placeholder={'Descripci\u00f3n (opcional)'}
                         style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
                       />
                       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>

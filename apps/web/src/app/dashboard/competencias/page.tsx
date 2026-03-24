@@ -194,7 +194,7 @@ export default function CompetenciasPage() {
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={2}
-                placeholder="Descripci\u00f3n de la competencia (opcional)"
+                placeholder={'Descripci\u00f3n de la competencia (opcional)'}
                 style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }}
               />
             </label>
