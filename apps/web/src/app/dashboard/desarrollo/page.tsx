@@ -374,19 +374,32 @@ export default function DesarrolloPage() {
         <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.5rem' }}>
           {'\u00bfQu\u00e9 son los Planes de Desarrollo Individual (PDI)?'}
         </p>
-        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+        <p style={{ margin: '0 0 0.75rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           {'Los PDI permiten definir acciones concretas para el crecimiento profesional de cada colaborador. Cada plan se compone de acciones espec\u00edficas (cursos, mentor\u00edas, proyectos, talleres, lecturas o rotaciones) vinculadas a competencias del cat\u00e1logo organizacional.'}
         </p>
-        <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-            {'\u00bfC\u00f3mo se conecta con otras funcionalidades?'}
-          </p>
-          <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-            <li><strong>{'Evaluaciones de Desempe\u00f1o'}</strong>{': Los resultados de las evaluaciones identifican \u00e1reas de mejora que se traducen en acciones del PDI.'}</li>
-            <li><strong>{'Evaluaci\u00f3n de Talento (9-Box)'}</strong>{': La matriz de talento sugiere autom\u00e1ticamente competencias y acciones seg\u00fan el cuadrante del colaborador.'}</li>
-            <li><strong>{'Cat\u00e1logo de Competencias'}</strong>{': Las acciones del plan se vinculan a competencias espec\u00edficas para medir el progreso por \u00e1rea.'}</li>
-            <li><strong>{'Objetivos'}</strong>{': Los objetivos individuales pueden alinearse con las acciones de desarrollo para un seguimiento integral.'}</li>
-          </ul>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
+          <div>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {'Flujo de trabajo'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+              <li><strong>{'1. Crear plan (Borrador)'}</strong>{' \u2192 El Administrador o Encargado crea un PDI para un colaborador'}</li>
+              <li><strong>{'2. Activar plan'}</strong>{' \u2192 Se confirma y el colaborador puede ver sus acciones asignadas'}</li>
+              <li><strong>{'3. Ejecutar acciones'}</strong>{' \u2192 El colaborador completa cursos, proyectos, mentor\u00edas, etc.'}</li>
+              <li><strong>{'4. Completar plan'}</strong>{' \u2192 Solo el Administrador o Encargado marca el plan como finalizado'}</li>
+            </ul>
+          </div>
+          <div>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {'Permisos y conexiones'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+              <li><strong>{'Administrador / Encargado'}</strong>{': Crean planes, agregan acciones, activan y completan'}</li>
+              <li><strong>{'Colaborador'}</strong>{': Ve su plan, completa acciones individuales, agrega comentarios'}</li>
+              <li><strong>{'Evaluaci\u00f3n de Talento'}</strong>{': Sugiere competencias seg\u00fan la Matriz Nine Box'}</li>
+              <li><strong>{'Cat\u00e1logo de Competencias'}</strong>{': Las acciones se vinculan a competencias organizacionales'}</li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -394,8 +407,11 @@ export default function DesarrolloPage() {
       {showCreate && canCreate && (
         <div className="card animate-fade-up">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 0 }}>
-            Crear Nuevo Plan
+            {'Crear Nuevo Plan de Desarrollo'}
           </h2>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.25rem 0 0.75rem' }}>
+            {'Selecciona un colaborador y define el plan. Una vez creado quedar\u00e1 en estado Borrador hasta que lo actives.'}
+          </p>
           <form onSubmit={handleCreatePlan} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
@@ -637,6 +653,16 @@ export default function DesarrolloPage() {
                   </div>
                 </div>
 
+                {/* Info mini-card */}
+                <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  {selectedPlan.status === 'borrador' && canCreate && `Este plan est\u00e1 en Borrador. Activa el plan para que el colaborador pueda ver y ejecutar sus acciones.`}
+                  {selectedPlan.status === 'activo' && canCreate && `Plan activo. Agrega acciones de desarrollo y marca cada una como completada cuando el colaborador las finalice. Una vez que todas las acciones est\u00e9n listas, puedes marcar el plan como Completado.`}
+                  {selectedPlan.status === 'activo' && !canCreate && `Tu plan est\u00e1 activo. Revisa las acciones asignadas y m\u00e1rcalas como completadas cuando las finalices. Puedes agregar comentarios para comunicarte con tu encargado.`}
+                  {selectedPlan.status === 'completado' && `Este plan ha sido completado exitosamente.`}
+                  {selectedPlan.status === 'cancelado' && 'Este plan fue cancelado.'}
+                  {selectedPlan.status === 'en_revision' && `Este plan est\u00e1 en revisi\u00f3n por el encargado.`}
+                </div>
+
                 {/* Progress */}
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
@@ -874,8 +900,20 @@ export default function DesarrolloPage() {
                   )}
                 </div>
 
-                {/* Close button */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                {/* Action + Close buttons */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {selectedPlan.status === 'borrador' && canCreate && (
+                      <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={() => handleActivate(selectedPlan.id)}>
+                        {'Activar Plan'}
+                      </button>
+                    )}
+                    {selectedPlan.status === 'activo' && canCreate && (
+                      <button className="btn-primary" style={{ fontSize: '0.82rem', background: 'var(--success)' }} onClick={() => handleCompletePlan(selectedPlan.id)}>
+                        {'Marcar como Completado'}
+                      </button>
+                    )}
+                  </div>
                   <button className="btn-ghost" onClick={() => { setSelectedPlan(null); setEditingActionId(null); }}>
                     Cerrar
                   </button>
