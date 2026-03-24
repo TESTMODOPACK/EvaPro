@@ -24,9 +24,14 @@ export class FeedbackController {
   // ─── Check-ins ────────────────────────────────────────────────────────────
 
   @Post('checkins')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   createCheckIn(@Request() req: any, @Body() dto: CreateCheckInDto) {
-    return this.feedbackService.createCheckIn(req.user.tenantId, req.user.userId, dto);
+    return this.feedbackService.createCheckIn(
+      req.user.tenantId,
+      req.user.userId,
+      req.user.role,
+      dto,
+    );
   }
 
   @Get('checkins')

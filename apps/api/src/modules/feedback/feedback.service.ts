@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CheckIn, CheckInStatus } from './entities/checkin.entity';
 import { QuickFeedback, Sentiment } from './entities/quick-feedback.entity';
 import { CreateCheckInDto, UpdateCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class FeedbackService {
@@ -13,11 +14,30 @@ export class FeedbackService {
     private readonly checkInRepo: Repository<CheckIn>,
     @InjectRepository(QuickFeedback)
     private readonly quickFeedbackRepo: Repository<QuickFeedback>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   // ─── Check-ins ────────────────────────────────────────────────────────────
 
-  async createCheckIn(tenantId: string, managerId: string, dto: CreateCheckInDto): Promise<CheckIn> {
+  async createCheckIn(tenantId: string, managerId: string, role: string, dto: CreateCheckInDto): Promise<CheckIn> {
+    // Managers can only create check-ins with their direct reports
+    // Admins (super_admin, tenant_admin) are exempt from this restriction
+    if (role === 'manager') {
+      const employee = await this.userRepo.findOne({
+        where: { id: dto.employeeId, tenantId },
+        select: ['id', 'managerId'],
+      });
+      if (!employee) {
+        throw new NotFoundException('Colaborador no encontrado');
+      }
+      if (employee.managerId !== managerId) {
+        throw new ForbiddenException(
+          'Solo puedes crear check-ins con tus reportes directos',
+        );
+      }
+    }
+
     const ci = this.checkInRepo.create({
       tenantId,
       managerId,

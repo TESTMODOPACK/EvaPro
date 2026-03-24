@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useCheckIns, useCreateCheckIn, useCompleteCheckIn } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
+import { useAuthStore } from '@/store/auth.store';
 
 type ActiveTab = 'checkins' | 'quick';
 type QuickSubTab = 'received' | 'given';
@@ -46,6 +47,10 @@ function userName(user?: { firstName: string; lastName: string }) {
 /* ─── Check-ins Tab ──────────────────────────────────────────────────────── */
 
 function CheckInsTab() {
+  const { user } = useAuthStore();
+  const role = user?.role || '';
+  const canCreateCheckIn = role === 'tenant_admin' || role === 'manager' || role === 'super_admin';
+
   const { data: checkIns, isLoading } = useCheckIns();
   const { data: usersPage } = useUsers();
   const createCheckIn = useCreateCheckIn();
@@ -77,9 +82,11 @@ function CheckInsTab() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
         <h2 style={{ fontWeight: 700, fontSize: '1rem' }}>Check-ins 1:1</h2>
-        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancelar' : '+ Nuevo Check-in'}
-        </button>
+        {canCreateCheckIn && (
+          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancelar' : '+ Nuevo Check-in'}
+          </button>
+        )}
       </div>
 
       {/* Inline form */}
@@ -336,12 +343,12 @@ function QuickFeedbackTab() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end', marginBottom: '0.75rem' }}>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Categoria (opcional)
+                {'Categor\u00eda (opcional)'}
               </label>
               <input
                 className="input"
                 type="text"
-                placeholder="Ej: Liderazgo, Comunicacion..."
+                placeholder="Ej: Liderazgo, Comunicaci\u00f3n..."
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 style={{ width: '100%' }}
@@ -354,7 +361,7 @@ function QuickFeedbackTab() {
                 onChange={(e) => setForm({ ...form, isAnonymous: e.target.checked })}
                 style={{ accentColor: 'var(--accent)' }}
               />
-              Anonimo
+              {'An\u00f3nimo'}
             </label>
           </div>
           <button
@@ -382,7 +389,7 @@ function QuickFeedbackTab() {
             const si = sentimentIcon[fb.sentiment as Sentiment] || sentimentIcon.neutral;
             const isReceived = subTab === 'received';
             const personLabel = isReceived
-              ? (fb.isAnonymous ? 'Anonimo' : `De: ${userName(fb.fromUser)}`)
+              ? (fb.isAnonymous ? 'An\u00f3nimo' : `De: ${userName(fb.fromUser)}`)
               : `Para: ${userName(fb.toUser)}`;
 
             return (
@@ -438,16 +445,47 @@ export default function FeedbackPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Feedback</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{'Retroalimentaci\u00f3n Continua'}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Check-ins 1:1 y feedback continuo
+          {'Check-ins 1:1 y retroalimentaci\u00f3n r\u00e1pida entre colaboradores'}
         </p>
+      </div>
+
+      {/* Info card */}
+      <div className="card animate-fade-up" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
+        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.5rem' }}>
+          {'\u00bfC\u00f3mo funciona el m\u00f3dulo de Retroalimentaci\u00f3n?'}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+          <div>
+            <p style={{ margin: '0 0 0.35rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {'Check-ins 1:1'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+              <li>{'Reuniones programadas entre encargado y su reporte directo'}</li>
+              <li>{'Solo el encargado o administrador puede crear check-ins'}</li>
+              <li>{'Se valida que el colaborador sea reporte directo del encargado'}</li>
+              <li>{'Incluye tema, notas y lista de tareas de seguimiento'}</li>
+            </ul>
+          </div>
+          <div>
+            <p style={{ margin: '0 0 0.35rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {'Retroalimentaci\u00f3n R\u00e1pida (360\u00b0)'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+              <li>{'Cualquier colaborador puede enviar feedback a cualquier otro'}</li>
+              <li>{'Tres tipos: positivo, neutral o constructivo'}</li>
+              <li>{'Opci\u00f3n de env\u00edo an\u00f3nimo para mayor confianza'}</li>
+              <li>{'Se conecta con evaluaciones de desempe\u00f1o y planes de desarrollo'}</li>
+            </ul>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         {tabBtn('checkins', 'Check-ins 1:1')}
-        {tabBtn('quick', 'Quick Feedback')}
+        {tabBtn('quick', 'Feedback R\u00e1pido')}
       </div>
 
       {/* Content */}

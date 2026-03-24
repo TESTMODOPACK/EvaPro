@@ -47,7 +47,7 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/analytics':    ['tenant_admin', 'external'],
   '/dashboard/plantillas':   ['tenant_admin'],
   '/dashboard/objetivos':    ['tenant_admin', 'manager', 'employee'],
-  '/dashboard/feedback':     ['tenant_admin', 'manager'],
+  '/dashboard/feedback':     ['tenant_admin', 'manager', 'employee'],
   '/dashboard/mi-suscripcion': ['tenant_admin'],
   '/dashboard/talento':      ['tenant_admin', 'manager', 'external'],
   '/dashboard/calibracion':  ['tenant_admin'],
