@@ -4,18 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
-
-const STATUS_BADGE: Record<string, string> = {
-  draft: 'badge-accent',
-  in_progress: 'badge-warning',
-  completed: 'badge-success',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: 'Borrador',
-  in_progress: 'En progreso',
-  completed: 'Completado',
-};
+import { calibrationStatusLabel as STATUS_LABEL, calibrationStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
 
 function Spinner() {
   return (

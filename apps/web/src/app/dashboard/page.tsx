@@ -8,6 +8,7 @@ import { usePendingEvaluations } from '@/hooks/useEvaluations';
 import { useCycles } from '@/hooks/useCycles';
 import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
 import { useFeedbackSummary } from '@/hooks/useFeedback';
+import { assignmentStatusLabel, assignmentStatusBadge } from '@/lib/statusMaps';
 import { api } from '@/lib/api';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -190,16 +191,8 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
-const statusLabel: Record<string, string> = {
-  pending: 'pendiente',
-  in_progress: 'en progreso',
-  completed: 'completada',
-};
-const statusBadge: Record<string, string> = {
-  pending: 'badge-warning',
-  in_progress: 'badge-accent',
-  completed: 'badge-success',
-};
+const statusLabel = assignmentStatusLabel;
+const statusBadge = assignmentStatusBadge;
 
 function RegularDashboard() {
   const user = useAuthStore((s) => s.user);

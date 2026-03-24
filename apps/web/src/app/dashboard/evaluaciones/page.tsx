@@ -5,6 +5,12 @@ import { usePendingEvaluations, useMyCompletedEvaluations } from '@/hooks/useEva
 import { useAuthStore } from '@/store/auth.store';
 import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
 import Link from 'next/link';
+import {
+  cycleStatusLabel, cycleStatusBadge,
+  cycleTypeBadge, assignmentStatusLabel as evalStatusLabels,
+  assignmentStatusBadge as evalStatusBadge,
+  relationTypeLabel as relationLabels,
+} from '@/lib/statusMaps';
 
 const typeLabels: Record<string, string> = {
   '90': '90\u00b0',
@@ -13,43 +19,9 @@ const typeLabels: Record<string, string> = {
   '360': '360\u00b0',
 };
 
-const statusLabels: Record<string, string> = {
-  draft: 'borrador',
-  active: 'activo',
-  closed: 'cerrado',
-};
-
-const statusBadge: Record<string, string> = {
-  draft: 'badge-accent',
-  active: 'badge-success',
-  closed: 'badge-warning',
-};
-
-const typeBadge: Record<string, string> = {
-  '90': 'badge-accent',
-  '180': 'badge-accent',
-  '270': 'badge-warning',
-  '360': 'badge-danger',
-};
-
-const relationLabels: Record<string, string> = {
-  self: 'Autoevaluacion',
-  manager: 'Jefatura',
-  peer: 'Par',
-  direct_report: 'Reporte directo',
-};
-
-const evalStatusLabels: Record<string, string> = {
-  pending: 'Pendiente',
-  in_progress: 'En progreso',
-  completed: 'Completada',
-};
-
-const evalStatusBadge: Record<string, string> = {
-  pending: 'badge-warning',
-  in_progress: 'badge-accent',
-  completed: 'badge-success',
-};
+const statusLabels = cycleStatusLabel;
+const statusBadge = cycleStatusBadge;
+const typeBadge = cycleTypeBadge;
 
 function Spinner() {
   return (

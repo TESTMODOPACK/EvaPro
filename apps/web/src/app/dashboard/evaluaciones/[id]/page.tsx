@@ -12,39 +12,13 @@ import { usePeerAssignments, useAddPeerAssignment, useRemovePeerAssignment } fro
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
 import Link from 'next/link';
-
-const relationLabels: Record<string, string> = {
-  self: 'Autoevaluación',
-  manager: 'Jefatura',
-  peer: 'Par',
-  direct_report: 'Reporte directo',
-};
-
-const statusBadge: Record<string, string> = {
-  pending: 'badge-warning',
-  in_progress: 'badge-accent',
-  completed: 'badge-success',
-  submitted: 'badge-success',
-};
-
-const statusLabels: Record<string, string> = {
-  pending: 'Pendiente',
-  in_progress: 'En progreso',
-  completed: 'Completada',
-  submitted: 'Enviada',
-};
-
-const cycleStatusBadge: Record<string, string> = {
-  draft: 'badge-warning',
-  active: 'badge-success',
-  closed: 'badge-info',
-};
-
-const cycleStatusLabels: Record<string, string> = {
-  draft: 'Borrador',
-  active: 'Activo',
-  closed: 'Cerrado',
-};
+import {
+  relationTypeLabel as relationLabels,
+  assignmentStatusBadge as statusBadge,
+  assignmentStatusLabel as statusLabels,
+  cycleStatusBadge,
+  cycleStatusLabel as cycleStatusLabels,
+} from '@/lib/statusMaps';
 
 export default function CycleDetailPage() {
   const router = useRouter();

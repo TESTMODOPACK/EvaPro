@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { formatRut } from '@/lib/rut';
 import { formatCLP } from '@/lib/format';
+import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
 
 function Spinner() {
   return (
@@ -13,22 +14,6 @@ function Spinner() {
     </div>
   );
 }
-
-const statusLabel: Record<string, string> = {
-  active: 'Activa',
-  trial: 'En trial',
-  suspended: 'Suspendida',
-  cancelled: 'Cancelada',
-  expired: 'Expirada',
-};
-
-const statusBadge: Record<string, string> = {
-  active: 'badge-success',
-  trial: 'badge-warning',
-  suspended: 'badge-danger',
-  cancelled: 'badge-danger',
-  expired: 'badge-danger',
-};
 
 export default function MiSuscripcionPage() {
   const token = useAuthStore((s) => s.token);

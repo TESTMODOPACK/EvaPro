@@ -226,24 +226,20 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
   const router  = useRouter();
   const { user, token, logout } = useAuthStore();
   const [orgInfo, setOrgInfo] = useState<{ name: string; rut: string | null } | null>(null);
+  const [orgError, setOrgError] = useState(false);
 
   // Load org info for non-super_admin users
   useEffect(() => {
     if (!token || user?.role === 'super_admin') return;
-    api.users.me(token)
-      .then(() => api.subscriptions.mySubscription(token))
+    setOrgError(false);
+    api.subscriptions.mySubscription(token)
       .then((sub: any) => {
         if (sub?.tenant) {
           setOrgInfo({ name: sub.tenant.name, rut: sub.tenant.rut });
         }
       })
       .catch(() => {
-        // Try getting tenant info from a simpler endpoint
-        api.subscriptions.mySubscription(token)
-          .then((sub: any) => {
-            if (sub?.tenant) setOrgInfo({ name: sub.tenant.name, rut: sub.tenant.rut });
-          })
-          .catch(() => {});
+        setOrgError(true);
       });
   }, [token, user?.role]);
 
@@ -289,6 +285,26 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
       </div>
 
       {/* Organization info for non-super_admin */}
+      {user?.role !== 'super_admin' && orgError && !orgInfo && (
+        <div style={{
+          padding: '0.5rem 1.25rem',
+          borderBottom: '1px solid var(--border)',
+          fontSize: '0.72rem',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+        }}
+        onClick={() => {
+          setOrgError(false);
+          if (token) {
+            api.subscriptions.mySubscription(token)
+              .then((sub: any) => { if (sub?.tenant) setOrgInfo({ name: sub.tenant.name, rut: sub.tenant.rut }); })
+              .catch(() => setOrgError(true));
+          }
+        }}
+        >
+          {'No se carg\u00f3 la info de la org. Click para reintentar'}
+        </div>
+      )}
       {user?.role !== 'super_admin' && orgInfo && (
         <div style={{
           padding: '0.6rem 1.25rem',

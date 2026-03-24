@@ -136,7 +136,19 @@ export class EvaluationsService {
         relationType: a.relationType ?? RelationType.PEER,
       }),
     );
-    return this.peerAssignmentRepo.save(entities);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const saved = await queryRunner.manager.save(PeerAssignment, entities);
+      await queryRunner.commitTransaction();
+      return saved;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async getPeerAssignments(tenantId: string, cycleId: string): Promise<PeerAssignment[]> {

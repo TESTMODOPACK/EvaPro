@@ -3,24 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
-
-const STATUS_BADGE: Record<string, string> = {
-  draft: 'badge-accent',
-  in_progress: 'badge-warning',
-  completed: 'badge-success',
-  pending: 'badge-accent',
-  adjusted: 'badge-warning',
-  approved: 'badge-success',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: 'Borrador',
-  in_progress: 'En progreso',
-  completed: 'Completado',
-  pending: 'Pendiente',
-  adjusted: 'Ajustado',
-  approved: 'Aprobado',
-};
+import { calibrationEntryStatusLabel as STATUS_LABEL, calibrationEntryStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
 
 function Spinner() {
   return (

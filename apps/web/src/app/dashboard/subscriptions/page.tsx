@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { formatCLP } from '@/lib/format';
+import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
 
 function Spinner() {
   return (
@@ -20,22 +21,6 @@ const planBadge: Record<string, string> = {
   pro: 'badge-warning',
   enterprise: 'badge-success',
   custom: 'badge-danger',
-};
-
-const statusBadge: Record<string, string> = {
-  active: 'badge-success',
-  trial: 'badge-warning',
-  suspended: 'badge-danger',
-  cancelled: 'badge-danger',
-  expired: 'badge-danger',
-};
-
-const statusLabel: Record<string, string> = {
-  active: 'Activa',
-  trial: 'En trial',
-  suspended: 'Suspendida',
-  cancelled: 'Cancelada',
-  expired: 'Expirada',
 };
 
 const planStatusBadge: Record<string, string> = {
