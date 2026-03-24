@@ -56,6 +56,9 @@ export class CalibrationEntry {
   @JoinColumn({ name: 'discussed_by' })
   discusser: User;
 
+  @Column({ type: 'jsonb', name: 'change_log', nullable: true, default: '[]', comment: 'Historial de ajustes: [{date, userId, field, from, to, rationale}]' })
+  changeLog: Array<{ date: string; userId: string; field: string; from: any; to: any; rationale?: string }>;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

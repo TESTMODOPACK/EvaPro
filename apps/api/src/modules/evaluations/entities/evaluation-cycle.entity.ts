@@ -22,6 +22,7 @@ export enum CycleStatus {
   DRAFT = 'draft',
   ACTIVE = 'active',
   CLOSED = 'closed',
+  CANCELLED = 'cancelled',
 }
 
 @Entity('evaluation_cycles')

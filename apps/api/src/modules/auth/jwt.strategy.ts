@@ -21,13 +21,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload) {
-    if (!payload.tenantId) {
+    // Gap 6: super_admin can operate without tenantId (cross-tenant access)
+    if (!payload.tenantId && payload.role !== 'super_admin') {
       throw new UnauthorizedException('Tenant ID missing in token');
     }
     return {
       userId: payload.sub,
       email: payload.email,
-      tenantId: payload.tenantId,
+      tenantId: payload.tenantId || null,
       role: payload.role,
     };
   }

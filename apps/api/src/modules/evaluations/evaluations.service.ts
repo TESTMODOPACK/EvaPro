@@ -42,10 +42,12 @@ export class EvaluationsService {
   // ─── Cycles ───────────────────────────────────────────────────────────────
 
   async findAllCycles(tenantId: string): Promise<EvaluationCycle[]> {
-    return this.cycleRepo.find({
-      where: { tenantId },
-      order: { createdAt: 'DESC' },
-    });
+    return this.cycleRepo
+      .createQueryBuilder('c')
+      .where('c.tenantId = :tenantId', { tenantId })
+      .andWhere('c.status != :cancelled', { cancelled: CycleStatus.CANCELLED })
+      .orderBy('c.created_at', 'DESC')
+      .getMany();
   }
 
   async findCycleById(id: string, tenantId: string): Promise<EvaluationCycle> {
@@ -266,9 +268,14 @@ export class EvaluationsService {
   async deleteCycle(id: string, tenantId: string): Promise<void> {
     const cycle = await this.findCycleById(id, tenantId);
     if (cycle.status === CycleStatus.ACTIVE) {
-      throw new BadRequestException('No se puede eliminar un ciclo activo');
+      throw new BadRequestException('No se puede eliminar un ciclo activo. Ciérralo primero.');
     }
-    await this.cycleRepo.remove(cycle);
+    if (cycle.status === CycleStatus.CLOSED) {
+      throw new BadRequestException('No se puede eliminar un ciclo cerrado. Los datos de evaluación deben preservarse.');
+    }
+    // Soft delete: mark as cancelled instead of removing
+    cycle.status = CycleStatus.CANCELLED;
+    await this.cycleRepo.save(cycle);
   }
 
   // ─── Allowed relation types per cycle type ──────────────────────────────

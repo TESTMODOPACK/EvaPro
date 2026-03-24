@@ -322,9 +322,34 @@ export class TalentService {
       }
     }
 
-    if (dto.adjustedScore !== undefined) entry.adjustedScore = dto.adjustedScore;
-    if (dto.adjustedPotential !== undefined) entry.adjustedPotential = dto.adjustedPotential;
+    // Gap 5: Record all changes in changelog for audit
+    const log = Array.isArray(entry.changeLog) ? [...entry.changeLog] : [];
+    const now = new Date().toISOString();
+
+    if (dto.adjustedScore !== undefined && dto.adjustedScore !== entry.adjustedScore) {
+      log.push({
+        date: now,
+        userId: discussedBy,
+        field: 'adjustedScore',
+        from: entry.adjustedScore,
+        to: dto.adjustedScore,
+        rationale: dto.rationale || undefined,
+      });
+      entry.adjustedScore = dto.adjustedScore;
+    }
+    if (dto.adjustedPotential !== undefined && dto.adjustedPotential !== entry.adjustedPotential) {
+      log.push({
+        date: now,
+        userId: discussedBy,
+        field: 'adjustedPotential',
+        from: entry.adjustedPotential,
+        to: dto.adjustedPotential,
+        rationale: dto.rationale || undefined,
+      });
+      entry.adjustedPotential = dto.adjustedPotential;
+    }
     if (dto.rationale !== undefined) entry.rationale = dto.rationale;
+    entry.changeLog = log;
     entry.status = 'discussed';
     entry.discussedBy = discussedBy;
 

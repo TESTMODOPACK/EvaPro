@@ -108,7 +108,7 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.usersService.listNotes(req.user.tenantId, id);
+    return this.usersService.listNotes(req.user.tenantId, id, req.user.role);
   }
 
   /** POST /users/:id/notes */

@@ -185,6 +185,7 @@ export class UsersService {
     csvData: string,
     uploadedBy: string,
   ): Promise<BulkImport> {
+    const MAX_IMPORT_ROWS = 500;
     const lines = csvData.trim().split('\n');
     if (lines.length < 2) {
       throw new ConflictException('El CSV debe tener al menos una fila de datos');
@@ -192,6 +193,13 @@ export class UsersService {
 
     const header = lines[0].toLowerCase().split(',').map((h) => h.trim());
     const dataLines = lines.slice(1);
+
+    // Gap 4: Limit max rows to prevent performance issues
+    if (dataLines.length > MAX_IMPORT_ROWS) {
+      throw new ConflictException(
+        `El CSV tiene ${dataLines.length} filas. El máximo permitido es ${MAX_IMPORT_ROWS}. Divida el archivo en lotes más pequeños.`,
+      );
+    }
 
     const bulkImport = this.bulkImportRepo.create({
       tenantId,
@@ -309,9 +317,14 @@ export class UsersService {
 
   // ─── User Notes (HR Reports) ───────────────────────────────────────────────
 
-  async listNotes(tenantId: string, userId: string): Promise<UserNote[]> {
+  async listNotes(tenantId: string, userId: string, requesterRole?: string): Promise<UserNote[]> {
+    const where: any = { tenantId, userId };
+    // Gap 2: Managers only see non-confidential notes; admins see all
+    if (requesterRole === 'manager') {
+      where.isConfidential = false;
+    }
     return this.noteRepo.find({
-      where: { tenantId, userId },
+      where,
       relations: ['author'],
       order: { createdAt: 'DESC' },
     });
