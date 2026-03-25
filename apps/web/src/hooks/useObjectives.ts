@@ -94,6 +94,75 @@ export function useObjectiveHistory(id: string) {
   });
 }
 
+// ─── Key Results ──────────────────────────────────────────────────────────────
+
+export function useKeyResults(objectiveId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['objectives', objectiveId, 'key-results'],
+    queryFn: () => api.objectives.listKeyResults(token!, objectiveId!),
+    enabled: !!token && !!objectiveId,
+  });
+}
+
+export function useCreateKeyResult() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ objectiveId, data }: { objectiveId: string; data: any }) =>
+      api.objectives.createKeyResult(token!, objectiveId, data),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['objectives', vars.objectiveId, 'key-results'] });
+      qc.invalidateQueries({ queryKey: ['objectives'] });
+    },
+  });
+}
+
+export function useUpdateKeyResult() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ krId, data }: { krId: string; data: any }) =>
+      api.objectives.updateKeyResult(token!, krId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['objectives'] });
+    },
+  });
+}
+
+export function useDeleteKeyResult() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (krId: string) => api.objectives.deleteKeyResult(token!, krId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['objectives'] });
+    },
+  });
+}
+
+// ─── Team Summary ─────────────────────────────────────────────────────────────
+
+export function useTeamObjectivesSummary() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['objectives', 'team-summary'],
+    queryFn: () => api.objectives.teamSummary(token!),
+    enabled: !!token,
+  });
+}
+
+// ─── At Risk ──────────────────────────────────────────────────────────────────
+
+export function useAtRiskObjectives(userId?: string) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['objectives', 'at-risk', userId],
+    queryFn: () => api.objectives.atRisk(token!, userId),
+    enabled: !!token,
+  });
+}
+
 // ─── Comments ─────────────────────────────────────────────────────────────────
 
 export function useObjectiveComments(objectiveId: string | null) {

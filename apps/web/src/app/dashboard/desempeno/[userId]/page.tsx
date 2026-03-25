@@ -15,6 +15,11 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import CompetencyRadarChart from '@/components/CompetencyRadarChart';
+import SelfVsOthersChart from '@/components/SelfVsOthersChart';
+import GapAnalysisChart from '@/components/GapAnalysisChart';
+import { useCycles } from '@/hooks/useCycles';
+import { useGapAnalysisIndividual } from '@/hooks/useReports';
 
 function Spinner() {
   return (
@@ -36,7 +41,11 @@ export default function DesempenoPage() {
   const token = useAuthStore((s) => s.token);
 
   const { data, isLoading } = usePerformanceHistory(userId);
+  const { data: cycles } = useCycles();
   const [userName, setUserName] = useState<string>('');
+  const [selectedCycleId, setSelectedCycleId] = useState<string>('');
+
+  const closedCycles = (cycles || []).filter((c: any) => c.status === 'closed' || c.status === 'active');
 
   useEffect(() => {
     if (token && userId) {
@@ -173,6 +182,35 @@ export default function DesempenoPage() {
             </ResponsiveContainer>
           </div>
 
+          {/* Competency Analysis - cycle selector + charts */}
+          {closedCycles.length > 0 && (
+            <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                <h2 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>Analisis por Ciclo</h2>
+                <select
+                  className="input"
+                  value={selectedCycleId}
+                  onChange={(e) => setSelectedCycleId(e.target.value)}
+                  style={{ fontSize: '0.82rem', padding: '0.4rem 0.6rem', width: 'auto', minWidth: '220px' }}
+                >
+                  <option value="">Seleccionar ciclo...</option>
+                  {closedCycles.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                  ))}
+                </select>
+              </div>
+              {selectedCycleId && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                    <CompetencyRadarChart cycleId={selectedCycleId} userId={userId} />
+                    <SelfVsOthersChart cycleId={selectedCycleId} userId={userId} />
+                  </div>
+                  <GapAnalysisSection cycleId={selectedCycleId} userId={userId} />
+                </>
+              )}
+            </div>
+          )}
+
           {/* Breakdown table */}
           <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
             <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>Detalle por Ciclo</h2>
@@ -228,6 +266,17 @@ export default function DesempenoPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ─── Gap Analysis Section ─────────────────────────────────────────────
+
+function GapAnalysisSection({ cycleId, userId }: { cycleId: string; userId: string }) {
+  const { data, isLoading } = useGapAnalysisIndividual(cycleId, userId);
+  return (
+    <div className="animate-fade-up" style={{ marginTop: '0.5rem' }}>
+      <GapAnalysisChart data={data} isLoading={isLoading} />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { usePendingEvaluations } from '@/hooks/useEvaluations';
 import { useCycles } from '@/hooks/useCycles';
 import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
 import { useFeedbackSummary } from '@/hooks/useFeedback';
+import { useAtRiskObjectives } from '@/hooks/useObjectives';
 import { assignmentStatusLabel, assignmentStatusBadge } from '@/lib/statusMaps';
 import { api } from '@/lib/api';
 import { ScoreBadge } from '@/components/ScoreBadge';
@@ -201,8 +202,10 @@ function RegularDashboard() {
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const { data: perfHistory } = usePerformanceHistory(user?.userId ?? null);
   const { data: feedbackSummary } = useFeedbackSummary();
+  const { data: atRiskObjectives } = useAtRiskObjectives();
 
   const activeCycle = cycles?.find((c: any) => c.status === 'active');
+  const atRiskCount = atRiskObjectives?.length || 0;
 
   const kpis = [
     {
@@ -324,6 +327,32 @@ function RegularDashboard() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* At-risk objectives alert (Item 13) */}
+      {atRiskCount > 0 && (
+        <div className="animate-fade-up-delay-1" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0.75rem 1rem', marginBottom: '1.25rem',
+          background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)',
+          borderRadius: 'var(--radius)', fontSize: '0.85rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '1.1rem' }}>{'\u26a0'}</span>
+            <span style={{ fontWeight: 600, color: 'var(--danger)' }}>
+              {atRiskCount} objetivo{atRiskCount !== 1 ? 's' : ''} en riesgo
+            </span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+              (progreso menor al 40%)
+            </span>
+          </div>
+          <Link
+            href="/dashboard/objetivos"
+            style={{ fontSize: '0.78rem', color: 'var(--danger)', textDecoration: 'none', fontWeight: 600 }}
+          >
+            {'Ver objetivos \u2192'}
+          </Link>
         </div>
       )}
 

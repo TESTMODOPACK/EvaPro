@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useCompetencyRadar, useSelfVsOthers, useHeatmap } from '@/hooks/useReports';
+import { useCompetencyRadar, useSelfVsOthers, useHeatmap, useBellCurve } from '@/hooks/useReports';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
 import {
@@ -19,6 +19,8 @@ import {
   Tooltip,
   Cell,
   Legend,
+  ComposedChart,
+  Area,
 } from 'recharts';
 
 function Spinner() {
@@ -106,7 +108,7 @@ function CompetencyRadarSection({ cycleId, userId }: { cycleId: string; userId: 
         <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%">
           <PolarGrid stroke="var(--border)" />
           <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
-          <PolarRadiusAxis angle={90} domain={[0, radarData[0]?.maxScale || 5]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+          <PolarRadiusAxis angle={90} domain={[0, Math.max(...radarData.map((d: any) => d.maxScale || 5))]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
           {allRelations.map((rel) => (
             <Radar
               key={rel}
@@ -313,6 +315,71 @@ function HeatmapSection({ cycleId }: { cycleId: string }) {
   );
 }
 
+/* ─── Bell Curve Section ──────────────────────────────────────────── */
+
+function BellCurveSection({ cycleId }: { cycleId: string }) {
+  const { data, isLoading } = useBellCurve(cycleId);
+
+  if (isLoading) return <Spinner />;
+  if (!data || !data.histogram || data.count === 0) {
+    return (
+      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos suficientes para la curva de distribucion</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
+      <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+        Distribucion de Puntajes (Curva de Bell)
+      </h2>
+      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+        Histograma de puntajes con curva normal superpuesta
+      </p>
+
+      {/* Stats */}
+      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', fontSize: '0.8rem' }}>
+        <div>
+          <span style={{ color: 'var(--text-muted)' }}>Promedio: </span>
+          <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{data.mean}</span>
+        </div>
+        <div>
+          <span style={{ color: 'var(--text-muted)' }}>Desv. Est.: </span>
+          <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.stddev}</span>
+        </div>
+        <div>
+          <span style={{ color: 'var(--text-muted)' }}>Total: </span>
+          <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.count} evaluaciones</span>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={300}>
+        <ComposedChart data={data.histogram} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <XAxis dataKey="range" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={1} />
+          <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+          <Tooltip
+            content={({ active, payload }: any) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]?.payload;
+              return (
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.85rem', fontSize: '0.78rem' }}>
+                  <p style={{ fontWeight: 700 }}>Rango: {d?.rangeLabel}</p>
+                  <p style={{ color: '#6366f1' }}>Cantidad: {d?.count}</p>
+                  <p style={{ color: '#f59e0b' }}>Curva normal: {d?.normalY?.toFixed(1)}</p>
+                </div>
+              );
+            }}
+          />
+          <Bar dataKey="count" fill="#6366f1" fillOpacity={0.7} radius={[2, 2, 0, 0]} name="Evaluaciones" />
+          <Area type="monotone" dataKey="normalY" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} strokeWidth={2} name="Curva Normal" dot={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 export default function InformesPage() {
@@ -412,6 +479,9 @@ export default function InformesPage() {
               </p>
             </div>
           )}
+
+          {/* Bell Curve */}
+          <BellCurveSection cycleId={selectedCycleId} />
 
           {/* Heatmap always visible with cycle */}
           <HeatmapSection cycleId={selectedCycleId} />

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { EvaluationCycle, CycleType, CycleStatus } from './entities/evaluation-cycle.entity';
+import { EvaluationCycle, CycleType, CycleStatus, CyclePeriod } from './entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus, RelationType } from './entities/evaluation-assignment.entity';
 import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { CycleStage, StageType, StageStatus } from './entities/cycle-stage.entity';
@@ -64,6 +64,7 @@ export class EvaluationsService {
       tenantId,
       name: dto.name,
       type: dto.type ?? CycleType.DEGREE_90,
+      period: dto.period ?? CyclePeriod.ANNUAL,
       startDate: new Date(dto.startDate),
       endDate: new Date(dto.endDate),
       description: dto.description,
@@ -255,6 +256,7 @@ export class EvaluationsService {
     Object.assign(cycle, {
       ...(dto.name !== undefined && { name: dto.name }),
       ...(dto.type !== undefined && { type: dto.type }),
+      ...(dto.period !== undefined && { period: dto.period }),
       ...(dto.startDate !== undefined && { startDate: new Date(dto.startDate) }),
       ...(dto.endDate !== undefined && { endDate: new Date(dto.endDate) }),
       ...(dto.description !== undefined && { description: dto.description }),

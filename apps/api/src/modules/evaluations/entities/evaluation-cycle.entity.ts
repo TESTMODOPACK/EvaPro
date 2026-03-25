@@ -25,6 +25,13 @@ export enum CycleStatus {
   CANCELLED = 'cancelled',
 }
 
+export enum CyclePeriod {
+  QUARTERLY = 'quarterly',
+  BIANNUAL = 'biannual',
+  ANNUAL = 'annual',
+  CUSTOM = 'custom',
+}
+
 @Entity('evaluation_cycles')
 @Index('idx_cycles_tenant', ['tenantId'])
 export class EvaluationCycle {
@@ -54,6 +61,13 @@ export class EvaluationCycle {
     default: CycleStatus.DRAFT,
   })
   status: CycleStatus;
+
+  @Column({
+    type: 'enum',
+    enum: CyclePeriod,
+    default: CyclePeriod.ANNUAL,
+  })
+  period: CyclePeriod;
 
   @Column({ type: 'date', name: 'start_date' })
   startDate: Date;

@@ -62,6 +62,13 @@ export class ObjectivesController {
     return this.objectivesService.getAtRiskObjectives(req.user.tenantId, filterUserId);
   }
 
+  // B4 Item 12: Team objectives summary
+  @Get('team-summary')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getTeamSummary(@Request() req: any) {
+    return this.objectivesService.getTeamObjectivesSummary(req.user.tenantId, req.user.userId);
+  }
+
   // B3.15: Hierarchical OKR tree
   @Get('tree')
   @Roles('super_admin', 'tenant_admin', 'manager')

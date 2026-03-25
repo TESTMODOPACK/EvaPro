@@ -31,6 +31,9 @@ export class Competency {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  @Column({ type: 'int', nullable: true, name: 'expected_level' })
+  expectedLevel: number | null;
+
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 

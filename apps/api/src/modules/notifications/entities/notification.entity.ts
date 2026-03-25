@@ -22,6 +22,9 @@ export enum NotificationType {
   CALIBRATION_PENDING = 'calibration_pending',
   FEEDBACK_RECEIVED = 'feedback_received',
   STAGE_ADVANCED = 'stage_advanced',
+  ESCALATION_EVALUATION_OVERDUE = 'escalation_evaluation_overdue',
+  ESCALATION_PDI_OVERDUE = 'escalation_pdi_overdue',
+  ESCALATION_OBJECTIVE_CRITICAL = 'escalation_objective_critical',
   GENERAL = 'general',
 }
 

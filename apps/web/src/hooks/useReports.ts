@@ -39,3 +39,30 @@ export function useHeatmap(cycleId: string | null) {
     enabled: !!token && !!cycleId,
   });
 }
+
+export function useBellCurve(cycleId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['reports', 'bellCurve', cycleId],
+    queryFn: () => api.reports.bellCurve(token!, cycleId!),
+    enabled: !!token && !!cycleId,
+  });
+}
+
+export function useGapAnalysisIndividual(cycleId: string | null, userId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['reports', 'gapAnalysis', cycleId, userId],
+    queryFn: () => api.reports.gapAnalysisIndividual(token!, cycleId!, userId!),
+    enabled: !!token && !!cycleId && !!userId,
+  });
+}
+
+export function useGapAnalysisTeam(cycleId: string | null, managerId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['reports', 'gapAnalysisTeam', cycleId, managerId],
+    queryFn: () => api.reports.gapAnalysisTeam(token!, cycleId!, managerId!),
+    enabled: !!token && !!cycleId && !!managerId,
+  });
+}

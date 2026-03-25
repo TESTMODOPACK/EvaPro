@@ -6,7 +6,7 @@ import {
   IsString,
   IsUUID,
 } from 'class-validator';
-import { CycleType, CycleStatus } from '../entities/evaluation-cycle.entity';
+import { CycleType, CycleStatus, CyclePeriod } from '../entities/evaluation-cycle.entity';
 
 export class CreateCycleDto {
   @IsString()
@@ -26,6 +26,10 @@ export class CreateCycleDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsEnum(CyclePeriod)
+  @IsOptional()
+  period?: CyclePeriod;
 
   @IsUUID()
   @IsOptional()
@@ -59,6 +63,10 @@ export class UpdateCycleDto {
   @IsEnum(CycleStatus)
   @IsOptional()
   status?: CycleStatus;
+
+  @IsEnum(CyclePeriod)
+  @IsOptional()
+  period?: CyclePeriod;
 
   @IsUUID()
   @IsOptional()

@@ -31,6 +31,7 @@ export interface PaginatedResponse<T> {
 
 export interface CycleData {
   id: string; tenantId: string; name: string; type: string; status: string;
+  period: string;
   startDate: string; endDate: string; description: string | null;
   templateId: string | null; createdBy: string | null;
   settings: any; totalEvaluated: number; createdAt: string; updatedAt: string;
@@ -109,6 +110,8 @@ export interface ObjectiveData {
   id: string; tenantId: string; userId: string;
   title: string; description: string | null;
   type: 'OKR' | 'KPI' | 'SMART'; progress: number;
+  weight: number;
+  parentObjectiveId: string | null;
   targetDate: string | null; status: string;
   cycleId: string | null; createdAt: string; updatedAt: string;
 }
@@ -412,6 +415,18 @@ export const api = {
       request<ObjectiveData>(`/objectives/${id}/approve`, { method: "POST" }, token),
     reject: (token: string, id: string) =>
       request<ObjectiveData>(`/objectives/${id}/reject`, { method: "POST" }, token),
+    atRisk: (token: string, userId?: string) =>
+      request<ObjectiveData[]>(`/objectives/at-risk${userId ? `?userId=${userId}` : ""}`, {}, token),
+    teamSummary: (token: string) =>
+      request<any>("/objectives/team-summary", {}, token),
+    listKeyResults: (token: string, objectiveId: string) =>
+      request<any[]>(`/objectives/${objectiveId}/key-results`, {}, token),
+    createKeyResult: (token: string, objectiveId: string, data: any) =>
+      request<any>(`/objectives/${objectiveId}/key-results`, { method: "POST", body: JSON.stringify(data) }, token),
+    updateKeyResult: (token: string, krId: string, data: any) =>
+      request<any>(`/objectives/key-results/${krId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    deleteKeyResult: (token: string, krId: string) =>
+      request<void>(`/objectives/key-results/${krId}`, { method: "DELETE" }, token),
   },
 
   reports: {
@@ -433,6 +448,12 @@ export const api = {
       request<any>(`/reports/cycle/${cycleId}/self-vs-others/${userId}`, {}, token),
     heatmap: (token: string, cycleId: string) =>
       request<any>(`/reports/cycle/${cycleId}/heatmap`, {}, token),
+    bellCurve: (token: string, cycleId: string) =>
+      request<any>(`/reports/cycle/${cycleId}/bell-curve`, {}, token),
+    gapAnalysisIndividual: (token: string, cycleId: string, userId: string) =>
+      request<any>(`/reports/cycle/${cycleId}/gap-analysis/${userId}`, {}, token),
+    gapAnalysisTeam: (token: string, cycleId: string, managerId: string) =>
+      request<any>(`/reports/cycle/${cycleId}/gap-analysis-team/${managerId}`, {}, token),
   },
 
   notifications: {

@@ -60,7 +60,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     this.validateUserAccess(req, userId);
-    return this.reportsService.individualResults(cycleId, userId, req.user.tenantId);
+    return this.reportsService.individualResults(cycleId, userId, req.user.tenantId, req.user.id, req.user.role);
   }
 
   @Get('cycle/:cycleId/team/:managerId')
@@ -120,6 +120,15 @@ export class ReportsController {
     return this.reportsService.selfVsOthers(cycleId, userId, req.user.tenantId);
   }
 
+  @Get('cycle/:cycleId/bell-curve')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  bellCurve(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+  ) {
+    return this.reportsService.bellCurve(cycleId, req.user.tenantId);
+  }
+
   @Get('cycle/:cycleId/heatmap')
   @Roles('super_admin', 'tenant_admin', 'manager')
   performanceHeatmap(
@@ -128,6 +137,35 @@ export class ReportsController {
   ) {
     return this.reportsService.performanceHeatmap(cycleId, req.user.tenantId);
   }
+
+  // ─── Gap Analysis ─────────────────────────────────────────────────────
+
+  @Get('cycle/:cycleId/gap-analysis/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  gapAnalysisIndividual(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Request() req: any,
+  ) {
+    this.validateUserAccess(req, userId);
+    return this.reportsService.gapAnalysisIndividual(cycleId, userId, req.user.tenantId);
+  }
+
+  @Get('cycle/:cycleId/gap-analysis-team/:managerId')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  gapAnalysisTeam(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Param('managerId', ParseUUIDPipe) managerId: string,
+    @Request() req: any,
+  ) {
+    const { role, userId } = req.user;
+    if (role === 'manager' && managerId !== userId) {
+      throw new ForbiddenException('Solo puedes ver el gap analysis de tu propio equipo');
+    }
+    return this.reportsService.gapAnalysisTeam(cycleId, managerId, req.user.tenantId);
+  }
+
+  // ─── Export ──────────────────────────────────────────────────────────────
 
   @Get('cycle/:cycleId/export')
   @Roles('super_admin', 'tenant_admin', 'manager')

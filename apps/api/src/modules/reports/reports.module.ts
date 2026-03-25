@@ -6,6 +6,8 @@ import { EvaluationResponse } from '../evaluations/entities/evaluation-response.
 import { Objective } from '../objectives/entities/objective.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { User } from '../users/entities/user.entity';
+import { RoleCompetency } from '../development/entities/role-competency.entity';
+import { Competency } from '../development/entities/competency.entity';
 import { ReportsService } from './reports.service';
 import { ReportsController } from './reports.controller';
 
@@ -18,6 +20,8 @@ import { ReportsController } from './reports.controller';
       Objective,
       FormTemplate,
       User,
+      RoleCompetency,
+      Competency,
     ]),
   ],
   controllers: [ReportsController],

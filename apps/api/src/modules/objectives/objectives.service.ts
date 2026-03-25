@@ -203,18 +203,45 @@ export class ObjectivesService {
     });
   }
 
-  // B2.11: Objectives at risk (<40% progress and active)
+  // B2.11: Objectives at risk — considers both progress AND time elapsed
+  // An objective is at-risk if its progress is behind the expected pace
+  // Expected pace = (elapsed time / total time) * 100
+  // At-risk when: progress < expectedPace * 0.6 (40% behind expected) OR progress < 40% with no target date
   async getAtRiskObjectives(tenantId: string, filterUserId?: string): Promise<Objective[]> {
+    // Fetch all active objectives first, then filter intelligently
     const qb = this.objectiveRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'u')
       .where('o.tenantId = :tenantId', { tenantId })
-      .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE })
-      .andWhere('o.progress < :threshold', { threshold: 40 });
+      .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE });
     if (filterUserId) {
       qb.andWhere('o.userId = :filterUserId', { filterUserId });
     }
-    return qb.orderBy('o.progress', 'ASC').getMany();
+    const activeObjectives = await qb.orderBy('o.progress', 'ASC').getMany();
+
+    const now = new Date();
+    return activeObjectives.filter((o) => {
+      if (!o.targetDate) {
+        // No target date: fallback to simple threshold
+        return o.progress < 40;
+      }
+
+      const createdAt = new Date(o.createdAt);
+      const targetDate = new Date(o.targetDate);
+      const totalDuration = targetDate.getTime() - createdAt.getTime();
+
+      if (totalDuration <= 0) {
+        // Target date already passed or same day → at risk if not done
+        return o.progress < 100;
+      }
+
+      const elapsed = now.getTime() - createdAt.getTime();
+      const timeRatio = Math.min(elapsed / totalDuration, 1); // 0..1
+      const expectedProgress = timeRatio * 100; // Expected % if linear pace
+
+      // At-risk if progress is less than 60% of what's expected at this point in time
+      return o.progress < expectedProgress * 0.6;
+    });
   }
 
   async getCompletionStats(tenantId: string, userId: string) {
@@ -223,6 +250,69 @@ export class ObjectivesService {
       where: { tenantId, userId, status: ObjectiveStatus.COMPLETED },
     });
     return { total, completed, inProgress: total - completed };
+  }
+
+  // ─── Team Summary (B4 Item 12) ─────────────────────────────────────────────
+
+  async getTeamObjectivesSummary(tenantId: string, managerId: string) {
+    const subordinates = await this.userRepo.find({
+      where: { tenantId, managerId, isActive: true },
+      select: ['id', 'firstName', 'lastName', 'position', 'department'],
+    });
+
+    if (subordinates.length === 0) {
+      return { members: [], totals: { totalMembers: 0, totalObjectives: 0, totalAtRisk: 0, avgProgress: 0 } };
+    }
+
+    const userIds = subordinates.map((u) => u.id);
+
+    // Single query: all objectives for all subordinates
+    const allObjectives = await this.objectiveRepo.find({
+      where: { tenantId, userId: In(userIds) },
+    });
+
+    // Group by userId
+    const byUser = new Map<string, typeof allObjectives>();
+    for (const obj of allObjectives) {
+      const list = byUser.get(obj.userId) || [];
+      list.push(obj);
+      byUser.set(obj.userId, list);
+    }
+
+    const summary = subordinates.map((user) => {
+      const objectives = byUser.get(user.id) || [];
+      const active = objectives.filter((o) => o.status === ObjectiveStatus.ACTIVE);
+      const completed = objectives.filter((o) => o.status === ObjectiveStatus.COMPLETED);
+      const atRisk = active.filter((o) => o.progress < 40);
+      const totalWeight = active.reduce((sum, o) => sum + Number(o.weight || 0), 0);
+      const avgProgress = active.length > 0
+        ? Math.round(active.reduce((sum, o) => sum + o.progress, 0) / active.length)
+        : 0;
+
+      return {
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        position: user.position,
+        department: user.department,
+        totalObjectives: objectives.length,
+        activeCount: active.length,
+        completedCount: completed.length,
+        atRiskCount: atRisk.length,
+        avgProgress,
+        totalWeight,
+      };
+    });
+
+    const teamTotals = {
+      totalMembers: subordinates.length,
+      totalObjectives: summary.reduce((s, m) => s + m.totalObjectives, 0),
+      totalAtRisk: summary.reduce((s, m) => s + m.atRiskCount, 0),
+      avgProgress: summary.length > 0
+        ? Math.round(summary.reduce((s, m) => s + m.avgProgress, 0) / summary.length)
+        : 0,
+    };
+
+    return { members: summary, totals: teamTotals };
   }
 
   // ─── Comments ───────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
@@ -9,6 +9,8 @@ import { EvaluationResponse } from '../evaluations/entities/evaluation-response.
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { User } from '../users/entities/user.entity';
+import { RoleCompetency } from '../development/entities/role-competency.entity';
+import { Competency } from '../development/entities/competency.entity';
 
 @Injectable()
 export class ReportsService {
@@ -25,6 +27,10 @@ export class ReportsService {
     private readonly objectiveRepo: Repository<Objective>,
     @InjectRepository(FormTemplate)
     private readonly templateRepo: Repository<FormTemplate>,
+    @InjectRepository(RoleCompetency)
+    private readonly roleCompetencyRepo: Repository<RoleCompetency>,
+    @InjectRepository(Competency)
+    private readonly competencyRepo: Repository<Competency>,
   ) {}
 
   async cycleSummary(cycleId: string, tenantId: string) {
@@ -79,7 +85,13 @@ export class ReportsService {
     };
   }
 
-  async individualResults(cycleId: string, userId: string, tenantId: string) {
+  async individualResults(
+    cycleId: string,
+    userId: string,
+    tenantId: string,
+    requestingUserId?: string,
+    requestingUserRole?: string,
+  ) {
     const assignments = await this.assignmentRepo.find({
       where: { cycleId, evaluateeId: userId, tenantId },
       relations: ['evaluator', 'cycle'],
@@ -95,11 +107,40 @@ export class ReportsService {
       self: false,
     };
 
+    // Batch load all responses for these assignments
+    const assignmentIds = assignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo.find({ where: { assignmentId: In(assignmentIds) } })
+      : [];
+    const responseByAssignment = new Map(allResponses.map((r) => [r.assignmentId, r]));
+
+    // Determine if requesting user is NOT the evaluatee themselves
+    const isExternalViewer = requestingUserId && requestingUserId !== userId;
+
     const results = [];
     for (const assignment of assignments) {
-      const response = await this.responseRepo.findOne({
-        where: { assignmentId: assignment.id },
-      });
+      const response = responseByAssignment.get(assignment.id) ?? null;
+
+      // P1-#4: Manager/admin cannot see self-evaluation until it's submitted
+      // If the requesting user is not the evaluatee, and this is a self-evaluation
+      // that hasn't been submitted yet, hide it completely
+      if (
+        isExternalViewer &&
+        assignment.relationType === 'self' &&
+        assignment.status !== AssignmentStatus.COMPLETED
+      ) {
+        results.push({
+          relationType: assignment.relationType,
+          evaluatorName: null,
+          isAnonymous: false,
+          status: 'pending_submission',
+          score: null,
+          answers: null,
+          submittedAt: null,
+          hiddenReason: 'La autoevaluación aún no ha sido enviada',
+        });
+        continue;
+      }
 
       // Apply anonymity: hide evaluator name if anonymity is enabled for this relation type
       const isAnonymous = anonymitySettings[assignment.relationType] ?? false;
@@ -128,31 +169,47 @@ export class ReportsService {
       where: { managerId, tenantId, isActive: true },
     });
 
-    const results = [];
-    for (const member of teamMembers) {
-      const assignments = await this.assignmentRepo.find({
-        where: { cycleId, evaluateeId: member.id, tenantId, status: AssignmentStatus.COMPLETED },
-      });
+    if (teamMembers.length === 0) {
+      return { managerId, cycleId, team: [] };
+    }
 
+    const memberIds = teamMembers.map((m) => m.id);
+
+    // Single query: all completed assignments for all team members in this cycle
+    const allAssignments = await this.assignmentRepo.find({
+      where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED, evaluateeId: In(memberIds) },
+    });
+
+    // Single query: all responses for those assignments
+    const assignmentIds = allAssignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo.find({ where: { assignmentId: In(assignmentIds) } })
+      : [];
+
+    // Index responses by assignmentId
+    const responseByAssignment = new Map(allResponses.map((r) => [r.assignmentId, r]));
+
+    const results = teamMembers.map((member) => {
+      const memberAssignments = allAssignments.filter((a) => a.evaluateeId === member.id);
       let totalScore = 0;
       let scoreCount = 0;
-      for (const a of assignments) {
-        const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      for (const a of memberAssignments) {
+        const resp = responseByAssignment.get(a.id);
         if (resp?.overallScore) {
           totalScore += Number(resp.overallScore);
           scoreCount++;
         }
       }
 
-      results.push({
+      return {
         userId: member.id,
         name: `${member.firstName} ${member.lastName}`,
         department: member.department,
         position: member.position,
-        completedEvaluations: assignments.length,
+        completedEvaluations: memberAssignments.length,
         averageScore: scoreCount > 0 ? (totalScore / scoreCount).toFixed(1) : null,
-      });
-    }
+      };
+    });
 
     return { managerId, cycleId, team: results };
   }
@@ -163,18 +220,35 @@ export class ReportsService {
       relations: ['evaluatee', 'evaluator'],
     });
 
+    // Batch load all responses for these assignments
+    const assignmentIds = assignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo.find({ where: { assignmentId: In(assignmentIds) } })
+      : [];
+    const responseByAssignment = new Map(allResponses.map((r) => [r.assignmentId, r]));
+
+    // Helper: escape CSV field (wrap in quotes, escape internal quotes)
+    const escapeCsvField = (val: string | number | null | undefined): string => {
+      const str = val != null ? String(val) : '';
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
     const rows = ['Evaluado,Evaluador,Relación,Puntaje,Fecha'];
     for (const a of assignments) {
-      const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      const resp = responseByAssignment.get(a.id);
       rows.push([
-        `${a.evaluatee.firstName} ${a.evaluatee.lastName}`,
-        `${a.evaluator.firstName} ${a.evaluator.lastName}`,
-        a.relationType,
-        resp?.overallScore ?? '',
-        resp?.submittedAt?.toISOString().split('T')[0] ?? '',
+        escapeCsvField(`${a.evaluatee.firstName} ${a.evaluatee.lastName}`),
+        escapeCsvField(`${a.evaluator.firstName} ${a.evaluator.lastName}`),
+        escapeCsvField(a.relationType),
+        escapeCsvField(resp?.overallScore ?? ''),
+        escapeCsvField(resp?.submittedAt?.toISOString().split('T')[0] ?? ''),
       ].join(','));
     }
-    return rows.join('\n');
+    // BOM UTF-8 prefix for Excel to correctly display accented characters
+    return '\uFEFF' + rows.join('\n');
   }
 
   async exportPdf(cycleId: string, tenantId: string): Promise<Buffer> {
@@ -311,34 +385,72 @@ export class ReportsService {
       order: { startDate: 'ASC' },
     });
 
+    if (cycles.length === 0) {
+      return { userId, history: [] };
+    }
+
+    const cycleIds = cycles.map((c) => c.id);
+
+    // Single query: all assignments for this user across all cycles
+    const allAssignments = await this.assignmentRepo.find({
+      where: { evaluateeId: userId, tenantId, cycleId: In(cycleIds) },
+    });
+
+    // Single query: all responses for those assignments
+    const assignmentIds = allAssignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo.find({ where: { assignmentId: In(assignmentIds) } })
+      : [];
+    const responseByAssignment = new Map(allResponses.map((r) => [r.assignmentId, r]));
+
+    // Single query: completed objectives count per cycle
+    const completedObjByCycle = new Map<string, number>();
+    if (cycleIds.length > 0) {
+      const objCounts = await this.objectiveRepo
+        .createQueryBuilder('o')
+        .select('o.cycleId', 'cycleId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('o.tenantId = :tenantId', { tenantId })
+        .andWhere('o.userId = :userId', { userId })
+        .andWhere('o.cycleId IN (:...cycleIds)', { cycleIds })
+        .andWhere('o.status = :status', { status: ObjectiveStatus.COMPLETED })
+        .groupBy('o.cycleId')
+        .getRawMany();
+      for (const row of objCounts) {
+        completedObjByCycle.set(row.cycleId, parseInt(row.cnt, 10));
+      }
+    }
+
+    // Group assignments by cycle
+    const assignmentsByCycle = new Map<string, typeof allAssignments>();
+    for (const a of allAssignments) {
+      const list = assignmentsByCycle.get(a.cycleId) || [];
+      list.push(a);
+      assignmentsByCycle.set(a.cycleId, list);
+    }
+
+    const avg = (arr: number[]) => arr.length > 0
+      ? parseFloat((arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(1))
+      : null;
+
     const history = [];
     for (const cycle of cycles) {
-      const assignments = await this.assignmentRepo.find({
-        where: { cycleId: cycle.id, evaluateeId: userId, tenantId },
-      });
-      if (assignments.length === 0) continue;
+      const cycleAssignments = assignmentsByCycle.get(cycle.id);
+      if (!cycleAssignments || cycleAssignments.length === 0) continue;
 
       const scoresByType: Record<string, number[]> = {
         self: [], manager: [], peer: [], direct_report: [],
       };
 
-      for (const a of assignments) {
-        const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      for (const a of cycleAssignments) {
+        const resp = responseByAssignment.get(a.id);
         if (resp?.overallScore != null) {
           const key = a.relationType;
           if (scoresByType[key]) scoresByType[key].push(Number(resp.overallScore));
         }
       }
 
-      const avg = (arr: number[]) => arr.length > 0
-        ? parseFloat((arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(1))
-        : null;
-
       const allScores = Object.values(scoresByType).flat();
-
-      const completedObjectives = await this.objectiveRepo.count({
-        where: { tenantId, userId, cycleId: cycle.id, status: ObjectiveStatus.COMPLETED },
-      });
 
       history.push({
         cycleId: cycle.id,
@@ -349,7 +461,7 @@ export class ReportsService {
         avgManager: avg(scoresByType.manager),
         avgPeer: avg(scoresByType.peer),
         avgOverall: avg(allScores),
-        completedObjectives,
+        completedObjectives: completedObjByCycle.get(cycle.id) ?? 0,
       });
     }
 
@@ -427,6 +539,61 @@ export class ReportsService {
         avgScore: parseFloat(t.avgScore).toFixed(1),
         teamSize: parseInt(t.teamSize),
       })),
+    };
+  }
+
+  // ─── Bell Curve (B4 Item 16) ──────────────────────────────────────────────
+
+  async bellCurve(cycleId: string, tenantId: string) {
+    const responses = await this.responseRepo
+      .createQueryBuilder('r')
+      .innerJoin('r.assignment', 'a')
+      .where('a.cycleId = :cycleId', { cycleId })
+      .andWhere('r.tenantId = :tenantId', { tenantId })
+      .andWhere('r.overall_score IS NOT NULL')
+      .select('r.overall_score', 'score')
+      .getRawMany();
+
+    const scores = responses.map((r) => Number(r.score));
+    if (scores.length === 0) {
+      return { cycleId, histogram: [], normalCurve: [], mean: 0, stddev: 0, count: 0 };
+    }
+
+    // Calculate mean and stddev
+    const count = scores.length;
+    const mean = scores.reduce((s, v) => s + v, 0) / count;
+    const variance = scores.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (count > 1 ? count - 1 : 1);
+    const stddev = Math.sqrt(variance);
+
+    // Histogram buckets (0.5 increments from 0-10)
+    const histogram = Array.from({ length: 20 }, (_, i) => ({
+      range: `${(i * 0.5).toFixed(1)}`,
+      rangeLabel: `${(i * 0.5).toFixed(1)}-${((i + 1) * 0.5).toFixed(1)}`,
+      count: 0,
+      normalY: 0,
+    }));
+    for (const score of scores) {
+      const idx = Math.min(Math.floor(score / 0.5), 19);
+      histogram[idx].count++;
+    }
+
+    // Normal distribution curve points
+    if (stddev > 0) {
+      for (const bucket of histogram) {
+        const x = parseFloat(bucket.range) + 0.25; // midpoint of bucket
+        const exponent = -Math.pow(x - mean, 2) / (2 * variance);
+        const normalDensity = (1 / (stddev * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
+        // Scale to histogram: density * total_count * bucket_width
+        bucket.normalY = parseFloat((normalDensity * count * 0.5).toFixed(2));
+      }
+    }
+
+    return {
+      cycleId,
+      histogram,
+      mean: parseFloat(mean.toFixed(2)),
+      stddev: parseFloat(stddev.toFixed(2)),
+      count,
     };
   }
 
@@ -638,5 +805,202 @@ export class ReportsService {
     }).sort((a, b) => b.avgScore - a.avgScore);
 
     return { cycleId, heatmap };
+  }
+
+  // ─── Gap Analysis: Individual Employee ──────────────────────────────────
+
+  async gapAnalysisIndividual(cycleId: string, userId: string, tenantId: string) {
+    // 1. Get user and their position
+    const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // 2. Get expected competency levels for this role/position
+    const roleCompetencies = await this.roleCompetencyRepo.find({
+      where: { tenantId, position: user.position || '' },
+      relations: ['competency'],
+    });
+
+    if (roleCompetencies.length === 0) {
+      return {
+        userId,
+        userName: `${user.firstName} ${user.lastName}`,
+        position: user.position,
+        gaps: [],
+        summary: { totalCompetencies: 0, avgGap: 0, criticalGaps: 0 },
+        message: 'No hay perfil de competencias definido para este cargo',
+      };
+    }
+
+    // 3. Get the cycle and template to map competencies to form sections
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+    if (!cycle) throw new NotFoundException('Ciclo no encontrado');
+
+    let template: FormTemplate | null = null;
+    if (cycle.templateId) {
+      template = await this.templateRepo.findOne({ where: { id: cycle.templateId } });
+    }
+
+    // 4. Get evaluation responses for this user in this cycle
+    const assignments = await this.assignmentRepo.find({
+      where: { cycleId, evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
+    });
+    const assignmentIds = assignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo.find({ where: { assignmentId: In(assignmentIds) } })
+      : [];
+
+    // 5. Calculate observed scores per competency (by matching section names to competency names)
+    const observedScores = new Map<string, { sum: number; count: number }>();
+
+    if (template?.sections) {
+      for (const resp of allResponses) {
+        if (!resp.answers) continue;
+        for (const section of template.sections as any[]) {
+          const scaleQuestions = (section.questions || []).filter((q: any) => q.type === 'scale');
+          if (scaleQuestions.length === 0) continue;
+
+          let sectionSum = 0;
+          let sectionCount = 0;
+          for (const q of scaleQuestions) {
+            const val = Number(resp.answers[q.id]);
+            if (!isNaN(val) && val > 0) {
+              sectionSum += val;
+              sectionCount++;
+            }
+          }
+
+          if (sectionCount > 0) {
+            const sectionName = (section.title || '').toLowerCase().trim();
+            const existing = observedScores.get(sectionName) || { sum: 0, count: 0 };
+            existing.sum += sectionSum / sectionCount;
+            existing.count += 1;
+            observedScores.set(sectionName, existing);
+          }
+        }
+      }
+    }
+
+    // 6. Build gap analysis for each expected competency
+    const gaps = roleCompetencies.map((rc) => {
+      const competencyName = rc.competency?.name || '';
+      const competencyNameLower = competencyName.toLowerCase().trim();
+      const observed = observedScores.get(competencyNameLower);
+      const observedLevel = observed
+        ? Math.round((observed.sum / observed.count) * 100) / 100
+        : null;
+      const gap = observedLevel !== null ? observedLevel - rc.expectedLevel : null;
+
+      return {
+        competencyId: rc.competencyId,
+        competencyName,
+        category: rc.competency?.category || null,
+        expectedLevel: rc.expectedLevel,
+        observedLevel,
+        gap,
+        gapPercentage: gap !== null && rc.expectedLevel > 0
+          ? Math.round((gap / rc.expectedLevel) * 100)
+          : null,
+        status: gap === null ? 'sin_datos'
+          : gap >= 0 ? 'cumple'
+          : gap >= -1 ? 'brecha_menor'
+          : 'brecha_critica',
+      };
+    });
+
+    const gapsWithData = gaps.filter((g) => g.gap !== null);
+    const criticalGaps = gaps.filter((g) => g.status === 'brecha_critica');
+
+    return {
+      userId,
+      cycleId,
+      userName: `${user.firstName} ${user.lastName}`,
+      position: user.position,
+      department: user.department,
+      gaps: gaps.sort((a, b) => (a.gap ?? 0) - (b.gap ?? 0)),
+      summary: {
+        totalCompetencies: gaps.length,
+        withData: gapsWithData.length,
+        avgGap: gapsWithData.length > 0
+          ? Math.round((gapsWithData.reduce((s, g) => s + (g.gap ?? 0), 0) / gapsWithData.length) * 100) / 100
+          : 0,
+        criticalGaps: criticalGaps.length,
+        meetsExpectation: gaps.filter((g) => g.status === 'cumple').length,
+      },
+    };
+  }
+
+  // ─── Gap Analysis: Team ──────────────────────────────────────────────────
+
+  async gapAnalysisTeam(cycleId: string, managerId: string, tenantId: string) {
+    // 1. Get all team members
+    const teamMembers = await this.userRepo.find({
+      where: { managerId, tenantId, isActive: true },
+    });
+
+    if (teamMembers.length === 0) {
+      return { managerId, cycleId, members: [], teamSummary: null };
+    }
+
+    // 2. Run individual gap analysis for each member (reuse method)
+    const memberGaps = await Promise.all(
+      teamMembers.map((m) => this.gapAnalysisIndividual(cycleId, m.id, tenantId)),
+    );
+
+    // 3. Aggregate team-level competency gaps
+    const competencyAgg = new Map<string, {
+      name: string; category: string | null; expectedSum: number; observedSum: number;
+      count: number; criticalCount: number;
+    }>();
+
+    for (const member of memberGaps) {
+      for (const gap of member.gaps) {
+        if (gap.observedLevel === null) continue;
+        const agg = competencyAgg.get(gap.competencyId) || {
+          name: gap.competencyName,
+          category: gap.category,
+          expectedSum: 0, observedSum: 0, count: 0, criticalCount: 0,
+        };
+        agg.expectedSum += gap.expectedLevel;
+        agg.observedSum += gap.observedLevel;
+        agg.count += 1;
+        if (gap.status === 'brecha_critica') agg.criticalCount += 1;
+        competencyAgg.set(gap.competencyId, agg);
+      }
+    }
+
+    const teamCompetencyGaps = [...competencyAgg.entries()].map(([id, agg]) => ({
+      competencyId: id,
+      competencyName: agg.name,
+      category: agg.category,
+      avgExpected: Math.round((agg.expectedSum / agg.count) * 100) / 100,
+      avgObserved: Math.round((agg.observedSum / agg.count) * 100) / 100,
+      avgGap: Math.round(((agg.observedSum - agg.expectedSum) / agg.count) * 100) / 100,
+      membersEvaluated: agg.count,
+      criticalCount: agg.criticalCount,
+    })).sort((a, b) => a.avgGap - b.avgGap);
+
+    return {
+      managerId,
+      cycleId,
+      members: memberGaps.map((m) => ({
+        userId: m.userId,
+        userName: m.userName,
+        position: m.position,
+        department: m.department,
+        summary: m.summary,
+      })),
+      teamCompetencyGaps,
+      teamSummary: {
+        totalMembers: teamMembers.length,
+        membersWithGaps: memberGaps.filter((m) => m.summary.criticalGaps > 0).length,
+        avgTeamGap: teamCompetencyGaps.length > 0
+          ? Math.round((teamCompetencyGaps.reduce((s, g) => s + g.avgGap, 0) / teamCompetencyGaps.length) * 100) / 100
+          : 0,
+        topCriticalCompetencies: teamCompetencyGaps
+          .filter((g) => g.avgGap < -1)
+          .slice(0, 5)
+          .map((g) => g.competencyName),
+      },
+    };
   }
 }

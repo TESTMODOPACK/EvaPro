@@ -271,7 +271,242 @@ export class RemindersService {
     }
   }
 
-  // ─── 6. Limpieza de notificaciones viejas (domingo 3am) ─────────────
+  // ─── 6. Escalación: evaluaciones vencidas → manager + admin (diario 10am) ──
+
+  @Cron('0 10 * * *')
+  async escalateOverdueEvaluations() {
+    this.logger.log('[Cron] Escalating overdue evaluations...');
+    try {
+      const activeCycles = await this.cycleRepo.find({
+        where: { status: CycleStatus.ACTIVE },
+      });
+
+      const notifications: Array<{
+        tenantId: string;
+        userId: string;
+        type: NotificationType;
+        title: string;
+        message: string;
+        metadata?: Record<string, any>;
+      }> = [];
+
+      for (const cycle of activeCycles) {
+        const daysUntilEnd = Math.ceil(
+          (new Date(cycle.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        );
+
+        // Only escalate if cycle ends in <= 3 days or is already past due
+        if (daysUntilEnd > 3) continue;
+
+        // Find evaluators who haven't submitted (still PENDING or IN_PROGRESS)
+        const overdueAssignments = await this.assignmentRepo.find({
+          where: [
+            { cycleId: cycle.id, status: AssignmentStatus.PENDING },
+            { cycleId: cycle.id, status: AssignmentStatus.IN_PROGRESS },
+          ],
+          relations: ['evaluator', 'evaluatee'],
+        });
+
+        if (overdueAssignments.length === 0) continue;
+
+        // Group overdue by manager (evaluatee's manager)
+        const overdueByManager = new Map<string, typeof overdueAssignments>();
+        for (const a of overdueAssignments) {
+          if (!a.evaluatee?.managerId) continue;
+          const list = overdueByManager.get(a.evaluatee.managerId) || [];
+          list.push(a);
+          overdueByManager.set(a.evaluatee.managerId, list);
+        }
+
+        // Notify managers about their team's overdue evaluations
+        for (const [managerId, managerAssignments] of overdueByManager.entries()) {
+          const evaluatorNames = [...new Set(
+            managerAssignments
+              .filter((a) => a.evaluator)
+              .map((a) => `${a.evaluator.firstName} ${a.evaluator.lastName}`),
+          )];
+
+          notifications.push({
+            tenantId: cycle.tenantId,
+            userId: managerId,
+            type: NotificationType.ESCALATION_EVALUATION_OVERDUE,
+            title: '⚠️ Escalación: evaluaciones vencidas en tu equipo',
+            message: `El ciclo "${cycle.name}" ${daysUntilEnd <= 0 ? 'ya venció' : `cierra en ${daysUntilEnd} día(s)`}. ${evaluatorNames.length} evaluador(es) no han completado: ${evaluatorNames.slice(0, 3).join(', ')}${evaluatorNames.length > 3 ? ` y ${evaluatorNames.length - 3} más` : ''}.`,
+            metadata: {
+              cycleId: cycle.id,
+              daysUntilEnd,
+              overdueCount: managerAssignments.length,
+              evaluatorNames,
+            },
+          });
+        }
+
+        // Notify tenant admins about total overdue
+        const admins = await this.userRepo.find({
+          where: { tenantId: cycle.tenantId, role: In(['tenant_admin']), isActive: true },
+        });
+
+        for (const admin of admins) {
+          notifications.push({
+            tenantId: cycle.tenantId,
+            userId: admin.id,
+            type: NotificationType.ESCALATION_EVALUATION_OVERDUE,
+            title: '⚠️ Escalación: evaluaciones sin completar',
+            message: `El ciclo "${cycle.name}" ${daysUntilEnd <= 0 ? 'ya venció' : `cierra en ${daysUntilEnd} día(s)`} y hay ${overdueAssignments.length} evaluación(es) pendiente(s).`,
+            metadata: {
+              cycleId: cycle.id,
+              daysUntilEnd,
+              totalOverdue: overdueAssignments.length,
+            },
+          });
+        }
+      }
+
+      if (notifications.length > 0) {
+        await this.notificationsService.createBulk(notifications);
+        this.logger.log(`[Cron] Created ${notifications.length} escalation notifications`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in escalateOverdueEvaluations: ${error}`);
+    }
+  }
+
+  // ─── 7. Escalación: acciones PDI vencidas > 7 días → manager (diario 10:30am) ──
+
+  @Cron('30 10 * * *')
+  async escalateOverduePDIActions() {
+    this.logger.log('[Cron] Escalating overdue PDI actions to managers...');
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const overdueActions = await this.actionRepo
+        .createQueryBuilder('a')
+        .leftJoinAndSelect('a.plan', 'p')
+        .leftJoinAndSelect('p.user', 'u')
+        .where('a.status != :completed', { completed: 'completada' })
+        .andWhere('a.due_date IS NOT NULL')
+        .andWhere('a.due_date < :sevenDaysAgo', { sevenDaysAgo: sevenDaysAgo.toISOString().split('T')[0] })
+        .andWhere('p.status = :active', { active: 'activo' })
+        .getMany();
+
+      // Group by manager
+      const byManager = new Map<string, Array<{ userName: string; actionDesc: string; daysOverdue: number }>>();
+      for (const action of overdueActions) {
+        const user = action.plan?.user;
+        if (!user?.managerId) continue;
+
+        const daysOverdue = action.dueDate
+          ? Math.floor((Date.now() - new Date(action.dueDate).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+
+        const list = byManager.get(user.managerId) || [];
+        list.push({
+          userName: `${user.firstName} ${user.lastName}`,
+          actionDesc: (action.description || '').substring(0, 60),
+          daysOverdue,
+        });
+        byManager.set(user.managerId, list);
+      }
+
+      const notifications: Array<{
+        tenantId: string;
+        userId: string;
+        type: NotificationType;
+        title: string;
+        message: string;
+        metadata?: Record<string, any>;
+      }> = [];
+
+      for (const [managerId, items] of byManager.entries()) {
+        const user = overdueActions.find((a) => a.plan?.user?.managerId === managerId)?.plan?.user;
+        if (!user) continue;
+
+        notifications.push({
+          tenantId: user.tenantId,
+          userId: managerId,
+          type: NotificationType.ESCALATION_PDI_OVERDUE,
+          title: '⚠️ Escalación: acciones de desarrollo vencidas',
+          message: `${items.length} acción(es) de desarrollo de tu equipo llevan más de 7 días vencidas. Empleados afectados: ${[...new Set(items.map((i) => i.userName))].slice(0, 3).join(', ')}.`,
+          metadata: { overdueItems: items },
+        });
+      }
+
+      if (notifications.length > 0) {
+        await this.notificationsService.createBulk(notifications);
+        this.logger.log(`[Cron] Created ${notifications.length} PDI escalation notifications`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in escalateOverduePDIActions: ${error}`);
+    }
+  }
+
+  // ─── 8. Escalación: objetivos críticos (<20% con < 7 días) → manager (diario 11am) ──
+
+  @Cron('0 11 * * *')
+  async escalateCriticalObjectives() {
+    this.logger.log('[Cron] Escalating critical objectives...');
+    try {
+      const sevenDaysFromNow = new Date();
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+      const criticalObjectives = await this.objectiveRepo
+        .createQueryBuilder('o')
+        .leftJoinAndSelect('o.user', 'u')
+        .where('o.status = :status', { status: ObjectiveStatus.ACTIVE })
+        .andWhere('o.progress < :threshold', { threshold: 20 })
+        .andWhere('o.target_date IS NOT NULL')
+        .andWhere('o.target_date <= :deadline', { deadline: sevenDaysFromNow.toISOString().split('T')[0] })
+        .getMany();
+
+      // Group by manager
+      const byManager = new Map<string, typeof criticalObjectives>();
+      for (const obj of criticalObjectives) {
+        if (!obj.user?.managerId) continue;
+        const list = byManager.get(obj.user.managerId) || [];
+        list.push(obj);
+        byManager.set(obj.user.managerId, list);
+      }
+
+      const notifications: Array<{
+        tenantId: string;
+        userId: string;
+        type: NotificationType;
+        title: string;
+        message: string;
+        metadata?: Record<string, any>;
+      }> = [];
+
+      for (const [managerId, objs] of byManager.entries()) {
+        const first = objs[0];
+        notifications.push({
+          tenantId: first.tenantId,
+          userId: managerId,
+          type: NotificationType.ESCALATION_OBJECTIVE_CRITICAL,
+          title: '🔴 Objetivos críticos en tu equipo',
+          message: `${objs.length} objetivo(s) de tu equipo tienen menos de 20% de avance y vencen en menos de 7 días. Requieren atención inmediata.`,
+          metadata: {
+            objectives: objs.map((o) => ({
+              id: o.id,
+              title: o.title,
+              progress: o.progress,
+              userName: o.user ? `${o.user.firstName} ${o.user.lastName}` : null,
+              targetDate: o.targetDate,
+            })),
+          },
+        });
+      }
+
+      if (notifications.length > 0) {
+        await this.notificationsService.createBulk(notifications);
+        this.logger.log(`[Cron] Created ${notifications.length} critical objective escalations`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in escalateCriticalObjectives: ${error}`);
+    }
+  }
+
+  // ─── 9. Limpieza de notificaciones viejas (domingo 3am) ─────────────
 
   @Cron('0 3 * * 0')
   async cleanupOldNotifications() {

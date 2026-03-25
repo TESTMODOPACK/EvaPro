@@ -13,6 +13,12 @@ import {
   useSubmitForApproval,
   useApproveObjective,
   useRejectObjective,
+  useKeyResults,
+  useCreateKeyResult,
+  useUpdateKeyResult,
+  useDeleteKeyResult,
+  useTeamObjectivesSummary,
+  useAtRiskObjectives,
 } from '@/hooks/useObjectives';
 import { useAuthStore } from '@/store/auth.store';
 import { useUsers } from '@/hooks/useUsers';
@@ -318,6 +324,215 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
   );
 }
 
+/* ─── Key Results Sub-component ───────────────────────────────────────────── */
+
+function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
+  const { data: keyResults, isLoading } = useKeyResults(objectiveId);
+  const createKR = useCreateKeyResult();
+  const updateKR = useUpdateKeyResult();
+  const deleteKR = useDeleteKeyResult();
+
+  const [showAddKR, setShowAddKR] = useState(false);
+  const [krForm, setKrForm] = useState({ description: '', unit: '%', baseValue: 0, targetValue: 100 });
+  const [editingKrId, setEditingKrId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState(0);
+
+  function handleAddKR() {
+    if (!krForm.description.trim()) return;
+    createKR.mutate(
+      { objectiveId, data: krForm },
+      { onSuccess: () => { setKrForm({ description: '', unit: '%', baseValue: 0, targetValue: 100 }); setShowAddKR(false); } },
+    );
+  }
+
+  function handleUpdateValue(krId: string, currentValue: number) {
+    updateKR.mutate({ krId, data: { currentValue } }, { onSuccess: () => setEditingKrId(null) });
+  }
+
+  function krProgress(kr: any): number {
+    const range = Number(kr.targetValue) - Number(kr.baseValue);
+    if (range <= 0) return kr.status === 'completed' ? 100 : 0;
+    return Math.min(100, Math.max(0, ((Number(kr.currentValue) - Number(kr.baseValue)) / range) * 100));
+  }
+
+  return (
+    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+          Key Results
+        </div>
+        <button
+          className="btn-ghost"
+          style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+          onClick={() => setShowAddKR(!showAddKR)}
+        >
+          {showAddKR ? 'Cancelar' : '+ Agregar KR'}
+        </button>
+      </div>
+
+      {/* Add KR form */}
+      {showAddKR && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.6rem', padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+          <input
+            className="input"
+            type="text"
+            placeholder="Descripcion del resultado clave..."
+            value={krForm.description}
+            onChange={(e) => setKrForm({ ...krForm, description: e.target.value })}
+            style={{ width: '100%', fontSize: '0.78rem' }}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
+            <div>
+              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Unidad</label>
+              <input className="input" type="text" value={krForm.unit} onChange={(e) => setKrForm({ ...krForm, unit: e.target.value })} style={{ width: '100%', fontSize: '0.78rem' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Valor base</label>
+              <input className="input" type="number" value={krForm.baseValue} onChange={(e) => setKrForm({ ...krForm, baseValue: Number(e.target.value) })} style={{ width: '100%', fontSize: '0.78rem' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Meta</label>
+              <input className="input" type="number" value={krForm.targetValue} onChange={(e) => setKrForm({ ...krForm, targetValue: Number(e.target.value) })} style={{ width: '100%', fontSize: '0.78rem' }} />
+            </div>
+          </div>
+          <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem', alignSelf: 'flex-start' }} onClick={handleAddKR} disabled={createKR.isPending || !krForm.description.trim()}>
+            {createKR.isPending ? 'Creando...' : 'Crear KR'}
+          </button>
+        </div>
+      )}
+
+      {/* KR list */}
+      {isLoading ? (
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cargando...</div>
+      ) : keyResults && keyResults.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {keyResults.map((kr: any) => {
+            const prog = Math.round(krProgress(kr));
+            const progColor = progressColor(prog);
+            const isEditing = editingKrId === kr.id;
+            return (
+              <div key={kr.id} style={{ padding: '0.5rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                  <span style={{ fontWeight: 600, flex: 1 }}>{kr.description}</span>
+                  <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                    <span className={`badge ${kr.status === 'completed' ? 'badge-success' : 'badge-accent'}`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}>
+                      {kr.status === 'completed' ? 'Completado' : 'Activo'}
+                    </span>
+                    <button
+                      className="btn-ghost"
+                      style={{ fontSize: '0.7rem', padding: '0.15rem 0.3rem', color: 'var(--danger)' }}
+                      onClick={() => { if (confirm('Eliminar este KR?')) deleteKR.mutate(kr.id); }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                  <div style={{ flex: 1, height: '5px', borderRadius: '999px', background: 'var(--border)' }}>
+                    <div style={{ width: `${prog}%`, height: '100%', borderRadius: '999px', background: progColor, transition: 'width 0.3s ease' }} />
+                  </div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: progColor, minWidth: '35px', textAlign: 'right' }}>{prog}%</span>
+                </div>
+                {/* Values */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  <span>Base: {kr.baseValue} {kr.unit}</span>
+                  {isEditing ? (
+                    <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                      <input className="input" type="number" value={editValue} onChange={(e) => setEditValue(Number(e.target.value))} style={{ width: '80px', fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} />
+                      <button className="btn-primary" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }} onClick={() => handleUpdateValue(kr.id, editValue)}>OK</button>
+                      <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }} onClick={() => setEditingKrId(null)}>X</button>
+                    </div>
+                  ) : (
+                    <span style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--accent)' }} onClick={() => { setEditingKrId(kr.id); setEditValue(Number(kr.currentValue)); }}>
+                      Actual: {kr.currentValue} / {kr.targetValue} {kr.unit}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Sin Key Results. Agrega resultados clave para medir el avance.</p>
+      )}
+    </div>
+  );
+}
+
+/* ─── Team Summary Sub-component ─────────────────────────────────────────── */
+
+function TeamSummaryView() {
+  const { data, isLoading } = useTeamObjectivesSummary();
+
+  if (isLoading) return <Spinner />;
+  if (!data || !data.members || data.members.length === 0) {
+    return (
+      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No hay miembros en tu equipo con objetivos asignados.</p>
+      </div>
+    );
+  }
+
+  const { members, totals } = data;
+
+  return (
+    <div>
+      {/* Team totals */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{totals.totalMembers}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Miembros</div>
+        </div>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{totals.totalObjectives}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Objetivos totales</div>
+        </div>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: progressColor(totals.avgProgress) }}>{totals.avgProgress}%</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Progreso promedio</div>
+        </div>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: totals.totalAtRisk > 0 ? 'var(--danger)' : 'var(--success)' }}>{totals.totalAtRisk}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>En riesgo</div>
+        </div>
+      </div>
+
+      {/* Per-member cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+        {members.map((m: any) => {
+          const color = progressColor(m.avgProgress);
+          return (
+            <div key={m.userId} className="card" style={{ padding: '1rem', borderLeft: m.atRiskCount > 0 ? '3px solid var(--danger)' : undefined }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>{m.userName}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{m.position || m.department || ''}</div>
+                </div>
+                {m.atRiskCount > 0 && (
+                  <span className="badge badge-danger" style={{ fontSize: '0.68rem' }}>{m.atRiskCount} en riesgo</span>
+                )}
+              </div>
+              {/* Progress ring (simplified as bar) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <div style={{ flex: 1, height: '6px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
+                  <div style={{ width: `${m.avgProgress}%`, height: '100%', borderRadius: '999px', background: color, transition: 'width 0.3s ease' }} />
+                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color }}>{m.avgProgress}%</span>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                <span>Activos: {m.activeCount}</span>
+                <span>Completados: {m.completedCount}</span>
+                <span>Peso: {m.totalWeight}%</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 
 export default function ObjetivosPage() {
@@ -352,6 +567,18 @@ export default function ObjetivosPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [progressForm, setProgressForm] = useState<{ value: number; notes: string }>({ value: 50, notes: '' });
   const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '', userId: '' });
+  const [activeTab, setActiveTab] = useState<'list' | 'team'>('list');
+
+  // Item 13: At-risk objectives count
+  const { data: atRiskData } = useAtRiskObjectives();
+  const atRiskCount = atRiskData?.length || 0;
+
+  // Item 10: Weight total calculation
+  const myObjectives = objectives?.filter((o: any) => {
+    const uid = o.userId || o.user?.id;
+    return uid === userId && o.status !== 'abandoned';
+  }) || [];
+  const totalWeight = myObjectives.reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0);
 
   // Build unique users from objectives for the user filter dropdown
   const uniqueUsers: { id: string; name: string }[] = [];
@@ -442,8 +669,18 @@ export default function ObjetivosPage() {
       {/* Header */}
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {pageTitle}
+            {atRiskCount > 0 && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: 'var(--danger)', color: '#fff', borderRadius: '999px',
+                fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.5rem',
+                minWidth: '22px',
+              }}>
+                {atRiskCount} en riesgo
+              </span>
+            )}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
             {pageSubtitle}
@@ -585,6 +822,65 @@ export default function ObjetivosPage() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tabs: Lista / Vista de Equipo (manager/admin) */}
+      {(isAdmin || isManager) && (
+        <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '2px solid var(--border)', paddingBottom: '0' }}>
+          <button
+            onClick={() => setActiveTab('list')}
+            style={{
+              padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+              background: 'none', border: 'none', borderBottom: activeTab === 'list' ? '2px solid var(--accent)' : '2px solid transparent',
+              color: activeTab === 'list' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: '-2px',
+            }}
+          >
+            Lista de Objetivos
+          </button>
+          <button
+            onClick={() => setActiveTab('team')}
+            style={{
+              padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+              background: 'none', border: 'none', borderBottom: activeTab === 'team' ? '2px solid var(--accent)' : '2px solid transparent',
+              color: activeTab === 'team' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: '-2px',
+            }}
+          >
+            Vista de Equipo
+          </button>
+        </div>
+      )}
+
+      {/* Team Summary View */}
+      {activeTab === 'team' && (isAdmin || isManager) ? (
+        <TeamSummaryView />
+      ) : (
+      <>
+
+      {/* Weight total bar (Item 10) */}
+      {myObjectives.length > 0 && (
+        <div className="animate-fade-up" style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+          padding: '0.6rem 0.9rem', marginBottom: '1rem',
+          background: totalWeight > 100 ? 'rgba(239,68,68,0.08)' : totalWeight === 100 ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
+          border: `1px solid ${totalWeight > 100 ? 'rgba(239,68,68,0.2)' : totalWeight === 100 ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`,
+          borderRadius: 'var(--radius-sm)', fontSize: '0.8rem',
+        }}>
+          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Peso total:</span>
+          <div style={{ flex: 1, maxWidth: '200px', height: '6px', borderRadius: '999px', background: 'var(--border)' }}>
+            <div style={{
+              width: `${Math.min(100, totalWeight)}%`, height: '100%', borderRadius: '999px',
+              background: totalWeight > 100 ? 'var(--danger)' : totalWeight === 100 ? 'var(--success)' : 'var(--warning)',
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+          <span style={{
+            fontWeight: 700, fontSize: '0.85rem',
+            color: totalWeight > 100 ? 'var(--danger)' : totalWeight === 100 ? 'var(--success)' : 'var(--warning)',
+          }}>
+            {totalWeight}% / 100%
+          </span>
+          {totalWeight > 100 && <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>Excede el 100%</span>}
         </div>
       )}
 
@@ -745,7 +1041,7 @@ export default function ObjetivosPage() {
             const assignedName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : null;
 
             return (
-              <div key={obj.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', borderLeft: alert ? `3px solid ${alert.color}` : undefined }}>
+              <div key={obj.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', borderLeft: (obj.status === 'active' && progress < 40) ? '3px solid var(--danger)' : alert ? `3px solid ${alert.color}` : undefined }}>
                 {/* Deadline alert banner */}
                 {alert && (
                   <div style={{
@@ -923,6 +1219,9 @@ export default function ObjetivosPage() {
                       </button>
                     </div>
 
+                    {/* Key Results section */}
+                    <KeyResultsSection objectiveId={obj.id} />
+
                     {/* Comments section */}
                     <CommentsSection
                       objectiveId={obj.id}
@@ -935,6 +1234,8 @@ export default function ObjetivosPage() {
             );
           })}
         </div>
+      )}
+      </>
       )}
     </div>
   );
