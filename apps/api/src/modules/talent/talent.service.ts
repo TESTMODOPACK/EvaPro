@@ -455,38 +455,39 @@ export class TalentService {
       return { sessionId, distribution: [], expectedVsActual: [], message: 'Sin scores disponibles' };
     }
 
-    const max = Math.max(...scores);
-    const min = Math.min(...scores);
-    const range = max - min || 1;
+    const totalCount = scores.length;
+    const actualMin = Math.min(...scores);
+    const actualMax = Math.max(...scores);
 
-    // Classify into 5 buckets
-    const bucketLabels = ['Bajo', 'Medio-Bajo', 'Medio', 'Medio-Alto', 'Alto'];
-    const bucketSize = range / 5;
+    // Use ABSOLUTE ranges (0-2, 2-4, 4-6, 6-8, 8-10) for meaningful distribution
+    const bucketLabels = ['Bajo (0-2)', 'Medio-Bajo (2-4)', 'Medio (4-6)', 'Medio-Alto (6-8)', 'Alto (8-10)'];
+    const bucketRanges = [[0, 2], [2, 4], [4, 6], [6, 8], [8, 10]];
     const bucketCounts = [0, 0, 0, 0, 0];
 
     for (const s of scores) {
-      const idx = Math.min(Math.floor((s - min) / bucketSize), 4);
+      // Clamp to 0-10 range and classify
+      const clamped = Math.max(0, Math.min(10, s));
+      const idx = Math.min(Math.floor(clamped / 2), 4);
       bucketCounts[idx]++;
     }
 
-    const totalCount = scores.length;
     const actualDistribution = bucketCounts.map((c) => Math.round((c / totalCount) * 100));
 
-    // Expected distribution (configurable per session or default)
+    // Expected distribution (configurable per session or default bell curve)
     const expected = session.expectedDistribution || { low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 };
     const expectedArr = [expected.low, expected.midLow, expected.mid, expected.midHigh, expected.high];
 
     const expectedVsActual = bucketLabels.map((label, i) => ({
       bucket: label,
-      rangeMin: Math.round((min + bucketSize * i) * 100) / 100,
-      rangeMax: Math.round((min + bucketSize * (i + 1)) * 100) / 100,
+      rangeMin: bucketRanges[i][0],
+      rangeMax: bucketRanges[i][1],
       actualCount: bucketCounts[i],
       actualPercent: actualDistribution[i],
       expectedPercent: expectedArr[i],
       deviation: actualDistribution[i] - expectedArr[i],
     }));
 
-    // Chi-squared test (simplified)
+    // Chi-squared goodness-of-fit test (df=4, p=0.05 critical value = 9.49)
     const chiSquared = expectedVsActual.reduce((sum, b) => {
       const expectedCount = (b.expectedPercent / 100) * totalCount;
       if (expectedCount === 0) return sum;
@@ -496,10 +497,10 @@ export class TalentService {
     return {
       sessionId,
       totalEntries: totalCount,
-      scoreRange: { min: Math.round(min * 100) / 100, max: Math.round(max * 100) / 100 },
+      scoreRange: { min: Math.round(actualMin * 100) / 100, max: Math.round(actualMax * 100) / 100 },
       expectedVsActual,
       chiSquared: Math.round(chiSquared * 100) / 100,
-      distributionFit: chiSquared < 9.49 ? 'aceptable' : 'desviada', // df=4, p=0.05
+      distributionFit: chiSquared < 9.49 ? 'aceptable' : 'desviada',
     };
   }
 

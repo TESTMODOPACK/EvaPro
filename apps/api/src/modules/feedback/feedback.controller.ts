@@ -77,6 +77,7 @@ export class FeedbackController {
   }
 
   @Post('checkins/:id/reject')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   rejectCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,

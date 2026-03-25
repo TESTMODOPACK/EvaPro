@@ -204,10 +204,22 @@ export class FeedbackService {
     }
 
     // Generate .ics (iCalendar) content
-    const dateStr = new Date(checkIn.scheduledDate).toISOString().split('T')[0].replace(/-/g, '');
+    const schedDate = new Date(checkIn.scheduledDate);
+    const dateStr = schedDate.toISOString().split('T')[0].replace(/-/g, '');
     const timeStr = checkIn.scheduledTime ? checkIn.scheduledTime.replace(':', '') + '00' : '090000';
-    const endTimeH = checkIn.scheduledTime ? parseInt(checkIn.scheduledTime.split(':')[0]) + 1 : 10;
-    const endTimeStr = `${String(endTimeH).padStart(2, '0')}${checkIn.scheduledTime ? checkIn.scheduledTime.split(':')[1] : '00'}00`;
+
+    // Handle end time with midnight overflow (e.g., 23:30 → next day 00:30)
+    const startH = checkIn.scheduledTime ? parseInt(checkIn.scheduledTime.split(':')[0]) : 9;
+    const startM = checkIn.scheduledTime ? checkIn.scheduledTime.split(':')[1] : '00';
+    const endH = (startH + 1) % 24;
+    let endDateStr = dateStr;
+    if (endH < startH) {
+      // Rolled over midnight — advance date by 1 day
+      const nextDay = new Date(schedDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      endDateStr = nextDay.toISOString().split('T')[0].replace(/-/g, '');
+    }
+    const endTimeStr = `${String(endH).padStart(2, '0')}${startM}00`;
 
     const icsContent = [
       'BEGIN:VCALENDAR',
@@ -216,7 +228,7 @@ export class FeedbackService {
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
       `DTSTART:${dateStr}T${timeStr}`,
-      `DTEND:${dateStr}T${endTimeStr}`,
+      `DTEND:${endDateStr}T${endTimeStr}`,
       `SUMMARY:Check-in 1:1 - ${checkIn.topic}`,
       `DESCRIPTION:Reuni\u00f3n 1:1 con ${manager.firstName} ${manager.lastName}\\nTema: ${checkIn.topic}`,
       locationName ? `LOCATION:${locationName}` : '',
