@@ -4,12 +4,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 
+function handleAiError(error: any) {
+  const msg = error?.message || error?.data?.message || 'Error al comunicarse con la IA';
+  alert(msg);
+}
+
 export function useAiSummary(cycleId: string | null, userId: string | null) {
   const token = useAuthStore((s) => s.token);
   return useQuery({
     queryKey: ['ai', 'summary', cycleId, userId],
     queryFn: () => api.ai.getSummary(token!, cycleId!, userId!),
     enabled: !!token && !!cycleId && !!userId,
+    retry: false,
   });
 }
 
@@ -22,6 +28,7 @@ export function useGenerateSummary() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['ai', 'summary', vars.cycleId, vars.userId] });
     },
+    onError: handleAiError,
   });
 }
 
@@ -31,6 +38,7 @@ export function useAiBias(cycleId: string | null) {
     queryKey: ['ai', 'bias', cycleId],
     queryFn: () => api.ai.getBias(token!, cycleId!),
     enabled: !!token && !!cycleId,
+    retry: false,
   });
 }
 
@@ -42,6 +50,7 @@ export function useAnalyzeBias() {
     onSuccess: (_data, cycleId) => {
       qc.invalidateQueries({ queryKey: ['ai', 'bias', cycleId] });
     },
+    onError: handleAiError,
   });
 }
 
@@ -51,6 +60,7 @@ export function useAiSuggestions(cycleId: string | null, userId: string | null) 
     queryKey: ['ai', 'suggestions', cycleId, userId],
     queryFn: () => api.ai.getSuggestions(token!, cycleId!, userId!),
     enabled: !!token && !!cycleId && !!userId,
+    retry: false,
   });
 }
 
@@ -63,5 +73,6 @@ export function useGenerateSuggestions() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['ai', 'suggestions', vars.cycleId, vars.userId] });
     },
+    onError: handleAiError,
   });
 }

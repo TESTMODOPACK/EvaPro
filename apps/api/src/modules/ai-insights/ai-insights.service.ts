@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ServiceUnavailableException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
+import { Repository, MoreThan, IsNull } from 'typeorm';
 import Anthropic from '@anthropic-ai/sdk';
 import { AiInsight, InsightType } from './entities/ai-insight.entity';
 import { ReportsService } from '../reports/reports.service';
@@ -19,6 +19,16 @@ import { buildSuggestionsPrompt } from './prompts/suggestions.prompt';
 
 const MODEL = 'claude-3-5-haiku-20241022';
 const CACHE_DAYS = 7;
+const MAX_CALLS_PER_TENANT_PER_DAY = 50;
+
+/** Sanitize user-provided strings before interpolating into prompts */
+function sanitizeForPrompt(input: string): string {
+  return input
+    .replace(/[{}[\]<>]/g, '') // Remove brackets/braces
+    .replace(/\\/g, '')        // Remove backslashes
+    .slice(0, 200)             // Limit length
+    .trim();
+}
 
 @Injectable()
 export class AiInsightsService {
@@ -58,7 +68,7 @@ export class AiInsightsService {
 
   private ensureClient(): Anthropic {
     if (!this.client) {
-      throw new BadRequestException(
+      throw new ServiceUnavailableException(
         'La funcionalidad de IA no está disponible. Contacte al administrador para configurar ANTHROPIC_API_KEY.',
       );
     }
@@ -71,33 +81,80 @@ export class AiInsightsService {
     const cacheDate = new Date();
     cacheDate.setDate(cacheDate.getDate() - CACHE_DAYS);
 
-    const where: any = { tenantId, type, cycleId, createdAt: MoreThan(cacheDate) };
-    if (userId) where.userId = userId;
-    else where.userId = null as any;
-
-    return this.insightRepo.findOne({ where, order: { createdAt: 'DESC' } });
+    return this.insightRepo.findOne({
+      where: {
+        tenantId, type, cycleId,
+        userId: userId || IsNull() as any,
+        createdAt: MoreThan(cacheDate),
+      },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async getInsight(tenantId: string, type: InsightType, cycleId: string, userId?: string): Promise<AiInsight | null> {
-    const where: any = { tenantId, type, cycleId };
-    if (userId) where.userId = userId;
-    else where.userId = null as any;
-    return this.insightRepo.findOne({ where, order: { createdAt: 'DESC' } });
+    return this.insightRepo.findOne({
+      where: {
+        tenantId, type, cycleId,
+        userId: userId || IsNull() as any,
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /** Force-clear cache for a specific insight type */
+  async clearCache(tenantId: string, type: InsightType, cycleId: string, userId?: string): Promise<{ deleted: number }> {
+    const result = await this.insightRepo.delete({
+      tenantId, type, cycleId,
+      userId: userId || IsNull() as any,
+    });
+    return { deleted: result.affected || 0 };
+  }
+
+  /** Check rate limit: max N calls per tenant per day */
+  private async checkRateLimit(tenantId: string): Promise<void> {
+    const dayAgo = new Date();
+    dayAgo.setDate(dayAgo.getDate() - 1);
+
+    const recentCount = await this.insightRepo.count({
+      where: { tenantId, createdAt: MoreThan(dayAgo) },
+    });
+
+    if (recentCount >= MAX_CALLS_PER_TENANT_PER_DAY) {
+      throw new BadRequestException(
+        `Se alcanzó el límite diario de ${MAX_CALLS_PER_TENANT_PER_DAY} análisis de IA por organización. Intente mañana.`,
+      );
+    }
   }
 
   private async callClaude(prompt: string): Promise<{ text: string; tokensUsed: number }> {
     const client = this.ensureClient();
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }],
-    });
 
-    const textBlock = response.content.find((b) => b.type === 'text');
-    const text = textBlock ? textBlock.text : '';
-    const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0);
+    try {
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      });
 
-    return { text, tokensUsed };
+      const textBlock = response.content.find((b) => b.type === 'text');
+      const text = textBlock ? textBlock.text : '';
+      const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0);
+
+      return { text, tokensUsed };
+    } catch (error: any) {
+      this.logger.error(`Anthropic API error: ${error.message}`, error.stack);
+
+      if (error.status === 429) {
+        throw new BadRequestException('Límite de solicitudes alcanzado en la API de IA. Espere unos minutos e intente de nuevo.');
+      }
+      if (error.status === 401) {
+        throw new ServiceUnavailableException('Error de autenticación con la API de IA. Verifique la configuración de ANTHROPIC_API_KEY.');
+      }
+      if (error.status === 529 || error.message?.includes('overloaded')) {
+        throw new ServiceUnavailableException('El servicio de IA está temporalmente sobrecargado. Intente en unos minutos.');
+      }
+      throw new BadRequestException(`Error al comunicarse con la IA: ${error.message || 'Error desconocido'}`);
+    }
   }
 
   private parseJson(text: string): any {
@@ -114,11 +171,11 @@ export class AiInsightsService {
   // ─── 3.2: Summary ──────────────────────────────────────────────────────
 
   async generateSummary(tenantId: string, cycleId: string, userId: string, generatedBy: string): Promise<AiInsight> {
-    // Check cache
+    await this.checkRateLimit(tenantId);
+
     const cached = await this.getCached(tenantId, InsightType.SUMMARY, cycleId, userId);
     if (cached) return cached;
 
-    // Gather data
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Colaborador no encontrado');
 
@@ -131,22 +188,26 @@ export class AiInsightsService {
       this.reportsService.selfVsOthers(cycleId, userId, tenantId),
     ]);
 
-    // Get text responses
     const textResponses = await this.getTextResponses(tenantId, cycleId, userId);
 
     const prompt = buildSummaryPrompt({
-      employeeName: `${user.firstName} ${user.lastName}`,
-      position: user.position || '',
-      department: user.department || '',
-      cycleName: cycle.name,
+      employeeName: sanitizeForPrompt(`${user.firstName} ${user.lastName}`),
+      position: sanitizeForPrompt(user.position || ''),
+      department: sanitizeForPrompt(user.department || ''),
+      cycleName: sanitizeForPrompt(cycle.name),
       individualResults,
       competencyRadar,
       selfVsOthers,
-      textResponses,
+      textResponses: textResponses.map((t) => sanitizeForPrompt(t)),
     });
 
     const { text, tokensUsed } = await this.callClaude(prompt);
     const content = this.parseJson(text);
+
+    // Validate response structure
+    if (!content.executiveSummary && !content.resumenEjecutivo && !content.fortalezas && !content.strengths) {
+      this.logger.warn('AI returned unexpected summary structure, saving as-is');
+    }
 
     const insight = this.insightRepo.create({
       tenantId, type: InsightType.SUMMARY, userId, cycleId,
@@ -154,13 +215,16 @@ export class AiInsightsService {
     });
     const saved = await this.insightRepo.save(insight);
 
-    // Notify
-    await this.notificationsService.create({
-      tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
-      title: 'Resumen IA generado',
-      message: `El resumen de IA para ${user.firstName} ${user.lastName} está listo`,
-      metadata: { insightId: saved.id, cycleId, targetUserId: userId },
-    });
+    try {
+      await this.notificationsService.create({
+        tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
+        title: 'Resumen IA generado',
+        message: `El resumen de IA para ${user.firstName} ${user.lastName} está listo`,
+        metadata: { insightId: saved.id, cycleId, targetUserId: userId },
+      });
+    } catch (e) {
+      this.logger.warn(`Failed to send notification: ${e.message}`);
+    }
 
     return saved;
   }
@@ -168,6 +232,8 @@ export class AiInsightsService {
   // ─── 3.3: Bias Detection ───────────────────────────────────────────────
 
   async analyzeBias(tenantId: string, cycleId: string, generatedBy: string): Promise<AiInsight> {
+    await this.checkRateLimit(tenantId);
+
     const cached = await this.getCached(tenantId, InsightType.BIAS, cycleId);
     if (cached) return cached;
 
@@ -245,12 +311,16 @@ export class AiInsightsService {
     });
     const saved = await this.insightRepo.save(insight);
 
-    await this.notificationsService.create({
-      tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
-      title: 'Análisis de sesgos generado',
-      message: `El análisis de sesgos del ciclo "${cycle.name}" está listo`,
-      metadata: { insightId: saved.id, cycleId },
-    });
+    try {
+      await this.notificationsService.create({
+        tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
+        title: 'Análisis de sesgos generado',
+        message: `El análisis de sesgos del ciclo "${cycle.name}" está listo`,
+        metadata: { insightId: saved.id, cycleId },
+      });
+    } catch (e) {
+      this.logger.warn(`Failed to send notification: ${e.message}`);
+    }
 
     return saved;
   }
@@ -258,6 +328,8 @@ export class AiInsightsService {
   // ─── 3.4: Suggestions ──────────────────────────────────────────────────
 
   async generateSuggestions(tenantId: string, cycleId: string, userId: string, generatedBy: string): Promise<AiInsight> {
+    await this.checkRateLimit(tenantId);
+
     const cached = await this.getCached(tenantId, InsightType.SUGGESTIONS, cycleId, userId);
     if (cached) return cached;
 
@@ -305,10 +377,10 @@ export class AiInsightsService {
     }
 
     const prompt = buildSuggestionsPrompt({
-      employeeName: `${user.firstName} ${user.lastName}`,
-      position: user.position || '',
-      department: user.department || '',
-      cycleName: cycle.name,
+      employeeName: sanitizeForPrompt(`${user.firstName} ${user.lastName}`),
+      position: sanitizeForPrompt(user.position || ''),
+      department: sanitizeForPrompt(user.department || ''),
+      cycleName: sanitizeForPrompt(cycle.name),
       overallScore,
       competencyRadar,
       selfVsOthers,
@@ -327,12 +399,16 @@ export class AiInsightsService {
     });
     const saved = await this.insightRepo.save(insight);
 
-    await this.notificationsService.create({
-      tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
-      title: 'Sugerencias de desarrollo generadas',
-      message: `Las sugerencias de mejora para ${user.firstName} ${user.lastName} están listas`,
-      metadata: { insightId: saved.id, cycleId, targetUserId: userId },
-    });
+    try {
+      await this.notificationsService.create({
+        tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
+        title: 'Sugerencias de desarrollo generadas',
+        message: `Las sugerencias de mejora para ${user.firstName} ${user.lastName} están listas`,
+        metadata: { insightId: saved.id, cycleId, targetUserId: userId },
+      });
+    } catch (e) {
+      this.logger.warn(`Failed to send notification: ${e.message}`);
+    }
 
     return saved;
   }

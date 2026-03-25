@@ -14,7 +14,7 @@ export enum InsightType {
 
 @Entity('ai_insights')
 @Index('idx_ai_insights_tenant_cycle', ['tenantId', 'cycleId'])
-@Index('idx_ai_insights_user', ['userId'])
+@Index('idx_ai_insights_lookup', ['tenantId', 'cycleId', 'type', 'userId'])
 export class AiInsight {
   @PrimaryGeneratedColumn('uuid')
   id: string;

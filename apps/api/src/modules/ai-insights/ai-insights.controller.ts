@@ -2,7 +2,9 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Param,
+  Query,
   UseGuards,
   Request,
   ParseUUIDPipe,
@@ -96,5 +98,19 @@ export class AiInsightsController {
   ) {
     this.validateAccess(req, userId);
     return this.aiService.getInsight(req.user.tenantId, InsightType.SUGGESTIONS, cycleId, userId);
+  }
+
+  // ─── Cache Management ─────────────────────────────────────────────────
+
+  @Delete('cache/:cycleId')
+  @Roles('super_admin', 'tenant_admin')
+  clearCycleCache(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Query('type') type: string,
+    @Query('userId') userId: string,
+    @Request() req: any,
+  ) {
+    const insightType = type === 'bias' ? InsightType.BIAS : type === 'suggestions' ? InsightType.SUGGESTIONS : InsightType.SUMMARY;
+    return this.aiService.clearCache(req.user.tenantId, insightType, cycleId, userId || undefined);
   }
 }
