@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository, LessThan, MoreThan } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
 
 @Injectable()
@@ -112,7 +112,17 @@ export class NotificationsService {
     return this.notifRepo.save(notif);
   }
 
-  /** Bulk create notifications for multiple users */
+  /** Check if a similar notification was created within the last N hours (deduplication) */
+  async existsRecent(tenantId: string, userId: string, type: NotificationType, hoursBack = 12): Promise<boolean> {
+    const cutoff = new Date();
+    cutoff.setHours(cutoff.getHours() - hoursBack);
+    const count = await this.notifRepo.count({
+      where: { tenantId, userId, type, createdAt: MoreThan(cutoff) },
+    });
+    return count > 0;
+  }
+
+  /** Bulk create notifications for multiple users (with dedup) */
   async createBulk(notifications: Array<{
     tenantId: string;
     userId: string;
@@ -122,7 +132,16 @@ export class NotificationsService {
     metadata?: Record<string, any>;
   }>): Promise<void> {
     if (notifications.length === 0) return;
-    const entities = notifications.map((n) =>
+
+    // Dedup: filter out notifications where a similar one exists in last 12h
+    const filtered: typeof notifications = [];
+    for (const n of notifications) {
+      const exists = await this.existsRecent(n.tenantId, n.userId, n.type);
+      if (!exists) filtered.push(n);
+    }
+    if (filtered.length === 0) return;
+
+    const entities = filtered.map((n) =>
       this.notifRepo.create({
         tenantId: n.tenantId,
         userId: n.userId,

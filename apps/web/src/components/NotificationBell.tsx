@@ -56,6 +56,9 @@ export default function NotificationBell() {
       {/* Bell button */}
       <button
         onClick={() => setOpen(!open)}
+        aria-label={unreadCount > 0 ? `Notificaciones: ${unreadCount} sin leer` : 'Notificaciones'}
+        aria-expanded={open}
+        aria-haspopup="true"
         style={{
           background: 'none',
           border: 'none',
@@ -89,18 +92,23 @@ export default function NotificationBell() {
             justifyContent: 'center',
             lineHeight: 1,
           }}>
-            {unreadCount > 99 ? '99+' : unreadCount}
+            <span aria-hidden="true">{unreadCount > 99 ? '99+' : unreadCount}</span>
           </span>
         )}
       </button>
 
       {/* Dropdown */}
       {open && (
-        <div style={{
+        <div
+          role="region"
+          aria-label="Panel de notificaciones"
+          aria-live="polite"
+          style={{
           position: 'absolute',
           top: 'calc(100% + 8px)',
           right: 0,
           width: '360px',
+          maxWidth: 'calc(100vw - 2rem)',
           maxHeight: '460px',
           background: 'var(--bg-surface)',
           border: '1px solid var(--border)',

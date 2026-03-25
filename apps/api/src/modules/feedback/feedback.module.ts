@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CheckIn } from './entities/checkin.entity';
 import { QuickFeedback } from './entities/quick-feedback.entity';
@@ -6,9 +6,13 @@ import { MeetingLocation } from './entities/meeting-location.entity';
 import { User } from '../users/entities/user.entity';
 import { FeedbackService } from './feedback.service';
 import { FeedbackController } from './feedback.controller';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CheckIn, QuickFeedback, MeetingLocation, User])],
+  imports: [
+    TypeOrmModule.forFeature([CheckIn, QuickFeedback, MeetingLocation, User]),
+    forwardRef(() => NotificationsModule),
+  ],
   controllers: [FeedbackController],
   providers: [FeedbackService],
   exports: [FeedbackService],

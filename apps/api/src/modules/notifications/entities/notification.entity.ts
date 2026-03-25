@@ -13,6 +13,8 @@ import { User } from '../../users/entities/user.entity';
 export enum NotificationType {
   EVALUATION_PENDING = 'evaluation_pending',
   EVALUATION_COMPLETED = 'evaluation_completed',
+  CHECKIN_SCHEDULED = 'checkin_scheduled',
+  CHECKIN_REJECTED = 'checkin_rejected',
   CHECKIN_OVERDUE = 'checkin_overdue',
   PDI_ACTION_DUE = 'pdi_action_due',
   OBJECTIVE_AT_RISK = 'objective_at_risk',
@@ -35,6 +37,7 @@ export enum NotificationType {
 @Entity('notifications')
 @Index('idx_notifications_user', ['userId'])
 @Index('idx_notifications_tenant_unread', ['tenantId', 'userId', 'isRead'])
+@Index('idx_notifications_created', ['createdAt'])
 export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;

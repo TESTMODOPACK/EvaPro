@@ -7,6 +7,8 @@ import { MeetingLocation } from './entities/meeting-location.entity';
 import { CreateCheckInDto, UpdateCheckInDto, RejectCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
 import { User } from '../users/entities/user.entity';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 import { Resend } from 'resend';
 
 @Injectable()
@@ -22,6 +24,7 @@ export class FeedbackService {
     private readonly locationRepo: Repository<MeetingLocation>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly notificationsService: NotificationsService,
   ) {
     if (process.env.RESEND_API_KEY) {
       this.resend = new Resend(process.env.RESEND_API_KEY);
@@ -64,6 +67,18 @@ export class FeedbackService {
 
     // Send email invitation if Resend is configured
     await this.sendCheckInInvitation(saved as CheckIn, tenantId);
+
+    // Create in-app notification for employee
+    const manager = await this.userRepo.findOne({ where: { id: managerId }, select: ['id', 'firstName', 'lastName'] });
+    const managerName = manager ? `${manager.firstName} ${manager.lastName}` : 'Tu encargado';
+    await this.notificationsService.create({
+      tenantId,
+      userId: dto.employeeId,
+      type: NotificationType.CHECKIN_SCHEDULED,
+      title: 'Nuevo check-in programado',
+      message: `${managerName} ha programado un check-in contigo: "${dto.topic}"`,
+      metadata: { checkInId: (saved as CheckIn).id },
+    }).catch(() => {}); // non-blocking
 
     return saved as CheckIn;
   }
@@ -116,6 +131,17 @@ export class FeedbackService {
     ci.rejectionReason = dto.reason;
     ci.rejectedBy = userId;
     const saved = await this.checkInRepo.save(ci);
+
+    // Create in-app notification for manager
+    const employeeName = ci.employee ? `${ci.employee.firstName} ${ci.employee.lastName}` : 'El colaborador';
+    await this.notificationsService.create({
+      tenantId,
+      userId: ci.managerId,
+      type: NotificationType.CHECKIN_REJECTED,
+      title: 'Check-in rechazado',
+      message: `${employeeName} ha rechazado el check-in "${ci.topic}". Motivo: ${dto.reason}`,
+      metadata: { checkInId: ci.id },
+    }).catch(() => {});
 
     // Send rejection email to manager if Resend configured
     if (this.resend && ci.manager?.email) {
@@ -252,7 +278,22 @@ export class FeedbackService {
       isAnonymous: dto.isAnonymous ?? false,
       visibility: dto.visibility,
     });
-    return this.quickFeedbackRepo.save(qf);
+    const saved = await this.quickFeedbackRepo.save(qf);
+
+    // Create in-app notification for recipient
+    const sender = await this.userRepo.findOne({ where: { id: fromUserId }, select: ['id', 'firstName', 'lastName'] });
+    const senderName = dto.isAnonymous ? 'Alguien' : (sender ? `${sender.firstName} ${sender.lastName}` : 'Un colega');
+    const sentimentLabel = dto.sentiment === 'positive' ? 'positivo' : dto.sentiment === 'constructive' ? 'constructivo' : 'neutral';
+    await this.notificationsService.create({
+      tenantId,
+      userId: dto.toUserId,
+      type: NotificationType.FEEDBACK_RECEIVED,
+      title: `Feedback ${sentimentLabel} recibido`,
+      message: `${senderName} te ha enviado feedback ${sentimentLabel}`,
+      metadata: { feedbackId: saved.id },
+    }).catch(() => {});
+
+    return saved;
   }
 
   async findFeedbackReceived(tenantId: string, userId: string): Promise<QuickFeedback[]> {
