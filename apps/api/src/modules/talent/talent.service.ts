@@ -242,9 +242,11 @@ export class TalentService {
     });
   }
 
-  async getSessionDetail(id: string): Promise<any> {
+  async getSessionDetail(id: string, tenantId?: string): Promise<any> {
+    const whereClause: any = { id };
+    if (tenantId) whereClause.tenantId = tenantId;
     const session = await this.sessionRepo.findOne({
-      where: { id },
+      where: whereClause,
       relations: ['cycle', 'moderator'],
     });
     if (!session) throw new NotFoundException('Sesión no encontrada');
@@ -258,8 +260,10 @@ export class TalentService {
     return { ...session, entries };
   }
 
-  async populateEntries(sessionId: string): Promise<CalibrationEntry[]> {
-    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+  async populateEntries(sessionId: string, tenantId?: string): Promise<CalibrationEntry[]> {
+    const whereClause: any = { id: sessionId };
+    if (tenantId) whereClause.tenantId = tenantId;
+    const session = await this.sessionRepo.findOne({ where: whereClause });
     if (!session) throw new NotFoundException('Sesión no encontrada');
 
     // Get assessments for this cycle (filtered by department if set)
@@ -384,8 +388,10 @@ export class TalentService {
     return this.entryRepo.save(entry);
   }
 
-  async completeSession(sessionId: string): Promise<void> {
-    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+  async completeSession(sessionId: string, tenantId?: string): Promise<void> {
+    const whereClause: any = { id: sessionId };
+    if (tenantId) whereClause.tenantId = tenantId;
+    const session = await this.sessionRepo.findOne({ where: whereClause });
     if (!session) throw new NotFoundException('Sesión no encontrada');
 
     const entries = await this.entryRepo.find({ where: { sessionId } });
@@ -529,14 +535,15 @@ export class TalentService {
     doc.text(`Estado: ${session.status}`, 14, 59);
     doc.text(`Fecha: ${new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })}`, 14, 65);
 
-    // Participants
-    const participants = [...new Set(entries.filter((e) => e.discusser).map((e) => e.discusser))];
+    // Participants (deduplicate by UUID, not object reference)
+    const participantIds = [...new Set(entries.filter((e) => e.discussedBy).map((e) => e.discussedBy))];
+    const participants = participantIds.map((pid) => entries.find((e) => e.discussedBy === pid)?.discusser).filter(Boolean);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.text('Participantes', 14, 78);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    const partNames = participants.map((p) => `${p.firstName} ${p.lastName}`).join(', ') || 'Sin participantes registrados';
+    const partNames = participants.map((p) => p ? `${p.firstName} ${p.lastName}` : 'N/A').join(', ') || 'Sin participantes registrados';
     doc.text(partNames, 14, 84, { maxWidth: pageWidth - 28 });
 
     // Results table

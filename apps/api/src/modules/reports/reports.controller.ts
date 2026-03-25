@@ -60,7 +60,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     this.validateUserAccess(req, userId);
-    return this.reportsService.individualResults(cycleId, userId, req.user.tenantId, req.user.id, req.user.role);
+    return this.reportsService.individualResults(cycleId, userId, req.user.tenantId, req.user.userId, req.user.role);
   }
 
   @Get('cycle/:cycleId/team/:managerId')

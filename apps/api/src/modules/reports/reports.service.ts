@@ -240,8 +240,8 @@ export class ReportsService {
     for (const a of assignments) {
       const resp = responseByAssignment.get(a.id);
       rows.push([
-        escapeCsvField(`${a.evaluatee.firstName} ${a.evaluatee.lastName}`),
-        escapeCsvField(`${a.evaluator.firstName} ${a.evaluator.lastName}`),
+        escapeCsvField(a.evaluatee ? `${a.evaluatee.firstName} ${a.evaluatee.lastName}` : 'N/A'),
+        escapeCsvField(a.evaluator ? `${a.evaluator.firstName} ${a.evaluator.lastName}` : 'N/A'),
         escapeCsvField(a.relationType),
         escapeCsvField(resp?.overallScore ?? ''),
         escapeCsvField(resp?.submittedAt?.toISOString().split('T')[0] ?? ''),

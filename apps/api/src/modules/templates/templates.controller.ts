@@ -29,6 +29,15 @@ export class TemplatesController {
     return this.templatesService.findAll(req.user.tenantId);
   }
 
+  @Get(':id/preview')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  async preview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.templatesService.getPreview(id, req.user.tenantId);
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -61,15 +70,6 @@ export class TemplatesController {
     @Request() req: any,
   ) {
     return this.templatesService.remove(id, req.user.tenantId);
-  }
-
-  @Get(':id/preview')
-  @Roles('super_admin', 'tenant_admin', 'manager')
-  async preview(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Request() req: any,
-  ) {
-    return this.templatesService.getPreview(id, req.user.tenantId);
   }
 
   @Post(':id/duplicate')

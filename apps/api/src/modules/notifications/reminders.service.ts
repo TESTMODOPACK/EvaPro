@@ -515,17 +515,15 @@ export class RemindersService {
   async remindPDIRequired() {
     this.logger.log('[Cron] Checking PDI requirement post-evaluation...');
     try {
-      // Find cycles closed in the last 30 days
+      // Find cycles closed in the last 30 days (use endDate as proxy for close date)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const recentlyClosedCycles = await this.cycleRepo.find({
-        where: { status: CycleStatus.CLOSED },
-      });
-
-      const closedInWindow = recentlyClosedCycles.filter((c) => {
-        const closedDate = c.updatedAt || c.endDate;
-        return new Date(closedDate) >= thirtyDaysAgo;
+      const closedInWindow = await this.cycleRepo.find({
+        where: {
+          status: CycleStatus.CLOSED,
+          endDate: MoreThanOrEqual(thirtyDaysAgo),
+        },
       });
 
       const notifications: Array<{

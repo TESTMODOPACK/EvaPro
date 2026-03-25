@@ -118,9 +118,15 @@ export class FeedbackService {
     return this.checkInRepo.save(ci);
   }
 
-  async completeCheckIn(tenantId: string, id: string): Promise<CheckIn> {
+  async completeCheckIn(tenantId: string, id: string, userId?: string): Promise<CheckIn> {
     const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
+    if (ci.status !== CheckInStatus.SCHEDULED) {
+      throw new BadRequestException('Solo se pueden completar check-ins programados');
+    }
+    if (userId && ci.managerId !== userId && ci.employeeId !== userId) {
+      throw new ForbiddenException('Solo los participantes pueden completar este check-in');
+    }
     ci.status = CheckInStatus.COMPLETED;
     ci.completedAt = new Date();
     return this.checkInRepo.save(ci);

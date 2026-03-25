@@ -92,14 +92,14 @@ export class TalentController {
   }
 
   @Get('calibration/:id')
-  getSessionDetail(@Param('id', ParseUUIDPipe) id: string) {
-    return this.talentService.getSessionDetail(id);
+  getSessionDetail(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.talentService.getSessionDetail(id, req.user.tenantId);
   }
 
   @Post('calibration/:id/populate')
   @Roles('super_admin', 'tenant_admin')
-  populateEntries(@Param('id', ParseUUIDPipe) id: string) {
-    return this.talentService.populateEntries(id);
+  populateEntries(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.talentService.populateEntries(id, req.user.tenantId);
   }
 
   @Patch('calibration/entry/:entryId')
@@ -114,8 +114,8 @@ export class TalentController {
 
   @Post('calibration/:id/complete')
   @Roles('super_admin', 'tenant_admin')
-  completeSession(@Param('id', ParseUUIDPipe) id: string) {
-    return this.talentService.completeSession(id);
+  completeSession(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.talentService.completeSession(id, req.user.tenantId);
   }
 
   @Post('calibration/entries/:entryId/approve')

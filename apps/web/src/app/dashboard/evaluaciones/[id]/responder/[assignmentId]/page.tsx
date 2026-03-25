@@ -99,12 +99,29 @@ export default function ResponderEvaluacionPage() {
     }
   };
 
-  // Count questions and answered
+  // Helper: evaluate conditional logic for a question
+  const isQuestionVisible = (q: any) => {
+    if (!q.condition) return true;
+    const { questionId, operator, value } = q.condition;
+    const currentAnswer = answers[questionId];
+    if (currentAnswer === undefined || currentAnswer === null) return false;
+    switch (operator) {
+      case 'equals': return String(currentAnswer) === String(value);
+      case 'not_equals': return String(currentAnswer) !== String(value);
+      case 'greater_than': return Number(currentAnswer) > Number(value);
+      case 'less_than': return Number(currentAnswer) < Number(value);
+      case 'contains': return String(currentAnswer).includes(String(value));
+      default: return true;
+    }
+  };
+
+  // Count only VISIBLE questions (respecting conditional logic)
   const template = detail?.template;
   const sections: any[] = template?.sections || [];
   const allQuestions = sections.flatMap((s: any) => s.questions || []);
-  const totalQuestions = allQuestions.length;
-  const answeredQuestions = allQuestions.filter(
+  const visibleQuestions = allQuestions.filter(isQuestionVisible);
+  const totalQuestions = visibleQuestions.length;
+  const answeredQuestions = visibleQuestions.filter(
     (q: any) => answers[q.id] !== undefined && answers[q.id] !== '' && answers[q.id] !== null,
   ).length;
 
@@ -291,21 +308,7 @@ export default function ResponderEvaluacionPage() {
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {(section.questions || []).filter((q: any) => {
-              // P2-#35: Conditional logic — hide question if condition not met
-              if (!q.condition) return true;
-              const { questionId, operator, value } = q.condition;
-              const currentAnswer = answers[questionId];
-              if (currentAnswer === undefined || currentAnswer === null) return false;
-              switch (operator) {
-                case 'equals': return String(currentAnswer) === String(value);
-                case 'not_equals': return String(currentAnswer) !== String(value);
-                case 'greater_than': return Number(currentAnswer) > Number(value);
-                case 'less_than': return Number(currentAnswer) < Number(value);
-                case 'contains': return String(currentAnswer).includes(String(value));
-                default: return true;
-              }
-            }).map((q: any, qIdx: number) => (
+            {(section.questions || []).filter(isQuestionVisible).map((q: any, qIdx: number) => (
               <div key={q.id || qIdx}>
                 <label
                   style={{

@@ -97,7 +97,12 @@ export class DevelopmentService {
     if (plan.status !== 'pendiente_aprobacion') {
       throw new BadRequestException('Solo se pueden aprobar planes en estado "pendiente_aprobacion"');
     }
-    plan.status = 'borrador'; // Approved → moves to borrador for manager to activate
+    plan.status = 'aprobado';
+    // Store approval info in metadata (JSONB-safe pattern)
+    const metadata = (plan as any).metadata || {};
+    metadata.approvedBy = approverId;
+    metadata.approvedAt = new Date().toISOString();
+    (plan as any).metadata = metadata;
     return this.planRepo.save(plan);
   }
 
