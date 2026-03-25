@@ -8,6 +8,7 @@ import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
+import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
 
@@ -40,6 +41,8 @@ export class RemindersService {
     private readonly objectiveRepo: Repository<Objective>,
     @InjectRepository(DevelopmentAction)
     private readonly actionRepo: Repository<DevelopmentAction>,
+    @InjectRepository(DevelopmentPlan)
+    private readonly planRepo: Repository<DevelopmentPlan>,
     @InjectRepository(CheckIn)
     private readonly checkinRepo: Repository<CheckIn>,
     @InjectRepository(User)
@@ -506,7 +509,87 @@ export class RemindersService {
     }
   }
 
-  // ─── 9. Limpieza de notificaciones viejas (domingo 3am) ─────────────
+  // ─── 10. PDI obligatorio 30 días post-evaluación (diario 7:30am) ────
+
+  @Cron('30 7 * * *')
+  async remindPDIRequired() {
+    this.logger.log('[Cron] Checking PDI requirement post-evaluation...');
+    try {
+      // Find cycles closed in the last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const recentlyClosedCycles = await this.cycleRepo.find({
+        where: { status: CycleStatus.CLOSED },
+      });
+
+      const closedInWindow = recentlyClosedCycles.filter((c) => {
+        const closedDate = c.updatedAt || c.endDate;
+        return new Date(closedDate) >= thirtyDaysAgo;
+      });
+
+      const notifications: Array<{
+        tenantId: string; userId: string; type: NotificationType;
+        title: string; message: string; metadata?: Record<string, any>;
+      }> = [];
+
+      for (const cycle of closedInWindow) {
+        // Get all evaluated employees in this cycle
+        const assignments = await this.assignmentRepo.find({
+          where: { cycleId: cycle.id, status: AssignmentStatus.COMPLETED },
+          select: ['evaluateeId', 'tenantId'],
+        });
+        const evaluatedUserIds = [...new Set(assignments.map((a) => a.evaluateeId))];
+
+        if (evaluatedUserIds.length === 0) continue;
+
+        // Check which ones DON'T have a PDI
+        const existingPlans = await this.planRepo.find({
+          where: { tenantId: cycle.tenantId, cycleId: cycle.id },
+          select: ['userId'],
+        });
+        const usersWithPlan = new Set(existingPlans.map((p) => p.userId));
+        const usersWithoutPlan = evaluatedUserIds.filter((uid) => !usersWithPlan.has(uid));
+
+        if (usersWithoutPlan.length === 0) continue;
+
+        // Get their managers
+        const users = await this.userRepo.find({
+          where: { id: In(usersWithoutPlan), tenantId: cycle.tenantId, isActive: true },
+          select: ['id', 'firstName', 'lastName', 'managerId'],
+        });
+
+        // Group by manager
+        const byManager = new Map<string, string[]>();
+        for (const user of users) {
+          if (!user.managerId) continue;
+          const list = byManager.get(user.managerId) || [];
+          list.push(`${user.firstName} ${user.lastName}`);
+          byManager.set(user.managerId, list);
+        }
+
+        for (const [managerId, employeeNames] of byManager.entries()) {
+          notifications.push({
+            tenantId: cycle.tenantId,
+            userId: managerId,
+            type: NotificationType.PDI_REQUIRED,
+            title: 'Plan de desarrollo requerido',
+            message: `${employeeNames.length} colaborador(es) evaluados en "${cycle.name}" aún no tienen plan de desarrollo: ${employeeNames.slice(0, 3).join(', ')}${employeeNames.length > 3 ? ` y ${employeeNames.length - 3} más` : ''}.`,
+            metadata: { cycleId: cycle.id, usersWithoutPlan: usersWithoutPlan.slice(0, 10) },
+          });
+        }
+      }
+
+      if (notifications.length > 0) {
+        await this.notificationsService.createBulk(notifications);
+        this.logger.log(`[Cron] Created ${notifications.length} PDI-required reminders`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in remindPDIRequired: ${error}`);
+    }
+  }
+
+  // ─── 11. Limpieza de notificaciones viejas (domingo 3am) ─────────────
 
   @Cron('0 3 * * 0')
   async cleanupOldNotifications() {

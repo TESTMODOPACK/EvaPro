@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
+import { Competency } from '../../development/entities/competency.entity';
 
 export enum Sentiment {
   POSITIVE = 'positive',
@@ -64,6 +65,13 @@ export class QuickFeedback {
 
   @Column({ type: 'enum', enum: FeedbackVisibility, default: FeedbackVisibility.PUBLIC, comment: 'public=visible a todos, private=solo emisor/receptor, manager_only=solo receptor y su manager' })
   visibility: FeedbackVisibility;
+
+  @Column({ type: 'uuid', name: 'competency_id', nullable: true, comment: 'Competencia asociada al feedback (opcional)' })
+  competencyId: string | null;
+
+  @ManyToOne(() => Competency, { nullable: true })
+  @JoinColumn({ name: 'competency_id' })
+  competency: Competency;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;

@@ -186,4 +186,60 @@ export class TemplatesService {
     });
     return this.templateRepo.save(copy);
   }
+
+  /**
+   * Preview: returns a structured, renderable view of the template
+   * with question counts, types breakdown, and estimated completion time.
+   */
+  async getPreview(id: string, tenantId: string) {
+    const template = await this.findById(id, tenantId);
+    const sections = (template.sections || []) as any[];
+
+    let totalQuestions = 0;
+    let scaleCount = 0;
+    let textCount = 0;
+    let multiCount = 0;
+
+    const previewSections = sections.map((sec: any) => {
+      const questions = (sec.questions || []).map((q: any) => {
+        totalQuestions++;
+        if (q.type === 'scale') scaleCount++;
+        else if (q.type === 'text') textCount++;
+        else if (q.type === 'multi') multiCount++;
+
+        return {
+          id: q.id,
+          text: q.text,
+          type: q.type,
+          required: q.required ?? true,
+          scale: q.type === 'scale' ? q.scale : undefined,
+          options: q.type === 'multi' ? q.options : undefined,
+          condition: q.condition || null, // P2-#35: conditional logic support
+        };
+      });
+
+      return {
+        id: sec.id,
+        title: sec.title,
+        description: sec.description || null,
+        questionCount: questions.length,
+        questions,
+      };
+    });
+
+    // Estimated time: ~30s per scale, ~90s per text, ~45s per multi
+    const estimatedMinutes = Math.ceil((scaleCount * 30 + textCount * 90 + multiCount * 45) / 60);
+
+    return {
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      isDefault: template.isDefault,
+      sectionCount: previewSections.length,
+      totalQuestions,
+      questionTypes: { scale: scaleCount, text: textCount, multi: multiCount },
+      estimatedMinutes,
+      sections: previewSections,
+    };
+  }
 }

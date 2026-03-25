@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
   UseGuards,
+  Res,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -115,5 +116,33 @@ export class TalentController {
   @Roles('super_admin', 'tenant_admin')
   completeSession(@Param('id', ParseUUIDPipe) id: string) {
     return this.talentService.completeSession(id);
+  }
+
+  @Post('calibration/entries/:entryId/approve')
+  @Roles('super_admin', 'tenant_admin')
+  approveCalibrationChange(
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Request() req: any,
+    @Body() dto: { approved: boolean },
+  ) {
+    return this.talentService.approveCalibrationChange(entryId, req.user.userId, dto.approved);
+  }
+
+  @Get('calibration/:id/distribution')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  distributionAnalysis(@Param('id', ParseUUIDPipe) id: string) {
+    return this.talentService.getDistributionAnalysis(id);
+  }
+
+  @Get('calibration/:id/pdf')
+  @Roles('super_admin', 'tenant_admin')
+  async calibrationPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: any,
+  ) {
+    const pdfBuffer = await this.talentService.generateCalibrationPdf(id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=acta-calibracion-${id}.pdf`);
+    return res.send(pdfBuffer);
   }
 }

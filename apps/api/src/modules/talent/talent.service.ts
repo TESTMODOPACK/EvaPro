@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { TalentAssessment } from './entities/talent-assessment.entity';
 import { CalibrationSession } from './entities/calibration-session.entity';
 import { CalibrationEntry } from './entities/calibration-entry.entity';
@@ -312,6 +314,11 @@ export class TalentService {
           `El ajuste de puntaje supera 1 punto (${Number(entry.originalScore).toFixed(1)} → ${Number(dto.adjustedScore).toFixed(1)}). Debe incluir una justificación.`,
         );
       }
+      // P2-#22: Score change >2 points requires CHRO/admin approval
+      if (scoreDiff > 2) {
+        entry.approvalStatus = 'pending_approval';
+        entry.approvalRequired = true;
+      }
     }
     if (dto.adjustedPotential !== undefined && entry.originalPotential != null) {
       const potDiff = Math.abs(Number(dto.adjustedPotential) - Number(entry.originalPotential));
@@ -319,6 +326,11 @@ export class TalentService {
         throw new BadRequestException(
           `El ajuste de potencial supera 1 punto. Debe incluir una justificación.`,
         );
+      }
+      // Same rule for potential
+      if (potDiff > 2) {
+        entry.approvalStatus = 'pending_approval';
+        entry.approvalRequired = true;
       }
     }
 
@@ -356,11 +368,43 @@ export class TalentService {
     return this.entryRepo.save(entry);
   }
 
+  async approveCalibrationChange(entryId: string, approvedBy: string, approved: boolean): Promise<CalibrationEntry> {
+    const entry = await this.entryRepo.findOne({ where: { id: entryId } });
+    if (!entry) throw new NotFoundException('Entry no encontrada');
+    if (entry.approvalStatus !== 'pending_approval') {
+      throw new BadRequestException('Esta entrada no requiere aprobación o ya fue procesada');
+    }
+    entry.approvalStatus = approved ? 'approved' : 'rejected';
+    entry.approvedBy = approvedBy;
+    if (!approved) {
+      // Revert to original scores
+      entry.adjustedScore = entry.originalScore;
+      entry.adjustedPotential = entry.originalPotential;
+    }
+    return this.entryRepo.save(entry);
+  }
+
   async completeSession(sessionId: string): Promise<void> {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Sesión no encontrada');
 
     const entries = await this.entryRepo.find({ where: { sessionId } });
+
+    // P2-#21: Quorum validation
+    const distinctParticipants = new Set(entries.filter((e) => e.discussedBy).map((e) => e.discussedBy));
+    if (distinctParticipants.size < session.minQuorum) {
+      throw new BadRequestException(
+        `Se requiere un quórum mínimo de ${session.minQuorum} managers. Solo ${distinctParticipants.size} han participado.`,
+      );
+    }
+
+    // P2-#22: Check no pending approvals
+    const pendingApprovals = entries.filter((e) => e.approvalStatus === 'pending_approval');
+    if (pendingApprovals.length > 0) {
+      throw new BadRequestException(
+        `Hay ${pendingApprovals.length} ajuste(s) pendientes de aprobación. Deben resolverse antes de completar la sesión.`,
+      );
+    }
 
     // Apply adjusted scores to talent assessments
     for (const entry of entries) {
@@ -381,10 +425,166 @@ export class TalentService {
       await this.assessmentRepo.save(assessment);
     }
 
-    // Mark all entries as agreed
     await this.entryRepo.update({ sessionId }, { status: 'agreed' });
-
     session.status = 'completed';
     await this.sessionRepo.save(session);
+  }
+
+  // ─── P2-#20: Distribution Analysis ──────────────────────────────────────
+
+  async getDistributionAnalysis(sessionId: string) {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Sesión no encontrada');
+
+    const entries = await this.entryRepo.find({
+      where: { sessionId },
+      relations: ['user'],
+    });
+
+    const scores = entries
+      .map((e) => Number(e.adjustedScore ?? e.originalScore))
+      .filter((s) => !isNaN(s));
+
+    if (scores.length === 0) {
+      return { sessionId, distribution: [], expectedVsActual: [], message: 'Sin scores disponibles' };
+    }
+
+    const max = Math.max(...scores);
+    const min = Math.min(...scores);
+    const range = max - min || 1;
+
+    // Classify into 5 buckets
+    const bucketLabels = ['Bajo', 'Medio-Bajo', 'Medio', 'Medio-Alto', 'Alto'];
+    const bucketSize = range / 5;
+    const bucketCounts = [0, 0, 0, 0, 0];
+
+    for (const s of scores) {
+      const idx = Math.min(Math.floor((s - min) / bucketSize), 4);
+      bucketCounts[idx]++;
+    }
+
+    const totalCount = scores.length;
+    const actualDistribution = bucketCounts.map((c) => Math.round((c / totalCount) * 100));
+
+    // Expected distribution (configurable per session or default)
+    const expected = session.expectedDistribution || { low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 };
+    const expectedArr = [expected.low, expected.midLow, expected.mid, expected.midHigh, expected.high];
+
+    const expectedVsActual = bucketLabels.map((label, i) => ({
+      bucket: label,
+      rangeMin: Math.round((min + bucketSize * i) * 100) / 100,
+      rangeMax: Math.round((min + bucketSize * (i + 1)) * 100) / 100,
+      actualCount: bucketCounts[i],
+      actualPercent: actualDistribution[i],
+      expectedPercent: expectedArr[i],
+      deviation: actualDistribution[i] - expectedArr[i],
+    }));
+
+    // Chi-squared test (simplified)
+    const chiSquared = expectedVsActual.reduce((sum, b) => {
+      const expectedCount = (b.expectedPercent / 100) * totalCount;
+      if (expectedCount === 0) return sum;
+      return sum + Math.pow(b.actualCount - expectedCount, 2) / expectedCount;
+    }, 0);
+
+    return {
+      sessionId,
+      totalEntries: totalCount,
+      scoreRange: { min: Math.round(min * 100) / 100, max: Math.round(max * 100) / 100 },
+      expectedVsActual,
+      chiSquared: Math.round(chiSquared * 100) / 100,
+      distributionFit: chiSquared < 9.49 ? 'aceptable' : 'desviada', // df=4, p=0.05
+    };
+  }
+
+  // ─── P2-#23: Calibration PDF ────────────────────────────────────────────
+
+  async generateCalibrationPdf(sessionId: string): Promise<Buffer> {
+    const session = await this.sessionRepo.findOne({
+      where: { id: sessionId },
+      relations: ['moderator', 'cycle'],
+    });
+    if (!session) throw new NotFoundException('Sesión no encontrada');
+
+    const entries = await this.entryRepo.find({
+      where: { sessionId },
+      relations: ['user', 'discusser'],
+      order: { createdAt: 'ASC' },
+    });
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Header
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ACTA DE CALIBRACIÓN', pageWidth / 2, 20, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Sesión: ${session.name}`, 14, 35);
+    doc.text(`Ciclo: ${session.cycle?.name || 'N/A'}`, 14, 41);
+    doc.text(`Departamento: ${session.department || 'General'}`, 14, 47);
+    doc.text(`Moderador: ${session.moderator ? `${session.moderator.firstName} ${session.moderator.lastName}` : 'N/A'}`, 14, 53);
+    doc.text(`Estado: ${session.status}`, 14, 59);
+    doc.text(`Fecha: ${new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })}`, 14, 65);
+
+    // Participants
+    const participants = [...new Set(entries.filter((e) => e.discusser).map((e) => e.discusser))];
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Participantes', 14, 78);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const partNames = participants.map((p) => `${p.firstName} ${p.lastName}`).join(', ') || 'Sin participantes registrados';
+    doc.text(partNames, 14, 84, { maxWidth: pageWidth - 28 });
+
+    // Results table
+    const tableData = entries.map((e) => [
+      e.user ? `${e.user.firstName} ${e.user.lastName}` : 'N/A',
+      Number(e.originalScore).toFixed(1),
+      e.adjustedScore != null ? Number(e.adjustedScore).toFixed(1) : '—',
+      e.adjustedScore != null ? (Number(e.adjustedScore) - Number(e.originalScore) >= 0 ? '+' : '') + (Number(e.adjustedScore) - Number(e.originalScore)).toFixed(1) : '—',
+      e.rationale || '—',
+      e.approvalRequired ? (e.approvalStatus === 'approved' ? 'Aprobado' : e.approvalStatus === 'rejected' ? 'Rechazado' : 'Pendiente') : '—',
+    ]);
+
+    (autoTable as any)(doc, {
+      startY: 94,
+      head: [['Evaluado', 'Score Original', 'Score Ajustado', 'Diferencia', 'Justificación', 'Aprobación']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [41, 98, 255], fontSize: 8 },
+      bodyStyles: { fontSize: 7.5 },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        4: { cellWidth: 45 },
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    // Notes
+    const finalY = (doc as any).lastAutoTable?.finalY || 200;
+    if (session.notes) {
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Notas', 14, finalY + 12);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(session.notes, 14, finalY + 18, { maxWidth: pageWidth - 28 });
+    }
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      const footerY = doc.internal.pageSize.getHeight() - 8;
+      doc.text(`Acta de Calibración — ${session.name} — Generado por EvaPro`, 14, footerY);
+      doc.text(`Página ${p} de ${pageCount}`, pageWidth - 14, footerY, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
   }
 }

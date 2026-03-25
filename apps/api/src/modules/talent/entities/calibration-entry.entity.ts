@@ -59,6 +59,15 @@ export class CalibrationEntry {
   @Column({ type: 'jsonb', name: 'change_log', nullable: true, default: '[]', comment: 'Historial de ajustes: [{date, userId, field, from, to, rationale}]' })
   changeLog: Array<{ date: string; userId: string; field: string; from: any; to: any; rationale?: string }>;
 
+  @Column({ type: 'boolean', name: 'approval_required', default: false, comment: 'True si el ajuste supera 2 puntos y requiere aprobación CHRO' })
+  approvalRequired: boolean;
+
+  @Column({ type: 'varchar', length: 30, name: 'approval_status', default: 'not_required', comment: 'not_required | pending_approval | approved | rejected' })
+  approvalStatus: string;
+
+  @Column({ type: 'uuid', name: 'approved_by', nullable: true })
+  approvedBy: string | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

@@ -61,6 +61,21 @@ export class FeedbackController {
     return this.feedbackService.completeCheckIn(req.user.tenantId, id);
   }
 
+  @Patch('checkins/:id/add-topic')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  addTopicToCheckIn(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { text: string },
+  ) {
+    return this.feedbackService.addTopicToCheckIn(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      dto.text,
+    );
+  }
+
   @Post('checkins/:id/reject')
   rejectCheckIn(
     @Param('id', ParseUUIDPipe) id: string,

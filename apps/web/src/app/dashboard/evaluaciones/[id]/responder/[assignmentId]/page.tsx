@@ -291,7 +291,21 @@ export default function ResponderEvaluacionPage() {
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {(section.questions || []).map((q: any, qIdx: number) => (
+            {(section.questions || []).filter((q: any) => {
+              // P2-#35: Conditional logic — hide question if condition not met
+              if (!q.condition) return true;
+              const { questionId, operator, value } = q.condition;
+              const currentAnswer = answers[questionId];
+              if (currentAnswer === undefined || currentAnswer === null) return false;
+              switch (operator) {
+                case 'equals': return String(currentAnswer) === String(value);
+                case 'not_equals': return String(currentAnswer) !== String(value);
+                case 'greater_than': return Number(currentAnswer) > Number(value);
+                case 'less_than': return Number(currentAnswer) < Number(value);
+                case 'contains': return String(currentAnswer).includes(String(value));
+                default: return true;
+              }
+            }).map((q: any, qIdx: number) => (
               <div key={q.id || qIdx}>
                 <label
                   style={{

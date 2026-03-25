@@ -61,6 +61,8 @@ export class FeedbackService {
       topic: dto.topic,
       notes: dto.notes,
       actionItems: [],
+      agendaTopics: [],
+      developmentPlanId: dto.developmentPlanId || null,
       status: CheckInStatus.SCHEDULED,
     } as Partial<CheckIn>);
     const saved = await this.checkInRepo.save(ci as CheckIn);
@@ -94,6 +96,28 @@ export class FeedbackService {
     return this.checkInRepo.save(ci);
   }
 
+  async addTopicToCheckIn(tenantId: string, checkInId: string, userId: string, text: string): Promise<CheckIn> {
+    const ci = await this.checkInRepo.findOne({ where: { id: checkInId, tenantId } });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+    if (ci.status !== CheckInStatus.SCHEDULED) {
+      throw new BadRequestException('Solo se pueden agregar temas a check-ins programados');
+    }
+    // Validate user is participant (manager or employee)
+    if (ci.managerId !== userId && ci.employeeId !== userId) {
+      throw new ForbiddenException('Solo los participantes pueden agregar temas');
+    }
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'firstName', 'lastName'] });
+    const topics = ci.agendaTopics || [];
+    topics.push({
+      text,
+      addedBy: userId,
+      addedByName: user ? `${user.firstName} ${user.lastName}` : undefined,
+      addedAt: new Date().toISOString(),
+    });
+    ci.agendaTopics = topics;
+    return this.checkInRepo.save(ci);
+  }
+
   async completeCheckIn(tenantId: string, id: string): Promise<CheckIn> {
     const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
@@ -108,7 +132,7 @@ export class FeedbackService {
       : [{ tenantId, employeeId: userId }];
     return this.checkInRepo.find({
       where,
-      relations: ['manager', 'employee', 'location'],
+      relations: ['manager', 'employee', 'location', 'developmentPlan'],
       order: { scheduledDate: 'DESC' },
     });
   }
@@ -277,6 +301,7 @@ export class FeedbackService {
       category: dto.category,
       isAnonymous: dto.isAnonymous ?? false,
       visibility: dto.visibility,
+      competencyId: dto.competencyId || null,
     });
     const saved = await this.quickFeedbackRepo.save(qf);
 
@@ -299,7 +324,7 @@ export class FeedbackService {
   async findFeedbackReceived(tenantId: string, userId: string): Promise<QuickFeedback[]> {
     return this.quickFeedbackRepo.find({
       where: { tenantId, toUserId: userId },
-      relations: ['fromUser'],
+      relations: ['fromUser', 'competency'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -307,7 +332,7 @@ export class FeedbackService {
   async findFeedbackGiven(tenantId: string, userId: string): Promise<QuickFeedback[]> {
     return this.quickFeedbackRepo.find({
       where: { tenantId, fromUserId: userId },
-      relations: ['toUser'],
+      relations: ['toUser', 'competency'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -315,11 +340,67 @@ export class FeedbackService {
   async getFeedbackSummary(tenantId: string, userId: string) {
     const received = await this.quickFeedbackRepo.find({
       where: { tenantId, toUserId: userId },
-      select: ['sentiment'],
+      relations: ['competency'],
+      order: { createdAt: 'DESC' },
     });
+
     const positive = received.filter((f) => f.sentiment === Sentiment.POSITIVE).length;
     const neutral = received.filter((f) => f.sentiment === Sentiment.NEUTRAL).length;
     const constructive = received.filter((f) => f.sentiment === Sentiment.CONSTRUCTIVE).length;
-    return { positive, neutral, constructive, total: received.length };
+
+    // Trend by month (last 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const trend: Array<{ month: string; positive: number; neutral: number; constructive: number; total: number }> = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const monthFeedbacks = received.filter((f) => {
+        const fd = new Date(f.createdAt);
+        return fd.getFullYear() === d.getFullYear() && fd.getMonth() === d.getMonth();
+      });
+      trend.push({
+        month: monthKey,
+        positive: monthFeedbacks.filter((f) => f.sentiment === Sentiment.POSITIVE).length,
+        neutral: monthFeedbacks.filter((f) => f.sentiment === Sentiment.NEUTRAL).length,
+        constructive: monthFeedbacks.filter((f) => f.sentiment === Sentiment.CONSTRUCTIVE).length,
+        total: monthFeedbacks.length,
+      });
+    }
+
+    // Top competencies mentioned
+    const competencyCounts = new Map<string, { name: string; count: number }>();
+    for (const f of received) {
+      if (f.competencyId && f.competency) {
+        const existing = competencyCounts.get(f.competencyId) || { name: f.competency.name, count: 0 };
+        existing.count++;
+        competencyCounts.set(f.competencyId, existing);
+      }
+    }
+    const topCompetencies = [...competencyCounts.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Category breakdown
+    const categoryBreakdown = new Map<string, number>();
+    for (const f of received) {
+      if (f.category) {
+        categoryBreakdown.set(f.category, (categoryBreakdown.get(f.category) || 0) + 1);
+      }
+    }
+    const categories = [...categoryBreakdown.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      positive,
+      neutral,
+      constructive,
+      total: received.length,
+      trend,
+      topCompetencies,
+      categories,
+    };
   }
 }

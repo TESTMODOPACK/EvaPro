@@ -48,6 +48,12 @@ export class CalibrationSession {
   @JoinColumn({ name: 'moderator_id' })
   moderator: User;
 
+  @Column({ type: 'int', name: 'min_quorum', default: 3, comment: 'Número mínimo de managers para completar la sesión' })
+  minQuorum: number;
+
+  @Column({ type: 'jsonb', name: 'expected_distribution', nullable: true, default: null, comment: 'Distribución esperada: { low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 }' })
+  expectedDistribution: { low: number; midLow: number; mid: number; midHigh: number; high: number } | null;
+
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 

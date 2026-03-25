@@ -23,4 +23,8 @@ export class CreateQuickFeedbackDto {
   @IsEnum(FeedbackVisibility)
   @IsOptional()
   visibility?: FeedbackVisibility;
+
+  @IsUUID()
+  @IsOptional()
+  competencyId?: string;
 }

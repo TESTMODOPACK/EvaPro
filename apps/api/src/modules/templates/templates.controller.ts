@@ -63,6 +63,15 @@ export class TemplatesController {
     return this.templatesService.remove(id, req.user.tenantId);
   }
 
+  @Get(':id/preview')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  async preview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.templatesService.getPreview(id, req.user.tenantId);
+  }
+
   @Post(':id/duplicate')
   @Roles('super_admin', 'tenant_admin')
   duplicate(

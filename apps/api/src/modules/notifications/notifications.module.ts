@@ -8,6 +8,7 @@ import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignm
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { Objective } from '../objectives/entities/objective.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
+import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
 
@@ -19,6 +20,7 @@ import { User } from '../users/entities/user.entity';
       EvaluationCycle,
       Objective,
       DevelopmentAction,
+      DevelopmentPlan,
       CheckIn,
       User,
     ]),

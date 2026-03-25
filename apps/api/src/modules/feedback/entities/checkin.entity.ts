@@ -11,6 +11,7 @@ import {
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
 import { MeetingLocation } from './meeting-location.entity';
+import { DevelopmentPlan } from '../../development/entities/development-plan.entity';
 
 export enum CheckInStatus {
   SCHEDULED = 'scheduled',
@@ -67,7 +68,21 @@ export class CheckIn {
   notes: string;
 
   @Column({ type: 'jsonb', name: 'action_items', default: [] })
-  actionItems: { text: string; completed: boolean }[];
+  actionItems: {
+    text: string;
+    completed: boolean;
+    assigneeId?: string;
+    assigneeName?: string;
+    dueDate?: string;
+  }[];
+
+  @Column({ type: 'jsonb', name: 'agenda_topics', default: [] })
+  agendaTopics: {
+    text: string;
+    addedBy: string;
+    addedByName?: string;
+    addedAt?: string;
+  }[];
 
   @Column({
     type: 'enum',
@@ -84,6 +99,13 @@ export class CheckIn {
 
   @Column({ type: 'uuid', name: 'rejected_by', nullable: true })
   rejectedBy: string;
+
+  @Column({ type: 'uuid', name: 'development_plan_id', nullable: true, comment: 'Plan de desarrollo vinculado a este check-in' })
+  developmentPlanId: string | null;
+
+  @ManyToOne(() => DevelopmentPlan, { nullable: true })
+  @JoinColumn({ name: 'development_plan_id' })
+  developmentPlan: DevelopmentPlan;
 
   @Column({ type: 'boolean', name: 'email_sent', default: false })
   emailSent: boolean;

@@ -23,6 +23,10 @@ export class CreateCheckInDto {
   @IsUUID()
   @IsOptional()
   locationId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  developmentPlanId?: string;
 }
 
 export class UpdateCheckInDto {

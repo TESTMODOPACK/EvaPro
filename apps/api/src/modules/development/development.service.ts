@@ -72,14 +72,32 @@ export class DevelopmentService {
 
   // ─── Plans CRUD ────────────────────────────────────────────────────────
 
-  async createPlan(tenantId: string, createdBy: string, dto: Partial<DevelopmentPlan>) {
+  async createPlan(tenantId: string, createdBy: string, dto: Partial<DevelopmentPlan>, role?: string) {
+    // Employee co-construction: employee can create a plan for themselves
+    // but it starts as 'pendiente_aprobacion' instead of 'borrador'
+    const isEmployeeSelfCreation = role === 'employee';
+    if (isEmployeeSelfCreation) {
+      // Employee can only create plan for themselves
+      dto.userId = createdBy;
+    }
+
     const plan = this.planRepo.create({
       ...dto,
       tenantId,
       createdBy,
-      status: 'borrador',
+      status: isEmployeeSelfCreation ? 'pendiente_aprobacion' : 'borrador',
       progress: 0,
     });
+    return this.planRepo.save(plan);
+  }
+
+  async approvePlan(tenantId: string, planId: string, approverId: string) {
+    const plan = await this.planRepo.findOne({ where: { id: planId, tenantId } });
+    if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
+    if (plan.status !== 'pendiente_aprobacion') {
+      throw new BadRequestException('Solo se pueden aprobar planes en estado "pendiente_aprobacion"');
+    }
+    plan.status = 'borrador'; // Approved → moves to borrador for manager to activate
     return this.planRepo.save(plan);
   }
 

@@ -78,9 +78,18 @@ export class DevelopmentController {
   }
 
   @Post('plans')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   createPlan(@Request() req: any, @Body() dto: any) {
-    return this.developmentService.createPlan(req.user.tenantId, req.user.userId, dto);
+    return this.developmentService.createPlan(req.user.tenantId, req.user.userId, dto, req.user.role);
+  }
+
+  @Post('plans/:id/approve')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  approvePlan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.developmentService.approvePlan(req.user.tenantId, id, req.user.userId);
   }
 
   @Patch('plans/:id')
