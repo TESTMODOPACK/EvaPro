@@ -435,6 +435,17 @@ export const api = {
       request<any>(`/reports/cycle/${cycleId}/heatmap`, {}, token),
   },
 
+  notifications: {
+    list: (token: string, limit?: number) =>
+      request<any[]>(`/notifications${limit ? `?limit=${limit}` : ''}`, {}, token),
+    unreadCount: (token: string) =>
+      request<{ count: number }>("/notifications/unread-count", {}, token),
+    markAsRead: (token: string, id: string) =>
+      request<any>(`/notifications/${id}/read`, { method: "PATCH" }, token),
+    markAllAsRead: (token: string) =>
+      request<void>("/notifications/read-all", { method: "PATCH" }, token),
+  },
+
   dashboard: {
     stats: (token: string) =>
       request<DashboardStats>("/dashboard/stats", {}, token),

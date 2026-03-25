@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, canAccessPage } from '@/lib/roles';
 import { api } from '@/lib/api';
 import { formatRut } from '@/lib/rut';
+import NotificationBell from './NotificationBell';
 
 interface NavItem {
   href: string;
@@ -242,7 +243,7 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
               <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
             </svg>
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
               Eva<span style={{ color: 'var(--accent-hover)' }}>Pro</span>
             </div>
@@ -250,6 +251,7 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
               {'Evaluaci\u00f3n de Desempe\u00f1o'}
             </div>
           </div>
+          <NotificationBell />
         </div>
       </div>
 
