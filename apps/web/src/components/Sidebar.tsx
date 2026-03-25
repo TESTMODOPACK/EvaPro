@@ -141,6 +141,7 @@ const tenantNavSections: NavSection[] = [
       { href: '/dashboard/reportes', label: 'Reportes', icon: icons.reports },
       { href: '/dashboard/analytics', label: 'An\u00e1lisis Avanzado', icon: icons.analytics },
       { href: '/dashboard/informes', label: 'Informes Avanzados', icon: icons.reports },
+      { href: '/dashboard/insights', label: 'Insights IA', icon: '\uD83E\uDD16' },
     ],
   },
   {

@@ -483,4 +483,19 @@ export const api = {
   health: {
     check: () => request<{ status: string }>("/"),
   },
+
+  ai: {
+    getSummary: (token: string, cycleId: string, userId: string) =>
+      request<any>(`/ai/summary/${userId}/${cycleId}`, {}, token),
+    generateSummary: (token: string, cycleId: string, userId: string) =>
+      request<any>(`/ai/summary/${userId}/${cycleId}`, { method: "POST" }, token),
+    getBias: (token: string, cycleId: string) =>
+      request<any>(`/ai/bias/${cycleId}`, {}, token),
+    analyzeBias: (token: string, cycleId: string) =>
+      request<any>(`/ai/bias/${cycleId}`, { method: "POST" }, token),
+    getSuggestions: (token: string, cycleId: string, userId: string) =>
+      request<any>(`/ai/suggestions/${userId}/${cycleId}`, {}, token),
+    generateSuggestions: (token: string, cycleId: string, userId: string) =>
+      request<any>(`/ai/suggestions/${userId}/${cycleId}`, { method: "POST" }, token),
+  },
 };

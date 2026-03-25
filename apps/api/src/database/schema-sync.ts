@@ -53,6 +53,9 @@ import { DevelopmentComment } from '../modules/development/entities/development-
 // ── B3: Notifications ─────────────────────────────────────────────────────
 import { Notification } from '../modules/notifications/entities/notification.entity';
 
+// ── Phase 3: AI Insights ─────────────────────────────────────────────────
+import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
+
 const DATABASE_URL = process.env.DATABASE_URL;
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -153,6 +156,8 @@ async function runSchemaSync() {
       Competency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
       // B3: Notifications
       Notification,
+      // Phase 3: AI
+      AiInsight,
     ],
     synchronize: true,
     logging: false,

@@ -49,6 +49,9 @@ import { DevelopmentComment } from '../modules/development/entities/development-
 // ── B3: Notifications ─────────────────────────────────────────────────────
 import { Notification } from '../modules/notifications/entities/notification.entity';
 
+// ── Phase 3: AI Insights ─────────────────────────────────────────────────
+import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
+
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
@@ -76,6 +79,8 @@ const dataSource = new DataSource({
     Competency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
     // B3: Notifications
     Notification,
+    // Phase 3: AI
+    AiInsight,
   ],
   // synchronize:true ensures tables exist before inserting seed data
   // (safe because cleanup-orphans already dropped conflicting tables)

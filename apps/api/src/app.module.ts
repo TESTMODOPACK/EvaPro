@@ -19,6 +19,7 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 import { TalentModule } from './modules/talent/talent.module';
 import { DevelopmentModule } from './modules/development/development.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { AiInsightsModule } from './modules/ai-insights/ai-insights.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -42,6 +43,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     TalentModule,
     DevelopmentModule,
     UploadsModule,
+    AiInsightsModule,
   ],
   controllers: [AppController],
   providers: [
