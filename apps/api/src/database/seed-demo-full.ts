@@ -1,0 +1,655 @@
+/**
+ * seed-demo-full.ts — Creates a COMPLETE demo dataset for client presentations.
+ * Adds to existing seed data: more users, 180°/360° cycles, OKRs, feedback,
+ * check-ins, development plans, talent assessments, and calibration.
+ *
+ * Run via: pnpm --filter @repo/api run db:seed-full
+ * IDEMPOTENT: checks existence before creating. Safe to run multiple times.
+ */
+
+import 'reflect-metadata';
+import { DataSource, In } from 'typeorm';
+import * as bcrypt from 'bcrypt';
+
+// ── All entities ────────────────────────────────────────────────────────────
+import { Tenant } from '../modules/tenants/entities/tenant.entity';
+import { User } from '../modules/users/entities/user.entity';
+import { FormTemplate } from '../modules/templates/entities/form-template.entity';
+import { EvaluationCycle, CycleStatus, CycleType, CyclePeriod } from '../modules/evaluations/entities/evaluation-cycle.entity';
+import { EvaluationAssignment, AssignmentStatus, RelationType } from '../modules/evaluations/entities/evaluation-assignment.entity';
+import { EvaluationResponse } from '../modules/evaluations/entities/evaluation-response.entity';
+import { CycleStage, StageType, StageStatus } from '../modules/evaluations/entities/cycle-stage.entity';
+import { PeerAssignment } from '../modules/evaluations/entities/peer-assignment.entity';
+import { BulkImport } from '../modules/users/entities/bulk-import.entity';
+import { AuditLog } from '../modules/audit/entities/audit-log.entity';
+
+import { CheckIn } from '../modules/feedback/entities/checkin.entity';
+import { QuickFeedback } from '../modules/feedback/entities/quick-feedback.entity';
+import { MeetingLocation } from '../modules/feedback/entities/meeting-location.entity';
+
+import { Objective } from '../modules/objectives/entities/objective.entity';
+import { ObjectiveUpdate } from '../modules/objectives/entities/objective-update.entity';
+import { ObjectiveComment } from '../modules/objectives/entities/objective-comment.entity';
+import { KeyResult, KRStatus } from '../modules/objectives/entities/key-result.entity';
+
+import { UserNote } from '../modules/users/entities/user-note.entity';
+import { SubscriptionPlan } from '../modules/subscriptions/entities/subscription-plan.entity';
+import { Subscription } from '../modules/subscriptions/entities/subscription.entity';
+
+import { TalentAssessment } from '../modules/talent/entities/talent-assessment.entity';
+import { CalibrationSession } from '../modules/talent/entities/calibration-session.entity';
+import { CalibrationEntry } from '../modules/talent/entities/calibration-entry.entity';
+
+import { Competency } from '../modules/development/entities/competency.entity';
+import { DevelopmentPlan } from '../modules/development/entities/development-plan.entity';
+import { DevelopmentAction } from '../modules/development/entities/development-action.entity';
+import { DevelopmentComment } from '../modules/development/entities/development-comment.entity';
+
+import { Notification } from '../modules/notifications/entities/notification.entity';
+import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
+
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) { console.error('❌ DATABASE_URL not set'); process.exit(1); }
+
+const ds = new DataSource({
+  type: 'postgres', url: DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  entities: [
+    Tenant, User, FormTemplate, EvaluationCycle, EvaluationAssignment, EvaluationResponse,
+    BulkImport, AuditLog, PeerAssignment, CycleStage,
+    CheckIn, QuickFeedback, MeetingLocation,
+    Objective, ObjectiveUpdate, ObjectiveComment, KeyResult,
+    UserNote, SubscriptionPlan, Subscription,
+    TalentAssessment, CalibrationSession, CalibrationEntry,
+    Competency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
+    Notification, AiInsight,
+  ],
+  synchronize: true, logging: false,
+});
+
+/* ── Helpers ─────────────────────────────────────────────────────────────── */
+
+function calcScore(answers: Record<string, any>): number {
+  const vals = Object.values(answers).filter((v) => typeof v === 'number' && !isNaN(v)) as number[];
+  if (vals.length === 0) return 0;
+  return Math.round(((vals.reduce((s, v) => s + v, 0) / vals.length / 5) * 10) * 100) / 100;
+}
+
+function daysAgo(n: number): Date { const d = new Date(); d.setDate(d.getDate() - n); return d; }
+function daysFromNow(n: number): Date { const d = new Date(); d.setDate(d.getDate() + n); return d; }
+
+function randomScore(min: number, max: number): number {
+  return Math.round((min + Math.random() * (max - min)) * 100) / 100;
+}
+
+function randomAnswers(low: number, high: number, questionIds: string[]): Record<string, any> {
+  const ans: Record<string, any> = {};
+  for (const qId of questionIds) {
+    if (qId.startsWith('q5') || qId.startsWith('q6') || qId.includes('text')) continue;
+    ans[qId] = Math.floor(low + Math.random() * (high - low + 1));
+  }
+  return ans;
+}
+
+async function seedDemoFull() {
+  try {
+    console.log('🌱 Connecting to database for full demo seed...');
+    await ds.initialize();
+
+    const tenantRepo = ds.getRepository(Tenant);
+    const userRepo = ds.getRepository(User);
+    const templateRepo = ds.getRepository(FormTemplate);
+    const cycleRepo = ds.getRepository(EvaluationCycle);
+    const assignRepo = ds.getRepository(EvaluationAssignment);
+    const respRepo = ds.getRepository(EvaluationResponse);
+    const stageRepo = ds.getRepository(CycleStage);
+    const objRepo = ds.getRepository(Objective);
+    const krRepo = ds.getRepository(KeyResult);
+    const objUpdateRepo = ds.getRepository(ObjectiveUpdate);
+    const objCommentRepo = ds.getRepository(ObjectiveComment);
+    const feedbackRepo = ds.getRepository(QuickFeedback);
+    const checkInRepo = ds.getRepository(CheckIn);
+    const devPlanRepo = ds.getRepository(DevelopmentPlan);
+    const devActionRepo = ds.getRepository(DevelopmentAction);
+    const devCommentRepo = ds.getRepository(DevelopmentComment);
+    const talentRepo = ds.getRepository(TalentAssessment);
+    const calSessionRepo = ds.getRepository(CalibrationSession);
+    const calEntryRepo = ds.getRepository(CalibrationEntry);
+    const compRepo = ds.getRepository(Competency);
+
+    /* ── 1. Get existing tenant & users ──────────────────────────────────── */
+    const tenant = await tenantRepo.findOne({ where: { slug: 'demo' } });
+    if (!tenant) { console.error('❌ Demo tenant not found. Run db:seed first.'); return; }
+    const tid = tenant.id;
+    console.log(`✅ Tenant found: ${tenant.name} (${tid})`);
+
+    const admin = await userRepo.findOne({ where: { email: 'admin@evapro.demo', tenantId: tid } });
+    const manager = await userRepo.findOne({ where: { email: 'carlos.lopez@evapro.demo', tenantId: tid } });
+    if (!admin || !manager) { console.error('❌ Admin or Manager not found.'); return; }
+
+    /* ── 2. Create additional employees ──────────────────────────────────── */
+    const newEmployees = [
+      { email: 'maria.gonzalez@evapro.demo', firstName: 'Maria', lastName: 'Gonzalez', department: 'Ventas', position: 'Ejecutiva de Ventas' },
+      { email: 'pedro.silva@evapro.demo', firstName: 'Pedro', lastName: 'Silva', department: 'Producto', position: 'Frontend Developer' },
+      { email: 'camila.herrera@evapro.demo', firstName: 'Camila', lastName: 'Herrera', department: 'Marketing', position: 'Content Manager' },
+      { email: 'diego.morales@evapro.demo', firstName: 'Diego', lastName: 'Morales', department: 'Producto', position: 'Backend Developer' },
+      { email: 'valentina.rojas@evapro.demo', firstName: 'Valentina', lastName: 'Rojas', department: 'Diseno', position: 'UI Designer' },
+      { email: 'andres.castro@evapro.demo', firstName: 'Andres', lastName: 'Castro', department: 'Ventas', position: 'Account Manager' },
+      { email: 'isabel.mendez@evapro.demo', firstName: 'Isabel', lastName: 'Mendez', department: 'QA', position: 'QA Lead' },
+      { email: 'felipe.vargas@evapro.demo', firstName: 'Felipe', lastName: 'Vargas', department: 'DevOps', position: 'SRE Engineer' },
+    ];
+
+    const pwHash = await bcrypt.hash('EvaPro2026!', 10);
+    const allNewUsers: User[] = [];
+    for (const emp of newEmployees) {
+      let u = await userRepo.findOne({ where: { email: emp.email, tenantId: tid } });
+      if (!u) {
+        u = await userRepo.save(userRepo.create({
+          ...emp, passwordHash: pwHash, role: 'employee', isActive: true,
+          tenantId: tid, managerId: manager.id, hireDate: daysAgo(Math.floor(180 + Math.random() * 720)),
+        }));
+        console.log(`✅ Employee created: ${emp.email}`);
+      }
+      allNewUsers.push(u);
+    }
+
+    // Collect all employees
+    const existingEmps = await userRepo.find({ where: { tenantId: tid, role: 'employee', isActive: true } });
+    const allEmployees = existingEmps;
+    const allEvaluable = [manager, ...allEmployees]; // Manager + employees
+    console.log(`   Total evaluable users: ${allEvaluable.length}`);
+
+    /* ── 3. Get template ─────────────────────────────────────────────────── */
+    const template360 = await templateRepo.findOne({ where: { name: 'Evaluacion 360° Completa', tenantId: tid } })
+      || await templateRepo.findOne({ where: { name: 'Competencias Generales', tenantId: tid } });
+    const templateDefault = await templateRepo.findOne({ where: { name: 'Competencias Generales', tenantId: tid } });
+    if (!templateDefault) { console.error('❌ No template found.'); return; }
+
+    const scaleQIds = ['q1', 'q2', 'q3', 'q4'];
+    const textAns = {
+      q5: 'Excelente desempeno general, destaca por su compromiso.',
+      q6: 'Podria mejorar la documentacion de sus procesos.',
+    };
+
+    /* ── 4. Create 180° CLOSED cycle (Q4 2025) ──────────────────────────── */
+    let cycle180 = await cycleRepo.findOne({ where: { name: 'Q4 2025 - Evaluacion Semestral 180', tenantId: tid } });
+    if (!cycle180) {
+      cycle180 = await cycleRepo.save(cycleRepo.create({
+        tenantId: tid, name: 'Q4 2025 - Evaluacion Semestral 180',
+        type: CycleType.DEGREE_180, period: CyclePeriod.BIANNUAL,
+        status: CycleStatus.CLOSED,
+        startDate: new Date('2025-10-01'), endDate: new Date('2025-12-15'),
+        templateId: templateDefault.id, createdBy: admin.id,
+        totalEvaluated: allEvaluable.length, settings: {},
+      }));
+
+      // Create assignments: self + manager for each person
+      for (const user of allEvaluable) {
+        const evaluator = user.id === manager.id ? admin : manager;
+
+        // Self-evaluation
+        const selfAns = { ...randomAnswers(3, 5, scaleQIds), ...textAns };
+        const selfAssign = await assignRepo.save(assignRepo.create({
+          tenantId: tid, cycleId: cycle180.id, evaluateeId: user.id,
+          evaluatorId: user.id, relationType: RelationType.SELF,
+          status: AssignmentStatus.COMPLETED, dueDate: new Date('2025-12-15'),
+          completedAt: daysAgo(100 + Math.floor(Math.random() * 10)),
+        }));
+        await respRepo.save(respRepo.create({
+          tenantId: tid, assignmentId: selfAssign.id, answers: selfAns,
+          overallScore: calcScore(selfAns), submittedAt: selfAssign.completedAt,
+        }));
+
+        // Manager evaluation
+        const mgrAns = { ...randomAnswers(2, 5, scaleQIds), ...textAns };
+        const mgrAssign = await assignRepo.save(assignRepo.create({
+          tenantId: tid, cycleId: cycle180.id, evaluateeId: user.id,
+          evaluatorId: evaluator.id, relationType: RelationType.MANAGER,
+          status: AssignmentStatus.COMPLETED, dueDate: new Date('2025-12-15'),
+          completedAt: daysAgo(95 + Math.floor(Math.random() * 10)),
+        }));
+        await respRepo.save(respRepo.create({
+          tenantId: tid, assignmentId: mgrAssign.id, answers: mgrAns,
+          overallScore: calcScore(mgrAns), submittedAt: mgrAssign.completedAt,
+        }));
+      }
+
+      // Create stages
+      const stages180 = [
+        { type: StageType.SELF_EVALUATION, name: 'Autoevaluacion', order: 1, status: StageStatus.COMPLETED },
+        { type: StageType.MANAGER_EVALUATION, name: 'Evaluacion del Encargado', order: 2, status: StageStatus.COMPLETED },
+        { type: StageType.FEEDBACK_DELIVERY, name: 'Entrega de Resultados', order: 3, status: StageStatus.COMPLETED },
+        { type: StageType.CLOSED, name: 'Cierre', order: 4, status: StageStatus.COMPLETED },
+      ];
+      for (const s of stages180) {
+        await stageRepo.save(stageRepo.create({
+          tenantId: tid, cycleId: cycle180.id, name: s.name,
+          type: s.type, stageOrder: s.order, status: s.status,
+          startDate: new Date('2025-10-01'), endDate: new Date('2025-12-15'),
+        }));
+      }
+
+      console.log(`✅ Cycle 180° created: ${cycle180.name} (${allEvaluable.length * 2} assignments)`);
+    }
+
+    /* ── 5. Create 360° ACTIVE cycle (Q1-Q2 2026) ────────────────────────── */
+    let cycle360 = await cycleRepo.findOne({ where: { name: 'S1 2026 - Evaluacion 360 Integral', tenantId: tid } });
+    if (!cycle360) {
+      cycle360 = await cycleRepo.save(cycleRepo.create({
+        tenantId: tid, name: 'S1 2026 - Evaluacion 360 Integral',
+        type: CycleType.DEGREE_360, period: CyclePeriod.BIANNUAL,
+        status: CycleStatus.ACTIVE,
+        startDate: new Date('2026-03-01'), endDate: new Date('2026-04-30'),
+        templateId: (template360 || templateDefault).id, createdBy: admin.id,
+        totalEvaluated: allEvaluable.length, settings: { anonymousThreshold: 3 },
+      }));
+
+      const fQIds = template360
+        ? ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10']
+        : scaleQIds;
+      const fTextAns = template360
+        ? { f11: 'Comunicacion clara y trabajo en equipo', f12: 'Necesita mejorar priorizacion', f13: 'Tomar cursos de liderazgo' }
+        : textAns;
+
+      // For each evaluable person: self + manager + 2 peers + 1 direct_report (mix)
+      for (let i = 0; i < allEvaluable.length; i++) {
+        const user = allEvaluable[i];
+        const evaluatorMgr = user.id === manager.id ? admin : manager;
+
+        // Self-evaluation: 70% completed
+        const selfCompleted = Math.random() < 0.7;
+        const selfAns = { ...randomAnswers(3, 5, fQIds), ...fTextAns };
+        const selfAssign = await assignRepo.save(assignRepo.create({
+          tenantId: tid, cycleId: cycle360.id, evaluateeId: user.id,
+          evaluatorId: user.id, relationType: RelationType.SELF,
+          status: selfCompleted ? AssignmentStatus.COMPLETED : AssignmentStatus.PENDING,
+          dueDate: new Date('2026-04-30'),
+          completedAt: selfCompleted ? daysAgo(Math.floor(Math.random() * 5) + 1) : undefined,
+        }));
+        if (selfCompleted) {
+          await respRepo.save(respRepo.create({
+            tenantId: tid, assignmentId: selfAssign.id, answers: selfAns,
+            overallScore: calcScore(selfAns), submittedAt: selfAssign.completedAt,
+          }));
+        }
+
+        // Manager evaluation: 50% completed
+        const mgrCompleted = Math.random() < 0.5;
+        const mgrAns = { ...randomAnswers(2, 5, fQIds), ...fTextAns };
+        const mgrAssign = await assignRepo.save(assignRepo.create({
+          tenantId: tid, cycleId: cycle360.id, evaluateeId: user.id,
+          evaluatorId: evaluatorMgr.id, relationType: RelationType.MANAGER,
+          status: mgrCompleted ? AssignmentStatus.COMPLETED : AssignmentStatus.IN_PROGRESS,
+          dueDate: new Date('2026-04-30'),
+          completedAt: mgrCompleted ? daysAgo(Math.floor(Math.random() * 3) + 1) : undefined,
+        }));
+        if (mgrCompleted) {
+          await respRepo.save(respRepo.create({
+            tenantId: tid, assignmentId: mgrAssign.id, answers: mgrAns,
+            overallScore: calcScore(mgrAns), submittedAt: mgrAssign.completedAt,
+          }));
+        }
+
+        // 2 peer evaluations
+        const peers = allEvaluable.filter((_, j) => j !== i);
+        const selectedPeers = peers.sort(() => Math.random() - 0.5).slice(0, 2);
+        for (const peer of selectedPeers) {
+          const peerCompleted = Math.random() < 0.4;
+          const peerAns = { ...randomAnswers(2, 5, fQIds), ...fTextAns };
+
+          // Check if assignment already exists
+          const existing = await assignRepo.findOne({
+            where: { cycleId: cycle360.id, evaluateeId: user.id, evaluatorId: peer.id, relationType: RelationType.PEER },
+          });
+          if (existing) continue;
+
+          const peerAssign = await assignRepo.save(assignRepo.create({
+            tenantId: tid, cycleId: cycle360.id, evaluateeId: user.id,
+            evaluatorId: peer.id, relationType: RelationType.PEER,
+            status: peerCompleted ? AssignmentStatus.COMPLETED : AssignmentStatus.PENDING,
+            dueDate: new Date('2026-04-30'),
+            completedAt: peerCompleted ? daysAgo(Math.floor(Math.random() * 5)) : undefined,
+          }));
+          if (peerCompleted) {
+            await respRepo.save(respRepo.create({
+              tenantId: tid, assignmentId: peerAssign.id, answers: peerAns,
+              overallScore: calcScore(peerAns), submittedAt: peerAssign.completedAt,
+            }));
+          }
+        }
+      }
+
+      // Create stages for 360° cycle
+      const stages360 = [
+        { type: StageType.SELF_EVALUATION, name: 'Autoevaluacion', order: 1, status: StageStatus.ACTIVE, start: '2026-03-01', end: '2026-03-21' },
+        { type: StageType.MANAGER_EVALUATION, name: 'Evaluacion del Encargado', order: 2, status: StageStatus.ACTIVE, start: '2026-03-15', end: '2026-04-05' },
+        { type: StageType.PEER_EVALUATION, name: 'Evaluacion de Pares', order: 3, status: StageStatus.PENDING, start: '2026-03-20', end: '2026-04-15' },
+        { type: StageType.CALIBRATION, name: 'Calibracion', order: 4, status: StageStatus.PENDING, start: '2026-04-15', end: '2026-04-22' },
+        { type: StageType.FEEDBACK_DELIVERY, name: 'Entrega de Resultados', order: 5, status: StageStatus.PENDING, start: '2026-04-22', end: '2026-04-30' },
+        { type: StageType.CLOSED, name: 'Cierre', order: 6, status: StageStatus.PENDING, start: '2026-04-30', end: '2026-04-30' },
+      ];
+      for (const s of stages360) {
+        await stageRepo.save(stageRepo.create({
+          tenantId: tid, cycleId: cycle360.id, name: s.name,
+          type: s.type, stageOrder: s.order, status: s.status,
+          startDate: new Date(s.start), endDate: new Date(s.end),
+        }));
+      }
+
+      console.log(`✅ Cycle 360° created: ${cycle360.name} (active, mixed completion)`);
+    }
+
+    /* ── 6. OKRs with Key Results ────────────────────────────────────────── */
+    const existingObjs = await objRepo.count({ where: { tenantId: tid } });
+    if (existingObjs < 10) {
+      const okrDefs = [
+        { user: manager, title: 'Aumentar la productividad del equipo en 30%', weight: 40, progress: 65, type: 'OKR', krs: [
+          { desc: 'Reducir tiempo de ciclo de desarrollo de 5 a 3.5 dias', unit: 'dias', base: 5, target: 3.5, current: 4.1 },
+          { desc: 'Alcanzar 90% de cobertura en tests automatizados', unit: '%', base: 60, target: 90, current: 78 },
+          { desc: 'Implementar CI/CD con deploy automatico', unit: 'cantidad', base: 0, target: 1, current: 1 },
+        ]},
+        { user: manager, title: 'Mejorar satisfaccion del equipo a 8.5+', weight: 30, progress: 72, type: 'OKR', krs: [
+          { desc: 'Realizar check-ins 1:1 semanales con cada miembro', unit: '%', base: 0, target: 100, current: 80 },
+          { desc: 'Reducir rotacion voluntaria a menos del 5%', unit: '%', base: 12, target: 5, current: 8 },
+        ]},
+        { user: manager, title: 'Lanzar MVP del modulo de reportes', weight: 30, progress: 90, type: 'KPI', krs: [
+          { desc: 'Entregar 5 tipos de reportes funcionales', unit: 'cantidad', base: 0, target: 5, current: 4 },
+          { desc: 'NPS de usuarios internos > 7', unit: 'score', base: 0, target: 7, current: 7.5 },
+        ]},
+      ];
+
+      for (let ei = 0; ei < allEmployees.length; ei++) {
+        const emp = allEmployees[ei];
+        const titles = [
+          { title: `Completar certificacion profesional en ${emp.department}`, weight: 50, progress: Math.floor(30 + Math.random() * 60), type: 'SMART' as const, krs: [
+            { desc: 'Completar 4 modulos del curso online', unit: 'modulos', base: 0, target: 4, current: Math.floor(1 + Math.random() * 3) },
+            { desc: 'Aprobar examen final con nota > 80%', unit: '%', base: 0, target: 80, current: Math.floor(Math.random() * 85) },
+          ]},
+          { title: `Mejorar KPIs del area de ${emp.department}`, weight: 50, progress: Math.floor(20 + Math.random() * 70), type: 'KPI' as const, krs: [
+            { desc: 'Reducir errores en entregables en un 40%', unit: '%', base: 100, target: 60, current: Math.floor(60 + Math.random() * 30) },
+            { desc: 'Cumplir plazos de entrega al 95%', unit: '%', base: 70, target: 95, current: Math.floor(75 + Math.random() * 20) },
+          ]},
+        ];
+        okrDefs.push(...titles.map((t) => ({ user: emp, ...t })));
+      }
+
+      for (const def of okrDefs) {
+        const existing = await objRepo.findOne({ where: { tenantId: tid, userId: def.user.id, title: def.title } });
+        if (existing) continue;
+
+        const status = def.progress >= 100 ? 'completed' : def.progress > 0 ? 'active' : 'draft';
+        const obj = await objRepo.save(objRepo.create({
+          tenantId: tid, userId: def.user.id, title: def.title,
+          type: def.type as any, weight: def.weight, progress: def.progress,
+          status: status as any,
+          targetDate: daysFromNow(60 + Math.floor(Math.random() * 60)),
+        }));
+
+        // Key Results
+        for (const kr of def.krs) {
+          await krRepo.save(krRepo.create({
+            tenantId: tid, objectiveId: obj.id,
+            description: kr.desc, unit: kr.unit,
+            baseValue: kr.base, targetValue: kr.target, currentValue: kr.current,
+            status: kr.current >= kr.target ? KRStatus.COMPLETED : KRStatus.ACTIVE,
+          }));
+        }
+
+        // 1-2 updates
+        await objUpdateRepo.save(objUpdateRepo.create({
+          tenantId: tid, objectiveId: obj.id,
+          progressValue: Math.floor(def.progress * 0.6),
+          notes: 'Avance inicial del trimestre', createdBy: def.user.id,
+        }));
+        if (def.progress > 40) {
+          await objUpdateRepo.save(objUpdateRepo.create({
+            tenantId: tid, objectiveId: obj.id,
+            progressValue: def.progress,
+            notes: 'Actualizacion de progreso mensual', createdBy: def.user.id,
+          }));
+        }
+      }
+      console.log(`✅ OKRs created: ${okrDefs.length} objectives with key results`);
+    }
+
+    /* ── 7. Quick Feedback between peers ─────────────────────────────────── */
+    const existingFeedback = await feedbackRepo.count({ where: { tenantId: tid } });
+    if (existingFeedback < 10) {
+      const feedbackMessages = [
+        { msg: 'Excelente presentacion en la reunion de equipo, muy clara y estructurada!', sentiment: 'positive' as const, category: 'Comunicacion' },
+        { msg: 'Gracias por ayudarme con el bug de produccion, lo resolvimos en minutos', sentiment: 'positive' as const, category: 'Trabajo en equipo' },
+        { msg: 'Seria bueno mejorar la documentacion de los procesos para el equipo', sentiment: 'constructive' as const, category: 'Documentacion' },
+        { msg: 'Buen trabajo liderando el proyecto, el equipo se siente motivado', sentiment: 'positive' as const, category: 'Liderazgo' },
+        { msg: 'Podrias ser mas puntual en las reuniones de standup', sentiment: 'constructive' as const, category: 'Compromiso' },
+        { msg: 'Me parecio muy profesional como manejaste la situacion con el cliente', sentiment: 'positive' as const, category: 'Servicio' },
+        { msg: 'Considero que deberiamos alinear mejor las prioridades antes de comprometernos con fechas', sentiment: 'neutral' as const, category: 'Planificacion' },
+        { msg: 'Tu codigo es muy limpio, gracias por los code reviews detallados', sentiment: 'positive' as const, category: 'Calidad' },
+        { msg: 'Seria ideal compartir mas el conocimiento con los juniors del equipo', sentiment: 'constructive' as const, category: 'Mentoring' },
+        { msg: 'Felicitaciones por cerrar el deal mas grande del trimestre!', sentiment: 'positive' as const, category: 'Resultados' },
+      ];
+
+      // Get competencies for linking
+      const competencies = await compRepo.find({ where: { tenantId: tid } });
+
+      for (let i = 0; i < feedbackMessages.length; i++) {
+        const fb = feedbackMessages[i];
+        const from = allEvaluable[i % allEvaluable.length];
+        const to = allEvaluable[(i + 3) % allEvaluable.length];
+        if (from.id === to.id) continue;
+
+        await feedbackRepo.save(feedbackRepo.create({
+          tenantId: tid, fromUserId: from.id, toUserId: to.id,
+          message: fb.msg, sentiment: fb.sentiment, category: fb.category,
+          isAnonymous: Math.random() < 0.2,
+          visibility: Math.random() < 0.7 ? 'public' : Math.random() < 0.5 ? 'private' : 'manager_only',
+          competencyId: competencies.length > 0 ? competencies[i % competencies.length].id : undefined,
+        } as any));
+      }
+
+      // Add feedback TO the manager and admin
+      await feedbackRepo.save(feedbackRepo.create({
+        tenantId: tid, fromUserId: allEmployees[0].id, toUserId: manager.id,
+        message: 'Carlos siempre esta disponible para resolver dudas y dar direccion. Gran lider!',
+        sentiment: 'positive', category: 'Liderazgo', isAnonymous: false, visibility: 'public',
+      } as any));
+      await feedbackRepo.save(feedbackRepo.create({
+        tenantId: tid, fromUserId: manager.id, toUserId: admin.id,
+        message: 'El sistema de evaluaciones que implemento HR ha sido muy util para el equipo',
+        sentiment: 'positive', category: 'Gestion', isAnonymous: false, visibility: 'public',
+      } as any));
+
+      console.log(`✅ Quick feedback created: ${feedbackMessages.length + 2} entries`);
+    }
+
+    /* ── 8. Check-ins 1:1 ────────────────────────────────────────────────── */
+    const existingCheckins = await checkInRepo.count({ where: { tenantId: tid } });
+    if (existingCheckins < 5) {
+      const checkinTopics = [
+        'Revision de objetivos del trimestre',
+        'Plan de desarrollo profesional',
+        'Feedback sobre el proyecto actual',
+        'Alineamiento de prioridades',
+        'Seguimiento de capacitacion',
+      ];
+
+      for (let i = 0; i < Math.min(allEmployees.length, 6); i++) {
+        const emp = allEmployees[i];
+        // 1 completed check-in
+        await checkInRepo.save(checkInRepo.create({
+          tenantId: tid, managerId: manager.id, employeeId: emp.id,
+          scheduledDate: daysAgo(7 + i * 3), scheduledTime: '10:00',
+          topic: checkinTopics[i % checkinTopics.length],
+          notes: 'Reunion productiva, se acordaron proximos pasos.',
+          actionItems: [
+            { text: 'Completar el reporte semanal', completed: true, assigneeName: emp.firstName },
+            { text: 'Revisar OKRs con el equipo', completed: false, assigneeName: emp.firstName, dueDate: daysFromNow(5).toISOString() },
+          ],
+          agendaTopics: [
+            { text: 'Avance de objetivos', addedBy: manager.id, addedByName: 'Carlos Lopez', addedAt: daysAgo(8).toISOString() },
+            { text: 'Feedback del sprint', addedBy: emp.id, addedByName: `${emp.firstName} ${emp.lastName}`, addedAt: daysAgo(7).toISOString() },
+          ],
+          status: 'completed', completedAt: daysAgo(7 + i * 3),
+        } as any));
+
+        // 1 scheduled check-in
+        await checkInRepo.save(checkInRepo.create({
+          tenantId: tid, managerId: manager.id, employeeId: emp.id,
+          scheduledDate: daysFromNow(3 + i * 2), scheduledTime: '14:00',
+          topic: 'Seguimiento semanal',
+          notes: null,
+          actionItems: [],
+          agendaTopics: [
+            { text: 'Revisar avance OKRs', addedBy: manager.id, addedByName: 'Carlos Lopez', addedAt: new Date().toISOString() },
+          ],
+          status: 'scheduled',
+        } as any));
+      }
+      console.log(`✅ Check-ins created: ${Math.min(allEmployees.length, 6) * 2} entries`);
+    }
+
+    /* ── 9. Development Plans ────────────────────────────────────────────── */
+    const existingPlans = await devPlanRepo.count({ where: { tenantId: tid } });
+    if (existingPlans < 3) {
+      const competencies = await compRepo.find({ where: { tenantId: tid } });
+
+      for (let i = 0; i < Math.min(allEmployees.length, 5); i++) {
+        const emp = allEmployees[i];
+        const plan = await devPlanRepo.save(devPlanRepo.create({
+          tenantId: tid, userId: emp.id, createdBy: manager.id,
+          cycleId: cycle180?.id || null,
+          title: `Plan de Desarrollo ${emp.firstName} ${emp.lastName} - 2026`,
+          description: `Plan de desarrollo individual enfocado en fortalecer competencias clave para el rol de ${emp.position}.`,
+          status: i < 2 ? 'activo' : i < 4 ? 'en_revision' : 'borrador',
+          priority: i === 0 ? 'alta' : 'media',
+          startDate: daysAgo(30), targetDate: daysFromNow(150),
+          progress: Math.floor(15 + Math.random() * 60),
+        }));
+
+        // 2-3 actions per plan
+        const actionTypes = ['curso', 'mentoring', 'proyecto', 'taller', 'lectura'];
+        const actionTitles = [
+          'Completar curso de liderazgo online',
+          'Sesiones de mentoring con senior',
+          'Liderar proyecto interno de mejora',
+          'Asistir a taller de comunicacion',
+          'Leer libro "Radical Candor"',
+        ];
+        for (let a = 0; a < 3; a++) {
+          await devActionRepo.save(devActionRepo.create({
+            tenantId: tid, planId: plan.id,
+            title: actionTitles[(i + a) % actionTitles.length],
+            description: 'Actividad clave para el desarrollo de la competencia identificada.',
+            actionType: actionTypes[(i + a) % actionTypes.length],
+            competencyId: competencies.length > 0 ? competencies[(i + a) % competencies.length].id : undefined,
+            status: a === 0 ? 'completada' : a === 1 ? 'en_progreso' : 'pendiente',
+            priority: a === 0 ? 'alta' : 'media',
+            dueDate: daysFromNow(30 + a * 30),
+            completedAt: a === 0 ? daysAgo(5) : undefined,
+          }));
+        }
+
+        // 1 comment
+        await devCommentRepo.save(devCommentRepo.create({
+          tenantId: tid, planId: plan.id, authorId: manager.id,
+          content: `Buen avance ${emp.firstName}, sigamos con el foco en las acciones pendientes.`,
+          type: 'seguimiento',
+        }));
+      }
+      console.log(`✅ Development plans created: ${Math.min(allEmployees.length, 5)} plans with actions`);
+    }
+
+    /* ── 10. Talent Assessments (Nine Box) ───────────────────────────────── */
+    const closedCycle = cycle180 || await cycleRepo.findOne({ where: { tenantId: tid, status: CycleStatus.CLOSED } });
+    if (closedCycle) {
+      const existingTalent = await talentRepo.count({ where: { tenantId: tid } });
+      if (existingTalent < 5) {
+        const nineBoxMap: Array<{ perf: number; pot: number; box: number; pool: string; readiness: string; risk: string }> = [
+          { perf: 9, pot: 9, box: 1, pool: 'star', readiness: 'ready_now', risk: 'medium' },
+          { perf: 8, pot: 7, box: 2, pool: 'high_performer', readiness: 'ready_now', risk: 'low' },
+          { perf: 6, pot: 6, box: 5, pool: 'core_player', readiness: 'ready_1_year', risk: 'low' },
+          { perf: 5, pot: 8, box: 3, pool: 'developing', readiness: 'ready_1_year', risk: 'medium' },
+          { perf: 7, pot: 5, box: 4, pool: 'core_player', readiness: 'ready_2_years', risk: 'low' },
+          { perf: 4, pot: 4, box: 8, pool: 'inconsistent', readiness: 'not_ready', risk: 'high' },
+          { perf: 9, pot: 5, box: 4, pool: 'high_performer', readiness: 'ready_now', risk: 'medium' },
+          { perf: 7, pot: 8, box: 2, pool: 'star', readiness: 'ready_1_year', risk: 'low' },
+          { perf: 6, pot: 3, box: 7, pool: 'core_player', readiness: 'ready_2_years', risk: 'low' },
+          { perf: 3, pot: 6, box: 6, pool: 'enigma', readiness: 'not_ready', risk: 'high' },
+          { perf: 8, pot: 8, box: 1, pool: 'star', readiness: 'ready_now', risk: 'low' },
+        ];
+
+        for (let i = 0; i < Math.min(allEvaluable.length, nineBoxMap.length); i++) {
+          const user = allEvaluable[i];
+          const nb = nineBoxMap[i];
+          const existing = await talentRepo.findOne({ where: { tenantId: tid, cycleId: closedCycle.id, userId: user.id } });
+          if (existing) continue;
+
+          await talentRepo.save(talentRepo.create({
+            tenantId: tid, cycleId: closedCycle.id, userId: user.id,
+            performanceScore: nb.perf, potentialScore: nb.pot,
+            nineBoxPosition: nb.box, talentPool: nb.pool,
+            readiness: nb.readiness, flightRisk: nb.risk,
+            notes: `Evaluacion de talento basada en ciclo ${closedCycle.name}`,
+            assessedBy: admin.id,
+          }));
+        }
+        console.log(`✅ Talent assessments created: ${Math.min(allEvaluable.length, nineBoxMap.length)} entries (Nine Box)`);
+      }
+    }
+
+    /* ── 11. Calibration Session ─────────────────────────────────────────── */
+    if (closedCycle) {
+      const existingCal = await calSessionRepo.count({ where: { tenantId: tid } });
+      if (existingCal === 0) {
+        const session = await calSessionRepo.save(calSessionRepo.create({
+          tenantId: tid, cycleId: closedCycle.id,
+          name: 'Calibracion Semestral 2025 - Equipo Producto',
+          status: 'completed', department: 'Producto',
+          moderatorId: admin.id, minQuorum: 2,
+          expectedDistribution: { low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 },
+          notes: 'Sesion de calibracion completada con consenso del equipo de liderazgo.',
+        }));
+
+        // Entries for each team member
+        for (let i = 0; i < Math.min(allEvaluable.length, 8); i++) {
+          const user = allEvaluable[i];
+          const origScore = randomScore(4, 9);
+          const adjusted = origScore + (Math.random() < 0.3 ? (Math.random() < 0.5 ? 0.5 : -0.5) : 0);
+
+          await calEntryRepo.save(calEntryRepo.create({
+            sessionId: session.id, userId: user.id,
+            originalScore: origScore, adjustedScore: Math.round(adjusted * 100) / 100,
+            rationale: adjusted !== origScore ? 'Ajustado por consenso del comite de calibracion' : null,
+            status: 'agreed', discussedBy: admin.id,
+            approvalRequired: Math.abs(adjusted - origScore) > 2,
+            approvalStatus: Math.abs(adjusted - origScore) > 2 ? 'approved' : 'not_required',
+            approvedBy: Math.abs(adjusted - origScore) > 2 ? admin.id : undefined,
+          }));
+        }
+        console.log(`✅ Calibration session created with ${Math.min(allEvaluable.length, 8)} entries`);
+      }
+    }
+
+    /* ── Done ─────────────────────────────────────────────────────────────── */
+    console.log('\n🎉 Full demo data seeding complete!');
+    console.log('─────────────────────────────────────────');
+    console.log('📋 Summary:');
+    console.log(`   Users: ${allEvaluable.length} evaluable (1 manager + ${allEmployees.length} employees)`);
+    console.log(`   Cycles: 3 (90° closed, 180° closed, 360° active)`);
+    console.log('   OKRs: with key results, updates, and comments');
+    console.log('   Feedback: 12+ peer feedback entries');
+    console.log('   Check-ins: 12+ 1:1 meetings');
+    console.log('   Development Plans: 5+ with actions');
+    console.log('   Talent: Nine Box assessments for all');
+    console.log('   Calibration: 1 completed session');
+    console.log('─────────────────────────────────────────');
+    console.log('🔑 Password for ALL users: EvaPro2026!');
+
+  } catch (err) {
+    console.error('❌ Full seed failed:', err);
+    process.exit(1);
+  } finally {
+    if (ds.isInitialized) await ds.destroy();
+  }
+}
+
+void seedDemoFull();
