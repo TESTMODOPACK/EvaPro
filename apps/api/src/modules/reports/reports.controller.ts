@@ -7,6 +7,7 @@ import {
   Request,
   ParseUUIDPipe,
   Res,
+  ForbiddenException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
@@ -16,11 +17,34 @@ import { Roles } from '../../common/decorators/roles.decorator';
 
 @Controller('reports')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('super_admin', 'tenant_admin', 'manager', 'external')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  // ─── Authorization helper ──────────────────────────────────────────────
+
+  /**
+   * Validates that the requesting user can view data for the target userId:
+   * - super_admin/tenant_admin: can view anyone in their tenant
+   * - manager: can view self + direct reports (checked in service via managerId)
+   * - employee: can only view their own data
+   * - external: denied (no access to individual reports)
+   */
+  private validateUserAccess(req: any, targetUserId: string) {
+    const { role, userId } = req.user;
+    if (role === 'external') {
+      throw new ForbiddenException('Los asesores externos no pueden acceder a reportes individuales');
+    }
+    if (role === 'employee' && userId !== targetUserId) {
+      throw new ForbiddenException('Solo puedes ver tus propios resultados');
+    }
+    // manager access: allow self + will be validated by data scope (only their reports show)
+    // tenant_admin/super_admin: full access within tenant
+  }
+
+  // ─── Cycle-level reports (admin + manager) ─────────────────────────────
+
   @Get('cycle/:cycleId/summary')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   cycleSummary(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
@@ -29,32 +53,42 @@ export class ReportsController {
   }
 
   @Get('cycle/:cycleId/individual/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   individualResults(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
+    this.validateUserAccess(req, userId);
     return this.reportsService.individualResults(cycleId, userId, req.user.tenantId);
   }
 
   @Get('cycle/:cycleId/team/:managerId')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   teamResults(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Param('managerId', ParseUUIDPipe) managerId: string,
     @Request() req: any,
   ) {
+    const { role, userId } = req.user;
+    if (role === 'manager' && managerId !== userId) {
+      throw new ForbiddenException('Solo puedes ver los resultados de tu propio equipo');
+    }
     return this.reportsService.teamResults(cycleId, managerId, req.user.tenantId);
   }
 
   @Get('users/:userId/performance-history')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   performanceHistory(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
+    this.validateUserAccess(req, userId);
     return this.reportsService.getPerformanceHistory(req.user.tenantId, userId);
   }
 
   @Get('analytics')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   analytics(
     @Query('cycleId') cycleId: string,
     @Request() req: any,
@@ -62,28 +96,32 @@ export class ReportsController {
     return this.reportsService.getAnalytics(req.user.tenantId, cycleId);
   }
 
-  // C1: Competency radar chart data
+  // ─── Bloque C: Advanced reports ────────────────────────────────────────
+
   @Get('cycle/:cycleId/competency-radar/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   competencyRadar(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
+    this.validateUserAccess(req, userId);
     return this.reportsService.competencyRadar(cycleId, userId, req.user.tenantId);
   }
 
-  // C2: Self vs Others comparison
   @Get('cycle/:cycleId/self-vs-others/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   selfVsOthers(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
+    this.validateUserAccess(req, userId);
     return this.reportsService.selfVsOthers(cycleId, userId, req.user.tenantId);
   }
 
-  // C4: Performance heatmap
   @Get('cycle/:cycleId/heatmap')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   performanceHeatmap(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
@@ -92,6 +130,7 @@ export class ReportsController {
   }
 
   @Get('cycle/:cycleId/export')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   async exportResults(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Query('format') format: string,

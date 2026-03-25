@@ -436,7 +436,6 @@ export class ReportsService {
     const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
     if (!cycle) throw new NotFoundException('Ciclo no encontrado');
 
-    // Get the template to know section/question structure
     let template: FormTemplate | null = null;
     if (cycle.templateId) {
       template = await this.templateRepo.findOne({ where: { id: cycle.templateId } });
@@ -445,16 +444,22 @@ export class ReportsService {
       return { userId, cycleId, sections: [], message: 'Sin plantilla asociada al ciclo' };
     }
 
-    // Get completed responses for this user in this cycle
+    // Fix C2: Batch load responses (no N+1)
     const assignments = await this.assignmentRepo.find({
       where: { cycleId, evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
     });
+    const assignmentIds = assignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo
+          .createQueryBuilder('r')
+          .where('r.assignmentId IN (:...ids)', { ids: assignmentIds })
+          .getMany()
+      : [];
 
-    const responses: any[] = [];
-    for (const a of assignments) {
-      const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
-      if (resp) responses.push({ relationType: a.relationType, answers: resp.answers || {} });
-    }
+    const responseMap = new Map(allResponses.map((r) => [r.assignmentId, r]));
+    const responses = assignments
+      .filter((a) => responseMap.has(a.id))
+      .map((a) => ({ relationType: a.relationType, answers: responseMap.get(a.id)!.answers || {} }));
 
     // Build section-level averages
     const sections = template.sections.map((sec: any) => {
@@ -462,6 +467,9 @@ export class ReportsService {
       if (scaleQuestions.length === 0) return null;
 
       const questionIds = scaleQuestions.map((q: any) => q.id);
+      // Fix C4: Calculate maxScale from ALL scale questions
+      const maxScale = Math.max(...scaleQuestions.map((q: any) => q.scale?.max ?? 5));
+
       const byRelation: Record<string, { sum: number; count: number }> = {};
       let allSum = 0;
       let allCount = 0;
@@ -487,13 +495,17 @@ export class ReportsService {
       }
 
       return {
-        section: sec.title || sec.id,
+        section: sec.title || sec.id || 'Sin nombre',
         overall: allCount > 0 ? Math.round((allSum / allCount) * 100) / 100 : 0,
-        maxScale: scaleQuestions[0]?.scale?.max || 5,
+        maxScale,
         byRelation: relationScores,
         questionCount: scaleQuestions.length,
       };
     }).filter(Boolean);
+
+    if (sections.length === 0 && template.sections.length > 0) {
+      return { userId, cycleId, sections: [], message: 'La plantilla no contiene preguntas de escala para generar el radar' };
+    }
 
     return { userId, cycleId, sections };
   }
@@ -501,15 +513,24 @@ export class ReportsService {
   // ─── C2: Self vs Others comparison ─────────────────────────────────────
 
   async selfVsOthers(cycleId: string, userId: string, tenantId: string) {
+    // Fix C2: Batch load (no N+1)
     const assignments = await this.assignmentRepo.find({
       where: { cycleId, evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
     });
+    const assignmentIds = assignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo
+          .createQueryBuilder('r')
+          .where('r.assignmentId IN (:...ids)', { ids: assignmentIds })
+          .getMany()
+      : [];
+    const responseMap = new Map(allResponses.map((r) => [r.assignmentId, r]));
 
     let selfScore: number | null = null;
     const otherScores: { relationType: string; score: number }[] = [];
 
     for (const a of assignments) {
-      const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      const resp = responseMap.get(a.id);
       if (!resp || resp.overallScore == null) continue;
 
       if (a.relationType === RelationType.SELF) {
@@ -523,20 +544,20 @@ export class ReportsService {
       ? Math.round((otherScores.reduce((s, o) => s + o.score, 0) / otherScores.length) * 100) / 100
       : null;
 
-    const byRelation: Record<string, number> = {};
-    for (const o of otherScores) {
-      if (!byRelation[o.relationType]) byRelation[o.relationType] = 0;
-      // Simple: count per relation may be >1, average them
-    }
-    // Group and average by relation type
+    // Fix C4: Removed dead code. Group and average by relation type directly.
     const grouped: Record<string, number[]> = {};
     for (const o of otherScores) {
       if (!grouped[o.relationType]) grouped[o.relationType] = [];
       grouped[o.relationType].push(o.score);
     }
-    const byRelationAvg: Record<string, number> = {};
-    for (const [rel, scores] of Object.entries(grouped)) {
-      byRelationAvg[rel] = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100;
+    const byRelationAvg: Record<string, number | null> = {};
+    // Include all possible relation types for completeness
+    for (const rel of ['self', 'manager', 'peer', 'direct_report', 'external']) {
+      if (rel === 'self') continue; // self is separate
+      const scores = grouped[rel];
+      byRelationAvg[rel] = scores && scores.length > 0
+        ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
+        : null;
     }
 
     const gap = selfScore != null && othersAvg != null
@@ -570,29 +591,45 @@ export class ReportsService {
       .andWhere('r.overall_score IS NOT NULL')
       .select('u.department', 'department')
       .addSelect('r.overall_score', 'score')
-      .addSelect("u.first_name || ' ' || u.last_name", 'name')
+      // Fix C4: Handle NULL names with COALESCE
+      .addSelect("COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')", 'name')
       .addSelect('u.id', 'userId')
       .getRawMany();
 
-    // Group by department
-    const deptMap: Record<string, { scores: number[]; users: { name: string; userId: string; score: number }[] }> = {};
+    // Fix C3: Deduplicate users — average scores per user first
+    const userMap: Record<string, { name: string; department: string; scores: number[] }> = {};
     for (const r of raw) {
-      const dept = r.department || 'Sin departamento';
-      if (!deptMap[dept]) deptMap[dept] = { scores: [], users: [] };
-      const score = Number(r.score);
-      deptMap[dept].scores.push(score);
-      deptMap[dept].users.push({ name: r.name, userId: r.userId, score });
+      const uid = r.userId;
+      if (!userMap[uid]) {
+        userMap[uid] = {
+          name: (r.name || '').trim(),
+          department: r.department || 'Sin departamento',
+          scores: [],
+        };
+      }
+      userMap[uid].scores.push(Number(r.score));
+    }
+
+    // Group unique users by department with their average score
+    const deptMap: Record<string, { users: { name: string; userId: string; score: number }[] }> = {};
+    for (const [uid, data] of Object.entries(userMap)) {
+      const dept = data.department;
+      if (!deptMap[dept]) deptMap[dept] = { users: [] };
+      const avgScore = data.scores.reduce((a, b) => a + b, 0) / data.scores.length;
+      deptMap[dept].users.push({ name: data.name, userId: uid, score: Math.round(avgScore * 100) / 100 });
     }
 
     const heatmap = Object.entries(deptMap).map(([dept, data]) => {
-      const avg = data.scores.reduce((a, b) => a + b, 0) / data.scores.length;
-      const low = data.scores.filter((s) => s < 4).length;
-      const mid = data.scores.filter((s) => s >= 4 && s < 7).length;
-      const high = data.scores.filter((s) => s >= 7).length;
+      const scores = data.users.map((u) => u.score);
+      // Fix C3: Guard against zero division
+      const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+      const low = scores.filter((s) => s < 4).length;
+      const mid = scores.filter((s) => s >= 4 && s < 7).length;
+      const high = scores.filter((s) => s >= 7).length;
       return {
         department: dept,
         avgScore: Math.round(avg * 100) / 100,
-        total: data.scores.length,
+        total: scores.length,
         low,
         mid,
         high,

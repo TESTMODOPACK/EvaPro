@@ -85,8 +85,8 @@ function CompetencyRadarSection({ cycleId, userId }: { cycleId: string; userId: 
   }
 
   const radarData = data.sections.map((s: any) => ({
-    subject: s.section.length > 20 ? s.section.slice(0, 18) + '...' : s.section,
-    fullName: s.section,
+    subject: (s.section || '').length > 20 ? (s.section || '').slice(0, 18) + '...' : (s.section || 'Sin nombre'),
+    fullName: s.section || 'Sin nombre',
     overall: s.overall,
     maxScale: s.maxScale,
     ...s.byRelation,
@@ -157,11 +157,13 @@ function SelfVsOthersSection({ cycleId, userId }: { cycleId: string; userId: str
   const chartData = [
     { name: 'Autoevaluaci\u00f3n', score: data.selfScore || 0, fill: '#6366f1' },
     { name: 'Promedio Otros', score: data.othersAvg || 0, fill: '#10b981' },
-    ...Object.entries(data.byRelation || {}).map(([rel, score]) => ({
-      name: relationLabels[rel] || rel,
-      score: score as number,
-      fill: relationColors[rel] || 'var(--accent)',
-    })),
+    ...Object.entries(data.byRelation || {})
+      .filter(([, score]) => score != null && score !== 0)
+      .map(([rel, score]) => ({
+        name: relationLabels[rel] || rel,
+        score: score as number,
+        fill: relationColors[rel] || 'var(--accent)',
+      })),
   ];
 
   return (
