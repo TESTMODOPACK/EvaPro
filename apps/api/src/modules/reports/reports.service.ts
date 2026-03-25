@@ -615,6 +615,11 @@ export class ReportsService {
     const assignments = await this.assignmentRepo.find({
       where: { cycleId, evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
     });
+
+    if (assignments.length === 0) {
+      return { userId, cycleId, sections: [], message: 'Este colaborador no tiene evaluaciones completadas en este ciclo' };
+    }
+
     const assignmentIds = assignments.map((a) => a.id);
     const allResponses = assignmentIds.length > 0
       ? await this.responseRepo
@@ -627,6 +632,10 @@ export class ReportsService {
     const responses = assignments
       .filter((a) => responseMap.has(a.id))
       .map((a) => ({ relationType: a.relationType, answers: responseMap.get(a.id)!.answers || {} }));
+
+    if (responses.length === 0) {
+      return { userId, cycleId, sections: [], message: 'Las evaluaciones completadas aún no tienen respuestas registradas' };
+    }
 
     // Build section-level averages
     const sections = template.sections.map((sec: any) => {

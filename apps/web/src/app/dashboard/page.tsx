@@ -508,12 +508,12 @@ function RegularDashboard() {
         </div>
       </div>
 
-      {/* Performance Trend + Feedback cards — hide feedback for employee/external */}
+      {/* Performance Trend + Feedback cards — show feedback only if user has data */}
       <div
         className="animate-fade-up-delay-2"
         style={{
           display: 'grid',
-          gridTemplateColumns: (user?.role === 'tenant_admin' || user?.role === 'manager') ? '1fr 340px' : '1fr',
+          gridTemplateColumns: totalFeedback > 0 ? '1fr 340px' : '1fr',
           gap: '1.25rem',
           marginTop: '1.25rem',
         }}
@@ -568,8 +568,8 @@ function RegularDashboard() {
           )}
         </div>
 
-        {/* Mi Feedback — only for tenant_admin and manager */}
-        {(user?.role === 'tenant_admin' || user?.role === 'manager') && <div className="card" style={{ padding: '1.4rem' }}>
+        {/* Mi Feedback — show only when user has received feedback */}
+        {totalFeedback > 0 && <div className="card" style={{ padding: '1.4rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
             Mi Feedback
           </h3>
