@@ -50,9 +50,12 @@ export class ReportsController {
   @Roles('super_admin', 'tenant_admin', 'manager')
   cycleSummary(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Query('department') department: string,
+    @Query('position') position: string,
     @Request() req: any,
   ) {
-    return this.reportsService.cycleSummary(cycleId, req.user.tenantId);
+    const filters = (department || position) ? { department, position } : undefined;
+    return this.reportsService.cycleSummary(cycleId, req.user.tenantId, filters);
   }
 
   @Get('cycle/:cycleId/individual/:userId')
@@ -84,10 +87,12 @@ export class ReportsController {
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   performanceHistory(
     @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('cycleType') cycleType: string,
     @Request() req: any,
   ) {
     this.validateUserAccess(req, userId);
-    return this.reportsService.getPerformanceHistory(req.user.tenantId, userId);
+    const filters = cycleType ? { cycleType } : undefined;
+    return this.reportsService.getPerformanceHistory(req.user.tenantId, userId, filters);
   }
 
   @Get('analytics')
@@ -130,9 +135,12 @@ export class ReportsController {
   @Roles('super_admin', 'tenant_admin', 'manager')
   bellCurve(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Query('department') department: string,
+    @Query('position') position: string,
     @Request() req: any,
   ) {
-    return this.reportsService.bellCurve(cycleId, req.user.tenantId);
+    const filters = (department || position) ? { department, position } : undefined;
+    return this.reportsService.bellCurve(cycleId, req.user.tenantId, filters);
   }
 
   @Get('cycle/:cycleId/heatmap')
@@ -140,9 +148,12 @@ export class ReportsController {
   @Roles('super_admin', 'tenant_admin', 'manager')
   performanceHeatmap(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Query('department') department: string,
+    @Query('position') position: string,
     @Request() req: any,
   ) {
-    return this.reportsService.performanceHeatmap(cycleId, req.user.tenantId);
+    const filters = (department || position) ? { department, position } : undefined;
+    return this.reportsService.performanceHeatmap(cycleId, req.user.tenantId, filters);
   }
 
   // ─── Gap Analysis ─────────────────────────────────────────────────────

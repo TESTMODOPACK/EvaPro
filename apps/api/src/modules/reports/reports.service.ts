@@ -12,6 +12,17 @@ import { User } from '../users/entities/user.entity';
 import { RoleCompetency } from '../development/entities/role-competency.entity';
 import { Competency } from '../development/entities/competency.entity';
 
+export interface ReportFilters {
+  department?: string;
+  position?: string;
+}
+
+/**
+ * Privacy threshold: reports with fewer than this many people
+ * will not return individual-level data to prevent identification.
+ */
+const PRIVACY_MIN_PEOPLE = 5;
+
 @Injectable()
 export class ReportsService {
   constructor(
@@ -33,28 +44,58 @@ export class ReportsService {
     private readonly competencyRepo: Repository<Competency>,
   ) {}
 
-  async cycleSummary(cycleId: string, tenantId: string) {
+  // ─── Shared filter interface ──────────────────────────────────────────
+  // Applied to any query that joins the `users` table to filter results.
+
+  private applyUserFilters(
+    qb: any,
+    filters?: ReportFilters,
+    userAlias = 'u',
+  ): void {
+    if (!filters) return;
+    if (filters.department) {
+      qb.andWhere(`${userAlias}.department = :department`, { department: filters.department });
+    }
+    if (filters.position) {
+      qb.andWhere(`${userAlias}.position = :position`, { position: filters.position });
+    }
+  }
+
+  async cycleSummary(cycleId: string, tenantId: string, filters?: ReportFilters) {
     const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
     if (!cycle) throw new NotFoundException('Ciclo no encontrado');
 
-    const totalAssignments = await this.assignmentRepo.count({
-      where: { cycleId, tenantId },
-    });
-    const completedAssignments = await this.assignmentRepo.count({
-      where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED },
-    });
+    // Build filtered queries
+    const totalQb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .where('a.cycleId = :cycleId', { cycleId })
+      .andWhere('a.tenantId = :tenantId', { tenantId });
+    this.applyUserFilters(totalQb, filters);
+    const totalAssignments = await totalQb.getCount();
 
-    const avgResult = await this.responseRepo
+    const completedQb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .where('a.cycleId = :cycleId', { cycleId })
+      .andWhere('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
+    this.applyUserFilters(completedQb, filters);
+    const completedAssignments = await completedQb.getCount();
+
+    const avgQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
-      .select('AVG(r.overall_score)', 'avg')
-      .getRawOne();
+      .select('AVG(r.overall_score)', 'avg');
+    this.applyUserFilters(avgQb, filters);
+    const avgResult = await avgQb.getRawOne();
 
     // Department breakdown
-    const deptBreakdown = await this.responseRepo
+    const deptQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
@@ -66,7 +107,27 @@ export class ReportsService {
       .addSelect('AVG(r.overall_score)', 'avgScore')
       .addSelect('COUNT(DISTINCT u.id)', 'count')
       .groupBy('u.department')
-      .orderBy('AVG(r.overall_score)', 'DESC')
+      .orderBy('AVG(r.overall_score)', 'DESC');
+    this.applyUserFilters(deptQb, filters);
+    const deptBreakdown = await deptQb.getRawMany();
+
+    // Available filters for UI
+    const departments = await this.userRepo
+      .createQueryBuilder('u')
+      .select('DISTINCT u.department', 'department')
+      .where('u.tenantId = :tenantId', { tenantId })
+      .andWhere('u.department IS NOT NULL')
+      .andWhere('u.isActive = true')
+      .orderBy('u.department', 'ASC')
+      .getRawMany();
+
+    const positions = await this.userRepo
+      .createQueryBuilder('u')
+      .select('DISTINCT u.position', 'position')
+      .where('u.tenantId = :tenantId', { tenantId })
+      .andWhere('u.position IS NOT NULL')
+      .andWhere('u.isActive = true')
+      .orderBy('u.position', 'ASC')
       .getRawMany();
 
     return {
@@ -82,6 +143,11 @@ export class ReportsService {
         avgScore: parseFloat(d.avgScore).toFixed(1),
         count: parseInt(d.count),
       })),
+      appliedFilters: filters || {},
+      availableFilters: {
+        departments: departments.map((d) => d.department).filter(Boolean),
+        positions: positions.map((p) => p.position).filter(Boolean),
+      },
     };
   }
 
@@ -195,7 +261,7 @@ export class ReportsService {
       let scoreCount = 0;
       for (const a of memberAssignments) {
         const resp = responseByAssignment.get(a.id);
-        if (resp?.overallScore) {
+        if (resp?.overallScore != null) {
           totalScore += Number(resp.overallScore);
           scoreCount++;
         }
@@ -271,8 +337,8 @@ export class ReportsService {
     for (const a of assignments) {
       const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
       evalRows.push([
-        `${a.evaluatee.firstName} ${a.evaluatee.lastName}`,
-        `${a.evaluator.firstName} ${a.evaluator.lastName}`,
+        a.evaluatee ? `${a.evaluatee.firstName} ${a.evaluatee.lastName}` : 'N/A',
+        a.evaluator ? `${a.evaluator.firstName} ${a.evaluator.lastName}` : 'N/A',
         relationLabels[a.relationType] || a.relationType,
         resp?.overallScore != null ? Number(resp.overallScore).toFixed(1) : '\u2013',
         resp?.submittedAt ? new Date(resp.submittedAt).toLocaleDateString('es-CL') : '\u2013',
@@ -379,9 +445,14 @@ export class ReportsService {
 
   // ─── Performance History ────────────────────────────────────────────────
 
-  async getPerformanceHistory(tenantId: string, userId: string) {
+  async getPerformanceHistory(tenantId: string, userId: string, filters?: { cycleType?: string }) {
+    const whereClause: any = { tenantId };
+    if (filters?.cycleType) {
+      whereClause.type = filters.cycleType;
+    }
+
     const cycles = await this.cycleRepo.find({
-      where: { tenantId },
+      where: whereClause,
       order: { startDate: 'ASC' },
     });
 
@@ -455,6 +526,8 @@ export class ReportsService {
       history.push({
         cycleId: cycle.id,
         cycleName: cycle.name,
+        cycleType: cycle.type,
+        period: cycle.period,
         startDate: cycle.startDate,
         endDate: cycle.endDate,
         avgSelf: avg(scoresByType.self),
@@ -544,19 +617,33 @@ export class ReportsService {
 
   // ─── Bell Curve (B4 Item 16) ──────────────────────────────────────────────
 
-  async bellCurve(cycleId: string, tenantId: string) {
-    const responses = await this.responseRepo
+  async bellCurve(cycleId: string, tenantId: string, filters?: ReportFilters) {
+    const qb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
-      .select('r.overall_score', 'score')
-      .getRawMany();
+      .select('r.overall_score', 'score');
+    this.applyUserFilters(qb, filters);
+    const responses = await qb.getRawMany();
 
     const scores = responses.map((r) => Number(r.score));
     if (scores.length === 0) {
       return { cycleId, histogram: [], normalCurve: [], mean: 0, stddev: 0, count: 0 };
+    }
+    if (scores.length < PRIVACY_MIN_PEOPLE) {
+      return {
+        cycleId,
+        histogram: [],
+        normalCurve: [],
+        mean: 0,
+        stddev: 0,
+        count: scores.length,
+        privacyRestricted: true,
+        message: `Se requieren al menos ${PRIVACY_MIN_PEOPLE} evaluaciones para mostrar la distribución (actualmente: ${scores.length})`,
+      };
     }
 
     // Calculate mean and stddev
@@ -757,8 +844,8 @@ export class ReportsService {
 
   // ─── C4: Performance Heatmap (department × score ranges) ───────────────
 
-  async performanceHeatmap(cycleId: string, tenantId: string) {
-    const raw = await this.responseRepo
+  async performanceHeatmap(cycleId: string, tenantId: string, filters?: ReportFilters) {
+    const qb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
@@ -767,10 +854,10 @@ export class ReportsService {
       .andWhere('r.overall_score IS NOT NULL')
       .select('u.department', 'department')
       .addSelect('r.overall_score', 'score')
-      // Fix C4: Handle NULL names with COALESCE
       .addSelect("COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')", 'name')
-      .addSelect('u.id', 'userId')
-      .getRawMany();
+      .addSelect('u.id', 'userId');
+    this.applyUserFilters(qb, filters);
+    const raw = await qb.getRawMany();
 
     // Fix C3: Deduplicate users — average scores per user first
     const userMap: Record<string, { name: string; department: string; scores: number[] }> = {};
@@ -809,11 +896,15 @@ export class ReportsService {
         low,
         mid,
         high,
-        users: data.users.sort((a, b) => b.score - a.score),
+        // Privacy: only show individual users if department has >= PRIVACY_MIN_PEOPLE
+        users: scores.length >= PRIVACY_MIN_PEOPLE
+          ? data.users.sort((a, b) => b.score - a.score)
+          : [],
+        privacyRestricted: scores.length < PRIVACY_MIN_PEOPLE,
       };
     }).sort((a, b) => b.avgScore - a.avgScore);
 
-    return { cycleId, heatmap };
+    return { cycleId, heatmap, privacyThreshold: PRIVACY_MIN_PEOPLE };
   }
 
   // ─── Gap Analysis: Individual Employee ──────────────────────────────────

@@ -122,7 +122,8 @@ export interface ObjectiveUpdateData {
 }
 
 export interface PerformanceHistoryEntry {
-  cycleId: string; cycleName: string; startDate: string; endDate: string;
+  cycleId: string; cycleName: string; cycleType?: string; period?: string;
+  startDate: string; endDate: string;
   avgSelf: number | null; avgManager: number | null;
   avgPeer: number | null; avgOverall: number | null;
   completedObjectives: number;
@@ -438,8 +439,10 @@ export const api = {
       request<any>(`/reports/cycle/${cycleId}/team/${managerId}`, {}, token),
     exportCsv: (token: string, cycleId: string) =>
       `${BASE_URL}/reports/cycle/${cycleId}/export?format=csv`,
-    performanceHistory: (token: string, userId: string) =>
-      request<{ userId: string; history: PerformanceHistoryEntry[] }>(`/reports/users/${userId}/performance-history`, {}, token),
+    performanceHistory: (token: string, userId: string, cycleType?: string) =>
+      request<{ userId: string; history: PerformanceHistoryEntry[] }>(
+        `/reports/users/${userId}/performance-history${cycleType ? `?cycleType=${cycleType}` : ''}`, {}, token,
+      ),
     analytics: (token: string, cycleId: string) =>
       request<AnalyticsData>(`/reports/analytics?cycleId=${cycleId}`, {}, token),
     competencyRadar: (token: string, cycleId: string, userId: string) =>

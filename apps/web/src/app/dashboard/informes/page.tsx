@@ -295,16 +295,26 @@ function HeatmapSection({ cycleId }: { cycleId: string }) {
               </div>
 
               {/* Expanded user list */}
-              {expanded === dept.department && dept.users && (
+              {expanded === dept.department && (
                 <div style={{ padding: '0.5rem 1rem', marginTop: '-0.25rem' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    {dept.users.map((u: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.8rem' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>{u.name}</span>
-                        <span style={{ fontWeight: 700, color: scoreColor(u.score) }}>{u.score.toFixed(1)}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {dept.privacyRestricted ? (
+                    <div style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.82rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm, 6px)' }}>
+                      Detalle individual no disponible — se requieren al menos 5 personas en el departamento para garantizar privacidad
+                    </div>
+                  ) : dept.users && dept.users.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {dept.users.map((u: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.8rem' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>{u.name}</span>
+                          <span style={{ fontWeight: 700, color: scoreColor(u.score) }}>{u.score.toFixed(1)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                      Sin detalle disponible
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -325,6 +335,16 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos suficientes para la curva de distribucion</p>
+      </div>
+    );
+  }
+
+  if (data.privacyRestricted) {
+    return (
+      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--warning)', fontSize: '0.85rem', fontWeight: 600 }}>
+          {data.message || `Se requieren al menos 5 evaluaciones para mostrar la distribuci\u00f3n (actualmente: ${data.count})`}
+        </p>
       </div>
     );
   }
@@ -389,7 +409,23 @@ export default function InformesPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
 
+  // Advanced filters
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterPosition, setFilterPosition] = useState('');
+
   const users = usersPage?.data || [];
+
+  // Reset user selection when filters change
+  const filterKey = `${filterDepartment}|${filterPosition}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    setSelectedUserId(null);
+  }
+
+  // Extract unique departments and positions from users
+  const departments = Array.from(new Set(users.map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  const positions = Array.from(new Set(users.map((u: any) => u.position).filter(Boolean))).sort() as string[];
   const sortedCycles = cycles
     ? [...cycles].sort((a: any, b: any) => {
         if (a.status === 'closed' && b.status !== 'closed') return -1;
@@ -447,11 +483,36 @@ export default function InformesPage() {
           <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>{'Colaborador (para Radar y Self vs Others)'}</label>
           <select style={selectStyle} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
             <option value="">{'Seleccionar colaborador...'}</option>
-            {users.map((u: any) => (
-              <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}</option>
-            ))}
+            {users
+              .filter((u: any) => (!filterDepartment || u.department === filterDepartment) && (!filterPosition || u.position === filterPosition))
+              .map((u: any) => (
+                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}</option>
+              ))
+            }
           </select>
         </div>
+        <div>
+          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Departamento</label>
+          <select style={selectStyle} value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)}>
+            <option value="">Todos</option>
+            {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Cargo</label>
+          <select style={selectStyle} value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)}>
+            <option value="">Todos</option>
+            {positions.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+        {(filterDepartment || filterPosition) && (
+          <button
+            onClick={() => { setFilterDepartment(''); setFilterPosition(''); }}
+            style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, padding: '0.45rem 0', alignSelf: 'flex-end' }}
+          >
+            Limpiar filtros
+          </button>
+        )}
       </div>
 
       {/* No selections */}
