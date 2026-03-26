@@ -63,25 +63,23 @@ async function main() {
       }
     }
 
-    // ── Fix orphaned FK references in quick_feedbacks → competencies ──
-    // After competencies is dropped and recreated empty by TypeORM, any existing
-    // competency_id values become orphans. Null ALL of them unconditionally —
-    // they will be repopulated by the seed script.
-    try {
-      // First drop the FK constraint if it exists (so the UPDATE doesn't fail)
-      await client.query(`
-        ALTER TABLE "quick_feedbacks" DROP CONSTRAINT IF EXISTS "FK_e361a4a8922191ddbaaf2147764"
-      `);
-      const res = await client.query(`
-        UPDATE "quick_feedbacks" SET "competency_id" = NULL
-        WHERE "competency_id" IS NOT NULL
-      `);
-      if (res.rowCount && res.rowCount > 0) {
-        console.log(`[cleanup] Nulled ${res.rowCount} orphaned competency_id in quick_feedbacks`);
+    // ── Fix ALL orphaned FK references to competencies ──────────────────
+    // After competencies is dropped and recreated empty by TypeORM, any table
+    // with FK to competencies will have orphaned IDs. Null them ALL.
+    const competencyFkTables = [
+      { table: 'quick_feedbacks', column: 'competency_id', constraint: 'FK_e361a4a8922191ddbaaf2147764' },
+      { table: 'recognitions', column: 'value_id', constraint: 'FK_06ae36bc92315c22d6eeeaba48f' },
+    ];
+    for (const fk of competencyFkTables) {
+      try {
+        await client.query(`ALTER TABLE "${fk.table}" DROP CONSTRAINT IF EXISTS "${fk.constraint}"`);
+        const res = await client.query(`UPDATE "${fk.table}" SET "${fk.column}" = NULL WHERE "${fk.column}" IS NOT NULL`);
+        if (res.rowCount && res.rowCount > 0) {
+          console.log(`[cleanup] Nulled ${res.rowCount} orphaned ${fk.column} in ${fk.table}`);
+        }
+      } catch (err: any) {
+        console.log(`[cleanup] ${fk.table} cleanup skipped: ${err.message}`);
       }
-    } catch (err: any) {
-      // Table may not exist yet — that's fine
-      console.log(`[cleanup] quick_feedbacks cleanup skipped: ${err.message}`);
     }
 
     // ── Phase 4: Calibration tables (FK dependency causes pkey conflict) ──
