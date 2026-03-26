@@ -535,4 +535,24 @@ export const api = {
     generateSuggestions: (token: string, cycleId: string, userId: string) =>
       request<any>(`/ai/suggestions/${userId}/${cycleId}`, { method: "POST" }, token),
   },
+
+  recognition: {
+    wall: (token: string, page = 1, limit = 20) =>
+      request<any>(`/recognition/wall?page=${page}&limit=${limit}`, {}, token),
+    create: (token: string, data: { toUserId: string; message: string; valueId?: string; points?: number }) =>
+      request<any>("/recognition", { method: "POST", body: JSON.stringify(data) }, token),
+    addReaction: (token: string, id: string, emoji: string) =>
+      request<any>(`/recognition/${id}/reaction`, { method: "POST", body: JSON.stringify({ emoji }) }, token),
+    badges: (token: string) => request<any[]>("/recognition/badges", {}, token),
+    createBadge: (token: string, data: any) =>
+      request<any>("/recognition/badges", { method: "POST", body: JSON.stringify(data) }, token),
+    myBadges: (token: string) => request<any[]>("/recognition/badges/mine", {}, token),
+    userBadges: (token: string, userId: string) => request<any[]>(`/recognition/badges/user/${userId}`, {}, token),
+    awardBadge: (token: string, data: { userId: string; badgeId: string }) =>
+      request<any>("/recognition/badges/award", { method: "POST", body: JSON.stringify(data) }, token),
+    myPoints: (token: string) => request<any>("/recognition/points/mine", {}, token),
+    leaderboard: (token: string, period = 'month', limit = 20) =>
+      request<any[]>(`/recognition/leaderboard?period=${period}&limit=${limit}`, {}, token),
+    stats: (token: string) => request<any>("/recognition/stats", {}, token),
+  },
 };

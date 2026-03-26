@@ -48,6 +48,10 @@ import { DevelopmentComment } from '../modules/development/entities/development-
 import { Notification, NotificationType } from '../modules/notifications/entities/notification.entity';
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
 import { RoleCompetency } from '../modules/development/entities/role-competency.entity';
+import { Recognition } from '../modules/recognition/entities/recognition.entity';
+import { Badge } from '../modules/recognition/entities/badge.entity';
+import { UserBadge } from '../modules/recognition/entities/user-badge.entity';
+import { UserPoints, PointsSource } from '../modules/recognition/entities/user-points.entity';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) { console.error('❌ DATABASE_URL not set'); process.exit(1); }
@@ -64,6 +68,7 @@ const ds = new DataSource({
     TalentAssessment, CalibrationSession, CalibrationEntry,
     Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
     Notification, AiInsight,
+    Recognition, Badge, UserBadge, UserPoints,
   ],
   synchronize: true, logging: false,
 });
@@ -707,6 +712,86 @@ async function seedDemoFull() {
       }
     } else {
       console.log('   Pro plan not found, skipping subscription upgrade.');
+    }
+
+    /* ── 15. RECOGNITION + GAMIFICATION ─────────────────────────────── */
+    const recogRepo = ds.getRepository(Recognition);
+    const badgeRepo2 = ds.getRepository(Badge);
+    const userBadgeRepo = ds.getRepository(UserBadge);
+    const pointsRepo = ds.getRepository(UserPoints);
+
+    const existingRecog = await recogRepo.count({ where: { tenantId: tid } });
+    if (existingRecog === 0) {
+      // Create badges
+      const badgeData = [
+        { name: 'Colaborador Estrella', description: 'Recibe 5 reconocimientos', icon: 'star', color: '#f59e0b', criteria: { type: 'recognitions_received', threshold: 5 }, pointsReward: 50 },
+        { name: 'Mentor', description: 'Envia 10 reconocimientos a otros', icon: 'brain', color: '#8b5cf6', criteria: { type: 'recognitions_sent', threshold: 10 }, pointsReward: 75 },
+        { name: 'Innovador', description: 'Acumula 200 puntos', icon: 'rocket', color: '#3b82f6', criteria: { type: 'total_points', threshold: 200 }, pointsReward: 100 },
+        { name: 'Lider Inspirador', description: 'Otorgado por HR por liderazgo excepcional', icon: 'crown', color: '#ec4899', criteria: null, pointsReward: 150 },
+        { name: 'Trabajo en Equipo', description: 'Reconocido por colaboracion sobresaliente', icon: 'handshake', color: '#10b981', criteria: null, pointsReward: 60 },
+      ];
+      const badges: Badge[] = [];
+      for (const bd of badgeData) {
+        badges.push(await badgeRepo2.save(badgeRepo2.create({ tenantId: tid, ...bd })));
+      }
+      console.log(`✅ ${badges.length} badges created`);
+
+      // Create recognitions (social wall)
+      const competencies = await compRepo.find({ where: { tenantId: tid }, take: 5 });
+      const recognitions = [
+        { from: allNewUsers[0], to: allNewUsers[1], message: 'Excelente trabajo en el rediseno del dashboard. Tu atencion al detalle hizo toda la diferencia para el cliente.', valueIdx: 0 },
+        { from: manager, to: allNewUsers[2], message: 'Gracias por tu dedicacion en la campana de fin de ano. Los resultados superaron todas las expectativas.', valueIdx: 1 },
+        { from: allNewUsers[3], to: allNewUsers[0], message: 'Increible presentacion al equipo directivo. Tu capacidad de comunicar ideas complejas es admirable.', valueIdx: 2 },
+        { from: allNewUsers[1], to: allNewUsers[4], message: 'Los mockups que preparaste para el cliente nuevo fueron espectaculares. Creatividad pura!', valueIdx: 0 },
+        { from: allNewUsers[5], to: manager, message: 'Gracias por el mentorazgo durante este trimestre. Tu guia fue clave para cerrar las metas de ventas.', valueIdx: 3 },
+        { from: allNewUsers[4], to: allNewUsers[3], message: 'La API que construiste para el modulo de reportes es impecable. Codigo limpio y bien documentado.', valueIdx: 0 },
+        { from: manager, to: allNewUsers[6], message: 'Tu revision de calidad en el ultimo release evito 3 bugs criticos. QA de clase mundial!', valueIdx: 1 },
+        { from: allNewUsers[2], to: allNewUsers[5], message: 'Excelente negociacion con el cliente. Lograste renovar el contrato en condiciones favorables para ambos.', valueIdx: 2 },
+        { from: allNewUsers[7], to: allNewUsers[3], message: 'Gracias por ayudarme con la configuracion del pipeline de CI/CD. Tu paciencia y conocimiento son invaluables.', valueIdx: 0 },
+        { from: allNewUsers[6], to: allNewUsers[7], message: 'La infraestructura que montaste es solida como roca. Cero incidentes en produccion este mes!', valueIdx: 1 },
+      ];
+
+      for (let i = 0; i < recognitions.length; i++) {
+        const r = recognitions[i];
+        if (!r.from || !r.to) continue;
+        const saved = await recogRepo.save(recogRepo.create({
+          tenantId: tid,
+          fromUserId: r.from.id,
+          toUserId: r.to.id,
+          message: r.message,
+          valueId: competencies[r.valueIdx]?.id || null,
+          points: 10 + Math.floor(Math.random() * 15),
+          isPublic: true,
+          reactions: i < 5 ? { '\uD83D\uDC4F': Math.floor(2 + Math.random() * 8), '\u2764\uFE0F': Math.floor(1 + Math.random() * 5) } : {},
+        }));
+
+        // Points for receiver and sender
+        await pointsRepo.save(pointsRepo.create({ tenantId: tid, userId: r.to.id, points: saved.points, source: PointsSource.RECOGNITION_RECEIVED, description: 'Reconocimiento recibido', referenceId: saved.id }));
+        await pointsRepo.save(pointsRepo.create({ tenantId: tid, userId: r.from.id, points: 2, source: PointsSource.RECOGNITION_SENT, description: 'Reconocimiento enviado', referenceId: saved.id }));
+      }
+      console.log(`✅ ${recognitions.length} recognitions created with points`);
+
+      // Award some badges
+      if (allNewUsers.length >= 3) {
+        await userBadgeRepo.save(userBadgeRepo.create({ tenantId: tid, userId: allNewUsers[0].id, badgeId: badges[0].id, awardedBy: null }));
+        await pointsRepo.save(pointsRepo.create({ tenantId: tid, userId: allNewUsers[0].id, points: badges[0].pointsReward, source: PointsSource.BADGE_EARNED, description: `Badge: ${badges[0].name}` }));
+
+        await userBadgeRepo.save(userBadgeRepo.create({ tenantId: tid, userId: manager.id, badgeId: badges[3].id, awardedBy: admin.id }));
+        await pointsRepo.save(pointsRepo.create({ tenantId: tid, userId: manager.id, points: badges[3].pointsReward, source: PointsSource.BADGE_EARNED, description: `Badge: ${badges[3].name}` }));
+
+        await userBadgeRepo.save(userBadgeRepo.create({ tenantId: tid, userId: allNewUsers[3].id, badgeId: badges[4].id, awardedBy: manager.id }));
+        await pointsRepo.save(pointsRepo.create({ tenantId: tid, userId: allNewUsers[3].id, points: badges[4].pointsReward, source: PointsSource.BADGE_EARNED, description: `Badge: ${badges[4].name}` }));
+        console.log('✅ 3 badges awarded to demo users');
+      }
+
+      // Extra points for completed evaluations/objectives
+      for (const u of allNewUsers.slice(0, 5)) {
+        await pointsRepo.save(pointsRepo.create({ tenantId: tid, userId: u.id, points: 25, source: PointsSource.EVALUATION_COMPLETED, description: 'Evaluacion completada' }));
+        await pointsRepo.save(pointsRepo.create({ tenantId: tid, userId: u.id, points: 15, source: PointsSource.FEEDBACK_GIVEN, description: 'Feedback enviado' }));
+      }
+      console.log('✅ Extra gamification points seeded');
+    } else {
+      console.log(`   Recognition data already exists (${existingRecog}), skipping.`);
     }
 
     /* ── Done ─────────────────────────────────────────────────────────────── */
