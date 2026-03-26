@@ -31,6 +31,9 @@ export class SubscriptionPlan {
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'yearly_price', nullable: true })
   yearlyPrice: number | null;
 
+  @Column({ type: 'varchar', length: 10, default: 'UF' })
+  currency: string; // UF | CLP | USD
+
   @Column({ type: 'jsonb', default: [] })
   features: string[];
 

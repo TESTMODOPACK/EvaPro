@@ -14,9 +14,12 @@ import { Response } from 'express';
 import { ReportsService } from './reports.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 
 @Controller('reports')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
@@ -99,6 +102,7 @@ export class ReportsController {
   // ─── Bloque C: Advanced reports ────────────────────────────────────────
 
   @Get('cycle/:cycleId/competency-radar/:userId')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   competencyRadar(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
@@ -110,6 +114,7 @@ export class ReportsController {
   }
 
   @Get('cycle/:cycleId/self-vs-others/:userId')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   selfVsOthers(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
@@ -121,6 +126,7 @@ export class ReportsController {
   }
 
   @Get('cycle/:cycleId/bell-curve')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager')
   bellCurve(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
@@ -130,6 +136,7 @@ export class ReportsController {
   }
 
   @Get('cycle/:cycleId/heatmap')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager')
   performanceHeatmap(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
@@ -141,6 +148,7 @@ export class ReportsController {
   // ─── Gap Analysis ─────────────────────────────────────────────────────
 
   @Get('cycle/:cycleId/gap-analysis/:userId')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   gapAnalysisIndividual(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
@@ -152,6 +160,7 @@ export class ReportsController {
   }
 
   @Get('cycle/:cycleId/gap-analysis-team/:managerId')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager')
   gapAnalysisTeam(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,

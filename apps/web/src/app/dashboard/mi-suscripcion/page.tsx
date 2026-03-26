@@ -7,6 +7,23 @@ import { formatRut } from '@/lib/rut';
 import { formatCLP } from '@/lib/format';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
 
+const featureLabels: Record<string, string> = {
+  EVAL_90_180: 'Evaluaciones 90\u00b0 / 180\u00b0',
+  EVAL_270: 'Evaluaciones 270\u00b0',
+  EVAL_360: 'Evaluaciones 360\u00b0',
+  BASIC_REPORTS: 'Reportes b\u00e1sicos',
+  ADVANCED_REPORTS: 'Reportes avanzados (Radar, Bell, Heatmap, Gap)',
+  OKR: 'OKRs / Objetivos',
+  FEEDBACK: 'Feedback continuo',
+  CHECKINS: 'Check-ins 1:1',
+  TEMPLATES_CUSTOM: 'Plantillas personalizadas',
+  PDI: 'Planes de desarrollo (PDI)',
+  NINE_BOX: 'Nine Box / Talent Assessment',
+  CALIBRATION: 'Calibraci\u00f3n',
+  AI_INSIGHTS: 'An\u00e1lisis con IA',
+  PUBLIC_API: 'API p\u00fablica',
+};
+
 function Spinner() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
@@ -74,7 +91,16 @@ export default function MiSuscripcionPage() {
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Precio mensual</div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{plan.monthlyPrice ? formatCLP(plan.monthlyPrice) : 'Gratuito'}</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                  {plan.monthlyPrice > 0
+                    ? `${Number(plan.monthlyPrice).toFixed(1)} ${plan.currency || 'UF'}/mes`
+                    : 'Gratuito'}
+                </div>
+                {plan.yearlyPrice > 0 && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                    Anual: {Number(plan.yearlyPrice).toFixed(0)} {plan.currency || 'UF'}/a\u00f1o (2 meses gratis)
+                  </div>
+                )}
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Max empleados</div>
@@ -117,7 +143,7 @@ export default function MiSuscripcionPage() {
               <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
                 {plan.features.map((f: string, i: number) => (
                   <span key={i} className="badge badge-accent" style={{ fontSize: '0.8rem', padding: '0.3rem 0.7rem' }}>
-                    {f}
+                    {featureLabels[f] || f}
                   </span>
                 ))}
               </div>

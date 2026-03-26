@@ -14,9 +14,13 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevelopmentService } from './development.service';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 
 @Controller('development')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
+@Feature(PlanFeature.PDI)
 export class DevelopmentController {
   constructor(private readonly developmentService: DevelopmentService) {}
 

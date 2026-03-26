@@ -194,11 +194,26 @@ export class UsersService {
     const header = lines[0].toLowerCase().split(',').map((h) => h.trim());
     const dataLines = lines.slice(1);
 
-    // Gap 4: Limit max rows to prevent performance issues
+    // Limit max rows to prevent performance issues
     if (dataLines.length > MAX_IMPORT_ROWS) {
       throw new ConflictException(
         `El CSV tiene ${dataLines.length} filas. El máximo permitido es ${MAX_IMPORT_ROWS}. Divida el archivo en lotes más pequeños.`,
       );
+    }
+
+    // Validate subscription plan user limit BEFORE processing
+    const sub = await this.subscriptionsService.findByTenantId(tenantId);
+    if (sub?.plan) {
+      const currentCount = await this.userRepository.count({ where: { tenantId, isActive: true } });
+      const projectedTotal = currentCount + dataLines.length;
+      if (projectedTotal > sub.plan.maxEmployees) {
+        const available = sub.plan.maxEmployees - currentCount;
+        throw new ForbiddenException(
+          `La importación excede el límite del plan "${sub.plan.name}". ` +
+          `Usuarios actuales: ${currentCount}, CSV: ${dataLines.length} filas, ` +
+          `Máximo permitido: ${sub.plan.maxEmployees}. Disponibles: ${Math.max(0, available)}.`,
+        );
+      }
     }
 
     const bulkImport = this.bulkImportRepo.create({

@@ -11,6 +11,7 @@ import { DevelopmentAction } from '../development/entities/development-action.en
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 /**
  * Servicio de recordatorios automáticos.
@@ -25,6 +26,7 @@ import { User } from '../users/entities/user.entity';
  * | Objetivo en riesgo         | Diario       | progress < 40% + activo              |
  * | Acción PDI vencida         | Diario       | dueDate pasado + no completada       |
  * | Check-in sin realizar      | Semanal      | Último check-in > 14 días            |
+ * | Trial expirado             | Diario       | trialEndsAt < now                    |
  * | Limpieza de notificaciones | Semanal      | Leídas > 90 días                     |
  */
 @Injectable()
@@ -47,6 +49,7 @@ export class RemindersService {
     private readonly checkinRepo: Repository<CheckIn>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   // ─── 1. Evaluaciones pendientes (cada 6 horas) ───────────────────────
@@ -597,6 +600,21 @@ export class RemindersService {
       this.logger.log(`[Cron] Deleted ${deleted} read notifications older than 90 days`);
     } catch (error) {
       this.logger.error(`[Cron] Error in cleanupOldNotifications: ${error}`);
+    }
+  }
+
+  // ─── 12. Expiración automática de trials (diario 1am) ──────────────
+
+  @Cron('0 1 * * *')
+  async expireTrialSubscriptions() {
+    this.logger.log('[Cron] Checking expired trial subscriptions...');
+    try {
+      const count = await this.subscriptionsService.expireTrials();
+      if (count > 0) {
+        this.logger.log(`[Cron] Expired ${count} trial subscriptions`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in expireTrialSubscriptions: ${error}`);
     }
   }
 }

@@ -1,12 +1,22 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Subscription } from './entities/subscription.entity';
 import { SubscriptionPlan } from './entities/subscription-plan.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { User } from '../users/entities/user.entity';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class SubscriptionsService {
+  private readonly logger = new Logger(SubscriptionsService.name);
+
   constructor(
     @InjectRepository(Subscription)
     private readonly subRepo: Repository<Subscription>,
@@ -14,6 +24,9 @@ export class SubscriptionsService {
     private readonly planRepo: Repository<SubscriptionPlan>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   // ─── Plans CRUD ────────────────────────────────────────────────────────
@@ -67,8 +80,7 @@ export class SubscriptionsService {
 
   // ─── Subscriptions CRUD ────────────────────────────────────────────────
 
-  async create(dto: any): Promise<Subscription> {
-    // Validate plan exists
+  async create(dto: any, changedBy?: string): Promise<Subscription> {
     const plan = await this.findPlanById(dto.planId);
 
     const sub = this.subRepo.create({
@@ -84,6 +96,14 @@ export class SubscriptionsService {
 
     // Sync tenant plan & maxEmployees
     await this.syncTenantPlan(dto.tenantId, plan);
+
+    // Audit log
+    if (changedBy) {
+      await this.auditService.log(
+        dto.tenantId, changedBy, 'subscription.created', 'subscription', saved.id,
+        { planCode: plan.code, planName: plan.name, status: sub.status },
+      );
+    }
 
     return this.findById(saved.id);
   }
@@ -104,11 +124,31 @@ export class SubscriptionsService {
     return sub;
   }
 
+  /**
+   * Find active or trial subscription for a tenant.
+   * Also checks for trial expiration and auto-expires if needed.
+   */
   async findByTenantId(tenantId: string): Promise<Subscription | null> {
-    return this.subRepo.findOne({
-      where: { tenantId, status: 'active' },
+    const sub = await this.subRepo.findOne({
+      where: { tenantId, status: In(['active', 'trial']) },
       relations: ['plan', 'tenant'],
     });
+
+    if (!sub) return null;
+
+    // Auto-expire trial if past trialEndsAt
+    if (sub.status === 'trial' && sub.trialEndsAt) {
+      const now = new Date();
+      const trialEnd = new Date(sub.trialEndsAt);
+      if (now > trialEnd) {
+        this.logger.warn(`Trial expired for tenant ${tenantId} — auto-expiring subscription ${sub.id}`);
+        sub.status = 'expired';
+        await this.subRepo.save(sub);
+        return null;
+      }
+    }
+
+    return sub;
   }
 
   async findMySubscription(tenantId: string): Promise<any> {
@@ -120,14 +160,51 @@ export class SubscriptionsService {
     return sub;
   }
 
-  async update(id: string, dto: any): Promise<Subscription> {
+  /**
+   * Update subscription with downgrade protection and audit logging.
+   */
+  async update(id: string, dto: any, changedBy?: string): Promise<Subscription> {
     const sub = await this.findById(id);
+    const previousPlanId = sub.planId;
+    const previousStatus = sub.status;
 
-    if (dto.planId !== undefined) {
+    if (dto.planId !== undefined && dto.planId !== sub.planId) {
+      const newPlan = await this.findPlanById(dto.planId);
+
+      // ── Downgrade protection: check if current users exceed new plan limit
+      const currentUsers = await this.userRepo.count({
+        where: { tenantId: sub.tenantId, isActive: true },
+      });
+
+      if (currentUsers > newPlan.maxEmployees) {
+        const oldPlan = sub.plan;
+        throw new ForbiddenException(
+          `No se puede cambiar al plan "${newPlan.name}" (máx. ${newPlan.maxEmployees} usuarios). ` +
+          `La organización tiene ${currentUsers} usuarios activos. ` +
+          `Desactive usuarios hasta tener ${newPlan.maxEmployees} o menos antes de hacer downgrade.`,
+        );
+      }
+
       sub.planId = dto.planId;
-      const plan = await this.findPlanById(dto.planId);
-      await this.syncTenantPlan(sub.tenantId, plan);
+      await this.syncTenantPlan(sub.tenantId, newPlan);
+
+      // Audit plan change
+      if (changedBy) {
+        const oldPlan = previousPlanId ? await this.planRepo.findOne({ where: { id: previousPlanId } }) : null;
+        await this.auditService.log(
+          sub.tenantId, changedBy, 'subscription.plan_changed', 'subscription', sub.id,
+          {
+            previousPlan: oldPlan?.code || 'none',
+            previousPlanName: oldPlan?.name || 'none',
+            newPlan: newPlan.code,
+            newPlanName: newPlan.name,
+            currentUsers,
+            newMaxEmployees: newPlan.maxEmployees,
+          },
+        );
+      }
     }
+
     if (dto.status !== undefined) sub.status = dto.status;
     if (dto.startDate !== undefined) sub.startDate = dto.startDate;
     if (dto.endDate !== undefined) sub.endDate = dto.endDate;
@@ -135,13 +212,30 @@ export class SubscriptionsService {
     if (dto.notes !== undefined) sub.notes = dto.notes;
 
     await this.subRepo.save(sub);
+
+    // Audit status change
+    if (changedBy && dto.status !== undefined && dto.status !== previousStatus) {
+      await this.auditService.log(
+        sub.tenantId, changedBy, 'subscription.status_changed', 'subscription', sub.id,
+        { previousStatus, newStatus: dto.status },
+      );
+    }
+
     return this.findById(id);
   }
 
-  async cancel(id: string): Promise<void> {
+  async cancel(id: string, changedBy?: string): Promise<void> {
     const sub = await this.findById(id);
+    const previousStatus = sub.status;
     sub.status = 'cancelled';
     await this.subRepo.save(sub);
+
+    if (changedBy) {
+      await this.auditService.log(
+        sub.tenantId, changedBy, 'subscription.cancelled', 'subscription', sub.id,
+        { previousStatus },
+      );
+    }
   }
 
   async getStats(): Promise<any> {
@@ -150,6 +244,7 @@ export class SubscriptionsService {
     const trial = await this.subRepo.count({ where: { status: 'trial' } });
     const suspended = await this.subRepo.count({ where: { status: 'suspended' } });
     const cancelled = await this.subRepo.count({ where: { status: 'cancelled' } });
+    const expired = await this.subRepo.count({ where: { status: 'expired' } });
 
     const byPlan = await this.subRepo
       .createQueryBuilder('s')
@@ -159,7 +254,27 @@ export class SubscriptionsService {
       .groupBy('p.name')
       .getRawMany();
 
-    return { total, active, trial, suspended, cancelled, byPlan };
+    return { total, active, trial, suspended, cancelled, expired, byPlan };
+  }
+
+  // ─── Trial Expiration Check (called by cron) ────────────────────────────
+
+  async expireTrials(): Promise<number> {
+    const now = new Date();
+    const expiredTrials = await this.subRepo
+      .createQueryBuilder()
+      .update(Subscription)
+      .set({ status: 'expired' })
+      .where('status = :status', { status: 'trial' })
+      .andWhere('trial_ends_at IS NOT NULL')
+      .andWhere('trial_ends_at < :now', { now })
+      .execute();
+
+    const count = expiredTrials.affected || 0;
+    if (count > 0) {
+      this.logger.log(`Auto-expired ${count} trial subscriptions`);
+    }
+    return count;
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────

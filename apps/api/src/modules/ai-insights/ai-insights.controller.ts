@@ -15,12 +15,13 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 import { AiInsightsService } from './ai-insights.service';
 import { InsightType } from './entities/ai-insight.entity';
 
 @Controller('ai')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
-@Feature('IA')
+@Feature(PlanFeature.AI_INSIGHTS)
 export class AiInsightsController {
   constructor(private readonly aiService: AiInsightsService) {}
 

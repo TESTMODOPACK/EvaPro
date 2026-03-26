@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { EvaluationsService } from './evaluations.service';
 import { EvaluationsController } from './evaluations.controller';
 import { AuditModule } from '../audit/audit.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AuditModule } from '../audit/audit.module';
       User,
     ]),
     AuditModule,
+    SubscriptionsModule,
   ],
   controllers: [EvaluationsController],
   providers: [EvaluationsService],

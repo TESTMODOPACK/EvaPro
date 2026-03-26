@@ -20,9 +20,13 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ObjectivesService } from './objectives.service';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 
 @Controller('objectives')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
+@Feature(PlanFeature.OKR)
 export class ObjectivesController {
   constructor(private readonly objectivesService: ObjectivesService) {}
 

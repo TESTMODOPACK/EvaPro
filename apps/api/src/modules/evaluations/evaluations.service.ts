@@ -17,6 +17,8 @@ import { CreateCycleDto, UpdateCycleDto } from './dto/cycle.dto';
 import { SaveResponseDto, SubmitResponseDto } from './dto/response.dto';
 import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignment.dto';
 import { AuditService } from '../audit/audit.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { PlanFeature } from '../../common/constants/plan-features';
 
 @Injectable()
 export class EvaluationsService {
@@ -37,6 +39,7 @@ export class EvaluationsService {
     private readonly stageRepo: Repository<CycleStage>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   // ─── Cycles ───────────────────────────────────────────────────────────────
@@ -60,6 +63,24 @@ export class EvaluationsService {
     if (new Date(dto.startDate) >= new Date(dto.endDate)) {
       throw new BadRequestException('La fecha de inicio debe ser anterior a la fecha de fin');
     }
+
+    // Validate evaluation type against subscription plan
+    const cycleType = dto.type ?? CycleType.DEGREE_90;
+    const sub = await this.subscriptionsService.findByTenantId(tenantId);
+    if (sub?.plan) {
+      const features: string[] = sub.plan.features || [];
+      if ((cycleType === CycleType.DEGREE_270) && !features.includes(PlanFeature.EVAL_270)) {
+        throw new ForbiddenException(
+          `Su plan "${sub.plan.name}" no incluye evaluaciones 270°. Actualice a un plan superior.`,
+        );
+      }
+      if ((cycleType === CycleType.DEGREE_360) && !features.includes(PlanFeature.EVAL_360)) {
+        throw new ForbiddenException(
+          `Su plan "${sub.plan.name}" no incluye evaluaciones 360°. Actualice a un plan superior.`,
+        );
+      }
+    }
+
     const cycle = this.cycleRepo.create({
       tenantId,
       name: dto.name,

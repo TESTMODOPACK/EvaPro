@@ -18,9 +18,13 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { FeedbackService } from './feedback.service';
 import { CreateCheckInDto, UpdateCheckInDto, RejectCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 
 @Controller('feedback')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
+@Feature(PlanFeature.FEEDBACK)
 export class FeedbackController {
   constructor(private readonly feedbackService: FeedbackService) {}
 

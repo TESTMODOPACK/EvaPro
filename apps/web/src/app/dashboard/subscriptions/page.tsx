@@ -30,6 +30,25 @@ const planStatusBadge: Record<string, string> = {
 
 // ─── Empty forms ────────────────────────────────────────────────────────────
 
+const FEATURE_OPTIONS = [
+  { key: 'EVAL_90_180', label: 'Evaluaciones 90\u00b0/180\u00b0' },
+  { key: 'EVAL_270', label: 'Evaluaciones 270\u00b0' },
+  { key: 'EVAL_360', label: 'Evaluaciones 360\u00b0' },
+  { key: 'BASIC_REPORTS', label: 'Reportes b\u00e1sicos' },
+  { key: 'ADVANCED_REPORTS', label: 'Reportes avanzados' },
+  { key: 'OKR', label: 'OKRs / Objetivos' },
+  { key: 'FEEDBACK', label: 'Feedback continuo' },
+  { key: 'CHECKINS', label: 'Check-ins 1:1' },
+  { key: 'TEMPLATES_CUSTOM', label: 'Plantillas personalizadas' },
+  { key: 'PDI', label: 'Planes de desarrollo' },
+  { key: 'NINE_BOX', label: 'Nine Box' },
+  { key: 'CALIBRATION', label: 'Calibraci\u00f3n' },
+  { key: 'AI_INSIGHTS', label: 'IA / Insights' },
+  { key: 'PUBLIC_API', label: 'API p\u00fablica' },
+];
+
+const CURRENCY_OPTIONS = ['UF', 'CLP', 'USD'];
+
 const emptyPlanForm = {
   name: '',
   code: '',
@@ -37,7 +56,8 @@ const emptyPlanForm = {
   maxEmployees: 50,
   monthlyPrice: '',
   yearlyPrice: '',
-  features: '',
+  currency: 'UF',
+  features: [] as string[],
   displayOrder: 0,
 };
 
@@ -142,9 +162,6 @@ export default function SubscriptionsPage() {
     setSaving(true);
     setError('');
     try {
-      const features = planForm.features
-        ? planForm.features.split(',').map((f) => f.trim()).filter(Boolean)
-        : [];
       await api.subscriptions.plans.create(token, {
         name: planForm.name,
         code: planForm.code,
@@ -152,7 +169,8 @@ export default function SubscriptionsPage() {
         maxEmployees: Number(planForm.maxEmployees),
         monthlyPrice: planForm.monthlyPrice ? Number(planForm.monthlyPrice) : undefined,
         yearlyPrice: planForm.yearlyPrice ? Number(planForm.yearlyPrice) : undefined,
-        features,
+        currency: (planForm as any).currency || 'UF',
+        features: planForm.features,
         displayOrder: Number(planForm.displayOrder),
       });
       setSuccess('Plan creado correctamente');
@@ -171,9 +189,6 @@ export default function SubscriptionsPage() {
     setSaving(true);
     setError('');
     try {
-      const features = planForm.features
-        ? planForm.features.split(',').map((f) => f.trim()).filter(Boolean)
-        : [];
       await api.subscriptions.plans.update(token, editingPlanId, {
         name: planForm.name,
         code: planForm.code,
@@ -181,7 +196,8 @@ export default function SubscriptionsPage() {
         maxEmployees: Number(planForm.maxEmployees),
         monthlyPrice: planForm.monthlyPrice ? Number(planForm.monthlyPrice) : undefined,
         yearlyPrice: planForm.yearlyPrice ? Number(planForm.yearlyPrice) : undefined,
-        features,
+        currency: (planForm as any).currency || 'UF',
+        features: planForm.features,
         displayOrder: Number(planForm.displayOrder),
       });
       setSuccess('Plan actualizado');
@@ -216,9 +232,10 @@ export default function SubscriptionsPage() {
       maxEmployees: plan.maxEmployees ?? 50,
       monthlyPrice: plan.monthlyPrice != null ? String(plan.monthlyPrice) : '',
       yearlyPrice: plan.yearlyPrice != null ? String(plan.yearlyPrice) : '',
-      features: Array.isArray(plan.features) ? plan.features.join(', ') : (plan.features ?? ''),
+      currency: plan.currency || 'UF',
+      features: Array.isArray(plan.features) ? plan.features : [],
       displayOrder: plan.displayOrder ?? 0,
-    });
+    } as any);
     setEditingPlanId(plan.id);
     setShowPlanForm(true);
     setError('');
@@ -420,24 +437,47 @@ export default function SubscriptionsPage() {
                 </div>
                 <div>
                   <label style={labelStyle}>Precio anual</label>
-                  <input style={inputStyle} type="number" placeholder="0.00" value={planForm.yearlyPrice} onChange={(e) => setPlanForm({ ...planForm, yearlyPrice: e.target.value })} />
+                  <input style={inputStyle} type="number" step="0.1" placeholder="0.00" value={planForm.yearlyPrice} onChange={(e) => setPlanForm({ ...planForm, yearlyPrice: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Moneda</label>
+                  <select style={inputStyle} value={(planForm as any).currency || 'UF'} onChange={(e) => setPlanForm({ ...planForm, currency: e.target.value } as any)}>
+                    {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label style={labelStyle}>Orden</label>
                   <input style={inputStyle} type="number" value={planForm.displayOrder} onChange={(e) => setPlanForm({ ...planForm, displayOrder: Number(e.target.value) })} />
                 </div>
                 <div style={{ gridColumn: 'span 3' }}>
-                  <label style={labelStyle}>Descripcion</label>
+                  <label style={labelStyle}>Descripci&oacute;n</label>
                   <input style={inputStyle} value={planForm.description} onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })} placeholder="Descripcion del plan..." />
                 </div>
                 <div style={{ gridColumn: 'span 3' }}>
-                  <label style={labelStyle}>Features (separadas por coma)</label>
-                  <textarea
-                    style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }}
-                    value={planForm.features}
-                    onChange={(e) => setPlanForm({ ...planForm, features: e.target.value })}
-                    placeholder="Ej: Evaluaciones 360, Reportes, Check-ins"
-                  />
+                  <label style={labelStyle}>Features incluidas</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginTop: '0.35rem' }}>
+                    {FEATURE_OPTIONS.map((fo) => {
+                      const checked = Array.isArray(planForm.features) && planForm.features.includes(fo.key);
+                      return (
+                        <label key={fo.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', padding: '0.3rem 0.5rem', borderRadius: 'var(--radius-sm)', background: checked ? 'var(--accent-light, rgba(99,102,241,0.08))' : 'transparent' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const current = Array.isArray(planForm.features) ? [...planForm.features] : [];
+                              if (checked) {
+                                setPlanForm({ ...planForm, features: current.filter((f) => f !== fo.key) } as any);
+                              } else {
+                                setPlanForm({ ...planForm, features: [...current, fo.key] } as any);
+                              }
+                            }}
+                            style={{ accentColor: 'var(--accent)' }}
+                          />
+                          <span style={{ fontWeight: checked ? 600 : 400 }}>{fo.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
@@ -482,13 +522,18 @@ export default function SubscriptionsPage() {
                         </td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{plan.maxEmployees ?? '-'}</td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          {plan.monthlyPrice != null ? formatCLP(plan.monthlyPrice) : '-'}
+                          {plan.monthlyPrice > 0 ? `${Number(plan.monthlyPrice).toFixed(1)} ${plan.currency || 'UF'}` : 'Gratis'}
                         </td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          {plan.yearlyPrice != null ? formatCLP(plan.yearlyPrice) : '-'}
+                          {plan.yearlyPrice > 0 ? `${Number(plan.yearlyPrice).toFixed(0)} ${plan.currency || 'UF'}` : '-'}
                         </td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {Array.isArray(plan.features) ? plan.features.join(', ') : (plan.features ?? '-')}
+                        <td style={{ maxWidth: '200px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                            {Array.isArray(plan.features) ? plan.features.map((f: string) => {
+                              const label = FEATURE_OPTIONS.find((fo) => fo.key === f)?.label || f;
+                              return <span key={f} className="badge badge-accent" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>{label}</span>;
+                            }) : '-'}
+                          </div>
                         </td>
                         <td>
                           <span className={`badge ${planStatusBadge[plan.isActive === false ? 'inactive' : 'active']}`}>

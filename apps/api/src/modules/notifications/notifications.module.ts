@@ -11,6 +11,7 @@ import { DevelopmentAction } from '../development/entities/development-action.en
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { User } from '../users/entities/user.entity';
       CheckIn,
       User,
     ]),
+    SubscriptionsModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, RemindersService],

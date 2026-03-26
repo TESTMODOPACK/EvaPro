@@ -79,20 +79,20 @@ export class SubscriptionsController {
 
   @Post()
   @Roles('super_admin')
-  create(@Body() dto: any) {
-    return this.subscriptionsService.create(dto);
+  create(@Body() dto: any, @Request() req: any) {
+    return this.subscriptionsService.create(dto, req.user?.userId);
   }
 
   @Patch(':id')
   @Roles('super_admin')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
-    return this.subscriptionsService.update(id, dto);
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any, @Request() req: any) {
+    return this.subscriptionsService.update(id, dto, req.user?.userId);
   }
 
   @Delete(':id')
   @Roles('super_admin')
   @HttpCode(HttpStatus.NO_CONTENT)
-  cancel(@Param('id', ParseUUIDPipe) id: string) {
-    return this.subscriptionsService.cancel(id);
+  cancel(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.subscriptionsService.cancel(id, req.user?.userId);
   }
 }

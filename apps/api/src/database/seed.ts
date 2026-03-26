@@ -299,34 +299,47 @@ async function seed() {
       console.log(`\u2705  Tenant created: ${tenant.name} (${tenant.id})`);
     }
 
-    /* ── Subscription Plans + Demo Subscription ──────────────────────────── */
+    /* ── Subscription Plans (UF pricing) + Demo Subscription ──────────── */
+    // Prices in UF (Unidad de Fomento, Chile) — reajustable por IPC
+    // UF March 2026 ≈ $39.841 CLP
     let starterPlan = await planRepo.findOne({ where: { code: 'starter' } });
     if (!starterPlan) {
       starterPlan = planRepo.create({
         name: 'Starter', code: 'starter',
-        description: 'Plan gratuito para comenzar',
-        maxEmployees: 50, monthlyPrice: 0,
-        features: ['Evaluaciones 90/180', 'Hasta 50 usuarios', 'Reportes basicos'],
+        description: 'Gratis — Ideal para conocer EvaPro (hasta 15 usuarios, 2 ciclos/a\u00f1o)',
+        maxEmployees: 15, monthlyPrice: 0,
+        features: ['EVAL_90_180', 'BASIC_REPORTS'],
         isActive: true, displayOrder: 1,
       });
       starterPlan = await planRepo.save(starterPlan);
-      console.log('\u2705  Plan "Starter" created');
+      console.log('\u2705  Plan "Starter" created (Gratis, 15 users)');
+
+      await planRepo.save(planRepo.create({
+        name: 'Growth', code: 'growth',
+        description: 'Para PYMEs en crecimiento — 1,5 UF/mes (hasta 50 usuarios)',
+        maxEmployees: 50, monthlyPrice: 1.5, yearlyPrice: 15,
+        features: ['EVAL_90_180', 'EVAL_270', 'BASIC_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM'],
+        isActive: true, displayOrder: 2,
+      }));
+      console.log('\u2705  Plan "Growth" created (1.5 UF/mes, 50 users)');
 
       await planRepo.save(planRepo.create({
         name: 'Pro', code: 'pro',
-        description: 'Plan profesional con todas las evaluaciones',
-        maxEmployees: 200, monthlyPrice: 49,
-        features: ['Evaluaciones 360', 'Hasta 200 usuarios', 'Analytics', 'Calibracion', 'Nine Box'],
-        isActive: true, displayOrder: 2,
-      }));
-      await planRepo.save(planRepo.create({
-        name: 'Enterprise', code: 'enterprise',
-        description: 'Plan empresarial sin limites',
-        maxEmployees: 9999, monthlyPrice: 199,
-        features: ['Todo incluido', 'Usuarios ilimitados', 'IA', 'Soporte dedicado', 'API'],
+        description: 'Para empresas medianas — 3,5 UF/mes (hasta 200 usuarios)',
+        maxEmployees: 200, monthlyPrice: 3.5, yearlyPrice: 35,
+        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION'],
         isActive: true, displayOrder: 3,
       }));
-      console.log('\u2705  Plans "Pro" and "Enterprise" created');
+      console.log('\u2705  Plan "Pro" created (3.5 UF/mes, 200 users)');
+
+      await planRepo.save(planRepo.create({
+        name: 'Enterprise', code: 'enterprise',
+        description: 'Para corporativos y consultores — 8 UF/mes (usuarios ilimitados)',
+        maxEmployees: 9999, monthlyPrice: 8, yearlyPrice: null,
+        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'AI_INSIGHTS', 'PUBLIC_API'],
+        isActive: true, displayOrder: 4,
+      }));
+      console.log('\u2705  Plan "Enterprise" created (8 UF/mes, unlimited)');
     }
 
     let subscription = await subRepo.findOne({ where: { tenantId: tenant.id } });
