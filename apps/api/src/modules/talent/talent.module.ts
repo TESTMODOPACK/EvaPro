@@ -8,9 +8,11 @@ import { EvaluationResponse } from '../evaluations/entities/evaluation-response.
 import { User } from '../users/entities/user.entity';
 import { TalentService } from './talent.service';
 import { TalentController } from './talent.controller';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
+    SubscriptionsModule,
     TypeOrmModule.forFeature([
       TalentAssessment,
       CalibrationSession,

@@ -7,9 +7,13 @@ import { KeyResult } from './entities/key-result.entity';
 import { User } from '../users/entities/user.entity';
 import { ObjectivesService } from './objectives.service';
 import { ObjectivesController } from './objectives.controller';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User])],
+  imports: [
+    SubscriptionsModule,
+    TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User]),
+  ],
   controllers: [ObjectivesController],
   providers: [ObjectivesService],
   exports: [ObjectivesService],

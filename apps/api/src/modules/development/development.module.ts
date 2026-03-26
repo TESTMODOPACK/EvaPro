@@ -9,9 +9,13 @@ import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { DevelopmentService } from './development.service';
 import { DevelopmentController } from './development.controller';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment, User, TalentAssessment])],
+  imports: [
+    SubscriptionsModule,
+    TypeOrmModule.forFeature([Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment, User, TalentAssessment]),
+  ],
   controllers: [DevelopmentController],
   providers: [DevelopmentService],
   exports: [DevelopmentService],

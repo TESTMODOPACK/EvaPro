@@ -7,9 +7,11 @@ import { User } from '../users/entities/user.entity';
 import { FeedbackService } from './feedback.service';
 import { FeedbackController } from './feedback.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
+    SubscriptionsModule,
     TypeOrmModule.forFeature([CheckIn, QuickFeedback, MeetingLocation, User]),
     forwardRef(() => NotificationsModule),
   ],
