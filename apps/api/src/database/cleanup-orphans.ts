@@ -45,7 +45,9 @@ async function main() {
     }
 
     // ── Phase 5: Development tables (new — may not exist yet) ─────────────
+    // IMPORTANT: role_competencies has FK to competencies, so drop it first
     const phase5Tables = [
+      'role_competencies',    // FK → competencies
       'development_comments',
       'development_actions',
       'development_plans',
@@ -59,6 +61,23 @@ async function main() {
       } catch (err: any) {
         console.log(`[cleanup] Could not drop ${table}: ${err.message}`);
       }
+    }
+
+    // ── Fix orphaned FK references in quick_feedbacks → competencies ──
+    // After competencies is dropped, quick_feedbacks may have stale competency_id values.
+    // Null them out so TypeORM can recreate the FK constraint cleanly.
+    try {
+      const res = await client.query(`
+        UPDATE "quick_feedbacks" SET "competency_id" = NULL
+        WHERE "competency_id" IS NOT NULL
+        AND "competency_id" NOT IN (SELECT id FROM "competencies")
+      `);
+      if (res.rowCount && res.rowCount > 0) {
+        console.log(`[cleanup] Nulled ${res.rowCount} orphaned competency_id in quick_feedbacks`);
+      }
+    } catch (err: any) {
+      // Table may not exist yet — that's fine
+      console.log(`[cleanup] quick_feedbacks cleanup skipped: ${err.message}`);
     }
 
     // ── Phase 4: Calibration tables (FK dependency causes pkey conflict) ──
@@ -100,6 +119,8 @@ async function main() {
       { table: 'quick_feedbacks', column: 'visibility', sql: `ALTER TABLE "quick_feedbacks" ADD COLUMN IF NOT EXISTS "visibility" varchar DEFAULT 'public'` },
       { table: 'calibration_entries', column: 'change_log', sql: `ALTER TABLE "calibration_entries" ADD COLUMN IF NOT EXISTS "change_log" jsonb DEFAULT '[]'` },
       { table: 'evaluation_cycles', column: 'status_cancelled', sql: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'cancelled' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'evaluation_cycles_status_enum')) THEN ALTER TYPE "evaluation_cycles_status_enum" ADD VALUE IF NOT EXISTS 'cancelled'; END IF; END $$;` },
+      { table: 'subscription_plans', column: 'currency', sql: `ALTER TABLE "subscription_plans" ADD COLUMN IF NOT EXISTS "currency" varchar(10) DEFAULT 'UF'` },
+      { table: 'evaluation_cycles', column: 'period', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "period" varchar(20) DEFAULT 'annual'` },
     ];
 
     for (const fix of columnFixes) {
