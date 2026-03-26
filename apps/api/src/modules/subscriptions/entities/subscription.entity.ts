@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { SubscriptionPlan } from './subscription-plan.entity';
+import { BillingPeriod } from './payment-history.entity';
 
 @Entity('subscriptions')
 @Index('idx_sub_tenant', ['tenantId'])
@@ -42,6 +43,21 @@ export class Subscription {
 
   @Column({ type: 'date', name: 'trial_ends_at', nullable: true })
   trialEndsAt: Date | null;
+
+  @Column({ type: 'varchar', length: 20, name: 'billing_period', default: BillingPeriod.MONTHLY })
+  billingPeriod: BillingPeriod;
+
+  @Column({ type: 'date', name: 'next_billing_date', nullable: true })
+  nextBillingDate: Date | null;
+
+  @Column({ type: 'boolean', name: 'auto_renew', default: true })
+  autoRenew: boolean;
+
+  @Column({ type: 'date', name: 'last_payment_date', nullable: true })
+  lastPaymentDate: Date | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'last_payment_amount', nullable: true })
+  lastPaymentAmount: number | null;
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;

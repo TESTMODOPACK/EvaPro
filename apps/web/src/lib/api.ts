@@ -217,6 +217,10 @@ export const api = {
       request<void>(`/subscriptions/${id}`, { method: "DELETE" }, token),
     stats: (token: string) => request<any>("/subscriptions/stats", {}, token),
     mySubscription: (token: string) => request<any>("/subscriptions/my-subscription", {}, token),
+    myPayments: (token: string) => request<any[]>("/subscriptions/my-payments", {}, token),
+    getPayments: (token: string, id: string) => request<any[]>(`/subscriptions/${id}/payments`, {}, token),
+    registerPayment: (token: string, id: string, data: any) =>
+      request<any>(`/subscriptions/${id}/payments`, { method: "POST", body: JSON.stringify(data) }, token),
     plans: {
       list: (token: string) => request<any[]>("/subscriptions/plans", {}, token),
       create: (token: string, data: any) =>
@@ -225,6 +229,8 @@ export const api = {
         request<any>(`/subscriptions/plans/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       deactivate: (token: string, id: string) =>
         request<void>(`/subscriptions/plans/${id}`, { method: "DELETE" }, token),
+      pricing: (token: string, id: string) =>
+        request<any>(`/subscriptions/plans/${id}/pricing`, {}, token),
     },
   },
 

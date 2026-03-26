@@ -28,6 +28,12 @@ export class SubscriptionPlan {
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'monthly_price', default: 0 })
   monthlyPrice: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'quarterly_price', nullable: true })
+  quarterlyPrice: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'semiannual_price', nullable: true })
+  semiannualPrice: number | null;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'yearly_price', nullable: true })
   yearlyPrice: number | null;
 

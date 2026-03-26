@@ -48,6 +48,7 @@ import { DevelopmentComment } from '../modules/development/entities/development-
 import { Notification, NotificationType } from '../modules/notifications/entities/notification.entity';
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
 import { RoleCompetency } from '../modules/development/entities/role-competency.entity';
+import { PaymentHistory, BillingPeriod, PaymentStatus } from '../modules/subscriptions/entities/payment-history.entity';
 import { SystemChangelog, ChangelogType } from '../modules/system/entities/system-changelog.entity';
 import { Recognition } from '../modules/recognition/entities/recognition.entity';
 import { Badge } from '../modules/recognition/entities/badge.entity';
@@ -70,6 +71,7 @@ const ds = new DataSource({
     Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
     Notification, AiInsight,
     Recognition, Badge, UserBadge, UserPoints,
+    PaymentHistory,
     SystemChangelog,
   ],
   synchronize: true, logging: false,
@@ -738,6 +740,61 @@ async function seedDemoFull() {
       }
     } else {
       console.log('   Pro plan not found, skipping subscription upgrade.');
+    }
+
+    /* ── 14b. PAYMENT HISTORY (demo) ──────────────────────────────── */
+    const payHistRepo = ds.getRepository(PaymentHistory);
+    const existingSub = await subRepo.findOne({ where: { tenantId: tid } });
+    if (existingSub) {
+      const existingPayments = await payHistRepo.count({ where: { tenantId: tid } });
+      if (existingPayments === 0) {
+        const now = new Date();
+        const payments = [
+          { monthsAgo: 3, amount: 3.5, status: PaymentStatus.PAID },
+          { monthsAgo: 2, amount: 3.5, status: PaymentStatus.PAID },
+          { monthsAgo: 1, amount: 3.5, status: PaymentStatus.PAID },
+        ];
+        for (const p of payments) {
+          const periodStart = new Date(now);
+          periodStart.setMonth(periodStart.getMonth() - p.monthsAgo);
+          periodStart.setDate(1);
+          const periodEnd = new Date(periodStart);
+          periodEnd.setMonth(periodEnd.getMonth() + 1);
+          periodEnd.setDate(0);
+          const paidAt = new Date(periodStart);
+          paidAt.setDate(2); // Paid on the 2nd
+
+          await payHistRepo.save(payHistRepo.create({
+            tenantId: tid,
+            subscriptionId: existingSub.id,
+            amount: p.amount,
+            currency: 'UF',
+            billingPeriod: BillingPeriod.MONTHLY,
+            periodStart,
+            periodEnd,
+            status: p.status,
+            paymentMethod: 'Transferencia bancaria',
+            transactionRef: `PAY-${now.getFullYear()}${String(periodStart.getMonth() + 1).padStart(2, '0')}-DEMO`,
+            paidAt,
+          }));
+        }
+
+        // Update subscription billing info
+        existingSub.billingPeriod = BillingPeriod.MONTHLY;
+        existingSub.lastPaymentDate = new Date();
+        existingSub.lastPaymentDate.setDate(2);
+        existingSub.lastPaymentAmount = 3.5;
+        const nextBilling = new Date();
+        nextBilling.setMonth(nextBilling.getMonth() + 1);
+        nextBilling.setDate(1);
+        existingSub.nextBillingDate = nextBilling;
+        existingSub.autoRenew = true;
+        await subRepo.save(existingSub);
+
+        console.log(`✅ Payment history created: ${payments.length} monthly payments + billing info updated`);
+      } else {
+        console.log(`   Payments already exist (${existingPayments}), skipping.`);
+      }
     }
 
     /* ── 15. RECOGNITION + GAMIFICATION ─────────────────────────────── */

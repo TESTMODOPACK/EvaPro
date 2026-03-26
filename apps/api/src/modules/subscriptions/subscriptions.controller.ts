@@ -49,12 +49,25 @@ export class SubscriptionsController {
     return this.subscriptionsService.deactivatePlan(id);
   }
 
+  // ─── Plan Pricing ──────────────────────────────────────────────────────
+
+  @Get('plans/:id/pricing')
+  planPricing(@Param('id', ParseUUIDPipe) id: string) {
+    return this.subscriptionsService.calculatePriceForPeriod(id, 'monthly' as any);
+  }
+
   // ─── My Subscription (for tenant_admin) ────────────────────────────────
 
   @Get('my-subscription')
   @Roles('tenant_admin', 'manager', 'employee', 'external')
   mySubscription(@Request() req: any) {
     return this.subscriptionsService.findMySubscription(req.user.tenantId);
+  }
+
+  @Get('my-payments')
+  @Roles('tenant_admin', 'manager', 'employee', 'external')
+  myPayments(@Request() req: any) {
+    return this.subscriptionsService.getPaymentHistory(req.user.tenantId);
   }
 
   // ─── Subscriptions ─────────────────────────────────────────────────────
@@ -94,5 +107,23 @@ export class SubscriptionsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   cancel(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.subscriptionsService.cancel(id, req.user?.userId);
+  }
+
+  // ─── Payments ─────────────────────────────────────────────────────────
+
+  @Get(':id/payments')
+  @Roles('super_admin')
+  getPayments(@Param('id', ParseUUIDPipe) id: string) {
+    return this.subscriptionsService.getPaymentsBySubscription(id);
+  }
+
+  @Post(':id/payments')
+  @Roles('super_admin')
+  registerPayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: any,
+    @Request() req: any,
+  ) {
+    return this.subscriptionsService.registerPayment(id, dto, req.user?.userId);
   }
 }

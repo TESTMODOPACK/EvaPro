@@ -314,10 +314,14 @@ async function seed() {
       starterPlan = await planRepo.save(starterPlan);
       console.log('\u2705  Plan "Starter" created (Gratis, 15 users)');
 
+      // Pricing: monthly base, quarterly -10%, semiannual -15%, annual -20%
       await planRepo.save(planRepo.create({
         name: 'Growth', code: 'growth',
         description: 'Para PYMEs en crecimiento — 1,5 UF/mes (hasta 50 usuarios)',
-        maxEmployees: 50, monthlyPrice: 1.5, yearlyPrice: 15,
+        maxEmployees: 50, monthlyPrice: 1.5,
+        quarterlyPrice: 4.05,    // 1.5 × 3 × 0.90
+        semiannualPrice: 7.65,   // 1.5 × 6 × 0.85
+        yearlyPrice: 14.40,      // 1.5 × 12 × 0.80
         features: ['EVAL_90_180', 'EVAL_270', 'BASIC_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM'],
         isActive: true, displayOrder: 2,
       }));
@@ -326,7 +330,10 @@ async function seed() {
       await planRepo.save(planRepo.create({
         name: 'Pro', code: 'pro',
         description: 'Para empresas medianas — 3,5 UF/mes (hasta 200 usuarios)',
-        maxEmployees: 200, monthlyPrice: 3.5, yearlyPrice: 35,
+        maxEmployees: 200, monthlyPrice: 3.5,
+        quarterlyPrice: 9.45,    // 3.5 × 3 × 0.90
+        semiannualPrice: 17.85,  // 3.5 × 6 × 0.85
+        yearlyPrice: 33.60,      // 3.5 × 12 × 0.80
         features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION'],
         isActive: true, displayOrder: 3,
       }));
@@ -335,7 +342,10 @@ async function seed() {
       await planRepo.save(planRepo.create({
         name: 'Enterprise', code: 'enterprise',
         description: 'Para corporativos y consultores — 8 UF/mes (usuarios ilimitados)',
-        maxEmployees: 9999, monthlyPrice: 8, yearlyPrice: null,
+        maxEmployees: 9999, monthlyPrice: 8,
+        quarterlyPrice: 21.60,   // 8 × 3 × 0.90
+        semiannualPrice: 40.80,  // 8 × 6 × 0.85
+        yearlyPrice: 76.80,      // 8 × 12 × 0.80
         features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'AI_INSIGHTS', 'PUBLIC_API'],
         isActive: true, displayOrder: 4,
       }));

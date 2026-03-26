@@ -28,6 +28,7 @@ async function main() {
 
     // ── B2/B3: Tables with new columns that conflict on ALTER (existing rows lack new NOT NULL cols)
     const b2b3Tables = [
+      'payment_history',    // Billing: payment records (FK to subscriptions)
       'ai_insights',        // Phase 3: AI insights cache
       'key_results',        // B2.10: new entity, has tenant_id NOT NULL
       'notifications',      // B3.16: new entity

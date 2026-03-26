@@ -26,6 +26,8 @@ export enum NotificationType {
   ESCALATION_PDI_OVERDUE = 'escalation_pdi_overdue',
   ESCALATION_OBJECTIVE_CRITICAL = 'escalation_objective_critical',
   PDI_REQUIRED = 'pdi_required',
+  SUBSCRIPTION_EXPIRING = 'subscription_expiring',
+  SUBSCRIPTION_EXPIRING_URGENT = 'subscription_expiring_urgent',
   GENERAL = 'general',
 }
 

@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Subscription } from './entities/subscription.entity';
 import { SubscriptionPlan } from './entities/subscription-plan.entity';
+import { PaymentHistory, BillingPeriod, PaymentStatus } from './entities/payment-history.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
@@ -26,6 +27,8 @@ export class SubscriptionsService {
     private readonly tenantRepo: Repository<Tenant>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(PaymentHistory)
+    private readonly paymentRepo: Repository<PaymentHistory>,
     private readonly auditService: AuditService,
   ) {}
 
@@ -65,7 +68,10 @@ export class SubscriptionsService {
     if (dto.description !== undefined) plan.description = dto.description;
     if (dto.maxEmployees !== undefined) plan.maxEmployees = dto.maxEmployees;
     if (dto.monthlyPrice !== undefined) plan.monthlyPrice = dto.monthlyPrice;
+    if (dto.quarterlyPrice !== undefined) plan.quarterlyPrice = dto.quarterlyPrice;
+    if (dto.semiannualPrice !== undefined) plan.semiannualPrice = dto.semiannualPrice;
     if (dto.yearlyPrice !== undefined) plan.yearlyPrice = dto.yearlyPrice;
+    if (dto.currency !== undefined) plan.currency = dto.currency;
     if (dto.features !== undefined) plan.features = dto.features;
     if (dto.isActive !== undefined) plan.isActive = dto.isActive;
     if (dto.displayOrder !== undefined) plan.displayOrder = dto.displayOrder;
@@ -83,12 +89,21 @@ export class SubscriptionsService {
   async create(dto: any, changedBy?: string): Promise<Subscription> {
     const plan = await this.findPlanById(dto.planId);
 
+    const billingPeriod = dto.billingPeriod || BillingPeriod.MONTHLY;
+    const startDate = dto.startDate ? new Date(dto.startDate) : new Date();
+    const nextBillingDate = dto.nextBillingDate
+      ? new Date(dto.nextBillingDate)
+      : this.calculateNextBillingDate(startDate, billingPeriod);
+
     const sub = this.subRepo.create({
       tenantId: dto.tenantId,
       planId: dto.planId,
       status: dto.status || 'active',
-      startDate: dto.startDate || new Date(),
+      billingPeriod,
+      startDate,
       endDate: dto.endDate || null,
+      nextBillingDate,
+      autoRenew: dto.autoRenew ?? true,
       trialEndsAt: dto.trialEndsAt || null,
       notes: dto.notes || null,
     });
@@ -209,6 +224,9 @@ export class SubscriptionsService {
     if (dto.startDate !== undefined) sub.startDate = dto.startDate;
     if (dto.endDate !== undefined) sub.endDate = dto.endDate;
     if (dto.trialEndsAt !== undefined) sub.trialEndsAt = dto.trialEndsAt;
+    if (dto.billingPeriod !== undefined) sub.billingPeriod = dto.billingPeriod;
+    if (dto.autoRenew !== undefined) sub.autoRenew = dto.autoRenew;
+    if (dto.nextBillingDate !== undefined) sub.nextBillingDate = dto.nextBillingDate;
     if (dto.notes !== undefined) sub.notes = dto.notes;
 
     await this.subRepo.save(sub);
@@ -277,7 +295,130 @@ export class SubscriptionsService {
     return count;
   }
 
+  // ─── Payment History ──────────────────────────────────────────────────
+
+  async registerPayment(subscriptionId: string, dto: any, changedBy?: string): Promise<PaymentHistory> {
+    const sub = await this.findById(subscriptionId);
+
+    const payment = this.paymentRepo.create({
+      tenantId: sub.tenantId,
+      subscriptionId: sub.id,
+      amount: dto.amount,
+      currency: dto.currency || sub.plan?.currency || 'UF',
+      billingPeriod: dto.billingPeriod || sub.billingPeriod || BillingPeriod.MONTHLY,
+      periodStart: new Date(dto.periodStart),
+      periodEnd: new Date(dto.periodEnd),
+      status: dto.status || PaymentStatus.PAID,
+      paymentMethod: dto.paymentMethod || null,
+      transactionRef: dto.transactionRef || null,
+      notes: dto.notes || null,
+      paidAt: dto.status === PaymentStatus.PAID ? (dto.paidAt ? new Date(dto.paidAt) : new Date()) : null,
+    });
+    const saved = await this.paymentRepo.save(payment);
+
+    // Update subscription billing info
+    if (saved.status === PaymentStatus.PAID) {
+      sub.lastPaymentDate = saved.paidAt || new Date();
+      sub.lastPaymentAmount = saved.amount;
+      sub.nextBillingDate = this.calculateNextBillingDate(
+        new Date(saved.periodEnd),
+        sub.billingPeriod || BillingPeriod.MONTHLY,
+      );
+      // Reactivate if was suspended/expired
+      if (sub.status === 'suspended' || sub.status === 'expired') {
+        sub.status = 'active';
+      }
+      await this.subRepo.save(sub);
+    }
+
+    if (changedBy) {
+      await this.auditService.log(
+        sub.tenantId, changedBy, 'payment.registered', 'payment', saved.id,
+        { amount: saved.amount, currency: saved.currency, status: saved.status },
+      );
+    }
+
+    return saved;
+  }
+
+  async getPaymentHistory(tenantId: string): Promise<PaymentHistory[]> {
+    return this.paymentRepo.find({
+      where: { tenantId },
+      relations: ['subscription'],
+      order: { createdAt: 'DESC' },
+      take: 50,
+    });
+  }
+
+  async getPaymentsBySubscription(subscriptionId: string): Promise<PaymentHistory[]> {
+    return this.paymentRepo.find({
+      where: { subscriptionId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async getUpcomingRenewals(daysAhead: number): Promise<Subscription[]> {
+    const target = new Date();
+    target.setDate(target.getDate() + daysAhead);
+
+    return this.subRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.plan', 'p')
+      .leftJoinAndSelect('s.tenant', 't')
+      .where('s.status IN (:...statuses)', { statuses: ['active', 'trial'] })
+      .andWhere('(s.next_billing_date <= :target OR s.end_date <= :target)', { target })
+      .andWhere('(s.next_billing_date >= :now OR s.end_date >= :now)', { now: new Date() })
+      .getMany();
+  }
+
+  async calculatePriceForPeriod(planId: string, period: BillingPeriod): Promise<any> {
+    const plan = await this.findPlanById(planId);
+    const monthly = Number(plan.monthlyPrice);
+
+    const pricing = {
+      monthly: { price: monthly, discount: 0, savings: 0, period: 1 },
+      quarterly: {
+        price: plan.quarterlyPrice ? Number(plan.quarterlyPrice) : Math.round(monthly * 3 * 0.90 * 100) / 100,
+        discount: 10,
+        savings: Math.round(monthly * 3 * 0.10 * 100) / 100,
+        period: 3,
+      },
+      semiannual: {
+        price: plan.semiannualPrice ? Number(plan.semiannualPrice) : Math.round(monthly * 6 * 0.85 * 100) / 100,
+        discount: 15,
+        savings: Math.round(monthly * 6 * 0.15 * 100) / 100,
+        period: 6,
+      },
+      annual: {
+        price: plan.yearlyPrice ? Number(plan.yearlyPrice) : Math.round(monthly * 12 * 0.80 * 100) / 100,
+        discount: 20,
+        savings: Math.round(monthly * 12 * 0.20 * 100) / 100,
+        period: 12,
+      },
+    };
+
+    return {
+      planId: plan.id,
+      planName: plan.name,
+      currency: plan.currency,
+      monthlyBase: monthly,
+      pricing,
+      selected: pricing[period] || pricing.monthly,
+    };
+  }
+
   // ─── Helpers ───────────────────────────────────────────────────────────
+
+  private calculateNextBillingDate(from: Date, period: BillingPeriod): Date {
+    const next = new Date(from);
+    switch (period) {
+      case BillingPeriod.MONTHLY: next.setMonth(next.getMonth() + 1); break;
+      case BillingPeriod.QUARTERLY: next.setMonth(next.getMonth() + 3); break;
+      case BillingPeriod.SEMIANNUAL: next.setMonth(next.getMonth() + 6); break;
+      case BillingPeriod.ANNUAL: next.setFullYear(next.getFullYear() + 1); break;
+    }
+    return next;
+  }
 
   private async syncTenantPlan(tenantId: string, plan: SubscriptionPlan): Promise<void> {
     await this.tenantRepo.update(tenantId, {

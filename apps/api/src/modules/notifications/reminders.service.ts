@@ -617,4 +617,57 @@ export class RemindersService {
       this.logger.error(`[Cron] Error in expireTrialSubscriptions: ${error}`);
     }
   }
+
+  // ─── 13. Alertas de vencimiento de suscripción (diario 8:30am) ────
+
+  @Cron('30 8 * * *')
+  async alertSubscriptionExpiring() {
+    this.logger.log('[Cron] Checking expiring subscriptions...');
+    try {
+      const now = new Date();
+      const notifications: any[] = [];
+
+      // Check subscriptions expiring in next 10 days
+      const expiring = await this.subscriptionsService.getUpcomingRenewals(10);
+
+      for (const sub of expiring) {
+        const expiryDate = sub.nextBillingDate || sub.endDate;
+        if (!expiryDate) continue;
+        const daysLeft = Math.ceil((new Date(expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysLeft < 0 || daysLeft > 10) continue;
+
+        const admins = await this.userRepo.find({
+          where: { tenantId: sub.tenantId, role: 'tenant_admin', isActive: true },
+          select: ['id'],
+        });
+
+        const isUrgent = daysLeft <= 3;
+        const type = isUrgent
+          ? NotificationType.SUBSCRIPTION_EXPIRING_URGENT
+          : NotificationType.SUBSCRIPTION_EXPIRING;
+
+        for (const admin of admins) {
+          notifications.push({
+            tenantId: sub.tenantId,
+            userId: admin.id,
+            type,
+            title: isUrgent
+              ? `Tu suscripcion vence en ${daysLeft} dias`
+              : `Tu suscripcion vence pronto (${daysLeft} dias)`,
+            message: isUrgent
+              ? `Tu plan ${sub.plan?.name || ''} vence el ${new Date(expiryDate).toLocaleDateString('es-CL')}. Renueva ahora para evitar la suspension del servicio.`
+              : `Tu plan ${sub.plan?.name || ''} vence el ${new Date(expiryDate).toLocaleDateString('es-CL')}. Recuerda renovar a tiempo.`,
+            metadata: { subscriptionId: sub.id, daysLeft },
+          });
+        }
+      }
+
+      if (notifications.length > 0) {
+        await this.notificationsService.createBulk(notifications);
+        this.logger.log(`[Cron] Created ${notifications.length} subscription expiration alerts`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in alertSubscriptionExpiring: ${error}`);
+    }
+  }
 }

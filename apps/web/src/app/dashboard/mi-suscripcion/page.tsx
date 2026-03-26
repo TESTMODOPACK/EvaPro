@@ -32,9 +32,31 @@ function Spinner() {
   );
 }
 
+const billingPeriodLabel: Record<string, string> = {
+  monthly: 'Mensual',
+  quarterly: 'Trimestral',
+  semiannual: 'Semestral',
+  annual: 'Anual',
+};
+
+const paymentStatusLabel: Record<string, string> = {
+  paid: 'Pagado',
+  pending: 'Pendiente',
+  failed: 'Fallido',
+  refunded: 'Reembolsado',
+};
+
+const paymentStatusBadge: Record<string, string> = {
+  paid: 'badge-success',
+  pending: 'badge-warning',
+  failed: 'badge-danger',
+  refunded: 'badge-accent',
+};
+
 export default function MiSuscripcionPage() {
   const token = useAuthStore((s) => s.token);
   const [sub, setSub] = useState<any>(null);
+  const [payments, setPayments] = useState<any[]>([]);
   const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -44,8 +66,9 @@ export default function MiSuscripcionPage() {
     Promise.all([
       api.subscriptions.mySubscription(token).catch(() => null),
       api.users.list(token, 1, 1).then((r) => r.total || 0).catch(() => 0),
+      api.subscriptions.myPayments(token).catch(() => []),
     ])
-      .then(([s, count]) => { setSub(s); setUserCount(count as number); })
+      .then(([s, count, pays]) => { setSub(s); setUserCount(count as number); setPayments(pays as any[]); })
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -109,6 +132,60 @@ export default function MiSuscripcionPage() {
             </div>
           </div>
 
+          {/* Expiration alert */}
+          {(() => {
+            const expiryDate = sub.nextBillingDate || sub.endDate;
+            if (!expiryDate) return null;
+            const daysLeft = Math.ceil((new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+            if (daysLeft > 10) return null;
+            const isUrgent = daysLeft <= 3;
+            return (
+              <div className="card" style={{
+                padding: '1.25rem 1.5rem',
+                marginBottom: '1.5rem',
+                background: isUrgent ? 'var(--danger-bg, #fef2f2)' : 'var(--warning-bg, #fffbeb)',
+                borderLeft: `4px solid ${isUrgent ? 'var(--danger)' : 'var(--warning)'}`,
+              }}>
+                <div style={{ fontWeight: 700, color: isUrgent ? 'var(--danger)' : 'var(--warning)', marginBottom: '0.25rem' }}>
+                  {isUrgent ? `Tu suscripcion vence en ${daysLeft} dias` : `Tu suscripcion vence pronto (${daysLeft} dias)`}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  Fecha de vencimiento: {new Date(expiryDate).toLocaleDateString('es-CL')}. {isUrgent ? 'Renueva ahora para evitar la suspension del servicio.' : 'Recuerda renovar a tiempo.'}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Billing info card */}
+          <div className="card animate-fade-up-delay-2" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Estado de Pago</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem' }}>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Periodo de facturacion</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{billingPeriodLabel[sub.billingPeriod] || sub.billingPeriod || 'Mensual'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Ultimo pago</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                  {sub.lastPaymentDate ? new Date(sub.lastPaymentDate).toLocaleDateString('es-CL') : 'Sin pagos registrados'}
+                </div>
+                {sub.lastPaymentAmount > 0 && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{Number(sub.lastPaymentAmount).toFixed(2)} {plan.currency || 'UF'}</div>
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Proximo vencimiento</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                  {sub.nextBillingDate ? new Date(sub.nextBillingDate).toLocaleDateString('es-CL') : sub.endDate ? new Date(sub.endDate).toLocaleDateString('es-CL') : '-'}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Renovacion automatica</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{sub.autoRenew ? 'Activada' : 'Desactivada'}</div>
+              </div>
+            </div>
+          </div>
+
           {/* Usage card */}
           <div className="card animate-fade-up-delay-2" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Uso de usuarios</h2>
@@ -131,15 +208,58 @@ export default function MiSuscripcionPage() {
             </div>
             {usagePct > 90 && (
               <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: '0.75rem', fontWeight: 500 }}>
-                {'Est\u00e1s cerca del l\u00edmite de usuarios de tu plan. Contacta al administrador para aumentar la capacidad.'}
+                Estas cerca del limite de usuarios de tu plan.
               </p>
             )}
           </div>
 
+          {/* Payment history */}
+          {payments.length > 0 && (
+            <div className="card animate-fade-up-delay-3" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Historial de Pagos</h2>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Fecha</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Periodo</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'right', borderBottom: '2px solid var(--border)' }}>Monto</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>Estado</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Metodo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.slice(0, 12).map((p: any) => (
+                      <tr key={p.id}>
+                        <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+                          {p.paidAt ? new Date(p.paidAt).toLocaleDateString('es-CL') : new Date(p.createdAt).toLocaleDateString('es-CL')}
+                        </td>
+                        <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+                          {new Date(p.periodStart).toLocaleDateString('es-CL')} - {new Date(p.periodEnd).toLocaleDateString('es-CL')}
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>
+                          {Number(p.amount).toFixed(2)} {p.currency}
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
+                          <span className={`badge ${paymentStatusBadge[p.status] || 'badge-accent'}`} style={{ fontSize: '0.75rem' }}>
+                            {paymentStatusLabel[p.status] || p.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                          {p.paymentMethod || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Features card */}
           {plan.features && plan.features.length > 0 && (
             <div className="card animate-fade-up-delay-3" style={{ padding: '1.75rem' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>{'Caracter\u00edsticas incluidas'}</h2>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Caracteristicas incluidas</h2>
               <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
                 {plan.features.map((f: string, i: number) => (
                   <span key={i} className="badge badge-accent" style={{ fontSize: '0.8rem', padding: '0.3rem 0.7rem' }}>
