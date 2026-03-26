@@ -13,6 +13,8 @@ import { assignmentStatusLabel, assignmentStatusBadge } from '@/lib/statusMaps';
 import { api } from '@/lib/api';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { useChangelog } from '@/hooks/useSystemChangelog';
+import { getRoleLabel } from '@/lib/roles';
 
 function Spinner() {
   return (
@@ -832,6 +834,153 @@ function EmployeeDashboard() {
 
 // ─── Main export: route by role ─────────────────────────────────────────────
 
+// ─── Role-based Journey Steps ──────────────────────────────────────────────
+
+const ROLE_STEPS: Record<string, Array<{ icon: string; title: string; desc: string; href: string }>> = {
+  tenant_admin: [
+    { icon: '\uD83D\uDC65', title: 'Gestionar equipo', desc: 'Importa o crea los usuarios de tu organizacion', href: '/dashboard/usuarios' },
+    { icon: '\uD83D\uDCCB', title: 'Crear plantilla', desc: 'Disena el formulario de evaluacion', href: '/dashboard/plantillas' },
+    { icon: '\uD83D\uDD04', title: 'Lanzar ciclo', desc: 'Configura y lanza la evaluacion', href: '/dashboard/evaluaciones/nuevo' },
+    { icon: '\uD83D\uDCCA', title: 'Ver resultados', desc: 'Analiza el desempeno con reportes avanzados', href: '/dashboard/informes' },
+    { icon: '\uD83C\uDFAF', title: 'Definir objetivos', desc: 'Establece OKRs para el equipo', href: '/dashboard/objetivos' },
+    { icon: '\uD83D\uDCC8', title: 'Calibrar talento', desc: 'Ajusta y valida los resultados', href: '/dashboard/calibracion' },
+  ],
+  manager: [
+    { icon: '\u2705', title: 'Evaluar equipo', desc: 'Completa las evaluaciones de tu equipo', href: '/dashboard/evaluaciones' },
+    { icon: '\uD83C\uDFAF', title: 'Revisar OKRs', desc: 'Da seguimiento a los objetivos', href: '/dashboard/objetivos' },
+    { icon: '\uD83D\uDCAC', title: 'Check-ins 1:1', desc: 'Agenda reuniones con tu equipo', href: '/dashboard/feedback' },
+    { icon: '\uD83D\uDCC8', title: 'Ver desempeno', desc: 'Revisa los resultados del equipo', href: '/dashboard/reportes' },
+    { icon: '\u2B50', title: 'Reconocer', desc: 'Destaca los logros de tu equipo', href: '/dashboard/reconocimientos' },
+    { icon: '\uD83D\uDCCB', title: 'Planes desarrollo', desc: 'Crea planes de mejora', href: '/dashboard/desarrollo' },
+  ],
+  employee: [
+    { icon: '\u270F\uFE0F', title: 'Autoevaluacion', desc: 'Completa tu autoevaluacion', href: '/dashboard/evaluaciones' },
+    { icon: '\uD83C\uDFAF', title: 'Mis objetivos', desc: 'Define y avanza en tus OKRs', href: '/dashboard/objetivos' },
+    { icon: '\uD83D\uDCCA', title: 'Mi desempeno', desc: 'Revisa tus resultados', href: '/dashboard/mi-desempeno' },
+    { icon: '\uD83D\uDCAC', title: 'Pedir feedback', desc: 'Solicita retroalimentacion', href: '/dashboard/feedback' },
+    { icon: '\uD83D\uDCCB', title: 'Mi plan desarrollo', desc: 'Trabaja en tu plan de mejora', href: '/dashboard/desarrollo' },
+    { icon: '\u2B50', title: 'Reconocer', desc: 'Reconoce a tus companeros', href: '/dashboard/reconocimientos' },
+  ],
+  external: [
+    { icon: '\u2705', title: 'Evaluaciones', desc: 'Completa las evaluaciones asignadas', href: '/dashboard/evaluaciones' },
+    { icon: '\uD83D\uDCCA', title: 'Resultados', desc: 'Revisa los resultados disponibles', href: '/dashboard/mi-desempeno' },
+  ],
+};
+
+const TYPE_ICONS: Record<string, string> = { feature: '\uD83C\uDD95', improvement: '\u2728', fix: '\uD83D\uDD27' };
+
+function WelcomePage() {
+  const user = useAuthStore((s) => s.user);
+  const { data: changelog } = useChangelog(5);
+  const steps = ROLE_STEPS[user?.role || 'employee'] || ROLE_STEPS.employee;
+  const today = new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  const quickLinks = [
+    { label: 'Evaluaciones', href: '/dashboard/evaluaciones', icon: '\uD83D\uDCDD' },
+    { label: 'Objetivos', href: '/dashboard/objetivos', icon: '\uD83C\uDFAF' },
+    { label: 'Feedback', href: '/dashboard/feedback', icon: '\uD83D\uDCAC' },
+    { label: 'Notificaciones', href: '/dashboard/notificaciones', icon: '\uD83D\uDD14' },
+  ];
+
+  return (
+    <div style={{ maxWidth: '900px' }}>
+      {/* Welcome Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+          {'\uD83D\uDC4B'} Bienvenido/a, {user?.firstName || 'Usuario'}
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          {getRoleLabel(user?.role || 'employee')} {'\u00B7'} {today}
+        </p>
+      </div>
+
+      {/* System Changelog */}
+      {changelog && changelog.length > 0 && (
+        <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--primary)' }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {'\uD83D\uDCE2'} Novedades del Sistema
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {changelog.map((entry: any) => (
+              <div key={entry.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '1rem', flexShrink: 0 }}>{TYPE_ICONS[entry.type] || '\uD83C\uDD95'}</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                    v{entry.version} — {entry.title}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{entry.description}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Journey Steps */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {'\uD83D\uDDFA\uFE0F'} Como usar EvaPro
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
+          {steps.map((step, i) => (
+            <Link key={i} href={step.href} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <div className="card" style={{
+                padding: '1rem', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+                position: 'relative', overflow: 'hidden',
+              }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+              >
+                {/* Step number badge */}
+                <div style={{
+                  position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: '50%',
+                  background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.7rem', fontWeight: 700,
+                }}>
+                  {i + 1}
+                </div>
+                {/* Arrow connector */}
+                {i < steps.length - 1 && i % 3 !== 2 && (
+                  <div style={{ position: 'absolute', right: -12, top: '50%', transform: 'translateY(-50%)', fontSize: '1rem', color: 'var(--text-muted)', zIndex: 1 }}>
+                    {'\u2192'}
+                  </div>
+                )}
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{step.icon}</div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{step.title}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{step.desc}</div>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600 }}>
+                  Ir {'\u2192'}
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick Access */}
+      <div className="card" style={{ padding: '1rem' }}>
+        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 0.75rem' }}>{'\u26A1'} Accesos rapidos</h3>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {quickLinks.map((link) => (
+            <Link key={link.href} href={link.href}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.375rem',
+                padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid var(--border)',
+                textDecoration: 'none', color: 'var(--text-primary)', fontSize: '0.85rem',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-secondary)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            >
+              <span>{link.icon}</span> {link.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
 
@@ -839,11 +988,5 @@ export default function DashboardPage() {
     return <SuperAdminDashboard />;
   }
 
-  // Solo el Encargado del Sistema ve el dashboard administrativo completo
-  if (user?.role === 'tenant_admin') {
-    return <RegularDashboard />;
-  }
-
-  // Manager, Employee, External ven dashboard personal
-  return <EmployeeDashboard />;
+  return <WelcomePage />;
 }

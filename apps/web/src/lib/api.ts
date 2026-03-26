@@ -539,6 +539,19 @@ export const api = {
       request<any>(`/ai/suggestions/${userId}/${cycleId}`, { method: "POST" }, token),
   },
 
+  system: {
+    changelog: (token: string, limit = 5) =>
+      request<any[]>(`/system/changelog?limit=${limit}`, {}, token),
+    allChangelog: (token: string) =>
+      request<any[]>("/system/changelog/all", {}, token),
+    createChangelog: (token: string, data: any) =>
+      request<any>("/system/changelog", { method: "POST", body: JSON.stringify(data) }, token),
+    updateChangelog: (token: string, id: string, data: any) =>
+      request<any>(`/system/changelog/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    deleteChangelog: (token: string, id: string) =>
+      request<void>(`/system/changelog/${id}`, { method: "DELETE" }, token),
+  },
+
   dei: {
     demographics: (token: string) => request<any>("/dei/demographics", {}, token),
     equity: (token: string, cycleId: string) => request<any>(`/dei/equity?cycleId=${cycleId}`, {}, token),

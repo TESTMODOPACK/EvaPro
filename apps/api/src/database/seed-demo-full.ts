@@ -48,6 +48,7 @@ import { DevelopmentComment } from '../modules/development/entities/development-
 import { Notification, NotificationType } from '../modules/notifications/entities/notification.entity';
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
 import { RoleCompetency } from '../modules/development/entities/role-competency.entity';
+import { SystemChangelog, ChangelogType } from '../modules/system/entities/system-changelog.entity';
 import { Recognition } from '../modules/recognition/entities/recognition.entity';
 import { Badge } from '../modules/recognition/entities/badge.entity';
 import { UserBadge } from '../modules/recognition/entities/user-badge.entity';
@@ -69,6 +70,7 @@ const ds = new DataSource({
     Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
     Notification, AiInsight,
     Recognition, Badge, UserBadge, UserPoints,
+    SystemChangelog,
   ],
   synchronize: true, logging: false,
 });
@@ -816,6 +818,25 @@ async function seedDemoFull() {
       console.log('✅ Extra gamification points seeded');
     } else {
       console.log(`   Recognition data already exists (${existingRecog}), skipping.`);
+    }
+
+    /* ── 16. SYSTEM CHANGELOG ────────────────────────────────────────── */
+    const changelogRepo = ds.getRepository(SystemChangelog);
+    const existingCL = await changelogRepo.count();
+    if (existingCL === 0) {
+      const entries = [
+        { version: '2.5', title: 'Reconocimientos y Gamificacion', description: 'Envia kudos a tus companeros, gana puntos y obten badges por tus logros. Incluye muro social, leaderboard y sistema de recompensas.', type: ChangelogType.FEATURE, publishedAt: daysAgo(2) },
+        { version: '2.4', title: 'Dashboard DEI / Diversidad', description: 'Metricas de composicion organizacional, analisis de equidad en evaluaciones y alertas automaticas de sesgo por genero, seniority y edad.', type: ChangelogType.FEATURE, publishedAt: daysAgo(7) },
+        { version: '2.3', title: 'Informes Avanzados', description: 'Nuevos reportes: Radar de competencias, Curva de Bell, Mapa de calor por departamento, Gap Analysis individual y de equipo.', type: ChangelogType.FEATURE, publishedAt: daysAgo(14) },
+        { version: '2.2', title: 'Versionado de Plantillas', description: 'Las plantillas de evaluacion ahora guardan historial de versiones. Puedes restaurar versiones anteriores en cualquier momento.', type: ChangelogType.IMPROVEMENT, publishedAt: daysAgo(21) },
+        { version: '2.1', title: 'OKRs con Key Results', description: 'Los objetivos ahora soportan Key Results formales con valor base, meta, actual y unidad. Incluye alertas de objetivos en riesgo.', type: ChangelogType.FEATURE, publishedAt: daysAgo(30) },
+      ];
+      for (const e of entries) {
+        await changelogRepo.save(changelogRepo.create({ ...e, isActive: true }));
+      }
+      console.log(`✅ ${entries.length} changelog entries created`);
+    } else {
+      console.log(`   Changelog entries already exist (${existingCL}), skipping.`);
     }
 
     /* ── Done ─────────────────────────────────────────────────────────────── */
