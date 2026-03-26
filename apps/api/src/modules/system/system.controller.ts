@@ -6,7 +6,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { SystemService } from './system.service';
-import { ChangelogType } from './entities/system-changelog.entity';
+import { CreateChangelogDto, UpdateChangelogDto } from './dto/changelog.dto';
 
 @Controller('system')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -30,7 +30,7 @@ export class SystemController {
 
   @Post('changelog')
   @Roles('super_admin')
-  createChangelog(@Body() dto: { version: string; title: string; description: string; type?: ChangelogType }) {
+  createChangelog(@Body() dto: CreateChangelogDto) {
     return this.systemService.createChangelog(dto);
   }
 
@@ -38,7 +38,7 @@ export class SystemController {
   @Roles('super_admin')
   updateChangelog(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: Partial<{ version: string; title: string; description: string; type: ChangelogType; isActive: boolean }>,
+    @Body() dto: UpdateChangelogDto,
   ) {
     return this.systemService.updateChangelog(id, dto);
   }

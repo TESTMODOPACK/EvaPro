@@ -171,7 +171,7 @@ function SuperAdminDashboard() {
   );
 }
 
-// ─── Regular Dashboard (existing) ───────────────────────────────────────────
+// ─── Legacy Dashboards (kept for reference, not rendered) ────────────────────
 
 function ScoreBar({ score }: { score: number }) {
   const pct = (score / 10) * 100;
@@ -871,7 +871,7 @@ const TYPE_ICONS: Record<string, string> = { feature: '\uD83C\uDD95', improvemen
 
 function WelcomePage() {
   const user = useAuthStore((s) => s.user);
-  const { data: changelog } = useChangelog(5);
+  const { data: changelog, isLoading: loadingCL, isError: errorCL } = useChangelog(5);
   const steps = ROLE_STEPS[user?.role || 'employee'] || ROLE_STEPS.employee;
   const today = new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -895,7 +895,17 @@ function WelcomePage() {
       </div>
 
       {/* System Changelog */}
-      {changelog && changelog.length > 0 && (
+      {loadingCL && (
+        <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--border)' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Cargando novedades...</p>
+        </div>
+      )}
+      {errorCL && (
+        <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', borderLeft: '4px solid #f59e0b' }}>
+          <p style={{ color: '#92400e', fontSize: '0.85rem' }}>No se pudieron cargar las novedades del sistema.</p>
+        </div>
+      )}
+      {!loadingCL && changelog && changelog.length > 0 && (
         <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--primary)' }}>
           <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {'\uD83D\uDCE2'} Novedades del Sistema
@@ -924,27 +934,16 @@ function WelcomePage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
           {steps.map((step, i) => (
             <Link key={i} href={step.href} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div className="card" style={{
-                padding: '1rem', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
-                position: 'relative', overflow: 'hidden',
-              }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
-              >
-                {/* Step number badge */}
+              <div className="card step-card" style={{
+                padding: '1rem', cursor: 'pointer', position: 'relative',
+              }}>
                 <div style={{
-                  position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: '50%',
+                  position: 'absolute', top: 8, right: 8, width: 24, height: 24, borderRadius: '50%',
                   background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '0.7rem', fontWeight: 700,
                 }}>
                   {i + 1}
                 </div>
-                {/* Arrow connector */}
-                {i < steps.length - 1 && i % 3 !== 2 && (
-                  <div style={{ position: 'absolute', right: -12, top: '50%', transform: 'translateY(-50%)', fontSize: '1rem', color: 'var(--text-muted)', zIndex: 1 }}>
-                    {'\u2192'}
-                  </div>
-                )}
                 <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{step.icon}</div>
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{step.title}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{step.desc}</div>

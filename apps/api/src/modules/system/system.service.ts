@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SystemChangelog, ChangelogType } from './entities/system-changelog.entity';
+import { CreateChangelogDto, UpdateChangelogDto } from './dto/changelog.dto';
 
 @Injectable()
 export class SystemService {
@@ -22,9 +23,7 @@ export class SystemService {
     return this.changelogRepo.find({ order: { publishedAt: 'DESC' } });
   }
 
-  async createChangelog(dto: {
-    version: string; title: string; description: string; type?: ChangelogType;
-  }): Promise<SystemChangelog> {
+  async createChangelog(dto: CreateChangelogDto): Promise<SystemChangelog> {
     return this.changelogRepo.save(this.changelogRepo.create({
       version: dto.version,
       title: dto.title,
@@ -35,12 +34,15 @@ export class SystemService {
     }));
   }
 
-  async updateChangelog(id: string, dto: Partial<{
-    version: string; title: string; description: string; type: ChangelogType; isActive: boolean;
-  }>): Promise<SystemChangelog> {
+  async updateChangelog(id: string, dto: UpdateChangelogDto): Promise<SystemChangelog> {
     const entry = await this.changelogRepo.findOne({ where: { id } });
     if (!entry) throw new NotFoundException('Entrada de changelog no encontrada');
-    Object.assign(entry, dto);
+    // Explicit field assignment to prevent mass-assignment
+    if (dto.version !== undefined) entry.version = dto.version;
+    if (dto.title !== undefined) entry.title = dto.title;
+    if (dto.description !== undefined) entry.description = dto.description;
+    if (dto.type !== undefined) entry.type = dto.type;
+    if (dto.isActive !== undefined) entry.isActive = dto.isActive;
     return this.changelogRepo.save(entry);
   }
 
