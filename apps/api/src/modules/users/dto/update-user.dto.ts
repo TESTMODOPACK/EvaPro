@@ -49,4 +49,29 @@ export class UpdateUserDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  // ─── Demographic fields ───────────────────────────────────────
+  @IsString()
+  @IsOptional()
+  gender?: string;
+
+  @IsDateString()
+  @IsOptional()
+  birthDate?: string;
+
+  @IsString()
+  @IsOptional()
+  nationality?: string;
+
+  @IsString()
+  @IsOptional()
+  seniorityLevel?: string;
+
+  @IsString()
+  @IsOptional()
+  contractType?: string;
+
+  @IsString()
+  @IsOptional()
+  workLocation?: string;
 }

@@ -21,6 +21,7 @@ import { DevelopmentModule } from './modules/development/development.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { AiInsightsModule } from './modules/ai-insights/ai-insights.module';
 import { RecognitionModule } from './modules/recognition/recognition.module';
+import { DeiModule } from './modules/dei/dei.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -46,6 +47,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     UploadsModule,
     AiInsightsModule,
     RecognitionModule,
+    DeiModule,
   ],
   controllers: [AppController],
   providers: [

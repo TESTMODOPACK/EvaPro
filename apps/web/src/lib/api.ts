@@ -536,6 +536,13 @@ export const api = {
       request<any>(`/ai/suggestions/${userId}/${cycleId}`, { method: "POST" }, token),
   },
 
+  dei: {
+    demographics: (token: string) => request<any>("/dei/demographics", {}, token),
+    equity: (token: string, cycleId: string) => request<any>(`/dei/equity?cycleId=${cycleId}`, {}, token),
+    gapReport: (token: string, cycleId: string, dimension = 'gender') =>
+      request<any>(`/dei/gap-report?cycleId=${cycleId}&dimension=${dimension}`, {}, token),
+  },
+
   recognition: {
     wall: (token: string, page = 1, limit = 20) =>
       request<any>(`/recognition/wall?page=${page}&limit=${limit}`, {}, token),

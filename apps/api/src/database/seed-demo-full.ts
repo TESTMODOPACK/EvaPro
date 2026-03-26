@@ -159,6 +159,30 @@ async function seedDemoFull() {
       allNewUsers.push(u);
     }
 
+    // Add demographic data to all users (idempotent: only if gender is null)
+    const demoGraphics = [
+      { email: 'maria.gonzalez@evapro.demo', gender: 'femenino', birthDate: '1992-03-15', nationality: 'Chilena', seniorityLevel: 'mid', contractType: 'indefinido', workLocation: 'hibrido' },
+      { email: 'pedro.silva@evapro.demo', gender: 'masculino', birthDate: '1995-08-22', nationality: 'Chilena', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'remoto' },
+      { email: 'camila.herrera@evapro.demo', gender: 'femenino', birthDate: '1988-11-05', nationality: 'Colombiana', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'oficina' },
+      { email: 'diego.morales@evapro.demo', gender: 'masculino', birthDate: '1990-06-18', nationality: 'Chilena', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'remoto' },
+      { email: 'valentina.rojas@evapro.demo', gender: 'femenino', birthDate: '1997-01-30', nationality: 'Chilena', seniorityLevel: 'mid', contractType: 'indefinido', workLocation: 'hibrido' },
+      { email: 'andres.castro@evapro.demo', gender: 'masculino', birthDate: '1985-09-12', nationality: 'Peruana', seniorityLevel: 'lead', contractType: 'indefinido', workLocation: 'oficina' },
+      { email: 'isabel.mendez@evapro.demo', gender: 'femenino', birthDate: '1993-04-25', nationality: 'Chilena', seniorityLevel: 'lead', contractType: 'indefinido', workLocation: 'hibrido' },
+      { email: 'felipe.vargas@evapro.demo', gender: 'masculino', birthDate: '1991-12-08', nationality: 'Argentino', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'remoto' },
+      { email: 'carlos.lopez@evapro.demo', gender: 'masculino', birthDate: '1983-07-20', nationality: 'Chilena', seniorityLevel: 'director', contractType: 'indefinido', workLocation: 'oficina' },
+      { email: 'admin@evapro.demo', gender: 'femenino', birthDate: '1986-02-14', nationality: 'Chilena', seniorityLevel: 'executive', contractType: 'indefinido', workLocation: 'oficina' },
+    ];
+    for (const dg of demoGraphics) {
+      const u = await userRepo.findOne({ where: { email: dg.email, tenantId: tid } });
+      if (u && !u.gender) {
+        await userRepo.update(u.id, {
+          gender: dg.gender, birthDate: dg.birthDate as any, nationality: dg.nationality,
+          seniorityLevel: dg.seniorityLevel, contractType: dg.contractType, workLocation: dg.workLocation,
+        });
+      }
+    }
+    console.log('✅ Demographic data applied to all users');
+
     // Collect all employees
     const existingEmps = await userRepo.find({ where: { tenantId: tid, role: 'employee', isActive: true } });
     const allEmployees = existingEmps;

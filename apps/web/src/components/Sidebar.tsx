@@ -157,6 +157,7 @@ const tenantNavSections: NavSection[] = [
       { href: '/dashboard/objetivos', label: 'Objetivos / OKR', icon: icons.objectives },
       { href: '/dashboard/feedback', label: 'Feedback y Check-ins', icon: icons.feedback },
       { href: '/dashboard/reconocimientos', label: 'Reconocimientos', icon: '\u2B50' },
+      { href: '/dashboard/dei', label: 'DEI / Diversidad', icon: '\uD83C\uDF0D' },
     ],
   },
   {

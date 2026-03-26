@@ -50,6 +50,28 @@ export class User {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  // ─── Demographic fields (optional, for DEI analytics) ─────────────
+
+  @Column({ type: 'varchar', length: 20, nullable: true, comment: 'masculino|femenino|no_binario|prefiero_no_decir' })
+  gender: string | null;
+
+  @Column({ type: 'date', nullable: true, name: 'birth_date' })
+  birthDate: Date | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  nationality: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true, name: 'seniority_level', comment: 'junior|mid|senior|lead|director|executive' })
+  seniorityLevel: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true, name: 'contract_type', comment: 'indefinido|plazo_fijo|honorarios|practicante' })
+  contractType: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true, name: 'work_location', comment: 'oficina|remoto|hibrido' })
+  workLocation: string | null;
+
+  // ─── End demographic fields ───────────────────────────────────────
+
   @Column({ type: 'varchar', length: 10, nullable: true, name: 'reset_code' })
   resetCode: string | null;
 
