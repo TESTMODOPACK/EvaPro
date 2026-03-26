@@ -64,13 +64,17 @@ async function main() {
     }
 
     // ── Fix orphaned FK references in quick_feedbacks → competencies ──
-    // After competencies is dropped, quick_feedbacks may have stale competency_id values.
-    // Null them out so TypeORM can recreate the FK constraint cleanly.
+    // After competencies is dropped and recreated empty by TypeORM, any existing
+    // competency_id values become orphans. Null ALL of them unconditionally —
+    // they will be repopulated by the seed script.
     try {
+      // First drop the FK constraint if it exists (so the UPDATE doesn't fail)
+      await client.query(`
+        ALTER TABLE "quick_feedbacks" DROP CONSTRAINT IF EXISTS "FK_e361a4a8922191ddbaaf2147764"
+      `);
       const res = await client.query(`
         UPDATE "quick_feedbacks" SET "competency_id" = NULL
         WHERE "competency_id" IS NOT NULL
-        AND "competency_id" NOT IN (SELECT id FROM "competencies")
       `);
       if (res.rowCount && res.rowCount > 0) {
         console.log(`[cleanup] Nulled ${res.rowCount} orphaned competency_id in quick_feedbacks`);
