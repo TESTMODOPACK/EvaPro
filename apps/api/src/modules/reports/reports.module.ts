@@ -10,9 +10,11 @@ import { RoleCompetency } from '../development/entities/role-competency.entity';
 import { Competency } from '../development/entities/competency.entity';
 import { ReportsService } from './reports.service';
 import { ReportsController } from './reports.controller';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
+    SubscriptionsModule,
     TypeOrmModule.forFeature([
       EvaluationCycle,
       EvaluationAssignment,
