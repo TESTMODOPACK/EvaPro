@@ -23,6 +23,9 @@ export interface UserData {
   id: string; tenantId: string; email: string; firstName: string; lastName: string;
   role: string; managerId: string | null; department: string | null;
   position: string | null; hireDate: string | null; isActive: boolean; createdAt: string;
+  // Demographic (optional)
+  gender?: string | null; birthDate?: string | null; nationality?: string | null;
+  seniorityLevel?: string | null; contractType?: string | null; workLocation?: string | null;
 }
 
 export interface PaginatedResponse<T> {

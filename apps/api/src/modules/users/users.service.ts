@@ -166,6 +166,14 @@ export class UsersService {
     if (dto.hireDate !== undefined) user.hireDate = new Date(dto.hireDate);
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
 
+    // Demographic fields
+    if (dto.gender !== undefined) user.gender = dto.gender;
+    if (dto.birthDate !== undefined) user.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
+    if (dto.nationality !== undefined) user.nationality = dto.nationality;
+    if (dto.seniorityLevel !== undefined) user.seniorityLevel = dto.seniorityLevel;
+    if (dto.contractType !== undefined) user.contractType = dto.contractType;
+    if (dto.workLocation !== undefined) user.workLocation = dto.workLocation;
+
     return this.userRepository.save(user);
   }
 

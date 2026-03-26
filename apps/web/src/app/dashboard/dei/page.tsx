@@ -67,7 +67,7 @@ function DataCompletenessBar({ data }: { data: Array<{ field: string; percentage
 }
 
 export default function DeiPage() {
-  const { data: demo, isLoading: loadingDemo } = useDemographics();
+  const { data: demo, isLoading: loadingDemo, isError: demoError } = useDemographics();
   const { data: cycles } = useCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [dimension, setDimension] = useState('gender');
@@ -84,6 +84,11 @@ export default function DeiPage() {
       </p>
 
       {loadingDemo && <p style={{ color: 'var(--text-muted)' }}>Cargando datos...</p>}
+      {demoError && (
+        <div className="card" style={{ padding: '1.5rem', borderLeft: '4px solid #ef4444' }}>
+          <p style={{ color: '#ef4444', fontWeight: 600 }}>Error al cargar datos DEI. Verifica que tienes permisos de administrador.</p>
+        </div>
+      )}
 
       {demo && demo.total > 0 && (
         <>

@@ -54,7 +54,7 @@ export class DeiService {
     const rows = await this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = :tenantId')
       .where('a.cycle_id = :cycleId', { cycleId })
       .andWhere('r.tenant_id = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
@@ -123,7 +123,7 @@ export class DeiService {
     const rows = await this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = :tenantId')
       .where('a.cycle_id = :cycleId', { cycleId })
       .andWhere('r.tenant_id = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
@@ -269,7 +269,9 @@ export class DeiService {
       genderBreakdown: Object.entries(data.genders).map(([g, c]) => ({
         gender: g, count: c, percentage: Math.round((c / data.total) * 1000) / 10,
       })),
-    })).sort((a, b) => b.total - a.total);
+    }))
+    .filter((d) => d.total >= PRIVACY_MIN) // Privacy: exclude small departments
+    .sort((a, b) => b.total - a.total);
   }
 
   private calculateDataCompleteness(users: User[]) {

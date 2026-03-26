@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsEmail,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -51,7 +52,7 @@ export class UpdateUserDto {
   isActive?: boolean;
 
   // ─── Demographic fields ───────────────────────────────────────
-  @IsString()
+  @IsIn(['masculino', 'femenino', 'no_binario', 'prefiero_no_decir'])
   @IsOptional()
   gender?: string;
 
@@ -63,15 +64,15 @@ export class UpdateUserDto {
   @IsOptional()
   nationality?: string;
 
-  @IsString()
+  @IsIn(['junior', 'mid', 'senior', 'lead', 'director', 'executive'])
   @IsOptional()
   seniorityLevel?: string;
 
-  @IsString()
+  @IsIn(['indefinido', 'plazo_fijo', 'honorarios', 'practicante'])
   @IsOptional()
   contractType?: string;
 
-  @IsString()
+  @IsIn(['oficina', 'remoto', 'hibrido'])
   @IsOptional()
   workLocation?: string;
 }
