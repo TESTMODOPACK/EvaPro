@@ -156,6 +156,21 @@ export class ReportsController {
     return this.reportsService.performanceHeatmap(cycleId, req.user.tenantId, filters);
   }
 
+  // ─── Competency Heatmap ──────────────────────────────────────────────
+
+  @Get('cycle/:cycleId/competency-heatmap')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  competencyHeatmap(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Query('department') department: string,
+    @Query('position') position: string,
+    @Request() req: any,
+  ) {
+    const filters = (department || position) ? { department, position } : undefined;
+    return this.reportsService.competencyHeatmap(cycleId, req.user.tenantId, filters);
+  }
+
   // ─── Gap Analysis ─────────────────────────────────────────────────────
 
   @Get('cycle/:cycleId/gap-analysis/:userId')

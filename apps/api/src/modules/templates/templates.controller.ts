@@ -59,7 +59,26 @@ export class TemplatesController {
     @Request() req: any,
     @Body() dto: UpdateTemplateDto,
   ) {
-    return this.templatesService.update(id, req.user.tenantId, dto);
+    return this.templatesService.update(id, req.user.tenantId, req.user.userId, dto);
+  }
+
+  @Get(':id/versions')
+  @Roles('super_admin', 'tenant_admin')
+  getVersionHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.templatesService.getVersionHistory(id, req.user.tenantId);
+  }
+
+  @Post(':id/restore/:version')
+  @Roles('super_admin', 'tenant_admin')
+  restoreVersion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('version') version: string,
+    @Request() req: any,
+  ) {
+    return this.templatesService.restoreVersion(id, req.user.tenantId, req.user.userId, parseInt(version, 10));
   }
 
   @Delete(':id')

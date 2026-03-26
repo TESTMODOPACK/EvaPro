@@ -343,6 +343,12 @@ export const api = {
       request<TemplateData>(`/templates/${id}/duplicate`, { method: "POST" }, token),
     importCsv: (token: string, data: { name: string; description?: string; csvData: string }) =>
       request<TemplateData>(`/templates/import-csv`, { method: "POST", body: JSON.stringify(data) }, token),
+    preview: (token: string, id: string) =>
+      request<any>(`/templates/${id}/preview`, {}, token),
+    versionHistory: (token: string, id: string) =>
+      request<any>(`/templates/${id}/versions`, {}, token),
+    restoreVersion: (token: string, id: string, version: number) =>
+      request<TemplateData>(`/templates/${id}/restore/${version}`, { method: "POST" }, token),
   },
 
   peerAssignments: {
@@ -457,6 +463,13 @@ export const api = {
       request<any>(`/reports/cycle/${cycleId}/gap-analysis/${userId}`, {}, token),
     gapAnalysisTeam: (token: string, cycleId: string, managerId: string) =>
       request<any>(`/reports/cycle/${cycleId}/gap-analysis-team/${managerId}`, {}, token),
+    competencyHeatmap: (token: string, cycleId: string, filters?: { department?: string; position?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.department) params.set('department', filters.department);
+      if (filters?.position) params.set('position', filters.position);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      return request<any>(`/reports/cycle/${cycleId}/competency-heatmap${qs}`, {}, token);
+    },
   },
 
   notifications: {

@@ -45,8 +45,9 @@ import { DevelopmentPlan } from '../modules/development/entities/development-pla
 import { DevelopmentAction } from '../modules/development/entities/development-action.entity';
 import { DevelopmentComment } from '../modules/development/entities/development-comment.entity';
 
-import { Notification } from '../modules/notifications/entities/notification.entity';
+import { Notification, NotificationType } from '../modules/notifications/entities/notification.entity';
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
+import { RoleCompetency } from '../modules/development/entities/role-competency.entity';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) { console.error('❌ DATABASE_URL not set'); process.exit(1); }
@@ -61,7 +62,7 @@ const ds = new DataSource({
     Objective, ObjectiveUpdate, ObjectiveComment, KeyResult,
     UserNote, SubscriptionPlan, Subscription,
     TalentAssessment, CalibrationSession, CalibrationEntry,
-    Competency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
+    Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
     Notification, AiInsight,
   ],
   synchronize: true, logging: false,
@@ -629,6 +630,85 @@ async function seedDemoFull() {
       }
     }
 
+    /* ── 12. ROLE COMPETENCIES for Gap Analysis ────────────────────────── */
+    const roleCompRepo = ds.getRepository(RoleCompetency);
+    const existingRC = await roleCompRepo.count({ where: { tenantId: tid } });
+    if (existingRC === 0) {
+      const competencies = await compRepo.find({ where: { tenantId: tid } });
+      if (competencies.length > 0) {
+        const positions = [
+          'Frontend Developer', 'Backend Developer', 'UI Designer',
+          'QA Lead', 'SRE Engineer', 'Ejecutiva de Ventas',
+          'Account Manager', 'Content Manager',
+        ];
+        for (const position of positions) {
+          for (const comp of competencies) {
+            // Assign expected levels based on competency and role
+            let expectedLevel = 3; // default
+            const name = comp.name.toLowerCase();
+            if (position.includes('Developer') && (name.includes('tecn') || name.includes('problem') || name.includes('innov'))) expectedLevel = 4;
+            if (position.includes('Developer') && name.includes('comunic')) expectedLevel = 3;
+            if (position.includes('Ventas') && (name.includes('comunic') || name.includes('client') || name.includes('negoc'))) expectedLevel = 5;
+            if (position.includes('Designer') && (name.includes('creativ') || name.includes('innov') || name.includes('diseno'))) expectedLevel = 5;
+            if (position.includes('QA') && (name.includes('calidad') || name.includes('detail') || name.includes('anali'))) expectedLevel = 5;
+            if (position.includes('SRE') && (name.includes('tecn') || name.includes('problem'))) expectedLevel = 5;
+            if (position.includes('Content') && (name.includes('comunic') || name.includes('creativ'))) expectedLevel = 4;
+            if (position.includes('Account') && (name.includes('client') || name.includes('relacion'))) expectedLevel = 5;
+
+            await roleCompRepo.save(roleCompRepo.create({
+              tenantId: tid,
+              position,
+              competencyId: comp.id,
+              expectedLevel,
+            }));
+          }
+        }
+        console.log(`✅ Role competencies created: ${positions.length} positions × ${competencies.length} competencies = ${positions.length * competencies.length} entries`);
+      }
+    } else {
+      console.log(`   Role competencies already exist (${existingRC}), skipping.`);
+    }
+
+    /* ── 13. NOTIFICATIONS for demo ──────────────────────────────────── */
+    const notifRepo = ds.getRepository(Notification);
+    const existingNotifs = await notifRepo.count({ where: { tenantId: tid } });
+    if (existingNotifs < 5) {
+      const notifData = [
+        { userId: admin.id, type: NotificationType.GENERAL, title: 'Ciclo 360° lanzado', message: 'El ciclo de Evaluación 360° S1 2026 ha sido lanzado exitosamente. Se han creado las asignaciones para todos los participantes.', metadata: {} },
+        { userId: manager.id, type: NotificationType.EVALUATION_PENDING, title: 'Evaluaciones pendientes', message: 'Tienes 3 evaluaciones pendientes del ciclo 360°. La fecha límite es en 15 días.', metadata: {} },
+        { userId: allNewUsers[0]?.id || manager.id, type: NotificationType.EVALUATION_PENDING, title: 'Completa tu autoevaluación', message: 'Tu autoevaluación del ciclo 360° está pendiente. Recuerda completarla antes de la fecha límite.', metadata: {} },
+        { userId: admin.id, type: NotificationType.CYCLE_CLOSING, title: 'Ciclo próximo a cerrar', message: 'El ciclo 180° Q4 2025 se cerrará en 5 días. Revisa el progreso de completitud antes del cierre.', metadata: {} },
+        { userId: manager.id, type: NotificationType.OBJECTIVE_AT_RISK, title: 'Objetivo en riesgo', message: 'El objetivo "Reducir tiempo de respuesta al cliente" de tu equipo tiene un avance menor al esperado. Revisa las acciones pendientes.', metadata: {} },
+        { userId: allNewUsers[1]?.id || manager.id, type: NotificationType.FEEDBACK_RECEIVED, title: 'Has recibido feedback', message: 'Un compañero te ha enviado feedback sobre tu colaboración en el proyecto de migración. Revísalo en la sección de Feedback.', metadata: {} },
+        { userId: admin.id, type: NotificationType.PDI_ACTION_DUE, title: 'Acciones PDI vencidas', message: 'Hay 2 acciones de planes de desarrollo vencidas en tu organización. Revisa los planes para hacer seguimiento.', metadata: {} },
+        { userId: manager.id, type: NotificationType.CHECKIN_OVERDUE, title: 'Recordatorio: Check-in 1:1', message: 'No has realizado check-ins con Isabel Méndez en las últimas 2 semanas. Agenda una reunión 1:1.', metadata: {} },
+      ];
+      for (const n of notifData) {
+        await notifRepo.save(notifRepo.create({ tenantId: tid, ...n, isRead: false }));
+      }
+      console.log(`✅ Notifications created: ${notifData.length} demo notifications`);
+    } else {
+      console.log(`   Notifications already exist (${existingNotifs}), skipping.`);
+    }
+
+    /* ── 14. UPDATE SUBSCRIPTION to Pro plan ─────────────────────────── */
+    const subPlanRepo = ds.getRepository(SubscriptionPlan);
+    const subRepo = ds.getRepository(Subscription);
+    const proPlan = await subPlanRepo.findOne({ where: { code: 'pro' } });
+    if (proPlan) {
+      const existingSub = await subRepo.findOne({ where: { tenantId: tid } });
+      if (existingSub) {
+        existingSub.planId = proPlan.id;
+        existingSub.status = 'active' as any;
+        await subRepo.save(existingSub);
+        // Also update tenant
+        await tenantRepo.update(tid, { plan: 'pro', maxEmployees: proPlan.maxEmployees });
+        console.log(`✅ Demo tenant upgraded to Pro plan (maxEmployees: ${proPlan.maxEmployees})`);
+      }
+    } else {
+      console.log('   Pro plan not found, skipping subscription upgrade.');
+    }
+
     /* ── Done ─────────────────────────────────────────────────────────────── */
     console.log('\n🎉 Full demo data seeding complete!');
     console.log('─────────────────────────────────────────');
@@ -641,6 +721,9 @@ async function seedDemoFull() {
     console.log('   Development Plans: 5+ with actions');
     console.log('   Talent: Nine Box assessments for all');
     console.log('   Calibration: 1 completed session');
+    console.log('   Role Competencies: positions × competencies (for gap analysis)');
+    console.log('   Notifications: 8 demo notifications');
+    console.log('   Subscription: Pro plan (advanced reports enabled)');
     console.log('─────────────────────────────────────────');
     console.log('🔑 Password for ALL users: EvaPro2026!');
 

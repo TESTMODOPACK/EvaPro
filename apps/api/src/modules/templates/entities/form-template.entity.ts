@@ -1,6 +1,7 @@
 import {
   Column,
   CreateDateColumn,
+  UpdateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
   Index,
@@ -44,6 +45,15 @@ export class FormTemplate {
   @Column({ type: 'boolean', default: false, name: 'is_default' })
   isDefault: boolean;
 
+  // ─── Versioning ───────────────────────────────────────────────────────
+
+  @Column({ type: 'int', default: 1 })
+  version: number;
+
+  /** Stores previous versions as snapshots: [{ version, sections, changedBy, changedAt, changeNote }] */
+  @Column({ type: 'jsonb', name: 'version_history', default: () => "'[]'" })
+  versionHistory: any[];
+
   @Column({ type: 'uuid', name: 'created_by', nullable: true })
   createdBy: string | null;
 
@@ -53,4 +63,7 @@ export class FormTemplate {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
+
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
 }

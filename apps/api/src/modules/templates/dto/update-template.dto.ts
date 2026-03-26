@@ -16,4 +16,8 @@ export class UpdateTemplateDto {
   @IsBoolean()
   @IsOptional()
   isDefault?: boolean;
+
+  @IsString()
+  @IsOptional()
+  changeNote?: string;
 }

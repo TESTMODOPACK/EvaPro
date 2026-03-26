@@ -66,3 +66,12 @@ export function useGapAnalysisTeam(cycleId: string | null, managerId: string | n
     enabled: !!token && !!cycleId && !!managerId,
   });
 }
+
+export function useCompetencyHeatmap(cycleId: string | null, filters?: { department?: string; position?: string }) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['reports', 'competencyHeatmap', cycleId, filters?.department, filters?.position],
+    queryFn: () => api.reports.competencyHeatmap(token!, cycleId!, filters),
+    enabled: !!token && !!cycleId,
+  });
+}

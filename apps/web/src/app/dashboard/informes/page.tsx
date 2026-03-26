@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useCompetencyRadar, useSelfVsOthers, useHeatmap, useBellCurve } from '@/hooks/useReports';
+import { useCompetencyRadar, useSelfVsOthers, useHeatmap, useBellCurve, useCompetencyHeatmap } from '@/hooks/useReports';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
 import {
@@ -400,6 +400,92 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
   );
 }
 
+/* ─── Competency Heatmap Section ──────────────────────────────────── */
+
+function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
+  const { data, isLoading } = useCompetencyHeatmap(cycleId);
+
+  if (isLoading) return <div className="card" style={{ padding: '1.5rem' }}><p style={{ color: 'var(--text-muted)' }}>Cargando mapa de competencias...</p></div>;
+  if (!data || data.message || !data.grid || data.grid.length === 0) {
+    return (
+      <div className="card" style={{ padding: '1.5rem' }}>
+        <h3 style={{ marginBottom: '0.5rem' }}>Mapa de Competencias por Departamento</h3>
+        <p style={{ color: 'var(--text-muted)' }}>{data?.message || 'Sin datos disponibles'}</p>
+      </div>
+    );
+  }
+
+  const getColor = (avg: number | null) => {
+    if (avg === null) return '#f1f5f9';
+    if (avg >= 4) return '#dcfce7';
+    if (avg >= 3) return '#fef9c3';
+    if (avg >= 2) return '#fed7aa';
+    return '#fecaca';
+  };
+
+  const getTextColor = (avg: number | null) => {
+    if (avg === null) return '#94a3b8';
+    if (avg >= 4) return '#166534';
+    if (avg >= 3) return '#854d0e';
+    if (avg >= 2) return '#9a3412';
+    return '#991b1b';
+  };
+
+  return (
+    <div className="card" style={{ padding: '1.5rem' }}>
+      <h3 style={{ marginBottom: '1rem' }}>Mapa de Competencias por Departamento</h3>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+          <thead>
+            <tr>
+              <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)', minWidth: '150px' }}>
+                Competencia / Sección
+              </th>
+              {data.departments.map((dept: string) => (
+                <th key={dept} style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '2px solid var(--border)', minWidth: '100px' }}>
+                  {dept}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.grid.map((row: any) => (
+              <tr key={row.section}>
+                <td style={{ padding: '0.5rem', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>
+                  {row.section}
+                </td>
+                {row.values.map((cell: any) => (
+                  <td key={cell.department} style={{
+                    padding: '0.5rem',
+                    textAlign: 'center',
+                    borderBottom: '1px solid var(--border)',
+                    backgroundColor: getColor(cell.avg),
+                    color: getTextColor(cell.avg),
+                    fontWeight: 600,
+                  }}>
+                    {cell.avg !== null ? cell.avg.toFixed(1) : '—'}
+                    {cell.count > 0 && (
+                      <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, opacity: 0.7 }}>
+                        n={cell.count}
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+        <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#fecaca', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />0-2 Bajo</span>
+        <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#fed7aa', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />2-3 Regular</span>
+        <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#fef9c3', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />3-4 Bueno</span>
+        <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#dcfce7', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />4-5 Excelente</span>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 export default function InformesPage() {
@@ -543,6 +629,9 @@ export default function InformesPage() {
 
           {/* Bell Curve */}
           <BellCurveSection cycleId={selectedCycleId} />
+
+          {/* Competency Heatmap */}
+          <CompetencyHeatmapSection cycleId={selectedCycleId} />
 
           {/* Heatmap always visible with cycle */}
           <HeatmapSection cycleId={selectedCycleId} />

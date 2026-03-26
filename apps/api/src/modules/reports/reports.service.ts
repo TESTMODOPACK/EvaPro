@@ -907,6 +907,119 @@ export class ReportsService {
     return { cycleId, heatmap, privacyThreshold: PRIVACY_MIN_PEOPLE };
   }
 
+  // ─── C5: Competency Heatmap (department × competency/section) ───────────
+  //
+  // Cross-references template sections (as proxy for competencies) against
+  // departments, showing average score per section per department.
+
+  async competencyHeatmap(cycleId: string, tenantId: string, filters?: ReportFilters) {
+    // 1. Get cycle + template
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+    if (!cycle) throw new NotFoundException('Ciclo no encontrado');
+    if (!cycle.templateId) {
+      return { cycleId, message: 'Este ciclo no tiene plantilla asignada', grid: [], sections: [], departments: [] };
+    }
+    const template = await this.templateRepo.findOne({ where: { id: cycle.templateId } });
+    if (!template?.sections || !Array.isArray(template.sections)) {
+      return { cycleId, message: 'La plantilla no tiene secciones definidas', grid: [], sections: [], departments: [] };
+    }
+
+    // 2. Load all responses with evaluatee department
+    const qb = this.responseRepo
+      .createQueryBuilder('r')
+      .innerJoin('r.assignment', 'a')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .where('a.cycleId = :cycleId', { cycleId })
+      .andWhere('r.tenantId = :tenantId', { tenantId })
+      .andWhere('r.answers IS NOT NULL')
+      .select('r.answers', 'answers')
+      .addSelect('u.department', 'department');
+    this.applyUserFilters(qb, filters);
+    const rows = await qb.getRawMany();
+
+    if (rows.length === 0) {
+      return { cycleId, message: 'Sin respuestas disponibles', grid: [], sections: [], departments: [] };
+    }
+
+    // 3. Build section → questions map from template
+    const sectionMeta = template.sections.map((sec: any) => ({
+      id: sec.id,
+      title: sec.title || sec.id,
+      questionIds: (sec.questions || [])
+        .filter((q: any) => q.type === 'scale')
+        .map((q: any) => q.id),
+    }));
+
+    // 4. Count unique evaluatees per department for privacy check
+    const deptEvaluateeCount = new Map<string, number>();
+    const qbCount = this.responseRepo
+      .createQueryBuilder('r2')
+      .innerJoin('r2.assignment', 'a2')
+      .innerJoin(User, 'u2', 'u2.id = a2.evaluatee_id')
+      .where('a2.cycleId = :cycleId', { cycleId })
+      .andWhere('r2.tenantId = :tenantId', { tenantId })
+      .select('u2.department', 'department')
+      .addSelect('COUNT(DISTINCT u2.id)', 'userCount')
+      .groupBy('u2.department');
+    const deptCounts = await qbCount.getRawMany();
+    for (const dc of deptCounts) {
+      deptEvaluateeCount.set(dc.department || 'Sin departamento', parseInt(dc.userCount));
+    }
+
+    // 5. Calculate avg score per section per department
+    const grid: Record<string, Record<string, { sum: number; count: number }>> = {};
+    const deptSet = new Set<string>();
+
+    for (const row of rows) {
+      const dept = row.department || 'Sin departamento';
+      deptSet.add(dept);
+      let answers: any;
+      try {
+        answers = typeof row.answers === 'string' ? JSON.parse(row.answers) : row.answers;
+      } catch {
+        continue; // Skip malformed JSON
+      }
+      if (!answers) continue;
+
+      for (const sec of sectionMeta) {
+        if (!grid[sec.id]) grid[sec.id] = {};
+        if (!grid[sec.id][dept]) grid[sec.id][dept] = { sum: 0, count: 0 };
+
+        for (const qId of sec.questionIds) {
+          const val = answers[qId];
+          if (val != null && typeof val === 'number') {
+            grid[sec.id][dept].sum += val;
+            grid[sec.id][dept].count++;
+          }
+        }
+      }
+    }
+
+    // 6. Build output grid with privacy enforcement
+    const departments = Array.from(deptSet).sort();
+    const sections = sectionMeta.map((sec: any) => sec.title);
+
+    const heatmapGrid = sectionMeta.map((sec: any) => ({
+      section: sec.title,
+      values: departments.map((dept) => {
+        const cell = grid[sec.id]?.[dept];
+        const deptUserCount = deptEvaluateeCount.get(dept) || 0;
+        // Privacy: hide scores if department has fewer than PRIVACY_MIN_PEOPLE unique evaluatees
+        if (deptUserCount < PRIVACY_MIN_PEOPLE) {
+          return { department: dept, avg: null, count: 0, privacyRestricted: true };
+        }
+        if (!cell || cell.count === 0) return { department: dept, avg: null, count: 0 };
+        return {
+          department: dept,
+          avg: Math.round((cell.sum / cell.count) * 100) / 100,
+          count: cell.count,
+        };
+      }),
+    }));
+
+    return { cycleId, sections, departments, grid: heatmapGrid, privacyThreshold: PRIVACY_MIN_PEOPLE };
+  }
+
   // ─── Gap Analysis: Individual Employee ──────────────────────────────────
 
   async gapAnalysisIndividual(cycleId: string, userId: string, tenantId: string) {

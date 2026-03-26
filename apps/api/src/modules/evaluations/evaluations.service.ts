@@ -19,6 +19,7 @@ import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignme
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { Objective } from '../objectives/entities/objective.entity';
 
 @Injectable()
 export class EvaluationsService {
@@ -37,6 +38,8 @@ export class EvaluationsService {
     private readonly peerAssignmentRepo: Repository<PeerAssignment>,
     @InjectRepository(CycleStage)
     private readonly stageRepo: Repository<CycleStage>,
+    @InjectRepository(Objective)
+    private readonly objectiveRepo: Repository<Objective>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
@@ -724,7 +727,32 @@ export class EvaluationsService {
       where: { assignmentId },
     });
 
-    return { assignment, template, response };
+    // Pre-load evaluatee's objectives for the cycle period (OKR context)
+    let evaluateeObjectives: Objective[] = [];
+    try {
+      // First try objectives linked to this specific cycle
+      evaluateeObjectives = await this.objectiveRepo.find({
+        where: { userId: assignment.evaluateeId, tenantId, cycleId: assignment.cycleId },
+        order: { createdAt: 'DESC' },
+        take: 20,
+      });
+
+      // If none linked to cycle, fallback to objectives created during the cycle period
+      if (evaluateeObjectives.length === 0 && assignment.cycle) {
+        const qb = this.objectiveRepo.createQueryBuilder('o')
+          .where('o.userId = :userId', { userId: assignment.evaluateeId })
+          .andWhere('o.tenantId = :tenantId', { tenantId })
+          .andWhere('o.created_at >= :start', { start: assignment.cycle.startDate })
+          .andWhere('o.created_at <= :end', { end: assignment.cycle.endDate })
+          .orderBy('o.created_at', 'DESC')
+          .limit(20);
+        evaluateeObjectives = await qb.getMany();
+      }
+    } catch {
+      // Objectives module may not exist — graceful fallback
+    }
+
+    return { assignment, template, response, evaluateeObjectives };
   }
 
   // ─── Responses ────────────────────────────────────────────────────────────

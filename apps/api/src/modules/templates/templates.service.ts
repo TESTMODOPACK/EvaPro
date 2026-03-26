@@ -42,17 +42,89 @@ export class TemplatesService {
     return this.templateRepo.save(template);
   }
 
-  async update(id: string, tenantId: string, dto: UpdateTemplateDto): Promise<FormTemplate> {
+  async update(id: string, tenantId: string, userId: string, dto: UpdateTemplateDto): Promise<FormTemplate> {
     const template = await this.findById(id, tenantId);
     if (template.tenantId === null) {
       throw new NotFoundException('No se pueden editar plantillas globales');
     }
+
+    // If sections changed, snapshot current version before overwriting
+    const sectionsChanged = dto.sections !== undefined &&
+      JSON.stringify(dto.sections) !== JSON.stringify(template.sections);
+
+    if (sectionsChanged) {
+      const history = Array.isArray(template.versionHistory) ? [...template.versionHistory] : [];
+      history.push({
+        version: template.version,
+        name: template.name,
+        sections: template.sections,
+        changedBy: userId,
+        changedAt: new Date().toISOString(),
+        changeNote: dto.changeNote || null,
+      });
+      // Keep max 20 versions to avoid JSONB bloat
+      if (history.length > 20) history.splice(0, history.length - 20);
+      template.versionHistory = history;
+      template.version = (template.version || 1) + 1;
+    }
+
     Object.assign(template, {
       ...(dto.name !== undefined && { name: dto.name }),
       ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.sections !== undefined && { sections: dto.sections }),
       ...(dto.isDefault !== undefined && { isDefault: dto.isDefault }),
     });
+    return this.templateRepo.save(template);
+  }
+
+  async getVersionHistory(id: string, tenantId: string) {
+    const template = await this.findById(id, tenantId);
+    const history = Array.isArray(template.versionHistory) ? template.versionHistory : [];
+    return {
+      templateId: id,
+      currentVersion: template.version || 1,
+      totalVersions: history.length + 1,
+      history: history.map((h: any) => ({
+        version: h.version,
+        name: h.name,
+        changedBy: h.changedBy,
+        changedAt: h.changedAt,
+        changeNote: h.changeNote,
+        sectionCount: Array.isArray(h.sections) ? h.sections.length : 0,
+        questionCount: Array.isArray(h.sections)
+          ? h.sections.reduce((sum: number, s: any) => sum + (s.questions?.length || 0), 0)
+          : 0,
+      })),
+    };
+  }
+
+  async restoreVersion(id: string, tenantId: string, userId: string, version: number): Promise<FormTemplate> {
+    const template = await this.findById(id, tenantId);
+    if (template.tenantId === null) {
+      throw new BadRequestException('No se pueden editar plantillas globales');
+    }
+    const history = Array.isArray(template.versionHistory) ? template.versionHistory : [];
+    const target = history.find((h: any) => h.version === version);
+    if (!target) {
+      throw new NotFoundException(`Versión ${version} no encontrada en el historial`);
+    }
+
+    // Snapshot current before restoring
+    history.push({
+      version: template.version,
+      name: template.name,
+      sections: template.sections,
+      changedBy: userId,
+      changedAt: new Date().toISOString(),
+      changeNote: `Auto-snapshot antes de restaurar versión ${version}`,
+    });
+    if (history.length > 20) history.splice(0, history.length - 20);
+
+    template.sections = target.sections;
+    template.name = target.name || template.name;
+    template.version = (template.version || 1) + 1;
+    template.versionHistory = history;
+
     return this.templateRepo.save(template);
   }
 
