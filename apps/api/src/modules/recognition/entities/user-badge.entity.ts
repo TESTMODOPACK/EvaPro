@@ -11,7 +11,7 @@ import { Badge } from './badge.entity';
  */
 @Entity('user_badges')
 @Index('idx_ub_tenant_user', ['tenantId', 'userId'])
-@Unique('uq_user_badge', ['userId', 'badgeId'])
+@Unique('uq_user_badge', ['tenantId', 'userId', 'badgeId'])
 export class UserBadge {
   @PrimaryGeneratedColumn('uuid')
   id: string;

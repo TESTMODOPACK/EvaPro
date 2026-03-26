@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsOptional, IsInt, Min, Max, MinLength, MaxLength, IsBoolean } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsInt, Min, Max, MinLength, MaxLength } from 'class-validator';
 
 export class CreateRecognitionDto {
   @IsUUID()
@@ -13,11 +13,7 @@ export class CreateRecognitionDto {
   @IsOptional()
   valueId?: string;
 
-  @IsInt()
-  @Min(1)
-  @Max(50)
-  @IsOptional()
-  points?: number;
+  // Points are server-controlled (DEFAULT_RECOGNITION_POINTS), not user-settable
 }
 
 export class CreateBadgeDto {
@@ -39,7 +35,7 @@ export class CreateBadgeDto {
   color?: string;
 
   @IsOptional()
-  criteria?: any;
+  criteria?: { type: string; threshold: number } | null;
 
   @IsInt()
   @Min(0)

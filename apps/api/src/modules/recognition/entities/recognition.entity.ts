@@ -29,14 +29,14 @@ export class Recognition {
   @Column({ type: 'uuid', name: 'from_user_id' })
   fromUserId: string;
 
-  @ManyToOne(() => User, { eager: true })
+  @ManyToOne(() => User)
   @JoinColumn({ name: 'from_user_id' })
   fromUser: User;
 
   @Column({ type: 'uuid', name: 'to_user_id' })
   toUserId: string;
 
-  @ManyToOne(() => User, { eager: true })
+  @ManyToOne(() => User)
   @JoinColumn({ name: 'to_user_id' })
   toUser: User;
 
@@ -55,9 +55,9 @@ export class Recognition {
   @Column({ type: 'int', default: 10 })
   points: number;
 
-  /** Emoji reaction from the community (JSON: { "emoji": count }) */
+  /** Emoji reactions with user tracking (JSON: { "emoji": ["userId1", "userId2"] }) */
   @Column({ type: 'jsonb', default: () => "'{}'" })
-  reactions: Record<string, number>;
+  reactions: Record<string, string[]>;
 
   @Column({ type: 'boolean', default: true, name: 'is_public' })
   isPublic: boolean;

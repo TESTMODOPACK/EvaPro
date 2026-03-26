@@ -762,7 +762,7 @@ async function seedDemoFull() {
           valueId: competencies[r.valueIdx]?.id || null,
           points: 10 + Math.floor(Math.random() * 15),
           isPublic: true,
-          reactions: i < 5 ? { '\uD83D\uDC4F': Math.floor(2 + Math.random() * 8), '\u2764\uFE0F': Math.floor(1 + Math.random() * 5) } : {},
+          reactions: i < 5 ? { '\uD83D\uDC4F': allNewUsers.slice(0, 3).map(u => u.id), '\u2764\uFE0F': allNewUsers.slice(2, 4).map(u => u.id) } : {},
         }));
 
         // Points for receiver and sender

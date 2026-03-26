@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import {
   useRecognitionWall, useCreateRecognition, useAddReaction,
-  useMyBadges, useMyPoints, useLeaderboard, useRecognitionStats, useBadges,
+  useMyBadges, useMyPoints, useLeaderboard, useRecognitionStats,
 } from '@/hooks/useRecognition';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
 /* ─── Badge Icons ─────────────────────────────────────────────── */
 const ICONS: Record<string, string> = {
@@ -45,10 +47,10 @@ function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, e
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
               +{item.points} pts {'\u00B7'} {new Date(item.createdAt).toLocaleDateString('es-CL')}
             </span>
-            {Object.entries(item.reactions || {}).map(([emoji, count]) => (
+            {Object.entries(item.reactions || {}).map(([emoji, users]) => (
               <button key={emoji} onClick={() => onReact(item.id, emoji)}
                 style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '2px 8px', fontSize: '0.8rem', cursor: 'pointer' }}>
-                {emoji} {count as number}
+                {emoji} {Array.isArray(users) ? users.length : String(users)}
               </button>
             ))}
             <button onClick={() => setShowReactions(!showReactions)}
@@ -75,21 +77,32 @@ function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, e
 /* ─── New Recognition Form ────────────────────────────────────── */
 function NewRecognitionForm({ onSuccess }: { onSuccess: () => void }) {
   const { data: usersPage } = useUsers();
-  const { data: values } = useBadges(); // Using competencies as values
+  const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  const { data: competencies } = useQuery({
+    queryKey: ['competencies'],
+    queryFn: () => api.development.competencies.list(token!),
+    enabled: !!token,
+  });
   const createMut = useCreateRecognition();
   const [toUserId, setToUserId] = useState('');
   const [message, setMessage] = useState('');
   const [valueId, setValueId] = useState('');
+  const [error, setError] = useState('');
 
   const users = (usersPage as any)?.data || usersPage || [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!toUserId || !message) return;
-    await createMut.mutateAsync({ toUserId, message, valueId: valueId || undefined });
-    setToUserId(''); setMessage(''); setValueId('');
-    onSuccess();
+    setError('');
+    try {
+      await createMut.mutateAsync({ toUserId, message, valueId: valueId || undefined });
+      setToUserId(''); setMessage(''); setValueId('');
+      onSuccess();
+    } catch (err: any) {
+      setError(err?.message || 'Error al enviar reconocimiento');
+    }
   };
 
   return (
@@ -105,15 +118,16 @@ function NewRecognitionForm({ onSuccess }: { onSuccess: () => void }) {
         </select>
         <select value={valueId} onChange={(e) => setValueId(e.target.value)}
           style={{ minWidth: '150px', padding: '0.5rem', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-          <option value="">Valor (opcional)</option>
-          {(Array.isArray(values) ? values : []).map((v: any) => (
-            <option key={v.id} value={v.id}>{v.icon ? (ICONS[v.icon] || '') : ''} {v.name}</option>
+          <option value="">Valor corporativo (opcional)</option>
+          {(Array.isArray(competencies) ? competencies : []).map((c: any) => (
+            <option key={c.id} value={c.id}>{c.name} ({c.category})</option>
           ))}
         </select>
       </div>
       <textarea value={message} onChange={(e) => setMessage(e.target.value)} required
         placeholder="Escribe tu reconocimiento..." rows={2}
         style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid var(--border)', resize: 'vertical', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontFamily: 'inherit' }} />
+      {error && <p style={{ color: '#ef4444', fontSize: '0.85rem', margin: '0.5rem 0 0' }}>{error}</p>}
       <button type="submit" className="btn btn-primary" disabled={createMut.isPending}
         style={{ marginTop: '0.5rem' }}>
         {createMut.isPending ? 'Enviando...' : 'Enviar reconocimiento'}

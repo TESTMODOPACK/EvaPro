@@ -36,10 +36,10 @@ export class RecognitionController {
     @Request() req: any,
     @Body() dto: AddReactionDto,
   ) {
-    return this.service.addReaction(req.user.tenantId, id, dto.emoji);
+    return this.service.addReaction(req.user.tenantId, id, req.user.userId, dto.emoji);
   }
 
-  // ─── Badges ──────────────────────────────────────────────────────
+  // ─── Badges — IMPORTANT: /mine BEFORE /:userId to avoid route shadowing ──
 
   @Get('badges')
   getBadges(@Request() req: any) {
@@ -52,17 +52,17 @@ export class RecognitionController {
     return this.service.createBadge(req.user.tenantId, dto);
   }
 
+  @Get('badges/mine')
+  getMyBadges(@Request() req: any) {
+    return this.service.getUserBadges(req.user.tenantId, req.user.userId);
+  }
+
   @Get('badges/user/:userId')
   getUserBadges(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
     return this.service.getUserBadges(req.user.tenantId, userId);
-  }
-
-  @Get('badges/mine')
-  getMyBadges(@Request() req: any) {
-    return this.service.getUserBadges(req.user.tenantId, req.user.userId);
   }
 
   @Post('badges/award')
@@ -89,10 +89,12 @@ export class RecognitionController {
   @Get('leaderboard')
   getLeaderboard(
     @Request() req: any,
-    @Query('period') period: 'week' | 'month' | 'quarter' | 'all',
+    @Query('period') period: string,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.service.getLeaderboard(req.user.tenantId, period || 'month', Math.min(limit, 50));
+    const validPeriods = ['week', 'month', 'quarter', 'all'];
+    const safePeriod = validPeriods.includes(period) ? period as any : 'month';
+    return this.service.getLeaderboard(req.user.tenantId, safePeriod, Math.min(limit, 50));
   }
 
   // ─── Stats ──────────────────────────────────────────────────────

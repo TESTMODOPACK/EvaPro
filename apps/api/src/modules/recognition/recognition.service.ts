@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource, MoreThan } from 'typeorm';
 import { Recognition } from './entities/recognition.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
@@ -8,6 +8,11 @@ import { UserPoints, PointsSource } from './entities/user-points.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
+
+const MAX_RECOGNITIONS_PER_DAY = 5;
+const MAX_RECOGNITIONS_SAME_PERSON_PER_DAY = 2;
+const DEFAULT_RECOGNITION_POINTS = 10;
+const SENDER_POINTS = 2;
 
 @Injectable()
 export class RecognitionService {
@@ -17,6 +22,7 @@ export class RecognitionService {
     @InjectRepository(UserBadge) private readonly userBadgeRepo: Repository<UserBadge>,
     @InjectRepository(UserPoints) private readonly pointsRepo: Repository<UserPoints>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -46,7 +52,7 @@ export class RecognitionService {
   }
 
   async createRecognition(tenantId: string, fromUserId: string, dto: {
-    toUserId: string; message: string; valueId?: string; points?: number;
+    toUserId: string; message: string; valueId?: string;
   }) {
     if (fromUserId === dto.toUserId) {
       throw new BadRequestException('No puedes enviarte reconocimiento a ti mismo');
@@ -54,44 +60,84 @@ export class RecognitionService {
     const toUser = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId } });
     if (!toUser) throw new NotFoundException('Usuario receptor no encontrado');
 
-    const recognition = await this.recogRepo.save(this.recogRepo.create({
-      tenantId,
-      fromUserId,
-      toUserId: dto.toUserId,
-      message: dto.message,
-      valueId: dto.valueId || null,
-      points: dto.points || 10,
-      isPublic: true,
-    }));
+    // Rate limiting: max recognitions per day
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
-    // Award points to receiver
-    await this.addPoints(tenantId, dto.toUserId, recognition.points, PointsSource.RECOGNITION_RECEIVED,
-      `Reconocimiento recibido`, recognition.id);
-    // Award small points to sender for participation
-    await this.addPoints(tenantId, fromUserId, 2, PointsSource.RECOGNITION_SENT,
-      `Reconocimiento enviado`, recognition.id);
-
-    // Check auto-badges for receiver
-    await this.checkAutoBadges(tenantId, dto.toUserId);
-
-    // Notify receiver
-    await this.notificationsService.create({
-      tenantId, userId: dto.toUserId, type: NotificationType.FEEDBACK_RECEIVED,
-      title: 'Has recibido un reconocimiento',
-      message: `Un compañero te ha reconocido: "${dto.message.substring(0, 80)}..."`,
-      metadata: { recognitionId: recognition.id },
+    const dailyCount = await this.recogRepo.count({
+      where: { tenantId, fromUserId, createdAt: MoreThan(todayStart) },
     });
+    if (dailyCount >= MAX_RECOGNITIONS_PER_DAY) {
+      throw new BadRequestException(`Has alcanzado el limite de ${MAX_RECOGNITIONS_PER_DAY} reconocimientos por dia`);
+    }
 
-    return this.recogRepo.findOne({ where: { id: recognition.id }, relations: ['fromUser', 'toUser', 'value'] });
+    const samePersonCount = await this.recogRepo.count({
+      where: { tenantId, fromUserId, toUserId: dto.toUserId, createdAt: MoreThan(todayStart) },
+    });
+    if (samePersonCount >= MAX_RECOGNITIONS_SAME_PERSON_PER_DAY) {
+      throw new BadRequestException(`Solo puedes enviar ${MAX_RECOGNITIONS_SAME_PERSON_PER_DAY} reconocimientos por dia a la misma persona`);
+    }
+
+    // Use transaction for atomicity
+    return this.dataSource.transaction(async (manager) => {
+      const recognition = await manager.save(manager.getRepository(Recognition).create({
+        tenantId,
+        fromUserId,
+        toUserId: dto.toUserId,
+        message: dto.message,
+        valueId: dto.valueId || null,
+        points: DEFAULT_RECOGNITION_POINTS,
+        isPublic: true,
+        reactions: {},
+      }));
+
+      // Award points to receiver and sender
+      await manager.save(manager.getRepository(UserPoints).create({
+        tenantId, userId: dto.toUserId, points: DEFAULT_RECOGNITION_POINTS,
+        source: PointsSource.RECOGNITION_RECEIVED, description: 'Reconocimiento recibido', referenceId: recognition.id,
+      }));
+      await manager.save(manager.getRepository(UserPoints).create({
+        tenantId, userId: fromUserId, points: SENDER_POINTS,
+        source: PointsSource.RECOGNITION_SENT, description: 'Reconocimiento enviado', referenceId: recognition.id,
+      }));
+
+      return recognition;
+    }).then(async (recognition) => {
+      // Non-critical operations outside transaction
+      await this.checkAutoBadges(tenantId, dto.toUserId).catch(() => {});
+
+      const msgPreview = dto.message.length > 80 ? dto.message.substring(0, 80) + '...' : dto.message;
+      await this.notificationsService.create({
+        tenantId, userId: dto.toUserId, type: NotificationType.FEEDBACK_RECEIVED,
+        title: 'Has recibido un reconocimiento',
+        message: `Un compañero te ha reconocido: "${msgPreview}"`,
+        metadata: { recognitionId: recognition.id },
+      }).catch(() => {});
+
+      return this.recogRepo.findOne({ where: { id: recognition.id }, relations: ['fromUser', 'toUser', 'value'] });
+    });
   }
 
-  async addReaction(tenantId: string, recognitionId: string, emoji: string) {
-    const recog = await this.recogRepo.findOne({ where: { id: recognitionId, tenantId } });
+  async addReaction(tenantId: string, recognitionId: string, userId: string, emoji: string) {
+    // Use atomic JSONB update to avoid race conditions
+    // Reactions stored as { "emoji": ["userId1", "userId2"] }
+    const recog = await this.recogRepo.findOne({ where: { id: recognitionId, tenantId }, select: ['id', 'reactions'] });
     if (!recog) throw new NotFoundException('Reconocimiento no encontrado');
+
     const reactions = recog.reactions || {};
-    reactions[emoji] = (reactions[emoji] || 0) + 1;
-    recog.reactions = reactions;
-    return this.recogRepo.save(recog);
+    const usersForEmoji: string[] = Array.isArray(reactions[emoji]) ? reactions[emoji] : [];
+
+    if (usersForEmoji.includes(userId)) {
+      // Toggle off: remove user from reaction
+      reactions[emoji] = usersForEmoji.filter((u: string) => u !== userId);
+      if (reactions[emoji].length === 0) delete reactions[emoji];
+    } else {
+      // Toggle on: add user
+      reactions[emoji] = [...usersForEmoji, userId];
+    }
+
+    await this.recogRepo.update(recognitionId, { reactions });
+    return { id: recognitionId, reactions };
   }
 
   // ─── Badges ─────────────────────────────────────────────────────────
@@ -119,53 +165,69 @@ export class RecognitionService {
   }
 
   async awardBadge(tenantId: string, userId: string, badgeId: string, awardedBy?: string) {
-    const existing = await this.userBadgeRepo.findOne({ where: { userId, badgeId } });
-    if (existing) return existing; // Already has this badge
+    const existing = await this.userBadgeRepo.findOne({ where: { tenantId, userId, badgeId } });
+    if (existing) return existing;
 
     const badge = await this.badgeRepo.findOne({ where: { id: badgeId, tenantId } });
     if (!badge) throw new NotFoundException('Badge no encontrado');
 
-    const ub = await this.userBadgeRepo.save(this.userBadgeRepo.create({
-      tenantId, userId, badgeId, awardedBy: awardedBy || null,
-    }));
+    return this.dataSource.transaction(async (manager) => {
+      const ub = await manager.save(manager.getRepository(UserBadge).create({
+        tenantId, userId, badgeId, awardedBy: awardedBy || null,
+      }));
 
-    // Award points for earning badge
-    if (badge.pointsReward > 0) {
-      await this.addPoints(tenantId, userId, badge.pointsReward, PointsSource.BADGE_EARNED,
-        `Badge obtenido: ${badge.name}`, ub.id);
-    }
+      if (badge.pointsReward > 0) {
+        await manager.save(manager.getRepository(UserPoints).create({
+          tenantId, userId, points: badge.pointsReward, source: PointsSource.BADGE_EARNED,
+          description: `Badge obtenido: ${badge.name}`, referenceId: ub.id,
+        }));
+      }
 
-    // Notify user
-    await this.notificationsService.create({
-      tenantId, userId, type: NotificationType.GENERAL,
-      title: `Has obtenido el badge "${badge.name}"`,
-      message: badge.description || `Felicitaciones por obtener el badge ${badge.name}`,
-      metadata: { badgeId, userBadgeId: ub.id },
+      return ub;
+    }).then(async (ub) => {
+      await this.notificationsService.create({
+        tenantId, userId, type: NotificationType.GENERAL,
+        title: `Has obtenido el badge "${badge.name}"`,
+        message: badge.description || `Felicitaciones por obtener el badge ${badge.name}`,
+        metadata: { badgeId, userBadgeId: ub.id },
+      }).catch(() => {});
+      return ub;
     });
-
-    return ub;
   }
 
-  /** Check if user qualifies for any auto-awarded badges */
+  /** Check auto-badges — optimized: batch queries + skip already-earned */
   private async checkAutoBadges(tenantId: string, userId: string) {
+    // 1. Get all active badges with criteria
     const badges = await this.badgeRepo.find({ where: { tenantId, isActive: true } });
-    for (const badge of badges) {
-      if (!badge.criteria) continue;
+    const withCriteria = badges.filter((b) => b.criteria?.type && b.criteria?.threshold);
+    if (withCriteria.length === 0) return;
+
+    // 2. Get badges the user already has (skip them)
+    const earnedBadgeIds = new Set(
+      (await this.userBadgeRepo.find({ where: { tenantId, userId }, select: ['badgeId'] }))
+        .map((ub) => ub.badgeId),
+    );
+    const unchecked = withCriteria.filter((b) => !earnedBadgeIds.has(b.id));
+    if (unchecked.length === 0) return;
+
+    // 3. Batch fetch all needed counts in 3 queries max
+    const [recvCount, sentCount, totalPoints] = await Promise.all([
+      this.recogRepo.count({ where: { tenantId, toUserId: userId } }),
+      this.recogRepo.count({ where: { tenantId, fromUserId: userId } }),
+      this.pointsRepo.createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('p.user_id = :userId', { userId })
+        .select('COALESCE(SUM(p.points), 0)', 'total')
+        .getRawOne().then((r) => parseInt(r.total)),
+    ]);
+
+    // 4. Check each badge against pre-fetched counts
+    for (const badge of unchecked) {
       const { type, threshold } = badge.criteria;
       let count = 0;
-
-      if (type === 'recognitions_received') {
-        count = await this.recogRepo.count({ where: { tenantId, toUserId: userId } });
-      } else if (type === 'recognitions_sent') {
-        count = await this.recogRepo.count({ where: { tenantId, fromUserId: userId } });
-      } else if (type === 'total_points') {
-        const result = await this.pointsRepo.createQueryBuilder('p')
-          .where('p.tenant_id = :tenantId', { tenantId })
-          .andWhere('p.user_id = :userId', { userId })
-          .select('COALESCE(SUM(p.points), 0)', 'total')
-          .getRawOne();
-        count = parseInt(result.total);
-      }
+      if (type === 'recognitions_received') count = recvCount;
+      else if (type === 'recognitions_sent') count = sentCount;
+      else if (type === 'total_points') count = totalPoints;
 
       if (count >= threshold) {
         await this.awardBadge(tenantId, userId, badge.id);
