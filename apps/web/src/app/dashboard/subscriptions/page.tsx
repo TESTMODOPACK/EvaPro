@@ -480,6 +480,12 @@ export default function SubscriptionsPage() {
                   </div>
                 </div>
               </div>
+              {/* Error inline dentro del formulario de planes */}
+              {error && (
+                <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm)', color: '#dc2626', fontSize: '0.85rem', marginTop: '1rem' }}>
+                  ⚠️ {error}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
                 <button className="btn-primary" onClick={editingPlanId ? handleUpdatePlan : handleCreatePlan} disabled={saving}>
                   {saving ? 'Guardando...' : editingPlanId ? 'Actualizar' : 'Crear plan'}
@@ -656,6 +662,12 @@ export default function SubscriptionsPage() {
                   <input style={inputStyle} value={subForm.notes} onChange={(e) => setSubForm({ ...subForm, notes: e.target.value })} placeholder="Notas opcionales..." />
                 </div>
               </div>
+              {/* Error inline dentro del formulario de suscripción */}
+              {error && (
+                <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm)', color: '#dc2626', fontSize: '0.85rem', marginTop: '1rem' }}>
+                  ⚠️ {error}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
                 <button className="btn-primary" onClick={editingSubId ? handleUpdateSub : handleCreateSub} disabled={saving}>
                   {saving ? 'Guardando...' : editingSubId ? 'Actualizar' : 'Asignar plan'}
