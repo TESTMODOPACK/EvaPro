@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { formatCLP } from '@/lib/format';
@@ -119,6 +119,23 @@ export default function SubscriptionsPage() {
   const [showSubForm, setShowSubForm] = useState(false);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [subForm, setSubForm] = useState({ ...emptySubForm });
+
+  // Payment form
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentSubId, setPaymentSubId] = useState<string | null>(null);
+  const [paymentSubName, setPaymentSubName] = useState('');
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '', periodStart: '', periodEnd: '',
+    paymentMethod: 'transferencia', transactionRef: '', notes: '', status: 'paid',
+  });
+  const resetPaymentForm = () => {
+    setShowPaymentForm(false); setPaymentSubId(null); setPaymentSubName('');
+    setPaymentForm({ amount: '', periodStart: '', periodEnd: '', paymentMethod: 'transferencia', transactionRef: '', notes: '', status: 'paid' });
+  };
+
+  // Payment history
+  const [showPaymentsFor, setShowPaymentsFor] = useState<string | null>(null);
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
 
   // ── Fetch ───────────────────────────────────────────────────────────────
 
@@ -325,6 +342,69 @@ export default function SubscriptionsPage() {
     setEditingSubId(sub.id);
     setShowSubForm(true);
     setError('');
+  };
+
+  // ── Payments ───────────────────────────────────────────────────────────
+
+  const startPayment = (sub: any) => {
+    const orgName = sub.tenant?.name ?? tenantMap[sub.tenantId] ?? sub.tenantId;
+    setPaymentSubId(sub.id);
+    setPaymentSubName(orgName);
+    // Auto-fill period based on current date
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    // Pre-fill amount from plan price
+    const plan = planMap[sub.planId];
+    setPaymentForm({
+      amount: plan?.monthlyPrice ? String(Number(plan.monthlyPrice)) : '',
+      periodStart: start.toISOString().slice(0, 10),
+      periodEnd: end.toISOString().slice(0, 10),
+      paymentMethod: 'transferencia',
+      transactionRef: '',
+      notes: '',
+      status: 'paid',
+    });
+    setShowPaymentForm(true);
+    setError('');
+  };
+
+  const handleRegisterPayment = async () => {
+    if (!token || !paymentSubId) return;
+    if (!paymentForm.amount || !paymentForm.periodStart || !paymentForm.periodEnd) {
+      setError('Complete monto, fecha inicio y fecha fin del per\u00edodo');
+      return;
+    }
+    setSaving(true); setError('');
+    try {
+      await api.subscriptions.registerPayment(token, paymentSubId, {
+        amount: parseFloat(paymentForm.amount),
+        periodStart: paymentForm.periodStart,
+        periodEnd: paymentForm.periodEnd,
+        paymentMethod: paymentForm.paymentMethod || null,
+        transactionRef: paymentForm.transactionRef || null,
+        notes: paymentForm.notes || null,
+        status: paymentForm.status,
+      });
+      setSuccess('Pago registrado exitosamente');
+      resetPaymentForm();
+      fetchData();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e: any) {
+      setError(e.message || 'Error al registrar el pago');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const loadPaymentHistory = async (subId: string) => {
+    if (showPaymentsFor === subId) { setShowPaymentsFor(null); return; }
+    if (!token) return;
+    try {
+      const payments = await api.subscriptions.getPayments(token, subId);
+      setPaymentHistory(payments ?? []);
+      setShowPaymentsFor(subId);
+    } catch { setPaymentHistory([]); setShowPaymentsFor(subId); }
   };
 
   // ── Lookups ─────────────────────────────────────────────────────────────
@@ -720,6 +800,72 @@ export default function SubscriptionsPage() {
             </div>
           )}
 
+          {/* Payment form */}
+          {showPaymentForm && paymentSubId && (
+            <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
+                Registrar pago — {paymentSubName}
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={labelStyle}>Monto (UF) *</label>
+                  <input style={inputStyle} type="number" step="0.01" min="0" placeholder="3.50"
+                    value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Per\u00edodo inicio *</label>
+                  <input style={inputStyle} type="date" value={paymentForm.periodStart}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, periodStart: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Per\u00edodo fin *</label>
+                  <input style={inputStyle} type="date" value={paymentForm.periodEnd}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, periodEnd: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>M\u00e9todo de pago</label>
+                  <select style={inputStyle} value={paymentForm.paymentMethod}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}>
+                    <option value="transferencia">Transferencia bancaria</option>
+                    <option value="tarjeta">Tarjeta de cr\u00e9dito</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>N\u00b0 comprobante / referencia</label>
+                  <input style={inputStyle} placeholder="Ej: TRF-123456"
+                    value={paymentForm.transactionRef} onChange={(e) => setPaymentForm({ ...paymentForm, transactionRef: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Estado</label>
+                  <select style={inputStyle} value={paymentForm.status}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, status: e.target.value })}>
+                    <option value="paid">Pagado</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="overdue">Vencido</option>
+                  </select>
+                </div>
+                <div style={{ gridColumn: 'span 3' }}>
+                  <label style={labelStyle}>Notas</label>
+                  <input style={inputStyle} placeholder="Notas opcionales..."
+                    value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} />
+                </div>
+              </div>
+              {error && (
+                <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm)', color: '#dc2626', fontSize: '0.85rem', marginTop: '1rem' }}>
+                  {error}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                <button className="btn-primary" onClick={handleRegisterPayment} disabled={saving}>
+                  {saving ? 'Registrando...' : 'Registrar pago'}
+                </button>
+                <button className="btn-ghost" onClick={resetPaymentForm}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
           {/* Subscriptions table */}
           <div className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
             {subscriptions.length === 0 ? (
@@ -747,8 +893,8 @@ export default function SubscriptionsPage() {
                       const planCode = plan?.code ?? sub.planName ?? sub.plan ?? '';
                       const planName = plan?.name ?? sub.planName ?? sub.plan ?? '-';
                       const orgName = sub.tenant?.name ?? tenantMap[sub.tenantId] ?? sub.tenantId;
-                      return (
-                        <tr key={sub.id}>
+                      return (<React.Fragment key={sub.id}>
+                        <tr>
                           <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                             {orgName}
                           </td>
@@ -772,14 +918,22 @@ export default function SubscriptionsPage() {
                             {sub.notes ?? '-'}
                           </td>
                           <td>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                              <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }} onClick={() => startEditSub(sub)}>
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <button className="btn-ghost" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => startEditSub(sub)}>
                                 Editar
+                              </button>
+                              {sub.status !== 'cancelled' && (
+                                <button className="btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => startPayment(sub)}>
+                                  Pago
+                                </button>
+                              )}
+                              <button className="btn-ghost" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => loadPaymentHistory(sub.id)}>
+                                {showPaymentsFor === sub.id ? 'Ocultar' : 'Historial'}
                               </button>
                               {sub.status !== 'cancelled' && (
                                 <button
                                   className="btn-ghost"
-                                  style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: 'var(--danger)' }}
+                                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--danger)' }}
                                   onClick={() => handleCancelSub(sub.id, orgName)}
                                 >
                                   Cancelar
@@ -788,7 +942,54 @@ export default function SubscriptionsPage() {
                             </div>
                           </td>
                         </tr>
-                      );
+                        {showPaymentsFor === sub.id && (
+                          <tr>
+                            <td colSpan={7} style={{ background: 'var(--bg-surface)', padding: '1rem' }}>
+                              <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                                Historial de pagos — {orgName}
+                              </div>
+                              {paymentHistory.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin pagos registrados</p>
+                              ) : (
+                                <table style={{ width: '100%', fontSize: '0.8rem' }}>
+                                  <thead>
+                                    <tr>
+                                      <th style={{ padding: '0.35rem 0.5rem', textAlign: 'left' }}>Fecha</th>
+                                      <th style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>Monto</th>
+                                      <th style={{ padding: '0.35rem 0.5rem' }}>Per\u00edodo</th>
+                                      <th style={{ padding: '0.35rem 0.5rem' }}>M\u00e9todo</th>
+                                      <th style={{ padding: '0.35rem 0.5rem' }}>Referencia</th>
+                                      <th style={{ padding: '0.35rem 0.5rem' }}>Estado</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {paymentHistory.map((p: any) => (
+                                      <tr key={p.id}>
+                                        <td style={{ padding: '0.35rem 0.5rem' }}>
+                                          {p.paidAt ? new Date(p.paidAt).toLocaleDateString('es-CL') : '-'}
+                                        </td>
+                                        <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right', fontWeight: 600 }}>
+                                          {Number(p.amount).toFixed(2)} {p.currency || 'UF'}
+                                        </td>
+                                        <td style={{ padding: '0.35rem 0.5rem', color: 'var(--text-muted)' }}>
+                                          {p.periodStart ? new Date(p.periodStart).toLocaleDateString('es-CL') : '?'} — {p.periodEnd ? new Date(p.periodEnd).toLocaleDateString('es-CL') : '?'}
+                                        </td>
+                                        <td style={{ padding: '0.35rem 0.5rem' }}>{p.paymentMethod || '-'}</td>
+                                        <td style={{ padding: '0.35rem 0.5rem', color: 'var(--text-muted)' }}>{p.transactionRef || '-'}</td>
+                                        <td style={{ padding: '0.35rem 0.5rem' }}>
+                                          <span className={`badge ${p.status === 'paid' ? 'badge-success' : p.status === 'pending' ? 'badge-warning' : 'badge-danger'}`} style={{ fontSize: '0.7rem' }}>
+                                            {p.status === 'paid' ? 'Pagado' : p.status === 'pending' ? 'Pendiente' : p.status === 'overdue' ? 'Vencido' : p.status}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>);
                     })}
                   </tbody>
                 </table>
