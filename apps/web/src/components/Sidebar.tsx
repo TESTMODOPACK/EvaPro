@@ -318,37 +318,7 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
         })}
       </nav>
 
-      {/* User footer */}
-      <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <div style={{
-          width: '36px', height: '36px', borderRadius: '50%',
-          background: 'linear-gradient(135deg, var(--accent) 0%, #a78bfa 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '0.875rem', fontWeight: 700, color: 'white', flexShrink: 0,
-        }}>
-          {(user?.firstName || user?.email || '?').charAt(0).toUpperCase()}
-        </div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
-          </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-            {user?.role ? getRoleLabel(user.role) : ''}
-          </div>
-        </div>
-        <button
-          onClick={handleLogout}
-          title="Cerrar sesi\u00f3n"
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.3rem', borderRadius: '0.375rem', transition: 'var(--transition)', flexShrink: 0 }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
-        >
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-        </button>
-      </div>
+      {/* User info moved to TopBar component */}
     </aside>
   );
 }

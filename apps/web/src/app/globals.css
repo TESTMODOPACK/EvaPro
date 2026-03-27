@@ -32,6 +32,14 @@
   --transition:     200ms cubic-bezier(0.4,0,0.2,1);
   --shadow-card:    0 4px 24px rgba(0,0,0,0.35);
   --shadow-glow:    0 0 32px rgba(99,102,241,0.18);
+
+  /* Ascenda Brand — Gold */
+  --gold:           #C9933A;
+  --gold-light:     #E8C97A;
+  --gold-lighter:   #F5E4A8;
+  --gold-dark:      #6B4A18;
+  --gold-darker:    #8A5E18;
+  --gold-glow:      rgba(201,147,58,0.25);
 }
 
 /* ── Base ───────────────────────────────────────────────── */

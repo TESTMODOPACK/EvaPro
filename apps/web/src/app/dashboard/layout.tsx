@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
+import TopBar from '@/components/TopBar';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
@@ -117,11 +118,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       <Sidebar currentPath={pathname} />
+      <TopBar />
       <main style={{
         flex: 1,
         marginLeft: '260px',
+        marginTop: '56px',
         background: 'var(--bg-base)',
-        minHeight: '100vh',
+        minHeight: 'calc(100vh - 56px)',
         overflowY: 'auto',
       }}>
         {children}
