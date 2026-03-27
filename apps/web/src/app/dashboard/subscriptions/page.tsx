@@ -131,6 +131,7 @@ export default function SubscriptionsPage() {
   const resetPaymentForm = () => {
     setShowPaymentForm(false); setPaymentSubId(null); setPaymentSubName('');
     setPaymentForm({ amount: '', periodStart: '', periodEnd: '', paymentMethod: 'transferencia', transactionRef: '', notes: '', status: 'paid' });
+    setError('');
   };
 
   // Payment history
@@ -375,6 +376,10 @@ export default function SubscriptionsPage() {
       setError('Complete monto, fecha inicio y fecha fin del per\u00edodo');
       return;
     }
+    if (new Date(paymentForm.periodEnd) < new Date(paymentForm.periodStart)) {
+      setError('La fecha fin del per\u00edodo debe ser posterior a la fecha inicio');
+      return;
+    }
     setSaving(true); setError('');
     try {
       await api.subscriptions.registerPayment(token, paymentSubId, {
@@ -400,11 +405,12 @@ export default function SubscriptionsPage() {
   const loadPaymentHistory = async (subId: string) => {
     if (showPaymentsFor === subId) { setShowPaymentsFor(null); return; }
     if (!token) return;
+    setPaymentHistory([]);
+    setShowPaymentsFor(subId);
     try {
       const payments = await api.subscriptions.getPayments(token, subId);
       setPaymentHistory(payments ?? []);
-      setShowPaymentsFor(subId);
-    } catch { setPaymentHistory([]); setShowPaymentsFor(subId); }
+    } catch { setPaymentHistory([]); }
   };
 
   // ── Lookups ─────────────────────────────────────────────────────────────

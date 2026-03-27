@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -350,15 +351,18 @@ export class SubscriptionsService {
 
     // Validate required fields
     if (dto.amount == null || isNaN(Number(dto.amount))) {
-      throw new ForbiddenException('El campo "amount" es requerido y debe ser numérico');
+      throw new BadRequestException('El campo "amount" es requerido y debe ser numérico');
     }
     if (!dto.periodStart || !dto.periodEnd) {
-      throw new ForbiddenException('Los campos "periodStart" y "periodEnd" son requeridos');
+      throw new BadRequestException('Los campos "periodStart" y "periodEnd" son requeridos');
     }
     const periodStart = new Date(dto.periodStart);
     const periodEnd = new Date(dto.periodEnd);
     if (isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
-      throw new ForbiddenException('Las fechas "periodStart" y "periodEnd" deben ser válidas');
+      throw new BadRequestException('Las fechas "periodStart" y "periodEnd" deben ser válidas');
+    }
+    if (periodEnd < periodStart) {
+      throw new BadRequestException('La fecha fin del período debe ser igual o posterior a la fecha inicio');
     }
 
     // Guard: cannot register payment on cancelled subscription
