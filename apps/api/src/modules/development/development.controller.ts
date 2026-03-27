@@ -28,7 +28,9 @@ export class DevelopmentController {
   @Get('competencies')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   findAllCompetencies(@Request() req: any) {
-    return this.developmentService.findAllCompetencies(req.user.tenantId);
+    // Admins see all statuses; others see only approved
+    const includeAll = req.user.role === 'super_admin' || req.user.role === 'tenant_admin';
+    return this.developmentService.findAllCompetencies(req.user.tenantId, includeAll);
   }
 
   @Post('competencies')

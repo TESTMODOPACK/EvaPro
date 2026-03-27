@@ -12,9 +12,21 @@ export class TemplatesService {
     private readonly templateRepo: Repository<FormTemplate>,
   ) {}
 
-  async findAll(tenantId: string): Promise<FormTemplate[]> {
+  async findAll(tenantId: string, includeAll = false): Promise<FormTemplate[]> {
+    if (includeAll) {
+      // Admin view: all statuses + global templates
+      return this.templateRepo.find({
+        where: [{ tenantId }, { tenantId: IsNull() }],
+        relations: ['creator'],
+        order: { createdAt: 'DESC' },
+      });
+    }
+    // Regular view: only published templates + global
     return this.templateRepo.find({
-      where: [{ tenantId }, { tenantId: IsNull() }],
+      where: [
+        { tenantId, status: 'published' },
+        { tenantId: IsNull() },
+      ],
       order: { createdAt: 'DESC' },
     });
   }
@@ -356,13 +368,16 @@ export class TemplatesService {
 
   /** Admin rejects a proposed template */
   async reject(id: string, tenantId: string, reviewerId: string, note: string): Promise<FormTemplate> {
+    if (!note || !note.trim()) {
+      throw new BadRequestException('Se requiere una nota de rechazo');
+    }
     const template = await this.findById(id, tenantId);
     if (template.status !== 'proposed') {
       throw new BadRequestException('Solo se pueden rechazar plantillas en estado "propuesta"');
     }
     template.status = 'rejected';
     template.reviewedBy = reviewerId;
-    template.reviewNote = note;
+    template.reviewNote = note.trim();
     template.reviewedAt = new Date();
     return this.templateRepo.save(template);
   }

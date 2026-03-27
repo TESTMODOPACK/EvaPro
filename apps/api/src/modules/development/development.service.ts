@@ -49,9 +49,14 @@ export class DevelopmentService {
     return this.competencyRepo.save(competency);
   }
 
-  async findAllCompetencies(tenantId: string) {
+  async findAllCompetencies(tenantId: string, includeAll = false) {
+    const where: any = { tenantId, isActive: true };
+    if (!includeAll) {
+      where.status = CompetencyStatus.APPROVED;
+    }
     return this.competencyRepo.find({
-      where: { tenantId, isActive: true },
+      where,
+      relations: includeAll ? ['proposer', 'reviewer'] : [],
       order: { category: 'ASC', name: 'ASC' },
     });
   }
@@ -74,6 +79,15 @@ export class DevelopmentService {
 
   /** Manager proposes a new competency (status=proposed) */
   async proposeCompetency(tenantId: string, userId: string, dto: Partial<Competency>) {
+    // Check for duplicate names
+    if (dto.name) {
+      const existing = await this.competencyRepo.findOne({
+        where: { tenantId, name: dto.name, isActive: true },
+      });
+      if (existing) {
+        throw new ConflictException(`Ya existe una competencia con el nombre "${dto.name}"`);
+      }
+    }
     const competency = this.competencyRepo.create({
       ...dto,
       tenantId,
@@ -99,6 +113,9 @@ export class DevelopmentService {
 
   /** Admin rejects a proposed competency */
   async rejectCompetency(tenantId: string, id: string, reviewerId: string, note: string) {
+    if (!note || !note.trim()) {
+      throw new BadRequestException('Se requiere una nota de rechazo');
+    }
     const comp = await this.competencyRepo.findOne({ where: { id, tenantId } });
     if (!comp) throw new NotFoundException('Competencia no encontrada');
     if (comp.status !== CompetencyStatus.PROPOSED) {
@@ -106,7 +123,7 @@ export class DevelopmentService {
     }
     comp.status = CompetencyStatus.REJECTED;
     comp.reviewedBy = reviewerId;
-    comp.reviewNote = note;
+    comp.reviewNote = note.trim();
     comp.reviewedAt = new Date();
     return this.competencyRepo.save(comp);
   }

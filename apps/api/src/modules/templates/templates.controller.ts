@@ -26,8 +26,25 @@ export class TemplatesController {
 
   @Get()
   findAll(@Request() req: any) {
-    return this.templatesService.findAll(req.user.tenantId);
+    const includeAll = req.user.role === 'super_admin' || req.user.role === 'tenant_admin';
+    return this.templatesService.findAll(req.user.tenantId, includeAll);
   }
+
+  // ─── Workflow (static routes MUST be before :id) ────────────────────
+
+  @Post('propose')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  propose(@Request() req: any, @Body() dto: CreateTemplateDto) {
+    return this.templatesService.propose(req.user.tenantId, req.user.userId, dto);
+  }
+
+  @Get('pending')
+  @Roles('super_admin', 'tenant_admin')
+  findPending(@Request() req: any) {
+    return this.templatesService.findPending(req.user.tenantId);
+  }
+
+  // ─── Parameterized routes ───────────────────────────────────────────
 
   @Get(':id/preview')
   @Roles('super_admin', 'tenant_admin', 'manager')
@@ -115,19 +132,7 @@ export class TemplatesController {
     );
   }
 
-  // ─── Workflow (propose → review → publish) ──────────────────────────
-
-  @Post('propose')
-  @Roles('super_admin', 'tenant_admin', 'manager')
-  propose(@Request() req: any, @Body() dto: CreateTemplateDto) {
-    return this.templatesService.propose(req.user.tenantId, req.user.userId, dto);
-  }
-
-  @Get('pending')
-  @Roles('super_admin', 'tenant_admin')
-  findPending(@Request() req: any) {
-    return this.templatesService.findPending(req.user.tenantId);
-  }
+  // ─── Workflow: publish/reject (parameterized, must be after static) ─
 
   @Post(':id/publish')
   @Roles('super_admin', 'tenant_admin')
