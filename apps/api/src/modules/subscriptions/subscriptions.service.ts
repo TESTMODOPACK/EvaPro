@@ -12,7 +12,9 @@ import { SubscriptionPlan } from './entities/subscription-plan.entity';
 import { PaymentHistory, BillingPeriod, PaymentStatus } from './entities/payment-history.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
+import { EvaluationCycle, CycleType, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { AuditService } from '../audit/audit.service';
+import { PlanFeature } from '../../common/constants/plan-features';
 
 @Injectable()
 export class SubscriptionsService {
@@ -29,6 +31,8 @@ export class SubscriptionsService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(PaymentHistory)
     private readonly paymentRepo: Repository<PaymentHistory>,
+    @InjectRepository(EvaluationCycle)
+    private readonly cycleRepo: Repository<EvaluationCycle>,
     private readonly auditService: AuditService,
   ) {}
 
@@ -203,12 +207,45 @@ export class SubscriptionsService {
       });
 
       if (currentUsers > newPlan.maxEmployees) {
-        const oldPlan = sub.plan;
         throw new ForbiddenException(
           `No se puede cambiar al plan "${newPlan.name}" (máx. ${newPlan.maxEmployees} usuarios). ` +
           `La organización tiene ${currentUsers} usuarios activos. ` +
           `Desactive usuarios hasta tener ${newPlan.maxEmployees} o menos antes de hacer downgrade.`,
         );
+      }
+
+      // ── Feature-in-use protection: check active cycles using premium features
+      const currentPlan = sub.plan;
+      if (currentPlan) {
+        const currentFeatures: string[] = currentPlan.features || [];
+        const newFeatures: string[] = newPlan.features || [];
+        const lostFeatures = currentFeatures.filter((f) => !newFeatures.includes(f));
+
+        if (lostFeatures.length > 0) {
+          // Check active evaluation cycles that use features being removed
+          const activeCycles = await this.cycleRepo.find({
+            where: { tenantId: sub.tenantId, status: CycleStatus.ACTIVE },
+          });
+
+          const conflicts: string[] = [];
+
+          for (const cycle of activeCycles) {
+            if (cycle.type === CycleType.DEGREE_360 && lostFeatures.includes(PlanFeature.EVAL_360)) {
+              conflicts.push(`Ciclo 360° activo: "${cycle.name}"`);
+            }
+            if (cycle.type === CycleType.DEGREE_270 && lostFeatures.includes(PlanFeature.EVAL_270)) {
+              conflicts.push(`Ciclo 270° activo: "${cycle.name}"`);
+            }
+          }
+
+          if (conflicts.length > 0) {
+            throw new ForbiddenException(
+              `No se puede cambiar al plan "${newPlan.name}" porque hay ciclos activos que usan funcionalidades no disponibles en ese plan:\n` +
+              conflicts.map((c) => `  • ${c}`).join('\n') +
+              `\n\nCierre o archive estos ciclos antes de hacer el downgrade.`,
+            );
+          }
+        }
       }
 
       sub.planId = dto.planId;
@@ -464,5 +501,70 @@ export class SubscriptionsService {
       plan: plan.code,
       maxEmployees: plan.maxEmployees,
     });
+  }
+
+  // ─── Auto-Renewal ─────────────────────────────────────────────────────
+
+  /**
+   * Process auto-renewals for active subscriptions with autoRenew=true
+   * whose nextBillingDate has passed.
+   *
+   * For each qualifying subscription:
+   * - If autoRenew=true: extend nextBillingDate forward (simulate renewal)
+   * - If autoRenew=false: suspend the subscription
+   *
+   * Returns count of processed subscriptions.
+   */
+  async processAutoRenewals(): Promise<{ renewed: number; suspended: number }> {
+    const now = new Date();
+    let renewed = 0;
+    let suspended = 0;
+
+    // Find active subscriptions past their billing date
+    const overdue = await this.subRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.plan', 'p')
+      .where('s.status = :status', { status: 'active' })
+      .andWhere('s.next_billing_date IS NOT NULL')
+      .andWhere('s.next_billing_date <= :now', { now })
+      .getMany();
+
+    for (const sub of overdue) {
+      if (sub.autoRenew) {
+        // Auto-renew: advance billing date forward
+        let nextDate = this.calculateNextBillingDate(
+          sub.nextBillingDate!,
+          sub.billingPeriod || BillingPeriod.MONTHLY,
+        );
+        // Ensure it's in the future
+        while (nextDate <= now) {
+          nextDate = this.calculateNextBillingDate(nextDate, sub.billingPeriod || BillingPeriod.MONTHLY);
+        }
+        sub.nextBillingDate = nextDate;
+        await this.subRepo.save(sub);
+        renewed++;
+
+        this.logger.log(
+          `[AutoRenew] Subscription ${sub.id} (tenant ${sub.tenantId}) renewed, next billing: ${nextDate.toISOString().split('T')[0]}`,
+        );
+      } else {
+        // No auto-renew: suspend the subscription
+        const previousStatus = sub.status;
+        sub.status = 'suspended';
+        await this.subRepo.save(sub);
+        suspended++;
+
+        await this.auditService.log(
+          sub.tenantId, 'system', 'subscription.auto_suspended', 'subscription', sub.id,
+          { reason: 'Auto-renovación desactivada y fecha de facturación vencida', previousStatus },
+        );
+
+        this.logger.log(
+          `[AutoRenew] Subscription ${sub.id} (tenant ${sub.tenantId}) SUSPENDED — autoRenew is off`,
+        );
+      }
+    }
+
+    return { renewed, suspended };
   }
 }

@@ -679,4 +679,19 @@ export class RemindersService {
       this.logger.error(`[Cron] Error in alertSubscriptionExpiring: ${error}`);
     }
   }
+
+  // ─── 14. Auto-renovación de suscripciones (diario 2am) ───────────────
+
+  @Cron('0 2 * * *')
+  async processAutoRenewals() {
+    this.logger.log('[Cron] Processing auto-renewals...');
+    try {
+      const result = await this.subscriptionsService.processAutoRenewals();
+      if (result.renewed > 0 || result.suspended > 0) {
+        this.logger.log(`[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
+    }
+  }
 }
