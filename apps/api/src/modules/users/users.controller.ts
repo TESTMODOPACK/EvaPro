@@ -33,15 +33,22 @@ export class UsersController {
     return this.usersService.findById(req.user.userId);
   }
 
-  /** GET /users?page=1&limit=50 */
+  /** GET /users?page=1&limit=10&search=ana&department=Ventas&role=employee&status=active */
   @Get()
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   findAll(
     @Request() req: any,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('department') department?: string,
+    @Query('role') role?: string,
+    @Query('status') status?: string,
   ) {
-    return this.usersService.findAll(req.user.tenantId, page, limit);
+    const filters = (search || department || role || status)
+      ? { search, department, role, status }
+      : undefined;
+    return this.usersService.findAll(req.user.tenantId, page, limit, filters);
   }
 
   /** GET /users/:id */

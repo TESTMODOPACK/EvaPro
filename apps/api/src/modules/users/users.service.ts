@@ -74,15 +74,36 @@ export class UsersService {
     tenantId: string,
     page = 1,
     limit = 50,
+    filters?: { search?: string; department?: string; role?: string; status?: string },
   ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(Math.max(1, limit), 100);
     const qb = this.userRepository.createQueryBuilder('user')
       .where('user.tenantId = :tenantId', { tenantId })
-      .andWhere('user.role != :excluded', { excluded: 'super_admin' })
-      .orderBy('user.createdAt', 'DESC')
+      .andWhere('user.role != :excluded', { excluded: 'super_admin' });
+
+    if (filters?.search) {
+      qb.andWhere(
+        '(LOWER(user.first_name) LIKE :search OR LOWER(user.last_name) LIKE :search OR LOWER(user.email) LIKE :search)',
+        { search: `%${filters.search.toLowerCase()}%` },
+      );
+    }
+    if (filters?.department) {
+      qb.andWhere('user.department = :department', { department: filters.department });
+    }
+    if (filters?.role) {
+      qb.andWhere('user.role = :role', { role: filters.role });
+    }
+    if (filters?.status === 'active') {
+      qb.andWhere('user.is_active = true');
+    } else if (filters?.status === 'inactive') {
+      qb.andWhere('user.is_active = false');
+    }
+
+    qb.orderBy('user.createdAt', 'DESC')
       .skip((safePage - 1) * safeLimit)
       .take(safeLimit);
+
     const [data, total] = await qb.getManyAndCount();
     return { data, total, page: safePage, limit: safeLimit };
   }

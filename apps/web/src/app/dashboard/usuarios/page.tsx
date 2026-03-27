@@ -47,7 +47,31 @@ export default function UsuariosPage() {
   const token = useAuthStore((s) => s.token);
   const currentUserRole = useAuthStore((s) => s.user?.role || '');
   const isAdmin = currentUserRole === 'super_admin' || currentUserRole === 'tenant_admin';
-  const { data: paginated, isLoading } = useUsers();
+
+  // Pagination + filters state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterDept, setFilterDept] = useState('');
+  const [filterRole, setFilterRole] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => { setDebouncedSearch(searchTerm); setPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const filters = (debouncedSearch || filterDept || filterRole || filterStatus)
+    ? { search: debouncedSearch || undefined, department: filterDept || undefined, role: filterRole || undefined, status: filterStatus || undefined }
+    : undefined;
+
+  const { data: paginated, isLoading } = useUsers(page, pageSize, filters);
+
+  // Load ALL users (no filters) once for departments/positions dropdowns
+  const { data: allUsersPag } = useUsers(1, 200);
+
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const removeUser = useRemoveUser();
@@ -80,26 +104,29 @@ export default function UsuariosPage() {
   }, [token, currentUserRole]);
 
   const users = paginated?.data || [];
+  const totalRecords = paginated?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
 
-  // Extract unique departments and positions for dropdown suggestions
-  const departments = Array.from(new Set(users.map((u: any) => u.department).filter(Boolean))).sort() as string[];
-  const positions = Array.from(new Set(users.map((u: any) => u.position).filter(Boolean))).sort() as string[];
+  // Use all users for dropdown options (departments, positions, managers)
+  const allUsers = allUsersPag?.data || [];
+  const departments = Array.from(new Set(allUsers.map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  const positions = Array.from(new Set(allUsers.map((u: any) => u.position).filter(Boolean))).sort() as string[];
 
-  const totalUsers = users.length;
-  const activeUsers = users.filter((u: any) => u.isActive).length;
+  const totalUsers = allUsersPag?.total || 0;
+  const activeUsers = allUsers.filter((u: any) => u.isActive).length;
   const inactiveUsers = totalUsers - activeUsers;
-  const managersCount = users.filter((u: any) => u.role === 'manager' || u.role === 'tenant_admin').length;
+  const managersCount = allUsers.filter((u: any) => u.role === 'manager' || u.role === 'tenant_admin').length;
 
   // Helper to get manager name from id
   const getManagerName = (managerId: string | null) => {
     if (!managerId) return null;
-    const mgr = users.find((u: any) => u.id === managerId);
+    const mgr = allUsers.find((u: any) => u.id === managerId);
     if (!mgr) return null;
     return `${mgr.firstName || ''} ${mgr.lastName || ''}`.trim() || mgr.email;
   };
 
   // Users who can be managers
-  const managerOptions = users.filter((u: any) =>
+  const managerOptions = allUsers.filter((u: any) =>
     u.isActive && (u.role === 'manager' || u.role === 'tenant_admin'),
   );
 
@@ -405,6 +432,55 @@ export default function UsuariosPage() {
               Agregar usuario
             </button>
           </div>
+        )}
+      </div>
+
+      {/* Filters bar */}
+      <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div style={{ flex: '1 1 220px' }}>
+          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Buscar</label>
+          <input
+            className="input"
+            type="text"
+            placeholder="Nombre, apellido o email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ fontSize: '0.85rem' }}
+          />
+        </div>
+        <div style={{ flex: '0 1 160px' }}>
+          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Departamento</label>
+          <select className="input" value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setPage(1); }} style={{ fontSize: '0.85rem' }}>
+            <option value="">Todos</option>
+            {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: '0 1 140px' }}>
+          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rol</label>
+          <select className="input" value={filterRole} onChange={(e) => { setFilterRole(e.target.value); setPage(1); }} style={{ fontSize: '0.85rem' }}>
+            <option value="">Todos</option>
+            <option value="tenant_admin">Administrador</option>
+            <option value="manager">Manager</option>
+            <option value="employee">Empleado</option>
+            <option value="external">Externo</option>
+          </select>
+        </div>
+        <div style={{ flex: '0 1 120px' }}>
+          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Estado</label>
+          <select className="input" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }} style={{ fontSize: '0.85rem' }}>
+            <option value="">Todos</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+          </select>
+        </div>
+        {(searchTerm || filterDept || filterRole || filterStatus) && (
+          <button
+            className="btn-ghost"
+            style={{ fontSize: '0.78rem', padding: '0.5rem 0.75rem' }}
+            onClick={() => { setSearchTerm(''); setFilterDept(''); setFilterRole(''); setFilterStatus(''); setPage(1); }}
+          >
+            Limpiar filtros
+          </button>
         )}
       </div>
 
@@ -900,6 +976,65 @@ export default function UsuariosPage() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '1rem 0 0', borderTop: '1px solid var(--border)', marginTop: '0.5rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              <span>Mostrar</span>
+              <select
+                className="input"
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                style={{ width: '70px', padding: '0.3rem 0.5rem', fontSize: '0.82rem' }}
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={30}>30</option>
+              </select>
+              <span>de {totalRecords} usuarios</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <button
+                className="btn-ghost"
+                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                onClick={() => setPage(1)}
+                disabled={page <= 1}
+              >
+                {'«'}
+              </button>
+              <button
+                className="btn-ghost"
+                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                onClick={() => setPage(page - 1)}
+                disabled={page <= 1}
+              >
+                {'‹'}
+              </button>
+              <span style={{ fontSize: '0.82rem', padding: '0 0.5rem', fontWeight: 600 }}>
+                {page} / {totalPages}
+              </span>
+              <button
+                className="btn-ghost"
+                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                onClick={() => setPage(page + 1)}
+                disabled={page >= totalPages}
+              >
+                {'›'}
+              </button>
+              <button
+                className="btn-ghost"
+                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                onClick={() => setPage(totalPages)}
+                disabled={page >= totalPages}
+              >
+                {'»'}
+              </button>
+            </div>
           </div>
         </div>
       )}

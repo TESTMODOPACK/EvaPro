@@ -4,11 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 
-export function useUsers(page = 1, limit = 50) {
+export function useUsers(
+  page = 1,
+  limit = 10,
+  filters?: { search?: string; department?: string; role?: string; status?: string },
+) {
   const token = useAuthStore((s) => s.token);
   return useQuery({
-    queryKey: ['users', page, limit],
-    queryFn: () => api.users.list(token!, page, limit),
+    queryKey: ['users', page, limit, filters?.search, filters?.department, filters?.role, filters?.status],
+    queryFn: () => api.users.list(token!, page, limit, filters),
     enabled: !!token,
   });
 }
