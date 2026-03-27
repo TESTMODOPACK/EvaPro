@@ -52,6 +52,15 @@ import { Notification } from '../modules/notifications/entities/notification.ent
 // ── Phase 3: AI Insights ─────────────────────────────────────────────────
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
 
+// ── Additional entities (needed for TypeORM synchronize) ─────────────────
+import { PaymentHistory } from '../modules/subscriptions/entities/payment-history.entity';
+import { RoleCompetency } from '../modules/development/entities/role-competency.entity';
+import { Recognition } from '../modules/recognition/entities/recognition.entity';
+import { Badge } from '../modules/recognition/entities/badge.entity';
+import { UserBadge } from '../modules/recognition/entities/user-badge.entity';
+import { UserPoints } from '../modules/recognition/entities/user-points.entity';
+import { SystemChangelog } from '../modules/system/entities/system-changelog.entity';
+
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
@@ -81,6 +90,10 @@ const dataSource = new DataSource({
     Notification,
     // Phase 3: AI
     AiInsight,
+    // Billing & new modules
+    PaymentHistory, RoleCompetency,
+    Recognition, Badge, UserBadge, UserPoints,
+    SystemChangelog,
   ],
   // synchronize:true ensures tables exist before inserting seed data
   // (safe because cleanup-orphans already dropped conflicting tables)

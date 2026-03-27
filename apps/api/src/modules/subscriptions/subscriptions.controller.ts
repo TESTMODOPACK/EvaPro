@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Request,
   ParseUUIDPipe,
   UseGuards,
@@ -52,8 +53,15 @@ export class SubscriptionsController {
   // ─── Plan Pricing ──────────────────────────────────────────────────────
 
   @Get('plans/:id/pricing')
-  planPricing(@Param('id', ParseUUIDPipe) id: string) {
-    return this.subscriptionsService.calculatePriceForPeriod(id, 'monthly' as any);
+  @Roles('super_admin', 'tenant_admin')
+  planPricing(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('period') period?: string,
+  ) {
+    const validPeriod = ['monthly', 'quarterly', 'semiannual', 'annual'].includes(period || '')
+      ? period as any
+      : 'monthly';
+    return this.subscriptionsService.calculatePriceForPeriod(id, validPeriod);
   }
 
   // ─── My Subscription (for tenant_admin) ────────────────────────────────
@@ -65,7 +73,7 @@ export class SubscriptionsController {
   }
 
   @Get('my-payments')
-  @Roles('tenant_admin', 'manager', 'employee', 'external')
+  @Roles('tenant_admin')
   myPayments(@Request() req: any) {
     return this.subscriptionsService.getPaymentHistory(req.user.tenantId);
   }

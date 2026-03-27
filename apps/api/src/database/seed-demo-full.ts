@@ -779,10 +779,12 @@ async function seedDemoFull() {
           }));
         }
 
-        // Update subscription billing info
+        // Update subscription billing info — lastPaymentDate = 2nd of last month (matches most recent payment)
         existingSub.billingPeriod = BillingPeriod.MONTHLY;
-        existingSub.lastPaymentDate = new Date();
-        existingSub.lastPaymentDate.setDate(2);
+        const lastPayDate = new Date();
+        lastPayDate.setMonth(lastPayDate.getMonth() - 1);
+        lastPayDate.setDate(2);
+        existingSub.lastPaymentDate = lastPayDate;
         existingSub.lastPaymentAmount = 3.5;
         const nextBilling = new Date();
         nextBilling.setMonth(nextBilling.getMonth() + 1);

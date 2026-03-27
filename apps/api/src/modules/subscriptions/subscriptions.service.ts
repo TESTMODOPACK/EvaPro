@@ -44,7 +44,10 @@ export class SubscriptionsService {
       description: dto.description || null,
       maxEmployees: dto.maxEmployees ?? 50,
       monthlyPrice: dto.monthlyPrice ?? 0,
+      quarterlyPrice: dto.quarterlyPrice ?? null,
+      semiannualPrice: dto.semiannualPrice ?? null,
       yearlyPrice: dto.yearlyPrice ?? null,
+      currency: dto.currency || 'UF',
       features: dto.features || [],
       isActive: true,
       displayOrder: dto.displayOrder ?? 0,
@@ -167,11 +170,19 @@ export class SubscriptionsService {
   }
 
   async findMySubscription(tenantId: string): Promise<any> {
-    const sub = await this.subRepo.findOne({
-      where: { tenantId },
+    // Prefer active/trial, fallback to most recent
+    let sub = await this.subRepo.findOne({
+      where: { tenantId, status: In(['active', 'trial']) },
       relations: ['plan'],
       order: { createdAt: 'DESC' },
     });
+    if (!sub) {
+      sub = await this.subRepo.findOne({
+        where: { tenantId },
+        relations: ['plan'],
+        order: { createdAt: 'DESC' },
+      });
+    }
     return sub;
   }
 
@@ -300,30 +311,58 @@ export class SubscriptionsService {
   async registerPayment(subscriptionId: string, dto: any, changedBy?: string): Promise<PaymentHistory> {
     const sub = await this.findById(subscriptionId);
 
+    // Validate required fields
+    if (dto.amount == null || isNaN(Number(dto.amount))) {
+      throw new ForbiddenException('El campo "amount" es requerido y debe ser numérico');
+    }
+    if (!dto.periodStart || !dto.periodEnd) {
+      throw new ForbiddenException('Los campos "periodStart" y "periodEnd" son requeridos');
+    }
+    const periodStart = new Date(dto.periodStart);
+    const periodEnd = new Date(dto.periodEnd);
+    if (isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
+      throw new ForbiddenException('Las fechas "periodStart" y "periodEnd" deben ser válidas');
+    }
+
+    // Guard: cannot register payment on cancelled subscription
+    if (sub.status === 'cancelled') {
+      throw new ForbiddenException('No se puede registrar un pago en una suscripción cancelada. Reactive la suscripción primero.');
+    }
+
     const payment = this.paymentRepo.create({
       tenantId: sub.tenantId,
       subscriptionId: sub.id,
-      amount: dto.amount,
+      amount: Number(dto.amount),
       currency: dto.currency || sub.plan?.currency || 'UF',
       billingPeriod: dto.billingPeriod || sub.billingPeriod || BillingPeriod.MONTHLY,
-      periodStart: new Date(dto.periodStart),
-      periodEnd: new Date(dto.periodEnd),
+      periodStart,
+      periodEnd,
       status: dto.status || PaymentStatus.PAID,
       paymentMethod: dto.paymentMethod || null,
       transactionRef: dto.transactionRef || null,
       notes: dto.notes || null,
-      paidAt: dto.status === PaymentStatus.PAID ? (dto.paidAt ? new Date(dto.paidAt) : new Date()) : null,
+      paidAt: (dto.status || PaymentStatus.PAID) === PaymentStatus.PAID
+        ? (dto.paidAt ? new Date(dto.paidAt) : new Date())
+        : null,
     });
     const saved = await this.paymentRepo.save(payment);
 
     // Update subscription billing info
     if (saved.status === PaymentStatus.PAID) {
       sub.lastPaymentDate = saved.paidAt || new Date();
-      sub.lastPaymentAmount = saved.amount;
-      sub.nextBillingDate = this.calculateNextBillingDate(
-        new Date(saved.periodEnd),
+      sub.lastPaymentAmount = Number(saved.amount);
+
+      // Calculate next billing date, ensuring it's never in the past
+      let nextBilling = this.calculateNextBillingDate(
+        periodEnd,
         sub.billingPeriod || BillingPeriod.MONTHLY,
       );
+      const now = new Date();
+      while (nextBilling < now) {
+        nextBilling = this.calculateNextBillingDate(nextBilling, sub.billingPeriod || BillingPeriod.MONTHLY);
+      }
+      sub.nextBillingDate = nextBilling;
+
       // Reactivate if was suspended/expired
       if (sub.status === 'suspended' || sub.status === 'expired') {
         sub.status = 'active';
@@ -334,7 +373,7 @@ export class SubscriptionsService {
     if (changedBy) {
       await this.auditService.log(
         sub.tenantId, changedBy, 'payment.registered', 'payment', saved.id,
-        { amount: saved.amount, currency: saved.currency, status: saved.status },
+        { amount: Number(saved.amount), currency: saved.currency, status: saved.status },
       );
     }
 
@@ -358,6 +397,7 @@ export class SubscriptionsService {
   }
 
   async getUpcomingRenewals(daysAhead: number): Promise<Subscription[]> {
+    const now = new Date();
     const target = new Date();
     target.setDate(target.getDate() + daysAhead);
 
@@ -366,8 +406,7 @@ export class SubscriptionsService {
       .leftJoinAndSelect('s.plan', 'p')
       .leftJoinAndSelect('s.tenant', 't')
       .where('s.status IN (:...statuses)', { statuses: ['active', 'trial'] })
-      .andWhere('(s.next_billing_date <= :target OR s.end_date <= :target)', { target })
-      .andWhere('(s.next_billing_date >= :now OR s.end_date >= :now)', { now: new Date() })
+      .andWhere('COALESCE(s.next_billing_date, s.end_date) BETWEEN :now AND :target', { now, target })
       .getMany();
   }
 

@@ -625,38 +625,47 @@ export class RemindersService {
     this.logger.log('[Cron] Checking expiring subscriptions...');
     try {
       const now = new Date();
-      const notifications: any[] = [];
-
-      // Check subscriptions expiring in next 10 days
       const expiring = await this.subscriptionsService.getUpcomingRenewals(10);
+      if (expiring.length === 0) return;
+
+      // Batch load all tenant admins in one query (avoid N+1)
+      const tenantIds = [...new Set(expiring.map((s) => s.tenantId))];
+      const allAdmins = await this.userRepo.find({
+        where: { tenantId: In(tenantIds), role: 'tenant_admin', isActive: true },
+        select: ['id', 'tenantId'],
+      });
+      const adminsByTenant = new Map<string, string[]>();
+      for (const a of allAdmins) {
+        const list = adminsByTenant.get(a.tenantId) || [];
+        list.push(a.id);
+        adminsByTenant.set(a.tenantId, list);
+      }
+
+      // Only send at milestones: 10, 5, 3, 1 days (dedup by design)
+      const milestones = new Set([10, 5, 3, 1]);
+      const notifications: any[] = [];
 
       for (const sub of expiring) {
         const expiryDate = sub.nextBillingDate || sub.endDate;
         if (!expiryDate) continue;
         const daysLeft = Math.ceil((new Date(expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysLeft < 0 || daysLeft > 10) continue;
+        if (!milestones.has(daysLeft)) continue;
 
-        const admins = await this.userRepo.find({
-          where: { tenantId: sub.tenantId, role: 'tenant_admin', isActive: true },
-          select: ['id'],
-        });
-
+        const admins = adminsByTenant.get(sub.tenantId) || [];
         const isUrgent = daysLeft <= 3;
         const type = isUrgent
           ? NotificationType.SUBSCRIPTION_EXPIRING_URGENT
           : NotificationType.SUBSCRIPTION_EXPIRING;
 
-        for (const admin of admins) {
+        for (const adminId of admins) {
           notifications.push({
             tenantId: sub.tenantId,
-            userId: admin.id,
+            userId: adminId,
             type,
             title: isUrgent
-              ? `Tu suscripcion vence en ${daysLeft} dias`
+              ? `Tu suscripcion vence en ${daysLeft} dia${daysLeft > 1 ? 's' : ''}`
               : `Tu suscripcion vence pronto (${daysLeft} dias)`,
-            message: isUrgent
-              ? `Tu plan ${sub.plan?.name || ''} vence el ${new Date(expiryDate).toLocaleDateString('es-CL')}. Renueva ahora para evitar la suspension del servicio.`
-              : `Tu plan ${sub.plan?.name || ''} vence el ${new Date(expiryDate).toLocaleDateString('es-CL')}. Recuerda renovar a tiempo.`,
+            message: `Tu plan ${sub.plan?.name || ''} vence el ${new Date(expiryDate).toLocaleDateString('es-CL')}. ${isUrgent ? 'Renueva ahora para evitar la suspension del servicio.' : 'Recuerda renovar a tiempo.'}`,
             metadata: { subscriptionId: sub.id, daysLeft },
           });
         }
