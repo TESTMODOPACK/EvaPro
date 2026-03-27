@@ -45,6 +45,24 @@ export class FormTemplate {
   @Column({ type: 'boolean', default: false, name: 'is_default' })
   isDefault: boolean;
 
+  // ─── Workflow ────────────────────────────────────────────────────────
+
+  /** draft: editing | proposed: awaiting admin review | published: ready to use | rejected */
+  @Column({ type: 'varchar', length: 20, default: 'published' })
+  status: string; // draft | proposed | published | rejected
+
+  @Column({ type: 'uuid', name: 'proposed_by', nullable: true })
+  proposedBy: string | null;
+
+  @Column({ type: 'uuid', name: 'reviewed_by', nullable: true })
+  reviewedBy: string | null;
+
+  @Column({ type: 'text', name: 'review_note', nullable: true })
+  reviewNote: string | null;
+
+  @Column({ type: 'timestamptz', name: 'reviewed_at', nullable: true })
+  reviewedAt: Date | null;
+
   // ─── Versioning ───────────────────────────────────────────────────────
 
   @Column({ type: 'int', default: 1 })

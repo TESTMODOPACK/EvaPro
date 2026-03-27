@@ -114,4 +114,38 @@ export class TemplatesController {
       body.csvData,
     );
   }
+
+  // ─── Workflow (propose → review → publish) ──────────────────────────
+
+  @Post('propose')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  propose(@Request() req: any, @Body() dto: CreateTemplateDto) {
+    return this.templatesService.propose(req.user.tenantId, req.user.userId, dto);
+  }
+
+  @Get('pending')
+  @Roles('super_admin', 'tenant_admin')
+  findPending(@Request() req: any) {
+    return this.templatesService.findPending(req.user.tenantId);
+  }
+
+  @Post(':id/publish')
+  @Roles('super_admin', 'tenant_admin')
+  publish(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body: { note?: string },
+  ) {
+    return this.templatesService.publish(id, req.user.tenantId, req.user.userId, body?.note);
+  }
+
+  @Post(':id/reject')
+  @Roles('super_admin', 'tenant_admin')
+  reject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body: { note: string },
+  ) {
+    return this.templatesService.reject(id, req.user.tenantId, req.user.userId, body?.note);
+  }
 }

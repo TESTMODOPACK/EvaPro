@@ -314,4 +314,56 @@ export class TemplatesService {
       sections: previewSections,
     };
   }
+
+  // ─── Template Workflow (propose → review → publish) ──────────────────
+
+  /** Manager proposes a template (status=proposed) */
+  async propose(tenantId: string, userId: string, dto: CreateTemplateDto): Promise<FormTemplate> {
+    const template = this.templateRepo.create({
+      tenantId,
+      name: dto.name,
+      description: dto.description,
+      sections: dto.sections,
+      isDefault: false,
+      createdBy: userId,
+      status: 'proposed',
+      proposedBy: userId,
+    });
+    return this.templateRepo.save(template);
+  }
+
+  /** List templates pending admin review */
+  async findPending(tenantId: string): Promise<FormTemplate[]> {
+    return this.templateRepo.find({
+      where: { tenantId, status: 'proposed' },
+      relations: ['creator'],
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  /** Admin publishes a proposed template */
+  async publish(id: string, tenantId: string, reviewerId: string, note?: string): Promise<FormTemplate> {
+    const template = await this.findById(id, tenantId);
+    if (template.status !== 'proposed') {
+      throw new BadRequestException('Solo se pueden publicar plantillas en estado "propuesta"');
+    }
+    template.status = 'published';
+    template.reviewedBy = reviewerId;
+    template.reviewNote = note || null;
+    template.reviewedAt = new Date();
+    return this.templateRepo.save(template);
+  }
+
+  /** Admin rejects a proposed template */
+  async reject(id: string, tenantId: string, reviewerId: string, note: string): Promise<FormTemplate> {
+    const template = await this.findById(id, tenantId);
+    if (template.status !== 'proposed') {
+      throw new BadRequestException('Solo se pueden rechazar plantillas en estado "propuesta"');
+    }
+    template.status = 'rejected';
+    template.reviewedBy = reviewerId;
+    template.reviewNote = note;
+    template.reviewedAt = new Date();
+    return this.templateRepo.save(template);
+  }
 }

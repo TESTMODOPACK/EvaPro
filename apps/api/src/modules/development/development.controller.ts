@@ -47,6 +47,38 @@ export class DevelopmentController {
     return this.developmentService.updateCompetency(req.user.tenantId, id, dto);
   }
 
+  @Post('competencies/propose')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  proposeCompetency(@Request() req: any, @Body() dto: any) {
+    return this.developmentService.proposeCompetency(req.user.tenantId, req.user.userId, dto);
+  }
+
+  @Get('competencies/pending')
+  @Roles('super_admin', 'tenant_admin')
+  findPendingCompetencies(@Request() req: any) {
+    return this.developmentService.findPendingCompetencies(req.user.tenantId);
+  }
+
+  @Post('competencies/:id/approve')
+  @Roles('super_admin', 'tenant_admin')
+  approveCompetency(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { note?: string },
+  ) {
+    return this.developmentService.approveCompetency(req.user.tenantId, id, req.user.userId, dto?.note);
+  }
+
+  @Post('competencies/:id/reject')
+  @Roles('super_admin', 'tenant_admin')
+  rejectCompetency(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { note: string },
+  ) {
+    return this.developmentService.rejectCompetency(req.user.tenantId, id, req.user.userId, dto?.note);
+  }
+
   @Delete('competencies/:id')
   @Roles('super_admin', 'tenant_admin')
   deactivateCompetency(

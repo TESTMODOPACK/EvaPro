@@ -364,6 +364,14 @@ export const api = {
       request<any>(`/templates/${id}/versions`, {}, token),
     restoreVersion: (token: string, id: string, version: number) =>
       request<TemplateData>(`/templates/${id}/restore/${version}`, { method: "POST" }, token),
+    propose: (token: string, data: any) =>
+      request<TemplateData>("/templates/propose", { method: "POST", body: JSON.stringify(data) }, token),
+    pending: (token: string) =>
+      request<TemplateData[]>("/templates/pending", {}, token),
+    publish: (token: string, id: string, note?: string) =>
+      request<TemplateData>(`/templates/${id}/publish`, { method: "POST", body: JSON.stringify({ note }) }, token),
+    reject: (token: string, id: string, note: string) =>
+      request<TemplateData>(`/templates/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }, token),
   },
 
   peerAssignments: {
@@ -518,6 +526,10 @@ export const api = {
       create: (token: string, data: any) => request<any>("/development/competencies", { method: "POST", body: JSON.stringify(data) }, token),
       update: (token: string, id: string, data: any) => request<any>(`/development/competencies/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       deactivate: (token: string, id: string) => request<void>(`/development/competencies/${id}`, { method: "DELETE" }, token),
+      propose: (token: string, data: any) => request<any>("/development/competencies/propose", { method: "POST", body: JSON.stringify(data) }, token),
+      pending: (token: string) => request<any[]>("/development/competencies/pending", {}, token),
+      approve: (token: string, id: string, note?: string) => request<any>(`/development/competencies/${id}/approve`, { method: "POST", body: JSON.stringify({ note }) }, token),
+      reject: (token: string, id: string, note: string) => request<any>(`/development/competencies/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }, token),
     },
     plans: {
       list: (token: string) => request<any[]>("/development/plans", {}, token),

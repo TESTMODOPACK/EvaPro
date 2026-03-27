@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { Competency } from './entities/competency.entity';
+import { Competency, CompetencyStatus } from './entities/competency.entity';
 import { DevelopmentPlan } from './entities/development-plan.entity';
 import { DevelopmentAction } from './entities/development-action.entity';
 import { DevelopmentComment } from './entities/development-comment.entity';
@@ -68,6 +68,56 @@ export class DevelopmentService {
     if (!competency) throw new NotFoundException('Competencia no encontrada');
     competency.isActive = false;
     return this.competencyRepo.save(competency);
+  }
+
+  // ─── Competency Workflow ──────────────────────────────────────────────
+
+  /** Manager proposes a new competency (status=proposed) */
+  async proposeCompetency(tenantId: string, userId: string, dto: Partial<Competency>) {
+    const competency = this.competencyRepo.create({
+      ...dto,
+      tenantId,
+      status: CompetencyStatus.PROPOSED,
+      proposedBy: userId,
+    });
+    return this.competencyRepo.save(competency);
+  }
+
+  /** Admin approves a proposed competency */
+  async approveCompetency(tenantId: string, id: string, reviewerId: string, note?: string) {
+    const comp = await this.competencyRepo.findOne({ where: { id, tenantId } });
+    if (!comp) throw new NotFoundException('Competencia no encontrada');
+    if (comp.status !== CompetencyStatus.PROPOSED) {
+      throw new BadRequestException('Solo se pueden aprobar competencias en estado "propuesta"');
+    }
+    comp.status = CompetencyStatus.APPROVED;
+    comp.reviewedBy = reviewerId;
+    comp.reviewNote = note || null;
+    comp.reviewedAt = new Date();
+    return this.competencyRepo.save(comp);
+  }
+
+  /** Admin rejects a proposed competency */
+  async rejectCompetency(tenantId: string, id: string, reviewerId: string, note: string) {
+    const comp = await this.competencyRepo.findOne({ where: { id, tenantId } });
+    if (!comp) throw new NotFoundException('Competencia no encontrada');
+    if (comp.status !== CompetencyStatus.PROPOSED) {
+      throw new BadRequestException('Solo se pueden rechazar competencias en estado "propuesta"');
+    }
+    comp.status = CompetencyStatus.REJECTED;
+    comp.reviewedBy = reviewerId;
+    comp.reviewNote = note;
+    comp.reviewedAt = new Date();
+    return this.competencyRepo.save(comp);
+  }
+
+  /** List competencies pending approval */
+  async findPendingCompetencies(tenantId: string) {
+    return this.competencyRepo.find({
+      where: { tenantId, status: CompetencyStatus.PROPOSED },
+      relations: ['proposer'],
+      order: { createdAt: 'ASC' },
+    });
   }
 
   // ─── Plans CRUD ────────────────────────────────────────────────────────
