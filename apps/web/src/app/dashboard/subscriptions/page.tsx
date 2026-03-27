@@ -98,7 +98,6 @@ export default function SubscriptionsPage() {
 
   const [activeTab, setActiveTab] = useState<'plans' | 'subscriptions' | 'requests'>('plans');
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  const [requestsLoading, setRequestsLoading] = useState(false);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
@@ -1033,15 +1032,13 @@ export default function SubscriptionsPage() {
             </div>
           </div>
 
-          {requestsLoading && <Spinner />}
-
-          {!requestsLoading && pendingRequests.length === 0 && (
+          {pendingRequests.length === 0 && (
             <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
               No hay solicitudes pendientes
             </div>
           )}
 
-          {!requestsLoading && pendingRequests.length > 0 && (
+          {pendingRequests.length > 0 && (
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               <div className="table-wrapper">
                 <table>

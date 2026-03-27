@@ -26,7 +26,7 @@ export class SubscriptionsController {
   // ─── Plans ─────────────────────────────────────────────────────────────
 
   @Get('plans')
-  @Roles('super_admin')
+  @Roles('super_admin', 'tenant_admin')
   findAllPlans() {
     return this.subscriptionsService.findAllPlans();
   }
