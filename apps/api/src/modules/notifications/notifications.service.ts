@@ -2,92 +2,64 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, MoreThan } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
+import { EmailService } from './email.service';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private resend: any = null;
 
   constructor(
     @InjectRepository(Notification)
     private readonly notifRepo: Repository<Notification>,
+    private readonly emailService: EmailService,
+  ) {}
+
+  // ─── Email facade (delegates to EmailService) ────────────────────────────
+
+  async sendCycleLaunched(
+    email: string,
+    cycleName: string,
+    dueDate: string,
+    extra?: { firstName?: string; cycleType?: string; cycleId?: string },
   ) {
-    this.initResend();
+    await this.emailService.sendCycleLaunched(email, {
+      firstName: extra?.firstName || 'Colaborador',
+      cycleName,
+      cycleType: extra?.cycleType || '90',
+      dueDate,
+      cycleId: extra?.cycleId || '',
+    });
   }
 
-  // ─── Email (Resend) ─────────────────────────────────────────────────────
-
-  private async initResend() {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      this.logger.warn('RESEND_API_KEY not set — emails will be logged to console');
-      return;
-    }
-    try {
-      const resendModule = await import('resend' as string);
-      this.resend = new resendModule.Resend(apiKey);
-      this.logger.log('Resend email service initialized');
-    } catch {
-      this.logger.warn('resend package not installed — emails will be logged to console');
-    }
+  async sendReminder(
+    email: string,
+    cycleName: string,
+    pendingCount: number,
+    extra?: { firstName?: string; daysLeft?: number; cycleId?: string },
+  ) {
+    await this.emailService.sendEvaluationReminder(email, {
+      firstName: extra?.firstName || 'Colaborador',
+      cycleName,
+      pendingCount,
+      daysLeft: extra?.daysLeft ?? 3,
+      cycleId: extra?.cycleId || '',
+    });
   }
 
-  private async sendEmail(to: string, subject: string, html: string) {
-    if (!this.resend) {
-      this.logger.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
-      return;
-    }
-    try {
-      await this.resend.emails.send({
-        from: 'EvaPro <noreply@evapro.app>',
-        to,
-        subject,
-        html,
-      });
-    } catch (error) {
-      this.logger.error(`Failed to send email to ${to}: ${error}`);
-    }
+  async sendCycleClosed(email: string, cycleName: string, extra?: { firstName?: string; cycleId?: string }) {
+    await this.emailService.sendCycleClosed(email, {
+      firstName: extra?.firstName || 'Colaborador',
+      cycleName,
+      cycleId: extra?.cycleId || '',
+    });
   }
 
-  async sendCycleLaunched(email: string, cycleName: string, dueDate: string) {
-    await this.sendEmail(
-      email,
-      `Nueva evaluación: ${cycleName}`,
-      `<h2>Has sido asignado a una evaluación</h2>
-       <p>El ciclo <strong>${cycleName}</strong> ha sido lanzado.</p>
-       <p>Fecha límite: <strong>${dueDate}</strong></p>
-       <p>Ingresa a EvaPro para completar tus evaluaciones pendientes.</p>`,
-    );
-  }
-
-  async sendReminder(email: string, cycleName: string, pendingCount: number) {
-    await this.sendEmail(
-      email,
-      `Recordatorio: ${pendingCount} evaluaciones pendientes`,
-      `<h2>Evaluaciones pendientes</h2>
-       <p>Tienes <strong>${pendingCount}</strong> evaluaciones pendientes en el ciclo <strong>${cycleName}</strong>.</p>
-       <p>Ingresa a EvaPro para completarlas.</p>`,
-    );
-  }
-
-  async sendCycleClosed(email: string, cycleName: string) {
-    await this.sendEmail(
-      email,
-      `Resultados disponibles: ${cycleName}`,
-      `<h2>Resultados de evaluación disponibles</h2>
-       <p>El ciclo <strong>${cycleName}</strong> ha sido cerrado.</p>
-       <p>Ingresa a EvaPro para ver tus resultados.</p>`,
-    );
-  }
-
-  async sendInvitation(email: string, tenantName: string) {
-    await this.sendEmail(
-      email,
-      `Invitación a EvaPro — ${tenantName}`,
-      `<h2>Has sido invitado a EvaPro</h2>
-       <p>Tu organización <strong>${tenantName}</strong> te ha invitado a la plataforma de evaluación de desempeño.</p>
-       <p>Ingresa con tu email y contraseña temporal para comenzar.</p>`,
-    );
+  async sendInvitation(email: string, tenantName: string, extra?: { firstName?: string; tempPassword?: string }) {
+    await this.emailService.sendInvitation(email, {
+      firstName: extra?.firstName || email.split('@')[0],
+      orgName: tenantName,
+      tempPassword: extra?.tempPassword,
+    });
   }
 
   // ─── In-App Notifications ──────────────────────────────────────────────

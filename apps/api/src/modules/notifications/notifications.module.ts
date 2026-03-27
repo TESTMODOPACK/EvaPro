@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Notification } from './entities/notification.entity';
 import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
+import { EmailService } from './email.service';
 import { RemindersService } from './reminders.service';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
@@ -28,7 +29,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     SubscriptionsModule,
   ],
   controllers: [NotificationsController],
-  providers: [NotificationsService, RemindersService],
-  exports: [NotificationsService],
+  providers: [NotificationsService, RemindersService, EmailService],
+  exports: [NotificationsService, EmailService],
 })
 export class NotificationsModule {}

@@ -1,17 +1,73 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import { useMySubscription } from '@/hooks/useSubscription';
 
+function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(201,147,58,0.12) 0%, rgba(201,147,58,0.06) 100%)',
+      borderBottom: '1px solid rgba(201,147,58,0.25)',
+      padding: '0.65rem 1.5rem',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+      flexWrap: 'wrap',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{
+          width: '28px', height: '28px', borderRadius: '8px',
+          background: 'rgba(201,147,58,0.15)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9933A" strokeWidth="2.5">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+          Completa la configuración inicial para sacar el máximo partido a EvaPro.
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+        <Link
+          href="/dashboard/onboarding"
+          style={{
+            fontSize: '0.82rem', fontWeight: 700,
+            color: '#C9933A', textDecoration: 'none',
+            background: 'rgba(201,147,58,0.12)', padding: '5px 14px',
+            borderRadius: '999px', border: '1px solid rgba(201,147,58,0.3)',
+            transition: 'background 0.15s',
+          }}
+        >
+          Configurar ahora →
+        </Link>
+        <button
+          onClick={onDismiss}
+          style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: 'var(--text-muted)', padding: '4px', borderRadius: '4px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          title="Descartar"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
   const { isAuthenticated, token, user, logout } = useAuthStore();
   const { data: sub, isLoading: subLoading, isError: subError } = useMySubscription();
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated || token === 'demo-token' || !token) {
@@ -19,6 +75,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.replace('/login');
     }
   }, [isAuthenticated, token, router, logout]);
+
+  useEffect(() => {
+    if (user?.role === 'tenant_admin' && !pathname.startsWith('/dashboard/onboarding')) {
+      const done = localStorage.getItem('evapro_onboarding_done');
+      const dismissed = localStorage.getItem('evapro_onboarding_dismissed');
+      if (!done && !dismissed) setShowOnboarding(true);
+    }
+  }, [user, pathname]);
 
   // Derive subscription status from shared hook
   const subStatus: 'loading' | 'active' | 'none' | 'suspended' | 'skip' = (() => {
@@ -99,6 +163,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
+  const dismissOnboarding = () => {
+    localStorage.setItem('evapro_onboarding_dismissed', '1');
+    setShowOnboarding(false);
+  };
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       <Sidebar currentPath={pathname} />
@@ -111,6 +180,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         minHeight: 'calc(100vh - 56px)',
         overflowY: 'auto',
       }}>
+        {showOnboarding && <OnboardingBanner onDismiss={dismissOnboarding} />}
         {children}
       </main>
     </div>

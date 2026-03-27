@@ -15,6 +15,7 @@ import { ScoreBadge } from '@/components/ScoreBadge';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useChangelog } from '@/hooks/useSystemChangelog';
 import { getRoleLabel } from '@/lib/roles';
+import { NextActionsWidget } from '@/components/NextActionsWidget';
 
 function Spinner() {
   return (
@@ -357,6 +358,11 @@ function RegularDashboard() {
           </Link>
         </div>
       )}
+
+      {/* Next Actions widget — full width before grid */}
+      <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.25rem' }}>
+        <NextActionsWidget />
+      </div>
 
       {/* Lower grid */}
       <div

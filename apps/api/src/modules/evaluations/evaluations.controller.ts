@@ -242,4 +242,10 @@ export class EvaluationsController {
   getStats(@Request() req: any) {
     return this.evaluationsService.getStats(req.user.tenantId);
   }
+
+  // ─── Next Actions — all authenticated users ───────────────────────────────
+  @Get('dashboard/next-actions')
+  getNextActions(@Request() req: any) {
+    return this.evaluationsService.getNextActions(req.user.tenantId, req.user.userId, req.user.role);
+  }
 }

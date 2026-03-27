@@ -924,4 +924,154 @@ export class EvaluationsService {
         : null,
     };
   }
+
+  // ─── Next Actions ─────────────────────────────────────────────────────────
+  /**
+   * Returns a prioritized list of actions the current user should take today.
+   * Used by the dashboard "Próximas acciones" widget.
+   */
+  async getNextActions(tenantId: string, userId: string, role: string) {
+    const now = new Date();
+    const in7Days = new Date(now);
+    in7Days.setDate(in7Days.getDate() + 7);
+
+    // 1 — Pending evaluation assignments for this user (as evaluator)
+    const pendingAssignments = await this.assignmentRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.evaluatee', 'ee')
+      .leftJoinAndSelect('a.cycle', 'c')
+      .where('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.evaluatorId = :userId', { userId })
+      .andWhere('a.status IN (:...statuses)', { statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS] })
+      .andWhere('c.status = :active', { active: CycleStatus.ACTIVE })
+      .orderBy('a.due_date', 'ASC')
+      .take(5)
+      .getMany();
+
+    const evalActions = pendingAssignments.map((a) => {
+      const dueDate = a.dueDate ? new Date(a.dueDate) : null;
+      const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - now.getTime()) / 86_400_000) : null;
+      return {
+        type: 'evaluation' as const,
+        id: a.id,
+        title: `Evaluar a ${a.evaluatee?.firstName ?? ''} ${a.evaluatee?.lastName ?? ''}`.trim() || 'Evaluación pendiente',
+        subtitle: a.cycle?.name ?? '',
+        dueDate: dueDate?.toISOString().slice(0, 10) ?? null,
+        daysLeft,
+        urgency: daysLeft !== null && daysLeft <= 1 ? 'high' : daysLeft !== null && daysLeft <= 3 ? 'medium' : 'low',
+        href: `/dashboard/evaluaciones/${a.cycleId}/responder/${a.id}`,
+      };
+    });
+
+    // 2 — At-risk OKRs for this user
+    const atRiskObjs = await this.objectiveRepo
+      .createQueryBuilder('o')
+      .where('o.tenantId = :tenantId', { tenantId })
+      .andWhere('o.ownerId = :userId', { userId })
+      .andWhere('o.status IN (:...statuses)', { statuses: ['active'] })
+      .orderBy('o.targetDate', 'ASC')
+      .take(3)
+      .getMany();
+
+    const okrActions = atRiskObjs
+      .filter((o) => {
+        const progress = Number(o.progress ?? 0);
+        const targetDate = o.targetDate ? new Date(o.targetDate) : null;
+        const elapsed = targetDate
+          ? (now.getTime() - new Date(o.createdAt).getTime()) /
+            (targetDate.getTime() - new Date(o.createdAt).getTime())
+          : 0;
+        const expected = Math.min(elapsed * 100, 100);
+        return progress < expected - 15;
+      })
+      .map((o) => {
+        const targetDate = o.targetDate ? new Date(o.targetDate) : null;
+        const daysLeft = targetDate ? Math.ceil((targetDate.getTime() - now.getTime()) / 86_400_000) : null;
+        return {
+          type: 'okr' as const,
+          id: o.id,
+          title: o.title,
+          subtitle: `${o.progress ?? 0}% completado`,
+          dueDate: targetDate?.toISOString().slice(0, 10) ?? null,
+          daysLeft,
+          urgency: daysLeft !== null && daysLeft <= 7 ? 'high' : 'medium',
+          href: '/dashboard/objetivos',
+        };
+      });
+
+    // 3 — Admin-only: pending template / competency reviews
+    const reviewActions: any[] = [];
+    if (role === 'super_admin' || role === 'tenant_admin') {
+      const [pendingTemplates, pendingCompetencies] = await Promise.all([
+        this.templateRepo.count({ where: { tenantId, status: 'proposed' } }),
+        this.assignmentRepo
+          .createQueryBuilder()
+          .select('1')
+          .where('false') // placeholder — will extend with competency repo
+          .getCount(),
+      ]);
+
+      if (pendingTemplates > 0) {
+        reviewActions.push({
+          type: 'review' as const,
+          id: 'templates-review',
+          title: `${pendingTemplates} plantilla${pendingTemplates > 1 ? 's' : ''} pendiente${pendingTemplates > 1 ? 's' : ''} de revisión`,
+          subtitle: 'Requieren aprobación de administrador',
+          dueDate: null,
+          daysLeft: null,
+          urgency: 'medium',
+          href: '/dashboard/plantillas',
+        });
+      }
+    }
+
+    // 4 — Upcoming check-ins in next 7 days (manager/employee)
+    const checkinActions: any[] = [];
+    // We use raw query on the check_ins table since CheckIn entity is in another module
+    const upcomingCheckins = await this.dataSource.query(
+      `SELECT ci.id, ci.scheduled_at, ci.topic,
+              u.first_name as mgr_first, u.last_name as mgr_last
+       FROM check_ins ci
+       LEFT JOIN users u ON u.id = ci.manager_id
+       WHERE ci.tenant_id = $1
+         AND (ci.employee_id = $2 OR ci.manager_id = $2)
+         AND ci.status = 'scheduled'
+         AND ci.scheduled_at BETWEEN $3 AND $4
+       ORDER BY ci.scheduled_at ASC
+       LIMIT 3`,
+      [tenantId, userId, now.toISOString(), in7Days.toISOString()],
+    ).catch(() => []);
+
+    for (const ci of upcomingCheckins) {
+      const schedDate = new Date(ci.scheduled_at);
+      const daysLeft = Math.ceil((schedDate.getTime() - now.getTime()) / 86_400_000);
+      checkinActions.push({
+        type: 'checkin' as const,
+        id: ci.id,
+        title: `Check-in 1:1${ci.topic ? `: ${ci.topic}` : ''}`,
+        subtitle: `Con ${ci.mgr_first ?? ''} ${ci.mgr_last ?? ''}`.trim() || 'Reunión agendada',
+        dueDate: schedDate.toISOString().slice(0, 10),
+        daysLeft,
+        urgency: daysLeft === 0 ? 'high' : 'low',
+        href: '/dashboard/feedback',
+      });
+    }
+
+    // Merge + sort by urgency then daysLeft
+    const urgencyOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    const all = [...evalActions, ...okrActions, ...reviewActions, ...checkinActions];
+    all.sort((a, b) => {
+      const uDiff = urgencyOrder[a.urgency] - urgencyOrder[b.urgency];
+      if (uDiff !== 0) return uDiff;
+      if (a.daysLeft === null) return 1;
+      if (b.daysLeft === null) return -1;
+      return a.daysLeft - b.daysLeft;
+    });
+
+    return {
+      total: all.length,
+      highPriority: all.filter((a) => a.urgency === 'high').length,
+      actions: all.slice(0, 8),
+    };
+  }
 }

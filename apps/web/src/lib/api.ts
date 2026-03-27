@@ -518,6 +518,8 @@ export const api = {
   dashboard: {
     stats: (token: string) =>
       request<DashboardStats>("/dashboard/stats", {}, token),
+    nextActions: (token: string) =>
+      request<any>("/dashboard/next-actions", {}, token),
   },
 
   development: {
