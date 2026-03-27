@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { canAccessPage } from '@/lib/roles';
-import { api } from '@/lib/api';
 import { formatRut } from '@/lib/rut';
+import { useMySubscription } from '@/hooks/useSubscription';
 
 interface NavItem {
   href: string;
@@ -198,21 +198,9 @@ const sectionLabelStyle: React.CSSProperties = {
 // ─── Component ───────────────────────────────────────────────────────────
 
 export default function Sidebar({ currentPath }: { currentPath: string }) {
-  const { user, token } = useAuthStore();
-  const [orgInfo, setOrgInfo] = useState<{ name: string; rut: string | null } | null>(null);
-  const [orgError, setOrgError] = useState(false);
-
-  useEffect(() => {
-    if (!token || user?.role === 'super_admin') return;
-    setOrgError(false);
-    api.subscriptions.mySubscription(token)
-      .then((sub: any) => {
-        if (sub?.tenant) {
-          setOrgInfo({ name: sub.tenant.name, rut: sub.tenant.rut });
-        }
-      })
-      .catch(() => setOrgError(true));
-  }, [token, user?.role]);
+  const { user } = useAuthStore();
+  const { data: sub, isError: orgError, refetch: refetchSub } = useMySubscription();
+  const orgInfo = sub?.tenant ? { name: sub.tenant.name, rut: sub.tenant.rut || null } : null;
 
   const sections = user?.role === 'super_admin' ? superAdminSections : tenantNavSections;
 
@@ -249,17 +237,10 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
       {/* Organization info */}
       {user?.role !== 'super_admin' && orgError && !orgInfo && (
         <div
-          style={{ padding: '0.5rem 1.25rem', borderBottom: '1px solid var(--border)', fontSize: '0.72rem', color: 'var(--text-muted)', cursor: 'pointer' }}
-          onClick={() => {
-            setOrgError(false);
-            if (token) {
-              api.subscriptions.mySubscription(token)
-                .then((sub: any) => { if (sub?.tenant) setOrgInfo({ name: sub.tenant.name, rut: sub.tenant.rut }); })
-                .catch(() => setOrgError(true));
-            }
-          }}
+          style={{ padding: '0.5rem 1.25rem', borderBottom: '1px solid rgba(201,147,58,0.15)', fontSize: '0.72rem', color: 'rgba(245,228,168,0.5)', cursor: 'pointer' }}
+          onClick={() => refetchSub()}
         >
-          {'No se carg\u00f3 la info de la org. Click para reintentar'}
+          No se cargó la info de la org. Click para reintentar
         </div>
       )}
       {user?.role !== 'super_admin' && orgInfo && (

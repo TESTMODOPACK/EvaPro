@@ -4,25 +4,16 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel } from '@/lib/roles';
-import { api } from '@/lib/api';
+import { useMySubscription } from '@/hooks/useSubscription';
 import NotificationBell from './NotificationBell';
 
 export default function TopBar() {
   const router = useRouter();
-  const { user, token, logout } = useAuthStore();
-  const [orgName, setOrgName] = useState<string>('');
+  const { user, logout } = useAuthStore();
+  const { data: sub } = useMySubscription();
+  const orgName = sub?.tenant?.name || sub?.plan?.name || '';
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!token) return;
-    api.subscriptions.mySubscription(token)
-      .then((sub) => {
-        if (sub?.tenant?.name) setOrgName(sub.tenant.name);
-        else if (sub?.plan?.name) setOrgName(sub.plan.name);
-      })
-      .catch(() => {});
-  }, [token]);
 
   // Close dropdown on outside click
   useEffect(() => {

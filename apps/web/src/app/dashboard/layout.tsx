@@ -1,51 +1,34 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
-import { api } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
+import { useMySubscription } from '@/hooks/useSubscription';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
   const { isAuthenticated, token, user, logout } = useAuthStore();
-  const [subStatus, setSubStatus] = useState<'loading' | 'active' | 'none' | 'suspended' | 'skip'>('loading');
+  const { data: sub, isLoading: subLoading, isError: subError } = useMySubscription();
 
   useEffect(() => {
-    // Reject demo tokens or missing auth
     if (!isAuthenticated || token === 'demo-token' || !token) {
       logout();
       router.replace('/login');
     }
   }, [isAuthenticated, token, router, logout]);
 
-  // Check subscription for non-super_admin users
-  useEffect(() => {
-    if (!token || !user) return;
-
-    // Super admin doesn't need a subscription
-    if (user.role === 'super_admin') {
-      setSubStatus('skip');
-      return;
-    }
-
-    api.subscriptions.mySubscription(token)
-      .then((sub) => {
-        if (!sub || !sub.plan) {
-          setSubStatus('none');
-        } else if (sub.status === 'active' || sub.status === 'trial') {
-          setSubStatus('active');
-        } else {
-          setSubStatus('suspended');
-        }
-      })
-      .catch(() => {
-        // If endpoint fails (e.g. table doesn't exist yet), allow access
-        setSubStatus('active');
-      });
-  }, [token, user]);
+  // Derive subscription status from shared hook
+  const subStatus: 'loading' | 'active' | 'none' | 'suspended' | 'skip' = (() => {
+    if (user?.role === 'super_admin') return 'skip';
+    if (subLoading) return 'loading';
+    if (subError) return 'active'; // If endpoint fails, allow access
+    if (!sub || !sub.plan) return 'none';
+    if (sub.status === 'active' || sub.status === 'trial') return 'active';
+    return 'suspended';
+  })();
 
   if (!isAuthenticated || token === 'demo-token' || !token) {
     return (

@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Font loaded via next/font in layout.tsx — no external @import needed */
 
 /* ── Design Tokens ─────────────────────────────────────── */
 :root {
@@ -150,7 +150,36 @@ body {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
   }
+}
 
+/* ── Focus Visible (keyboard accessibility) ────────────── */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.btn-primary:focus-visible {
+  outline: 2px solid var(--gold-dark);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--gold-glow);
+}
+.btn-ghost:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.input:focus-visible {
+  outline: none; /* already has box-shadow ring */
+}
+.sidebar-link:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+a:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@layer utilities {
   .badge {
     display: inline-flex;
     align-items: center;
