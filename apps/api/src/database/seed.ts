@@ -60,6 +60,7 @@ import { Badge } from '../modules/recognition/entities/badge.entity';
 import { UserBadge } from '../modules/recognition/entities/user-badge.entity';
 import { UserPoints } from '../modules/recognition/entities/user-points.entity';
 import { SystemChangelog } from '../modules/system/entities/system-changelog.entity';
+import { CustomKpi } from '../modules/reports/entities/custom-kpi.entity';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -93,7 +94,7 @@ const dataSource = new DataSource({
     // Billing & new modules
     PaymentHistory, RoleCompetency,
     Recognition, Badge, UserBadge, UserPoints,
-    SystemChangelog,
+    SystemChangelog, CustomKpi,
   ],
   // synchronize:true ensures tables exist before inserting seed data
   // (safe because cleanup-orphans already dropped conflicting tables)

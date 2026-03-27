@@ -460,6 +460,8 @@ export const api = {
       request<any>(`/reports/cycle/${cycleId}/team/${managerId}`, {}, token),
     exportCsv: (token: string, cycleId: string) =>
       `${BASE_URL}/reports/cycle/${cycleId}/export?format=csv`,
+    exportPptx: (token: string, cycleId: string) =>
+      `${BASE_URL}/reports/cycle/${cycleId}/export?format=pptx`,
     performanceHistory: (token: string, userId: string, cycleType?: string) =>
       request<{ userId: string; history: PerformanceHistoryEntry[] }>(
         `/reports/users/${userId}/performance-history${cycleType ? `?cycleType=${cycleType}` : ''}`, {}, token,
@@ -478,6 +480,13 @@ export const api = {
       request<any>(`/reports/cycle/${cycleId}/gap-analysis/${userId}`, {}, token),
     gapAnalysisTeam: (token: string, cycleId: string, managerId: string) =>
       request<any>(`/reports/cycle/${cycleId}/gap-analysis-team/${managerId}`, {}, token),
+    kpis: {
+      list: (token: string) => request<any[]>("/reports/kpis", {}, token),
+      calculate: (token: string) => request<any[]>("/reports/kpis/calculate", {}, token),
+      create: (token: string, data: any) => request<any>("/reports/kpis", { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) => request<any>(`/reports/kpis/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      deactivate: (token: string, id: string) => request<void>(`/reports/kpis/${id}`, { method: "DELETE" }, token),
+    },
     competencyHeatmap: (token: string, cycleId: string, filters?: { department?: string; position?: string }) => {
       const params = new URLSearchParams();
       if (filters?.department) params.set('department', filters.department);

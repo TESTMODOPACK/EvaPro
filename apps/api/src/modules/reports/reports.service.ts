@@ -1216,4 +1216,238 @@ export class ReportsService {
       },
     };
   }
+
+  // ─── Export PowerPoint ──────────────────────────────────────────────────
+
+  async exportPptx(cycleId: string, tenantId: string): Promise<Buffer> {
+    const PptxGenJS = (await import('pptxgenjs')).default;
+
+    // Gather data
+    const summary = await this.cycleSummary(cycleId, tenantId);
+    const bellData = await this.bellCurve(cycleId, tenantId);
+    const heatmapData = await this.performanceHeatmap(cycleId, tenantId);
+
+    const pptx = new PptxGenJS();
+    pptx.author = 'Ascenda Performance';
+    pptx.title = `Reporte - ${summary.cycle.name}`;
+    pptx.subject = 'Evaluación de Desempeño';
+
+    const GOLD = 'C9933A';
+    const GOLD_LIGHT = 'E8C97A';
+    const DARK = '1a1206';
+    const GRAY = '5a4a2e';
+    const LIGHT_BG = 'F5F5F0';
+
+    // ─── Slide 1: Title ─────────────────────────────────────────────
+    const slide1 = pptx.addSlide();
+    slide1.background = { color: DARK };
+    slide1.addText('Ascenda Performance', {
+      x: 0.8, y: 1.0, w: 8.4, h: 0.6,
+      fontSize: 14, color: GOLD_LIGHT, fontFace: 'Arial',
+    });
+    slide1.addText(summary.cycle.name, {
+      x: 0.8, y: 1.8, w: 8.4, h: 1.0,
+      fontSize: 32, bold: true, color: 'FFFFFF', fontFace: 'Arial',
+    });
+    slide1.addText(
+      `${summary.cycle.type} | ${new Date(summary.cycle.startDate).toLocaleDateString('es-CL')} - ${new Date(summary.cycle.endDate).toLocaleDateString('es-CL')}`,
+      { x: 0.8, y: 2.9, w: 8.4, h: 0.4, fontSize: 14, color: GOLD, fontFace: 'Arial' },
+    );
+    slide1.addText(`Generado: ${new Date().toLocaleDateString('es-CL')}`, {
+      x: 0.8, y: 4.5, w: 8.4, h: 0.3, fontSize: 10, color: '888888', fontFace: 'Arial',
+    });
+
+    // ─── Slide 2: Summary KPIs ──────────────────────────────────────
+    const slide2 = pptx.addSlide();
+    slide2.background = { color: LIGHT_BG };
+    slide2.addText('Resumen del Ciclo', {
+      x: 0.5, y: 0.3, w: 9, h: 0.5,
+      fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
+    });
+
+    const kpis = [
+      { label: 'Total Evaluaciones', value: String(summary.totalAssignments) },
+      { label: 'Completadas', value: String(summary.completedAssignments) },
+      { label: 'Completitud', value: `${summary.completionRate}%` },
+      { label: 'Puntaje Promedio', value: summary.averageScore ? Number(summary.averageScore).toFixed(1) : 'N/A' },
+    ];
+
+    kpis.forEach((kpi, i) => {
+      const col = i % 4;
+      slide2.addShape(pptx.ShapeType.roundRect, {
+        x: 0.5 + col * 2.3, y: 1.2, w: 2.0, h: 1.4,
+        fill: { color: 'FFFFFF' }, line: { color: GOLD, width: 1 },
+        rectRadius: 0.1,
+      });
+      slide2.addText(kpi.value, {
+        x: 0.5 + col * 2.3, y: 1.35, w: 2.0, h: 0.7,
+        fontSize: 28, bold: true, color: GOLD, align: 'center', fontFace: 'Arial',
+      });
+      slide2.addText(kpi.label, {
+        x: 0.5 + col * 2.3, y: 2.05, w: 2.0, h: 0.4,
+        fontSize: 10, color: GRAY, align: 'center', fontFace: 'Arial',
+      });
+    });
+
+    // Department breakdown summary on same slide
+    if (summary.departmentBreakdown && summary.departmentBreakdown.length > 0) {
+      slide2.addText('Resumen por Departamento', {
+        x: 0.5, y: 3.0, w: 9, h: 0.4,
+        fontSize: 14, bold: true, color: DARK, fontFace: 'Arial',
+      });
+      const summaryRows: any[][] = [
+        [
+          { text: 'Departamento', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+          { text: 'Promedio', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+          { text: 'Evaluados', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        ],
+      ];
+      for (const dept of summary.departmentBreakdown.slice(0, 8)) {
+        summaryRows.push([dept.department, Number(dept.avgScore).toFixed(1), String(dept.count)]);
+      }
+      slide2.addTable(summaryRows, {
+        x: 0.5, y: 3.5, w: 9,
+        fontSize: 10, fontFace: 'Arial',
+        border: { color: 'DDDDDD', pt: 0.5 },
+        colW: [4, 2.5, 2.5],
+      });
+    }
+
+    // ─── Slide 3: Department Breakdown ──────────────────────────────
+    if (summary.departmentBreakdown && summary.departmentBreakdown.length > 0) {
+      const slide3 = pptx.addSlide();
+      slide3.background = { color: LIGHT_BG };
+      slide3.addText('Resultados por Departamento', {
+        x: 0.5, y: 0.3, w: 9, h: 0.5,
+        fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
+      });
+
+      const deptRows: any[][] = [
+        [
+          { text: 'Departamento', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+          { text: 'Puntaje Promedio', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+          { text: 'Evaluados', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        ],
+      ];
+      for (const dept of summary.departmentBreakdown) {
+        deptRows.push([dept.department, Number(dept.avgScore).toFixed(1), String(dept.count)]);
+      }
+      slide3.addTable(deptRows, {
+        x: 0.5, y: 1.0, w: 9,
+        fontSize: 11, fontFace: 'Arial',
+        border: { color: 'DDDDDD', pt: 0.5 },
+        colW: [4, 2.5, 2.5],
+      });
+    }
+
+    // ─── Slide 4: Bell Curve Stats ──────────────────────────────────
+    if (bellData && !bellData.privacyRestricted && bellData.count > 0) {
+      const slide4 = pptx.addSlide();
+      slide4.background = { color: LIGHT_BG };
+      slide4.addText('Distribución de Puntajes (Curva de Bell)', {
+        x: 0.5, y: 0.3, w: 9, h: 0.5,
+        fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
+      });
+
+      const bellKpis = [
+        { label: 'Media', value: bellData.mean?.toFixed(2) || '0' },
+        { label: 'Desv. Estándar', value: bellData.stddev?.toFixed(2) || '0' },
+        { label: 'Total respuestas', value: String(bellData.count) },
+      ];
+      bellKpis.forEach((kpi, i) => {
+        slide4.addShape(pptx.ShapeType.roundRect, {
+          x: 0.5 + i * 3.0, y: 1.0, w: 2.5, h: 1.2,
+          fill: { color: 'FFFFFF' }, line: { color: GOLD, width: 1 },
+          rectRadius: 0.1,
+        });
+        slide4.addText(kpi.value, {
+          x: 0.5 + i * 3.0, y: 1.1, w: 2.5, h: 0.6,
+          fontSize: 24, bold: true, color: GOLD, align: 'center', fontFace: 'Arial',
+        });
+        slide4.addText(kpi.label, {
+          x: 0.5 + i * 3.0, y: 1.7, w: 2.5, h: 0.35,
+          fontSize: 10, color: GRAY, align: 'center', fontFace: 'Arial',
+        });
+      });
+
+      // Histogram as table
+      if (bellData.histogram && bellData.histogram.length > 0) {
+        const topBuckets = bellData.histogram.filter((b: any) => b.count > 0);
+        if (topBuckets.length > 0) {
+          slide4.addText('Distribución por rango', {
+            x: 0.5, y: 2.6, w: 9, h: 0.4,
+            fontSize: 12, bold: true, color: DARK, fontFace: 'Arial',
+          });
+          const histRows: any[][] = [[
+            { text: 'Rango', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+            { text: 'Cantidad', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+          ]];
+          for (const b of topBuckets.slice(0, 15)) {
+            histRows.push([b.rangeLabel || b.range, String(b.count)]);
+          }
+          slide4.addTable(histRows, {
+            x: 0.5, y: 3.1, w: 6,
+            fontSize: 9, fontFace: 'Arial',
+            border: { color: 'DDDDDD', pt: 0.5 },
+            colW: [3, 3],
+          });
+        }
+      }
+    }
+
+    // ─── Slide 5: Heatmap ───────────────────────────────────────────
+    if (heatmapData?.heatmap && heatmapData.heatmap.length > 0) {
+      const slide5 = pptx.addSlide();
+      slide5.background = { color: LIGHT_BG };
+      slide5.addText('Mapa de Calor por Departamento', {
+        x: 0.5, y: 0.3, w: 9, h: 0.5,
+        fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
+      });
+
+      const heatRows: any[][] = [[
+        { text: 'Departamento', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Promedio', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Evaluados', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Bajo', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Medio', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Alto', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+      ]];
+      for (const dept of heatmapData.heatmap) {
+        heatRows.push([
+          dept.department,
+          String(dept.avgScore),
+          String(dept.total),
+          String(dept.low),
+          String(dept.mid),
+          String(dept.high),
+        ]);
+      }
+      slide5.addTable(heatRows, {
+        x: 0.5, y: 1.0, w: 9,
+        fontSize: 10, fontFace: 'Arial',
+        border: { color: 'DDDDDD', pt: 0.5 },
+        colW: [2.5, 1.3, 1.3, 1.3, 1.3, 1.3],
+      });
+    }
+
+    // ─── Slide 6: Closing ───────────────────────────────────────────
+    const slideEnd = pptx.addSlide();
+    slideEnd.background = { color: DARK };
+    slideEnd.addText('Ascenda Performance', {
+      x: 0.5, y: 2.0, w: 9, h: 0.8,
+      fontSize: 28, bold: true, color: GOLD_LIGHT, align: 'center', fontFace: 'Arial',
+    });
+    slideEnd.addText('Reporte generado automáticamente', {
+      x: 0.5, y: 3.0, w: 9, h: 0.4,
+      fontSize: 12, color: '888888', align: 'center', fontFace: 'Arial',
+    });
+    slideEnd.addText(`${new Date().toLocaleDateString('es-CL')} — Confidencial`, {
+      x: 0.5, y: 3.5, w: 9, h: 0.3,
+      fontSize: 10, color: '666666', align: 'center', fontFace: 'Arial',
+    });
+
+    // Generate buffer
+    const arrayBuffer = await pptx.write({ outputType: 'arraybuffer' }) as ArrayBuffer;
+    return Buffer.from(arrayBuffer);
+  }
 }

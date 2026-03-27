@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 import { useCompetencyRadar, useSelfVsOthers, useHeatmap, useBellCurve, useCompetencyHeatmap } from '@/hooks/useReports';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
@@ -489,6 +491,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 export default function InformesPage() {
+  const token = useAuthStore((s) => s.token);
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const { data: usersPage } = useUsers();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
@@ -523,11 +526,41 @@ export default function InformesPage() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
-      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{'Informes Avanzados'}</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {'Radar de competencias, comparativa autoevaluaci\u00f3n vs evaluadores y mapa de calor'}
-        </p>
+      <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Informes Avanzados</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            Radar de competencias, comparativa autoevaluación vs evaluadores y mapa de calor
+          </p>
+        </div>
+        {selectedCycleId && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <a
+              href={api.reports.exportPptx(token || '', selectedCycleId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary"
+              style={{ fontSize: '0.82rem', padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              PowerPoint
+            </a>
+            <a
+              href={api.reports.exportCsv(token || '', selectedCycleId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ fontSize: '0.82rem', padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              CSV
+            </a>
+          </div>
+        )}
       </div>
 
       {/* Guide */}

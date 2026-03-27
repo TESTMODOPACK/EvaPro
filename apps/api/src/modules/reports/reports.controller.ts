@@ -1,17 +1,24 @@
 import {
   Controller,
   Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
   Param,
   Query,
   UseGuards,
   Request,
   ParseUUIDPipe,
   Res,
+  HttpCode,
+  HttpStatus,
   ForbiddenException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { ReportsService } from './reports.service';
+import { KpiService } from './kpi.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { FeatureGuard } from '../../common/guards/feature.guard';
@@ -21,7 +28,43 @@ import { PlanFeature } from '../../common/constants/plan-features';
 @Controller('reports')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly kpiService: KpiService,
+  ) {}
+
+  // ─── Custom KPIs ──────────────────────────────────────────────────────
+
+  @Get('kpis')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  findKpis(@Request() req: any) {
+    return this.kpiService.findAll(req.user.tenantId);
+  }
+
+  @Get('kpis/calculate')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  calculateKpis(@Request() req: any) {
+    return this.kpiService.calculateAll(req.user.tenantId);
+  }
+
+  @Post('kpis')
+  @Roles('super_admin', 'tenant_admin')
+  createKpi(@Request() req: any, @Body() dto: any) {
+    return this.kpiService.create(req.user.tenantId, req.user.userId, dto);
+  }
+
+  @Patch('kpis/:id')
+  @Roles('super_admin', 'tenant_admin')
+  updateKpi(@Param('id', ParseUUIDPipe) id: string, @Request() req: any, @Body() dto: any) {
+    return this.kpiService.update(req.user.tenantId, id, dto);
+  }
+
+  @Delete('kpis/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('super_admin', 'tenant_admin')
+  deactivateKpi(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.kpiService.deactivate(req.user.tenantId, id);
+  }
 
   // ─── Authorization helper ──────────────────────────────────────────────
 
@@ -215,6 +258,13 @@ export class ReportsController {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.pdf`);
       return res.send(pdfBuffer);
+    }
+
+    if (format === 'pptx') {
+      const pptxBuffer = await this.reportsService.exportPptx(cycleId, req.user.tenantId);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+      res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.pptx`);
+      return res.send(pptxBuffer);
     }
 
     const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId);
