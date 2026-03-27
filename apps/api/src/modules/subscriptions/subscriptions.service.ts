@@ -97,6 +97,22 @@ export class SubscriptionsService {
   async create(dto: any, changedBy?: string): Promise<Subscription> {
     const plan = await this.findPlanById(dto.planId);
 
+    // Cancel any existing active/trial subscriptions for this tenant before creating the new one
+    const previousSubs = await this.subRepo.find({
+      where: { tenantId: dto.tenantId, status: In(['active', 'trial']) },
+    });
+    for (const prev of previousSubs) {
+      prev.status = 'cancelled';
+      prev.endDate = new Date();
+      await this.subRepo.save(prev);
+      if (changedBy) {
+        await this.auditService.log(
+          dto.tenantId, changedBy, 'subscription.cancelled', 'subscription', prev.id,
+          { reason: 'Reemplazada por nueva suscripción', replacedByPlan: plan.code },
+        );
+      }
+    }
+
     const billingPeriod = dto.billingPeriod || BillingPeriod.MONTHLY;
     const startDate = dto.startDate ? new Date(dto.startDate) : new Date();
     const nextBillingDate = dto.nextBillingDate

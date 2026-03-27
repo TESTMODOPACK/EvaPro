@@ -222,10 +222,10 @@ export default function SystemMetricsPage() {
         {/* Subscription breakdown */}
         <div className="card" style={{ padding: '1.4rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
-            Resumen de suscripciones
+            Historial de suscripciones
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Por plan y estado
+            Todas las suscripciones — activas e inactivas
           </p>
           {subsByPlan.length === 0 ? (
             <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin suscripciones registradas</div>
@@ -238,8 +238,17 @@ export default function SystemMetricsPage() {
                     <tr key={i}>
                       <td style={{ fontWeight: 600 }}>{row.plan || 'Sin plan'}</td>
                       <td>
-                        <span className={`badge ${row.status === 'active' ? 'badge-success' : row.status === 'trial' ? 'badge-warning' : 'badge-danger'}`}>
-                          {row.status === 'active' ? 'Activa' : row.status === 'trial' ? 'Trial' : row.status === 'suspended' ? 'Suspendida' : row.status}
+                        <span className={`badge ${
+                          row.status === 'active' ? 'badge-success' :
+                          row.status === 'trial' ? 'badge-warning' :
+                          row.status === 'cancelled' || row.status === 'expired' ? 'badge-ghost' :
+                          'badge-danger'
+                        }`}>
+                          {row.status === 'active' ? 'Activa' :
+                           row.status === 'trial' ? 'Trial' :
+                           row.status === 'suspended' ? 'Suspendida' :
+                           row.status === 'cancelled' ? 'Cancelada' :
+                           row.status === 'expired' ? 'Expirada' : row.status}
                         </span>
                       </td>
                       <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{row.count}</td>
