@@ -168,11 +168,24 @@ export class SubscriptionsService {
    * Also checks for trial expiration and auto-expires if needed.
    */
   async findByTenantId(tenantId: string): Promise<Subscription | null> {
-    const sub = await this.subRepo.findOne({
+    // Always return the newest active/trial subscription (order by createdAt DESC)
+    const activeSubs = await this.subRepo.find({
       where: { tenantId, status: In(['active', 'trial']) },
       relations: ['plan', 'tenant'],
+      order: { createdAt: 'DESC' },
     });
 
+    // Auto-cancel stale duplicates — keep only the newest active one
+    if (activeSubs.length > 1) {
+      for (const stale of activeSubs.slice(1)) {
+        stale.status = 'cancelled';
+        stale.endDate = new Date();
+        await this.subRepo.save(stale);
+        this.logger.warn(`[findByTenantId] Auto-cancelled stale subscription ${stale.id} (plan: ${stale.plan?.name}) for tenant ${tenantId}`);
+      }
+    }
+
+    const sub = activeSubs[0] ?? null;
     if (!sub) return null;
 
     // Auto-expire trial if past trialEndsAt
