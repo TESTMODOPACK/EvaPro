@@ -461,7 +461,7 @@ export default function UsuariosPage() {
             <option value="">Todos</option>
             <option value="tenant_admin">Administrador</option>
             <option value="manager">Manager</option>
-            <option value="employee">Empleado</option>
+            <option value="employee">Colaborador</option>
             <option value="external">Externo</option>
           </select>
         </div>
