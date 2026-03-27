@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 import { useCompetencyRadar, useSelfVsOthers, useHeatmap, useBellCurve, useCompetencyHeatmap } from '@/hooks/useReports';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
@@ -495,6 +497,29 @@ export default function InformesPage() {
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const { data: usersPage } = useUsers();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleExport = useCallback(async (format: 'pptx' | 'csv') => {
+    if (!token || !selectedCycleId) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error al exportar');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reporte-${selectedCycleId}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || 'Error al descargar el reporte');
+    } finally {
+      setExporting(null);
+    }
+  }, [token, selectedCycleId]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
 
@@ -535,30 +560,28 @@ export default function InformesPage() {
         </div>
         {selectedCycleId && (
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <a
-              href={api.reports.exportPptx(token || '', selectedCycleId)}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
               className="btn-primary"
-              style={{ fontSize: '0.82rem', padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+              style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }}
+              onClick={() => handleExport('pptx')}
+              disabled={exporting === 'pptx'}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              PowerPoint
-            </a>
-            <a
-              href={api.reports.exportCsv(token || '', selectedCycleId)}
-              target="_blank"
-              rel="noopener noreferrer"
+              {exporting === 'pptx' ? 'Generando...' : 'PowerPoint'}
+            </button>
+            <button
               className="btn-ghost"
-              style={{ fontSize: '0.82rem', padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+              style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }}
+              onClick={() => handleExport('csv')}
+              disabled={exporting === 'csv'}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              CSV
-            </a>
+              {exporting === 'csv' ? 'Generando...' : 'CSV'}
+            </button>
           </div>
         )}
       </div>

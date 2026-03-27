@@ -109,8 +109,9 @@ export class KpiService {
           .andWhere('r.overall_score IS NOT NULL')
           .select('AVG(r.overall_score)', 'avg')
           .getRawOne();
-        const avg = result?.avg ? parseFloat(result.avg) : 0;
-        return { value: Math.round(avg * 100) / 100, formatted: avg > 0 ? `${avg.toFixed(1)} / 10` : 'N/A' };
+        const avg = result?.avg != null ? parseFloat(result.avg) : null;
+        const rounded = avg != null ? Math.round(avg * 100) / 100 : 0;
+        return { value: rounded, formatted: avg != null ? `${rounded.toFixed(1)} / 10` : 'N/A' };
       }
 
       case KpiType.DEPARTMENT_AVG: {
@@ -125,8 +126,9 @@ export class KpiService {
           .andWhere('r.overall_score IS NOT NULL')
           .select('AVG(r.overall_score)', 'avg')
           .getRawOne();
-        const avg = result?.avg ? parseFloat(result.avg) : 0;
-        return { value: Math.round(avg * 100) / 100, formatted: avg > 0 ? `${avg.toFixed(1)}` : 'N/A' };
+        const avg = result?.avg != null ? parseFloat(result.avg) : null;
+        const rounded = avg != null ? Math.round(avg * 100) / 100 : 0;
+        return { value: rounded, formatted: avg != null ? `${rounded.toFixed(1)}` : 'N/A' };
       }
 
       case KpiType.OBJECTIVE_COMPLETION: {
@@ -147,11 +149,12 @@ export class KpiService {
       }
 
       case KpiType.AT_RISK_OBJECTIVES: {
+        const threshold = kpi.config?.threshold ?? 40;
         const atRisk = await this.objRepo
           .createQueryBuilder('o')
           .where('o.tenantId = :tenantId', { tenantId })
           .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE })
-          .andWhere('o.progress < 40')
+          .andWhere('o.progress < :threshold', { threshold })
           .getCount();
         return { value: atRisk, formatted: String(atRisk) };
       }

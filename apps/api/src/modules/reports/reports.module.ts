@@ -10,6 +10,7 @@ import { RoleCompetency } from '../development/entities/role-competency.entity';
 import { Competency } from '../development/entities/competency.entity';
 import { QuickFeedback } from '../feedback/entities/quick-feedback.entity';
 import { CustomKpi } from './entities/custom-kpi.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
 import { ReportsController } from './reports.controller';
@@ -29,6 +30,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
       Competency,
       QuickFeedback,
       CustomKpi,
+      Tenant,
     ]),
   ],
   controllers: [ReportsController],
