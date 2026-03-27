@@ -663,6 +663,25 @@ async function seedDemoFull() {
       }
     }
 
+    /* ── 11b. MEETING LOCATIONS ─────────────────────────────────────── */
+    const locRepo = ds.getRepository(MeetingLocation);
+    const existingLocs = await locRepo.count({ where: { tenantId: tid } });
+    if (existingLocs === 0) {
+      const locationsData = [
+        { name: 'Sala de Reuniones A', type: 'physical', address: 'Piso 3, Oficina 301', capacity: 8 },
+        { name: 'Sala de Reuniones B', type: 'physical', address: 'Piso 2, Oficina 205', capacity: 4 },
+        { name: 'Google Meet', type: 'virtual', address: 'https://meet.google.com/abc-defg-hij', capacity: null },
+        { name: 'Zoom Corporativo', type: 'virtual', address: 'https://zoom.us/j/1234567890', capacity: null },
+        { name: 'Cafetería', type: 'physical', address: 'Piso 1, zona común', capacity: 2 },
+      ];
+      for (const l of locationsData) {
+        await locRepo.save(locRepo.create({ tenantId: tid, ...l, isActive: true } as any));
+      }
+      console.log(`✅ Meeting locations created: ${locationsData.length} locations`);
+    } else {
+      console.log(`   Meeting locations already exist (${existingLocs}), skipping.`);
+    }
+
     /* ── 12. ROLE COMPETENCIES for Gap Analysis ────────────────────────── */
     const roleCompRepo = ds.getRepository(RoleCompetency);
     const existingRC = await roleCompRepo.count({ where: { tenantId: tid } });

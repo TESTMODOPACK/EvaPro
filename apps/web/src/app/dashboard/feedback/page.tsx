@@ -475,18 +475,23 @@ function QuickFeedbackTab() {
 /* ─── Meeting Locations Tab ──────────────────────────────────────────────── */
 
 function LocationsTab() {
-  const { data: locations, isLoading } = useMeetingLocations();
+  const { data: locations, isLoading, error: loadError } = useMeetingLocations();
   const createLocation = useCreateLocation();
   const deleteLocation = useDeleteLocation();
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', type: 'physical', address: '', capacity: '' });
+  const [createError, setCreateError] = useState('');
 
   function handleCreate() {
     if (!form.name) return;
+    setCreateError('');
     createLocation.mutate(
       { name: form.name, type: form.type, address: form.address || undefined, capacity: form.capacity ? parseInt(form.capacity) : undefined },
-      { onSuccess: () => { setForm({ name: '', type: 'physical', address: '', capacity: '' }); setShowForm(false); } },
+      {
+        onSuccess: () => { setForm({ name: '', type: 'physical', address: '', capacity: '' }); setShowForm(false); setCreateError(''); },
+        onError: (err: any) => { setCreateError(err?.message || 'Error al crear el lugar. Verifique que su plan incluya esta funcionalidad.'); },
+      },
     );
   }
 
@@ -532,12 +537,23 @@ function LocationsTab() {
               </div>
             )}
           </div>
+          {createError && (
+            <div style={{ padding: '0.6rem 0.8rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.82rem', marginBottom: '0.75rem' }}>
+              {createError}
+            </div>
+          )}
           <button className="btn-primary" onClick={handleCreate} disabled={createLocation.isPending || !form.name}>
             {createLocation.isPending ? 'Creando...' : 'Crear Lugar'}
           </button>
         </div>
       )}
 
+      {loadError && (
+        <div className="card" style={{ padding: '1rem', marginBottom: '1rem', borderLeft: '4px solid var(--danger)' }}>
+          <p style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>Error al cargar lugares</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{(loadError as any)?.message || 'Verifique que su plan incluya la funcionalidad de Feedback.'}</p>
+        </div>
+      )}
       {isLoading ? <Spinner /> : !locations || locations.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{'No hay lugares registrados'}</p>
