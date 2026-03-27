@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Subscription } from './entities/subscription.entity';
 import { SubscriptionPlan } from './entities/subscription-plan.entity';
+import { SubscriptionRequest } from './entities/subscription-request.entity';
 import { PaymentHistory, BillingPeriod, PaymentStatus } from './entities/payment-history.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
@@ -26,6 +27,8 @@ export class SubscriptionsService {
     private readonly subRepo: Repository<Subscription>,
     @InjectRepository(SubscriptionPlan)
     private readonly planRepo: Repository<SubscriptionPlan>,
+    @InjectRepository(SubscriptionRequest)
+    private readonly requestRepo: Repository<SubscriptionRequest>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     @InjectRepository(User)
@@ -125,7 +128,7 @@ export class SubscriptionsService {
       status: dto.status || 'active',
       billingPeriod,
       startDate,
-      endDate: dto.endDate || null,
+      endDate: dto.endDate || nextBillingDate,
       nextBillingDate,
       autoRenew: dto.autoRenew ?? true,
       trialEndsAt: dto.trialEndsAt || null,
@@ -534,6 +537,155 @@ export class SubscriptionsService {
       plan: plan.code,
       maxEmployees: plan.maxEmployees,
     });
+  }
+
+  // ─── Subscription Requests ────────────────────────────────────────────
+
+  /**
+   * Calculate proration credit for remaining days in current subscription period.
+   * Returns USD/UF credit amount.
+   */
+  async calculateProration(tenantId: string): Promise<{ credit: number; daysRemaining: number; totalDays: number }> {
+    const sub = await this.findByTenantId(tenantId);
+    if (!sub || !sub.lastPaymentAmount || !sub.nextBillingDate) {
+      return { credit: 0, daysRemaining: 0, totalDays: 0 };
+    }
+    const now = new Date();
+    const periodEnd = new Date(sub.nextBillingDate);
+    const periodStart = sub.lastPaymentDate ? new Date(sub.lastPaymentDate) : new Date(sub.startDate);
+    const totalDays = Math.max(1, Math.round((periodEnd.getTime() - periodStart.getTime()) / 86_400_000));
+    const daysRemaining = Math.max(0, Math.round((periodEnd.getTime() - now.getTime()) / 86_400_000));
+    const credit = Math.max(0, Number(((Number(sub.lastPaymentAmount) / totalDays) * daysRemaining).toFixed(2)));
+    return { credit, daysRemaining, totalDays };
+  }
+
+  /** Tenant admin creates a plan-change or cancel request. */
+  async createRequest(
+    tenantId: string,
+    requestedBy: string,
+    dto: { type: 'plan_change' | 'cancel'; targetPlan?: string; targetBillingPeriod?: string; notes?: string },
+  ): Promise<SubscriptionRequest> {
+    // Block if there's already a pending request
+    const existing = await this.requestRepo.findOne({
+      where: { tenantId, status: 'pending' },
+    });
+    if (existing) {
+      throw new ConflictException('Ya existe una solicitud pendiente para esta organización');
+    }
+
+    // Validate targetPlan exists for plan_change requests
+    if (dto.type === 'plan_change' && dto.targetPlan) {
+      const plan = await this.planRepo.findOne({ where: { code: dto.targetPlan, isActive: true } });
+      if (!plan) throw new NotFoundException(`Plan "${dto.targetPlan}" no encontrado`);
+    }
+
+    const req = this.requestRepo.create({
+      tenantId,
+      requestedBy,
+      type: dto.type,
+      targetPlan: dto.targetPlan || null,
+      targetBillingPeriod: dto.targetBillingPeriod || null,
+      notes: dto.notes || null,
+      status: 'pending',
+    });
+    return this.requestRepo.save(req);
+  }
+
+  /** List all pending requests (super_admin). */
+  async getPendingRequests(): Promise<any[]> {
+    const requests = await this.requestRepo.find({
+      where: { status: 'pending' },
+      order: { createdAt: 'ASC' },
+    });
+
+    // Enrich with tenant and user info
+    const enriched = await Promise.all(
+      requests.map(async (r) => {
+        const tenant = await this.tenantRepo.findOne({ where: { id: r.tenantId } });
+        const user = await this.userRepo.findOne({ where: { id: r.requestedBy } });
+        return {
+          ...r,
+          tenantName: tenant?.name ?? r.tenantId,
+          requestedByName: user ? `${user.firstName} ${user.lastName}` : r.requestedBy,
+        };
+      }),
+    );
+    return enriched;
+  }
+
+  /** List requests for a specific tenant (tenant_admin). */
+  async getMyRequests(tenantId: string): Promise<SubscriptionRequest[]> {
+    return this.requestRepo.find({
+      where: { tenantId },
+      order: { createdAt: 'DESC' },
+      take: 20,
+    });
+  }
+
+  /** Super admin approves a request — applies the change. */
+  async approveRequest(requestId: string, processedBy: string): Promise<void> {
+    const req = await this.requestRepo.findOne({ where: { id: requestId } });
+    if (!req) throw new NotFoundException('Solicitud no encontrada');
+    if (req.status !== 'pending') throw new ConflictException('La solicitud ya fue procesada');
+
+    // Calculate proration before making the change
+    const { credit } = await this.calculateProration(req.tenantId);
+
+    if (req.type === 'plan_change' && req.targetPlan) {
+      const plan = await this.planRepo.findOne({ where: { code: req.targetPlan, isActive: true } });
+      if (!plan) throw new NotFoundException(`Plan "${req.targetPlan}" no encontrado`);
+
+      await this.create(
+        {
+          tenantId: req.tenantId,
+          planId: plan.id,
+          billingPeriod: req.targetBillingPeriod || BillingPeriod.MONTHLY,
+          status: 'active',
+        },
+        processedBy,
+      );
+    } else if (req.type === 'cancel') {
+      const sub = await this.findByTenantId(req.tenantId);
+      if (sub) await this.cancel(sub.id, processedBy);
+    }
+
+    req.status = 'approved';
+    req.processedBy = processedBy;
+    req.processedAt = new Date();
+    req.prorationCredit = credit;
+    await this.requestRepo.save(req);
+
+    await this.auditService.log(
+      req.tenantId, processedBy, 'subscription_request.approved', 'subscription_request', req.id,
+      { type: req.type, targetPlan: req.targetPlan, prorationCredit: credit },
+    );
+  }
+
+  /** Super admin rejects a request. */
+  async rejectRequest(requestId: string, processedBy: string, reason: string): Promise<void> {
+    const req = await this.requestRepo.findOne({ where: { id: requestId } });
+    if (!req) throw new NotFoundException('Solicitud no encontrada');
+    if (req.status !== 'pending') throw new ConflictException('La solicitud ya fue procesada');
+
+    req.status = 'rejected';
+    req.processedBy = processedBy;
+    req.processedAt = new Date();
+    req.rejectionReason = reason || 'Sin motivo especificado';
+    await this.requestRepo.save(req);
+
+    await this.auditService.log(
+      req.tenantId, processedBy, 'subscription_request.rejected', 'subscription_request', req.id,
+      { type: req.type, reason: req.rejectionReason },
+    );
+  }
+
+  /** Tenant admin toggles auto-renew on their active subscription. */
+  async toggleAutoRenew(tenantId: string, autoRenew: boolean): Promise<void> {
+    const sub = await this.findByTenantId(tenantId);
+    if (!sub) throw new NotFoundException('No hay suscripción activa para esta organización');
+    sub.autoRenew = autoRenew;
+    await this.subRepo.save(sub);
+    this.logger.log(`[AutoRenew] Tenant ${tenantId} set autoRenew=${autoRenew} on subscription ${sub.id}`);
   }
 
   // ─── Auto-Renewal ─────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Subscription } from './entities/subscription.entity';
 import { SubscriptionPlan } from './entities/subscription-plan.entity';
 import { PaymentHistory } from './entities/payment-history.entity';
+import { SubscriptionRequest } from './entities/subscription-request.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
@@ -12,7 +13,7 @@ import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Subscription, SubscriptionPlan, PaymentHistory, Tenant, User, EvaluationCycle]),
+    TypeOrmModule.forFeature([Subscription, SubscriptionPlan, PaymentHistory, SubscriptionRequest, Tenant, User, EvaluationCycle]),
     AuditModule,
   ],
   controllers: [SubscriptionsController],

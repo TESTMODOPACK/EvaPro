@@ -232,6 +232,20 @@ export const api = {
       pricing: (token: string, id: string) =>
         request<any>(`/subscriptions/plans/${id}/pricing`, {}, token),
     },
+    getProration: (token: string) =>
+      request<{ credit: number; daysRemaining: number; totalDays: number }>("/subscriptions/my-subscription/proration", {}, token),
+    toggleAutoRenew: (token: string, data: { autoRenew: boolean }) =>
+      request<void>("/subscriptions/my-subscription/auto-renew", { method: "PATCH", body: JSON.stringify(data) }, token),
+    createRequest: (token: string, data: { type: string; targetPlan?: string; targetBillingPeriod?: string; notes?: string }) =>
+      request<any>("/subscriptions/requests", { method: "POST", body: JSON.stringify(data) }, token),
+    myRequests: (token: string) =>
+      request<any[]>("/subscriptions/requests/my", {}, token),
+    pendingRequests: (token: string) =>
+      request<any[]>("/subscriptions/requests/pending", {}, token),
+    approveRequest: (token: string, id: string) =>
+      request<void>(`/subscriptions/requests/${id}/approve`, { method: "PATCH" }, token),
+    rejectRequest: (token: string, id: string, reason: string) =>
+      request<void>(`/subscriptions/requests/${id}/reject`, { method: "PATCH", body: JSON.stringify({ reason }) }, token),
   },
 
   talent: {

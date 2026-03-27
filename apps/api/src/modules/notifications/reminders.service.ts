@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
 import { NotificationsService } from './notifications.service';
+import { EmailService } from './email.service';
 import { NotificationType } from './entities/notification.entity';
 import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
@@ -35,6 +36,7 @@ export class RemindersService {
 
   constructor(
     private readonly notificationsService: NotificationsService,
+    private readonly emailService: EmailService,
     @InjectRepository(EvaluationAssignment)
     private readonly assignmentRepo: Repository<EvaluationAssignment>,
     @InjectRepository(EvaluationCycle)
@@ -632,12 +634,12 @@ export class RemindersService {
       const tenantIds = [...new Set(expiring.map((s) => s.tenantId))];
       const allAdmins = await this.userRepo.find({
         where: { tenantId: In(tenantIds), role: 'tenant_admin', isActive: true },
-        select: ['id', 'tenantId'],
+        select: ['id', 'tenantId', 'email', 'firstName', 'lastName'],
       });
-      const adminsByTenant = new Map<string, string[]>();
+      const adminsByTenant = new Map<string, typeof allAdmins>();
       for (const a of allAdmins) {
         const list = adminsByTenant.get(a.tenantId) || [];
-        list.push(a.id);
+        list.push(a);
         adminsByTenant.set(a.tenantId, list);
       }
 
@@ -657,17 +659,28 @@ export class RemindersService {
           ? NotificationType.SUBSCRIPTION_EXPIRING_URGENT
           : NotificationType.SUBSCRIPTION_EXPIRING;
 
-        for (const adminId of admins) {
+        const expiresAtStr = new Date(expiryDate).toLocaleDateString('es-CL');
+        const orgName = sub.tenant?.name ?? sub.tenantId;
+        const planName = sub.plan?.name ?? '';
+
+        for (const admin of admins) {
           notifications.push({
             tenantId: sub.tenantId,
-            userId: adminId,
+            userId: admin.id,
             type,
             title: isUrgent
               ? `Tu suscripcion vence en ${daysLeft} dia${daysLeft > 1 ? 's' : ''}`
               : `Tu suscripcion vence pronto (${daysLeft} dias)`,
-            message: `Tu plan ${sub.plan?.name || ''} vence el ${new Date(expiryDate).toLocaleDateString('es-CL')}. ${isUrgent ? 'Renueva ahora para evitar la suspension del servicio.' : 'Recuerda renovar a tiempo.'}`,
+            message: `Tu plan ${planName} vence el ${expiresAtStr}. ${isUrgent ? 'Renueva ahora para evitar la suspension del servicio.' : 'Recuerda renovar a tiempo.'}`,
             metadata: { subscriptionId: sub.id, daysLeft },
           });
+
+          // Send email notification
+          if (admin.email) {
+            this.emailService
+              .sendSubscriptionExpiring(admin.email, { orgName, planName, daysLeft, expiresAt: expiresAtStr })
+              .catch((err: Error) => this.logger.error(`[Cron] Failed to send subscription expiring email to ${admin.email}: ${err.message}`));
+          }
         }
       }
 

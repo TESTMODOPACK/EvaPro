@@ -78,6 +78,62 @@ export class SubscriptionsController {
     return this.subscriptionsService.getPaymentHistory(req.user.tenantId);
   }
 
+  @Get('my-subscription/proration')
+  @Roles('tenant_admin')
+  getProration(@Request() req: any) {
+    return this.subscriptionsService.calculateProration(req.user.tenantId);
+  }
+
+  @Patch('my-subscription/auto-renew')
+  @Roles('tenant_admin')
+  toggleAutoRenew(
+    @Request() req: any,
+    @Body() body: { autoRenew: boolean },
+  ) {
+    return this.subscriptionsService.toggleAutoRenew(req.user.tenantId, body.autoRenew);
+  }
+
+  // ─── Subscription Requests ─────────────────────────────────────────────
+
+  @Post('requests')
+  @Roles('tenant_admin')
+  createRequest(
+    @Request() req: any,
+    @Body() dto: { type: 'plan_change' | 'cancel'; targetPlan?: string; targetBillingPeriod?: string; notes?: string },
+  ) {
+    return this.subscriptionsService.createRequest(req.user.tenantId, req.user.userId, dto);
+  }
+
+  @Get('requests/my')
+  @Roles('tenant_admin')
+  myRequests(@Request() req: any) {
+    return this.subscriptionsService.getMyRequests(req.user.tenantId);
+  }
+
+  @Get('requests/pending')
+  @Roles('super_admin')
+  pendingRequests() {
+    return this.subscriptionsService.getPendingRequests();
+  }
+
+  @Patch('requests/:id/approve')
+  @Roles('super_admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  approveRequest(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.subscriptionsService.approveRequest(id, req.user.userId);
+  }
+
+  @Patch('requests/:id/reject')
+  @Roles('super_admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  rejectRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body: { reason?: string },
+  ) {
+    return this.subscriptionsService.rejectRequest(id, req.user.userId, body.reason || '');
+  }
+
   // ─── Subscriptions ─────────────────────────────────────────────────────
 
   @Get('stats')

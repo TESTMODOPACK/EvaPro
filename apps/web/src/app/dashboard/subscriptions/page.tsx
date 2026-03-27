@@ -96,7 +96,11 @@ const labelStyle: React.CSSProperties = {
 export default function SubscriptionsPage() {
   const token = useAuthStore((s) => s.token);
 
-  const [activeTab, setActiveTab] = useState<'plans' | 'subscriptions'>('plans');
+  const [activeTab, setActiveTab] = useState<'plans' | 'subscriptions' | 'requests'>('plans');
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   // Data
   const [plans, setPlans] = useState<any[]>([]);
@@ -148,12 +152,14 @@ export default function SubscriptionsPage() {
       api.subscriptions.list(token).catch(() => []),
       api.tenants.list(token).catch(() => []),
       api.subscriptions.stats(token).catch(() => null),
+      api.subscriptions.pendingRequests(token).catch(() => []),
     ])
-      .then(([pl, subs, ts, st]) => {
+      .then(([pl, subs, ts, st, reqs]) => {
         setPlans(pl ?? []);
         setSubscriptions(subs ?? []);
         setTenants(ts ?? []);
         setStatsData(st);
+        setPendingRequests(reqs ?? []);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -473,6 +479,18 @@ export default function SubscriptionsPage() {
         </button>
         <button style={tabStyle(activeTab === 'subscriptions')} onClick={() => setActiveTab('subscriptions')}>
           Suscripciones
+        </button>
+        <button style={tabStyle(activeTab === 'requests')} onClick={() => setActiveTab('requests')}>
+          Solicitudes{pendingRequests.length > 0 && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              marginLeft: '0.5rem', minWidth: '18px', height: '18px',
+              background: 'var(--danger)', color: '#fff',
+              borderRadius: '999px', fontSize: '0.7rem', fontWeight: 700, padding: '0 4px',
+            }}>
+              {pendingRequests.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -1003,6 +1021,158 @@ export default function SubscriptionsPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* ═══════════════════  TAB 3: SOLICITUDES  ════════════════════════ */}
+      {activeTab === 'requests' && (
+        <div className="animate-fade-up">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div>
+              <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.15rem' }}>Solicitudes pendientes</h2>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Cambios de plan y cancelaciones solicitados por las organizaciones</p>
+            </div>
+          </div>
+
+          {requestsLoading && <Spinner />}
+
+          {!requestsLoading && pendingRequests.length === 0 && (
+            <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              No hay solicitudes pendientes
+            </div>
+          )}
+
+          {!requestsLoading && pendingRequests.length > 0 && (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Empresa</th>
+                      <th>Tipo</th>
+                      <th>Plan solicitado</th>
+                      <th>Período</th>
+                      <th>Fecha</th>
+                      <th>Notas</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingRequests.map((req: any) => (
+                      <React.Fragment key={req.id}>
+                        <tr>
+                          <td style={{ fontWeight: 600 }}>{req.tenantName || req.tenantId}</td>
+                          <td>
+                            <span className={`badge ${req.type === 'cancel' ? 'badge-danger' : 'badge-accent'}`} style={{ fontSize: '0.75rem' }}>
+                              {req.type === 'plan_change' ? 'Cambio de plan' : 'Cancelación'}
+                            </span>
+                          </td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{req.targetPlan || '-'}</td>
+                          <td style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                            {req.targetBillingPeriod === 'monthly' ? 'Mensual'
+                              : req.targetBillingPeriod === 'quarterly' ? 'Trimestral'
+                              : req.targetBillingPeriod === 'semiannual' ? 'Semestral'
+                              : req.targetBillingPeriod === 'annual' ? 'Anual'
+                              : '-'}
+                          </td>
+                          <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                            {new Date(req.createdAt).toLocaleDateString('es-CL')}
+                          </td>
+                          <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)', maxWidth: '160px' }}>
+                            {req.notes ? req.notes.substring(0, 60) + (req.notes.length > 60 ? '...' : '') : '-'}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <button
+                                className="btn btn-success"
+                                style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
+                                disabled={saving}
+                                onClick={async () => {
+                                  if (!token) return;
+                                  setSaving(true);
+                                  setError('');
+                                  try {
+                                    await api.subscriptions.approveRequest(token, req.id);
+                                    setSuccess(`Solicitud de ${req.tenantName || 'la empresa'} aprobada`);
+                                    setTimeout(() => setSuccess(''), 3000);
+                                    fetchData();
+                                  } catch (e: any) {
+                                    setError(e.message || 'Error al aprobar');
+                                  } finally {
+                                    setSaving(false);
+                                  }
+                                }}
+                              >
+                                Aprobar
+                              </button>
+                              <button
+                                className="btn btn-danger"
+                                style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
+                                disabled={saving}
+                                onClick={() => {
+                                  setRejectingId(rejectingId === req.id ? null : req.id);
+                                  setRejectReason('');
+                                }}
+                              >
+                                Rechazar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {rejectingId === req.id && (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '0.75rem 1rem', background: 'var(--bg-surface)' }}>
+                              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                                <input
+                                  type="text"
+                                  placeholder="Motivo del rechazo..."
+                                  value={rejectReason}
+                                  onChange={(e) => setRejectReason(e.target.value)}
+                                  className="form-control"
+                                  style={{ flex: 1, fontSize: '0.85rem' }}
+                                />
+                                <button
+                                  className="btn btn-danger"
+                                  style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+                                  disabled={saving || !rejectReason.trim()}
+                                  onClick={async () => {
+                                    if (!token) return;
+                                    setSaving(true);
+                                    setError('');
+                                    try {
+                                      await api.subscriptions.rejectRequest(token, req.id, rejectReason);
+                                      setRejectingId(null);
+                                      setRejectReason('');
+                                      setSuccess(`Solicitud rechazada`);
+                                      setTimeout(() => setSuccess(''), 3000);
+                                      fetchData();
+                                    } catch (e: any) {
+                                      setError(e.message || 'Error al rechazar');
+                                    } finally {
+                                      setSaving(false);
+                                    }
+                                  }}
+                                >
+                                  Confirmar rechazo
+                                </button>
+                                <button
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.82rem' }}
+                                  onClick={() => { setRejectingId(null); setRejectReason(''); }}
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
