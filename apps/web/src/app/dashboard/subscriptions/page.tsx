@@ -600,6 +600,49 @@ export default function SubscriptionsPage() {
             ))}
           </div>
 
+          {/* Reglas de cambio de plan */}
+          <details className="card animate-fade-up" style={{ padding: '1rem 1.25rem', marginBottom: '1.25rem', cursor: 'pointer' }}>
+            <summary style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>📋</span> Reglas para cambios de plan
+            </summary>
+            <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
+                <div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>✅ Upgrade (subir de plan)</div>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                    <li>Se puede realizar en cualquier momento</li>
+                    <li>Las nuevas funcionalidades se activan de inmediato</li>
+                    <li>El límite de usuarios se actualiza automáticamente</li>
+                  </ul>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>⚠️ Downgrade (bajar de plan)</div>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                    <li>Solo permitido si los usuarios activos no exceden el límite del nuevo plan</li>
+                    <li>Si la empresa tiene 80 usuarios y el plan destino permite 50, debe desactivar usuarios primero</li>
+                    <li>Las funcionalidades del plan superior se desactivan al cambiar</li>
+                  </ul>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>🚫 Cancelación</div>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                    <li>La suscripción pasa a estado "cancelada"</li>
+                    <li>No se pueden registrar nuevos pagos hasta reactivar</li>
+                    <li>Los datos se conservan pero el acceso queda restringido</li>
+                  </ul>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>📝 Auditoría</div>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                    <li>Cada cambio de plan queda registrado con fecha, usuario y detalle</li>
+                    <li>Se registra el plan anterior y el nuevo</li>
+                    <li>Los cambios de estado también se auditan</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </details>
+
           {/* Action bar */}
           <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
             <button className="btn-primary" onClick={() => { resetSubForm(); setShowSubForm(true); }}>
