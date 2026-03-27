@@ -15,6 +15,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { looksLikeRut, normalizeRut } from '../../common/utils/rut-validator';
 
 @Injectable()
@@ -28,6 +29,7 @@ export class UsersService {
     private readonly bulkImportRepo: Repository<BulkImport>,
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ─── Auth helper ──────────────────────────────────────────────────────────
@@ -410,5 +412,66 @@ export class UsersService {
     const note = await this.noteRepo.findOne({ where: { id: noteId, tenantId } });
     if (!note) throw new NotFoundException('Nota no encontrada');
     await this.noteRepo.remove(note);
+  }
+
+  // ─── Invitations ─────────────────────────────────────────────────────────
+
+  async resendInvite(tenantId: string, userId: string): Promise<{ ok: boolean }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId, tenantId },
+      relations: ['tenant'],
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const tempPassword = Math.random().toString(36).slice(2, 10) + 'A1!';
+    user.passwordHash = await bcrypt.hash(tempPassword, 12);
+    await this.userRepository.save(user);
+
+    await this.notificationsService.sendInvitation(
+      user.email,
+      user.tenant?.name || 'EvaPro',
+      { firstName: user.firstName, tempPassword },
+    ).catch(() => {});
+
+    await this.auditService.log(tenantId, userId, 'user.invite_resent', 'user', userId);
+    return { ok: true };
+  }
+
+  async inviteBulk(
+    tenantId: string,
+    emails: string[],
+    role = 'employee',
+  ): Promise<{ invited: number; skipped: string[] }> {
+    const tenant = await this.userRepository.manager
+      .getRepository('tenants')
+      .findOne({ where: { id: tenantId } }) as any;
+    const orgName = tenant?.name || 'EvaPro';
+
+    const skipped: string[] = [];
+    let invited = 0;
+
+    for (const rawEmail of emails) {
+      const email = rawEmail.trim().toLowerCase();
+      if (!email || !email.includes('@')) { skipped.push(email); continue; }
+
+      const existing = await this.userRepository.findOne({ where: { email, tenantId } });
+      if (existing) { skipped.push(email); continue; }
+
+      const tempPassword = Math.random().toString(36).slice(2, 10) + 'A1!';
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+      const firstName = email.split('@')[0];
+
+      const newUser = this.userRepository.create({
+        tenantId, email, firstName, lastName: '',
+        passwordHash, role: role as any, isActive: true,
+      });
+      const saved = await this.userRepository.save(newUser);
+
+      await this.notificationsService.sendInvitation(email, orgName, { firstName, tempPassword }).catch(() => {});
+      await this.auditService.log(tenantId, saved.id, 'user.invited', 'user', saved.id);
+      invited++;
+    }
+
+    return { invited, skipped };
   }
 }

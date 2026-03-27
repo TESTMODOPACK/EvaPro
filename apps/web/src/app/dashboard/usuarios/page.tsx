@@ -87,6 +87,17 @@ export default function UsuariosPage() {
   const [csvContent, setCsvContent] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<any>(null);
+
+  // Invite by email state
+  const [showInvitePanel, setShowInvitePanel] = useState(false);
+  const [inviteEmails, setInviteEmails] = useState('');
+  const [inviteRole, setInviteRole] = useState('employee');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ invited: number; skipped: string[] } | null>(null);
+
+  // Resend invite per-user loading
+  const [resendingInvite, setResendingInvite] = useState<string | null>(null);
+  const [resendToast, setResendToast] = useState('');
   const [maxEmployees, setMaxEmployees] = useState<number>(0);
   const [planName, setPlanName] = useState<string>('');
 
@@ -201,6 +212,37 @@ export default function UsuariosPage() {
 
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleResendInvite = async (userId: string, email: string) => {
+    if (!token) return;
+    setResendingInvite(userId);
+    try {
+      await api.users.resendInvite(token, userId);
+      setResendToast(`Invitación enviada a ${email}`);
+      setTimeout(() => setResendToast(''), 3500);
+    } catch {
+      setResendToast('Error al enviar invitación');
+      setTimeout(() => setResendToast(''), 3500);
+    } finally {
+      setResendingInvite(null);
+    }
+  };
+
+  const handleInviteBulk = async () => {
+    if (!token) return;
+    const emails = inviteEmails.split(/[\n,;]+/).map((e) => e.trim()).filter(Boolean);
+    if (emails.length === 0) return;
+    setInviteLoading(true);
+    setInviteResult(null);
+    try {
+      const result = await api.users.inviteBulk(token, { emails, role: inviteRole });
+      setInviteResult(result);
+    } catch {
+      setInviteResult({ invited: 0, skipped: emails });
+    } finally {
+      setInviteLoading(false);
+    }
   };
 
   // Download CSV template (Spanish column names mapped to backend English names)
@@ -402,6 +444,19 @@ export default function UsuariosPage() {
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
+      {/* Toast notification for resend invite */}
+      {resendToast && (
+        <div style={{
+          position: 'fixed', bottom: '1.5rem', right: '1.5rem',
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          borderLeft: '3px solid var(--accent)', borderRadius: 'var(--radius-sm)',
+          padding: '0.75rem 1.25rem', fontSize: '0.85rem', fontWeight: 500,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 9999,
+          color: 'var(--text-primary)',
+        }}>
+          {resendToast}
+        </div>
+      )}
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Usuarios</h1>
@@ -413,7 +468,17 @@ export default function UsuariosPage() {
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               className="btn-ghost"
-              onClick={() => { setShowBulkImport(!showBulkImport); setShowCreateForm(false); setBulkResult(null); setCsvContent(''); }}
+              onClick={() => { setShowInvitePanel(!showInvitePanel); setShowBulkImport(false); setShowCreateForm(false); setInviteResult(null); setInviteEmails(''); }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              Invitar por email
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={() => { setShowBulkImport(!showBulkImport); setShowCreateForm(false); setShowInvitePanel(false); setBulkResult(null); setCsvContent(''); }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -594,6 +659,69 @@ export default function UsuariosPage() {
               Cancelar
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Invite by email panel */}
+      {showInvitePanel && isAdmin && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.5rem' }}>Invitar por email</h3>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            Ingresa los emails de las personas que deseas invitar. Se creará una cuenta con contraseña temporal y recibirán un correo de bienvenida.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: '1rem', marginBottom: '1rem' }}>
+            <textarea
+              placeholder="Un email por línea&#10;ej: juan.perez@empresa.cl&#10;maria.garcia@empresa.cl"
+              value={inviteEmails}
+              onChange={(e) => { setInviteEmails(e.target.value); setInviteResult(null); }}
+              rows={5}
+              style={{
+                padding: '0.6rem 0.875rem', fontSize: '0.85rem',
+                background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)',
+                outline: 'none', resize: 'vertical', fontFamily: 'inherit',
+              }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>Rol</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                >
+                  <option value="employee">Colaborador</option>
+                  <option value="manager">Encargado de equipo</option>
+                  <option value="tenant_admin">Administrador</option>
+                </select>
+              </div>
+              <button
+                className="btn-primary"
+                disabled={inviteLoading || !inviteEmails.trim()}
+                onClick={handleInviteBulk}
+                style={{ marginTop: 'auto' }}
+              >
+                {inviteLoading ? 'Enviando...' : 'Enviar invitaciones →'}
+              </button>
+            </div>
+          </div>
+          {inviteResult && (
+            <div style={{
+              padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)',
+              background: inviteResult.invited > 0 ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
+              border: `1px solid ${inviteResult.invited > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`,
+              fontSize: '0.85rem',
+            }}>
+              <strong style={{ color: inviteResult.invited > 0 ? '#10b981' : '#f59e0b' }}>
+                {inviteResult.invited} invitación{inviteResult.invited !== 1 ? 'es' : ''} enviada{inviteResult.invited !== 1 ? 's' : ''}
+              </strong>
+              {inviteResult.skipped.length > 0 && (
+                <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+                  · {inviteResult.skipped.length} ya existían o inválidos
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -943,7 +1071,7 @@ export default function UsuariosPage() {
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                           <button
                             className="btn-ghost"
                             style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
@@ -951,6 +1079,16 @@ export default function UsuariosPage() {
                           >
                             Perfil
                           </button>
+                          {(isAdmin || currentUserRole === 'manager') && (
+                            <button
+                              className="btn-ghost"
+                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: 'var(--accent)' }}
+                              onClick={() => router.push(`/dashboard/desempeno/${u.id}`)}
+                              title="Ver historial de desempeño"
+                            >
+                              Desempeño
+                            </button>
+                          )}
                           {isAdmin && (
                             <button
                               className="btn-ghost"
@@ -967,6 +1105,17 @@ export default function UsuariosPage() {
                               onClick={() => handleDelete(u.id, fullName)}
                             >
                               Eliminar
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <button
+                              className="btn-ghost"
+                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}
+                              disabled={resendingInvite === u.id}
+                              onClick={() => handleResendInvite(u.id, u.email)}
+                              title="Reenviar invitación por email"
+                            >
+                              {resendingInvite === u.id ? '...' : '✉'}
                             </button>
                           )}
                         </div>

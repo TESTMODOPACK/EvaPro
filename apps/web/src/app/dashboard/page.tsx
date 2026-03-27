@@ -206,6 +206,7 @@ function RegularDashboard() {
   const { data: perfHistory } = usePerformanceHistory(user?.userId ?? null);
   const { data: feedbackSummary } = useFeedbackSummary();
   const { data: atRiskObjectives } = useAtRiskObjectives();
+  const { data: changelog } = useChangelog(3);
 
   const activeCycle = cycles?.find((c: any) => c.status === 'active');
   const atRiskCount = atRiskObjectives?.length || 0;
@@ -330,6 +331,27 @@ function RegularDashboard() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* System changelog — compact strip */}
+      {changelog && changelog.length > 0 && (
+        <div className="animate-fade-up-delay-1" style={{
+          padding: '0.75rem 1rem', marginBottom: '1.25rem',
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          borderLeft: '3px solid var(--accent)', borderRadius: 'var(--radius-sm)',
+          display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0, paddingTop: '1px' }}>
+            Novedades
+          </span>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flex: 1 }}>
+            {changelog.map((entry: any) => (
+              <span key={entry.id} style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                <strong style={{ color: 'var(--text-primary)' }}>v{entry.version}</strong> — {entry.title}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -480,16 +502,18 @@ function RegularDashboard() {
             )}
           </div>
 
-          {/* Quick actions — only for tenant_admin */}
-          {user?.role === 'tenant_admin' && (
-            <div className="card" style={{ padding: '1.4rem' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>Acciones rapidas</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {[
-                  { label: 'Nueva evaluacion', icon: '+', href: '/dashboard/evaluaciones' },
-                  { label: 'Agregar usuario', icon: '>', href: '/dashboard/usuarios' },
-                  { label: 'Ver reportes', icon: '#', href: '/dashboard/reportes' },
-                ].map((action, i) => (
+          {/* Quick actions */}
+          <div className="card" style={{ padding: '1.4rem' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>Acciones rapidas</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {([
+                { label: 'Mi desempeño', href: '/dashboard/mi-desempeno', roles: ['tenant_admin', 'manager', 'employee'] },
+                { label: 'Nueva evaluacion', href: '/dashboard/evaluaciones', roles: ['tenant_admin'] },
+                { label: 'Agregar usuario', href: '/dashboard/usuarios', roles: ['tenant_admin'] },
+                { label: 'Ver reportes', href: '/dashboard/reportes', roles: ['tenant_admin', 'manager'] },
+              ] as { label: string; href: string; roles: string[] }[])
+                .filter((a) => a.roles.includes(user?.role || ''))
+                .map((action, i) => (
                   <Link
                     key={i}
                     href={action.href}
@@ -506,13 +530,14 @@ function RegularDashboard() {
                       transition: 'var(--transition)',
                     }}
                   >
-                    <span style={{ fontSize: '1rem', fontWeight: 700 }}>{action.icon}</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
                     {action.label}
                   </Link>
                 ))}
-              </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -1150,5 +1175,5 @@ export default function DashboardPage() {
     return <SuperAdminDashboard />;
   }
 
-  return <WelcomePage />;
+  return <RegularDashboard />;
 }

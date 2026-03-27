@@ -294,6 +294,10 @@ export const api = {
       request<UserNoteData>(`/users/${userId}/notes/${noteId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
     deleteNote: (token: string, userId: string, noteId: string) =>
       request<void>(`/users/${userId}/notes/${noteId}`, { method: "DELETE" }, token),
+    resendInvite: (token: string, userId: string) =>
+      request<{ ok: boolean }>(`/users/${userId}/resend-invite`, { method: "POST" }, token),
+    inviteBulk: (token: string, data: { emails: string[]; role?: string }) =>
+      request<{ invited: number; skipped: string[] }>("/users/invite-bulk", { method: "POST", body: JSON.stringify(data) }, token),
   },
 
   cycles: {

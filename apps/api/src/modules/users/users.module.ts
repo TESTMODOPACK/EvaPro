@@ -7,12 +7,14 @@ import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { AuditModule } from '../audit/audit.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, UserNote, BulkImport]),
     AuditModule,
     SubscriptionsModule,
+    NotificationsModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

@@ -76,6 +76,26 @@ export class UsersController {
     return this.usersService.bulkImport(req.user.tenantId, csv, req.user.userId);
   }
 
+  /** POST /users/invite-bulk — invite multiple users by email list */
+  @Post('invite-bulk')
+  @Roles('super_admin', 'tenant_admin')
+  inviteBulk(
+    @Request() req: any,
+    @Body() body: { emails: string[]; role?: string },
+  ) {
+    return this.usersService.inviteBulk(req.user.tenantId, body.emails ?? [], body.role);
+  }
+
+  /** POST /users/:id/resend-invite */
+  @Post(':id/resend-invite')
+  @Roles('super_admin', 'tenant_admin')
+  resendInvite(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.usersService.resendInvite(req.user.tenantId, id);
+  }
+
   /** GET /users/bulk-imports/:id */
   @Get('bulk-imports/:id')
   getBulkImport(
