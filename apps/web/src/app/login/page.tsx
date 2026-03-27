@@ -45,7 +45,7 @@ export default function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (!email || !password) { setError("Ingresa tu correo y contrasena"); return; }
+    if (!email || !password) { setError("Ingresa tu correo y contrase\u00f1a"); return; }
     const rutValue = tenantRut.trim();
     if (rutValue && !validateRut(rutValue)) { setRutError("RUT invalido. Verifique el formato y digito verificador."); return; }
     setLoading(true);
@@ -60,17 +60,17 @@ export default function LoginPage() {
       if (err?.message?.includes("fetch") || err?.message?.includes("network")) {
         setError("No se pudo conectar al servidor. Intenta mas tarde.");
       } else {
-        setError("Credenciales incorrectas. Verifica tu correo y contrasena.");
+        setError("Credenciales incorrectas. Verifica tu correo y contrase\u00f1a.");
       }
     } finally {
       setLoading(false);
     }
   }
 
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://evaluacion-desempeno-api.onrender.com";
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://evaluacion-desempe\u00f1o-api.onrender.com";
 
   async function handleRequestCode() {
-    if (!recoveryEmail) { setRecoveryMsg("Ingresa tu correo electronico"); return; }
+    if (!recoveryEmail) { setRecoveryMsg("Ingresa tu correo electr\u00f3nico"); return; }
     setRecoveryLoading(true); setRecoveryMsg("");
     try {
       const res = await fetch(`${BASE_URL}/auth/request-reset`, {
@@ -79,24 +79,24 @@ export default function LoginPage() {
       });
       if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.message || "Error"); }
       setRecoveryStep("code");
-      setRecoveryMsg("Se envio un codigo a tu correo electronico.");
-    } catch (err: any) { setRecoveryMsg(err.message || "Error al solicitar recuperacion"); }
+      setRecoveryMsg("Se envi\u00f3 un c\u00f3digo a tu correo electr\u00f3nico.");
+    } catch (err: any) { setRecoveryMsg(err.message || "Error al solicitar recuperaci\u00f3n"); }
     finally { setRecoveryLoading(false); }
   }
 
   async function handleResetPassword() {
     if (!recoveryCode || !newPassword) { setRecoveryMsg("Completa todos los campos"); return; }
-    if (newPassword.length < 6) { setRecoveryMsg("La contrasena debe tener al menos 6 caracteres"); return; }
+    if (newPassword.length < 6) { setRecoveryMsg("La contrase\u00f1a debe tener al menos 6 caracteres"); return; }
     setRecoveryLoading(true); setRecoveryMsg("");
     try {
       const res = await fetch(`${BASE_URL}/auth/reset-password`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: recoveryEmail, code: recoveryCode, newPassword, tenantSlug: recoveryTenant || undefined }),
       });
-      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.message || "Codigo invalido"); }
-      setRecoveryMsg("Contrasena actualizada. Ya puedes iniciar sesion.");
+      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.message || "C\u00f3digo invalido"); }
+      setRecoveryMsg("Contrase\u00f1a actualizada. Ya puedes iniciar sesi\u00f3n.");
       setTimeout(() => { setShowRecovery(false); setRecoveryStep("email"); setRecoveryCode(""); setNewPassword(""); setRecoveryMsg(""); }, 2000);
-    } catch (err: any) { setRecoveryMsg(err.message || "Error al restablecer contrasena"); }
+    } catch (err: any) { setRecoveryMsg(err.message || "Error al restablecer contrase\u00f1a"); }
     finally { setRecoveryLoading(false); }
   }
 
@@ -165,7 +165,7 @@ export default function LoginPage() {
           fontSize: "1.05rem", color: "rgba(245,228,168,0.6)",
           lineHeight: 1.5, marginBottom: "2.5rem", maxWidth: "360px",
         }}>
-          Plataforma integral de evaluacion de desempeno para empresas que impulsan el talento de sus equipos.
+          Plataforma integral de evaluaci\u00f3n de desempe\u00f1o para empresas que impulsan el talento de sus equipos.
         </p>
 
         {/* Features list */}
@@ -256,7 +256,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="login-password" style={labelStyle}>Contrasena</label>
+              <label htmlFor="login-password" style={labelStyle}>Contrase\u00f1a</label>
               <div style={{ position: "relative" }}>
                 <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -297,7 +297,7 @@ export default function LoginPage() {
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 2px 12px rgba(201,147,58,0.25)"; }}
             >
               {loading && <span className="spinner" style={{ width: "18px", height: "18px", borderColor: "rgba(26,18,6,0.3)", borderTopColor: "#1a1206" }} />}
-              {loading ? "Verificando..." : "Iniciar sesion"}
+              {loading ? "Verificando..." : "Iniciar sesi\u00f3n"}
               {!loading && (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
@@ -313,7 +313,7 @@ export default function LoginPage() {
               onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
               onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}
             >
-              Olvidaste tu contrasena?
+              Olvidaste tu contrase\u00f1a?
             </button>
           </div>
         </div>
@@ -324,9 +324,9 @@ export default function LoginPage() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "1rem" }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowRecovery(false); }}>
           <div className="card" style={{ padding: "2rem", width: "100%", maxWidth: "400px" }}>
-            <h3 style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "0.25rem" }}>Recuperar contrasena</h3>
+            <h3 style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "0.25rem" }}>Recuperar contrase\u00f1a</h3>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1.5rem" }}>
-              {recoveryStep === "email" ? "Ingresa tu correo para recibir un codigo de recuperacion" : "Ingresa el codigo y tu nueva contrasena"}
+              {recoveryStep === "email" ? "Ingresa tu correo para recibir un c\u00f3digo de recuperaci\u00f3n" : "Ingresa el c\u00f3digo y tu nueva contrase\u00f1a"}
             </p>
             {recoveryMsg && (
               <div style={{
@@ -341,19 +341,19 @@ export default function LoginPage() {
             {recoveryStep === "email" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                 <div><label style={labelStyle}>RUT Empresa</label><input className="input" type="text" placeholder="Ej: 76.123.456-7" value={recoveryTenant} onChange={(e) => setRecoveryTenant(formatRutInput(e.target.value))} maxLength={12} /></div>
-                <div><label style={labelStyle}>Correo electronico</label><input className="input" type="email" placeholder="correo@empresa.com" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} required /></div>
+                <div><label style={labelStyle}>Correo electr\u00f3nico</label><input className="input" type="email" placeholder="correo@empresa.com" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} required /></div>
                 <button className="btn-primary" onClick={handleRequestCode} disabled={recoveryLoading} style={{ padding: "0.65rem 1.25rem" }}>
-                  {recoveryLoading ? "Enviando..." : "Enviar codigo"}
+                  {recoveryLoading ? "Enviando..." : "Enviar c\u00f3digo"}
                 </button>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                <div><label style={labelStyle}>Codigo de recuperacion</label><input className="input" type="text" placeholder="Ej: 482910" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} maxLength={6} style={{ letterSpacing: "0.3em", textAlign: "center", fontSize: "1.2rem", fontWeight: 700 }} /></div>
-                <div><label style={labelStyle}>Nueva contrasena</label><input className="input" type="password" placeholder="Minimo 6 caracteres" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={6} /></div>
+                <div><label style={labelStyle}>C\u00f3digo de recuperaci\u00f3n</label><input className="input" type="text" placeholder="Ej: 482910" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} maxLength={6} style={{ letterSpacing: "0.3em", textAlign: "center", fontSize: "1.2rem", fontWeight: 700 }} /></div>
+                <div><label style={labelStyle}>Nueva contrase\u00f1a</label><input className="input" type="password" placeholder="M\u00ednimo 6 caracteres" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={6} /></div>
                 <button className="btn-primary" onClick={handleResetPassword} disabled={recoveryLoading} style={{ padding: "0.65rem 1.25rem" }}>
-                  {recoveryLoading ? "Guardando..." : "Restablecer contrasena"}
+                  {recoveryLoading ? "Guardando..." : "Restablecer contrase\u00f1a"}
                 </button>
-                <button className="btn-ghost" onClick={() => { setRecoveryStep("email"); setRecoveryMsg(""); }} style={{ fontSize: "0.82rem" }}>Volver a solicitar codigo</button>
+                <button className="btn-ghost" onClick={() => { setRecoveryStep("email"); setRecoveryMsg(""); }} style={{ fontSize: "0.82rem" }}>Volver a solicitar c\u00f3digo</button>
               </div>
             )}
             <button onClick={() => setShowRecovery(false)} style={{ marginTop: "1rem", background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.82rem", cursor: "pointer", width: "100%", textAlign: "center" }}>Cancelar</button>

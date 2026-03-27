@@ -165,7 +165,6 @@ const tenantNavSections: NavSection[] = [
       { href: '/dashboard/plantillas', label: 'Plantillas', icon: icons.templates },
       { href: '/dashboard/competencias', label: 'Competencias', icon: icons.competencies },
       { href: '/dashboard/mi-suscripcion', label: 'Mi Suscripci\u00f3n', icon: icons.subscription },
-      { href: '/dashboard/ajustes', label: 'Ajustes', icon: icons.settings },
     ],
   },
 ];
@@ -188,7 +187,7 @@ const superAdminSections: NavSection[] = [
 const sectionLabelStyle: React.CSSProperties = {
   fontSize: '0.65rem',
   fontWeight: 700,
-  color: 'var(--text-muted)',
+  color: 'rgba(201,147,58,0.5)',
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
   padding: '0 0.5rem',
@@ -220,33 +219,30 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
   return (
     <aside style={{
       position: 'fixed', top: 0, left: 0, bottom: 0, width: '260px',
-      background: 'var(--bg-surface)',
-      borderRight: '1px solid var(--border)',
+      background: '#1a1206',
+      borderRight: '1px solid rgba(201,147,58,0.15)',
       display: 'flex', flexDirection: 'column',
       zIndex: 50,
     }}>
-      {/* Logo */}
-      <div style={{ padding: '1.5rem 1.25rem 1rem', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{
-            width: '36px', height: '36px', borderRadius: '0.625rem',
-            background: 'linear-gradient(135deg, var(--accent), var(--accent-hover))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: 'var(--shadow-glow)', flexShrink: 0,
+      {/* Sidebar header — Ascenda bars icon */}
+      <div style={{ padding: '1.25rem 1.25rem 0.75rem', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px' }}>
+            {[6, 9, 12, 15, 18, 21, 24].map((h, i) => (
+              <div key={i} style={{
+                width: '3px', height: `${h}px`, borderRadius: '1px',
+                background: 'linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 100%)',
+                opacity: 0.4 + i * 0.09,
+              }} />
+            ))}
+          </div>
+          <span style={{
+            fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.02em',
+            background: 'linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
           }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
-              Eva<span style={{ color: 'var(--accent-hover)' }}>Pro</span>
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-              {'Evaluaci\u00f3n de Desempe\u00f1o'}
-            </div>
-          </div>
-          {/* NotificationBell moved to TopBar */}
+            Ascenda
+          </span>
         </div>
       </div>
 
@@ -267,12 +263,12 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
         </div>
       )}
       {user?.role !== 'super_admin' && orgInfo && (
-        <div style={{ padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--border)', background: 'rgba(99, 102, 241, 0.05)' }}>
-          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ padding: '0.6rem 1.25rem', borderBottom: '1px solid rgba(201,147,58,0.15)', background: 'rgba(201,147,58,0.08)' }}>
+          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#F5E4A8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {orgInfo.name}
           </div>
           {orgInfo.rut && (
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500, fontFamily: 'monospace' }}>
+            <div style={{ fontSize: '0.68rem', color: 'rgba(245,228,168,0.5)', fontWeight: 500, fontFamily: 'monospace' }}>
               RUT: {formatRut(orgInfo.rut)}
             </div>
           )}

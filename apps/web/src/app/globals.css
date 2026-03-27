@@ -6,32 +6,33 @@
 
 /* ── Design Tokens ─────────────────────────────────────── */
 :root {
-  --bg-base:        #0a0d14;
-  --bg-surface:     #111827;
-  --bg-card:        #1a2236;
-  --bg-hover:       #1e2a3d;
-  --border:         rgba(99,120,160,0.18);
-  --border-strong:  rgba(99,120,160,0.32);
+  /* Light theme with Ascenda gold accents */
+  --bg-base:        #f5f5f0;
+  --bg-surface:     #ffffff;
+  --bg-card:        #ffffff;
+  --bg-hover:       #f8f6f1;
+  --border:         rgba(201,147,58,0.15);
+  --border-strong:  rgba(201,147,58,0.30);
 
-  --text-primary:   #f0f4ff;
-  --text-secondary: #94a3b8;
-  --text-muted:     #64748b;
+  --text-primary:   #1a1206;
+  --text-secondary: #5a4a2e;
+  --text-muted:     #8c7a5a;
 
-  --accent:         #6366f1;
-  --accent-hover:   #818cf8;
-  --accent-glow:    rgba(99,102,241,0.25);
+  --accent:         #C9933A;
+  --accent-hover:   #b07e2e;
+  --accent-glow:    rgba(201,147,58,0.15);
 
-  --success:        #10b981;
-  --warning:        #f59e0b;
-  --danger:         #ef4444;
-  --info:           #38bdf8;
+  --success:        #16a34a;
+  --warning:        #d97706;
+  --danger:         #dc2626;
+  --info:           #0284c7;
 
   --radius:         0.75rem;
   --radius-sm:      0.5rem;
   --radius-lg:      1.25rem;
   --transition:     200ms cubic-bezier(0.4,0,0.2,1);
-  --shadow-card:    0 4px 24px rgba(0,0,0,0.35);
-  --shadow-glow:    0 0 32px rgba(99,102,241,0.18);
+  --shadow-card:    0 2px 12px rgba(0,0,0,0.06);
+  --shadow-glow:    0 0 24px rgba(201,147,58,0.1);
 
   /* Ascenda Brand — Gold */
   --gold:           #C9933A;
@@ -64,7 +65,7 @@ body {
 /* ── Utility Classes ────────────────────────────────────── */
 @layer utilities {
   .glass {
-    background: rgba(26, 34, 54, 0.75);
+    background: rgba(255, 255, 255, 0.85);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--border);
@@ -92,8 +93,8 @@ body {
     justify-content: center;
     gap: 0.5rem;
     padding: 0.625rem 1.5rem;
-    background: var(--accent);
-    color: white;
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 100%);
+    color: #1a1206;
     font-weight: 600;
     font-size: 0.9rem;
     border-radius: var(--radius-sm);
@@ -135,8 +136,8 @@ body {
   .input {
     width: 100%;
     padding: 0.625rem 1rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: #fdfcf9;
+    border: 1px solid rgba(201,147,58,0.25);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     font-size: 0.9rem;
@@ -199,7 +200,7 @@ body {
   gap: 0.75rem;
   padding: 0.6rem 1rem;
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: rgba(245,228,168,0.65);
   font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
@@ -211,13 +212,14 @@ body {
   text-align: left;
 }
 .sidebar-link:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: rgba(201,147,58,0.12);
+  color: #F5E4A8;
 }
 .sidebar-link.active {
-  background: var(--accent-glow);
-  color: var(--accent-hover);
-  border-left: 2px solid var(--accent);
+  background: rgba(201,147,58,0.2);
+  color: #F5E4A8;
+  border-left: 2px solid var(--gold);
+  font-weight: 600;
 }
 
 /* ── Table ──────────────────────────────────────────────── */
