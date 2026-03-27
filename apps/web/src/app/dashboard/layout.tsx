@@ -65,9 +65,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return (
         <div style={{ display: 'flex', minHeight: '100vh' }}>
           <Sidebar currentPath={pathname} />
+          <TopBar />
           <main style={{
-            flex: 1, marginLeft: '260px', background: 'var(--bg-base)',
-            minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flex: 1, marginLeft: '260px', marginTop: '56px', background: 'var(--bg-base)',
+            minHeight: 'calc(100vh - 56px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <div style={{ textAlign: 'center', maxWidth: '500px', padding: '2rem' }}>
               <div style={{

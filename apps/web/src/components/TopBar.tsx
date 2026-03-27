@@ -35,6 +35,15 @@ export default function TopBar() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  // Close dropdown on Escape key
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && dropdownOpen) setDropdownOpen(false);
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [dropdownOpen]);
+
   const handleLogout = () => {
     logout();
     router.replace('/login');
@@ -97,11 +106,15 @@ export default function TopBar() {
         <div ref={dropdownRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
+            aria-label="Menu de usuario"
+            aria-expanded={dropdownOpen}
+            aria-haspopup="true"
             style={{
               display: 'flex', alignItems: 'center', gap: '0.75rem',
               background: 'transparent', border: '1px solid var(--border)',
               borderRadius: 'var(--radius)', padding: '0.35rem 0.75rem 0.35rem 0.35rem',
               cursor: 'pointer', transition: 'var(--transition)',
+              outline: 'none',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -134,7 +147,7 @@ export default function TopBar() {
 
           {/* Dropdown menu */}
           {dropdownOpen && (
-            <div style={{
+            <div role="menu" aria-label="Opciones de usuario" style={{
               position: 'absolute', right: 0, top: '100%', marginTop: '0.5rem',
               background: 'var(--bg-card)', border: '1px solid var(--border)',
               borderRadius: 'var(--radius)', padding: '0.5rem',

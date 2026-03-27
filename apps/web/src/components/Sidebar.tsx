@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
-import { getRoleLabel, canAccessPage } from '@/lib/roles';
+import { canAccessPage } from '@/lib/roles';
 import { api } from '@/lib/api';
 import { formatRut } from '@/lib/rut';
-import NotificationBell from './NotificationBell';
 
 interface NavItem {
   href: string;
@@ -201,8 +199,7 @@ const sectionLabelStyle: React.CSSProperties = {
 // ─── Component ───────────────────────────────────────────────────────────
 
 export default function Sidebar({ currentPath }: { currentPath: string }) {
-  const router = useRouter();
-  const { user, token, logout } = useAuthStore();
+  const { user, token } = useAuthStore();
   const [orgInfo, setOrgInfo] = useState<{ name: string; rut: string | null } | null>(null);
   const [orgError, setOrgError] = useState(false);
 
@@ -217,11 +214,6 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
       })
       .catch(() => setOrgError(true));
   }, [token, user?.role]);
-
-  function handleLogout() {
-    logout();
-    router.replace('/login');
-  }
 
   const sections = user?.role === 'super_admin' ? superAdminSections : tenantNavSections;
 
@@ -254,7 +246,7 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
               {'Evaluaci\u00f3n de Desempe\u00f1o'}
             </div>
           </div>
-          <NotificationBell />
+          {/* NotificationBell moved to TopBar */}
         </div>
       </div>
 

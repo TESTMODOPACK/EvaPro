@@ -4,7 +4,6 @@ import { useState, FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuthStore, decodeJwtPayload } from "@/store/auth.store";
-import { getRoleLabel } from "@/lib/roles";
 import { formatRutInput, validateRut, normalizeRut } from "@/lib/rut";
 
 export default function LoginPage() {
@@ -225,14 +224,14 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.15rem" }}>
             <div>
-              <label style={labelStyle}>RUT Empresa</label>
+              <label htmlFor="login-rut" style={labelStyle}>RUT Empresa</label>
               <div style={{ position: "relative" }}>
                 <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
                   </svg>
                 </span>
-                <input className="input" type="text" placeholder="Ej: 76.123.456-7" value={tenantRut}
+                <input id="login-rut" className="input" type="text" placeholder="Ej: 76.123.456-7" value={tenantRut}
                   onChange={(e) => { setTenantRut(formatRutInput(e.target.value)); setRutError(""); }}
                   autoCapitalize="none" autoComplete="organization" maxLength={12}
                   style={{ paddingLeft: "2.5rem" }}
@@ -242,14 +241,14 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label style={labelStyle}>Email</label>
+              <label htmlFor="login-email" style={labelStyle}>Email</label>
               <div style={{ position: "relative" }}>
                 <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
                   </svg>
                 </span>
-                <input className="input" type="email" placeholder="correo@empresa.com" value={email}
+                <input id="login-email" className="input" type="email" placeholder="correo@empresa.com" value={email}
                   onChange={(e) => setEmail(e.target.value)} required autoComplete="email" autoFocus
                   style={{ paddingLeft: "2.5rem" }}
                 />
@@ -257,14 +256,14 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label style={labelStyle}>Contrasena</label>
+              <label htmlFor="login-password" style={labelStyle}>Contrasena</label>
               <div style={{ position: "relative" }}>
                 <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
                   </svg>
                 </span>
-                <input className="input" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password}
+                <input id="login-password" className="input" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password}
                   onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password"
                   style={{ paddingLeft: "2.5rem", paddingRight: "2.5rem" }}
                 />
