@@ -57,6 +57,8 @@ export default function CompetenciasPage() {
     loadData();
   }, [token]);
 
+  const planBlocked = error.includes('plan') || error.includes('Plan') || error.includes('funcionalidad');
+
   async function loadData() {
     setLoading(true);
     setError('');
@@ -64,7 +66,9 @@ export default function CompetenciasPage() {
       const res = await api.development.competencies.list(token!);
       setCompetencies(Array.isArray(res) ? res : []);
     } catch (e: any) {
-      setError(e.message || 'Error al cargar competencias');
+      const msg = e.message || 'Error al cargar competencias';
+      // Make PDI acronym readable
+      setError(msg.replace(/"PDI"/g, '"Planes de Desarrollo Individual (PDI)"'));
     } finally {
       setLoading(false);
     }
@@ -139,14 +143,30 @@ export default function CompetenciasPage() {
             {'Gesti\u00f3n de competencias para planes de desarrollo'}
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowCreate(!showCreate)}>
+        <button className="btn-primary" onClick={() => setShowCreate(!showCreate)} disabled={planBlocked}>
           {showCreate ? 'Cancelar' : '+ Nueva Competencia'}
         </button>
       </div>
 
       {error && (
-        <div className="card" style={{ borderLeft: '4px solid var(--danger)', color: 'var(--danger)' }}>
-          {error}
+        <div className="card" style={{
+          padding: '1rem 1.25rem',
+          borderLeft: '4px solid var(--warning)',
+          background: 'rgba(217,119,6,0.06)',
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)', marginBottom: '0.15rem' }}>
+              Funcionalidad restringida
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              {error}
+            </div>
+          </div>
         </div>
       )}
 
@@ -203,7 +223,7 @@ export default function CompetenciasPage() {
       )}
 
       {/* Create form */}
-      {showCreate && (
+      {showCreate && !planBlocked && (
         <div className="card animate-fade-up">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 0 }}>
             Nueva Competencia

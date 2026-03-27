@@ -19,12 +19,11 @@ import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
 
 @Controller('development')
-@UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
-@Feature(PlanFeature.PDI)
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 export class DevelopmentController {
   constructor(private readonly developmentService: DevelopmentService) {}
 
-  // ─── Competencies ──────────────────────────────────────────────────────
+  // ─── Competencies (no feature gate — base catalog for all plans) ──────
 
   @Get('competencies')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
@@ -57,9 +56,11 @@ export class DevelopmentController {
     return this.developmentService.deactivateCompetency(req.user.tenantId, id);
   }
 
-  // ─── Plans ─────────────────────────────────────────────────────────────
+  // ─── Plans (requires PDI feature) ──────────────────────────────────────
 
   @Get('plans')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   findPlans(@Request() req: any) {
     const { tenantId, userId, role } = req.user;
@@ -73,6 +74,8 @@ export class DevelopmentController {
   }
 
   @Get('plans/:id')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   findPlanById(
     @Param('id', ParseUUIDPipe) id: string,
@@ -82,12 +85,16 @@ export class DevelopmentController {
   }
 
   @Post('plans')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   createPlan(@Request() req: any, @Body() dto: any) {
     return this.developmentService.createPlan(req.user.tenantId, req.user.userId, dto, req.user.role);
   }
 
   @Post('plans/:id/approve')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager')
   approvePlan(
     @Param('id', ParseUUIDPipe) id: string,
@@ -97,6 +104,8 @@ export class DevelopmentController {
   }
 
   @Patch('plans/:id')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager')
   updatePlan(
     @Param('id', ParseUUIDPipe) id: string,
@@ -107,6 +116,8 @@ export class DevelopmentController {
   }
 
   @Post('plans/:id/activate')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager')
   activatePlan(
     @Param('id', ParseUUIDPipe) id: string,
@@ -116,6 +127,8 @@ export class DevelopmentController {
   }
 
   @Post('plans/:id/complete')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager')
   completePlan(
     @Param('id', ParseUUIDPipe) id: string,
@@ -127,6 +140,8 @@ export class DevelopmentController {
   // ─── Actions ───────────────────────────────────────────────────────────
 
   @Post('plans/:planId/actions')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   addAction(
     @Param('planId', ParseUUIDPipe) planId: string,
@@ -137,6 +152,8 @@ export class DevelopmentController {
   }
 
   @Patch('actions/:id')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   updateAction(
     @Param('id', ParseUUIDPipe) id: string,
@@ -147,6 +164,8 @@ export class DevelopmentController {
   }
 
   @Post('actions/:id/complete')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   completeAction(
     @Param('id', ParseUUIDPipe) id: string,
