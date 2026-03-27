@@ -869,6 +869,148 @@ const ROLE_STEPS: Record<string, Array<{ icon: string; title: string; desc: stri
 
 const TYPE_ICONS: Record<string, string> = { feature: '\uD83C\uDD95', improvement: '\u2728', fix: '\uD83D\uDD27' };
 
+// ─── Stats Sidebar (role-aware) ──────────────────────────────────────────────
+
+function DashboardStats() {
+  const user = useAuthStore((s) => s.user);
+  const role = user?.role || 'employee';
+  const isAdminOrManager = role === 'tenant_admin' || role === 'manager';
+
+  const { data: stats } = useDashboardStats();
+  const { data: pending } = usePendingEvaluations();
+  const { data: cycles } = useCycles();
+  const { data: feedbackSummary } = useFeedbackSummary();
+  const { data: atRisk } = useAtRiskObjectives(isAdminOrManager ? undefined : user?.userId);
+
+  const activeCycles = cycles?.filter((c: any) => c.status === 'active') || [];
+  const pendingCount = Array.isArray(pending) ? pending.length : 0;
+  const atRiskCount = Array.isArray(atRisk) ? atRisk.length : 0;
+
+  const cardStyle: React.CSSProperties = {
+    padding: '1rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+    background: 'var(--bg-card)',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase',
+    letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem',
+  };
+  const valueStyle: React.CSSProperties = {
+    fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1,
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>
+        Resumen
+      </h3>
+
+      {/* Pending evaluations — all roles */}
+      <div style={cardStyle}>
+        <div style={labelStyle}>Evaluaciones pendientes</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+          <span style={{ ...valueStyle, color: pendingCount > 0 ? 'var(--warning)' : 'var(--success)' }}>
+            {pendingCount}
+          </span>
+          {pendingCount > 0 && (
+            <Link href="/dashboard/evaluaciones" style={{ fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none' }}>
+              Completar
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* Active cycles — admin/manager */}
+      {isAdminOrManager && (
+        <div style={cardStyle}>
+          <div style={labelStyle}>Ciclos activos</div>
+          <div style={valueStyle}>{activeCycles.length}</div>
+          {stats && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Completitud</span>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{stats.completionRate || 0}%</span>
+              </div>
+              <div style={{
+                marginTop: '0.3rem', height: '6px', borderRadius: '3px',
+                background: 'var(--border)',
+              }}>
+                <div style={{
+                  height: '100%', borderRadius: '3px',
+                  width: `${Math.min(stats.completionRate || 0, 100)}%`,
+                  background: (stats.completionRate || 0) >= 80 ? 'var(--success)' : (stats.completionRate || 0) >= 50 ? 'var(--warning)' : 'var(--danger)',
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Score — admin/manager */}
+      {isAdminOrManager && stats?.averageScore && (
+        <div style={cardStyle}>
+          <div style={labelStyle}>Puntaje promedio</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={valueStyle}>{Number(stats.averageScore).toFixed(1)}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>/ 10</span>
+          </div>
+        </div>
+      )}
+
+      {/* At-risk objectives — all roles */}
+      <div style={cardStyle}>
+        <div style={labelStyle}>Objetivos en riesgo</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+          <span style={{ ...valueStyle, color: atRiskCount > 0 ? 'var(--danger)' : 'var(--success)' }}>
+            {atRiskCount}
+          </span>
+          {atRiskCount > 0 && (
+            <Link href="/dashboard/objetivos" style={{ fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none' }}>
+              Ver detalle
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* Feedback summary — all roles */}
+      {feedbackSummary && feedbackSummary.total > 0 && (
+        <div style={cardStyle}>
+          <div style={labelStyle}>Feedback recibido</div>
+          <div style={valueStyle}>{feedbackSummary.total}</div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem' }}>
+            <span className="badge badge-success">{feedbackSummary.positive} positivo</span>
+            <span className="badge badge-warning">{feedbackSummary.neutral} neutral</span>
+            <span className="badge badge-danger">{feedbackSummary.constructive} constructivo</span>
+          </div>
+        </div>
+      )}
+
+      {/* Admin-specific: total users */}
+      {role === 'tenant_admin' && stats && (
+        <div style={cardStyle}>
+          <div style={labelStyle}>Total evaluaciones</div>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--success)' }}>{stats.completedAssignments}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>completadas</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--warning)' }}>{stats.pendingAssignments}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>pendientes</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{stats.totalAssignments}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>total</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Welcome Page ────────────────────────────────────────────────────────────
+
 function WelcomePage() {
   const user = useAuthStore((s) => s.user);
   const { data: changelog, isLoading: loadingCL, isError: errorCL } = useChangelog(5);
@@ -883,7 +1025,9 @@ function WelcomePage() {
   ];
 
   return (
-    <div style={{ maxWidth: '900px' }}>
+    <div style={{ display: 'flex', gap: '2rem', maxWidth: '1200px' }}>
+    {/* Left: main content */}
+    <div style={{ flex: 1, minWidth: 0 }}>
       {/* Welcome Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 700, marginBottom: '0.25rem' }}>
@@ -958,7 +1102,7 @@ function WelcomePage() {
 
       {/* Quick Access */}
       <div className="card" style={{ padding: '1rem' }}>
-        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 0.75rem' }}>{'\u26A1'} Accesos rapidos</h3>
+        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 0.75rem' }}>{'\u26A1'} Accesos rápidos</h3>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {quickLinks.map((link) => (
             <Link key={link.href} href={link.href}
@@ -968,7 +1112,7 @@ function WelcomePage() {
                 textDecoration: 'none', color: 'var(--text-primary)', fontSize: '0.85rem',
                 transition: 'background 0.15s',
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-secondary)'; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
             >
               <span>{link.icon}</span> {link.label}
@@ -976,6 +1120,19 @@ function WelcomePage() {
           ))}
         </div>
       </div>
+    </div>
+
+    {/* Right: Stats Panel */}
+    <div style={{ width: '280px', flexShrink: 0 }} className="dashboard-stats-panel">
+      <DashboardStats />
+    </div>
+
+    {/* Responsive: stack on small screens */}
+    <style>{`
+      @media (max-width: 900px) {
+        .dashboard-stats-panel { display: none !important; }
+      }
+    `}</style>
     </div>
   );
 }
