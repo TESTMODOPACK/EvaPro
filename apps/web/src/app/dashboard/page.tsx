@@ -207,6 +207,12 @@ function RegularDashboard() {
   const { data: feedbackSummary } = useFeedbackSummary();
   const { data: atRiskObjectives } = useAtRiskObjectives();
   const { data: changelog } = useChangelog(3);
+  const [showGuide, setShowGuide] = useState(false);
+
+  useEffect(() => {
+    const done = localStorage.getItem('evapro_guide_done');
+    if (!done) setShowGuide(true);
+  }, []);
 
   const activeCycle = cycles?.find((c: any) => c.status === 'active');
   const atRiskCount = atRiskObjectives?.length || 0;
@@ -282,6 +288,100 @@ function RegularDashboard() {
           {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
       </div>
+
+      {/* Guide Panel — shown until user dismisses it */}
+      {showGuide && (
+        <div className="animate-fade-up-delay-1" style={{
+          marginBottom: '2rem',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)',
+          background: 'var(--bg-card)',
+          overflow: 'hidden',
+        }}>
+          {/* Guide header */}
+          <div style={{
+            padding: '1rem 1.25rem',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'linear-gradient(135deg, rgba(201,147,58,0.08) 0%, transparent 100%)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{
+                width: '30px', height: '30px', borderRadius: '8px',
+                background: 'rgba(201,147,58,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9933A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                  {'\uD83D\uDDFA\uFE0F'} Flujo de uso recomendado
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Pasos sugeridos para tu rol — puedes volver a consultarlo cuando quieras
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => { localStorage.setItem('evapro_guide_done', '1'); setShowGuide(false); }}
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: 'var(--text-muted)', padding: '4px 8px', borderRadius: '6px',
+                fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem',
+                transition: 'background 0.15s',
+              }}
+              title="Descartar guía"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              Ya lo entendí
+            </button>
+          </div>
+
+          {/* Steps grid */}
+          <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
+            {(ROLE_STEPS[user?.role || 'employee'] || ROLE_STEPS.employee).map((step, i) => (
+              <Link key={i} href={step.href} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div style={{
+                  padding: '0.875rem', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)', background: 'var(--bg-surface)',
+                  position: 'relative', cursor: 'pointer',
+                  transition: 'border-color 0.15s, background 0.15s',
+                }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(201,147,58,0.4)';
+                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)';
+                  }}
+                >
+                  <div style={{
+                    position: 'absolute', top: '8px', right: '8px',
+                    width: '20px', height: '20px', borderRadius: '50%',
+                    background: 'var(--accent)', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.65rem', fontWeight: 800, lineHeight: 1,
+                  }}>
+                    {i + 1}
+                  </div>
+                  <div style={{ fontSize: '1.35rem', marginBottom: '0.4rem' }}>{step.icon}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.2rem', color: 'var(--text-primary)' }}>
+                    {step.title}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    {step.desc}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       {loadingStats ? (
@@ -537,6 +637,23 @@ function RegularDashboard() {
                   </Link>
                 ))}
             </div>
+            {!showGuide && (
+              <button
+                onClick={() => { localStorage.removeItem('evapro_guide_done'); setShowGuide(true); }}
+                style={{
+                  marginTop: '0.75rem', width: '100%', background: 'transparent',
+                  border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)',
+                  padding: '0.5rem', cursor: 'pointer', fontSize: '0.78rem',
+                  color: 'var(--text-muted)', fontWeight: 500,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+                </svg>
+                Ver guía de uso
+              </button>
+            )}
           </div>
         </div>
       </div>
