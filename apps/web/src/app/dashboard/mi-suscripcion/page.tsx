@@ -110,7 +110,20 @@ export default function MiSuscripcionPage() {
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Vencimiento</div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{sub.endDate ? new Date(sub.endDate).toLocaleDateString('es-ES') : 'Sin vencimiento'}</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                  {sub.nextBillingDate
+                    ? new Date(sub.nextBillingDate).toLocaleDateString('es-CL')
+                    : sub.endDate
+                      ? new Date(sub.endDate).toLocaleDateString('es-CL')
+                      : sub.autoRenew
+                        ? 'Renovación automática'
+                        : 'Sin vencimiento'}
+                </div>
+                {sub.nextBillingDate && (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                    Próximo cobro
+                  </div>
+                )}
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Precio mensual</div>
@@ -147,10 +160,10 @@ export default function MiSuscripcionPage() {
                 borderLeft: `4px solid ${isUrgent ? 'var(--danger)' : 'var(--warning)'}`,
               }}>
                 <div style={{ fontWeight: 700, color: isUrgent ? 'var(--danger)' : 'var(--warning)', marginBottom: '0.25rem' }}>
-                  {isUrgent ? `Tu suscripcion vence en ${daysLeft} dias` : `Tu suscripcion vence pronto (${daysLeft} dias)`}
+                  {isUrgent ? `Tu suscripción vence en ${daysLeft} día${daysLeft > 1 ? 's' : ''}` : `Tu suscripción vence pronto (${daysLeft} días)`}
                 </div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Fecha de vencimiento: {new Date(expiryDate).toLocaleDateString('es-CL')}. {isUrgent ? 'Renueva ahora para evitar la suspension del servicio.' : 'Recuerda renovar a tiempo.'}
+                  Fecha de vencimiento: {new Date(expiryDate).toLocaleDateString('es-CL')}. {isUrgent ? 'Renueva ahora para evitar la suspensión del servicio.' : 'Recuerda renovar a tiempo.'}
                 </div>
               </div>
             );
@@ -161,11 +174,11 @@ export default function MiSuscripcionPage() {
             <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Estado de Pago</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem' }}>
               <div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Periodo de facturacion</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Período de facturación</div>
                 <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{billingPeriodLabel[sub.billingPeriod] || sub.billingPeriod || 'Mensual'}</div>
               </div>
               <div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Ultimo pago</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Último pago</div>
                 <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
                   {sub.lastPaymentDate ? new Date(sub.lastPaymentDate).toLocaleDateString('es-CL') : 'Sin pagos registrados'}
                 </div>
@@ -174,13 +187,13 @@ export default function MiSuscripcionPage() {
                 )}
               </div>
               <div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Proximo vencimiento</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Próximo vencimiento</div>
                 <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
                   {sub.nextBillingDate ? new Date(sub.nextBillingDate).toLocaleDateString('es-CL') : sub.endDate ? new Date(sub.endDate).toLocaleDateString('es-CL') : '-'}
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Renovacion automatica</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Renovación automática</div>
                 <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{sub.autoRenew ? 'Activada' : 'Desactivada'}</div>
               </div>
             </div>
