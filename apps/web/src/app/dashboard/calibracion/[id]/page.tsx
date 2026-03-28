@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { calibrationEntryStatusLabel as STATUS_LABEL, calibrationEntryStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
@@ -13,8 +13,7 @@ function Spinner() {
   );
 }
 
-export default function CalibracionDetailPage(props: { params: Promise<{ id: string }> }) {
-  const params = React.use(props.params);
+export default function CalibracionDetailPage({ params }: { params: { id: string } }) {
   const token = useAuthStore((s) => s.token);
 
   const [session, setSession] = useState<any>(null);
@@ -111,23 +110,27 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
     <div className="animate-fade-up">
       {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', flexWrap: 'wrap' }}>
-          <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{session.name}</h1>
-          <span className={`badge ${STATUS_BADGE[session.status] || 'badge-accent'}`}>
-            {STATUS_LABEL[session.status] || session.status}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '.5rem', fontSize: '.875rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-          {session.department && <span>Departamento: <strong>{session.department}</strong></span>}
-          {session.moderator && <span>Moderador: <strong>{session.moderator.firstName} {session.moderator.lastName}</strong></span>}
-          {session.cycle && <span>Ciclo: <strong>{session.cycle.name}</strong></span>}
+      <div style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{session.name}</h1>
+              <span className={`badge ${STATUS_BADGE[session.status] || 'badge-accent'}`}>
+                {STATUS_LABEL[session.status] || session.status}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+              {session.cycle && <span>{`Ciclo: `}<strong>{session.cycle.name}</strong></span>}
+              {session.department && <span>{`Departamento: `}<strong>{session.department}</strong></span>}
+              {session.moderator && <span>{`Moderador: `}<strong>{session.moderator.firstName} {session.moderator.lastName}</strong></span>}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Info card */}
-      <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
-        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+      {/* Info hint */}
+      <div className="card" style={{ padding: '0.875rem 1rem', background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
+        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           {`Ajusta los puntajes de desempe\u00f1o y potencial de cada colaborador. Al completar la sesi\u00f3n, los puntajes ajustados se aplicar\u00e1n autom\u00e1ticamente a la Matriz Nine Box y se recalcular\u00e1 la clasificaci\u00f3n de talento.`}
         </p>
       </div>
@@ -180,46 +183,37 @@ export default function CalibracionDetailPage(props: { params: Promise<{ id: str
                     <td>{entry.originalScore ?? '\u2014'}</td>
                     <td>
                       <input
+                        className="input"
                         type="number"
                         min={0}
                         max={10}
                         step={0.5}
                         value={es.adjustedScore}
                         onChange={(e) => updateEntry(entry.id, 'adjustedScore', e.target.value === '' ? '' : +e.target.value)}
-                        style={{
-                          width: '70px', padding: '.3rem .5rem', borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--border)', background: 'var(--bg-surface)',
-                          color: 'var(--text-primary)', fontSize: '.85rem',
-                        }}
+                        style={{ width: '70px', fontSize: '0.85rem' }}
                       />
                     </td>
                     <td>{entry.originalPotential ?? '\u2014'}</td>
                     <td>
                       <input
+                        className="input"
                         type="number"
                         min={0}
                         max={10}
                         step={0.5}
                         value={es.adjustedPotential}
                         onChange={(e) => updateEntry(entry.id, 'adjustedPotential', e.target.value === '' ? '' : +e.target.value)}
-                        style={{
-                          width: '70px', padding: '.3rem .5rem', borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--border)', background: 'var(--bg-surface)',
-                          color: 'var(--text-primary)', fontSize: '.85rem',
-                        }}
+                        style={{ width: '70px', fontSize: '0.85rem' }}
                       />
                     </td>
                     <td>
                       <textarea
+                        className="input"
                         value={es.rationale}
                         onChange={(e) => updateEntry(entry.id, 'rationale', e.target.value)}
                         rows={1}
-                        placeholder={`Justificaci\u00f3n del ajuste...`}
-                        style={{
-                          width: '100%', minWidth: '150px', padding: '.3rem .5rem', borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--border)', background: 'var(--bg-surface)',
-                          color: 'var(--text-primary)', fontSize: '.85rem', resize: 'vertical',
-                        }}
+                        placeholder="Justificación del ajuste..."
+                        style={{ width: '100%', minWidth: '150px', fontSize: '0.85rem', resize: 'vertical' }}
                       />
                     </td>
                     <td>
