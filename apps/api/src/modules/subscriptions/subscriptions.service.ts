@@ -305,13 +305,27 @@ export class SubscriptionsService {
     }
 
     if (dto.status !== undefined) sub.status = dto.status;
-    if (dto.startDate !== undefined) sub.startDate = dto.startDate;
-    if (dto.endDate !== undefined) sub.endDate = dto.endDate;
     if (dto.trialEndsAt !== undefined) sub.trialEndsAt = dto.trialEndsAt;
-    if (dto.billingPeriod !== undefined) sub.billingPeriod = dto.billingPeriod;
     if (dto.autoRenew !== undefined) sub.autoRenew = dto.autoRenew;
-    if (dto.nextBillingDate !== undefined) sub.nextBillingDate = dto.nextBillingDate;
     if (dto.notes !== undefined) sub.notes = dto.notes;
+
+    // Recalculate billing dates when plan or billing period changes
+    const planChanged = dto.planId !== undefined;
+    const periodChanged = dto.billingPeriod !== undefined && dto.billingPeriod !== sub.billingPeriod;
+
+    if (dto.billingPeriod !== undefined) sub.billingPeriod = dto.billingPeriod;
+
+    if ((planChanged || periodChanged) && !dto.startDate && !dto.nextBillingDate) {
+      // Auto-recalculate: reset start to today and calculate new next billing date
+      const today = new Date();
+      sub.startDate = today;
+      sub.nextBillingDate = this.calculateNextBillingDate(today, sub.billingPeriod as BillingPeriod);
+      sub.endDate = null;
+    } else {
+      if (dto.startDate !== undefined) sub.startDate = dto.startDate;
+      if (dto.endDate !== undefined) sub.endDate = dto.endDate;
+      if (dto.nextBillingDate !== undefined) sub.nextBillingDate = dto.nextBillingDate;
+    }
 
     await this.subRepo.save(sub);
 

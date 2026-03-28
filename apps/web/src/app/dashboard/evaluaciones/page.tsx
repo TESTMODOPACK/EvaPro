@@ -178,7 +178,7 @@ function AdminEvaluationsView() {
   const { data: cycles, isLoading } = useCycles();
   const userRole = useAuthStore((s) => s.user?.role);
   const isAdmin = userRole === 'tenant_admin';
-  const [showGuide, setShowGuide] = useState(false);
+  const [showGuide, setShowGuide] = useState(true);
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -187,7 +187,7 @@ function AdminEvaluationsView() {
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Evaluaciones</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {isAdmin ? 'Gestiona los ciclos de evaluacion de desempeno' : 'Ciclos de evaluacion'}
+            {isAdmin ? 'Gestiona los ciclos de evaluaci\u00f3n de desempe\u00f1o' : 'Ciclos de evaluaci\u00f3n'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -315,7 +315,7 @@ function AdminEvaluationsView() {
             </svg>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            No hay ciclos de evaluacion
+            No hay ciclos de evaluaci\u00f3n
           </p>
           {isAdmin && (
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>

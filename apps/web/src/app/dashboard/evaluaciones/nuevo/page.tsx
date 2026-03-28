@@ -218,6 +218,30 @@ export default function NuevoCicloPage() {
                 <option value="270">270&deg; &mdash; Jefatura + Auto + Pares</option>
                 <option value="360">360&deg; &mdash; Evaluaci&oacute;n completa</option>
               </select>
+              {/* Type description guide */}
+              <div style={{
+                marginTop: '0.75rem',
+                padding: '0.875rem 1rem',
+                background: 'rgba(99,102,241,0.06)',
+                borderRadius: 'var(--radius-sm, 0.5rem)',
+                border: '1px solid rgba(99,102,241,0.15)',
+                fontSize: '0.82rem',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.65,
+              }}>
+                {form.type === '90' && (
+                  <><strong style={{ color: 'var(--accent)' }}>90&deg; &mdash; Solo jefatura:</strong>{' '}El encargado directo eval&uacute;a al colaborador. Es el tipo m&aacute;s simple. No incluye autoevaluaci&oacute;n ni evaluaci&oacute;n de pares. Ideal para evaluaciones r&aacute;pidas o primeros ciclos.</>
+                )}
+                {form.type === '180' && (
+                  <><strong style={{ color: 'var(--accent)' }}>180&deg; &mdash; Jefatura + Autoevaluaci&oacute;n:</strong>{' '}El colaborador se autoevalúa y también es evaluado por su encargado directo. Fomenta la reflexi&oacute;n personal y la alineaci&oacute;n de percepciones entre jefe y colaborador.</>
+                )}
+                {form.type === '270' && (
+                  <><strong style={{ color: 'var(--accent)' }}>270&deg; &mdash; Jefatura + Auto + Pares:</strong>{' '}Incluye 180&deg; m&aacute;s la evaluaci&oacute;n de compa&ntilde;eros del equipo (pares). Ofrece una visi&oacute;n m&aacute;s completa del desempe&ntilde;o considerando perspectivas de colegas de trabajo.</>
+                )}
+                {form.type === '360' && (
+                  <><strong style={{ color: 'var(--accent)' }}>360&deg; &mdash; Evaluaci&oacute;n completa:</strong>{' '}Incluye 270&deg; m&aacute;s una etapa de calibraci&oacute;n por parte del administrador y entrega de feedback directo al colaborador. Es el proceso m&aacute;s completo, recomendado para evaluaciones anuales de desempe&ntilde;o.</>
+                )}
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>

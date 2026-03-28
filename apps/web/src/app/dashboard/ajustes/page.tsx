@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useCurrentUser, useUpdateUser } from '@/hooks/useUsers';
 import { getRoleLabel } from '@/lib/roles';
+import { useMySubscription } from '@/hooks/useSubscription';
+import { formatRut } from '@/lib/rut';
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -17,6 +19,10 @@ const labelStyle: React.CSSProperties = {
 export default function AjustesPage() {
   const { data: user, isLoading } = useCurrentUser();
   const updateUser = useUpdateUser();
+  const { data: sub } = useMySubscription();
+  const isTenantAdmin = user?.role === 'tenant_admin';
+  const orgName = sub?.tenant?.name || '';
+  const orgRut = sub?.tenant?.rut ? formatRut(sub.tenant.rut) : '';
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -91,6 +97,46 @@ export default function AjustesPage() {
           Configura tu perfil y preferencias de la plataforma
         </p>
       </div>
+
+      {/* Company Info Section (tenant_admin only) */}
+      {isTenantAdmin && (
+        <div
+          className="card animate-fade-up"
+          style={{ padding: '1.75rem', marginBottom: '1.5rem', borderLeft: '3px solid var(--accent)' }}
+        >
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+            Información de la empresa
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+            Datos registrados de tu organización (solo lectura)
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div>
+              <label style={labelStyle}>Razón Social</label>
+              <input
+                className="input"
+                type="text"
+                value={orgName}
+                readOnly
+                style={{ opacity: 0.7, cursor: 'not-allowed' }}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>RUT Empresa</label>
+              <input
+                className="input"
+                type="text"
+                value={orgRut || 'No registrado'}
+                readOnly
+                style={{ opacity: 0.7, cursor: 'not-allowed', fontFamily: 'monospace' }}
+              />
+            </div>
+          </div>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            Para modificar estos datos, contacta al administrador del sistema.
+          </p>
+        </div>
+      )}
 
       {/* Profile Section */}
       <div

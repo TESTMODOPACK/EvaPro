@@ -247,10 +247,10 @@ export default function UsuariosPage() {
 
   // Download CSV template (Spanish column names mapped to backend English names)
   const downloadTemplate = () => {
-    const header = 'correo,nombre,apellido,contrasena,rol,departamento,cargo,fecha_ingreso';
-    const example1 = 'juan.perez@empresa.cl,Juan,Perez,Clave123!,colaborador,Tecnologia,Desarrollador,15-01-2024';
-    const example2 = 'maria.garcia@empresa.cl,Maria,Garcia,Clave123!,encargado_equipo,Ventas,Jefa de Ventas,01-06-2023';
-    const example3 = 'carlos.lopez@empresa.cl,Carlos,Lopez,,colaborador,RRHH,Analista,';
+    const header = 'correo,nombre,apellido,contrasena,rol,departamento,cargo,fecha_ingreso,jefatura_directa';
+    const example1 = 'juan.perez@empresa.cl,Juan,Perez,Clave123!,colaborador,Tecnologia,Desarrollador,15-01-2024,maria.garcia@empresa.cl';
+    const example2 = 'maria.garcia@empresa.cl,Maria,Garcia,Clave123!,encargado_equipo,Ventas,Jefa de Ventas,01-06-2023,';
+    const example3 = 'carlos.lopez@empresa.cl,Carlos,Lopez,,colaborador,RRHH,Analista,,maria.garcia@empresa.cl';
     const csv = [header, example1, example2, example3].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -270,6 +270,7 @@ export default function UsuariosPage() {
     departamento: 'department', department: 'department',
     cargo: 'position', position: 'position',
     fecha_ingreso: 'hire_date', hire_date: 'hire_date',
+    jefatura_directa: 'manager_email', manager_email: 'manager_email',
   };
 
   // Map Spanish role names to backend codes
@@ -524,10 +525,10 @@ export default function UsuariosPage() {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rol</label>
           <select className="input" value={filterRole} onChange={(e) => { setFilterRole(e.target.value); setPage(1); }} style={{ fontSize: '0.85rem' }}>
             <option value="">Todos</option>
-            <option value="tenant_admin">Administrador</option>
-            <option value="manager">Manager</option>
+            <option value="tenant_admin">Encargado del Sistema</option>
+            <option value="manager">Encargado de Equipo</option>
             <option value="employee">Colaborador</option>
-            <option value="external">Externo</option>
+            <option value="external">Asesor Externo</option>
           </select>
         </div>
         <div style={{ flex: '0 1 120px' }}>
@@ -764,14 +765,15 @@ export default function UsuariosPage() {
                 </thead>
                 <tbody>
                   {[
-                    ['correo', 'Si', 'Correo electronico del usuario', 'juan@empresa.cl'],
+                    ['correo', 'Si', 'Correo electrónico del usuario', 'juan@empresa.cl'],
                     ['nombre', 'Si', 'Nombre del usuario', 'Juan'],
                     ['apellido', 'Si', 'Apellido del usuario', 'Perez'],
-                    ['contrasena', 'No', 'Si se deja vacia, se asigna: EvaPro2026!', 'MiClave123!'],
+                    ['contrasena', 'No', 'Si se deja vacía, se asigna: EvaPro2026!', 'MiClave123!'],
                     ['rol', 'No', 'Ver tabla de roles abajo. Default: colaborador', 'colaborador'],
-                    ['departamento', 'No', 'Area o departamento de trabajo', 'Tecnologia'],
+                    ['departamento', 'No', 'Área o departamento de trabajo', 'Tecnologia'],
                     ['cargo', 'No', 'Puesto o cargo del usuario', 'Desarrollador Senior'],
                     ['fecha_ingreso', 'No', 'Formato: DD-MM-AAAA', '15-01-2024'],
+                    ['jefatura_directa', 'No', 'Correo del jefe directo del usuario', 'maria@empresa.cl'],
                   ].map(([col, req, desc, ej]) => (
                     <tr key={col}>
                       <td><code style={{ background: 'rgba(99,102,241,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px', fontWeight: 600 }}>{col}</code></td>
@@ -984,7 +986,7 @@ export default function UsuariosPage() {
           { label: 'Total usuarios', value: String(totalUsers), color: 'var(--accent-hover)' },
           { label: 'Activos', value: String(activeUsers), color: 'var(--success)' },
           { label: 'Inactivos', value: String(inactiveUsers), color: 'var(--text-muted)' },
-          { label: 'Managers / Admins', value: String(managersCount), color: 'var(--warning)' },
+          { label: 'Encargados / Admins', value: String(managersCount), color: 'var(--warning)' },
         ].map((s, i) => (
           <div key={i} className="card" style={{ padding: '0.875rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span style={{ fontSize: '1.35rem', fontWeight: 800, color: s.color }}>{s.value}</span>

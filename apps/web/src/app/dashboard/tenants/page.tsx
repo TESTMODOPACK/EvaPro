@@ -27,11 +27,20 @@ const emptyForm = {
   rut: '',
   ownerType: 'company',
   planId: '',
+  billingPeriod: 'monthly',
   adminEmail: '',
   adminPassword: '',
   adminFirstName: '',
   adminLastName: '',
 };
+
+// Auto-generate slug from org name
+const autoSlug = (name: string) =>
+  name.toLowerCase()
+    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u').replace(/ñ/g, 'n')
+    .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
 
 export default function TenantsPage() {
   const token = useAuthStore((s) => s.token);
@@ -84,8 +93,8 @@ export default function TenantsPage() {
   };
 
   const handleCreate = async () => {
-    if (!token || !form.name || !form.slug || !form.rut) {
-      setError('Nombre, slug y RUT son obligatorios');
+    if (!token || !form.name || !form.rut) {
+      setError('Nombre y RUT son obligatorios');
       return;
     }
     if (!validateRut(form.rut)) {
@@ -101,7 +110,7 @@ export default function TenantsPage() {
     try {
       const result = await api.tenants.create({
         name: form.name,
-        slug: form.slug,
+        slug: autoSlug(form.name),
         rut: form.rut,
         ownerType: form.ownerType,
         ...(form.adminEmail ? {
@@ -119,6 +128,7 @@ export default function TenantsPage() {
           await api.subscriptions.create(token, {
             tenantId,
             planId: form.planId,
+            billingPeriod: form.billingPeriod,
             status: 'active',
             startDate: new Date().toISOString().slice(0, 10),
           });
@@ -155,9 +165,11 @@ export default function TenantsPage() {
       if (form.planId) {
         const existingSub = getSubscription(editingId);
         if (existingSub) {
-          // Update existing subscription
-          if (existingSub.planId !== form.planId) {
-            await api.subscriptions.update(token, existingSub.id, { planId: form.planId });
+          // Update existing subscription if plan or billing period changed
+          const planChanged = existingSub.planId !== form.planId;
+          const periodChanged = (existingSub.billingPeriod?.toLowerCase() || 'monthly') !== form.billingPeriod;
+          if (planChanged || periodChanged) {
+            await api.subscriptions.update(token, existingSub.id, { planId: form.planId, billingPeriod: form.billingPeriod });
           }
         } else {
           // Create new subscription
@@ -204,6 +216,7 @@ export default function TenantsPage() {
       rut: t.rut ? formatRut(t.rut) : '',
       ownerType: t.ownerType,
       planId: sub?.planId || '',
+      billingPeriod: sub?.billingPeriod?.toLowerCase() || 'monthly',
       adminEmail: '',
       adminPassword: '',
       adminFirstName: '',
@@ -264,14 +277,10 @@ export default function TenantsPage() {
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
             {editingId ? 'Editar organizacion' : 'Nueva organizacion'}
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={labelStyle}>Nombre *</label>
-              <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Mi Empresa" />
-            </div>
-            <div>
-              <label style={labelStyle}>Slug *</label>
-              <input style={inputStyle} value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="mi-empresa" />
+              <label style={labelStyle}>Razón Social *</label>
+              <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Mi Empresa S.A." />
             </div>
             <div>
               <label style={labelStyle}>RUT Empresa *</label>
@@ -285,18 +294,27 @@ export default function TenantsPage() {
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Plan de suscripcion {!editingId && '*'}</label>
+              <label style={labelStyle}>Plan y período {!editingId && '*'}</label>
               <select
                 style={{ ...inputStyle, borderColor: !form.planId ? 'var(--warning)' : 'var(--border)' }}
-                value={form.planId}
-                onChange={(e) => setForm({ ...form, planId: e.target.value })}
+                value={form.planId ? `${form.planId}|${form.billingPeriod}` : ''}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  const [planId, billingPeriod] = e.target.value.split('|');
+                  setForm({ ...form, planId, billingPeriod });
+                }}
               >
-                <option value="">{editingId ? 'Sin cambio' : 'Seleccionar plan...'}</option>
-                {plans.map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} — hasta {p.maxEmployees} usuarios {p.monthlyPrice > 0 ? `(${formatCLP(p.monthlyPrice)}/mes)` : '(Gratuito)'}
-                  </option>
-                ))}
+                <option value="">{editingId ? 'Sin cambio de plan' : 'Seleccionar plan y período...'}</option>
+                {plans.flatMap((p: any) => {
+                  const cur = p.currency || 'UF';
+                  const fmt = (v: any, suffix: string) => v != null && Number(v) > 0 ? ` (${Number(v).toFixed(1)} ${cur}${suffix})` : '';
+                  return [
+                    <option key={`${p.id}|monthly`}    value={`${p.id}|monthly`}>{p.name} &mdash; Mensual{fmt(p.monthlyPrice, '/mes')}</option>,
+                    <option key={`${p.id}|quarterly`}  value={`${p.id}|quarterly`}>{p.name} &mdash; Trimestral{fmt(p.quarterlyPrice, '/trim')}</option>,
+                    <option key={`${p.id}|semiannual`} value={`${p.id}|semiannual`}>{p.name} &mdash; Semestral{fmt(p.semiannualPrice, '/sem')}</option>,
+                    <option key={`${p.id}|annual`}     value={`${p.id}|annual`}>{p.name} &mdash; Anual{fmt(p.yearlyPrice, '/a\u00f1o')}</option>,
+                  ];
+                })}
               </select>
               {plans.length === 0 && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--warning)', marginTop: '0.3rem' }}>
@@ -305,7 +323,7 @@ export default function TenantsPage() {
               )}
               {editingId && !getSubscription(editingId) && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.3rem' }}>
-                  Esta organizacion no tiene suscripcion. Seleccione un plan para asignarla.
+                  Esta organización no tiene suscripción. Seleccione un plan para asignarla.
                 </p>
               )}
             </div>

@@ -40,6 +40,7 @@ export default function CycleDetailPage() {
 
   const token = useAuthStore((s) => s.token);
   const [launching, setLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState('');
   const [closing, setClosing] = useState(false);
   const [peerEvaluateeId, setPeerEvaluateeId] = useState('');
   const [peerEvaluatorId, setPeerEvaluatorId] = useState('');
@@ -83,8 +84,13 @@ export default function CycleDetailPage() {
     );
     if (!confirmed) return;
     setLaunching(true);
+    setLaunchError('');
     try {
       await launchCycle.mutateAsync(id);
+    } catch (e: any) {
+      setLaunchError(
+        e?.message || 'Error al lanzar el ciclo. Verifica que el ciclo tenga asignaciones configuradas e inténtalo de nuevo.',
+      );
     } finally {
       setLaunching(false);
     }
@@ -148,6 +154,14 @@ export default function CycleDetailPage() {
 
   const peerList: any[] = Array.isArray(peerAssignments) ? peerAssignments : [];
   const usersList: any[] = Array.isArray(usersData) ? usersData : (usersData as any)?.data ?? [];
+
+  // Group peer assignments by evaluatee for cleaner display
+  const peerListGrouped: Record<string, any[]> = peerList.reduce((acc, pa) => {
+    const key = pa.evaluateeId;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(pa);
+    return acc;
+  }, {} as Record<string, any[]>);
   const showPeerSection = cycle.status === 'draft';
 
   return (
@@ -269,6 +283,30 @@ export default function CycleDetailPage() {
           </div>
         </div>
 
+        {launchError && (
+          <div style={{
+            marginTop: '1rem',
+            padding: '0.75rem 1rem',
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--danger)',
+            fontSize: '0.85rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}>
+            <span>&#9888; {launchError}</span>
+            <button
+              onClick={() => setLaunchError('')}
+              style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontWeight: 700, fontSize: '1rem', flexShrink: 0 }}
+            >
+              &times;
+            </button>
+          </div>
+        )}
+
         {cycle.description && (
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '1rem' }}>
             {cycle.description}
@@ -344,54 +382,77 @@ export default function CycleDetailPage() {
           </div>
 
           {peerList.length > 0 && (
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Evaluado</th>
-                    <th>Evaluador</th>
-                    <th>Relaci&oacute;n</th>
-                    <th>Eliminar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {peerList.map((pa: any) => (
-                    <tr key={pa.id}>
-                      <td>
-                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                          {pa.evaluatee?.firstName || pa.evaluatee?.email || pa.evaluateeId || '\u2014'}
-                          {pa.evaluatee?.lastName ? ` ${pa.evaluatee.lastName}` : ''}
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            <div style={{ padding: '0 1.5rem 1rem' }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem', fontWeight: 600 }}>
+                {peerList.length} asignaci{peerList.length !== 1 ? 'ones' : 'ón'} &mdash; agrupadas por evaluado
+              </div>
+              {Object.entries(peerListGrouped).map(([evaluateeId, assignments]) => {
+                const first = assignments[0];
+                const evalueeName = first.evaluatee
+                  ? `${first.evaluatee.firstName || ''} ${first.evaluatee.lastName || ''}`.trim() || first.evaluatee.email
+                  : evaluateeId;
+                return (
+                  <div
+                    key={evaluateeId}
+                    style={{
+                      marginBottom: '0.75rem',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Evaluatee header */}
+                    <div style={{
+                      padding: '0.6rem 1rem',
+                      background: 'rgba(99,102,241,0.07)',
+                      borderBottom: '1px solid var(--border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                      </svg>
+                      <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>
+                        Evaluado: {evalueeName}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                        {assignments.length} evaluador{assignments.length !== 1 ? 'es' : ''}
+                      </span>
+                    </div>
+                    {/* Evaluators list */}
+                    {assignments.map((pa: any, idx: number) => (
+                      <div
+                        key={pa.id}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          borderTop: idx > 0 ? '1px solid var(--border)' : 'none',
+                          background: 'var(--bg-surface)',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', flex: 1 }}>
                           {pa.evaluator?.firstName || pa.evaluator?.email || pa.evaluatorId || '\u2014'}
                           {pa.evaluator?.lastName ? ` ${pa.evaluator.lastName}` : ''}
-                        </div>
-                      </td>
-                      <td>
-                        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          {relationLabels[pa.relationType] || pa.relationType || '\u2014'}
                         </span>
-                      </td>
-                      <td>
+                        <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>
+                          {relationLabels[pa.relationType] || pa.relationType}
+                        </span>
                         <button
                           className="btn-ghost"
                           onClick={() => handleRemovePeer(pa.id)}
                           disabled={removePeer.isPending}
-                          style={{
-                            fontSize: '0.78rem',
-                            color: 'var(--danger)',
-                            padding: '0.25rem 0.5rem',
-                          }}
+                          style={{ fontSize: '0.75rem', color: 'var(--danger)', padding: '0.2rem 0.5rem' }}
                         >
-                          Eliminar
+                          &times; Eliminar
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
 
