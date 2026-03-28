@@ -178,7 +178,7 @@ function AdminEvaluationsView() {
   const { data: cycles, isLoading } = useCycles();
   const userRole = useAuthStore((s) => s.user?.role);
   const isAdmin = userRole === 'tenant_admin';
-  const [showGuide, setShowGuide] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
