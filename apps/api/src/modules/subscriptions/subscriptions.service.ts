@@ -281,7 +281,10 @@ export class SubscriptionsService {
         }
       }
 
+      // Directly update plan_id column — avoids TypeORM relation-cache override
+      await this.subRepo.update(id, { planId: dto.planId });
       sub.planId = dto.planId;
+      (sub as any).plan = newPlan; // keep in-memory object consistent
       await this.syncTenantPlan(sub.tenantId, newPlan);
 
       // Audit plan change
