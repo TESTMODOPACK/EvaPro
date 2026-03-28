@@ -207,12 +207,7 @@ function RegularDashboard() {
   const { data: feedbackSummary } = useFeedbackSummary();
   const { data: atRiskObjectives } = useAtRiskObjectives();
   const { data: changelog } = useChangelog(3);
-  const [showGuide, setShowGuide] = useState(false);
-
-  useEffect(() => {
-    const done = localStorage.getItem('evapro_guide_done');
-    if (!done) setShowGuide(true);
-  }, []);
+  const [showGuide, setShowGuide] = useState(true);
 
   const activeCycle = cycles?.find((c: any) => c.status === 'active');
   const atRiskCount = atRiskObjectives?.length || 0;
@@ -325,7 +320,7 @@ function RegularDashboard() {
               </div>
             </div>
             <button
-              onClick={() => { localStorage.setItem('evapro_guide_done', '1'); setShowGuide(false); }}
+              onClick={() => setShowGuide(false)}
               style={{
                 background: 'transparent', border: 'none', cursor: 'pointer',
                 color: 'var(--text-muted)', padding: '4px 8px', borderRadius: '6px',
@@ -639,7 +634,7 @@ function RegularDashboard() {
             </div>
             {!showGuide && (
               <button
-                onClick={() => { localStorage.removeItem('evapro_guide_done'); setShowGuide(true); }}
+                onClick={() => setShowGuide(true)}
                 style={{
                   marginTop: '0.75rem', width: '100%', background: 'transparent',
                   border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)',
