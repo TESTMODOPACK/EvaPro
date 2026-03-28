@@ -49,6 +49,16 @@ export default function CycleDetailPage() {
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoGenResult, setAutoGenResult] = useState<{ created: number } | null>(null);
 
+  // ── Filters: peer section (draft) ───────────────────────────────────────
+  const [peerFilterSearch, setPeerFilterSearch] = useState('');
+  const [peerFilterDept, setPeerFilterDept] = useState('');
+
+  // ── Filters: assignments table (active/closed) ───────────────────────────
+  const [assignFilterSearch, setAssignFilterSearch] = useState('');
+  const [assignFilterDept, setAssignFilterDept] = useState('');
+  const [assignFilterStatus, setAssignFilterStatus] = useState('');
+  const [assignFilterRelation, setAssignFilterRelation] = useState('');
+
   // Fetch allowed relations when cycle loads
   useEffect(() => {
     if (!cycle || !token || cycle.status !== 'draft') return;
@@ -163,6 +173,38 @@ export default function CycleDetailPage() {
     return acc;
   }, {} as Record<string, any[]>);
   const showPeerSection = cycle.status === 'draft';
+
+  // ── Unique dept options ────────────────────────────────────────────────
+  const deptOptions: string[] = Array.from(new Set([
+    ...usersList.map((u: any) => u.department),
+    ...assignmentList.map((a: any) => a.evaluatee?.department),
+  ].filter(Boolean))).sort() as string[];
+
+  // ── Filtered peer groups ───────────────────────────────────────────────
+  const filteredPeerEntries = Object.entries(peerListGrouped).filter(([, assignments]) => {
+    const evaluatee = (assignments as any[])[0]?.evaluatee;
+    const name = evaluatee
+      ? `${evaluatee.firstName || ''} ${evaluatee.lastName || ''}`.toLowerCase()
+      : '';
+    if (peerFilterSearch && !name.includes(peerFilterSearch.toLowerCase())) return false;
+    if (peerFilterDept && (evaluatee?.department || '') !== peerFilterDept) return false;
+    return true;
+  });
+
+  // ── Filtered assignments ───────────────────────────────────────────────
+  const uniqueRelations: string[] = Array.from(new Set(assignmentList.map((a: any) => a.relationType).filter(Boolean))) as string[];
+  const filteredAssignments = assignmentList.filter((a: any) => {
+    const evaluateeName = `${a.evaluatee?.firstName || ''} ${a.evaluatee?.lastName || ''}`.toLowerCase();
+    const evaluatorName  = `${a.evaluator?.firstName  || ''} ${a.evaluator?.lastName  || ''}`.toLowerCase();
+    if (assignFilterSearch) {
+      const s = assignFilterSearch.toLowerCase();
+      if (!evaluateeName.includes(s) && !evaluatorName.includes(s)) return false;
+    }
+    if (assignFilterDept     && (a.evaluatee?.department || '') !== assignFilterDept) return false;
+    if (assignFilterStatus   && a.status !== assignFilterStatus) return false;
+    if (assignFilterRelation && a.relationType !== assignFilterRelation) return false;
+    return true;
+  });
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -383,10 +425,47 @@ export default function CycleDetailPage() {
 
           {peerList.length > 0 && (
             <div style={{ padding: '0 1.5rem 1rem' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem', fontWeight: 600 }}>
-                {peerList.length} asignaci{peerList.length !== 1 ? 'ones' : 'ón'} &mdash; agrupadas por evaluado
+              {/* Filter bar */}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem', paddingTop: '0.75rem' }}>
+                <input
+                  className="input"
+                  placeholder="Buscar evaluado..."
+                  value={peerFilterSearch}
+                  onChange={(e) => setPeerFilterSearch(e.target.value)}
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem', width: '180px' }}
+                />
+                {deptOptions.length > 0 && (
+                  <select
+                    className="input"
+                    value={peerFilterDept}
+                    onChange={(e) => setPeerFilterDept(e.target.value)}
+                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
+                  >
+                    <option value="">Todos los departamentos</option>
+                    {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                )}
+                {(peerFilterSearch || peerFilterDept) && (
+                  <button
+                    className="btn-ghost"
+                    onClick={() => { setPeerFilterSearch(''); setPeerFilterDept(''); }}
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', color: 'var(--text-muted)' }}
+                  >
+                    {'✕ Limpiar'}
+                  </button>
+                )}
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', alignSelf: 'center', marginLeft: 'auto' }}>
+                  {filteredPeerEntries.length} de {Object.keys(peerListGrouped).length} evaluado{Object.keys(peerListGrouped).length !== 1 ? 's' : ''}
+                </span>
               </div>
-              {Object.entries(peerListGrouped).map(([evaluateeId, assignments]) => {
+
+              {filteredPeerEntries.length === 0 && (
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '0.5rem 0' }}>
+                  {'Sin resultados para los filtros aplicados.'}
+                </p>
+              )}
+
+              {filteredPeerEntries.map(([evaluateeId, assignments]) => {
                 const first = assignments[0];
                 const evalueeName = first.evaluatee
                   ? `${first.evaluatee.firstName || ''} ${first.evaluatee.lastName || ''}`.trim() || first.evaluatee.email
@@ -414,8 +493,13 @@ export default function CycleDetailPage() {
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                       </svg>
                       <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>
-                        Evaluado: {evalueeName}
+                        {evalueeName}
                       </span>
+                      {first.evaluatee?.department && (
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '0.1rem 0.5rem', borderRadius: '999px', border: '1px solid var(--border)' }}>
+                          {first.evaluatee.department}
+                        </span>
+                      )}
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
                         {assignments.length} evaluador{assignments.length !== 1 ? 'es' : ''}
                       </span>
@@ -568,10 +652,69 @@ export default function CycleDetailPage() {
                 borderBottom: '1px solid var(--border)',
               }}
             >
-              <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Asignaciones</h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                Detalle de evaluadores y evaluados
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div>
+                  <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Asignaciones</h2>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                    {filteredAssignments.length} de {assignmentList.length} asignaciones
+                  </p>
+                </div>
+              </div>
+              {/* Filter bar */}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                <input
+                  className="input"
+                  placeholder="Buscar nombre..."
+                  value={assignFilterSearch}
+                  onChange={(e) => setAssignFilterSearch(e.target.value)}
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem', width: '170px' }}
+                />
+                {deptOptions.length > 0 && (
+                  <select
+                    className="input"
+                    value={assignFilterDept}
+                    onChange={(e) => setAssignFilterDept(e.target.value)}
+                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
+                  >
+                    <option value="">Todos los departamentos</option>
+                    {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                )}
+                {uniqueRelations.length > 1 && (
+                  <select
+                    className="input"
+                    value={assignFilterRelation}
+                    onChange={(e) => setAssignFilterRelation(e.target.value)}
+                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
+                  >
+                    <option value="">Todas las relaciones</option>
+                    {uniqueRelations.map((r) => (
+                      <option key={r} value={r}>{relationLabels[r] || r}</option>
+                    ))}
+                  </select>
+                )}
+                <select
+                  className="input"
+                  value={assignFilterStatus}
+                  onChange={(e) => setAssignFilterStatus(e.target.value)}
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
+                >
+                  <option value="">Todos los estados</option>
+                  <option value="pending">Pendiente</option>
+                  <option value="in_progress">En progreso</option>
+                  <option value="completed">Completada</option>
+                  <option value="submitted">Enviada</option>
+                </select>
+                {(assignFilterSearch || assignFilterDept || assignFilterStatus || assignFilterRelation) && (
+                  <button
+                    className="btn-ghost"
+                    onClick={() => { setAssignFilterSearch(''); setAssignFilterDept(''); setAssignFilterStatus(''); setAssignFilterRelation(''); }}
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', color: 'var(--text-muted)' }}
+                  >
+                    {'✕ Limpiar'}
+                  </button>
+                )}
+              </div>
             </div>
             <div className="table-wrapper">
               <table>
@@ -582,11 +725,17 @@ export default function CycleDetailPage() {
                     <th>Relaci&oacute;n</th>
                     <th>Estado</th>
                     {cycle.status === 'closed' && <th>Resultado</th>}
-                    {cycle.status === 'active' && <th>Acción</th>}
+                    {cycle.status === 'active' && <th>Acci&oacute;n</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {assignmentList.map((a: any) => (
+                  {filteredAssignments.length === 0 ? (
+                    <tr>
+                      <td colSpan={cycle.status === 'closed' || cycle.status === 'active' ? 5 : 4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem', fontSize: '0.85rem' }}>
+                        Sin resultados para los filtros aplicados.
+                      </td>
+                    </tr>
+                  ) : filteredAssignments.map((a: any) => (
                     <tr key={a.id}>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
