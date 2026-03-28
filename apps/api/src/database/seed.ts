@@ -52,6 +52,11 @@ import { Notification } from '../modules/notifications/entities/notification.ent
 // ── Phase 3: AI Insights ─────────────────────────────────────────────────
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
 
+// ── PDO: Org Development ─────────────────────────────────────────────────
+import { OrgDevelopmentPlan } from '../modules/org-development/entities/org-development-plan.entity';
+import { OrgDevelopmentInitiative } from '../modules/org-development/entities/org-development-initiative.entity';
+import { OrgDevelopmentAction } from '../modules/org-development/entities/org-development-action.entity';
+
 // ── Additional entities (needed for TypeORM synchronize) ─────────────────
 import { PaymentHistory } from '../modules/subscriptions/entities/payment-history.entity';
 import { RoleCompetency } from '../modules/development/entities/role-competency.entity';
@@ -95,6 +100,8 @@ const dataSource = new DataSource({
     PaymentHistory, RoleCompetency,
     Recognition, Badge, UserBadge, UserPoints,
     SystemChangelog, CustomKpi,
+    // PDO: Org Development
+    OrgDevelopmentPlan, OrgDevelopmentInitiative, OrgDevelopmentAction,
   ],
   // synchronize:true ensures tables exist before inserting seed data
   // (safe because cleanup-orphans already dropped conflicting tables)

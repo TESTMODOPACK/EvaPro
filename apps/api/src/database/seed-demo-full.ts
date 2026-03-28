@@ -55,6 +55,11 @@ import { Badge } from '../modules/recognition/entities/badge.entity';
 import { UserBadge } from '../modules/recognition/entities/user-badge.entity';
 import { UserPoints, PointsSource } from '../modules/recognition/entities/user-points.entity';
 
+// ── PDO: Org Development ─────────────────────────────────────────────────
+import { OrgDevelopmentPlan } from '../modules/org-development/entities/org-development-plan.entity';
+import { OrgDevelopmentInitiative } from '../modules/org-development/entities/org-development-initiative.entity';
+import { OrgDevelopmentAction } from '../modules/org-development/entities/org-development-action.entity';
+
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) { console.error('❌ DATABASE_URL not set'); process.exit(1); }
 
@@ -73,6 +78,8 @@ const ds = new DataSource({
     Recognition, Badge, UserBadge, UserPoints,
     PaymentHistory,
     SystemChangelog,
+    // PDO: Org Development
+    OrgDevelopmentPlan, OrgDevelopmentInitiative, OrgDevelopmentAction,
   ],
   synchronize: true, logging: false,
 });

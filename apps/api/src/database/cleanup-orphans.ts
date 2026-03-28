@@ -45,6 +45,22 @@ async function main() {
       }
     }
 
+    // ── PDO: Org Development tables (new — drop to allow clean FK sync) ────
+    // IMPORTANT: drop child tables first (actions → initiatives → plans)
+    const orgDevTables = [
+      'org_development_actions',
+      'org_development_initiatives',
+      'org_development_plans',
+    ];
+    for (const table of orgDevTables) {
+      try {
+        await client.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
+        console.log(`[cleanup] Dropped PDO table: ${table}`);
+      } catch (err: any) {
+        console.log(`[cleanup] Could not drop ${table}: ${err.message}`);
+      }
+    }
+
     // ── Phase 5: Development tables (new — may not exist yet) ─────────────
     // IMPORTANT: role_competencies has FK to competencies, so drop it first
     const phase5Tables = [
