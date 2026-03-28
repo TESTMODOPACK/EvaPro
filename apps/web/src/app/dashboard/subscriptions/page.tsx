@@ -55,6 +55,8 @@ const emptyPlanForm = {
   description: '',
   maxEmployees: 50,
   monthlyPrice: '',
+  quarterlyPrice: '',
+  semiannualPrice: '',
   yearlyPrice: '',
   currency: 'UF',
   features: [] as string[],
@@ -63,9 +65,8 @@ const emptyPlanForm = {
 
 const emptySubForm = {
   planId: '',
+  billingPeriod: 'monthly',
   tenantId: '',
-  startDate: new Date().toISOString().slice(0, 10),
-  endDate: '',
   notes: '',
   status: 'active',
 };
@@ -144,9 +145,9 @@ export default function SubscriptionsPage() {
   // ── Fetch ───────────────────────────────────────────────────────────────
 
   const fetchData = () => {
-    if (!token) return;
+    if (!token) return Promise.resolve();
     setLoading(true);
-    Promise.all([
+    return Promise.all([
       api.subscriptions.plans.list(token).catch(() => []),
       api.subscriptions.list(token).catch(() => []),
       api.tenants.list(token).catch(() => []),
@@ -191,6 +192,8 @@ export default function SubscriptionsPage() {
         description: planForm.description || undefined,
         maxEmployees: Number(planForm.maxEmployees),
         monthlyPrice: planForm.monthlyPrice ? Number(planForm.monthlyPrice) : undefined,
+        quarterlyPrice: (planForm as any).quarterlyPrice ? Number((planForm as any).quarterlyPrice) : undefined,
+        semiannualPrice: (planForm as any).semiannualPrice ? Number((planForm as any).semiannualPrice) : undefined,
         yearlyPrice: planForm.yearlyPrice ? Number(planForm.yearlyPrice) : undefined,
         currency: (planForm as any).currency || 'UF',
         features: planForm.features,
@@ -218,6 +221,8 @@ export default function SubscriptionsPage() {
         description: planForm.description || undefined,
         maxEmployees: Number(planForm.maxEmployees),
         monthlyPrice: planForm.monthlyPrice ? Number(planForm.monthlyPrice) : undefined,
+        quarterlyPrice: (planForm as any).quarterlyPrice ? Number((planForm as any).quarterlyPrice) : undefined,
+        semiannualPrice: (planForm as any).semiannualPrice ? Number((planForm as any).semiannualPrice) : undefined,
         yearlyPrice: planForm.yearlyPrice ? Number(planForm.yearlyPrice) : undefined,
         currency: (planForm as any).currency || 'UF',
         features: planForm.features,
@@ -254,6 +259,8 @@ export default function SubscriptionsPage() {
       description: plan.description ?? '',
       maxEmployees: plan.maxEmployees ?? 50,
       monthlyPrice: plan.monthlyPrice != null ? String(plan.monthlyPrice) : '',
+      quarterlyPrice: plan.quarterlyPrice != null ? String(plan.quarterlyPrice) : '',
+      semiannualPrice: plan.semiannualPrice != null ? String(plan.semiannualPrice) : '',
       yearlyPrice: plan.yearlyPrice != null ? String(plan.yearlyPrice) : '',
       currency: plan.currency || 'UF',
       features: Array.isArray(plan.features) ? plan.features : [],
@@ -284,14 +291,13 @@ export default function SubscriptionsPage() {
       await api.subscriptions.create(token, {
         planId: subForm.planId,
         tenantId: subForm.tenantId,
-        startDate: subForm.startDate,
-        ...(subForm.endDate ? { endDate: subForm.endDate } : {}),
+        billingPeriod: subForm.billingPeriod,
         ...(subForm.notes ? { notes: subForm.notes } : {}),
         status: subForm.status,
       });
       setSuccess('Suscripcion creada correctamente');
       resetSubForm();
-      fetchData();
+      await fetchData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (e: any) {
       setError(e.message);
@@ -307,14 +313,13 @@ export default function SubscriptionsPage() {
     try {
       await api.subscriptions.update(token, editingSubId, {
         planId: subForm.planId,
+        billingPeriod: subForm.billingPeriod,
         status: subForm.status,
-        startDate: subForm.startDate,
-        ...(subForm.endDate ? { endDate: subForm.endDate } : {}),
         ...(subForm.notes ? { notes: subForm.notes } : {}),
       });
       setSuccess('Suscripcion actualizada');
       resetSubForm();
-      fetchData();
+      await fetchData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (e: any) {
       setError(e.message);
@@ -338,10 +343,9 @@ export default function SubscriptionsPage() {
 
   const startEditSub = (sub: any) => {
     setSubForm({
-      planId: sub.planId ?? '',
+      planId: sub.planId ?? sub.plan?.id ?? '',
+      billingPeriod: sub.billingPeriod?.toLowerCase() ?? 'monthly',
       tenantId: sub.tenantId ?? '',
-      startDate: sub.startDate ? sub.startDate.slice(0, 10) : '',
-      endDate: sub.endDate ? sub.endDate.slice(0, 10) : '',
       notes: sub.notes ?? '',
       status: sub.status ?? 'active',
     });
@@ -425,6 +429,23 @@ export default function SubscriptionsPage() {
 
   const planMap: Record<string, any> = {};
   plans.forEach((p) => { planMap[p.id] = p; });
+
+  const periodLabel: Record<string, string> = {
+    monthly: 'Mensual', quarterly: 'Trimestral', semiannual: 'Semestral', annual: 'Anual',
+  };
+
+  const planPeriodOptions = plans
+    .filter((p) => p.isActive !== false)
+    .flatMap((p) => {
+      const cur = p.currency || 'UF';
+      const fmt = (v: any) => v != null && Number(v) > 0 ? `${Number(v).toFixed(1)} ${cur}` : null;
+      return [
+        { value: `${p.id}|monthly`,    label: `${p.name} — Mensual${fmt(p.monthlyPrice) ? ` (${fmt(p.monthlyPrice)}/mes)` : ''}` },
+        { value: `${p.id}|quarterly`,  label: `${p.name} — Trimestral${fmt(p.quarterlyPrice) ? ` (${fmt(p.quarterlyPrice)}/3m)` : ''}` },
+        { value: `${p.id}|semiannual`, label: `${p.name} — Semestral${fmt(p.semiannualPrice) ? ` (${fmt(p.semiannualPrice)}/6m)` : ''}` },
+        { value: `${p.id}|annual`,     label: `${p.name} — Anual${fmt(p.yearlyPrice) ? ` (${fmt(p.yearlyPrice)}/año)` : ''}` },
+      ];
+    });
 
   // Stats
   const totalSubs = statsData?.total ?? subscriptions.length;
@@ -536,7 +557,15 @@ export default function SubscriptionsPage() {
                 </div>
                 <div>
                   <label style={labelStyle}>Precio mensual</label>
-                  <input style={inputStyle} type="number" placeholder="0.00" value={planForm.monthlyPrice} onChange={(e) => setPlanForm({ ...planForm, monthlyPrice: e.target.value })} />
+                  <input style={inputStyle} type="number" step="0.1" placeholder="0.00" value={planForm.monthlyPrice} onChange={(e) => setPlanForm({ ...planForm, monthlyPrice: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Precio trimestral</label>
+                  <input style={inputStyle} type="number" step="0.1" placeholder="0.00" value={(planForm as any).quarterlyPrice} onChange={(e) => setPlanForm({ ...planForm, quarterlyPrice: e.target.value } as any)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Precio semestral</label>
+                  <input style={inputStyle} type="number" step="0.1" placeholder="0.00" value={(planForm as any).semiannualPrice} onChange={(e) => setPlanForm({ ...planForm, semiannualPrice: e.target.value } as any)} />
                 </div>
                 <div>
                   <label style={labelStyle}>Precio anual</label>
@@ -614,8 +643,10 @@ export default function SubscriptionsPage() {
                       <th>Codigo</th>
                       <th>Descripcion</th>
                       <th>Max empleados</th>
-                      <th>Precio mensual</th>
-                      <th>Precio anual</th>
+                      <th>Mensual</th>
+                      <th>Trimestral</th>
+                      <th>Semestral</th>
+                      <th>Anual</th>
                       <th>Features</th>
                       <th>Estado</th>
                       <th>Acciones</th>
@@ -634,7 +665,13 @@ export default function SubscriptionsPage() {
                           {plan.monthlyPrice > 0 ? `${Number(plan.monthlyPrice).toFixed(1)} ${plan.currency || 'UF'}` : 'Gratis'}
                         </td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          {plan.yearlyPrice > 0 ? `${Number(plan.yearlyPrice).toFixed(0)} ${plan.currency || 'UF'}` : '-'}
+                          {plan.quarterlyPrice > 0 ? `${Number(plan.quarterlyPrice).toFixed(1)} ${plan.currency || 'UF'}` : '-'}
+                        </td>
+                        <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          {plan.semiannualPrice > 0 ? `${Number(plan.semiannualPrice).toFixed(1)} ${plan.currency || 'UF'}` : '-'}
+                        </td>
+                        <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          {plan.yearlyPrice > 0 ? `${Number(plan.yearlyPrice).toFixed(1)} ${plan.currency || 'UF'}` : '-'}
                         </td>
                         <td style={{ maxWidth: '200px' }}>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
@@ -760,21 +797,36 @@ export default function SubscriptionsPage() {
                 {editingSubId ? 'Editar suscripcion' : 'Asignar plan'}
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={labelStyle}>Plan *</label>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={labelStyle}>Plan y período *</label>
                   <select
                     style={inputStyle}
-                    value={subForm.planId}
-                    onChange={(e) => setSubForm({ ...subForm, planId: e.target.value })}
+                    value={subForm.planId ? `${subForm.planId}|${subForm.billingPeriod}` : ''}
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      const [planId, billingPeriod] = e.target.value.split('|');
+                      setSubForm({ ...subForm, planId, billingPeriod });
+                    }}
                   >
-                    <option value="">Seleccionar plan...</option>
-                    {plans.filter((p) => p.isActive !== false).map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
+                    <option value="">Seleccionar plan y período...</option>
+                    {planPeriodOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
+                  </select>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                    Las fechas de inicio y vencimiento se calculan automáticamente
+                  </p>
+                </div>
+                <div>
+                  <label style={labelStyle}>Estado</label>
+                  <select style={inputStyle} value={subForm.status} onChange={(e) => setSubForm({ ...subForm, status: e.target.value })}>
+                    <option value="active">Activa</option>
+                    <option value="trial">En trial</option>
+                    <option value="suspended">Suspendida</option>
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Organizacion *</label>
+                  <label style={labelStyle}>Organización *</label>
                   <select
                     style={inputStyle}
                     value={subForm.tenantId}
@@ -787,23 +839,7 @@ export default function SubscriptionsPage() {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label style={labelStyle}>Estado</label>
-                  <select style={inputStyle} value={subForm.status} onChange={(e) => setSubForm({ ...subForm, status: e.target.value })}>
-                    <option value="active">Activa</option>
-                    <option value="trial">En trial</option>
-                    <option value="suspended">Suspendida</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Fecha inicio</label>
-                  <input style={inputStyle} type="date" value={subForm.startDate} onChange={(e) => setSubForm({ ...subForm, startDate: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Fecha vencimiento</label>
-                  <input style={inputStyle} type="date" value={subForm.endDate} onChange={(e) => setSubForm({ ...subForm, endDate: e.target.value })} />
-                </div>
-                <div>
+                <div style={{ gridColumn: 'span 2' }}>
                   <label style={labelStyle}>Notas</label>
                   <input style={inputStyle} value={subForm.notes} onChange={(e) => setSubForm({ ...subForm, notes: e.target.value })} placeholder="Notas opcionales..." />
                 </div>
@@ -925,6 +961,11 @@ export default function SubscriptionsPage() {
                             <span className={`badge ${planBadge[planCode] ?? 'badge-accent'}`}>
                               {planName}
                             </span>
+                            {sub.billingPeriod && (
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                                {periodLabel[sub.billingPeriod?.toLowerCase()] ?? sub.billingPeriod}
+                              </span>
+                            )}
                           </td>
                           <td>
                             <span className={`badge ${statusBadge[sub.status] ?? 'badge-accent'}`}>
