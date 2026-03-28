@@ -716,87 +716,118 @@ export default function CycleDetailPage() {
                 )}
               </div>
             </div>
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Evaluado</th>
-                    <th>Evaluador</th>
-                    <th>Relaci&oacute;n</th>
-                    <th>Estado</th>
-                    {cycle.status === 'closed' && <th>Resultado</th>}
-                    {cycle.status === 'active' && <th>Acci&oacute;n</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAssignments.length === 0 ? (
-                    <tr>
-                      <td colSpan={cycle.status === 'closed' || cycle.status === 'active' ? 5 : 4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem', fontSize: '0.85rem' }}>
-                        Sin resultados para los filtros aplicados.
-                      </td>
-                    </tr>
-                  ) : filteredAssignments.map((a: any) => (
-                    <tr key={a.id}>
-                      <td>
-                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                          {a.evaluatee?.firstName || a.evaluatee?.email || a.evaluateeId || '\u2014'}
-                          {a.evaluatee?.lastName ? ` ${a.evaluatee.lastName}` : ''}
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                          {a.evaluator?.firstName || a.evaluator?.email || a.evaluatorId || '\u2014'}
-                          {a.evaluator?.lastName ? ` ${a.evaluator.lastName}` : ''}
-                        </div>
-                      </td>
-                      <td>
-                        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          {relationLabels[a.relationType] || a.relationType || '\u2014'}
+            {/* Grouped by evaluatee — same layout as draft peer section */}
+            <div style={{ padding: '0 1.5rem 1rem' }}>
+              {filteredAssignments.length === 0 ? (
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '1rem 0' }}>
+                  Sin resultados para los filtros aplicados.
+                </p>
+              ) : (() => {
+                // Group by evaluateeId
+                const grouped: Record<string, any[]> = filteredAssignments.reduce((acc: Record<string, any[]>, a: any) => {
+                  const key = a.evaluateeId || 'sin_evaluado';
+                  if (!acc[key]) acc[key] = [];
+                  acc[key].push(a);
+                  return acc;
+                }, {});
+
+                return Object.entries(grouped).map(([evaluateeId, items]) => {
+                  const first = items[0];
+                  const evalueeName = first.evaluatee
+                    ? `${first.evaluatee.firstName || ''} ${first.evaluatee.lastName || ''}`.trim() || first.evaluatee.email
+                    : evaluateeId;
+                  const dept = first.evaluatee?.department;
+                  const completed = items.filter((a: any) => a.status === 'completed' || a.status === 'submitted').length;
+                  const total = items.length;
+                  const allDone = completed === total;
+
+                  return (
+                    <div
+                      key={evaluateeId}
+                      style={{ marginBottom: '0.75rem', marginTop: '0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}
+                    >
+                      {/* Evaluatee header */}
+                      <div style={{
+                        padding: '0.6rem 1rem',
+                        background: 'rgba(99,102,241,0.07)',
+                        borderBottom: '1px solid var(--border)',
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>
+                          {evalueeName}
                         </span>
-                      </td>
-                      <td>
-                        <span className={`badge ${statusBadge[a.status] || 'badge-accent'}`}>
-                          {statusLabels[a.status] || a.status}
+                        {dept && (
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '0.1rem 0.5rem', borderRadius: '999px', border: '1px solid var(--border)' }}>
+                            {dept}
+                          </span>
+                        )}
+                        <span style={{ fontSize: '0.75rem', color: allDone ? 'var(--success)' : 'var(--text-muted)', marginLeft: 'auto', fontWeight: allDone ? 700 : 400 }}>
+                          {completed}/{total} {allDone ? '✓' : 'completadas'}
                         </span>
-                      </td>
-                      {cycle.status === 'closed' && (
-                        <td>
-                          {a.score != null ? (
-                            <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                              {typeof a.score === 'number' ? a.score.toFixed(1) : a.score}
+                      </div>
+
+                      {/* Evaluators rows */}
+                      {items.map((a: any, idx: number) => {
+                        const evaluatorName = a.evaluator
+                          ? `${a.evaluator.firstName || ''} ${a.evaluator.lastName || ''}`.trim() || a.evaluator.email
+                          : a.evaluatorId || '\u2014';
+                        const isDone = a.status === 'completed' || a.status === 'submitted';
+                        const canRespond = cycle.status === 'active' && a.evaluatorId === user?.userId && !isDone;
+
+                        return (
+                          <div
+                            key={a.id}
+                            style={{
+                              padding: '0.55rem 1rem',
+                              display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+                              borderTop: idx > 0 ? '1px solid var(--border)' : 'none',
+                              background: isDone ? 'rgba(16,185,129,0.03)' : 'var(--bg-surface)',
+                            }}
+                          >
+                            {/* Evaluator name */}
+                            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', flex: 1, minWidth: '120px' }}>
+                              {evaluatorName}
                             </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                              &#x2014;
+
+                            {/* Relation */}
+                            <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>
+                              {relationLabels[a.relationType] || a.relationType}
                             </span>
-                          )}
-                        </td>
-                      )}
-                      {cycle.status === 'active' && (
-                        <td>
-                          {a.evaluatorId === user?.userId && a.status !== 'completed' ? (
-                            <Link
-                              href={`/dashboard/evaluaciones/${id}/responder/${a.id}`}
-                              className="btn-primary"
-                              style={{ padding: '0.3rem 0.75rem', fontSize: '0.78rem' }}
-                            >
-                              Responder
-                            </Link>
-                          ) : a.status === 'completed' ? (
-                            <span style={{ color: 'var(--success)', fontSize: '0.78rem', fontWeight: 600 }}>
-                              Completada
+
+                            {/* Status */}
+                            <span className={`badge ${statusBadge[a.status] || 'badge-accent'}`} style={{ fontSize: '0.7rem' }}>
+                              {statusLabels[a.status] || a.status}
                             </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                              &#x2014;
-                            </span>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+                            {/* Score (closed cycles) */}
+                            {cycle.status === 'closed' && (
+                              <span style={{ fontSize: '0.82rem', fontWeight: 700, minWidth: '36px', textAlign: 'right', color: a.score != null ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                                {a.score != null ? (typeof a.score === 'number' ? a.score.toFixed(1) : a.score) : '\u2014'}
+                              </span>
+                            )}
+
+                            {/* Action (active cycles) */}
+                            {cycle.status === 'active' && (
+                              canRespond ? (
+                                <Link
+                                  href={`/dashboard/evaluaciones/${id}/responder/${a.id}`}
+                                  className="btn-primary"
+                                  style={{ padding: '0.25rem 0.7rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                                >
+                                  Responder
+                                </Link>
+                              ) : null
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         )}
