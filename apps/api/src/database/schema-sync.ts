@@ -56,6 +56,11 @@ import { Notification } from '../modules/notifications/entities/notification.ent
 // ── Phase 3: AI Insights ─────────────────────────────────────────────────
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
 
+// ── PDO: Org Development ─────────────────────────────────────────────────
+import { OrgDevelopmentPlan } from '../modules/org-development/entities/org-development-plan.entity';
+import { OrgDevelopmentInitiative } from '../modules/org-development/entities/org-development-initiative.entity';
+import { OrgDevelopmentAction } from '../modules/org-development/entities/org-development-action.entity';
+
 const DATABASE_URL = process.env.DATABASE_URL;
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -78,6 +83,9 @@ async function runSchemaSync() {
     // Drop in reverse-FK order, CASCADE handles remaining deps
     await pgClient.query(`
       -- Phase 5
+      DROP TABLE IF EXISTS org_development_actions CASCADE;
+      DROP TABLE IF EXISTS org_development_initiatives CASCADE;
+      DROP TABLE IF EXISTS org_development_plans CASCADE;
       DROP TABLE IF EXISTS development_comments CASCADE;
       DROP TABLE IF EXISTS development_actions CASCADE;
       DROP TABLE IF EXISTS development_plans CASCADE;
@@ -158,6 +166,8 @@ async function runSchemaSync() {
       Notification,
       // Phase 3: AI
       AiInsight,
+      // PDO: Org Development
+      OrgDevelopmentPlan, OrgDevelopmentInitiative, OrgDevelopmentAction,
     ],
     synchronize: true,
     logging: false,
