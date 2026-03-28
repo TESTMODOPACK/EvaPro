@@ -552,10 +552,10 @@ export default function MiSuscripcionPage() {
                   <thead>
                     <tr>
                       <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Fecha</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Periodo</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Período</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right', borderBottom: '2px solid var(--border)' }}>Monto</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>Estado</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Metodo</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Método</th>
                     </tr>
                   </thead>
                   <tbody>

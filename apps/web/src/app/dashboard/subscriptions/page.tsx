@@ -180,7 +180,7 @@ export default function SubscriptionsPage() {
 
   const handleCreatePlan = async () => {
     if (!token || !planForm.name || !planForm.code) {
-      setError('Nombre y codigo son obligatorios');
+      setError('Nombre y código son obligatorios');
       return;
     }
     setSaving(true);
@@ -282,7 +282,7 @@ export default function SubscriptionsPage() {
 
   const handleCreateSub = async () => {
     if (!token || !subForm.planId || !subForm.tenantId) {
-      setError('Selecciona un plan y una organizacion');
+      setError('Selecciona un plan y una organización');
       return;
     }
     setSaving(true);
@@ -295,7 +295,7 @@ export default function SubscriptionsPage() {
         ...(subForm.notes ? { notes: subForm.notes } : {}),
         status: subForm.status,
       });
-      setSuccess('Suscripcion creada correctamente');
+      setSuccess('Suscripción creada correctamente');
       resetSubForm();
       await fetchData();
       setTimeout(() => setSuccess(''), 3000);
@@ -317,7 +317,7 @@ export default function SubscriptionsPage() {
         status: subForm.status,
         ...(subForm.notes ? { notes: subForm.notes } : {}),
       });
-      setSuccess('Suscripcion actualizada');
+      setSuccess('Suscripción actualizada');
       resetSubForm();
       await fetchData();
       setTimeout(() => setSuccess(''), 3000);
@@ -330,10 +330,10 @@ export default function SubscriptionsPage() {
 
   const handleCancelSub = async (id: string, tenantName: string) => {
     if (!token) return;
-    if (!confirm(`Cancelar la suscripcion de "${tenantName}"?`)) return;
+    if (!confirm(`Cancelar la suscripción de "${tenantName}"?`)) return;
     try {
       await api.subscriptions.cancel(token, id);
-      setSuccess('Suscripcion cancelada');
+      setSuccess('Suscripción cancelada');
       fetchData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (e: any) {
@@ -481,7 +481,7 @@ export default function SubscriptionsPage() {
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Suscripciones</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestion de planes y suscripciones</p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestión de planes y suscripciones</p>
       </div>
 
       {/* Tab bar */}
@@ -548,7 +548,7 @@ export default function SubscriptionsPage() {
                   <input style={inputStyle} value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} placeholder="Ej: Starter" />
                 </div>
                 <div>
-                  <label style={labelStyle}>Codigo *</label>
+                  <label style={labelStyle}>Código *</label>
                   <input style={inputStyle} value={planForm.code} onChange={(e) => setPlanForm({ ...planForm, code: e.target.value })} placeholder="Ej: starter" />
                 </div>
                 <div>
@@ -805,7 +805,7 @@ export default function SubscriptionsPage() {
           {showSubForm && (
             <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
               <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
-                {editingSubId ? 'Editar suscripcion' : 'Asignar plan'}
+                {editingSubId ? 'Editar suscripción' : 'Asignar plan'}
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                 <div style={{ gridColumn: 'span 2' }}>
@@ -941,14 +941,14 @@ export default function SubscriptionsPage() {
             {subscriptions.length === 0 ? (
               <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                 <p style={{ fontWeight: 600, marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>Sin suscripciones</p>
-                <p style={{ fontSize: '0.85rem' }}>Asigna el primer plan a una organizacion para comenzar</p>
+                <p style={{ fontSize: '0.85rem' }}>Asigna el primer plan a una organización para comenzar</p>
               </div>
             ) : (
               <div className="table-wrapper">
                 <table>
                   <thead>
                     <tr>
-                      <th>Organizacion</th>
+                      <th>Organización</th>
                       <th>Plan</th>
                       <th>Estado</th>
                       <th>Inicio</th>

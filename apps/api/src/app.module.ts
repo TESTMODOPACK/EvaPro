@@ -18,6 +18,7 @@ import { ObjectivesModule } from './modules/objectives/objectives.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { TalentModule } from './modules/talent/talent.module';
 import { DevelopmentModule } from './modules/development/development.module';
+import { OrgDevelopmentModule } from './modules/org-development/org-development.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { AiInsightsModule } from './modules/ai-insights/ai-insights.module';
 import { RecognitionModule } from './modules/recognition/recognition.module';
@@ -45,6 +46,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     SubscriptionsModule,
     TalentModule,
     DevelopmentModule,
+    OrgDevelopmentModule,
     UploadsModule,
     AiInsightsModule,
     RecognitionModule,

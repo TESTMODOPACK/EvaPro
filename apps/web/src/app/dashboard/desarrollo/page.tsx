@@ -132,6 +132,10 @@ export default function DesarrolloPage() {
   const [suggestResult, setSuggestResult] = useState<any>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
 
+  // Org initiatives (for optional PDI linking)
+  const [orgInitiatives, setOrgInitiatives] = useState<any[]>([]);
+  const [planFormOrgInitiativeId, setPlanFormOrgInitiativeId] = useState('');
+
   useEffect(() => {
     if (!token) return;
     loadData();
@@ -145,15 +149,20 @@ export default function DesarrolloPage() {
         api.development.plans.list(token!),
         api.users.list(token!).catch(() => []),
         api.development.competencies.list(token!),
+        api.orgDevelopment.activeInitiatives(token!).catch(() => []),
       ];
       if (canCreate) {
         promises.push(api.cycles.list(token!).catch(() => []));
       }
-      const [plansRes, usersRes, compsRes, cyclesRes] = await Promise.all(promises);
+      // BUG #10 fix: evitar destructuring de array de tamaño variable
+      const results = await Promise.all(promises);
+      const [plansRes, usersRes, compsRes, orgInitRes] = results;
+      const cyclesRes = canCreate ? results[4] : undefined;
       setPlans(Array.isArray(plansRes) ? plansRes : []);
       const userData = Array.isArray(usersRes) ? usersRes : (usersRes as any)?.data || [];
       setUsers(userData);
       setCompetencies(Array.isArray(compsRes) ? compsRes : []);
+      setOrgInitiatives(Array.isArray(orgInitRes) ? orgInitRes : []);
       if (cyclesRes) setCycles(Array.isArray(cyclesRes) ? cyclesRes : []);
     } catch (e: any) {
       setError(e.message || 'Error al cargar datos');
@@ -174,8 +183,10 @@ export default function DesarrolloPage() {
         priority: planForm.priority,
         startDate: planForm.startDate || undefined,
         targetDate: planForm.targetDate || undefined,
+        ...(planFormOrgInitiativeId ? { orgInitiativeId: planFormOrgInitiativeId } : {}),
       });
       setPlanForm(emptyPlanForm);
+      setPlanFormOrgInitiativeId('');
       setShowCreate(false);
       await loadData();
     } catch (e: any) {
@@ -411,80 +422,98 @@ export default function DesarrolloPage() {
       {/* Create form */}
       {showCreate && canCreate && (
         <div className="card animate-fade-up">
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 0 }}>
-            {'Crear Nuevo Plan de Desarrollo'}
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 0, marginBottom: '0.25rem' }}>
+            Crear Nuevo Plan de Desarrollo
           </h2>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.25rem 0 0.75rem' }}>
-            {'Selecciona un colaborador y define el plan. Una vez creado quedar\u00e1 en estado Borrador hasta que lo actives.'}
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
+            Selecciona un colaborador y define el plan. Una vez creado quedará en estado Borrador hasta que lo actives.
           </p>
           <form onSubmit={handleCreatePlan} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                Colaborador
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                  Colaborador *
+                </label>
                 <select
+                  className="input"
                   value={planForm.userId}
                   onChange={(e) => setPlanForm({ ...planForm, userId: e.target.value })}
                   required
-                  style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  style={{ width: '100%' }}
                 >
                   <option value="">Seleccionar...</option>
                   {availableUsers.map((u: any) => (
-                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}</option>
+                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}</option>
                   ))}
                 </select>
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                {'T\u00edtulo'}
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                  Título *
+                </label>
                 <input
+                  className="input"
                   value={planForm.title}
                   onChange={(e) => setPlanForm({ ...planForm, title: e.target.value })}
                   required
-                  placeholder={'T\u00edtulo del plan'}
-                  style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  placeholder="Título del plan"
+                  style={{ width: '100%' }}
                 />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                Prioridad
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                  Prioridad
+                </label>
                 <select
+                  className="input"
                   value={planForm.priority}
                   onChange={(e) => setPlanForm({ ...planForm, priority: e.target.value })}
-                  style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  style={{ width: '100%' }}
                 >
                   <option value="alta">Alta</option>
                   <option value="media">Media</option>
                   <option value="baja">Baja</option>
                 </select>
-              </label>
+              </div>
             </div>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              {'Descripci\u00f3n'}
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Descripción
+              </label>
               <textarea
+                className="input"
                 value={planForm.description}
                 onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
                 rows={2}
-                placeholder={'Descripci\u00f3n del plan (opcional)'}
-                style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }}
+                placeholder="Descripción del plan (opcional)"
+                style={{ width: '100%', resize: 'vertical' }}
               />
-            </label>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                Fecha inicio
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                  Fecha inicio
+                </label>
                 <input
+                  className="input"
                   type="date"
                   value={planForm.startDate}
                   onChange={(e) => setPlanForm({ ...planForm, startDate: e.target.value })}
-                  style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  style={{ width: '100%' }}
                 />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                Fecha objetivo
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                  Fecha objetivo
+                </label>
                 <input
+                  className="input"
                   type="date"
                   value={planForm.targetDate}
                   onChange={(e) => setPlanForm({ ...planForm, targetDate: e.target.value })}
-                  style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  style={{ width: '100%' }}
                 />
-              </label>
+              </div>
             </div>
             {/* Suggest from assessment */}
             {planForm.userId && cycles.length > 0 && (
@@ -500,9 +529,10 @@ export default function DesarrolloPage() {
                     {'Ciclo de evaluaci\u00f3n:'}
                   </label>
                   <select
+                    className="input"
                     value={suggestCycleId}
                     onChange={(e) => { setSuggestCycleId(e.target.value); setSuggestResult(null); }}
-                    style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', flex: 1 }}
+                    style={{ fontSize: '0.82rem', flex: 1 }}
                   >
                     <option value="">{'Seleccionar ciclo cerrado...'}</option>
                     {cycles.filter((c: any) => c.status === 'closed').map((c: any) => (
@@ -581,6 +611,28 @@ export default function DesarrolloPage() {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+            {/* Vinculación opcional a iniciativa organizacional */}
+            {orgInitiatives.length > 0 && (
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                  Vincular a iniciativa organizacional{' '}
+                  <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span>
+                </label>
+                <select
+                  className="input"
+                  value={planFormOrgInitiativeId}
+                  onChange={(e) => setPlanFormOrgInitiativeId(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">Sin vincular</option>
+                  {orgInitiatives.map((i: any) => (
+                    <option key={i.id} value={i.id}>
+                      {i.planTitle ? `${i.planTitle} — ` : ''}{i.title}{i.department ? ` (${i.department})` : ' (Toda la empresa)'}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
@@ -768,28 +820,31 @@ export default function DesarrolloPage() {
 
                   {/* Add action form */}
                   {showAddAction && (
-                    <form onSubmit={handleAddAction} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', padding: '0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                    <form onSubmit={handleAddAction} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', padding: '0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem' }}>
                         <input
+                          className="input"
                           value={actionForm.title}
                           onChange={(e) => setActionForm({ ...actionForm, title: e.target.value })}
                           required
-                          placeholder={'T\u00edtulo de la acci\u00f3n'}
-                          style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                          placeholder="Título de la acción"
+                          style={{ fontSize: '0.82rem' }}
                         />
                         <select
+                          className="input"
                           value={actionForm.type}
                           onChange={(e) => setActionForm({ ...actionForm, type: e.target.value })}
-                          style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                          style={{ fontSize: '0.82rem' }}
                         >
                           {Object.entries(ACTION_TYPE_LABEL).map(([val, label]) => (
                             <option key={val} value={val}>{label}</option>
                           ))}
                         </select>
                         <select
+                          className="input"
                           value={actionForm.competencyId}
                           onChange={(e) => setActionForm({ ...actionForm, competencyId: e.target.value })}
-                          style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                          style={{ fontSize: '0.82rem' }}
                         >
                           <option value="">Competencia (opcional)</option>
                           {competencies.map((c: any) => (
@@ -797,17 +852,19 @@ export default function DesarrolloPage() {
                           ))}
                         </select>
                         <input
+                          className="input"
                           type="date"
                           value={actionForm.dueDate}
                           onChange={(e) => setActionForm({ ...actionForm, dueDate: e.target.value })}
-                          style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                          style={{ fontSize: '0.82rem' }}
                         />
                       </div>
                       <input
+                        className="input"
                         value={actionForm.description}
                         onChange={(e) => setActionForm({ ...actionForm, description: e.target.value })}
-                        placeholder={'Descripci\u00f3n (opcional)'}
-                        style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                        placeholder="Descripción (opcional)"
+                        style={{ fontSize: '0.82rem' }}
                       />
                       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                         <button type="submit" className="btn-primary" style={{ fontSize: '0.78rem' }} disabled={addingAction}>
@@ -830,24 +887,27 @@ export default function DesarrolloPage() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.5rem' }}>
                                 <input
+                                  className="input"
                                   value={editActionForm.title}
                                   onChange={(e) => setEditActionForm({ ...editActionForm, title: e.target.value })}
-                                  style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                                  style={{ fontSize: '0.82rem' }}
                                 />
                                 <select
+                                  className="input"
                                   value={editActionForm.type}
                                   onChange={(e) => setEditActionForm({ ...editActionForm, type: e.target.value })}
-                                  style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                                  style={{ fontSize: '0.82rem' }}
                                 >
                                   {Object.entries(ACTION_TYPE_LABEL).map(([val, label]) => (
                                     <option key={val} value={val}>{label}</option>
                                   ))}
                                 </select>
                                 <input
+                                  className="input"
                                   type="date"
                                   value={editActionForm.dueDate}
                                   onChange={(e) => setEditActionForm({ ...editActionForm, dueDate: e.target.value })}
-                                  style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                                  style={{ fontSize: '0.82rem' }}
                                 />
                               </div>
                               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
@@ -921,19 +981,21 @@ export default function DesarrolloPage() {
                   <form onSubmit={handleAddComment} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <select
+                        className="input"
                         value={commentType}
                         onChange={(e) => setCommentType(e.target.value)}
-                        style={{ padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', width: '160px' }}
+                        style={{ fontSize: '0.82rem', width: '160px' }}
                       >
                         {Object.entries(COMMENT_TYPE_LABEL).map(([val, label]) => (
                           <option key={val} value={val}>{label}</option>
                         ))}
                       </select>
                       <input
+                        className="input"
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
                         placeholder="Escribir un comentario..."
-                        style={{ flex: 1, padding: '0.4rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+                        style={{ flex: 1, fontSize: '0.82rem' }}
                       />
                       <button type="submit" className="btn-primary" style={{ fontSize: '0.78rem' }} disabled={addingComment || !commentText.trim()}>
                         {addingComment ? '...' : 'Enviar'}

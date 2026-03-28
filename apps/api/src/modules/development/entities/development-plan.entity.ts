@@ -14,6 +14,7 @@ import { User } from '../../users/entities/user.entity';
 import { EvaluationCycle } from '../../evaluations/entities/evaluation-cycle.entity';
 import { DevelopmentAction } from './development-action.entity';
 import { DevelopmentComment } from './development-comment.entity';
+import { OrgDevelopmentInitiative } from '../../org-development/entities/org-development-initiative.entity';
 
 @Entity('development_plans')
 @Index('idx_devplan_tenant_user', ['tenantId', 'userId'])
@@ -72,6 +73,14 @@ export class DevelopmentPlan {
 
   @Column({ type: 'int', default: 0 })
   progress: number;
+
+  /** Vinculación opcional a una iniciativa del Plan de Desarrollo Organizacional */
+  @Column({ type: 'uuid', name: 'org_initiative_id', nullable: true })
+  orgInitiativeId: string | null;
+
+  @ManyToOne(() => OrgDevelopmentInitiative, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'org_initiative_id' })
+  orgInitiative: OrgDevelopmentInitiative | null;
 
   @OneToMany(() => DevelopmentAction, (a) => a.plan, { cascade: true })
   actions: DevelopmentAction[];

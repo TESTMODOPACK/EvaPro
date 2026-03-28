@@ -64,6 +64,16 @@ const icons = {
       <path d="M12 22V8" /><path d="M5 12H2a10 10 0 0 0 20 0h-3" /><path d="M8 5.2C9.2 3.8 10.5 3 12 3c1.5 0 2.8.8 4 2.2" /><path d="M12 8a4.5 4.5 0 0 0-4.5 4.5" /><path d="M12 8a4.5 4.5 0 0 1 4.5 4.5" />
     </svg>
   ),
+  orgDevelopment: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="6" height="6" rx="1"/>
+      <rect x="16" y="3" width="6" height="6" rx="1"/>
+      <rect x="9" y="15" width="6" height="6" rx="1"/>
+      <line x1="5" y1="9" x2="5" y2="12"/><line x1="19" y1="9" x2="19" y2="12"/>
+      <line x1="5" y1="12" x2="12" y2="12"/><line x1="19" y1="12" x2="12" y2="12"/>
+      <line x1="12" y1="12" x2="12" y2="15"/>
+    </svg>
+  ),
   objectives: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
@@ -147,6 +157,7 @@ const tenantNavSections: NavSection[] = [
     items: [
       { href: '/dashboard/talento', label: 'Mapa de Talento', icon: icons.talent },
       { href: '/dashboard/desarrollo', label: 'Planes de Desarrollo', icon: icons.development },
+      { href: '/dashboard/desarrollo-organizacional', label: 'Plan Organizacional', icon: icons.orgDevelopment },
     ],
   },
   {

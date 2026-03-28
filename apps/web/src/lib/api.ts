@@ -573,6 +573,31 @@ export const api = {
     suggest: (token: string, userId: string, cycleId: string) => request<any>(`/development/suggest/${userId}/${cycleId}`, {}, token),
   },
 
+  orgDevelopment: {
+    plans: {
+      list: (token: string) => request<any[]>("/org-development/plans", {}, token),
+      create: (token: string, data: any) => request<any>("/org-development/plans", { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) => request<any>(`/org-development/plans/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      delete: (token: string, id: string) => request<void>(`/org-development/plans/${id}`, { method: "DELETE" }, token),
+    },
+    initiatives: {
+      listByPlan: (token: string, planId: string) => request<any[]>(`/org-development/plans/${planId}/initiatives`, {}, token),
+      create: (token: string, planId: string, data: any) => request<any>(`/org-development/plans/${planId}/initiatives`, { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) => request<any>(`/org-development/initiatives/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      delete: (token: string, id: string) => request<void>(`/org-development/initiatives/${id}`, { method: "DELETE" }, token),
+      linkedPdis: (token: string, id: string) => request<any[]>(`/org-development/initiatives/${id}/pdis`, {}, token),
+    },
+    actions: {
+      create: (token: string, initiativeId: string, data: any) => request<any>(`/org-development/initiatives/${initiativeId}/actions`, { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) => request<any>(`/org-development/actions/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      delete: (token: string, id: string) => request<void>(`/org-development/actions/${id}`, { method: "DELETE" }, token),
+    },
+    activeInitiatives: (token: string, dept?: string) => {
+      const qs = dept ? `?dept=${encodeURIComponent(dept)}` : '';
+      return request<any[]>(`/org-development/active-initiatives${qs}`, {}, token);
+    },
+  },
+
   health: {
     check: () => request<{ status: string }>("/"),
   },
