@@ -16,10 +16,40 @@ const CAUSALS = [
   'Otro',
 ];
 
+const STATUS_ROW_ACCENT: Record<string, string> = {
+  pending: 'var(--warning)',
+  discussed: 'var(--accent)',
+  agreed: 'var(--success)',
+  adjusted: 'var(--accent)',
+  approved: 'var(--success)',
+};
+
 function Spinner() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
       <span className="spinner" />
+    </div>
+  );
+}
+
+function ScoreDelta({ original, adjusted }: { original: number | null; adjusted: number | '' }) {
+  const orig = original ?? null;
+  const adj = adjusted === '' ? null : Number(adjusted);
+  if (orig === null) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  const delta = adj !== null ? adj - orig : 0;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{Number(orig).toFixed(1)}</span>
+      {adj !== null && delta !== 0 && (
+        <span style={{
+          fontSize: '0.72rem', fontWeight: 700,
+          color: delta > 0 ? 'var(--success)' : 'var(--danger)',
+          background: delta > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+          padding: '0.1rem 0.3rem', borderRadius: '4px',
+        }}>
+          {delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}
+        </span>
+      )}
     </div>
   );
 }
@@ -40,7 +70,12 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   }>>({});
   const [savingEntry, setSavingEntry] = useState<string | null>(null);
 
-  const presetCausals = CAUSALS.slice(0, -1); // all except 'Otro'
+  // Filters & grouping
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [collapsedDepts, setCollapsedDepts] = useState<Set<string>>(new Set());
+
+  const presetCausals = CAUSALS.slice(0, -1);
 
   async function fetchSession() {
     if (!token) return;
@@ -88,7 +123,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       await api.talent.calibration.updateEntry(token, entryId, {
         adjustedScore: e.adjustedScore === '' ? null : Number(e.adjustedScore),
         adjustedPotential: e.adjustedPotential === '' ? null : Number(e.adjustedPotential),
-        rationale: e.rationale,
+        rationale: e.rationaleType === 'Otro' ? e.rationale : e.rationaleType,
       });
       await fetchSession();
     } catch { /* ignore */ }
@@ -101,64 +136,129 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
     try {
       await api.talent.calibration.complete(token, params.id);
       await fetchSession();
-      setSuccessMsg(`Sesión de calibración completada exitosamente. Los ajustes se aplicaron a la Matriz Nine Box.`);
+      setSuccessMsg(`Sesión de calibración completada. Los ajustes se aplicaron a la Matriz Nine Box.`);
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch { /* ignore */ }
     setCompleting(false);
   }
 
   function updateEntry(entryId: string, field: string, value: any) {
-    setEditState((prev) => ({
-      ...prev,
-      [entryId]: { ...prev[entryId], [field]: value },
-    }));
+    setEditState((prev) => ({ ...prev, [entryId]: { ...prev[entryId], [field]: value } }));
+  }
+
+  function toggleDept(dept: string) {
+    setCollapsedDepts((prev) => {
+      const next = new Set(prev);
+      if (next.has(dept)) next.delete(dept); else next.add(dept);
+      return next;
+    });
   }
 
   if (!token) return null;
   if (loading) return <Spinner />;
   if (!session) {
     return (
-      <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
-        <div className="animate-fade-up" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          {`No se encontró la sesión de calibración.`}
+      <div style={{ padding: '2rem 2.5rem' }}>
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+          No se encontró la sesión de calibración.
         </div>
       </div>
     );
   }
 
-  const entries = session.entries || [];
+  const entries: any[] = session.entries || [];
   const isReadOnly = session.status === 'completed';
 
+  // Stats
+  const totalEntries = entries.length;
+  const pendingCount = entries.filter((e) => e.status === 'pending').length;
+  const adjustedCount = entries.filter((e) => e.status !== 'pending').length;
+  const progressPct = totalEntries > 0 ? Math.round((adjustedCount / totalEntries) * 100) : 0;
+
+  // Filter
+  const filtered = entries.filter((e) => {
+    const u = e.user || {};
+    const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+    const q = search.toLowerCase();
+    const matchSearch = !q || name.includes(q) || (u.department || '').toLowerCase().includes(q) || (u.position || '').toLowerCase().includes(q);
+    const matchStatus = statusFilter === 'all' || e.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  // Group by department
+  const deptOrder: string[] = [];
+  const grouped: Record<string, any[]> = {};
+  for (const e of filtered) {
+    const dept = e.user?.department || 'Sin departamento';
+    if (!grouped[dept]) { grouped[dept] = []; deptOrder.push(dept); }
+    grouped[dept].push(e);
+  }
+
+  const colCount = isReadOnly ? 6 : 7;
+
   return (
-    <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1300px' }}>
     <div className="animate-fade-up">
+
       {/* Header */}
-      <div style={{ marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{session.name}</h1>
-              <span className={`badge ${STATUS_BADGE[session.status] || 'badge-accent'}`}>
-                {STATUS_LABEL[session.status] || session.status}
-              </span>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{session.name}</h1>
+            <span className={`badge ${STATUS_BADGE[session.status] || 'badge-accent'}`}>
+              {STATUS_LABEL[session.status] || session.status}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+            {session.cycle && <span>Ciclo: <strong>{session.cycle.name}</strong></span>}
+            {session.department && <span>Departamento: <strong>{session.department}</strong></span>}
+            {session.moderator && <span>Moderador: <strong>{session.moderator.firstName} {session.moderator.lastName}</strong></span>}
+          </div>
+        </div>
+        {entries.length > 0 && session.status === 'in_progress' && (
+          <button className="btn-primary" onClick={handleComplete} disabled={completing}
+            style={{ background: 'var(--success)', padding: '.6rem 1.5rem', flexShrink: 0 }}>
+            {completing ? 'Completando...' : 'Completar calibración'}
+          </button>
+        )}
+      </div>
+
+      {/* Progress summary */}
+      {entries.length > 0 && (
+        <div className="card" style={{ padding: '1.25rem 1.5rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', flex: 1 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{totalEntries}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Total</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--warning)' }}>{pendingCount}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Pendientes</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--success)' }}>{adjustedCount}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Revisados</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{deptOrder.length || Object.keys(grouped).length || new Set(entries.map((e) => e.user?.department || 'Sin departamento')).size}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Departamentos</div>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-              {session.cycle && <span>{`Ciclo: `}<strong>{session.cycle.name}</strong></span>}
-              {session.department && <span>{`Departamento: `}<strong>{session.department}</strong></span>}
-              {session.moderator && <span>{`Moderador: `}<strong>{session.moderator.firstName} {session.moderator.lastName}</strong></span>}
+            <div style={{ flex: 2, minWidth: '200px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Progreso de revisión</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: progressPct === 100 ? 'var(--success)' : 'var(--accent)' }}>{progressPct}%</span>
+              </div>
+              <div style={{ height: '8px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
+                <div style={{ width: `${progressPct}%`, height: '100%', background: progressPct === 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '999px', transition: 'width 0.5s ease' }} />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Info hint */}
-      <div className="card" style={{ padding: '0.875rem 1rem', background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
-        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          {`Ajusta los puntajes de desempeño y potencial de cada colaborador. Al completar la sesión, los puntajes ajustados se aplicarán automáticamente a la Matriz Nine Box y se recalculará la clasificación de talento.`}
-        </p>
-      </div>
-
-      {/* Read-only notice */}
+      {/* Notices */}
       {isReadOnly && (
         <div className="card" style={{ padding: '0.875rem 1rem', background: 'rgba(245,158,11,0.08)', borderLeft: '4px solid var(--warning)', marginBottom: '1.5rem' }}>
           <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
@@ -166,20 +266,16 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
           </p>
         </div>
       )}
-
-      {/* Success message */}
       {successMsg && (
         <div className="card animate-fade-up" style={{ background: 'var(--success)', color: '#fff', marginBottom: '1rem', padding: '.75rem 1rem', fontWeight: 600 }}>
           {successMsg}
         </div>
       )}
 
-      {/* Empty state: populate */}
+      {/* Empty state */}
       {entries.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            {`No hay participantes cargados en esta sesión.`}
-          </p>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>No hay participantes cargados en esta sesión.</p>
           {!isReadOnly && (
             <button className="btn-primary" onClick={handlePopulate} disabled={populating}>
               {populating ? 'Cargando participantes...' : 'Cargar participantes'}
@@ -188,131 +284,220 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
         </div>
       )}
 
-      {/* Entries table */}
+      {/* Filter bar */}
       {entries.length > 0 && (
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Colaborador</th>
-                <th>Departamento</th>
-                <th>{`Desempeño Original`}</th>
-                <th>{`Desempeño Ajustado`}</th>
-                <th>Potencial Original</th>
-                <th>Potencial Ajustado</th>
-                <th>{`Causal del ajuste`}</th>
-                <th>Estado</th>
-                {!isReadOnly && <th>{`Acción`}</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry: any) => {
-                const u = entry.user || {};
-                const es = editState[entry.id] || { adjustedScore: '', adjustedPotential: '', rationale: '', rationaleType: '' };
-                const isSaving = savingEntry === entry.id;
-                return (
-                  <tr key={entry.id}>
-                    <td style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
-                    <td>{u.department || '—'}</td>
-                    <td>{entry.originalScore ?? '—'}</td>
-                    <td>
-                      <input
-                        className="input"
-                        type="number"
-                        min={0}
-                        max={10}
-                        step={0.5}
-                        value={es.adjustedScore}
-                        disabled={isReadOnly}
-                        onChange={(e) => updateEntry(entry.id, 'adjustedScore', e.target.value === '' ? '' : +e.target.value)}
-                        style={{ width: '70px', fontSize: '0.85rem', cursor: isReadOnly ? 'not-allowed' : undefined, opacity: isReadOnly ? 0.7 : 1 }}
-                      />
-                    </td>
-                    <td>{entry.originalPotential ?? '—'}</td>
-                    <td>
-                      <input
-                        className="input"
-                        type="number"
-                        min={0}
-                        max={10}
-                        step={0.5}
-                        value={es.adjustedPotential}
-                        disabled={isReadOnly}
-                        onChange={(e) => updateEntry(entry.id, 'adjustedPotential', e.target.value === '' ? '' : +e.target.value)}
-                        style={{ width: '70px', fontSize: '0.85rem', cursor: isReadOnly ? 'not-allowed' : undefined, opacity: isReadOnly ? 0.7 : 1 }}
-                      />
-                    </td>
-                    <td>
-                      <div style={{ minWidth: '180px' }}>
-                        <select
-                          className="input"
-                          value={es.rationaleType}
-                          disabled={isReadOnly}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setEditState((prev) => ({
-                              ...prev,
-                              [entry.id]: {
-                                ...prev[entry.id],
-                                rationaleType: v,
-                                rationale: v !== 'Otro' ? v : prev[entry.id].rationale,
-                              },
-                            }));
-                          }}
-                          style={{ width: '100%', fontSize: '0.85rem', cursor: isReadOnly ? 'not-allowed' : undefined, opacity: isReadOnly ? 0.7 : 1 }}
-                        >
-                          <option value="">Seleccionar causal...</option>
-                          {CAUSALS.map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                        {es.rationaleType === 'Otro' && (
-                          <input
-                            className="input"
-                            type="text"
-                            value={es.rationale}
-                            disabled={isReadOnly}
-                            onChange={(e) => updateEntry(entry.id, 'rationale', e.target.value)}
-                            placeholder="Describe la causal..."
-                            style={{ marginTop: '4px', width: '100%', fontSize: '0.85rem', cursor: isReadOnly ? 'not-allowed' : undefined, opacity: isReadOnly ? 0.7 : 1 }}
-                          />
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`badge ${STATUS_BADGE[entry.status] || 'badge-accent'}`}>
-                        {STATUS_LABEL[entry.status] || entry.status || 'Pendiente'}
-                      </span>
-                    </td>
-                    {!isReadOnly && (
-                      <td>
-                        <button
-                          className="btn-primary"
-                          onClick={() => handleSaveEntry(entry.id)}
-                          disabled={isSaving}
-                          style={{ fontSize: '.8rem', padding: '.35rem .75rem' }}
-                        >
-                          {isSaving ? '...' : 'Guardar'}
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            className="input"
+            type="text"
+            placeholder="Buscar por nombre, cargo o departamento..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ flex: 1, minWidth: '220px', fontSize: '0.875rem' }}
+          />
+          <select
+            className="input"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{ fontSize: '0.875rem', minWidth: '160px' }}
+          >
+            <option value="all">Todos los estados</option>
+            <option value="pending">Pendientes</option>
+            <option value="discussed">En discusión</option>
+            <option value="agreed">Acordados</option>
+            <option value="adjusted">Ajustados</option>
+            <option value="approved">Aprobados</option>
+          </select>
+          {(search || statusFilter !== 'all') && (
+            <button className="btn-ghost" style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+              onClick={() => { setSearch(''); setStatusFilter('all'); }}>
+              Limpiar filtros
+            </button>
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+            <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setCollapsedDepts(new Set())}>
+              Expandir todo
+            </button>
+            <button className="btn-ghost" style={{ fontSize: '0.78rem' }}
+              onClick={() => setCollapsedDepts(new Set(deptOrder))}>
+              Colapsar todo
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Complete button */}
-      {entries.length > 0 && session.status === 'in_progress' && (
-        <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn-primary" onClick={handleComplete} disabled={completing}
-            style={{ background: 'var(--success)', padding: '.6rem 1.5rem' }}>
-            {completing ? 'Completando...' : `Completar calibración`}
-          </button>
+      {/* Grouped table */}
+      {entries.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {deptOrder.length === 0 && (
+            <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+              Sin resultados para los filtros aplicados.
+            </div>
+          )}
+
+          {deptOrder.map((dept) => {
+            const deptEntries = grouped[dept];
+            const isCollapsed = collapsedDepts.has(dept);
+            const deptPending = deptEntries.filter((e) => e.status === 'pending').length;
+            const deptAdjusted = deptEntries.length - deptPending;
+            const deptPct = deptEntries.length > 0 ? Math.round((deptAdjusted / deptEntries.length) * 100) : 0;
+
+            return (
+              <div key={dept} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+
+                {/* Department header */}
+                <div
+                  onClick={() => toggleDept(dept)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    padding: '0.875rem 1.25rem',
+                    background: 'var(--bg-surface)',
+                    borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
+                    cursor: 'pointer', userSelect: 'none',
+                  }}
+                >
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', transition: 'transform 0.2s', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{dept}</span>
+                  <span className="badge badge-ghost" style={{ fontSize: '0.72rem' }}>{deptEntries.length} persona{deptEntries.length !== 1 ? 's' : ''}</span>
+                  {deptPending > 0 && <span className="badge badge-warning" style={{ fontSize: '0.72rem' }}>{deptPending} pendiente{deptPending !== 1 ? 's' : ''}</span>}
+                  {deptPct === 100 && <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>✓ Completado</span>}
+                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '120px' }}>
+                    <div style={{ flex: 1, height: '5px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden' }}>
+                      <div style={{ width: `${deptPct}%`, height: '100%', background: deptPct === 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '999px' }} />
+                    </div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', minWidth: '28px', textAlign: 'right' }}>{deptPct}%</span>
+                  </div>
+                </div>
+
+                {/* Entries table */}
+                {!isCollapsed && (
+                  <div className="table-wrapper" style={{ margin: 0 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Colaborador</th>
+                          <th style={{ whiteSpace: 'nowrap' }}>Desempeño</th>
+                          <th style={{ whiteSpace: 'nowrap' }}>Potencial</th>
+                          <th>Causal del ajuste</th>
+                          <th>Estado</th>
+                          {!isReadOnly && <th></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deptEntries.map((entry: any) => {
+                          const u = entry.user || {};
+                          const es = editState[entry.id] || { adjustedScore: '', adjustedPotential: '', rationale: '', rationaleType: '' };
+                          const isSaving = savingEntry === entry.id;
+                          const rowAccent = STATUS_ROW_ACCENT[entry.status] || 'var(--border)';
+
+                          return (
+                            <tr key={entry.id} style={{ borderLeft: `3px solid ${rowAccent}` }}>
+                              {/* Colaborador */}
+                              <td>
+                                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{u.firstName} {u.lastName}</div>
+                                {u.position && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{u.position}</div>}
+                              </td>
+
+                              {/* Desempeño: original → ajustado */}
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <ScoreDelta original={entry.originalScore} adjusted={es.adjustedScore} />
+                                  <input
+                                    className="input"
+                                    type="number" min={0} max={10} step={0.5}
+                                    value={es.adjustedScore}
+                                    disabled={isReadOnly}
+                                    onChange={(e) => updateEntry(entry.id, 'adjustedScore', e.target.value === '' ? '' : +e.target.value)}
+                                    style={{ width: '64px', fontSize: '0.85rem', opacity: isReadOnly ? 0.7 : 1, cursor: isReadOnly ? 'not-allowed' : undefined }}
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Potencial: original → ajustado */}
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <ScoreDelta original={entry.originalPotential} adjusted={es.adjustedPotential} />
+                                  <input
+                                    className="input"
+                                    type="number" min={0} max={10} step={0.5}
+                                    value={es.adjustedPotential}
+                                    disabled={isReadOnly}
+                                    onChange={(e) => updateEntry(entry.id, 'adjustedPotential', e.target.value === '' ? '' : +e.target.value)}
+                                    style={{ width: '64px', fontSize: '0.85rem', opacity: isReadOnly ? 0.7 : 1, cursor: isReadOnly ? 'not-allowed' : undefined }}
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Causal */}
+                              <td>
+                                <div style={{ minWidth: '200px' }}>
+                                  <select
+                                    className="input"
+                                    value={es.rationaleType}
+                                    disabled={isReadOnly}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      setEditState((prev) => ({
+                                        ...prev,
+                                        [entry.id]: {
+                                          ...prev[entry.id],
+                                          rationaleType: v,
+                                          rationale: v !== 'Otro' ? v : prev[entry.id].rationale,
+                                        },
+                                      }));
+                                    }}
+                                    style={{ width: '100%', fontSize: '0.85rem', opacity: isReadOnly ? 0.7 : 1, cursor: isReadOnly ? 'not-allowed' : undefined }}
+                                  >
+                                    <option value="">Seleccionar causal...</option>
+                                    {CAUSALS.map((c) => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                  {es.rationaleType === 'Otro' && (
+                                    <input
+                                      className="input"
+                                      type="text"
+                                      value={es.rationale}
+                                      disabled={isReadOnly}
+                                      onChange={(e) => updateEntry(entry.id, 'rationale', e.target.value)}
+                                      placeholder="Describe la causal..."
+                                      style={{ marginTop: '4px', width: '100%', fontSize: '0.85rem', opacity: isReadOnly ? 0.7 : 1 }}
+                                    />
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Estado */}
+                              <td>
+                                <span className={`badge ${STATUS_BADGE[entry.status] || 'badge-accent'}`}>
+                                  {STATUS_LABEL[entry.status] || entry.status || 'Pendiente'}
+                                </span>
+                              </td>
+
+                              {/* Acción */}
+                              {!isReadOnly && (
+                                <td>
+                                  <button
+                                    className="btn-primary"
+                                    onClick={() => handleSaveEntry(entry.id)}
+                                    disabled={isSaving}
+                                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap' }}
+                                  >
+                                    {isSaving ? '...' : 'Guardar'}
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
+
     </div>
     </div>
   );
