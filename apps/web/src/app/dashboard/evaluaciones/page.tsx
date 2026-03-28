@@ -367,7 +367,7 @@ function AdminEvaluationsView() {
                     {cycle.name}
                   </h3>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                    {startDate} \u2014 {endDate}
+                    {startDate}{' \u2014 '}{endDate}
                   </p>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
                     {totalEval} evaluado{totalEval !== 1 ? 's' : ''}
