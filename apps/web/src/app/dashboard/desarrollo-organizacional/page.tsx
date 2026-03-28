@@ -422,17 +422,19 @@ export default function DesarrolloOrganizacionalPage() {
                   onChange={(e) => setPlanForm({ ...planForm, year: Number(e.target.value) })}
                 />
               </div>
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                  Estado
-                </label>
-                <select className="input" value={planForm.status} onChange={(e) => setPlanForm({ ...planForm, status: e.target.value })}>
-                  <option value="borrador">Borrador</option>
-                  <option value="activo">Activo</option>
-                  <option value="completado">Completado</option>
-                  <option value="cancelado">Cancelado</option>
-                </select>
-              </div>
+              {editingPlanId && (
+                <div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                    Estado
+                  </label>
+                  <select className="input" value={planForm.status} onChange={(e) => setPlanForm({ ...planForm, status: e.target.value })}>
+                    <option value="borrador">Borrador</option>
+                    <option value="activo">Activo</option>
+                    <option value="completado">Completado</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+              )}
             </div>
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
