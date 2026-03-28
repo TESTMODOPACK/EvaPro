@@ -81,18 +81,28 @@ export const calibrationStatusBadge: Record<string, string> = {
 
 export const calibrationEntryStatusLabel: Record<string, string> = {
   pending: 'Pendiente',
+  discussed: 'En discusión',
+  agreed: 'Acordado',
   adjusted: 'Ajustado',
   approved: 'Aprobado',
   draft: 'Borrador',
   in_progress: 'En progreso',
   completed: 'Completada',
+  not_required: 'No requiere',
+  pending_approval: 'Aprobación pendiente',
+  rejected: 'Rechazado',
 };
 
 export const calibrationEntryStatusBadge: Record<string, string> = {
   pending: 'badge-warning',
+  discussed: 'badge-accent',
+  agreed: 'badge-success',
   adjusted: 'badge-accent',
   approved: 'badge-success',
   draft: 'badge-warning',
   in_progress: 'badge-accent',
   completed: 'badge-success',
+  not_required: 'badge-ghost',
+  pending_approval: 'badge-warning',
+  rejected: 'badge-danger',
 };

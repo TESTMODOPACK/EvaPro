@@ -984,10 +984,10 @@ export default function SubscriptionsPage() {
                             </span>
                           </td>
                           <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                            {sub.startDate ? new Date(sub.startDate).toLocaleDateString('es-ES') : '-'}
+                            {sub.startDate ? new Date(sub.startDate).toLocaleDateString('es-CL') : '-'}
                           </td>
                           <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                            {sub.endDate ? new Date(sub.endDate).toLocaleDateString('es-ES') : '-'}
+                            {sub.endDate ? new Date(sub.endDate).toLocaleDateString('es-CL') : '-'}
                           </td>
                           <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {sub.notes ?? '-'}

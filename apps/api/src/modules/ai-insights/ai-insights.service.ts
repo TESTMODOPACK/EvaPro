@@ -17,7 +17,7 @@ import { buildSummaryPrompt } from './prompts/summary.prompt';
 import { buildBiasPrompt } from './prompts/bias.prompt';
 import { buildSuggestionsPrompt } from './prompts/suggestions.prompt';
 
-const MODEL = 'claude-3-5-haiku-20241022';
+const MODEL = 'claude-haiku-4-5';
 const CACHE_DAYS = 7;
 const MAX_CALLS_PER_TENANT_PER_DAY = 50;
 

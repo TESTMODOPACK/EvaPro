@@ -57,6 +57,12 @@ const TOTAL_STEPS = 5;
 // ─── Step components ─────────────────────────────────────────────────────────
 
 function StepEmpresa({ state, onChange }: { state: WizardState; onChange: (k: keyof WizardState, v: any) => void }) {
+  const readonlyStyle: React.CSSProperties = {
+    width: '100%', padding: '0.65rem 0.9rem', fontSize: '0.9rem',
+    background: 'var(--bg-surface)', border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)',
+    boxSizing: 'border-box', cursor: 'not-allowed', opacity: 0.85,
+  };
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '0.65rem 0.9rem', fontSize: '0.9rem',
     background: 'var(--bg-surface)', border: '1.5px solid var(--border)',
@@ -67,25 +73,59 @@ function StepEmpresa({ state, onChange }: { state: WizardState; onChange: (k: ke
     fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)',
     marginBottom: '0.35rem', display: 'block',
   };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <div>
-        <label style={labelStyle}>Nombre de la empresa *</label>
-        <input style={inputStyle} value={state.orgName} onChange={(e) => onChange('orgName', e.target.value)} placeholder="Ej: Empresa ABC Ltda." />
+
+      {/* Info note */}
+      <div style={{
+        padding: '0.65rem 0.9rem', background: 'rgba(99,102,241,0.05)',
+        border: '1px solid rgba(99,102,241,0.15)', borderRadius: 'var(--radius-sm)',
+        fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6,
+        display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+      }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        Los datos de tu organización están cargados desde el registro. Puedes modificarlos en <strong>Configuración → Organización</strong>.
       </div>
+
       <div>
-        <label style={labelStyle}>RUT de la empresa</label>
-        <input style={inputStyle} value={state.orgRut} onChange={(e) => onChange('orgRut', e.target.value)} placeholder="Ej: 76.123.456-7" />
+        <label style={labelStyle}>
+          Nombre de la empresa
+          <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>— desde el sistema</span>
+        </label>
+        <input
+          style={readonlyStyle}
+          value={state.orgName}
+          readOnly
+          tabIndex={-1}
+        />
       </div>
+
       <div>
-        <label style={labelStyle}>Industria</label>
+        <label style={labelStyle}>
+          RUT de la empresa
+          <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>— desde el sistema</span>
+        </label>
+        <input
+          style={readonlyStyle}
+          value={state.orgRut || 'No registrado'}
+          readOnly
+          tabIndex={-1}
+        />
+      </div>
+
+      <div>
+        <label style={labelStyle}>Industria <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span></label>
         <select style={inputStyle} value={state.orgIndustry} onChange={(e) => onChange('orgIndustry', e.target.value)}>
           <option value="">Seleccionar industria...</option>
           {INDUSTRY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </div>
+
       <div>
-        <label style={labelStyle}>Tamaño del equipo</label>
+        <label style={labelStyle}>Tamaño del equipo <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span></label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
           {SIZE_OPTIONS.map((o) => (
             <button
@@ -335,6 +375,7 @@ export default function OnboardingPage() {
   const token = useAuthStore((s) => s.token);
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [loadingTenant, setLoadingTenant] = useState(true);
   const [state, setState] = useState<WizardState>({
     orgName: '', orgRut: '', orgIndustry: '', orgSize: '',
     teamEmails: '',
@@ -343,6 +384,24 @@ export default function OnboardingPage() {
     templateName: 'Evaluación básica', templateReady: true,
     cycleName: '',
   });
+
+  // Load tenant data to pre-populate Step 1
+  useEffect(() => {
+    if (!token) return;
+    api.tenants.me(token)
+      .then((tenant: any) => {
+        setState((prev) => ({
+          ...prev,
+          orgName: tenant.name || prev.orgName,
+          orgRut: tenant.rut || prev.orgRut,
+          // industry/size from settings if previously saved
+          orgIndustry: tenant.settings?.industry || prev.orgIndustry,
+          orgSize: tenant.settings?.size || prev.orgSize,
+        }));
+      })
+      .catch(() => { /* silently ignore — form stays empty */ })
+      .finally(() => setLoadingTenant(false));
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onChange = (key: keyof WizardState, value: any) => {
     setState((prev) => ({ ...prev, [key]: value }));
@@ -357,8 +416,8 @@ export default function OnboardingPage() {
   ];
 
   const canNext = () => {
-    if (step === 0) return state.orgName.trim().length > 0;
-    return true;
+    // Step 1 is always valid — orgName comes pre-loaded from the system
+    return !loadingTenant;
   };
 
   const handleFinish = async () => {
@@ -376,6 +435,14 @@ export default function OnboardingPage() {
   };
 
   const currentStep = steps[step];
+
+  if (loadingTenant && step === 0) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)' }}>
+        <span className="spinner" />
+      </div>
+    );
+  }
 
   return (
     <div style={{

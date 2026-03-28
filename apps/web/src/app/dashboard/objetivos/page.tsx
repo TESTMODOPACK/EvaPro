@@ -68,7 +68,7 @@ const commentTypeBadge: Record<string, string> = {
 
 const commentTypeLabel: Record<string, string> = {
   comentario: 'Comentario',
-  felicitacion: 'Felicitacion',
+  felicitacion: 'Felicitación',
   seguimiento: 'Seguimiento',
   adjunto: 'Adjunto',
 };
@@ -86,11 +86,11 @@ function daysUntil(targetDate: string | null): number | null {
 /** Returns deadline alert config based on days remaining */
 function deadlineAlert(days: number | null, status: string): { color: string; text: string; icon: string } | null {
   if (days === null || status === 'completed' || status === 'abandoned') return null;
-  if (days < 0) return { color: 'var(--danger)', text: `Vencido hace ${Math.abs(days)} dia${Math.abs(days) !== 1 ? 's' : ''}`, icon: '!' };
+  if (days < 0) return { color: 'var(--danger)', text: `Vencido hace ${Math.abs(days)} día${Math.abs(days) !== 1 ? 's' : ''}`, icon: '!' };
   if (days === 0) return { color: 'var(--danger)', text: 'Vence hoy', icon: '!' };
-  if (days <= 3) return { color: 'var(--danger)', text: `Vence en ${days} dia${days !== 1 ? 's' : ''}`, icon: '!' };
-  if (days <= 7) return { color: 'var(--warning)', text: `Vence en ${days} dias`, icon: '~' };
-  if (days <= 15) return { color: '#f59e0b', text: `Vence en ${days} dias`, icon: '' };
+  if (days <= 3) return { color: 'var(--danger)', text: `Vence en ${days} día${days !== 1 ? 's' : ''}`, icon: '!' };
+  if (days <= 7) return { color: 'var(--warning)', text: `Vence en ${days} días`, icon: '~' };
+  if (days <= 15) return { color: '#f59e0b', text: `Vence en ${days} días`, icon: '' };
   return null;
 }
 
@@ -464,25 +464,52 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
 
 function TeamSummaryView() {
   const { data, isLoading } = useTeamObjectivesSummary();
+  const [searchName, setSearchName] = useState('');
+  const [filterDept, setFilterDept] = useState('all');
+  const [filterRisk, setFilterRisk] = useState<'all' | 'at_risk' | 'ok'>('all');
 
   if (isLoading) return <Spinner />;
   if (!data || !data.members || data.members.length === 0) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No hay miembros en tu equipo con objetivos asignados.</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No hay colaboradores con objetivos asignados.</p>
       </div>
     );
   }
 
   const { members, totals } = data;
 
+  // Build unique departments for filter
+  const departments: string[] = Array.from(
+    new Set(members.map((m: any) => m.department).filter(Boolean))
+  ).sort() as string[];
+
+  // Apply filters
+  const filtered = members.filter((m: any) => {
+    if (searchName && !m.userName.toLowerCase().includes(searchName.toLowerCase())) return false;
+    if (filterDept !== 'all' && m.department !== filterDept) return false;
+    if (filterRisk === 'at_risk' && m.atRiskCount === 0) return false;
+    if (filterRisk === 'ok' && m.atRiskCount > 0) return false;
+    return true;
+  });
+
   return (
     <div>
+      {/* Explanation */}
+      <div style={{
+        padding: '0.65rem 0.9rem', marginBottom: '1.25rem',
+        background: 'rgba(99,102,241,0.05)', borderLeft: '3px solid var(--accent)',
+        borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6,
+      }}>
+        Resumen del progreso de objetivos de cada miembro directo de tu equipo.
+        Permite detectar quién está en riesgo de no cumplir sus metas.
+      </div>
+
       {/* Team totals */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{totals.totalMembers}</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Miembros</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Miembros del equipo</div>
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{totals.totalObjectives}</div>
@@ -498,37 +525,105 @@ function TeamSummaryView() {
         </div>
       </div>
 
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          type="text"
+          placeholder="Buscar colaborador..."
+          value={searchName}
+          onChange={(e) => setSearchName(e.target.value)}
+          style={{
+            padding: '0.4rem 0.75rem', fontSize: '0.82rem',
+            border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+            background: 'var(--bg-surface)', color: 'var(--text-primary)',
+            minWidth: '200px',
+          }}
+        />
+        {departments.length > 0 && (
+          <select
+            value={filterDept}
+            onChange={(e) => setFilterDept(e.target.value)}
+            style={{
+              padding: '0.4rem 0.75rem', fontSize: '0.82rem',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-surface)', color: 'var(--text-primary)',
+            }}
+          >
+            <option value="all">Todos los departamentos</option>
+            {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
+        <select
+          value={filterRisk}
+          onChange={(e) => setFilterRisk(e.target.value as any)}
+          style={{
+            padding: '0.4rem 0.75rem', fontSize: '0.82rem',
+            border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+            background: 'var(--bg-surface)', color: 'var(--text-primary)',
+          }}
+        >
+          <option value="all">Todos los estados</option>
+          <option value="at_risk">En riesgo</option>
+          <option value="ok">Sin riesgo</option>
+        </select>
+        {(searchName || filterDept !== 'all' || filterRisk !== 'all') && (
+          <button
+            className="btn-ghost"
+            style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem' }}
+            onClick={() => { setSearchName(''); setFilterDept('all'); setFilterRisk('all'); }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {filtered.length} de {members.length} miembro{members.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
       {/* Per-member cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
-        {members.map((m: any) => {
-          const color = progressColor(m.avgProgress);
-          return (
-            <div key={m.userId} className="card" style={{ padding: '1rem', borderLeft: m.atRiskCount > 0 ? '3px solid var(--danger)' : undefined }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>{m.userName}</div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{m.position || m.department || ''}</div>
+      {filtered.length === 0 ? (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No se encontraron colaboradores con los filtros aplicados.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+          {filtered.map((m: any) => {
+            const color = progressColor(m.avgProgress);
+            return (
+              <div key={m.userId} className="card" style={{ padding: '1rem', borderLeft: m.atRiskCount > 0 ? '3px solid var(--danger)' : undefined }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>{m.userName}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {[m.position, m.department].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                  {m.atRiskCount > 0 && (
+                    <span className="badge badge-danger" style={{ fontSize: '0.68rem' }}>{m.atRiskCount} en riesgo</span>
+                  )}
                 </div>
-                {m.atRiskCount > 0 && (
-                  <span className="badge badge-danger" style={{ fontSize: '0.68rem' }}>{m.atRiskCount} en riesgo</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <div style={{ flex: 1, height: '6px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
+                    <div style={{ width: `${m.avgProgress}%`, height: '100%', borderRadius: '999px', background: color, transition: 'width 0.3s ease' }} />
+                  </div>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color }}>{m.avgProgress}%</span>
+                </div>
+                {m.totalObjectives === 0 ? (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Sin objetivos asignados
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    <span>Activos: {m.activeCount}</span>
+                    <span>Completados: {m.completedCount}</span>
+                    {m.totalWeight > 0 && <span>Peso: {m.totalWeight}%</span>}
+                  </div>
                 )}
               </div>
-              {/* Progress ring (simplified as bar) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <div style={{ flex: 1, height: '6px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
-                  <div style={{ width: `${m.avgProgress}%`, height: '100%', borderRadius: '999px', background: color, transition: 'width 0.3s ease' }} />
-                </div>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color }}>{m.avgProgress}%</span>
-              </div>
-              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                <span>Activos: {m.activeCount}</span>
-                <span>Completados: {m.completedCount}</span>
-                <span>Peso: {m.totalWeight}%</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -562,6 +657,9 @@ export default function ObjetivosPage() {
 
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [userFilter, setUserFilter] = useState<string>('all');
+  const [searchFilter, setSearchFilter] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -595,6 +693,11 @@ export default function ObjetivosPage() {
     uniqueUsers.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  // Dept options for filter dropdown
+  const deptOptions = Array.from(new Set(
+    (objectives || []).map((o: any) => o.user?.department).filter(Boolean)
+  )).sort() as string[];
+
   // Filter objectives
   const filtered = objectives
     ? objectives.filter((o: any) => {
@@ -603,13 +706,23 @@ export default function ObjetivosPage() {
           const uid = o.userId || o.user?.id;
           if (uid !== userFilter) return false;
         }
+        if (typeFilter && o.type !== typeFilter) return false;
+        if (deptFilter && (o.user?.department || '') !== deptFilter) return false;
+        if (searchFilter) {
+          const name = o.user
+            ? `${o.user.firstName || ''} ${o.user.lastName || ''}`.toLowerCase()
+            : '';
+          const title = (o.title || '').toLowerCase();
+          const q = searchFilter.toLowerCase();
+          if (!name.includes(q) && !title.includes(q)) return false;
+        }
         return true;
       })
     : [];
 
   // Title and subtitle based on role
   const pageTitle = isAdmin
-    ? 'Objetivos de la organizacion'
+    ? 'Objetivos de la organización'
     : isManager
       ? 'Objetivos del equipo'
       : 'Mis Objetivos';
@@ -688,7 +801,7 @@ export default function ObjetivosPage() {
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-            {showGuide ? 'Ocultar guia' : 'Como funciona'}
+            {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
           </button>
           {canCreate && (
             <button className="btn-primary" onClick={() => { setShowForm(!showForm); setShowGuide(false); }}>
@@ -706,7 +819,7 @@ export default function ObjetivosPage() {
           borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--warning)',
           lineHeight: 1.5,
         }}>
-          Los objetivos que propongas quedaran en estado &lsquo;Ingresado&rsquo; hasta que tu encargado los apruebe.
+          Los objetivos que propongas quedarán en estado &lsquo;Borrador&rsquo; hasta que tu encargado los apruebe.
         </div>
       )}
 
@@ -714,11 +827,11 @@ export default function ObjetivosPage() {
       {showGuide && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid #6366f1' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: '#6366f1' }}>
-            Guia de uso: Objetivos
+            Guía de uso: Objetivos
           </h3>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
-            Los objetivos permiten definir metas medibles para cada colaborador, alineadas con la estrategia de la organizacion.
-            Se pueden vincular a ciclos de evaluacion para medir el cumplimiento en las revisiones de desempeno.
+            Los objetivos permiten definir metas medibles para cada colaborador, alineadas con la estrategia de la organización.
+            Se pueden vincular a ciclos de evaluación para medir el cumplimiento en las revisiones de desempeño.
           </p>
 
           {/* Types explanation */}
@@ -733,12 +846,12 @@ export default function ObjetivosPage() {
                   <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Meta con resultados clave</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
-                  Define <strong>que quieres lograr</strong> (el objetivo) y <strong>como sabras que lo lograste</strong> (los resultados clave).
+                  Define <strong>qué quieres lograr</strong> (el objetivo) y <strong>cómo sabrás que lo lograste</strong> (los resultados clave).
                   Se usa cuando la meta es grande y necesitas dividirla en pasos medibles.
                 </p>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  <strong style={{ color: '#6366f1' }}>Ejemplo:</strong> &quot;Mejorar la satisfaccion del cliente&quot; con resultados clave como:
-                  aumentar NPS de 60 a 80, reducir tiempo de respuesta a menos de 2 horas, lograr 95% de resolucion en primer contacto.
+                  <strong style={{ color: '#6366f1' }}>Ejemplo:</strong> &quot;Mejorar la satisfacción del cliente&quot; con resultados clave como:
+                  aumentar NPS de 60 a 80, reducir tiempo de respuesta a menos de 2 horas, lograr 95% de resolución en primer contacto.
                 </div>
               </div>
 
@@ -746,15 +859,15 @@ export default function ObjetivosPage() {
               <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   <span className="badge badge-warning">KPI</span>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Indicador numerico de rendimiento</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Indicador numérico de rendimiento</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
-                  Es un <strong>numero que se mide de forma continua</strong> para saber si el trabajo va bien.
-                  Se actualiza periodicamente (semanal, mensual) y permite detectar tendencias.
+                  Es un <strong>número que se mide de forma continua</strong> para saber si el trabajo va bien.
+                  Se actualiza periódicamente (semanal, mensual) y permite detectar tendencias.
                 </p>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(245,158,11,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   <strong style={{ color: '#f59e0b' }}>Ejemplo:</strong> &quot;Ventas mensuales: alcanzar $5.000.000&quot;, &quot;Tickets resueltos por semana: 30&quot;,
-                  &quot;Tasa de retencion de clientes: mantener sobre 90%&quot;.
+                  &quot;Tasa de retención de clientes: mantener sobre 90%&quot;.
                 </div>
               </div>
 
@@ -762,15 +875,15 @@ export default function ObjetivosPage() {
               <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   <span className="badge badge-success">SMART</span>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Tarea concreta con fecha limite</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Tarea concreta con fecha límite</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
-                  Es un objetivo <strong>especifico, medible, alcanzable, relevante y con plazo definido</strong>.
+                  Es un objetivo <strong>específico, medible, alcanzable, relevante y con plazo definido</strong>.
                   Se usa para tareas o proyectos puntuales que tienen un inicio y un fin claro.
                 </p>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(16,185,129,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  <strong style={{ color: '#10b981' }}>Ejemplo:</strong> &quot;Completar la certificacion de seguridad antes del 30 de junio&quot;,
-                  &quot;Implementar el nuevo sistema de facturacion en 3 meses&quot;, &quot;Capacitar a 20 personas en el nuevo proceso antes de diciembre&quot;.
+                  <strong style={{ color: '#10b981' }}>Ejemplo:</strong> &quot;Completar la certificación de seguridad antes del 30 de junio&quot;,
+                  &quot;Implementar el nuevo sistema de facturación en 3 meses&quot;, &quot;Capacitar a 20 personas en el nuevo proceso antes de diciembre&quot;.
                 </div>
               </div>
 
@@ -779,24 +892,24 @@ export default function ObjetivosPage() {
 
           {/* Role permissions */}
           <div style={{ marginBottom: '0.75rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Que puede hacer cada perfil</div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Qué puede hacer cada perfil</div>
             <div className="table-wrapper" style={{ fontSize: '0.78rem' }}>
               <table>
                 <thead>
                   <tr>
-                    <th>Accion</th>
+                    <th>Acción</th>
                     <th>Enc. del Sistema</th>
                     <th>Enc. de Equipo</th>
                     <th>Colaborador</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td>Crear objetivos</td><td style={{ color: 'var(--success)' }}>Si (para cualquiera)</td><td style={{ color: 'var(--success)' }}>Si (para su equipo)</td><td style={{ color: 'var(--success)' }}>Si (proponer propios)</td></tr>
-                  <tr><td>Aprobar objetivos</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si (su equipo)</td><td style={{ color: 'var(--text-muted)' }}>No</td></tr>
+                  <tr><td>Crear objetivos</td><td style={{ color: 'var(--success)' }}>Sí (para cualquiera)</td><td style={{ color: 'var(--success)' }}>Sí (para su equipo)</td><td style={{ color: 'var(--success)' }}>Sí (proponer propios)</td></tr>
+                  <tr><td>Aprobar objetivos</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí (su equipo)</td><td style={{ color: 'var(--text-muted)' }}>No</td></tr>
                   <tr><td>Ver objetivos</td><td style={{ color: 'var(--success)' }}>Todos</td><td style={{ color: 'var(--success)' }}>Su equipo + propios</td><td style={{ color: 'var(--success)' }}>Solo los suyos</td></tr>
-                  <tr><td>Actualizar progreso</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si (solo los suyos)</td></tr>
-                  <tr><td>Comentar</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si</td></tr>
-                  <tr><td>Eliminar objetivos</td><td style={{ color: 'var(--success)' }}>Si</td><td style={{ color: 'var(--success)' }}>Si (su equipo)</td><td style={{ color: 'var(--text-muted)' }}>No</td></tr>
+                  <tr><td>Actualizar progreso</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí (solo los suyos)</td></tr>
+                  <tr><td>Comentar</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí</td></tr>
+                  <tr><td>Eliminar objetivos</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí (su equipo)</td><td style={{ color: 'var(--text-muted)' }}>No</td></tr>
                 </tbody>
               </table>
             </div>
@@ -807,7 +920,7 @@ export default function ObjetivosPage() {
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Flujo de trabajo</div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.78rem' }}>
               {[
-                { step: '1', label: 'Crear / Proponer', desc: 'Se define titulo, tipo y fecha. Queda como Ingresado' },
+                { step: '1', label: 'Crear / Proponer', desc: 'Se define título, tipo y fecha. Queda como Borrador' },
                 { step: '2', label: 'Aprobar', desc: 'El encargado aprueba y pasa a En progreso' },
                 { step: '3', label: 'Avanzar', desc: 'El colaborador actualiza el % de avance' },
                 { step: '4', label: 'Completar', desc: 'Al llegar al 100% se marca como completado' },
@@ -825,8 +938,8 @@ export default function ObjetivosPage() {
         </div>
       )}
 
-      {/* Tabs: Lista / Vista de Equipo (manager/admin) */}
-      {(isAdmin || isManager) && (
+      {/* Tabs: Lista / Resumen del Equipo (manager only — admin uses grouped list) */}
+      {isManager && (
         <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '2px solid var(--border)', paddingBottom: '0' }}>
           <button
             onClick={() => setActiveTab('list')}
@@ -846,19 +959,19 @@ export default function ObjetivosPage() {
               color: activeTab === 'team' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: '-2px',
             }}
           >
-            Vista de Equipo
+            Resumen del Equipo
           </button>
         </div>
       )}
 
-      {/* Team Summary View */}
-      {activeTab === 'team' && (isAdmin || isManager) ? (
+      {/* Team Summary View — managers only */}
+      {activeTab === 'team' && isManager ? (
         <TeamSummaryView />
       ) : (
       <>
 
-      {/* Weight total bar (Item 10) */}
-      {myObjectives.length > 0 && (
+      {/* Weight total bar — only shown when at least one objective has a weight > 0 */}
+      {myObjectives.length > 0 && totalWeight > 0 && (
         <div className="animate-fade-up" style={{
           display: 'flex', alignItems: 'center', gap: '0.75rem',
           padding: '0.6rem 0.9rem', marginBottom: '1rem',
@@ -866,7 +979,7 @@ export default function ObjetivosPage() {
           border: `1px solid ${totalWeight > 100 ? 'rgba(239,68,68,0.2)' : totalWeight === 100 ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`,
           borderRadius: 'var(--radius-sm)', fontSize: '0.8rem',
         }}>
-          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Peso total:</span>
+          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Peso relativo:</span>
           <div style={{ flex: 1, maxWidth: '200px', height: '6px', borderRadius: '999px', background: 'var(--border)' }}>
             <div style={{
               width: `${Math.min(100, totalWeight)}%`, height: '100%', borderRadius: '999px',
@@ -881,36 +994,121 @@ export default function ObjetivosPage() {
             {totalWeight}% / 100%
           </span>
           {totalWeight > 100 && <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>Excede el 100%</span>}
+          {totalWeight < 100 && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>La suma de pesos de tus objetivos no llega al 100%</span>}
         </div>
       )}
 
-      {/* Filter pills + user filter */}
-      <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {filterPills.map((fp) => (
-          <button
-            key={fp.key}
-            className={filter === fp.key ? 'btn-primary' : 'btn-ghost'}
-            style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}
-            onClick={() => setFilter(fp.key)}
-          >
-            {fp.label}
-          </button>
-        ))}
-        {showAssignedTo && uniqueUsers.length > 0 && (
-          <>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: '0 0.25rem' }}>|</span>
+      {/* Filters bar */}
+      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
+        {/* Status pills row */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.75rem' }}>
+          {filterPills.map((fp) => (
+            <button
+              key={fp.key}
+              className={filter === fp.key ? 'btn-primary' : 'btn-ghost'}
+              style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}
+              onClick={() => setFilter(fp.key)}
+            >
+              {fp.label}
+            </button>
+          ))}
+        </div>
+        {/* Search + additional filters (admin/manager) */}
+        {showAssignedTo && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Search by name or title */}
+            <input
+              className="input"
+              type="text"
+              placeholder="Buscar por nombre o título..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', width: '220px' }}
+            />
+            {/* Department filter */}
+            {deptOptions.length > 0 && (
+              <select
+                className="input"
+                value={deptFilter}
+                onChange={(e) => setDeptFilter(e.target.value)}
+                style={{ fontSize: '0.78rem', padding: '0.3rem 0.5rem', width: 'auto' }}
+              >
+                <option value="">Todos los departamentos</option>
+                {deptOptions.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            )}
+            {/* Type filter */}
             <select
               className="input"
-              value={userFilter}
-              onChange={(e) => setUserFilter(e.target.value)}
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
               style={{ fontSize: '0.78rem', padding: '0.3rem 0.5rem', width: 'auto' }}
             >
-              <option value="all">Todos los usuarios</option>
-              {uniqueUsers.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              <option value="">Todos los tipos</option>
+              <option value="OKR">OKR</option>
+              <option value="KPI">KPI</option>
+              <option value="SMART">SMART</option>
             </select>
-          </>
+            {/* User filter */}
+            {uniqueUsers.length > 0 && (
+              <select
+                className="input"
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
+                style={{ fontSize: '0.78rem', padding: '0.3rem 0.5rem', width: 'auto' }}
+              >
+                <option value="all">Todos los colaboradores</option>
+                {uniqueUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            )}
+            {/* Reset filters */}
+            {(searchFilter || deptFilter || typeFilter || userFilter !== 'all') && (
+              <button
+                className="btn-ghost"
+                style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', color: 'var(--text-muted)' }}
+                onClick={() => { setSearchFilter(''); setDeptFilter(''); setTypeFilter(''); setUserFilter('all'); }}
+              >
+                ✕ Limpiar filtros
+              </button>
+            )}
+          </div>
+        )}
+        {/* Employee: search by title + type only */}
+        {!showAssignedTo && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              className="input"
+              type="text"
+              placeholder="Buscar objetivo..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', width: '200px' }}
+            />
+            <select
+              className="input"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              style={{ fontSize: '0.78rem', padding: '0.3rem 0.5rem', width: 'auto' }}
+            >
+              <option value="">Todos los tipos</option>
+              <option value="OKR">OKR</option>
+              <option value="KPI">KPI</option>
+              <option value="SMART">SMART</option>
+            </select>
+            {(searchFilter || typeFilter) && (
+              <button
+                className="btn-ghost"
+                style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', color: 'var(--text-muted)' }}
+                onClick={() => { setSearchFilter(''); setTypeFilter(''); }}
+              >
+                ✕ Limpiar
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -944,12 +1142,12 @@ export default function ObjetivosPage() {
             )}
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Titulo
+                Título
               </label>
               <input
                 className="input"
                 type="text"
-                placeholder="Titulo del objetivo..."
+                placeholder="Título del objetivo..."
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 style={{ width: '100%' }}
@@ -957,7 +1155,7 @@ export default function ObjetivosPage() {
             </div>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Descripcion
+                Descripción
               </label>
               <textarea
                 className="input"
@@ -980,7 +1178,7 @@ export default function ObjetivosPage() {
                   style={{ width: '100%' }}
                 >
                   <option value="OKR">OKR — Meta con resultados clave</option>
-                  <option value="KPI">KPI — Indicador numerico</option>
+                  <option value="KPI">KPI — Indicador numérico</option>
                   <option value="SMART">SMART — Tarea concreta con plazo</option>
                 </select>
               </div>
@@ -1009,7 +1207,7 @@ export default function ObjetivosPage() {
         </div>
       )}
 
-      {/* Objectives grid */}
+      {/* Objectives list */}
       {isLoading ? (
         <Spinner />
       ) : filtered.length === 0 ? (
@@ -1030,17 +1228,91 @@ export default function ObjetivosPage() {
       ) : (
         <div
           className="animate-fade-up"
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}
+          style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
         >
-          {filtered.map((obj: any) => {
-            const progress = Number(obj.progress) || 0;
-            const color = progressColor(progress);
-            const isExpanded = expandedId === obj.id;
-            const days = daysUntil(obj.targetDate);
-            const alert = deadlineAlert(days, obj.status);
-            const assignedName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : null;
+          {/* Build a flat list with optional group headers for admin/manager */}
+          {(() => {
+            type ListItem =
+              | { type: 'header'; uid: string; user: any; objs: any[] }
+              | { type: 'row'; obj: any };
 
-            return (
+            let items: ListItem[];
+            if (showAssignedTo && userFilter === 'all') {
+              // Group by collaborator
+              const grouped: Record<string, any[]> = (filtered as any[]).reduce((acc: Record<string, any[]>, o: any) => {
+                const uid = o.userId || o.user?.id || 'sin_asignar';
+                if (!acc[uid]) acc[uid] = [];
+                acc[uid].push(o);
+                return acc;
+              }, {});
+              items = [];
+              Object.entries(grouped).forEach(([uid, objs]) => {
+                items.push({ type: 'header', uid, user: objs[0]?.user, objs });
+                objs.forEach((obj) => items.push({ type: 'row', obj }));
+              });
+            } else {
+              items = (filtered as any[]).map((obj) => ({ type: 'row' as const, obj }));
+            }
+
+            return items.map((item, idx) => {
+              if (item.type === 'header') {
+                const u = item.user;
+                const userName = u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : 'Sin asignar';
+                const dept = u?.department || '';
+                const completedCount = item.objs.filter((o: any) => o.status === 'completed').length;
+                const avgProg = Math.round(item.objs.reduce((s: number, o: any) => s + (Number(o.progress) || 0), 0) / item.objs.length);
+                const pc = avgProg >= 75 ? 'var(--success)' : avgProg >= 40 ? 'var(--warning)' : 'var(--danger)';
+                return (
+                  <div key={`hdr-${item.uid}`} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    padding: '0.75rem 1rem',
+                    background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    marginTop: idx > 0 ? '0.75rem' : 0,
+                  }}>
+                    <div style={{
+                      width: '34px', height: '34px', borderRadius: '50%',
+                      background: 'var(--accent)', color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, fontSize: '0.9rem', flexShrink: 0,
+                    }}>
+                      {(userName[0] || '?').toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{userName}</div>
+                      {dept && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{dept}</div>}
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', fontSize: '0.78rem', flexWrap: 'wrap' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {item.objs.length} objetivo{item.objs.length !== 1 ? 's' : ''}
+                      </span>
+                      <span style={{
+                        color: completedCount === item.objs.length ? 'var(--success)' : 'var(--text-muted)',
+                        fontWeight: completedCount === item.objs.length ? 700 : 400,
+                      }}>
+                        {completedCount}/{item.objs.length} completados
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <div style={{ width: '60px', height: '5px', borderRadius: '999px', background: 'var(--border)' }}>
+                          <div style={{ width: `${avgProg}%`, height: '100%', borderRadius: '999px', background: pc }} />
+                        </div>
+                        <span style={{ fontWeight: 700, color: pc }}>{avgProg}%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              /* ── objective card ─────────────────────────────────────── */
+              const obj = item.obj;
+              const progress = Number(obj.progress) || 0;
+              const color = progressColor(progress);
+              const isExpanded = expandedId === obj.id;
+              const days = daysUntil(obj.targetDate);
+              const alert = deadlineAlert(days, obj.status);
+              const assignedName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : null;
+
+              return (
               <div key={obj.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', borderLeft: (obj.status === 'active' && progress < 40) ? '3px solid var(--danger)' : alert ? `3px solid ${alert.color}` : undefined }}>
                 {/* Deadline alert banner */}
                 {alert && (
@@ -1110,9 +1382,9 @@ export default function ObjetivosPage() {
                 {/* Target date */}
                 {obj.targetDate && (
                   <p style={{ fontSize: '0.75rem', color: days !== null && days < 0 ? 'var(--danger)' : 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: days !== null && days <= 7 ? 600 : 400 }}>
-                    Fecha limite: {formatDate(obj.targetDate)}
+                    Fecha límite: {formatDate(obj.targetDate)}
                     {days !== null && days >= 0 && obj.status !== 'completed' && obj.status !== 'abandoned' && (
-                      <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> ({days} dias restantes)</span>
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> ({days} días restantes)</span>
                     )}
                     {days !== null && days < 0 && obj.status !== 'completed' && obj.status !== 'abandoned' && (
                       <span style={{ color: 'var(--danger)', fontWeight: 600 }}> (vencido)</span>
@@ -1182,10 +1454,30 @@ export default function ObjetivosPage() {
                 </div>
 
                 {/* Expanded section: progress update + comments */}
-                {isExpanded && (
+                {isExpanded && (() => {
+                  const isOwnObjective = (obj.userId || obj.user?.id) === userId;
+                  const isOverrideByAdmin = (isAdmin || isManager) && !isOwnObjective;
+                  const noteRequired = isOverrideByAdmin;
+                  const canSaveProgress = !noteRequired || progressForm.notes.trim().length > 0;
+                  return (
                   <>
                     {/* Progress update */}
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                      {/* Warning banner for admin/manager updating someone else's objective */}
+                      {isOverrideByAdmin && (
+                        <div style={{
+                          display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+                          padding: '0.6rem 0.75rem', marginBottom: '0.75rem',
+                          background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
+                          borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--warning)', lineHeight: 1.5,
+                        }}>
+                          <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
+                          <span>
+                            Estás modificando el progreso de <strong>{assignedName}</strong>.
+                            Debes indicar el motivo en la nota — quedará registrado en el historial.
+                          </span>
+                        </div>
+                      )}
                       <div style={{ marginBottom: '0.5rem' }}>
                         <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
                           Progreso: {progressForm.value}%
@@ -1200,20 +1492,31 @@ export default function ObjetivosPage() {
                         />
                       </div>
                       <div style={{ marginBottom: '0.5rem' }}>
+                        <label style={{ fontSize: '0.72rem', color: noteRequired ? 'var(--warning)' : 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                          {isOverrideByAdmin ? 'Motivo de la actualización *' : 'Notas sobre el avance'}
+                        </label>
                         <textarea
                           className="input"
                           rows={2}
-                          placeholder="Notas sobre el avance..."
+                          placeholder={isOverrideByAdmin ? 'Ej: Actualizado en reunión de seguimiento del 27/03...' : 'Notas sobre el avance...'}
                           value={progressForm.notes}
                           onChange={(e) => setProgressForm({ ...progressForm, notes: e.target.value })}
-                          style={{ width: '100%', resize: 'vertical', fontSize: '0.8rem' }}
+                          style={{
+                            width: '100%', resize: 'vertical', fontSize: '0.8rem',
+                            borderColor: noteRequired && !progressForm.notes.trim() ? 'var(--warning)' : undefined,
+                          }}
                         />
+                        {noteRequired && !progressForm.notes.trim() && (
+                          <p style={{ fontSize: '0.72rem', color: 'var(--warning)', marginTop: '0.2rem' }}>
+                            La nota es obligatoria cuando actualizas el progreso de otro colaborador.
+                          </p>
+                        )}
                       </div>
                       <button
                         className="btn-primary"
                         style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}
                         onClick={() => handleProgress(obj.id)}
-                        disabled={addProgress.isPending}
+                        disabled={addProgress.isPending || !canSaveProgress}
                       >
                         {addProgress.isPending ? 'Guardando...' : 'Guardar progreso'}
                       </button>
@@ -1229,10 +1532,12 @@ export default function ObjetivosPage() {
                       isAdmin={isAdmin}
                     />
                   </>
-                )}
+                  );
+                })()}
               </div>
             );
-          })}
+          })
+        })()}
         </div>
       )}
       </>

@@ -254,9 +254,12 @@ export class ObjectivesService {
 
   // ─── Team Summary (B4 Item 12) ─────────────────────────────────────────────
 
-  async getTeamObjectivesSummary(tenantId: string, managerId: string) {
+  async getTeamObjectivesSummary(tenantId: string, managerId?: string) {
+    // managerId undefined = admin view (all active users in tenant)
     const subordinates = await this.userRepo.find({
-      where: { tenantId, managerId, isActive: true },
+      where: managerId
+        ? { tenantId, managerId, isActive: true }
+        : { tenantId, isActive: true },
       select: ['id', 'firstName', 'lastName', 'position', 'department'],
     });
 

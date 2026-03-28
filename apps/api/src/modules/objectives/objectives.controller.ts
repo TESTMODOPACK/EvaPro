@@ -13,6 +13,7 @@ import {
   HttpCode,
   HttpStatus,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -70,7 +71,11 @@ export class ObjectivesController {
   @Get('team-summary')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getTeamSummary(@Request() req: any) {
-    return this.objectivesService.getTeamObjectivesSummary(req.user.tenantId, req.user.userId);
+    // tenant_admin/super_admin: show ALL active users, not just direct reports
+    const managerId = (req.user.role === 'tenant_admin' || req.user.role === 'super_admin')
+      ? undefined
+      : req.user.userId;
+    return this.objectivesService.getTeamObjectivesSummary(req.user.tenantId, managerId);
   }
 
   // B3.15: Hierarchical OKR tree
@@ -161,7 +166,7 @@ export class ObjectivesController {
     @Request() req: any,
     @Body() dto: CreateObjectiveUpdateDto,
   ) {
-    const { role, userId, tenantId } = req.user;
+    const { role, userId, tenantId, firstName, lastName } = req.user;
 
     // Employees can only add progress to their own objectives
     if (role === 'employee') {
@@ -174,6 +179,18 @@ export class ObjectivesController {
     // External advisors cannot add progress
     if (role === 'external') {
       throw new ForbiddenException('Los asesores externos no pueden registrar avances');
+    }
+
+    // Admin/manager overriding someone else's progress: require note and tag it
+    if (role === 'tenant_admin' || role === 'manager' || role === 'super_admin') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (objective.userId !== userId) {
+        if (!dto.notes || dto.notes.trim() === '') {
+          throw new BadRequestException('Debes indicar el motivo al actualizar el progreso de otro colaborador');
+        }
+        const updaterName = [firstName, lastName].filter(Boolean).join(' ') || role;
+        dto.notes = `[Actualizado por encargado — ${updaterName}] ${dto.notes.trim()}`;
+      }
     }
 
     return this.objectivesService.addProgressUpdate(tenantId, userId, id, dto);

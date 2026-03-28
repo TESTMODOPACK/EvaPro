@@ -185,6 +185,7 @@ export const api = {
   },
 
   tenants: {
+    me: (token: string) => request<Tenant>("/tenants/me", {}, token),
     list: (token: string) => request<Tenant[]>("/tenants", {}, token),
     getById: (token: string, id: string) => request<Tenant>(`/tenants/${id}`, {}, token),
     create: (data: any, token: string) =>

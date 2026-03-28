@@ -76,11 +76,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [isAuthenticated, token, router, logout]);
 
+  // Show the onboarding banner every login for tenant_admin.
+  // Dismiss is session-only (React state only — never persisted to localStorage).
   useEffect(() => {
     if (user?.role === 'tenant_admin' && !pathname.startsWith('/dashboard/onboarding')) {
-      const done = localStorage.getItem('evapro_onboarding_done');
-      const dismissed = localStorage.getItem('evapro_onboarding_dismissed');
-      if (!done && !dismissed) setShowOnboarding(true);
+      setShowOnboarding(true);
     }
   }, [user, pathname]);
 
@@ -133,19 +133,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </svg>
               </div>
               <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>
-                {subStatus === 'none' ? 'Sin suscripcion activa' : 'Suscripcion suspendida'}
+                {subStatus === 'none' ? 'Sin suscripción activa' : 'Suscripción suspendida'}
               </h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6 }}>
                 {subStatus === 'none'
-                  ? 'Tu organizacion no tiene un plan asignado. Contacta al administrador del sistema para activar una suscripcion.'
-                  : 'Tu suscripcion ha sido suspendida. Contacta al administrador del sistema para reactivarla.'}
+                  ? 'Tu organización no tiene un plan asignado. Contacta al administrador del sistema para activar una suscripción.'
+                  : 'Tu suscripción ha sido suspendida. Contacta al administrador del sistema para reactivarla.'}
               </p>
               <button
                 className="btn-ghost"
                 style={{ marginTop: '1.5rem' }}
                 onClick={() => { logout(); router.replace('/login'); }}
               >
-                Cerrar sesion
+                Cerrar sesión
               </button>
             </div>
           </main>
@@ -163,8 +163,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
+  // Session-only dismiss: only updates React state, no localStorage write.
+  // Banner reappears on next login automatically.
   const dismissOnboarding = () => {
-    localStorage.setItem('evapro_onboarding_dismissed', '1');
     setShowOnboarding(false);
   };
 

@@ -210,7 +210,7 @@ export default function MiSuscripcionPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1.25rem' }}>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Inicio</div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{sub.startDate ? new Date(sub.startDate).toLocaleDateString('es-ES') : '-'}</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{sub.startDate ? new Date(sub.startDate).toLocaleDateString('es-CL') : '-'}</div>
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.25rem' }}>Vencimiento</div>
@@ -380,7 +380,7 @@ export default function MiSuscripcionPage() {
               ) : (
                 <button
                   onClick={() => { setShowRequestForm(!showRequestForm); setReqError(''); }}
-                  className="btn btn-secondary"
+                  className="btn-secondary"
                   style={{ fontSize: '0.85rem' }}
                 >
                   {showRequestForm ? 'Cancelar' : 'Solicitar cambio'}
@@ -428,7 +428,8 @@ export default function MiSuscripcionPage() {
                     <select
                       value={reqType}
                       onChange={(e) => setReqType(e.target.value as 'plan_change' | 'cancel')}
-                      className="form-control"
+                      className="input"
+                      style={{ width: '100%' }}
                     >
                       <option value="plan_change">Cambio de plan</option>
                       <option value="cancel">Cancelación</option>
@@ -444,7 +445,8 @@ export default function MiSuscripcionPage() {
                         <select
                           value={reqTargetPlan}
                           onChange={(e) => setReqTargetPlan(e.target.value)}
-                          className="form-control"
+                          className="input"
+                          style={{ width: '100%' }}
                           required
                         >
                           <option value="">Seleccionar plan...</option>
@@ -460,7 +462,8 @@ export default function MiSuscripcionPage() {
                         <select
                           value={reqBillingPeriod}
                           onChange={(e) => setReqBillingPeriod(e.target.value)}
-                          className="form-control"
+                          className="input"
+                          style={{ width: '100%' }}
                         >
                           <option value="monthly">Mensual</option>
                           <option value="quarterly">Trimestral (-10%)</option>
@@ -480,9 +483,9 @@ export default function MiSuscripcionPage() {
                     value={reqNotes}
                     onChange={(e) => setReqNotes(e.target.value)}
                     placeholder="Indica el motivo o cualquier detalle relevante..."
-                    className="form-control"
+                    className="input"
                     rows={2}
-                    style={{ resize: 'vertical' }}
+                    style={{ resize: 'vertical', width: '100%' }}
                   />
                 </div>
 
@@ -493,10 +496,10 @@ export default function MiSuscripcionPage() {
                 )}
 
                 <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowRequestForm(false)}>
+                  <button type="button" className="btn-secondary" onClick={() => setShowRequestForm(false)}>
                     Cancelar
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={reqLoading}>
+                  <button type="submit" className="btn-primary" disabled={reqLoading}>
                     {reqLoading ? 'Enviando...' : 'Enviar solicitud'}
                   </button>
                 </div>

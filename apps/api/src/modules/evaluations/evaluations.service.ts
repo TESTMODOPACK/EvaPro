@@ -967,7 +967,7 @@ export class EvaluationsService {
     const atRiskObjs = await this.objectiveRepo
       .createQueryBuilder('o')
       .where('o.tenantId = :tenantId', { tenantId })
-      .andWhere('o.ownerId = :userId', { userId })
+      .andWhere('o.userId = :userId', { userId })
       .andWhere('o.status IN (:...statuses)', { statuses: ['active'] })
       .orderBy('o.targetDate', 'ASC')
       .take(3)

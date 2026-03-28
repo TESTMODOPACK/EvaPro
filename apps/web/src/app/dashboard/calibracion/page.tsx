@@ -25,28 +25,31 @@ export default function CalibracionPage() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [cycles, setCycles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [createError, setCreateError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [showGuide, setShowGuide] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: '', cycleId: '', department: '', notes: '' });
 
   useEffect(() => {
     if (!token) return;
-    Promise.all([
-      api.talent.calibration.list(token),
-      api.cycles.list(token),
-    ])
-      .then(([sess, cyc]) => {
-        setSessions(sess || []);
-        setCycles(cyc || []);
-      })
-      .catch(() => { setSessions([]); setCycles([]); })
+    setLoading(true);
+    setLoadError('');
+    // Llamadas separadas: un error en ciclos no borra las sesiones
+    api.talent.calibration.list(token)
+      .then((sess) => setSessions(sess || []))
+      .catch(() => setLoadError('No se pudieron cargar las sesiones. Intenta recargar la página.'))
       .finally(() => setLoading(false));
+    api.cycles.list(token)
+      .then((cyc) => setCycles(cyc || []))
+      .catch(() => {});
   }, [token]);
 
   async function handleCreate() {
     if (!form.name || !form.cycleId || !token) return;
     setCreating(true);
+    setCreateError('');
     try {
       const data: any = { name: form.name, cycleId: form.cycleId };
       if (form.department) data.department = form.department;
@@ -56,7 +59,9 @@ export default function CalibracionPage() {
       setSessions(updated || []);
       setForm({ name: '', cycleId: '', department: '', notes: '' });
       setShowForm(false);
-    } catch { /* ignore */ }
+    } catch (err: any) {
+      setCreateError(err?.message || 'Error al crear la sesión. Intenta de nuevo.');
+    }
     setCreating(false);
   }
 
@@ -165,16 +170,19 @@ export default function CalibracionPage() {
 
         {/* Create form */}
         {showForm && (
-          <div className="card animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>
-              {`Nueva sesi\u00f3n de calibraci\u00f3n`}
-            </h3>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
-              {`Completa los datos para crear una nueva sesi\u00f3n de calibraci\u00f3n.`}
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+            <div style={{ marginBottom: '1.25rem' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.2rem', color: 'var(--text-primary)' }}>
+                {`Nueva sesión de calibración`}
+              </h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+                {`Completa los datos para crear la sesión. Los campos marcados con * son obligatorios.`}
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
                   {`Nombre *`}
                 </label>
                 <input
@@ -182,13 +190,13 @@ export default function CalibracionPage() {
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder={`Ej: Calibraci\u00f3n Q1 2026`}
+                  placeholder={`Ej: Calibración Q1 2026`}
                   style={{ width: '100%' }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  {`Ciclo *`}
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                  {`Ciclo de evaluación *`}
                 </label>
                 <select
                   className="input"
@@ -203,7 +211,7 @@ export default function CalibracionPage() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
                   {`Departamento (opcional)`}
                 </label>
                 <input
@@ -211,12 +219,12 @@ export default function CalibracionPage() {
                   type="text"
                   value={form.department}
                   onChange={(e) => setForm({ ...form, department: e.target.value })}
-                  placeholder={`Ej: Tecnolog\u00eda`}
+                  placeholder={`Ej: Tecnología`}
                   style={{ width: '100%' }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
                   {`Notas (opcional)`}
                 </label>
                 <textarea
@@ -224,26 +232,45 @@ export default function CalibracionPage() {
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   rows={2}
-                  placeholder={`Notas adicionales...`}
+                  placeholder={`Observaciones o contexto de la sesión...`}
                   style={{ width: '100%', resize: 'vertical' }}
                 />
               </div>
             </div>
-            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+
+            <div style={{ height: '1px', background: 'var(--border)', marginBottom: '1.25rem' }} />
+
+            {createError && (
+              <div style={{ padding: '0.6rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--danger)', marginBottom: '1rem' }}>
+                {createError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn-secondary" onClick={() => { setShowForm(false); setCreateError(''); }}>
+                Cancelar
+              </button>
               <button
                 className="btn-primary"
                 onClick={handleCreate}
                 disabled={creating || !form.name || !form.cycleId}
               >
-                {creating ? `Creando...` : `Crear sesi\u00f3n`}
+                {creating ? `Creando...` : `Crear sesión`}
               </button>
-              <button className="btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
             </div>
           </div>
         )}
 
         {/* Sessions list */}
-        {loading ? (
+        {loadError ? (
+          <div className="card" style={{ padding: '1.5rem', borderLeft: '4px solid var(--danger)', background: 'rgba(239,68,68,0.05)' }}>
+            <p style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Error al cargar</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>{loadError}</p>
+            <button className="btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => { setLoadError(''); setLoading(true); api.talent.calibration.list(token!).then((s) => setSessions(s || [])).catch(() => setLoadError('No se pudieron cargar las sesiones. Intenta recargar la página.')).finally(() => setLoading(false)); }}>
+              Reintentar
+            </button>
+          </div>
+        ) : loading ? (
           <Spinner />
         ) : sessions.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>

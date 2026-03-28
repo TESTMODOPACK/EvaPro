@@ -10,6 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Request,
 } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -21,6 +22,13 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @Roles('super_admin')
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
+
+  /** Returns the current user's own tenant — accessible to tenant_admin */
+  @Get('me')
+  @Roles('super_admin', 'tenant_admin')
+  getMyTenant(@Request() req: any) {
+    return this.tenantsService.findById(req.user.tenantId);
+  }
 
   @Get('system-stats')
   getSystemStats() {

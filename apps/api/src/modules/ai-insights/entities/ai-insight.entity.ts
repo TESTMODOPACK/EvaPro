@@ -34,7 +34,7 @@ export class AiInsight {
   @Column({ type: 'jsonb', default: {} })
   content: any;
 
-  @Column({ type: 'varchar', length: 100, default: 'claude-3-5-haiku-20241022' })
+  @Column({ type: 'varchar', length: 100, default: 'claude-haiku-4-5' })
   model: string;
 
   @Column({ type: 'int', name: 'tokens_used', default: 0 })

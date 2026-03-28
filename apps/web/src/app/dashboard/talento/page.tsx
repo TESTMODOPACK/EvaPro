@@ -76,6 +76,25 @@ function Spinner() {
   );
 }
 
+const POOL_ACCENT: Record<string, string> = {
+  star: 'var(--success)', high_performer: 'var(--success)', core_player: 'var(--accent)',
+  high_potential: 'var(--warning)', enigma: 'var(--warning)', risk: 'var(--danger)',
+  inconsistent: 'var(--danger)', underperformer: 'var(--danger)', dysfunctional: 'var(--danger)',
+};
+
+function ScoreBar({ value, max = 10, color }: { value: number | null; max?: number; color: string }) {
+  if (value === null || value === undefined) return <span style={{ color: 'var(--text-muted)' }}>{'\u2014'}</span>;
+  const pct = Math.min(Math.round((value / max) * 100), 100);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+      <div style={{ flex: 1, height: '6px', borderRadius: '999px', background: 'var(--bg-surface)', minWidth: '50px' }}>
+        <div style={{ width: `${pct}%`, height: '100%', borderRadius: '999px', background: color, transition: 'width .4s ease' }} />
+      </div>
+      <span style={{ fontSize: '.82rem', fontWeight: 700, color: 'var(--text-primary)', minWidth: '24px', textAlign: 'right' }}>{Number(value).toFixed(1)}</span>
+    </div>
+  );
+}
+
 /* ========================================================================== */
 /*  Nine Box Tab                                                              */
 /* ========================================================================== */
@@ -91,6 +110,8 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
+  const [sortField, setSortField] = useState<string>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     if (!selectedCycleId) { setNineBoxData(null); return; }
@@ -144,7 +165,51 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
     setSaving(false);
   }
 
-  const selectedUsers = selectedBox !== null ? getBoxUsers(selectedBox) : [];
+  const RISK_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+  function toggleSort(field: string) {
+    if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortField(field); setSortDir('asc'); }
+  }
+
+  function SortTh({ field, label }: { field: string; label: string }) {
+    const active = sortField === field;
+    return (
+      <th onClick={() => toggleSort(field)} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem' }}>
+          {label}
+          <span style={{ fontSize: '.65rem', opacity: active ? 1 : 0.3, color: active ? 'var(--accent)' : 'inherit' }}>
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+          </span>
+        </span>
+      </th>
+    );
+  }
+
+  const rawUsers = selectedBox !== null ? getBoxUsers(selectedBox) : [];
+  const selectedUsers = [...rawUsers].sort((a, b) => {
+    const u1 = a.user || a;
+    const u2 = b.user || b;
+    let cmp = 0;
+    switch (sortField) {
+      case 'name':
+        cmp = `${u1.firstName} ${u1.lastName}`.localeCompare(`${u2.firstName} ${u2.lastName}`, 'es');
+        break;
+      case 'dept':
+        cmp = (u1.department || '').localeCompare(u2.department || '', 'es');
+        break;
+      case 'performance':
+        cmp = (a.performanceScore ?? -1) - (b.performanceScore ?? -1);
+        break;
+      case 'potential':
+        cmp = (a.potentialScore ?? -1) - (b.potentialScore ?? -1);
+        break;
+      case 'risk':
+        cmp = (RISK_ORDER[a.flightRisk] ?? 9) - (RISK_ORDER[b.flightRisk] ?? 9);
+        break;
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
 
   return (
     <div>
@@ -227,102 +292,154 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 
           {/* Selected box detail panel */}
           {selectedBox !== null && (
-            <div className="card animate-fade-up" style={{ marginTop: '1.5rem' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>
-                Cuadrante {selectedBox} — {NINE_BOX_GRID.flat().find((c) => c.box === selectedBox)?.label} ({selectedUsers.length} personas)
-              </h3>
+            <div className="animate-fade-up" style={{ marginTop: '1.5rem' }}>
+              {/* Panel header */}
+              {(() => {
+                const cell = NINE_BOX_GRID.flat().find((c) => c.box === selectedBox);
+                return (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '.75rem',
+                    padding: '.875rem 1.25rem',
+                    background: cell?.bg,
+                    border: `2px solid ${cell?.border}`,
+                    borderBottom: 'none',
+                    borderRadius: 'var(--radius) var(--radius) 0 0',
+                  }}>
+                    <span style={{ fontWeight: 800, fontSize: '1.4rem', color: cell?.textColor }}>{selectedUsers.length}</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '.95rem', color: cell?.textColor }}>{cell?.label}</div>
+                      <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>Cuadrante {selectedBox} — {isAdmin ? 'clic en una fila para editar' : 'vista de solo lectura'}</div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {selectedUsers.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)' }}>No hay empleados en este cuadrante.</p>
+                <div className="card" style={{ borderRadius: '0 0 var(--radius) var(--radius)', textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                  No hay empleados en este cuadrante.
+                </div>
               ) : (
-                <div className="table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Nombre</th><th>Departamento</th><th>Cargo</th>
-                        <th>{`Desempe\u00f1o`}</th><th>Potencial</th><th>{`Clasificaci\u00f3n`}</th>
-                        <th>{`Preparaci\u00f3n`}</th><th>Riesgo de Fuga</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedUsers.map((a: any) => {
-                        const u = a.user || a;
-                        const isEditing = editingId === a.id;
-                        return (
-                          <tr key={a.id} style={{ cursor: 'pointer' }}>
-                            {!isEditing ? (
-                              <>
-                                <td onClick={() => isAdmin && startEdit(a)} style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
-                                <td onClick={() => isAdmin && startEdit(a)}>{u.department || '\u2014'}</td>
-                                <td onClick={() => isAdmin && startEdit(a)}>{u.position || '\u2014'}</td>
-                                <td onClick={() => isAdmin && startEdit(a)}>{a.performanceScore ?? '\u2014'}</td>
-                                <td onClick={() => isAdmin && startEdit(a)}>{a.potentialScore ?? '\u2014'}</td>
-                                <td onClick={() => isAdmin && startEdit(a)}><span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL[a.talentPool] || a.talentPool}</span></td>
-                                <td onClick={() => isAdmin && startEdit(a)}>{READINESS_LABEL[a.readiness] || a.readiness || '\u2014'}</td>
-                                <td onClick={() => isAdmin && startEdit(a)}>{a.flightRisk ? <span className={`badge ${RISK_BADGE[a.flightRisk]}`}>{RISK_LABEL[a.flightRisk]}</span> : '\u2014'}</td>
-                              </>
-                            ) : (
-                              <td colSpan={8}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr auto', gap: '.75rem', alignItems: 'end', padding: '.5rem 0' }}>
-                                  <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>
-                                    Potencial (0-10)
-                                    <input
-                                      type="number" min={0} max={10} step={0.5}
-                                      value={editForm.potentialScore}
-                                      onChange={(e) => setEditForm({ ...editForm, potentialScore: +e.target.value })}
-                                      style={{ width: '100%', padding: '.4rem .5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', marginTop: '.25rem' }}
-                                    />
-                                  </label>
-                                  <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>
-                                    {`Preparaci\u00f3n`}
-                                    <select
-                                      value={editForm.readiness}
-                                      onChange={(e) => setEditForm({ ...editForm, readiness: e.target.value })}
-                                      style={{ width: '100%', padding: '.4rem .5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', marginTop: '.25rem' }}
-                                    >
-                                      <option value="">{'\u2014'}</option>
-                                      <option value="ready_now">Listo ahora</option>
-                                      <option value="ready_1_year">{`En 1 a\u00f1o`}</option>
-                                      <option value="ready_2_years">{`En 2 a\u00f1os`}</option>
-                                      <option value="not_ready">No listo</option>
-                                    </select>
-                                  </label>
-                                  <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>
-                                    Riesgo de Fuga
-                                    <select
-                                      value={editForm.flightRisk}
-                                      onChange={(e) => setEditForm({ ...editForm, flightRisk: e.target.value })}
-                                      style={{ width: '100%', padding: '.4rem .5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', marginTop: '.25rem' }}
-                                    >
-                                      <option value="">{'\u2014'}</option>
-                                      <option value="high">Alto</option>
-                                      <option value="medium">Medio</option>
-                                      <option value="low">Bajo</option>
-                                    </select>
-                                  </label>
-                                  <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>
-                                    Notas
-                                    <textarea
-                                      value={editForm.notes}
-                                      onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                                      rows={2}
-                                      style={{ width: '100%', padding: '.4rem .5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', marginTop: '.25rem', resize: 'vertical' }}
-                                    />
-                                  </label>
-                                  <div style={{ display: 'flex', gap: '.5rem' }}>
-                                    <button className="btn-primary" onClick={() => handleSave(a.id)} disabled={saving}>
-                                      {saving ? 'Guardando...' : 'Guardar'}
-                                    </button>
-                                    <button className="btn-ghost" onClick={() => setEditingId(null)}>Cancelar</button>
+                <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '0 0 var(--radius) var(--radius)' }}>
+                  <div className="table-wrapper" style={{ margin: 0 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <SortTh field="name" label="Colaborador" />
+                          <SortTh field="dept" label="Departamento" />
+                          <th>{`Clasificaci\u00f3n`}</th>
+                          <SortTh field="performance" label={`Desempe\u00f1o`} />
+                          <SortTh field="potential" label="Potencial" />
+                          <th style={{ whiteSpace: 'nowrap' }}>{`Preparaci\u00f3n`}</th>
+                          <SortTh field="risk" label="Riesgo de Fuga" />
+                          {isAdmin && <th></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedUsers.map((a: any) => {
+                          const u = a.user || a;
+                          const accent = POOL_ACCENT[a.talentPool] || 'var(--accent)';
+                          const isEditing = editingId === a.id;
+                          return (
+                            <tr key={a.id} style={{ borderLeft: `3px solid ${accent}`, cursor: isAdmin && !isEditing ? 'pointer' : 'default' }}>
+                              {!isEditing ? (
+                                <>
+                                  <td onClick={() => isAdmin && startEdit(a)}>
+                                    <div style={{ fontWeight: 700, fontSize: '.9rem' }}>{u.firstName} {u.lastName}</div>
+                                    {u.position && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: '.1rem' }}>{u.position}</div>}
+                                  </td>
+                                  <td onClick={() => isAdmin && startEdit(a)} style={{ color: 'var(--text-secondary)', fontSize: '.875rem' }}>{u.department || '\u2014'}</td>
+                                  <td onClick={() => isAdmin && startEdit(a)}>
+                                    <span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL[a.talentPool] || a.talentPool}</span>
+                                  </td>
+                                  <td onClick={() => isAdmin && startEdit(a)} style={{ minWidth: '110px' }}>
+                                    <ScoreBar value={a.performanceScore} color="var(--accent)" />
+                                  </td>
+                                  <td onClick={() => isAdmin && startEdit(a)} style={{ minWidth: '110px' }}>
+                                    <ScoreBar value={a.potentialScore} color="var(--success)" />
+                                  </td>
+                                  <td onClick={() => isAdmin && startEdit(a)} style={{ fontSize: '.875rem', color: 'var(--text-secondary)' }}>
+                                    {READINESS_LABEL[a.readiness] || a.readiness || '\u2014'}
+                                  </td>
+                                  <td onClick={() => isAdmin && startEdit(a)}>
+                                    {a.flightRisk
+                                      ? <span className={`badge ${RISK_BADGE[a.flightRisk]}`}>{RISK_LABEL[a.flightRisk]}</span>
+                                      : <span style={{ color: 'var(--text-muted)' }}>{'\u2014'}</span>}
+                                  </td>
+                                  {isAdmin && (
+                                    <td>
+                                      <button className="btn-ghost" onClick={() => startEdit(a)} style={{ fontSize: '.78rem', padding: '.25rem .6rem' }}>
+                                        Editar
+                                      </button>
+                                    </td>
+                                  )}
+                                </>
+                              ) : (
+                                <td colSpan={isAdmin ? 8 : 7} style={{ padding: '1rem' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr auto', gap: '.75rem', alignItems: 'end' }}>
+                                    <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
+                                      Potencial (0-10)
+                                      <input
+                                        className="input"
+                                        type="number" min={0} max={10} step={0.5}
+                                        value={editForm.potentialScore}
+                                        onChange={(e) => setEditForm({ ...editForm, potentialScore: +e.target.value })}
+                                        style={{ width: '100%', fontSize: '.85rem' }}
+                                      />
+                                    </label>
+                                    <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
+                                      {`Preparaci\u00f3n`}
+                                      <select
+                                        className="input"
+                                        value={editForm.readiness}
+                                        onChange={(e) => setEditForm({ ...editForm, readiness: e.target.value })}
+                                        style={{ width: '100%', fontSize: '.85rem' }}
+                                      >
+                                        <option value="">{'\u2014'}</option>
+                                        <option value="ready_now">Listo ahora</option>
+                                        <option value="ready_1_year">{`En 1 a\u00f1o`}</option>
+                                        <option value="ready_2_years">{`En 2 a\u00f1os`}</option>
+                                        <option value="not_ready">No listo</option>
+                                      </select>
+                                    </label>
+                                    <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
+                                      Riesgo de Fuga
+                                      <select
+                                        className="input"
+                                        value={editForm.flightRisk}
+                                        onChange={(e) => setEditForm({ ...editForm, flightRisk: e.target.value })}
+                                        style={{ width: '100%', fontSize: '.85rem' }}
+                                      >
+                                        <option value="">{'\u2014'}</option>
+                                        <option value="high">Alto</option>
+                                        <option value="medium">Medio</option>
+                                        <option value="low">Bajo</option>
+                                      </select>
+                                    </label>
+                                    <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
+                                      Notas
+                                      <textarea
+                                        className="input"
+                                        value={editForm.notes}
+                                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                                        rows={2}
+                                        style={{ width: '100%', fontSize: '.85rem', resize: 'vertical' }}
+                                      />
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '.5rem' }}>
+                                      <button className="btn-primary" onClick={() => handleSave(a.id)} disabled={saving}>
+                                        {saving ? 'Guardando...' : 'Guardar'}
+                                      </button>
+                                      <button className="btn-ghost" onClick={() => setEditingId(null)}>Cancelar</button>
+                                    </div>
                                   </div>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -348,6 +465,10 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
   const [segData, setSegData] = useState<any>(null);
   const [assessments, setAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sortField, setSortField] = useState<string>('pool');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [filterPool, setFilterPool] = useState<string>('all');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (!selectedCycleId) { setSegData(null); setAssessments([]); return; }
@@ -362,6 +483,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
   }, [selectedCycleId, token]);
 
   const POOLS_ORDER = ['star', 'high_performer', 'core_player', 'high_potential', 'enigma', 'risk', 'inconsistent', 'underperformer', 'dysfunctional'];
+  const RISK_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
   const poolCounts: Record<string, number> = {};
   if (segData && segData.byPool) {
@@ -372,23 +494,75 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
     }
   }
 
-  const POOL_CIRCLE_COLOR: Record<string, string> = {
-    star: 'var(--success)', high_performer: 'var(--success)', core_player: 'var(--accent)',
-    high_potential: 'var(--warning)', enigma: 'var(--warning)', risk: 'var(--danger)',
-    inconsistent: 'var(--danger)', underperformer: 'var(--danger)', dysfunctional: 'var(--danger)',
-  };
+  function toggleSort(field: string) {
+    if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortField(field); setSortDir('asc'); }
+  }
+
+  const filtered = assessments
+    .filter((a) => {
+      const u = a.user || a;
+      const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+      const dept = (u.department || '').toLowerCase();
+      const q = search.toLowerCase();
+      const matchSearch = !q || name.includes(q) || dept.includes(q);
+      const matchPool = filterPool === 'all' || a.talentPool === filterPool;
+      return matchSearch && matchPool;
+    })
+    .sort((a, b) => {
+      const u1 = a.user || a;
+      const u2 = b.user || b;
+      let cmp = 0;
+      switch (sortField) {
+        case 'pool':
+          cmp = POOLS_ORDER.indexOf(a.talentPool) - POOLS_ORDER.indexOf(b.talentPool);
+          if (cmp === 0) cmp = (b.performanceScore ?? 0) - (a.performanceScore ?? 0);
+          break;
+        case 'name':
+          cmp = `${u1.firstName} ${u1.lastName}`.localeCompare(`${u2.firstName} ${u2.lastName}`, 'es');
+          break;
+        case 'dept':
+          cmp = (u1.department || '').localeCompare(u2.department || '', 'es');
+          break;
+        case 'performance':
+          cmp = (a.performanceScore ?? -1) - (b.performanceScore ?? -1);
+          break;
+        case 'potential':
+          cmp = (a.potentialScore ?? -1) - (b.potentialScore ?? -1);
+          break;
+        case 'risk':
+          cmp = (RISK_ORDER[a.flightRisk] ?? 9) - (RISK_ORDER[b.flightRisk] ?? 9);
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+  function SortTh({ field, label, align }: { field: string; label: string; align?: string }) {
+    const active = sortField === field;
+    return (
+      <th
+        onClick={() => toggleSort(field)}
+        style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', textAlign: (align as any) || 'left' }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem' }}>
+          {label}
+          <span style={{ fontSize: '.65rem', opacity: active ? 1 : 0.3, color: active ? 'var(--accent)' : 'inherit' }}>
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+          </span>
+        </span>
+      </th>
+    );
+  }
 
   return (
     <div>
       {/* Cycle selector */}
       <div style={{ marginBottom: '1.5rem' }}>
         <select
+          className="input"
           value={selectedCycleId}
           onChange={(e) => onCycleChange(e.target.value)}
-          style={{
-            padding: '.5rem .75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-            background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '.875rem', minWidth: '220px',
-          }}
+          style={{ minWidth: '220px', fontSize: '.875rem' }}
         >
           <option value="">Seleccionar ciclo...</option>
           {cycles.map((c: any) => (
@@ -401,66 +575,136 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
 
       {!loading && selectedCycleId && (
         <>
-          {/* Pool cards */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem', marginBottom: '1.5rem' }}>
-            {POOLS_ORDER.map((pool) => (
-              <div key={pool} className="card" style={{ minWidth: '120px', textAlign: 'center', padding: '.75rem 1rem' }}>
-                <div style={{
-                  width: '40px', height: '40px', borderRadius: '50%', margin: '0 auto .5rem',
-                  background: POOL_CIRCLE_COLOR[pool] || 'var(--accent)',
+          {/* Pool summary cards */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.6rem', marginBottom: '1.5rem' }}>
+            {POOLS_ORDER.filter((p) => (poolCounts[p] || 0) > 0).map((pool) => (
+              <button
+                key={pool}
+                onClick={() => setFilterPool(filterPool === pool ? 'all' : pool)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '.6rem',
+                  padding: '.5rem .9rem',
+                  borderRadius: 'var(--radius)',
+                  border: `2px solid ${filterPool === pool ? POOL_ACCENT[pool] : 'var(--border)'}`,
+                  background: filterPool === pool ? `${POOL_ACCENT[pool]}18` : 'var(--bg-elevated)',
+                  cursor: 'pointer', transition: 'var(--transition)',
+                }}
+              >
+                <span style={{
+                  width: '26px', height: '26px', borderRadius: '50%',
+                  background: POOL_ACCENT[pool] || 'var(--accent)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 700, fontSize: '1rem',
+                  color: '#fff', fontWeight: 800, fontSize: '.8rem', flexShrink: 0,
                 }}>
                   {poolCounts[pool] || 0}
-                </div>
-                <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                </span>
+                <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                   {POOL_LABEL[pool]}
-                </div>
-              </div>
+                </span>
+              </button>
             ))}
           </div>
 
+          {/* Search + filter bar */}
+          {assessments.length > 0 && (
+            <div style={{ display: 'flex', gap: '.75rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                className="input"
+                type="text"
+                placeholder="Buscar por nombre o departamento..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ minWidth: '220px', flex: 1, fontSize: '.875rem' }}
+              />
+              <span style={{ fontSize: '.82rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
+              </span>
+              {(search || filterPool !== 'all') && (
+                <button className="btn-ghost" style={{ fontSize: '.82rem' }} onClick={() => { setSearch(''); setFilterPool('all'); }}>
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Assessments table */}
           {assessments.length > 0 && (
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Nombre</th><th>Departamento</th><th>{`Desempe\u00f1o`}</th><th>Potencial</th>
-                    <th>{`Clasificaci\u00f3n`}</th><th>{`Preparaci\u00f3n`}</th><th>Riesgo de Fuga</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {assessments.map((a: any) => {
-                    const u = a.user || a;
-                    return (
-                      <tr key={a.id}>
-                        <td style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
-                        <td>{u.department || '\u2014'}</td>
-                        <td>{a.performanceScore ?? '\u2014'}</td>
-                        <td>{a.potentialScore ?? '\u2014'}</td>
-                        <td><span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL[a.talentPool] || a.talentPool}</span></td>
-                        <td>{READINESS_LABEL[a.readiness] || a.readiness || '\u2014'}</td>
-                        <td>{a.flightRisk ? <span className={`badge ${RISK_BADGE[a.flightRisk]}`}>{RISK_LABEL[a.flightRisk]}</span> : '\u2014'}</td>
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="table-wrapper" style={{ margin: 0 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <SortTh field="name" label="Colaborador" />
+                      <SortTh field="dept" label="Departamento" />
+                      <SortTh field="pool" label={`Clasificaci\u00f3n`} />
+                      <SortTh field="performance" label={`Desempe\u00f1o`} />
+                      <SortTh field="potential" label="Potencial" />
+                      <th style={{ whiteSpace: 'nowrap' }}>{`Preparaci\u00f3n`}</th>
+                      <SortTh field="risk" label="Riesgo de Fuga" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((a: any) => {
+                      const u = a.user || a;
+                      const accent = POOL_ACCENT[a.talentPool] || 'var(--accent)';
+                      return (
+                        <tr key={a.id} style={{ borderLeft: `3px solid ${accent}` }}>
+                          <td>
+                            <div style={{ fontWeight: 700, fontSize: '.9rem' }}>{u.firstName} {u.lastName}</div>
+                            {u.position && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: '.1rem' }}>{u.position}</div>}
+                          </td>
+                          <td style={{ color: 'var(--text-secondary)', fontSize: '.875rem' }}>{u.department || '\u2014'}</td>
+                          <td>
+                            <span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>
+                              {POOL_LABEL[a.talentPool] || a.talentPool}
+                            </span>
+                          </td>
+                          <td style={{ minWidth: '110px' }}>
+                            <ScoreBar value={a.performanceScore} color="var(--accent)" />
+                          </td>
+                          <td style={{ minWidth: '110px' }}>
+                            <ScoreBar value={a.potentialScore} color="var(--success)" />
+                          </td>
+                          <td style={{ fontSize: '.875rem', color: 'var(--text-secondary)' }}>
+                            {READINESS_LABEL[a.readiness] || a.readiness || '\u2014'}
+                          </td>
+                          <td>
+                            {a.flightRisk
+                              ? <span className={`badge ${RISK_BADGE[a.flightRisk]}`}>{RISK_LABEL[a.flightRisk]}</span>
+                              : <span style={{ color: 'var(--text-muted)' }}>{'\u2014'}</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {filtered.length === 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                          Sin resultados para los filtros aplicados.
+                        </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {assessments.length === 0 && !loading && (
-            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-              {`No hay evaluaciones de talento para este ciclo. Genera una evaluaci\u00f3n primero desde la pesta\u00f1a Nine Box.`}
-            </p>
+            <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+              <p style={{ fontWeight: 500, marginBottom: '.25rem' }}>
+                {`No hay evaluaciones de talento para este ciclo.`}
+              </p>
+              <p style={{ fontSize: '.85rem' }}>
+                {`Genera una evaluación primero desde la pestaña Nine Box.`}
+              </p>
+            </div>
           )}
         </>
       )}
 
       {!loading && !selectedCycleId && (
         <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-          {`Selecciona un ciclo para ver la segmentaci\u00f3n de talento.`}
+          {`Selecciona un ciclo para ver la segmentación de talento.`}
         </p>
       )}
     </div>

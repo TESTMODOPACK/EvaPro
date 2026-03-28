@@ -5,6 +5,17 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { calibrationEntryStatusLabel as STATUS_LABEL, calibrationEntryStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
 
+const CAUSALS = [
+  'Ajuste por desempeño real observado',
+  'Consideración de circunstancias excepcionales',
+  'Alineación con el equipo',
+  'Contexto adicional del período evaluado',
+  'Inconsistencia en la autoevaluación',
+  'Reconocimiento de logros no capturados',
+  'Criterio del comité calibrador',
+  'Otro',
+];
+
 function Spinner() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
@@ -21,8 +32,15 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   const [populating, setPopulating] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
-  const [editState, setEditState] = useState<Record<string, { adjustedScore: number | ''; adjustedPotential: number | ''; rationale: string }>>({});
+  const [editState, setEditState] = useState<Record<string, {
+    adjustedScore: number | '';
+    adjustedPotential: number | '';
+    rationale: string;
+    rationaleType: string;
+  }>>({});
   const [savingEntry, setSavingEntry] = useState<string | null>(null);
+
+  const presetCausals = CAUSALS.slice(0, -1); // all except 'Otro'
 
   async function fetchSession() {
     if (!token) return;
@@ -33,10 +51,14 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       const es: typeof editState = {};
       if (data.entries) {
         for (const entry of data.entries) {
+          const rationaleType = presetCausals.includes(entry.rationale ?? '')
+            ? (entry.rationale ?? '')
+            : (entry.rationale ? 'Otro' : '');
           es[entry.id] = {
             adjustedScore: entry.adjustedScore ?? entry.originalScore ?? '',
             adjustedPotential: entry.adjustedPotential ?? entry.originalPotential ?? '',
             rationale: entry.rationale ?? '',
+            rationaleType,
           };
         }
       }
@@ -79,7 +101,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
     try {
       await api.talent.calibration.complete(token, params.id);
       await fetchSession();
-      setSuccessMsg(`Sesi\u00f3n de calibraci\u00f3n completada exitosamente. Los ajustes se aplicaron a la Matriz Nine Box.`);
+      setSuccessMsg(`Sesión de calibración completada exitosamente. Los ajustes se aplicaron a la Matriz Nine Box.`);
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch { /* ignore */ }
     setCompleting(false);
@@ -98,13 +120,14 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
     return (
       <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
         <div className="animate-fade-up" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          {`No se encontr\u00f3 la sesi\u00f3n de calibraci\u00f3n.`}
+          {`No se encontró la sesión de calibración.`}
         </div>
       </div>
     );
   }
 
   const entries = session.entries || [];
+  const isReadOnly = session.status === 'completed';
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
@@ -131,9 +154,18 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       {/* Info hint */}
       <div className="card" style={{ padding: '0.875rem 1rem', background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
         <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          {`Ajusta los puntajes de desempe\u00f1o y potencial de cada colaborador. Al completar la sesi\u00f3n, los puntajes ajustados se aplicar\u00e1n autom\u00e1ticamente a la Matriz Nine Box y se recalcular\u00e1 la clasificaci\u00f3n de talento.`}
+          {`Ajusta los puntajes de desempeño y potencial de cada colaborador. Al completar la sesión, los puntajes ajustados se aplicarán automáticamente a la Matriz Nine Box y se recalculará la clasificación de talento.`}
         </p>
       </div>
+
+      {/* Read-only notice */}
+      {isReadOnly && (
+        <div className="card" style={{ padding: '0.875rem 1rem', background: 'rgba(245,158,11,0.08)', borderLeft: '4px solid var(--warning)', marginBottom: '1.5rem' }}>
+          <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            🔒 Esta sesión está completada y es de solo lectura. No se pueden realizar más ajustes.
+          </p>
+        </div>
+      )}
 
       {/* Success message */}
       {successMsg && (
@@ -146,11 +178,13 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       {entries.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
           <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            {`No hay participantes cargados en esta sesi\u00f3n.`}
+            {`No hay participantes cargados en esta sesión.`}
           </p>
-          <button className="btn-primary" onClick={handlePopulate} disabled={populating}>
-            {populating ? 'Cargando participantes...' : 'Cargar participantes'}
-          </button>
+          {!isReadOnly && (
+            <button className="btn-primary" onClick={handlePopulate} disabled={populating}>
+              {populating ? 'Cargando participantes...' : 'Cargar participantes'}
+            </button>
+          )}
         </div>
       )}
 
@@ -162,25 +196,25 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
               <tr>
                 <th>Colaborador</th>
                 <th>Departamento</th>
-                <th>{`Desempe\u00f1o Original`}</th>
-                <th>{`Desempe\u00f1o Ajustado`}</th>
+                <th>{`Desempeño Original`}</th>
+                <th>{`Desempeño Ajustado`}</th>
                 <th>Potencial Original</th>
                 <th>Potencial Ajustado</th>
-                <th>{`Justificaci\u00f3n`}</th>
+                <th>{`Causal del ajuste`}</th>
                 <th>Estado</th>
-                <th>{`Acci\u00f3n`}</th>
+                {!isReadOnly && <th>{`Acción`}</th>}
               </tr>
             </thead>
             <tbody>
               {entries.map((entry: any) => {
                 const u = entry.user || {};
-                const es = editState[entry.id] || { adjustedScore: '', adjustedPotential: '', rationale: '' };
+                const es = editState[entry.id] || { adjustedScore: '', adjustedPotential: '', rationale: '', rationaleType: '' };
                 const isSaving = savingEntry === entry.id;
                 return (
                   <tr key={entry.id}>
                     <td style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
-                    <td>{u.department || '\u2014'}</td>
-                    <td>{entry.originalScore ?? '\u2014'}</td>
+                    <td>{u.department || '—'}</td>
+                    <td>{entry.originalScore ?? '—'}</td>
                     <td>
                       <input
                         className="input"
@@ -189,11 +223,12 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                         max={10}
                         step={0.5}
                         value={es.adjustedScore}
+                        disabled={isReadOnly}
                         onChange={(e) => updateEntry(entry.id, 'adjustedScore', e.target.value === '' ? '' : +e.target.value)}
-                        style={{ width: '70px', fontSize: '0.85rem' }}
+                        style={{ width: '70px', fontSize: '0.85rem', cursor: isReadOnly ? 'not-allowed' : undefined, opacity: isReadOnly ? 0.7 : 1 }}
                       />
                     </td>
-                    <td>{entry.originalPotential ?? '\u2014'}</td>
+                    <td>{entry.originalPotential ?? '—'}</td>
                     <td>
                       <input
                         className="input"
@@ -202,35 +237,65 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                         max={10}
                         step={0.5}
                         value={es.adjustedPotential}
+                        disabled={isReadOnly}
                         onChange={(e) => updateEntry(entry.id, 'adjustedPotential', e.target.value === '' ? '' : +e.target.value)}
-                        style={{ width: '70px', fontSize: '0.85rem' }}
+                        style={{ width: '70px', fontSize: '0.85rem', cursor: isReadOnly ? 'not-allowed' : undefined, opacity: isReadOnly ? 0.7 : 1 }}
                       />
                     </td>
                     <td>
-                      <textarea
-                        className="input"
-                        value={es.rationale}
-                        onChange={(e) => updateEntry(entry.id, 'rationale', e.target.value)}
-                        rows={1}
-                        placeholder="Justificación del ajuste..."
-                        style={{ width: '100%', minWidth: '150px', fontSize: '0.85rem', resize: 'vertical' }}
-                      />
+                      <div style={{ minWidth: '180px' }}>
+                        <select
+                          className="input"
+                          value={es.rationaleType}
+                          disabled={isReadOnly}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setEditState((prev) => ({
+                              ...prev,
+                              [entry.id]: {
+                                ...prev[entry.id],
+                                rationaleType: v,
+                                rationale: v !== 'Otro' ? v : prev[entry.id].rationale,
+                              },
+                            }));
+                          }}
+                          style={{ width: '100%', fontSize: '0.85rem', cursor: isReadOnly ? 'not-allowed' : undefined, opacity: isReadOnly ? 0.7 : 1 }}
+                        >
+                          <option value="">Seleccionar causal...</option>
+                          {CAUSALS.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                        {es.rationaleType === 'Otro' && (
+                          <input
+                            className="input"
+                            type="text"
+                            value={es.rationale}
+                            disabled={isReadOnly}
+                            onChange={(e) => updateEntry(entry.id, 'rationale', e.target.value)}
+                            placeholder="Describe la causal..."
+                            style={{ marginTop: '4px', width: '100%', fontSize: '0.85rem', cursor: isReadOnly ? 'not-allowed' : undefined, opacity: isReadOnly ? 0.7 : 1 }}
+                          />
+                        )}
+                      </div>
                     </td>
                     <td>
                       <span className={`badge ${STATUS_BADGE[entry.status] || 'badge-accent'}`}>
                         {STATUS_LABEL[entry.status] || entry.status || 'Pendiente'}
                       </span>
                     </td>
-                    <td>
-                      <button
-                        className="btn-primary"
-                        onClick={() => handleSaveEntry(entry.id)}
-                        disabled={isSaving}
-                        style={{ fontSize: '.8rem', padding: '.35rem .75rem' }}
-                      >
-                        {isSaving ? '...' : 'Guardar'}
-                      </button>
-                    </td>
+                    {!isReadOnly && (
+                      <td>
+                        <button
+                          className="btn-primary"
+                          onClick={() => handleSaveEntry(entry.id)}
+                          disabled={isSaving}
+                          style={{ fontSize: '.8rem', padding: '.35rem .75rem' }}
+                        >
+                          {isSaving ? '...' : 'Guardar'}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -244,7 +309,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
         <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn-primary" onClick={handleComplete} disabled={completing}
             style={{ background: 'var(--success)', padding: '.6rem 1.5rem' }}>
-            {completing ? 'Completando...' : `Completar calibraci\u00f3n`}
+            {completing ? 'Completando...' : `Completar calibración`}
           </button>
         </div>
       )}
