@@ -197,7 +197,7 @@ export default function SubscriptionsPage() {
         yearlyPrice: planForm.yearlyPrice ? Number(planForm.yearlyPrice) : undefined,
         currency: (planForm as any).currency || 'UF',
         features: planForm.features,
-        displayOrder: Number(planForm.displayOrder),
+        displayOrder: plans.length > 0 ? Math.max(...plans.map((p: any) => p.displayOrder ?? 0)) + 1 : 0,
       });
       setSuccess('Plan creado correctamente');
       resetPlanForm();
@@ -477,7 +477,7 @@ export default function SubscriptionsPage() {
   if (loading) return <Spinner />;
 
   return (
-    <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
+    <div style={{ padding: '2rem 2.5rem' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Suscripciones</h1>
@@ -577,10 +577,6 @@ export default function SubscriptionsPage() {
                     {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label style={labelStyle}>Orden</label>
-                  <input style={inputStyle} type="number" value={planForm.displayOrder} onChange={(e) => setPlanForm({ ...planForm, displayOrder: Number(e.target.value) })} />
-                </div>
                 <div style={{ gridColumn: 'span 3' }}>
                   <label style={labelStyle}>Descripci&oacute;n</label>
                   <input style={inputStyle} value={planForm.description} onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })} placeholder="Descripcion del plan..." />
@@ -640,14 +636,14 @@ export default function SubscriptionsPage() {
                   <thead>
                     <tr>
                       <th>Nombre</th>
-                      <th>Codigo</th>
-                      <th>Descripcion</th>
-                      <th>Max empleados</th>
-                      <th>Mensual</th>
-                      <th>Trimestral</th>
-                      <th>Semestral</th>
-                      <th>Anual</th>
-                      <th>Features</th>
+                      <th>Código</th>
+                      <th>Descripción</th>
+                      <th>Máx. empleados</th>
+                      <th>Precio mensual</th>
+                      <th>Precio trimestral</th>
+                      <th>Precio semestral</th>
+                      <th>Precio anual</th>
+                      <th>Funcionalidades</th>
                       <th>Estado</th>
                       <th>Acciones</th>
                     </tr>
@@ -657,7 +653,7 @@ export default function SubscriptionsPage() {
                       <tr key={plan.id}>
                         <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{plan.name}</td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{plan.code}</td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {plan.description ?? '-'}
                         </td>
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{plan.maxEmployees ?? '-'}</td>
@@ -673,12 +669,26 @@ export default function SubscriptionsPage() {
                         <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                           {plan.yearlyPrice > 0 ? `${Number(plan.yearlyPrice).toFixed(1)} ${plan.currency || 'UF'}` : '-'}
                         </td>
-                        <td style={{ maxWidth: '200px' }}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                            {Array.isArray(plan.features) ? plan.features.map((f: string) => {
-                              const label = FEATURE_OPTIONS.find((fo) => fo.key === f)?.label || f;
-                              return <span key={f} className="badge badge-accent" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>{label}</span>;
-                            }) : '-'}
+                        <td>
+                          <div style={{
+                            maxHeight: '90px', overflowY: 'auto',
+                            border: '1px solid var(--border)',
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '0.3rem 0.5rem',
+                            minWidth: '180px',
+                            background: 'var(--bg-surface)',
+                          }}>
+                            {Array.isArray(plan.features) && plan.features.length > 0
+                              ? plan.features.map((f: string) => {
+                                  const label = FEATURE_OPTIONS.find((fo) => fo.key === f)?.label || f;
+                                  return (
+                                    <div key={f} style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', padding: '0.1rem 0', whiteSpace: 'nowrap' }}>
+                                      • {label}
+                                    </div>
+                                  );
+                                })
+                              : <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sin funcionalidades</span>
+                            }
                           </div>
                         </td>
                         <td>
