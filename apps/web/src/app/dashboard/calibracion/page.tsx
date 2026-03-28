@@ -249,8 +249,7 @@ export default function CalibracionPage() {
           <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
             <div style={{ marginBottom: '0.75rem' }}>
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-                <path d="M9 11l3 3L22 4" />
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
               </svg>
             </div>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
@@ -263,16 +262,19 @@ export default function CalibracionPage() {
         ) : (
           <div
             className="animate-fade-up-delay-1"
-            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}
           >
             {sessions.map((s: any) => {
               const cycleName = s.cycle?.name || cycles.find((c: any) => c.id === s.cycleId)?.name || '\u2014';
+              const isActive   = s.status === 'in_progress';
+              const isDone     = s.status === 'completed';
+
               return (
                 <div
                   key={s.id}
                   className="card"
                   onClick={() => router.push(`/dashboard/calibracion/${s.id}`)}
-                  style={{ cursor: 'pointer', padding: '1.4rem', transition: 'var(--transition)', height: '100%' }}
+                  style={{ cursor: 'pointer', padding: '1.4rem', transition: 'var(--transition)', height: '100%', display: 'flex', flexDirection: 'column' }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = 'var(--border-strong)';
                     e.currentTarget.style.transform = 'translateY(-2px)';
@@ -282,22 +284,71 @@ export default function CalibracionPage() {
                     e.currentTarget.style.transform = 'translateY(0)';
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.875rem' }}>
-                    <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>{s.name}</h3>
+                  {/* Row 1: department tag + status badge */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem' }}>
+                    <span style={{
+                      fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)',
+                      background: 'rgba(99,102,241,0.1)', padding: '0.2rem 0.65rem',
+                      borderRadius: '999px', letterSpacing: '0.02em',
+                    }}>
+                      {s.department || `General`}
+                    </span>
                     <span className={`badge ${STATUS_BADGE[s.status] || 'badge-accent'}`}>
                       {STATUS_LABEL[s.status] || s.status}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                    <div>{`Ciclo: `}<strong>{cycleName}</strong></div>
-                    <div>{`Departamento: `}<strong>{s.department || 'Todos'}</strong></div>
+
+                  {/* Row 2: session name */}
+                  <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem', lineHeight: 1.4, color: 'var(--text-primary)' }}>
+                    {s.name}
+                  </h3>
+
+                  {/* Row 3: cycle name */}
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                    {cycleName}
+                  </p>
+
+                  {/* Row 4: meta — moderator + date */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', flex: 1 }}>
                     {s.moderator && (
-                      <div>{`Moderador: `}<strong>{s.moderator.firstName} {s.moderator.lastName}</strong></div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6, flexShrink: 0 }}>
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                        </svg>
+                        <span>{s.moderator.firstName} {s.moderator.lastName}</span>
+                      </div>
                     )}
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.25rem' }}>
-                      {formatDate(s.createdAt)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6, flexShrink: 0 }}>
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                      </svg>
+                      <span>{formatDate(s.createdAt)}</span>
                     </div>
                   </div>
+
+                  {/* Row 5: status bar (matches evaluaciones card) */}
+                  {isActive && (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Progreso</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-hover)' }}>En curso</span>
+                      </div>
+                      <div style={{ height: '5px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
+                        <div style={{ width: '50%', height: '100%', borderRadius: '999px', background: 'var(--accent)', transition: 'width 0.5s ease' }} />
+                      </div>
+                    </div>
+                  )}
+                  {isDone && (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Progreso</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--success)' }}>Completada</span>
+                      </div>
+                      <div style={{ height: '5px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
+                        <div style={{ width: '100%', height: '100%', borderRadius: '999px', background: 'var(--success)', transition: 'width 0.5s ease' }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
