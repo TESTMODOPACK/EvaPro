@@ -764,11 +764,12 @@ export default function SubscriptionsPage() {
                   </ul>
                 </div>
                 <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>🚫 Cancelación</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>⏸️ Suspensión</div>
                   <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                    <li>La suscripción pasa a estado "cancelada"</li>
-                    <li>No se pueden registrar nuevos pagos hasta reactivar</li>
-                    <li>Los datos se conservan pero el acceso queda restringido</li>
+                    <li>Estado temporal — la suscripción queda pausada</li>
+                    <li>No se pueden registrar nuevos pagos mientras está suspendida</li>
+                    <li>Se puede reactivar cambiando el estado a "Activa"</li>
+                    <li>Usar el botón "Cancelar" de la tabla para cancelación definitiva</li>
                   </ul>
                 </div>
                 <div>
