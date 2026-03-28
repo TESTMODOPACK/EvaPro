@@ -883,27 +883,27 @@ export default function SubscriptionsPage() {
                     value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Per\u00edodo inicio *</label>
+                  <label style={labelStyle}>Período inicio *</label>
                   <input style={inputStyle} type="date" value={paymentForm.periodStart}
                     onChange={(e) => setPaymentForm({ ...paymentForm, periodStart: e.target.value })} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Per\u00edodo fin *</label>
+                  <label style={labelStyle}>Período fin *</label>
                   <input style={inputStyle} type="date" value={paymentForm.periodEnd}
                     onChange={(e) => setPaymentForm({ ...paymentForm, periodEnd: e.target.value })} />
                 </div>
                 <div>
-                  <label style={labelStyle}>M\u00e9todo de pago</label>
+                  <label style={labelStyle}>Método de pago</label>
                   <select style={inputStyle} value={paymentForm.paymentMethod}
                     onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}>
                     <option value="transferencia">Transferencia bancaria</option>
-                    <option value="tarjeta">Tarjeta de cr\u00e9dito</option>
+                    <option value="tarjeta">Tarjeta de crédito</option>
                     <option value="efectivo">Efectivo</option>
                     <option value="otro">Otro</option>
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>N\u00b0 comprobante / referencia</label>
+                  <label style={labelStyle}>N° comprobante / referencia</label>
                   <input style={inputStyle} placeholder="Ej: TRF-123456"
                     value={paymentForm.transactionRef} onChange={(e) => setPaymentForm({ ...paymentForm, transactionRef: e.target.value })} />
                 </div>
@@ -1031,8 +1031,8 @@ export default function SubscriptionsPage() {
                                     <tr>
                                       <th style={{ padding: '0.35rem 0.5rem', textAlign: 'left' }}>Fecha</th>
                                       <th style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>Monto</th>
-                                      <th style={{ padding: '0.35rem 0.5rem' }}>Per\u00edodo</th>
-                                      <th style={{ padding: '0.35rem 0.5rem' }}>M\u00e9todo</th>
+                                      <th style={{ padding: '0.35rem 0.5rem' }}>Período</th>
+                                      <th style={{ padding: '0.35rem 0.5rem' }}>Método</th>
                                       <th style={{ padding: '0.35rem 0.5rem' }}>Referencia</th>
                                       <th style={{ padding: '0.35rem 0.5rem' }}>Estado</th>
                                     </tr>
