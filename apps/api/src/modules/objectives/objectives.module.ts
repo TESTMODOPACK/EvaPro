@@ -5,6 +5,7 @@ import { ObjectiveUpdate } from './entities/objective-update.entity';
 import { ObjectiveComment } from './entities/objective-comment.entity';
 import { KeyResult } from './entities/key-result.entity';
 import { User } from '../users/entities/user.entity';
+import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { ObjectivesService } from './objectives.service';
 import { ObjectivesController } from './objectives.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
@@ -12,7 +13,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 @Module({
   imports: [
     SubscriptionsModule,
-    TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User]),
+    TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User, EvaluationCycle]),
   ],
   controllers: [ObjectivesController],
   providers: [ObjectivesService],

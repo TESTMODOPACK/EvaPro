@@ -6,6 +6,7 @@ import { ObjectiveUpdate } from './entities/objective-update.entity';
 import { ObjectiveComment } from './entities/objective-comment.entity';
 import { KeyResult, KRStatus } from './entities/key-result.entity';
 import { User } from '../users/entities/user.entity';
+import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
 
@@ -22,11 +23,38 @@ export class ObjectivesService {
     private readonly keyResultRepo: Repository<KeyResult>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(EvaluationCycle)
+    private readonly cycleRepo: Repository<EvaluationCycle>,
   ) {}
+
+  // ─── Validation Helpers ──────────────────────────────────────────────────────
+
+  /** B7.1: targetDate cannot be in the past */
+  private validateTargetDate(dateStr?: string): void {
+    if (!dateStr) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (new Date(dateStr) < today) {
+      throw new BadRequestException('La fecha objetivo no puede ser una fecha pasada');
+    }
+  }
+
+  /** B7.2: Cycle must exist and not be closed */
+  private async validateCycleOpen(cycleId: string, tenantId: string): Promise<void> {
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+    if (!cycle) throw new BadRequestException('El ciclo de evaluación no existe');
+    if (cycle.status === CycleStatus.CLOSED) {
+      throw new BadRequestException('No se puede asignar un objetivo a un ciclo de evaluación cerrado');
+    }
+  }
 
   // ─── CRUD ───────────────────────────────────────────────────────────────────
 
   async create(tenantId: string, userId: string, dto: CreateObjectiveDto): Promise<Objective> {
+    // B7.1: targetDate must not be in the past
+    this.validateTargetDate(dto.targetDate);
+    // B7.2: cycleId must be an open cycle
+    if (dto.cycleId) await this.validateCycleOpen(dto.cycleId, tenantId);
     // B3.15: Validate parent objective if provided
     if (dto.parentObjectiveId) {
       await this.validateParentObjective(tenantId, dto.parentObjectiveId);
@@ -97,6 +125,14 @@ export class ObjectivesService {
 
   async update(tenantId: string, id: string, dto: UpdateObjectiveDto): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
+    // B7.3: Cannot modify completed or abandoned objectives
+    if (obj.status === ObjectiveStatus.COMPLETED || obj.status === ObjectiveStatus.ABANDONED) {
+      throw new BadRequestException('No se pueden modificar objetivos completados o abandonados');
+    }
+    // B7.1: targetDate must not be in the past (only when field is being changed)
+    if (dto.targetDate !== undefined) this.validateTargetDate(dto.targetDate);
+    // B7.2: cycleId must be an open cycle (only when field is being changed)
+    if (dto.cycleId !== undefined && dto.cycleId) await this.validateCycleOpen(dto.cycleId, tenantId);
     if (dto.title !== undefined) obj.title = dto.title;
     if (dto.description !== undefined) obj.description = dto.description;
     if (dto.type !== undefined) obj.type = dto.type;
@@ -174,6 +210,14 @@ export class ObjectivesService {
     dto: CreateObjectiveUpdateDto,
   ): Promise<ObjectiveUpdate> {
     const obj = await this.findById(tenantId, objectiveId);
+    // B7.4: Cannot update progress on completed objectives
+    if (obj.status === ObjectiveStatus.COMPLETED) {
+      throw new BadRequestException('Este objetivo ya está completado. No se puede actualizar el progreso');
+    }
+    // B7.5: Cannot update progress on abandoned objectives
+    if (obj.status === ObjectiveStatus.ABANDONED) {
+      throw new BadRequestException('No se puede actualizar el progreso de un objetivo abandonado');
+    }
     obj.progress = dto.progressValue;
     if (dto.progressValue >= 100) {
       obj.status = ObjectiveStatus.COMPLETED;
@@ -487,6 +531,16 @@ export class ObjectivesService {
     data: { description: string; unit?: string; baseValue?: number; targetValue?: number },
   ): Promise<KeyResult> {
     await this.findById(tenantId, objectiveId);
+    // B7.6: targetValue must be > 0
+    const base = data.baseValue ?? 0;
+    const target = data.targetValue ?? 100;
+    if (target <= 0) {
+      throw new BadRequestException('El valor objetivo del KR debe ser mayor a 0');
+    }
+    // B7.7: targetValue must not equal baseValue (division by zero in progress calc)
+    if (target === base) {
+      throw new BadRequestException('El valor objetivo no puede ser igual al valor base (causaría división por cero)');
+    }
     const kr = this.keyResultRepo.create({
       tenantId,
       objectiveId,

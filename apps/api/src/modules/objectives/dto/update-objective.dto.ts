@@ -37,6 +37,10 @@ export class UpdateObjectiveDto {
   @IsUUID()
   @IsOptional()
   parentObjectiveId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  cycleId?: string;
 }
 
 export class CreateObjectiveUpdateDto {

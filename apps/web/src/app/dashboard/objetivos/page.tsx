@@ -23,6 +23,7 @@ import {
 } from '@/hooks/useObjectives';
 import { useAuthStore } from '@/store/auth.store';
 import { useUsers } from '@/hooks/useUsers';
+import { useCycles } from '@/hooks/useCycles';
 import { getRoleLabel } from '@/lib/roles';
 
 type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned';
@@ -748,6 +749,9 @@ export default function ObjetivosPage() {
   const { data: usersData } = useUsers(1, 200);
   const allUsers: any[] = usersData?.data || [];
 
+  // Fetch cycles for objective assignment
+  const { data: cycles } = useCycles();
+
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [userFilter, setUserFilter] = useState<string>('all');
   const [searchFilter, setSearchFilter] = useState('');
@@ -757,7 +761,10 @@ export default function ObjetivosPage() {
   const [showGuide, setShowGuide] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [progressForm, setProgressForm] = useState<{ value: number; notes: string }>({ value: 50, notes: '' });
-  const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '', userId: '', parentObjectiveId: '' });
+  const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '', userId: '', parentObjectiveId: '', weight: 0, cycleId: '' });
+  const [formError, setFormError] = useState<string | null>(null);
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [submitApprovalError, setSubmitApprovalError] = useState<{ id: string; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'list' | 'team' | 'tree'>('list');
   const { data: treeData, isLoading: treeLoading } = useObjectiveTree();
 
@@ -828,13 +835,25 @@ export default function ObjetivosPage() {
       : 'Visualiza, propone y actualiza el progreso de tus objetivos';
 
   function handleCreate() {
-    if (!form.title) return;
+    if (!form.title.trim()) return;
+    // Client-side: targetDate must not be in the past
+    if (form.targetDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (new Date(form.targetDate) < today) {
+        setFormError('La fecha objetivo no puede ser una fecha pasada');
+        return;
+      }
+    }
+    setFormError(null);
     const payload: any = {
       title: form.title,
       description: form.description || null,
       type: form.type,
       targetDate: form.targetDate || null,
+      weight: form.weight || 0,
     };
+    if (form.cycleId) payload.cycleId = form.cycleId;
     // Admin/manager can assign to another user
     if ((isAdmin || isManager) && form.userId) {
       payload.userId = form.userId;
@@ -844,26 +863,34 @@ export default function ObjetivosPage() {
     }
     createObjective.mutate(payload, {
       onSuccess: () => {
-        setForm({ title: '', description: '', type: 'OKR', targetDate: '', userId: '', parentObjectiveId: '' });
+        setForm({ title: '', description: '', type: 'OKR', targetDate: '', userId: '', parentObjectiveId: '', weight: 0, cycleId: '' });
         setShowForm(false);
+        setFormError(null);
       },
+      onError: (err: any) => setFormError(err.message || 'Error al crear el objetivo'),
     });
   }
 
   function handleProgress(id: string) {
+    setProgressError(null);
     addProgress.mutate(
       { id, data: { progressValue: progressForm.value, notes: progressForm.notes || null } },
       {
         onSuccess: () => {
           setExpandedId(null);
           setProgressForm({ value: 50, notes: '' });
+          setProgressError(null);
         },
+        onError: (err: any) => setProgressError(err.message || 'Error al actualizar el progreso'),
       },
     );
   }
 
   function handleSubmitForApproval(id: string) {
-    submitForApproval.mutate(id);
+    setSubmitApprovalError(null);
+    submitForApproval.mutate(id, {
+      onError: (err: any) => setSubmitApprovalError({ id, message: err.message || 'Error al enviar a aprobación' }),
+    });
   }
 
   function handleApprove(id: string) {
@@ -1306,6 +1333,44 @@ export default function ObjetivosPage() {
                 />
               </div>
             </div>
+            {/* Second row: Weight + Cycle */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                  Peso (%) <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(0–100, opcional)</span>
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={form.weight}
+                  onChange={(e) => setForm({ ...form, weight: Math.min(100, Math.max(0, Number(e.target.value))) })}
+                  style={{ width: '100%' }}
+                />
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                  La suma de todos los objetivos no puede superar 100%
+                </p>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                  Ciclo de evaluación <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span>
+                </label>
+                <select
+                  className="input"
+                  value={form.cycleId}
+                  onChange={(e) => setForm({ ...form, cycleId: e.target.value })}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">Sin ciclo</option>
+                  {(cycles || []).filter((c: any) => c.status !== 'closed').map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.status === 'active' ? 'En curso' : 'Borrador'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             {/* Parent objective selector — cascading OKR alignment */}
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
@@ -1325,6 +1390,12 @@ export default function ObjetivosPage() {
                 ))}
               </select>
             </div>
+            {/* Validation error banner */}
+            {formError && (
+              <div style={{ padding: '0.65rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.82rem' }}>
+                {formError}
+              </div>
+            )}
             <button
               className="btn-primary"
               onClick={handleCreate}
@@ -1530,9 +1601,11 @@ export default function ObjetivosPage() {
                     onClick={() => {
                       if (isExpanded) {
                         setExpandedId(null);
+                        setProgressError(null);
                       } else {
                         setExpandedId(obj.id);
                         setProgressForm({ value: progress, notes: '' });
+                        setProgressError(null);
                       }
                     }}
                   >
@@ -1540,14 +1613,21 @@ export default function ObjetivosPage() {
                   </button>
                   {/* Submit for approval button (employee, draft only) */}
                   {isEmployee && obj.status === 'draft' && obj.userId === userId && (
-                    <button
-                      className="btn-ghost"
-                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--accent)', fontWeight: 600 }}
-                      onClick={() => handleSubmitForApproval(obj.id)}
-                      disabled={submitForApproval.isPending}
-                    >
-                      {'Enviar a aprobaci\u00f3n'}
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.2rem' }}>
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--accent)', fontWeight: 600 }}
+                        onClick={() => handleSubmitForApproval(obj.id)}
+                        disabled={submitForApproval.isPending}
+                      >
+                        {'Enviar a aprobaci\u00f3n'}
+                      </button>
+                      {submitApprovalError?.id === obj.id && (
+                        <p style={{ color: 'var(--danger)', fontSize: '0.72rem', margin: 0, maxWidth: '260px' }}>
+                          {submitApprovalError?.message}
+                        </p>
+                      )}
+                    </div>
                   )}
                   {/* Approve button for pending_approval objectives (admin/manager) */}
                   {canApprove && obj.status === 'pending_approval' && (
@@ -1650,6 +1730,11 @@ export default function ObjetivosPage() {
                       >
                         {addProgress.isPending ? 'Guardando...' : 'Guardar progreso'}
                       </button>
+                      {progressError && expandedId === obj.id && (
+                        <p style={{ color: 'var(--danger)', fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                          {progressError}
+                        </p>
+                      )}
                     </div>
 
                     {/* Key Results section */}
