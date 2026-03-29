@@ -534,12 +534,12 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Distribución de Calificaciones</h3>
             <span className={`badge ${distribution.distributionFit === 'desviada' ? 'badge-danger' : 'badge-success'}`}>
-              χ² = {distribution.chiSquared} — {distribution.distributionFit === 'desviada' ? 'Desviada' : 'Aceptable'}
+              χ² = {Number(distribution.chiSquared).toFixed(2)} — {distribution.distributionFit === 'desviada' ? 'Desviada' : 'Aceptable'}
             </span>
           </div>
           {distribution.distributionFit === 'desviada' && (
             <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-              ⚠ Distribución desviada — χ² = {distribution.chiSquared} (umbral: 9.49). La distribución real no se ajusta a la curva esperada.
+              ⚠ Distribución desviada — χ² = {Number(distribution.chiSquared).toFixed(2)} (umbral: 9.49). La distribución real no se ajusta a la curva esperada.
             </div>
           )}
           <ResponsiveContainer width="100%" height={220}>
@@ -566,10 +566,10 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
               {distribution.expectedVsActual.map((b: any) => (
                 <tr key={b.bucket} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '0.4rem 0.6rem' }}>{b.bucket}</td>
-                  <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>{b.expectedPercent}%</td>
-                  <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>{b.actualPercent}%</td>
+                  <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>{Number(b.expectedPercent).toFixed(1)}%</td>
+                  <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>{Number(b.actualPercent).toFixed(1)}%</td>
                   <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right', color: Math.abs(b.deviation) > 5 ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: Math.abs(b.deviation) > 5 ? 700 : 400 }}>
-                    {b.deviation > 0 ? `+${b.deviation}` : b.deviation}%
+                    {b.deviation > 0 ? `+${Number(b.deviation).toFixed(1)}` : Number(b.deviation).toFixed(1)}%
                   </td>
                 </tr>
               ))}

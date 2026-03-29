@@ -310,8 +310,13 @@ export default function ResponderEvaluacionPage() {
   };
 
   const handleConfirmSubmit = async () => {
+    // Only submit answers for currently visible questions (conditional logic)
+    const visibleIds = new Set(visibleQuestions.map((q: any) => q.id));
+    const filteredAnswers = Object.fromEntries(
+      Object.entries(answers).filter(([id]) => visibleIds.has(id)),
+    );
     try {
-      await submitResponse.mutateAsync({ assignmentId, answers });
+      await submitResponse.mutateAsync({ assignmentId, answers: filteredAnswers });
       setHasUnsaved(false);
       setSubmitted(true);
       setTimeout(() => router.push(`/dashboard/evaluaciones/${cycleId}`), 2200);

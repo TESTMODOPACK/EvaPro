@@ -276,7 +276,19 @@ export default function PlantillasPage() {
 
   const removeSection = (sIdx: number) => {
     if (sections.length <= 1) return;
-    setSections((prev) => prev.filter((_, i) => i !== sIdx));
+    // Collect IDs of all questions in the removed section for condition cleanup
+    const removedIds = new Set(sections[sIdx].questions.map((q) => q.id));
+    setSections((prev) =>
+      prev
+        .filter((_, i) => i !== sIdx)
+        .map((s) => ({
+          ...s,
+          condition: s.condition && removedIds.has(s.condition.questionId) ? null : s.condition,
+          questions: s.questions.map((q) =>
+            q.condition && removedIds.has(q.condition.questionId) ? { ...q, condition: null } : q,
+          ),
+        })),
+    );
   };
 
   const updateQuestion = (sIdx: number, qIdx: number, field: string, value: any) => {
@@ -299,12 +311,16 @@ export default function PlantillasPage() {
   };
 
   const removeQuestion = (sIdx: number, qIdx: number) => {
+    const removedId = sections[sIdx].questions[qIdx].id;
     setSections((prev) =>
-      prev.map((s, si) =>
-        si === sIdx
-          ? { ...s, questions: s.questions.filter((_, qi) => qi !== qIdx) }
-          : s,
-      ),
+      prev.map((s, si) => ({
+        ...s,
+        // Clean up section condition if it references the deleted question
+        condition: s.condition?.questionId === removedId ? null : s.condition,
+        questions: (si === sIdx ? s.questions.filter((_, qi) => qi !== qIdx) : s.questions).map((q) =>
+          q.condition?.questionId === removedId ? { ...q, condition: null } : q,
+        ),
+      })),
     );
   };
 
