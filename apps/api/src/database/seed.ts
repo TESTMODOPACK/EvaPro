@@ -355,7 +355,7 @@ async function seed() {
         quarterlyPrice: 9.45,    // 3.5 × 3 × 0.90
         semiannualPrice: 17.85,  // 3.5 × 6 × 0.85
         yearlyPrice: 33.60,      // 3.5 × 12 × 0.80
-        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION'],
+        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS'],
         isActive: true, displayOrder: 3,
       }));
       console.log('\u2705  Plan "Pro" created (3.5 UF/mes, 200 users)');
@@ -367,10 +367,20 @@ async function seed() {
         quarterlyPrice: 21.60,   // 8 × 3 × 0.90
         semiannualPrice: 40.80,  // 8 × 6 × 0.85
         yearlyPrice: 76.80,      // 8 × 12 × 0.80
-        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'AI_INSIGHTS', 'PUBLIC_API'],
+        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS', 'AI_INSIGHTS', 'PUBLIC_API'],
         isActive: true, displayOrder: 4,
       }));
       console.log('\u2705  Plan "Enterprise" created (8 UF/mes, unlimited)');
+    }
+
+    // ── Feature migration: ensure POSTULANTS is present in Pro & Enterprise ──
+    for (const planCode of ['pro', 'enterprise']) {
+      const plan = await planRepo.findOne({ where: { code: planCode } });
+      if (plan && !plan.features.includes('POSTULANTS')) {
+        plan.features = [...plan.features, 'POSTULANTS'];
+        await planRepo.save(plan);
+        console.log(`\u2705  Added POSTULANTS feature to "${plan.name}" plan`);
+      }
     }
 
     let subscription = await subRepo.findOne({ where: { tenantId: tenant.id } });

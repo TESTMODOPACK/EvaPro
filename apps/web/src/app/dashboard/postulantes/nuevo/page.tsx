@@ -9,6 +9,7 @@ export default function NuevoProcesoPage() {
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
 
   const [title, setTitle] = useState('');
@@ -30,6 +31,7 @@ export default function NuevoProcesoPage() {
     e.preventDefault();
     if (!token || !title || !position) return;
     setSaving(true);
+    setError(null);
     try {
       const result = await api.postulants.processes.create(token, {
         title, position,
@@ -40,7 +42,10 @@ export default function NuevoProcesoPage() {
         evaluatorIds: evaluatorIds.length ? evaluatorIds : undefined,
       });
       router.push(`/dashboard/postulantes/${result.id}`);
-    } catch { setSaving(false); }
+    } catch (err: any) {
+      setError(err.message || 'Error al crear el proceso. Intenta nuevamente.');
+      setSaving(false);
+    }
   };
 
   const toggleEvaluator = (userId: string) => {
@@ -139,6 +144,16 @@ export default function NuevoProcesoPage() {
             )}
           </div>
         </div>
+
+        {error && (
+          <div style={{
+            padding: '0.75rem 1rem', marginBottom: '1rem',
+            background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)',
+            borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.85rem',
+          }}>
+            {error}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button type="submit" className="btn-primary" disabled={saving || !title || !position}

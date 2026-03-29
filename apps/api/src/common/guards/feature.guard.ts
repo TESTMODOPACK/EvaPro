@@ -17,6 +17,7 @@ const FEATURE_LABELS: Record<string, string> = {
   PDI: 'Planes de Desarrollo Individual (PDI)',
   NINE_BOX: 'Nine Box / Talent Assessment',
   CALIBRATION: 'Calibración',
+  POSTULANTS: 'Evaluación de Postulantes',
   AI_INSIGHTS: 'Análisis con Inteligencia Artificial',
   PUBLIC_API: 'API pública',
 };
