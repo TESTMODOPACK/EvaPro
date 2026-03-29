@@ -32,14 +32,33 @@ function heatColor(avg: number | null, maxScale: number): string {
 }
 
 function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
-  const { data, isLoading } = useCompetencyHeatmap(cycleId);
+  const [deptFilter, setDeptFilter] = useState('');
+  const [sortByAvg, setSortByAvg] = useState(false);
 
-  if (isLoading) return <Spinner />;
+  // Unfiltered query — used to populate department dropdown and as base data
+  const { data: unfilteredData } = useCompetencyHeatmap(cycleId);
+
+  // Filtered query — only different from above when a filter is active
+  const activeFilters = deptFilter ? { department: deptFilter } : undefined;
+  const { data, isLoading } = useCompetencyHeatmap(cycleId, activeFilters);
+
+  // Derive available departments from unfiltered data (for the dropdown)
+  const availableDepts: string[] = (unfilteredData?.departments as string[]) || [];
+
+  // Helper: compute org-wide average for a row (across all depts, excludes null + privacy-restricted)
+  const orgAvg = (row: any): number | null => {
+    const vals = (row.values as any[])
+      .filter((v) => v.avg !== null && !v.privacyRestricted)
+      .map((v) => v.avg as number);
+    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+
+  if (isLoading && !data) return <Spinner />;
   if (!data || !data.grid || data.grid.length === 0) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          {data?.message || 'Sin datos de competencias para este ciclo'}
+          {(data as any)?.message || 'Sin datos de competencias para este ciclo'}
         </p>
       </div>
     );
@@ -47,18 +66,29 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
 
   const { departments, grid, privacyThreshold } = data;
 
+  // Sort rows: most-needs-improvement (lowest org avg) first when enabled
+  const displayGrid = sortByAvg
+    ? [...(grid as any[])].sort((a, b) => (orgAvg(a) ?? 999) - (orgAvg(b) ?? 999))
+    : (grid as any[]);
+
+  const hasPrivacyRows = (departments as string[]).some((d) =>
+    (grid as any[]).some((r: any) => r.values.find((v: any) => v.department === d && v.privacyRestricted)),
+  );
+
   return (
     <div className="card animate-fade-up" style={{ padding: '1.5rem', overflow: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
         <div>
           <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
             {'Mapa de Competencias por Departamento'}
           </h2>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            {'Puntaje promedio por secci\u00f3n de la plantilla — filas: secciones, columnas: departamentos'}
+            {'Puntaje promedio por secci\u00f3n — filas: competencias, columnas: departamentos'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.72rem', alignItems: 'center' }}>
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.72rem', alignItems: 'center', flexShrink: 0 }}>
           <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'rgba(16,185,129,0.25)', borderRadius: '2px', border: '1px solid var(--border)' }} />
           <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>{'Alto (\u226575%)'}</span>
           <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'rgba(245,158,11,0.20)', borderRadius: '2px', border: '1px solid var(--border)' }} />
@@ -68,6 +98,46 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
         </div>
       </div>
 
+      {/* Filter bar */}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1.25rem', padding: '0.75rem 1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            Departamento:
+          </label>
+          <select
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+            style={{ padding: '0.35rem 0.6rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none' }}
+          >
+            <option value="">Todos</option>
+            {availableDepts.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={sortByAvg}
+            onChange={(e) => setSortByAvg(e.target.checked)}
+            style={{ accentColor: 'var(--accent)' }}
+          />
+          Ordenar por menor puntaje
+        </label>
+
+        {(deptFilter || sortByAvg) && (
+          <button
+            className="btn-ghost"
+            style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', marginLeft: 'auto' }}
+            onClick={() => { setDeptFilter(''); setSortByAvg(false); }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
+      {/* Heatmap table */}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '600px' }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
@@ -75,44 +145,66 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
               {'Secci\u00f3n / Competencia'}
             </th>
             {(departments as string[]).map((dept) => (
-              <th key={dept} style={{ padding: '0.5rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', textAlign: 'center', maxWidth: '110px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <th key={dept} style={{ padding: '0.5rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', textAlign: 'center', maxWidth: '110px' }} title={dept}>
                 {dept.length > 14 ? dept.slice(0, 13) + '\u2026' : dept}
               </th>
             ))}
+            {/* Org average column — only shown when no dept filter active */}
+            {!deptFilter && (
+              <th style={{ padding: '0.5rem 0.5rem', color: 'var(--accent)', fontWeight: 700, fontSize: '0.72rem', textAlign: 'center', borderLeft: '2px solid var(--border)', whiteSpace: 'nowrap' }}>
+                Org Ø
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
-          {(grid as any[]).map((row: any, ri: number) => (
-            <tr key={ri} style={{ borderBottom: '1px solid var(--border)' }}>
-              <td style={{ padding: '0.55rem 0.75rem', fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-                {row.section}
-              </td>
-              {row.values.map((cell: any, ci: number) => (
-                <td
-                  key={ci}
-                  style={{
-                    padding: '0.55rem 0.5rem',
-                    textAlign: 'center',
-                    background: cell.privacyRestricted ? 'transparent' : heatColor(cell.avg, row.maxScale ?? 10),
-                    fontWeight: cell.avg !== null ? 700 : 400,
-                    color: cell.privacyRestricted ? 'var(--text-muted)' : cell.avg !== null ? 'var(--text-primary)' : 'var(--text-muted)',
-                    fontSize: '0.82rem',
-                  }}
-                  title={cell.privacyRestricted ? `Privacidad: se requieren al menos ${privacyThreshold} evaluados` : cell.avg !== null ? `${cell.count} respuestas · escala 1-${row.maxScale ?? 10}` : 'Sin datos'}
-                >
-                  {cell.privacyRestricted ? '\uD83D\uDD12' : cell.avg !== null ? cell.avg.toFixed(1) : '\u2014'}
+          {displayGrid.map((row: any) => {
+            const avg = orgAvg(row);
+            return (
+              <tr key={row.section} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '0.55rem 0.75rem', fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                  {row.section}
                 </td>
-              ))}
-            </tr>
-          ))}
+                {row.values.map((cell: any, ci: number) => (
+                  <td
+                    key={ci}
+                    style={{
+                      padding: '0.55rem 0.5rem',
+                      textAlign: 'center',
+                      background: cell.privacyRestricted ? 'transparent' : heatColor(cell.avg, row.maxScale ?? 10),
+                      fontWeight: cell.avg !== null ? 700 : 400,
+                      color: cell.privacyRestricted ? 'var(--text-muted)' : cell.avg !== null ? 'var(--text-primary)' : 'var(--text-muted)',
+                      fontSize: '0.82rem',
+                    }}
+                    title={cell.privacyRestricted ? `Privacidad: se requieren al menos ${privacyThreshold} evaluados` : cell.avg !== null ? `${cell.count} respuestas · escala 1-${row.maxScale ?? 10}` : 'Sin datos'}
+                  >
+                    {cell.privacyRestricted ? '\uD83D\uDD12' : cell.avg !== null ? cell.avg.toFixed(1) : '\u2014'}
+                  </td>
+                ))}
+                {/* Org average cell */}
+                {!deptFilter && (
+                  <td
+                    style={{
+                      padding: '0.55rem 0.5rem',
+                      textAlign: 'center',
+                      borderLeft: '2px solid var(--border)',
+                      background: avg !== null ? heatColor(avg, row.maxScale ?? 10) : 'transparent',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      color: avg !== null ? 'var(--accent)' : 'var(--text-muted)',
+                    }}
+                    title={avg !== null ? `Promedio organizacional: ${avg.toFixed(2)} / ${row.maxScale ?? 10}` : 'Sin datos suficientes'}
+                  >
+                    {avg !== null ? avg.toFixed(1) : '\u2014'}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
-      {(departments as string[]).some((d) =>
-        (grid as any[]).some((r: any) =>
-          r.values.find((v: any) => v.department === d && v.privacyRestricted),
-        ),
-      ) && (
+      {hasPrivacyRows && (
         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
           {'\uD83D\uDD12 Se ocultan departamentos con menos de '}{privacyThreshold}{' evaluados para proteger la privacidad'}
         </p>
