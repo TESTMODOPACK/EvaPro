@@ -1,3 +1,4 @@
+import type ExcelJS from 'exceljs';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -441,6 +442,230 @@ export class ReportsService {
     // Return as Buffer
     const arrayBuffer = doc.output('arraybuffer');
     return Buffer.from(arrayBuffer);
+  }
+
+  // ─── Export Excel (.xlsx) ───────────────────────────────────────────────
+
+  async exportXlsx(cycleId: string, tenantId: string): Promise<Buffer> {
+    const ExcelJS = (await import('exceljs')).default;
+
+    const summary = await this.cycleSummary(cycleId, tenantId);
+    const assignments = await this.assignmentRepo.find({
+      where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED },
+      relations: ['evaluatee', 'evaluator'],
+    });
+
+    const assignmentIds = assignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo.find({ where: { assignmentId: In(assignmentIds) } })
+      : [];
+    const responseByAssignment = new Map(allResponses.map((r) => [r.assignmentId, r]));
+
+    const relationLabels: Record<string, string> = {
+      self: 'Autoevaluación',
+      manager: 'Encargado',
+      peer: 'Par',
+      direct_report: 'Reporte directo',
+      external: 'Externo',
+    };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'EvaPro';
+    wb.created = new Date();
+
+    const ACCENT = { argb: 'FF6366F1' };
+    const ACCENT_LIGHT = { argb: 'FFE0E7FF' };
+    const HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Calibri', size: 11 };
+    const TITLE_FONT = { bold: true, name: 'Calibri', size: 13, color: { argb: 'FF1E1E3C' } };
+
+    const styleHeader = (row: ExcelJS.Row) => {
+      row.eachCell((cell: ExcelJS.Cell) => {
+        cell.font = HEADER_FONT;
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: ACCENT };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        };
+      });
+      row.height = 22;
+    };
+
+    // ── Sheet 1: Resumen ──────────────────────────────────────────────────
+    const wsResumen = wb.addWorksheet('Resumen');
+    wsResumen.columns = [
+      { key: 'label', width: 30 },
+      { key: 'value', width: 25 },
+    ];
+
+    const titleRow = wsResumen.addRow([`Reporte de Evaluación — ${summary.cycle.name}`, '']);
+    wsResumen.mergeCells(`A${titleRow.number}:B${titleRow.number}`);
+    titleRow.getCell('A').font = { bold: true, name: 'Calibri', size: 15, color: ACCENT };
+    titleRow.height = 30;
+
+    wsResumen.addRow([]);
+
+    const metaRows: [string, string][] = [
+      ['Ciclo', summary.cycle.name],
+      ['Tipo', summary.cycle.type],
+      ['Inicio', new Date(summary.cycle.startDate).toLocaleDateString('es-CL')],
+      ['Cierre', new Date(summary.cycle.endDate).toLocaleDateString('es-CL')],
+      ['Estado', summary.cycle.status],
+      ['Generado el', new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })],
+    ];
+    metaRows.forEach(([label, value]) => {
+      const r = wsResumen.addRow([label, value]);
+      r.getCell('A').font = { bold: true, name: 'Calibri', size: 10, color: { argb: 'FF64748B' } };
+      r.getCell('B').font = { name: 'Calibri', size: 10 };
+    });
+
+    wsResumen.addRow([]);
+
+    const kpiTitle = wsResumen.addRow(['Métricas Clave', '']);
+    kpiTitle.getCell('A').font = TITLE_FONT;
+    kpiTitle.height = 24;
+
+    const kpiHeaderRow = wsResumen.addRow(['Indicador', 'Valor']);
+    styleHeader(kpiHeaderRow);
+
+    const kpis: [string, string | number][] = [
+      ['Total de asignaciones', summary.totalAssignments],
+      ['Evaluaciones completadas', summary.completedAssignments],
+      ['Tasa de completitud', `${summary.completionRate}%`],
+      ['Puntaje promedio global', summary.averageScore ? Number(summary.averageScore).toFixed(2) : '—'],
+    ];
+    kpis.forEach(([label, value]) => {
+      const r = wsResumen.addRow([label, value]);
+      r.getCell('A').font = { name: 'Calibri', size: 10 };
+      r.getCell('B').font = { bold: true, name: 'Calibri', size: 10 };
+      r.getCell('B').alignment = { horizontal: 'center' };
+      r.getCell('B').fill = { type: 'pattern', pattern: 'solid', fgColor: ACCENT_LIGHT };
+    });
+
+    // ── Sheet 2: Por Departamento ─────────────────────────────────────────
+    const wsDept = wb.addWorksheet('Por Departamento');
+    wsDept.columns = [
+      { key: 'dept', header: 'Departamento', width: 28 },
+      { key: 'avg', header: 'Puntaje Promedio', width: 18 },
+      { key: 'count', header: 'Evaluaciones', width: 16 },
+    ];
+
+    const deptHeader = wsDept.getRow(1);
+    styleHeader(deptHeader);
+
+    const deptSorted = [...(summary.departmentBreakdown || [])].sort(
+      (a: any, b: any) => Number(b.avgScore) - Number(a.avgScore),
+    );
+    deptSorted.forEach((d: any, i: number) => {
+      const r = wsDept.addRow({
+        dept: d.department || 'Sin depto.',
+        avg: Number(d.avgScore).toFixed(2),
+        count: d.count,
+      });
+      if (i % 2 === 0) {
+        r.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        });
+      }
+      r.getCell('avg').alignment = { horizontal: 'center' };
+      r.getCell('count').alignment = { horizontal: 'center' };
+    });
+
+    // ── Sheet 3: Detalle de Evaluaciones ─────────────────────────────────
+    const wsDetail = wb.addWorksheet('Detalle');
+    wsDetail.columns = [
+      { key: 'evaluatee', header: 'Evaluado', width: 26 },
+      { key: 'dept', header: 'Departamento', width: 22 },
+      { key: 'evaluator', header: 'Evaluador', width: 26 },
+      { key: 'relation', header: 'Relación', width: 18 },
+      { key: 'score', header: 'Puntaje', width: 12 },
+      { key: 'date', header: 'Fecha', width: 14 },
+    ];
+
+    styleHeader(wsDetail.getRow(1));
+
+    assignments.forEach((a, i) => {
+      const resp = responseByAssignment.get(a.id);
+      const r = wsDetail.addRow({
+        evaluatee: a.evaluatee ? `${a.evaluatee.firstName} ${a.evaluatee.lastName}` : 'N/A',
+        dept: (a.evaluatee as any)?.department || '—',
+        evaluator: a.evaluator ? `${a.evaluator.firstName} ${a.evaluator.lastName}` : 'N/A',
+        relation: relationLabels[a.relationType] || a.relationType,
+        score: resp?.overallScore != null ? Number(resp.overallScore).toFixed(2) : '—',
+        date: resp?.submittedAt ? new Date(resp.submittedAt).toLocaleDateString('es-CL') : '—',
+      });
+      if (i % 2 === 0) {
+        r.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        });
+      }
+      r.getCell('score').alignment = { horizontal: 'center' };
+      r.getCell('date').alignment = { horizontal: 'center' };
+      // Color score cell by range
+      const score = resp?.overallScore != null ? Number(resp.overallScore) : null;
+      if (score !== null) {
+        const color = score >= 7 ? 'FFD1FAE5' : score >= 4 ? 'FFFEF3C7' : 'FFFEE2E2';
+        r.getCell('score').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
+      }
+    });
+
+    // ── Sheet 4: Resumen por Evaluado ─────────────────────────────────────
+    const wsEvaluees = wb.addWorksheet('Por Evaluado');
+    wsEvaluees.columns = [
+      { key: 'name', header: 'Evaluado', width: 26 },
+      { key: 'dept', header: 'Departamento', width: 22 },
+      { key: 'completed', header: 'Eval. Recibidas', width: 16 },
+      { key: 'avg', header: 'Puntaje Promedio', width: 18 },
+    ];
+
+    styleHeader(wsEvaluees.getRow(1));
+
+    // Group by evaluatee
+    const byEvaluatee = new Map<string, { name: string; dept: string; scores: number[] }>();
+    assignments.forEach((a) => {
+      const resp = responseByAssignment.get(a.id);
+      if (!a.evaluatee || resp?.overallScore == null) return;
+      const key = a.evaluateeId;
+      if (!byEvaluatee.has(key)) {
+        byEvaluatee.set(key, {
+          name: `${a.evaluatee.firstName} ${a.evaluatee.lastName}`,
+          dept: (a.evaluatee as any)?.department || '—',
+          scores: [],
+        });
+      }
+      byEvaluatee.get(key)!.scores.push(Number(resp.overallScore));
+    });
+
+    [...byEvaluatee.entries()]
+      .map(([, v]) => ({
+        name: v.name,
+        dept: v.dept,
+        completed: v.scores.length,
+        avg: v.scores.length > 0
+          ? (v.scores.reduce((s, x) => s + x, 0) / v.scores.length).toFixed(2)
+          : '—',
+      }))
+      .sort((a, b) => Number(b.avg) - Number(a.avg))
+      .forEach((row, i) => {
+        const r = wsEvaluees.addRow(row);
+        if (i % 2 === 0) {
+          r.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          });
+        }
+        r.getCell('avg').alignment = { horizontal: 'center' };
+        r.getCell('completed').alignment = { horizontal: 'center' };
+      });
+
+    // All sheets: freeze top row, auto-filter
+    [wsResumen, wsDept, wsDetail, wsEvaluees].forEach((ws) => {
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+    });
+    [wsDept, wsDetail, wsEvaluees].forEach((ws) => {
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
   }
 
   // ─── Performance History ────────────────────────────────────────────────

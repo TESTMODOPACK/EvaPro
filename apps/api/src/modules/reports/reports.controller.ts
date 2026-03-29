@@ -267,6 +267,13 @@ export class ReportsController {
       return res.send(pptxBuffer);
     }
 
+    if (format === 'xlsx') {
+      const xlsxBuffer = await this.reportsService.exportXlsx(cycleId, req.user.tenantId);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.xlsx`);
+      return res.send(xlsxBuffer);
+    }
+
     const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.csv`);
