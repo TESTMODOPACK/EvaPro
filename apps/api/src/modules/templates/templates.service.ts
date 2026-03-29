@@ -307,6 +307,7 @@ export class TemplatesService {
         title: sec.title,
         description: sec.description || null,
         questionCount: questions.length,
+        condition: sec.condition || null,
         questions,
       };
     });

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { calibrationEntryStatusLabel as STATUS_LABEL, calibrationEntryStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const FALLBACK_CAUSALS = [
   'Ajuste por desempeño real observado',
@@ -69,6 +70,9 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   }>>({});
   const [savingEntry, setSavingEntry] = useState<string | null>(null);
 
+  // Distribution analysis
+  const [distribution, setDistribution] = useState<any>(null);
+
   // Filters & grouping
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -107,6 +111,12 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
         }
       }
       setEditState(es);
+      // Load distribution analysis if session has entries
+      if (data.entries && data.entries.length > 0) {
+        api.talent.calibration.getDistribution(token, params.id)
+          .then((dist) => setDistribution(dist))
+          .catch(() => setDistribution(null));
+      }
     } catch { setSession(null); }
     setLoading(false);
   }
@@ -515,6 +525,56 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Distribution Analysis */}
+      {distribution && distribution.expectedVsActual && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Distribución de Calificaciones</h3>
+            <span className={`badge ${distribution.distributionFit === 'desviada' ? 'badge-danger' : 'badge-success'}`}>
+              χ² = {distribution.chiSquared} — {distribution.distributionFit === 'desviada' ? 'Desviada' : 'Aceptable'}
+            </span>
+          </div>
+          {distribution.distributionFit === 'desviada' && (
+            <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+              ⚠ Distribución desviada — χ² = {distribution.chiSquared} (umbral: 9.49). La distribución real no se ajusta a la curva esperada.
+            </div>
+          )}
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={distribution.expectedVsActual} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <YAxis unit="%" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <Tooltip formatter={(v: any) => `${v}%`} />
+              <Legend />
+              <Bar dataKey="actualPercent" name="Real" fill="var(--accent)" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="expectedPercent" name="Esperado" fill="rgba(99,102,241,0.3)" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', marginTop: '1rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                <th style={{ textAlign: 'left', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>Bucket</th>
+                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>Esperado</th>
+                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>Real</th>
+                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>Desviación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {distribution.expectedVsActual.map((b: any) => (
+                <tr key={b.bucket} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '0.4rem 0.6rem' }}>{b.bucket}</td>
+                  <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>{b.expectedPercent}%</td>
+                  <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>{b.actualPercent}%</td>
+                  <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right', color: Math.abs(b.deviation) > 5 ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: Math.abs(b.deviation) > 5 ? 700 : 400 }}>
+                    {b.deviation > 0 ? `+${b.deviation}` : b.deviation}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

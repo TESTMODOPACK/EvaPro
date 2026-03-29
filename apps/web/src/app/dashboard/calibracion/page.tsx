@@ -31,6 +31,9 @@ export default function CalibracionPage() {
   const [showGuide, setShowGuide] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: '', cycleId: '', department: '', notes: '' });
+  const [useCustomDist, setUseCustomDist] = useState(false);
+  const [dist, setDist] = useState({ low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 });
+  const distSum = dist.low + dist.midLow + dist.mid + dist.midHigh + dist.high;
 
   useEffect(() => {
     if (!token) return;
@@ -48,16 +51,20 @@ export default function CalibracionPage() {
 
   async function handleCreate() {
     if (!form.name || !form.cycleId || !token) return;
+    if (useCustomDist && distSum !== 100) return;
     setCreating(true);
     setCreateError('');
     try {
       const data: any = { name: form.name, cycleId: form.cycleId };
       if (form.department) data.department = form.department;
       if (form.notes) data.notes = form.notes;
+      if (useCustomDist) data.expectedDistribution = { ...dist };
       await api.talent.calibration.create(token, data);
       const updated = await api.talent.calibration.list(token);
       setSessions(updated || []);
       setForm({ name: '', cycleId: '', department: '', notes: '' });
+      setUseCustomDist(false);
+      setDist({ low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 });
       setShowForm(false);
     } catch (err: any) {
       setCreateError(err?.message || 'Error al crear la sesión. Intenta de nuevo.');
@@ -238,6 +245,50 @@ export default function CalibracionPage() {
               </div>
             </div>
 
+            {/* Distribución esperada */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={useCustomDist}
+                  onChange={(e) => setUseCustomDist(e.target.checked)}
+                  style={{ accentColor: 'var(--accent)' }}
+                />
+                {'Configurar distribución esperada'}
+                <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(por defecto: campana 10/20/40/20/10)</span>
+              </label>
+              {useCustomDist && (
+                <div style={{ padding: '1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    {([
+                      { key: 'low' as const, label: 'Bajo (0-2)' },
+                      { key: 'midLow' as const, label: 'Medio-Bajo' },
+                      { key: 'mid' as const, label: 'Medio (4-6)' },
+                      { key: 'midHigh' as const, label: 'Medio-Alto' },
+                      { key: 'high' as const, label: 'Alto (8-10)' },
+                    ]).map(({ key, label }) => (
+                      <div key={key} style={{ textAlign: 'center' }}>
+                        <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>{label}</label>
+                        <input
+                          className="input"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={dist[key]}
+                          onChange={(e) => setDist((prev) => ({ ...prev, [key]: Math.max(0, Math.min(100, Number(e.target.value))) }))}
+                          style={{ textAlign: 'center', padding: '0.4rem' }}
+                        />
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>%</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', textAlign: 'right', fontWeight: 600, color: distSum === 100 ? 'var(--success)' : 'var(--danger)' }}>
+                    Total: {distSum}% {distSum === 100 ? '✓' : `— debe ser 100%`}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div style={{ height: '1px', background: 'var(--border)', marginBottom: '1.25rem' }} />
 
             {createError && (
@@ -253,7 +304,7 @@ export default function CalibracionPage() {
               <button
                 className="btn-primary"
                 onClick={handleCreate}
-                disabled={creating || !form.name || !form.cycleId}
+                disabled={creating || !form.name || !form.cycleId || (useCustomDist && distSum !== 100)}
               >
                 {creating ? `Creando...` : `Crear sesión`}
               </button>

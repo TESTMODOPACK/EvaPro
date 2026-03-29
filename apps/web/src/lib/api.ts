@@ -284,6 +284,8 @@ export const api = {
         request<any>(`/talent/calibration/entry/${entryId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       complete: (token: string, id: string) =>
         request<void>(`/talent/calibration/${id}/complete`, { method: "POST" }, token),
+      getDistribution: (token: string, id: string) =>
+        request<any>(`/talent/calibration/${id}/distribution`, {}, token),
     },
   },
 

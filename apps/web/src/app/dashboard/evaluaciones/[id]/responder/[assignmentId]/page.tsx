@@ -263,9 +263,9 @@ export default function ResponderEvaluacionPage() {
 
   // ── Conditional logic ─────────────────────────────────────────────────────
 
-  const isQuestionVisible = (q: any) => {
-    if (!q.condition) return true;
-    const { questionId, operator, value } = q.condition;
+  const evalCondition = (condition: any): boolean => {
+    if (!condition) return true;
+    const { questionId, operator, value } = condition;
     const currentAnswer = answers[questionId];
     if (currentAnswer === undefined || currentAnswer === null) return false;
     switch (operator) {
@@ -278,11 +278,15 @@ export default function ResponderEvaluacionPage() {
     }
   };
 
+  const isQuestionVisible = (q: any) => evalCondition(q.condition);
+  const isSectionVisible = (sec: any) => evalCondition(sec.condition);
+
   // ── Progress counters ─────────────────────────────────────────────────────
 
   const template = detail?.template;
   const sections: any[] = template?.sections || [];
-  const allQuestions = sections.flatMap((s: any) => s.questions || []);
+  const visibleSections = sections.filter(isSectionVisible);
+  const allQuestions = visibleSections.flatMap((s: any) => s.questions || []);
   const visibleQuestions = allQuestions.filter(isQuestionVisible);
   const totalQuestions = visibleQuestions.length;
   const answeredQuestions = visibleQuestions.filter(
@@ -469,7 +473,7 @@ export default function ResponderEvaluacionPage() {
         )}
 
         {/* Sections */}
-        {sections.map((section: any, sIdx: number) => (
+        {visibleSections.map((section: any, sIdx: number) => (
           <div key={section.id || sIdx} className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.2rem' }}>
               {section.title || `Sección ${sIdx + 1}`}

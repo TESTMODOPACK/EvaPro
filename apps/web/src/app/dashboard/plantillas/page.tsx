@@ -13,6 +13,12 @@ import { api } from '@/lib/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+interface Condition {
+  questionId: string;
+  operator: 'equals' | 'not_equals' | 'greater_than' | 'less_than';
+  value: string;
+}
+
 interface Question {
   id: string;
   text: string;
@@ -20,12 +26,14 @@ interface Question {
   scale?: { min: number; max: number; labels: Record<string, string> };
   options?: string[];
   required: boolean;
+  condition?: Condition | null;
 }
 
 interface Section {
   id: string;
   title: string;
   questions: Question[];
+  condition?: Condition | null;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -77,6 +85,90 @@ function Spinner() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
       <span className="spinner" />
+    </div>
+  );
+}
+
+// ─── ConditionBuilder ────────────────────────────────────────────────────────
+
+function ConditionBuilder({
+  condition,
+  onChange,
+  allQuestions,
+  excludeId,
+}: {
+  condition?: Condition | null;
+  onChange: (c: Condition | null) => void;
+  allQuestions: Question[];
+  excludeId?: string;
+}) {
+  const eligible = allQuestions.filter(
+    (q) => (q.type === 'scale' || q.type === 'multi') && q.id !== excludeId,
+  );
+
+  return (
+    <div style={{ marginTop: '0.6rem' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-muted)', cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={!!condition}
+          style={{ accentColor: 'var(--accent)' }}
+          onChange={(e) => {
+            if (e.target.checked && eligible.length > 0) {
+              onChange({ questionId: eligible[0].id, operator: 'equals', value: '' });
+            } else {
+              onChange(null);
+            }
+          }}
+        />
+        Mostrar solo si...
+      </label>
+      {condition && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem', flexWrap: 'wrap', paddingLeft: '1.2rem', alignItems: 'center' }}>
+          {eligible.length === 0 ? (
+            <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>
+              No hay preguntas de escala/múltiple disponibles como trigger
+            </span>
+          ) : (
+            <>
+              <select
+                style={{ ...inputStyle, width: 'auto', minWidth: '180px', fontSize: '0.78rem' }}
+                value={condition.questionId}
+                onChange={(e) => onChange({ ...condition, questionId: e.target.value })}
+              >
+                {eligible.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.text.length > 45 ? q.text.slice(0, 45) + '…' : q.text || `Pregunta (${q.id.slice(0, 4)})`}
+                  </option>
+                ))}
+              </select>
+              <select
+                style={{ ...inputStyle, width: 'auto', minWidth: '140px', fontSize: '0.78rem' }}
+                value={condition.operator}
+                onChange={(e) => onChange({ ...condition, operator: e.target.value as Condition['operator'] })}
+              >
+                <option value="equals">es igual a</option>
+                <option value="not_equals">es distinto de</option>
+                <option value="greater_than">es mayor que</option>
+                <option value="less_than">es menor que</option>
+              </select>
+              <input
+                style={{ ...inputStyle, width: '80px', fontSize: '0.78rem' }}
+                value={condition.value}
+                onChange={(e) => onChange({ ...condition, value: e.target.value })}
+                placeholder="valor"
+              />
+            </>
+          )}
+          <button
+            className="btn-ghost"
+            style={{ fontSize: '0.72rem', color: 'var(--danger)', padding: '0.2rem 0.4rem' }}
+            onClick={() => onChange(null)}
+          >
+            Quitar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -293,6 +385,7 @@ export default function PlantillasPage() {
 
   // Create/Edit mode
   if (mode === 'create' || mode === 'edit') {
+    const allQuestions = sections.flatMap((s) => s.questions);
     return (
       <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>
         <button className="btn-ghost" onClick={() => { resetForm(); setMode('list'); }} style={{ marginBottom: '1.5rem', fontSize: '0.82rem' }}>
@@ -339,11 +432,17 @@ export default function PlantillasPage() {
             </div>
 
             <input
-              style={{ ...inputStyle, marginBottom: '1rem', fontWeight: 600 }}
+              style={{ ...inputStyle, fontWeight: 600 }}
               value={sec.title}
               onChange={(e) => updateSection(si, 'title', e.target.value)}
               placeholder="Título de la sección *"
             />
+            <ConditionBuilder
+              condition={sec.condition}
+              onChange={(c) => updateSection(si, 'condition', c)}
+              allQuestions={allQuestions}
+            />
+            <div style={{ marginBottom: '1rem' }} />
 
             {/* Questions */}
             {sec.questions.map((q, qi) => (
@@ -423,6 +522,14 @@ export default function PlantillasPage() {
                     </button>
                   </div>
                 )}
+
+                {/* Condition builder */}
+                <ConditionBuilder
+                  condition={q.condition}
+                  onChange={(c) => updateQuestion(si, qi, 'condition', c)}
+                  allQuestions={allQuestions}
+                  excludeId={q.id}
+                />
               </div>
             ))}
 
