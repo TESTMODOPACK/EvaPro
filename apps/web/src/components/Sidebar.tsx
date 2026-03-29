@@ -175,6 +175,7 @@ const tenantNavSections: NavSection[] = [
       { href: '/dashboard/usuarios', label: 'Usuarios', icon: icons.users },
       { href: '/dashboard/plantillas', label: 'Plantillas', icon: icons.templates },
       { href: '/dashboard/competencias', label: 'Competencias', icon: icons.competencies },
+      { href: '/dashboard/mantenedores', label: 'Datos Personalizados', icon: icons.settings },
       { href: '/dashboard/mi-suscripcion', label: 'Mi Suscripci\u00f3n', icon: icons.subscription },
     ],
   },
