@@ -101,6 +101,14 @@ export class AiInsightsController {
     return this.aiService.getInsight(req.user.tenantId, InsightType.SUGGESTIONS, cycleId, userId);
   }
 
+  // ─── Flight Risk Score ─────────────────────────────────────────────────
+
+  @Get('flight-risk')
+  @Roles('super_admin', 'tenant_admin')
+  getFlightRisk(@Request() req: any) {
+    return this.aiService.getFlightRiskScores(req.user.tenantId);
+  }
+
   // ─── Cache Management ─────────────────────────────────────────────────
 
   @Delete('cache/:cycleId')

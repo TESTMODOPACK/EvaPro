@@ -19,6 +19,7 @@ import {
   useDeleteKeyResult,
   useTeamObjectivesSummary,
   useAtRiskObjectives,
+  useObjectiveTree,
 } from '@/hooks/useObjectives';
 import { useAuthStore } from '@/store/auth.store';
 import { useUsers } from '@/hooks/useUsers';
@@ -628,6 +629,98 @@ function TeamSummaryView() {
   );
 }
 
+/* ─── Objective Tree View ─────────────────────────────────────────────────── */
+
+const STATUS_COLORS: Record<string, string> = {
+  draft: '#f59e0b',
+  pending_approval: '#94a3b8',
+  active: '#10b981',
+  completed: '#6366f1',
+  abandoned: '#ef4444',
+};
+
+function TreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const hasChildren = node.children && node.children.length > 0;
+  const color = STATUS_COLORS[node.status] || '#94a3b8';
+
+  return (
+    <div style={{ marginLeft: depth > 0 ? '1.5rem' : 0 }}>
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+          padding: '0.6rem 0.75rem', marginBottom: '0.25rem',
+          background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--border)',
+          borderLeft: `3px solid ${color}`,
+        }}
+      >
+        {hasChildren && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.7rem', padding: 0, width: 16 }}
+          >
+            {collapsed ? '▶' : '▼'}
+          </button>
+        )}
+        {!hasChildren && <span style={{ width: 16, display: 'inline-block' }} />}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {node.title}
+          </div>
+          {node.userName && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{node.userName}{node.userPosition ? ` · ${node.userPosition}` : ''}</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: color }}>{node.progress}%</span>
+          <div style={{ width: 48, height: 5, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ width: `${node.progress}%`, height: '100%', background: color, borderRadius: 4 }} />
+          </div>
+          <span style={{ fontSize: '0.68rem', background: `${color}20`, color, borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>
+            {node.type}
+          </span>
+          {hasChildren && (
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{node.children.length} sub</span>
+          )}
+        </div>
+      </div>
+      {hasChildren && !collapsed && (
+        <div style={{ borderLeft: '2px dashed var(--border)', marginLeft: '0.85rem', paddingLeft: '0.25rem' }}>
+          {node.children.map((child: any) => (
+            <TreeNode key={child.id} node={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean }) {
+  if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
+  if (!data || data.length === 0) {
+    return (
+      <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No hay objetivos para mostrar en el árbol</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.25rem' }}>Los objetivos con "objetivo padre" asignado aparecerán aquí como jerarquía</p>
+      </div>
+    );
+  }
+  const totalCount = (nodes: any[]): number => nodes.reduce((sum, n) => sum + 1 + totalCount(n.children || []), 0);
+  return (
+    <div className="animate-fade-up">
+      <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+        {totalCount(data)} objetivo(s) · Raíces: {data.length} · Haz clic en ▼ para colapsar ramas
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        {data.map((root: any) => (
+          <TreeNode key={root.id} node={root} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 
 export default function ObjetivosPage() {
@@ -664,8 +757,9 @@ export default function ObjetivosPage() {
   const [showGuide, setShowGuide] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [progressForm, setProgressForm] = useState<{ value: number; notes: string }>({ value: 50, notes: '' });
-  const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '', userId: '' });
-  const [activeTab, setActiveTab] = useState<'list' | 'team'>('list');
+  const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '', userId: '', parentObjectiveId: '' });
+  const [activeTab, setActiveTab] = useState<'list' | 'team' | 'tree'>('list');
+  const { data: treeData, isLoading: treeLoading } = useObjectiveTree();
 
   // Item 13: At-risk objectives count
   const { data: atRiskData } = useAtRiskObjectives();
@@ -745,9 +839,12 @@ export default function ObjetivosPage() {
     if ((isAdmin || isManager) && form.userId) {
       payload.userId = form.userId;
     }
+    if (form.parentObjectiveId) {
+      payload.parentObjectiveId = form.parentObjectiveId;
+    }
     createObjective.mutate(payload, {
       onSuccess: () => {
-        setForm({ title: '', description: '', type: 'OKR', targetDate: '', userId: '' });
+        setForm({ title: '', description: '', type: 'OKR', targetDate: '', userId: '', parentObjectiveId: '' });
         setShowForm(false);
       },
     });
@@ -938,8 +1035,8 @@ export default function ObjetivosPage() {
         </div>
       )}
 
-      {/* Tabs: Lista / Resumen del Equipo (manager only — admin uses grouped list) */}
-      {isManager && (
+      {/* Tabs: Lista / Resumen del Equipo / Árbol */}
+      {(isAdmin || isManager) && (
         <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '2px solid var(--border)', paddingBottom: '0' }}>
           <button
             onClick={() => setActiveTab('list')}
@@ -951,21 +1048,35 @@ export default function ObjetivosPage() {
           >
             Lista de Objetivos
           </button>
+          {isManager && (
+            <button
+              onClick={() => setActiveTab('team')}
+              style={{
+                padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                background: 'none', border: 'none', borderBottom: activeTab === 'team' ? '2px solid var(--accent)' : '2px solid transparent',
+                color: activeTab === 'team' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: '-2px',
+              }}
+            >
+              Resumen del Equipo
+            </button>
+          )}
           <button
-            onClick={() => setActiveTab('team')}
+            onClick={() => setActiveTab('tree')}
             style={{
               padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
-              background: 'none', border: 'none', borderBottom: activeTab === 'team' ? '2px solid var(--accent)' : '2px solid transparent',
-              color: activeTab === 'team' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: '-2px',
+              background: 'none', border: 'none', borderBottom: activeTab === 'tree' ? '2px solid var(--accent)' : '2px solid transparent',
+              color: activeTab === 'tree' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: '-2px',
             }}
           >
-            Resumen del Equipo
+            Árbol de Alineación
           </button>
         </div>
       )}
 
-      {/* Team Summary View — managers only */}
-      {activeTab === 'team' && isManager ? (
+      {/* Tree View — admin/manager only */}
+      {activeTab === 'tree' && (isAdmin || isManager) ? (
+        <ObjectiveTreeView data={treeData || []} loading={treeLoading} />
+      ) : activeTab === 'team' && isManager ? (
         <TeamSummaryView />
       ) : (
       <>
@@ -1194,6 +1305,25 @@ export default function ObjetivosPage() {
                   style={{ width: '100%' }}
                 />
               </div>
+            </div>
+            {/* Parent objective selector — cascading OKR alignment */}
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Objetivo padre <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional — para alineación jerárquica)</span>
+              </label>
+              <select
+                className="input"
+                value={form.parentObjectiveId}
+                onChange={(e) => setForm({ ...form, parentObjectiveId: e.target.value })}
+                style={{ width: '100%' }}
+              >
+                <option value="">Sin objetivo padre (nivel raíz)</option>
+                {(objectives || []).filter((o: any) => o.status !== 'abandoned').map((o: any) => (
+                  <option key={o.id} value={o.id}>
+                    [{o.type}] {o.title}
+                  </option>
+                ))}
+              </select>
             </div>
             <button
               className="btn-primary"

@@ -514,6 +514,8 @@ export const api = {
       request<any>(`/objectives/key-results/${krId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
     deleteKeyResult: (token: string, krId: string) =>
       request<void>(`/objectives/key-results/${krId}`, { method: "DELETE" }, token),
+    tree: (token: string) =>
+      request<any[]>(`/objectives/tree`, {}, token),
   },
 
   reports: {
@@ -654,6 +656,8 @@ export const api = {
       request<any>(`/ai/suggestions/${userId}/${cycleId}`, {}, token),
     generateSuggestions: (token: string, cycleId: string, userId: string) =>
       request<any>(`/ai/suggestions/${userId}/${cycleId}`, { method: "POST" }, token),
+    getFlightRisk: (token: string) =>
+      request<any>(`/ai/flight-risk`, {}, token),
   },
 
   system: {

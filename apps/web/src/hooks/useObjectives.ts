@@ -193,3 +193,13 @@ export function useDeleteObjectiveComment() {
     onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ['objectives', vars.objectiveId, 'comments'] }),
   });
 }
+
+export function useObjectiveTree() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['objectives', 'tree'],
+    queryFn: () => api.objectives.tree(token!),
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+}

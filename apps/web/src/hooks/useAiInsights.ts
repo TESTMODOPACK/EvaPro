@@ -76,3 +76,14 @@ export function useGenerateSuggestions() {
     onError: handleAiError,
   });
 }
+
+export function useFlightRisk() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['ai', 'flight-risk'],
+    queryFn: () => api.ai.getFlightRisk(token!),
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}

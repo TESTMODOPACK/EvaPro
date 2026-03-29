@@ -10,6 +10,7 @@ export enum InsightType {
   SUMMARY = 'summary',
   BIAS = 'bias',
   SUGGESTIONS = 'suggestions',
+  FLIGHT_RISK = 'flight_risk',
 }
 
 @Entity('ai_insights')

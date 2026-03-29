@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
@@ -8,9 +8,10 @@ import {
   useAiSummary, useGenerateSummary,
   useAiBias, useAnalyzeBias,
   useAiSuggestions, useGenerateSuggestions,
+  useFlightRisk,
 } from '@/hooks/useAiInsights';
 
-type Tab = 'summary' | 'bias' | 'suggestions';
+type Tab = 'summary' | 'bias' | 'suggestions' | 'flight-risk';
 
 function Spinner() {
   return (
@@ -326,6 +327,132 @@ function SuggestionsSection({ cycleId, userId }: { cycleId: string; userId: stri
   );
 }
 
+/* ─── Flight Risk Tab ───────────────────────────────────────────────── */
+
+const riskBadge: Record<string, { cls: string; label: string }> = {
+  low:    { cls: 'badge-success', label: 'Bajo' },
+  medium: { cls: 'badge-warning', label: 'Medio' },
+  high:   { cls: 'badge-danger',  label: 'Alto' },
+};
+
+function FlightRiskSection() {
+  const { data, isLoading, error } = useFlightRisk();
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  if (isLoading) return <Spinner />;
+
+  if (error || !data) {
+    return (
+      <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+        <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{'📊'}</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          {'No se pudo cargar el análisis de riesgo de fuga. Puede que no haya suficientes datos.'}
+        </p>
+      </div>
+    );
+  }
+
+  const { summary, scores, generatedAt, totalEmployees } = data;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* KPI Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+        <div className="card" style={{ padding: '1.25rem', borderTop: '3px solid var(--success)', textAlign: 'center' }}>
+          <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)', margin: 0 }}>{summary?.low ?? 0}</p>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{'Riesgo Bajo'}</p>
+        </div>
+        <div className="card" style={{ padding: '1.25rem', borderTop: '3px solid #f59e0b', textAlign: 'center' }}>
+          <p style={{ fontSize: '2rem', fontWeight: 800, color: '#f59e0b', margin: 0 }}>{summary?.medium ?? 0}</p>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{'Riesgo Medio'}</p>
+        </div>
+        <div className="card" style={{ padding: '1.25rem', borderTop: '3px solid var(--danger)', textAlign: 'center' }}>
+          <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--danger)', margin: 0 }}>{summary?.high ?? 0}</p>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{'Riesgo Alto'}</p>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card" style={{ padding: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+            {'Ranking de Riesgo — '}{totalEmployees}{' colaboradores'}
+          </h3>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            {'Actualizado: '}{new Date(generatedAt).toLocaleString('es-CL')}
+          </span>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid var(--border)' }}>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'#'}</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Colaborador'}</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Departamento'}</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Riesgo'}</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Nivel'}</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Factores'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(scores as any[])
+              .sort((a: any, b: any) => b.riskScore - a.riskScore)
+              .map((s: any, i: number) => {
+                const badge = riskBadge[s.riskLevel] ?? riskBadge.low;
+                const isOpen = expanded === s.userId;
+                return (
+                  <React.Fragment key={s.userId}>
+                    <tr
+                      style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                      onClick={() => setExpanded(isOpen ? null : s.userId)}
+                    >
+                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>{i + 1}</td>
+                      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{s.name}</td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-secondary)' }}>{s.department || '—'}</td>
+                      <td style={{ padding: '0.6rem 0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{ flex: 1, maxWidth: '80px', height: '6px', borderRadius: '3px', background: 'var(--border)', overflow: 'hidden' }}>
+                            <div style={{
+                              height: '100%',
+                              width: `${s.riskScore}%`,
+                              background: s.riskLevel === 'high' ? 'var(--danger)' : s.riskLevel === 'medium' ? '#f59e0b' : 'var(--success)',
+                              borderRadius: '3px',
+                            }} />
+                          </div>
+                          <span style={{ fontWeight: 700, minWidth: '30px' }}>{s.riskScore}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.6rem 0.75rem' }}>
+                        <span className={`badge ${badge.cls}`} style={{ fontSize: '0.65rem' }}>{badge.label}</span>
+                      </td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>
+                        <span style={{ fontSize: '0.72rem' }}>{isOpen ? '▲ ocultar' : `▼ ver ${(s.factors || []).length}`}</span>
+                      </td>
+                    </tr>
+                    {isOpen && (s.factors || []).length > 0 && (
+                      <tr style={{ background: 'rgba(99,102,241,0.03)' }}>
+                        <td colSpan={6} style={{ padding: '0.75rem 1.5rem' }}>
+                          <ul style={{ margin: 0, paddingLeft: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+                            {(s.factors as string[]).map((f: string, fi: number) => (
+                              <li key={fi}>{f}</li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+
+      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right' }}>
+        {'Puntuación algorítmica basada en: desempeño (30%), OKRs (25%), feedback (20%), objetivos en riesgo (15%), 9-box (10%) • Solo visible para administradores'}
+      </p>
+    </div>
+  );
+}
+
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 export default function InsightsPage() {
@@ -449,16 +576,15 @@ export default function InsightsPage() {
       </div>
 
       {/* Tabs */}
-      {selectedCycleId && (
-        <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          {tabBtn('summary', 'Resumen IA')}
-          {isAdmin && tabBtn('bias', 'Detecci\u00f3n de Sesgos')}
-          {tabBtn('suggestions', 'Sugerencias de Desarrollo')}
-        </div>
-      )}
+      <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        {selectedCycleId && tabBtn('summary', 'Resumen IA')}
+        {selectedCycleId && isAdmin && tabBtn('bias', 'Detecci\u00f3n de Sesgos')}
+        {selectedCycleId && tabBtn('suggestions', 'Sugerencias de Desarrollo')}
+        {isAdmin && tabBtn('flight-risk', '⚠️ Riesgo de Fuga')}
+      </div>
 
       {/* Content */}
-      {!selectedCycleId && (
+      {!selectedCycleId && activeTab !== 'flight-risk' && (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
             {'Selecciona un ciclo de evaluaci\u00f3n para comenzar el an\u00e1lisis con IA'}
@@ -497,6 +623,12 @@ export default function InsightsPage() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'flight-risk' && isAdmin && (
+        <div className="animate-fade-up">
+          <FlightRiskSection />
         </div>
       )}
     </div>

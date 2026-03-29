@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ServiceUnavailableException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, IsNull } from 'typeorm';
+import { Repository, MoreThan, IsNull, In } from 'typeorm';
 import Anthropic from '@anthropic-ai/sdk';
 import { AiInsight, InsightType } from './entities/ai-insight.entity';
 import { ReportsService } from '../reports/reports.service';
@@ -411,6 +411,218 @@ export class AiInsightsService {
     }
 
     return saved;
+  }
+
+  // ─── Flight Risk Score ──────────────────────────────────────────────────
+
+  /**
+   * Calculates an algorithmic flight-risk score (0-100) for every active
+   * employee in the tenant based on observable signals:
+   *
+   * | Signal                           | Weight | High-risk condition              |
+   * |----------------------------------|--------|----------------------------------|
+   * | Average evaluation score         | 30%    | score < 5 → higher risk          |
+   * | OKR completion rate              | 25%    | completionRate < 40% → risk      |
+   * | Received feedback (last 90 days) | 20%    | 0 feedbacks → risk               |
+   * | Objectives at-risk count         | 15%    | any at-risk active objectives    |
+   * | Talent potential assessment      | 10%    | low potential & low perf → risk  |
+   *
+   * Score interpretation: 0–30 low, 31–60 medium, 61–100 high risk.
+   * This is a deterministic algorithm — no AI call needed.
+   */
+  async getFlightRiskScores(tenantId: string): Promise<{
+    generatedAt: string;
+    totalEmployees: number;
+    summary: { low: number; medium: number; high: number };
+    scores: Array<{
+      userId: string;
+      name: string;
+      position: string | null;
+      department: string | null;
+      riskScore: number;
+      riskLevel: 'low' | 'medium' | 'high';
+      factors: Array<{ label: string; value: string; impact: 'positive' | 'neutral' | 'negative' }>;
+    }>;
+  }> {
+    const employees = await this.userRepo.find({
+      where: { tenantId, role: In(['employee', 'manager']), isActive: true },
+      select: ['id', 'firstName', 'lastName', 'position', 'department'] as any,
+    });
+
+    if (employees.length === 0) {
+      return { generatedAt: new Date().toISOString(), totalEmployees: 0, summary: { low: 0, medium: 0, high: 0 }, scores: [] };
+    }
+
+    const employeeIds = employees.map((e) => e.id);
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    // Batch queries — one per data type, then index by userId
+    const [allAssignments, allObjectives, allFeedback, allTalent] = await Promise.all([
+      this.assignmentRepo.find({
+        where: { tenantId, evaluateeId: In(employeeIds) },
+        select: ['id', 'evaluateeId', 'status'] as any,
+      }),
+      this.objectiveRepo.find({
+        where: { tenantId, userId: In(employeeIds) },
+        select: ['id', 'userId', 'status', 'progress'] as any,
+      }),
+      this.feedbackRepo.find({
+        where: { tenantId, toUserId: In(employeeIds) },
+        select: ['id', 'toUserId', 'createdAt'] as any,
+      }),
+      this.talentRepo.find({
+        where: { tenantId, userId: In(employeeIds) },
+        order: { createdAt: 'DESC' },
+        select: ['userId', 'performanceScore', 'potentialScore'] as any,
+      }),
+    ]);
+
+    // Get scores for completed assignments
+    const completedAssignmentIds = allAssignments
+      .filter((a) => a.status === AssignmentStatus.COMPLETED)
+      .map((a) => a.id);
+
+    const allResponses = completedAssignmentIds.length > 0
+      ? await this.responseRepo.find({
+          where: { assignmentId: In(completedAssignmentIds) },
+          select: ['assignmentId', 'overallScore'] as any,
+        })
+      : [];
+
+    // Map assignmentId → evaluateeId
+    const assignmentToEvaluatee = new Map(allAssignments.map((a) => [a.id, a.evaluateeId]));
+
+    // Build per-user score index
+    const scoresByUser = new Map<string, number[]>();
+    for (const r of allResponses) {
+      if (r.overallScore == null) continue;
+      const uid = assignmentToEvaluatee.get(r.assignmentId);
+      if (!uid) continue;
+      const list = scoresByUser.get(uid) || [];
+      list.push(Number(r.overallScore));
+      scoresByUser.set(uid, list);
+    }
+
+    const objectivesByUser = new Map<string, typeof allObjectives>();
+    for (const o of allObjectives) {
+      const list = objectivesByUser.get(o.userId) || [];
+      list.push(o);
+      objectivesByUser.set(o.userId, list);
+    }
+
+    const feedbackCountByUser = new Map<string, number>();
+    for (const f of allFeedback) {
+      if (new Date(f.createdAt) >= ninetyDaysAgo) {
+        feedbackCountByUser.set(f.toUserId, (feedbackCountByUser.get(f.toUserId) || 0) + 1);
+      }
+    }
+
+    const talentByUser = new Map<string, (typeof allTalent)[0]>();
+    for (const t of allTalent) {
+      if (!talentByUser.has(t.userId)) talentByUser.set(t.userId, t);
+    }
+
+    const results = employees.map((emp) => {
+      const scores = scoresByUser.get(emp.id) || [];
+      const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+
+      const objs = objectivesByUser.get(emp.id) || [];
+      const activeObjs = objs.filter((o) => o.status === 'active');
+      const completedObjs = objs.filter((o) => o.status === 'completed').length;
+      const totalObjs = objs.filter((o) => o.status !== 'abandoned').length;
+      const objCompletionRate = totalObjs > 0 ? (completedObjs / totalObjs) * 100 : null;
+      const atRiskCount = activeObjs.filter((o) => o.progress < 40).length;
+
+      const feedbackCount = feedbackCountByUser.get(emp.id) || 0;
+      const talent = talentByUser.get(emp.id);
+
+      let riskScore = 0;
+      const factors: Array<{ label: string; value: string; impact: 'positive' | 'neutral' | 'negative' }> = [];
+
+      // Signal 1: Evaluation score (max 30 pts)
+      if (avgScore !== null) {
+        const scoreRisk = avgScore < 4 ? 30 : avgScore < 6 ? 18 : avgScore < 8 ? 6 : 0;
+        riskScore += scoreRisk;
+        factors.push({
+          label: 'Puntaje evaluación',
+          value: avgScore.toFixed(1),
+          impact: avgScore >= 7 ? 'positive' : avgScore >= 5 ? 'neutral' : 'negative',
+        });
+      } else {
+        riskScore += 15;
+        factors.push({ label: 'Puntaje evaluación', value: 'Sin datos', impact: 'neutral' });
+      }
+
+      // Signal 2: OKR completion rate (max 25 pts)
+      if (objCompletionRate !== null) {
+        const okrRisk = objCompletionRate < 30 ? 25 : objCompletionRate < 60 ? 15 : objCompletionRate < 80 ? 5 : 0;
+        riskScore += okrRisk;
+        factors.push({
+          label: 'Cumplimiento OKRs',
+          value: `${objCompletionRate.toFixed(0)}%`,
+          impact: objCompletionRate >= 80 ? 'positive' : objCompletionRate >= 50 ? 'neutral' : 'negative',
+        });
+      } else {
+        riskScore += 12;
+        factors.push({ label: 'Cumplimiento OKRs', value: 'Sin datos', impact: 'neutral' });
+      }
+
+      // Signal 3: Feedback received last 90 days (max 20 pts)
+      const feedbackRisk = feedbackCount === 0 ? 20 : feedbackCount < 3 ? 10 : feedbackCount < 8 ? 4 : 0;
+      riskScore += feedbackRisk;
+      factors.push({
+        label: 'Feedback recibido (90d)',
+        value: `${feedbackCount} feedback(s)`,
+        impact: feedbackCount >= 5 ? 'positive' : feedbackCount >= 2 ? 'neutral' : 'negative',
+      });
+
+      // Signal 4: OKRs at risk (max 15 pts)
+      const atRiskRisk = atRiskCount === 0 ? 0 : atRiskCount === 1 ? 8 : atRiskCount < 4 ? 12 : 15;
+      riskScore += atRiskRisk;
+      factors.push({
+        label: 'Objetivos en riesgo',
+        value: `${atRiskCount} de ${activeObjs.length}`,
+        impact: atRiskCount === 0 ? 'positive' : atRiskCount <= 1 ? 'neutral' : 'negative',
+      });
+
+      // Signal 5: Talent 9-box (max 10 pts)
+      if (talent) {
+        const perf = Number(talent.performanceScore);
+        const pot = Number(talent.potentialScore);
+        const talentRisk = (perf < 4 && pot < 4) ? 10 : (perf < 5 || pot < 5) ? 5 : 0;
+        riskScore += talentRisk;
+        factors.push({
+          label: 'Evaluación de talento',
+          value: `Desemp. ${perf.toFixed(1)} / Pot. ${pot.toFixed(1)}`,
+          impact: (perf >= 7 && pot >= 7) ? 'positive' : (perf >= 5 && pot >= 5) ? 'neutral' : 'negative',
+        });
+      } else {
+        factors.push({ label: 'Evaluación de talento', value: 'Sin datos', impact: 'neutral' });
+      }
+
+      const riskLevel: 'low' | 'medium' | 'high' = riskScore <= 30 ? 'low' : riskScore <= 60 ? 'medium' : 'high';
+
+      return {
+        userId: emp.id,
+        name: `${emp.firstName} ${emp.lastName}`,
+        position: (emp as any).position || null,
+        department: (emp as any).department || null,
+        riskScore,
+        riskLevel,
+        factors,
+      };
+    });
+
+    results.sort((a, b) => b.riskScore - a.riskScore);
+
+    const summary = {
+      low: results.filter((r) => r.riskLevel === 'low').length,
+      medium: results.filter((r) => r.riskLevel === 'medium').length,
+      high: results.filter((r) => r.riskLevel === 'high').length,
+    };
+
+    return { generatedAt: new Date().toISOString(), totalEmployees: employees.length, summary, scores: results };
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────
