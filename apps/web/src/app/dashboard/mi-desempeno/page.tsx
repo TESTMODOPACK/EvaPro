@@ -5,6 +5,11 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
 import { getScaleLevel } from '@/lib/scales';
+import { useCycles } from '@/hooks/useCycles';
+import CompetencyRadarChart from '@/components/CompetencyRadarChart';
+import SelfVsOthersChart from '@/components/SelfVsOthersChart';
+import GapAnalysisChart from '@/components/GapAnalysisChart';
+import { useGapAnalysisIndividual } from '@/hooks/useReports';
 
 function Spinner() {
   return (
@@ -32,6 +37,13 @@ const selectStyle: React.CSSProperties = {
   outline: 'none',
 };
 
+function GapSection({ cycleId, userId }: { cycleId: string; userId: string }) {
+  const { data, isLoading } = useGapAnalysisIndividual(cycleId, userId);
+  if (isLoading) return <div style={{ padding: '1rem', textAlign: 'center' }}><span className="spinner" /></div>;
+  if (!data || !data.competencies || data.competencies.length === 0) return null;
+  return <GapAnalysisChart data={data} isLoading={false} />;
+}
+
 export default function MiDesempenoPage() {
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -39,6 +51,11 @@ export default function MiDesempenoPage() {
   const [completed, setCompleted] = useState<any[]>([]);
   const [pending, setPending] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Radar cycle selector
+  const { data: allCycles } = useCycles();
+  const [radarCycleId, setRadarCycleId] = useState('');
+  const closedCycles = (allCycles || []).filter((c: any) => c.status === 'closed' || c.status === 'active');
 
   // Filter state
   const [cycleTypeFilter, setCycleTypeFilter] = useState('');
@@ -292,6 +309,42 @@ export default function MiDesempenoPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ── Radar de Competencias ─────────────────────────────────────── */}
+          {closedCycles.length > 0 && (
+            <div className="animate-fade-up" style={{ marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                <h2 style={{ fontWeight: 700, fontSize: '0.975rem', margin: 0 }}>
+                  {'Radar de Competencias'}
+                </h2>
+                <select
+                  className="input"
+                  value={radarCycleId}
+                  onChange={(e) => setRadarCycleId(e.target.value)}
+                  style={{ fontSize: '0.82rem', padding: '0.4rem 0.6rem', width: 'auto', minWidth: '220px' }}
+                >
+                  <option value="">{'Seleccionar ciclo\u2026'}</option>
+                  {closedCycles.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                  ))}
+                </select>
+              </div>
+              {radarCycleId && user?.userId && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1rem' }}>
+                    <CompetencyRadarChart cycleId={radarCycleId} userId={user.userId} />
+                    <SelfVsOthersChart cycleId={radarCycleId} userId={user.userId} />
+                  </div>
+                  <GapSection cycleId={radarCycleId} userId={user.userId} />
+                </div>
+              )}
+              {!radarCycleId && (
+                <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  {'Selecciona un ciclo para ver tu radar de competencias'}
+                </div>
+              )}
             </div>
           )}
         </>

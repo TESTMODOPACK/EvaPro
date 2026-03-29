@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAnalytics } from '@/hooks/usePerformanceHistory';
 import { useCycles } from '@/hooks/useCycles';
+import { useCompetencyHeatmap } from '@/hooks/useReports';
 import {
   BarChart,
   Bar,
@@ -18,6 +19,104 @@ function Spinner() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
       <span className="spinner" />
+    </div>
+  );
+}
+
+function heatColor(avg: number | null, maxScale: number): string {
+  if (avg === null) return 'var(--bg-surface)';
+  const ratio = avg / maxScale;
+  if (ratio >= 0.75) return 'rgba(16,185,129,0.25)';
+  if (ratio >= 0.55) return 'rgba(245,158,11,0.20)';
+  return 'rgba(239,68,68,0.22)';
+}
+
+function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
+  const { data, isLoading } = useCompetencyHeatmap(cycleId);
+
+  if (isLoading) return <Spinner />;
+  if (!data || !data.grid || data.grid.length === 0) {
+    return (
+      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          {data?.message || 'Sin datos de competencias para este ciclo'}
+        </p>
+      </div>
+    );
+  }
+
+  const { sections, departments, grid, privacyThreshold } = data;
+
+  return (
+    <div className="card animate-fade-up" style={{ padding: '1.5rem', overflow: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+        <div>
+          <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+            {'Mapa de Competencias por Departamento'}
+          </h2>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            {'Puntaje promedio por secci\u00f3n de la plantilla — filas: secciones, columnas: departamentos'}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.72rem', alignItems: 'center' }}>
+          <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'rgba(16,185,129,0.25)', borderRadius: '2px', border: '1px solid var(--border)' }} />
+          <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>{'Alto (\u226575%)'}</span>
+          <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'rgba(245,158,11,0.20)', borderRadius: '2px', border: '1px solid var(--border)' }} />
+          <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>{'Medio'}</span>
+          <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'rgba(239,68,68,0.22)', borderRadius: '2px', border: '1px solid var(--border)' }} />
+          <span style={{ color: 'var(--text-muted)' }}>{'Bajo (<55%)'}</span>
+        </div>
+      </div>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '600px' }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', minWidth: '160px' }}>
+              {'Secci\u00f3n / Competencia'}
+            </th>
+            {(departments as string[]).map((dept) => (
+              <th key={dept} style={{ padding: '0.5rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', textAlign: 'center', maxWidth: '110px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {dept.length > 14 ? dept.slice(0, 13) + '\u2026' : dept}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {(grid as any[]).map((row: any, ri: number) => (
+            <tr key={ri} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td style={{ padding: '0.55rem 0.75rem', fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                {row.section}
+              </td>
+              {row.values.map((cell: any, ci: number) => (
+                <td
+                  key={ci}
+                  style={{
+                    padding: '0.55rem 0.5rem',
+                    textAlign: 'center',
+                    background: cell.privacyRestricted ? 'transparent' : heatColor(cell.avg, 10),
+                    fontWeight: cell.avg !== null ? 700 : 400,
+                    color: cell.privacyRestricted ? 'var(--text-muted)' : cell.avg !== null ? 'var(--text-primary)' : 'var(--text-muted)',
+                    fontSize: '0.82rem',
+                  }}
+                  title={cell.privacyRestricted ? `Privacidad: se requieren al menos ${privacyThreshold} evaluados` : cell.avg !== null ? `${cell.count} respuestas` : 'Sin datos'}
+                >
+                  {cell.privacyRestricted ? '\uD83D\uDD12' : cell.avg !== null ? cell.avg.toFixed(1) : '\u2014'}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {(departments as string[]).some((d) =>
+        (grid as any[]).some((r: any) =>
+          r.values.find((v: any) => v.department === d && v.privacyRestricted),
+        ),
+      ) && (
+        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+          {'\uD83D\uDD12 Se ocultan departamentos con menos de '}{privacyThreshold}{' evaluados para proteger la privacidad'}
+        </p>
+      )}
     </div>
   );
 }
@@ -111,6 +210,7 @@ export default function AnalyticsPage() {
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
                 <li><strong>{'Distribuci\u00f3n de Puntajes:'}</strong>{' Histograma con rangos de 0.5 puntos (escala 0-10). Muestra cu\u00e1ntas evaluaciones caen en cada rango. Rojo = bajo (<4), Amarillo = medio (4-7), Verde = alto (>7).'}</li>
                 <li><strong>{'Comparaci\u00f3n por Departamento:'}</strong>{' Puntaje promedio de cada departamento. Permite identificar \u00e1reas de la organizaci\u00f3n con mejor o menor desempe\u00f1o.'}</li>
+                <li><strong>{'Mapa de Competencias:'}</strong>{' Matriz departamento \u00d7 competencia. Muestra el puntaje promedio en cada secci\u00f3n de la plantilla por departamento. Verde = alto, amarillo = medio, rojo = bajo. Departamentos con menos de 5 evaluados se ocultan por privacidad.'}</li>
                 <li><strong>{'Rendimiento por Equipo:'}</strong>{' Ranking de encargados de equipo ordenado por puntaje promedio de sus colaboradores. Incluye tama\u00f1o del equipo.'}</li>
               </ul>
             </div>
@@ -258,7 +358,10 @@ export default function AnalyticsPage() {
                 </div>
               )}
 
-              {/* 3. Team Benchmarks */}
+              {/* 3. Competency Heatmap (dept × section) */}
+              <CompetencyHeatmapSection cycleId={selectedCycleId} />
+
+              {/* 4. Team Benchmarks */}
               {analytics.teamBenchmarks && analytics.teamBenchmarks.length > 0 && (
                 <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
                   <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
