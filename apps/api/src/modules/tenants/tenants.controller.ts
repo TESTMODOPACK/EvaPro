@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   Request,
+  Put,
 } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -28,6 +29,27 @@ export class TenantsController {
   @Roles('super_admin', 'tenant_admin')
   getMyTenant(@Request() req: any) {
     return this.tenantsService.findById(req.user.tenantId);
+  }
+
+  /** Get all custom settings for the current tenant */
+  @Get('me/custom-settings')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getAllCustomSettings(@Request() req: any) {
+    return this.tenantsService.getAllCustomSettings(req.user.tenantId);
+  }
+
+  /** Get a specific custom setting */
+  @Get('me/custom-settings/:key')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getCustomSetting(@Request() req: any, @Param('key') key: string) {
+    return this.tenantsService.getCustomSetting(req.user.tenantId, key);
+  }
+
+  /** Update a specific custom setting (tenant_admin only) */
+  @Put('me/custom-settings/:key')
+  @Roles('super_admin', 'tenant_admin')
+  setCustomSetting(@Request() req: any, @Param('key') key: string, @Body('values') values: string[]) {
+    return this.tenantsService.setCustomSetting(req.user.tenantId, key, values);
   }
 
   @Get('system-stats')

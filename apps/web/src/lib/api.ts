@@ -196,6 +196,15 @@ export const api = {
       request<void>(`/tenants/${id}`, { method: "DELETE" }, token),
     systemStats: (token: string) => request<any>("/tenants/system-stats", {}, token),
     usageMetrics: (token: string) => request<any>("/tenants/usage-metrics", {}, token),
+    getAllCustomSettings: (token: string) =>
+      request<Record<string, string[]>>("/tenants/me/custom-settings", {}, token),
+    getCustomSetting: (token: string, key: string) =>
+      request<string[]>(`/tenants/me/custom-settings/${key}`, {}, token),
+    updateCustomSetting: (token: string, key: string, values: string[]) =>
+      request<string[]>(`/tenants/me/custom-settings/${key}`, {
+        method: "PUT",
+        body: JSON.stringify({ values }),
+      }, token),
   },
 
   auditLogs: {

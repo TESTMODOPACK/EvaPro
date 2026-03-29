@@ -8,6 +8,51 @@ import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 
+const CUSTOM_SETTINGS_DEFAULTS: Record<string, string[]> = {
+  calibrationCausals: [
+    'Ajuste por desempeño real observado',
+    'Consideración de circunstancias excepcionales',
+    'Alineación con el equipo',
+    'Contexto adicional del período evaluado',
+    'Inconsistencia en la autoevaluación',
+    'Reconocimiento de logros no capturados',
+    'Criterio del comité calibrador',
+  ],
+  evaluationScaleLabels: [
+    '1 - Insuficiente',
+    '2 - Necesita mejora',
+    '3 - Cumple expectativas',
+    '4 - Supera expectativas',
+    '5 - Excepcional',
+  ],
+  competencyCategories: [
+    'Liderazgo',
+    'Competencias técnicas',
+    'Valores organizacionales',
+    'Comunicación',
+    'Trabajo en equipo',
+    'Orientación a resultados',
+  ],
+  objectiveTypes: [
+    'Estratégico',
+    'Operativo',
+    'Desarrollo profesional',
+    'Individual',
+  ],
+  potentialLevels: [
+    'Alto potencial',
+    'Potencial medio',
+    'En desarrollo',
+  ],
+  evaluationPeriods: [
+    'Anual',
+    'Semestral',
+    'Trimestral',
+  ],
+};
+
+const VALID_CUSTOM_KEYS = Object.keys(CUSTOM_SETTINGS_DEFAULTS);
+
 @Injectable()
 export class TenantsService {
   constructor(
@@ -122,6 +167,42 @@ export class TenantsService {
 
   async findAll(): Promise<Tenant[]> {
     return this.tenantRepository.find({ order: { createdAt: 'DESC' } });
+  }
+
+  async getCustomSetting(tenantId: string, key: string): Promise<string[]> {
+    if (!VALID_CUSTOM_KEYS.includes(key)) {
+      throw new BadRequestException(`Clave no válida: ${key}`);
+    }
+    const tenant = await this.findById(tenantId);
+    return tenant.settings?.[key] ?? CUSTOM_SETTINGS_DEFAULTS[key];
+  }
+
+  async setCustomSetting(tenantId: string, key: string, values: string[]): Promise<string[]> {
+    if (!VALID_CUSTOM_KEYS.includes(key)) {
+      throw new BadRequestException(`Clave no válida: ${key}`);
+    }
+    if (!Array.isArray(values) || values.length === 0) {
+      throw new BadRequestException('Debe proporcionar al menos un valor');
+    }
+    const sanitized = values
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter((v) => v.length > 0);
+    if (sanitized.length === 0) {
+      throw new BadRequestException('Debe proporcionar al menos un valor válido');
+    }
+    const tenant = await this.findById(tenantId);
+    tenant.settings = { ...(tenant.settings || {}), [key]: sanitized };
+    await this.tenantRepository.save(tenant);
+    return values;
+  }
+
+  async getAllCustomSettings(tenantId: string): Promise<Record<string, string[]>> {
+    const tenant = await this.findById(tenantId);
+    const result: Record<string, string[]> = {};
+    for (const key of VALID_CUSTOM_KEYS) {
+      result[key] = tenant.settings?.[key] ?? CUSTOM_SETTINGS_DEFAULTS[key];
+    }
+    return result;
   }
 
   async getSystemStats(): Promise<any> {

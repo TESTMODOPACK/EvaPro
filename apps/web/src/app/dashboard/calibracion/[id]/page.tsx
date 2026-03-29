@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { calibrationEntryStatusLabel as STATUS_LABEL, calibrationEntryStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
 
-const CAUSALS = [
+const FALLBACK_CAUSALS = [
   'Ajuste por desempeño real observado',
   'Consideración de circunstancias excepcionales',
   'Alineación con el equipo',
@@ -13,7 +13,6 @@ const CAUSALS = [
   'Inconsistencia en la autoevaluación',
   'Reconocimiento de logros no capturados',
   'Criterio del comité calibrador',
-  'Otro',
 ];
 
 const STATUS_ROW_ACCENT: Record<string, string> = {
@@ -74,11 +73,15 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [collapsedDepts, setCollapsedDepts] = useState<Set<string>>(new Set());
+  const [causals, setCausals] = useState<string[]>(FALLBACK_CAUSALS);
 
-  const presetCausals = CAUSALS.slice(0, -1);
+  // "Otro" is always appended in the UI, not stored in the list
+  const CAUSALS = [...causals, 'Otro'];
+  const presetCausals = causals;
 
-  async function fetchSession() {
+  async function fetchSession(activeCausals?: string[]) {
     if (!token) return;
+    const useCausals = activeCausals ?? causals;
     setLoading(true);
     try {
       const data = await api.talent.calibration.detail(token, params.id);
@@ -86,7 +89,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       const es: typeof editState = {};
       if (data.entries) {
         for (const entry of data.entries) {
-          const rationaleType = presetCausals.includes(entry.rationale ?? '')
+          const rationaleType = useCausals.includes(entry.rationale ?? '')
             ? (entry.rationale ?? '')
             : (entry.rationale ? 'Otro' : '');
           es[entry.id] = {
@@ -102,7 +105,18 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
     setLoading(false);
   }
 
-  useEffect(() => { fetchSession(); }, [token, params.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Load tenant causals then session data together
+  useEffect(() => {
+    if (!token) return;
+    api.tenants.getCustomSetting(token, 'calibrationCausals')
+      .then((data) => {
+        const loaded = Array.isArray(data) && data.length > 0 ? data : FALLBACK_CAUSALS;
+        setCausals(loaded);
+        return loaded;
+      })
+      .catch(() => FALLBACK_CAUSALS)
+      .then((resolved) => fetchSession(resolved));
+  }, [token, params.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePopulate() {
     if (!token) return;
@@ -408,7 +422,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                                     value={es.adjustedScore}
                                     disabled={isReadOnly}
                                     onChange={(e) => updateEntry(entry.id, 'adjustedScore', e.target.value === '' ? '' : +e.target.value)}
-                                    style={{ width: '64px', fontSize: '0.85rem', opacity: isReadOnly ? 0.7 : 1, cursor: isReadOnly ? 'not-allowed' : undefined }}
+                                    style={{ width: '80px', fontSize: '0.95rem', textAlign: 'center', opacity: isReadOnly ? 0.7 : 1, cursor: isReadOnly ? 'not-allowed' : undefined }}
                                   />
                                 </div>
                               </td>
@@ -423,7 +437,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                                     value={es.adjustedPotential}
                                     disabled={isReadOnly}
                                     onChange={(e) => updateEntry(entry.id, 'adjustedPotential', e.target.value === '' ? '' : +e.target.value)}
-                                    style={{ width: '64px', fontSize: '0.85rem', opacity: isReadOnly ? 0.7 : 1, cursor: isReadOnly ? 'not-allowed' : undefined }}
+                                    style={{ width: '80px', fontSize: '0.95rem', textAlign: 'center', opacity: isReadOnly ? 0.7 : 1, cursor: isReadOnly ? 'not-allowed' : undefined }}
                                   />
                                 </div>
                               </td>
