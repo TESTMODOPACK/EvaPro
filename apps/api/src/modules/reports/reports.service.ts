@@ -1167,13 +1167,15 @@ export class ReportsService {
     }
 
     // 3. Build section → questions map from template
-    const sectionMeta = template.sections.map((sec: any) => ({
-      id: sec.id,
-      title: sec.title || sec.id,
-      questionIds: (sec.questions || [])
-        .filter((q: any) => q.type === 'scale')
-        .map((q: any) => q.id),
-    }));
+    const sectionMeta = template.sections.map((sec: any) => {
+      const scaleQs = (sec.questions || []).filter((q: any) => q.type === 'scale');
+      return {
+        id: sec.id,
+        title: sec.title || sec.id,
+        questionIds: scaleQs.map((q: any) => q.id),
+        maxScale: scaleQs.length > 0 ? Math.max(...scaleQs.map((q: any) => q.scale?.max ?? 5)) : 5,
+      };
+    });
 
     // 4. Count unique evaluatees per department for privacy check
     const deptEvaluateeCount = new Map<string, number>();
@@ -1226,6 +1228,7 @@ export class ReportsService {
 
     const heatmapGrid = sectionMeta.map((sec: any) => ({
       section: sec.title,
+      maxScale: sec.maxScale,
       values: departments.map((dept) => {
         const cell = grid[sec.id]?.[dept];
         const deptUserCount = deptEvaluateeCount.get(dept) || 0;

@@ -45,7 +45,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
     );
   }
 
-  const { sections, departments, grid, privacyThreshold } = data;
+  const { departments, grid, privacyThreshold } = data;
 
   return (
     <div className="card animate-fade-up" style={{ padding: '1.5rem', overflow: 'auto' }}>
@@ -93,12 +93,12 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
                   style={{
                     padding: '0.55rem 0.5rem',
                     textAlign: 'center',
-                    background: cell.privacyRestricted ? 'transparent' : heatColor(cell.avg, 10),
+                    background: cell.privacyRestricted ? 'transparent' : heatColor(cell.avg, row.maxScale ?? 10),
                     fontWeight: cell.avg !== null ? 700 : 400,
                     color: cell.privacyRestricted ? 'var(--text-muted)' : cell.avg !== null ? 'var(--text-primary)' : 'var(--text-muted)',
                     fontSize: '0.82rem',
                   }}
-                  title={cell.privacyRestricted ? `Privacidad: se requieren al menos ${privacyThreshold} evaluados` : cell.avg !== null ? `${cell.count} respuestas` : 'Sin datos'}
+                  title={cell.privacyRestricted ? `Privacidad: se requieren al menos ${privacyThreshold} evaluados` : cell.avg !== null ? `${cell.count} respuestas · escala 1-${row.maxScale ?? 10}` : 'Sin datos'}
                 >
                   {cell.privacyRestricted ? '\uD83D\uDD12' : cell.avg !== null ? cell.avg.toFixed(1) : '\u2014'}
                 </td>
