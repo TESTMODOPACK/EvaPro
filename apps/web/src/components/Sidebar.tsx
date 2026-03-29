@@ -158,6 +158,7 @@ const tenantNavSections: NavSection[] = [
       { href: '/dashboard/talento', label: 'Mapa de Talento', icon: icons.talent },
       { href: '/dashboard/desarrollo', label: 'Planes de Desarrollo', icon: icons.development },
       { href: '/dashboard/desarrollo-organizacional', label: 'Plan Organizacional', icon: icons.orgDevelopment },
+      { href: '/dashboard/postulantes', label: 'Evaluación Postulantes', icon: icons.users },
     ],
   },
   {

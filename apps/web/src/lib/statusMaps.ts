@@ -106,3 +106,33 @@ export const calibrationEntryStatusBadge: Record<string, string> = {
   pending_approval: 'badge-warning',
   rejected: 'badge-danger',
 };
+
+// ─── Postulant Process Status ───────────────────────────────────────────────
+export const processStatusLabel: Record<string, string> = {
+  draft: 'Borrador',
+  in_progress: 'En Progreso',
+  completed: 'Completado',
+  closed: 'Cerrado',
+};
+export const processStatusBadge: Record<string, string> = {
+  draft: 'badge-warning',
+  in_progress: 'badge-accent',
+  completed: 'badge-success',
+  closed: 'badge-ghost',
+};
+
+// ─── Postulant Entry Status ─────────────────────────────────────────────────
+export const postulantEntryStatusLabel: Record<string, string> = {
+  applied: 'Postulado',
+  evaluating: 'En Evaluación',
+  approved: 'Aprobado',
+  rejected: 'Rechazado',
+  hired: 'Contratado',
+};
+export const postulantEntryStatusBadge: Record<string, string> = {
+  applied: 'badge-ghost',
+  evaluating: 'badge-accent',
+  approved: 'badge-success',
+  rejected: 'badge-danger',
+  hired: 'badge-success',
+};

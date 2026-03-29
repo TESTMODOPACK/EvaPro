@@ -24,6 +24,7 @@ import { AiInsightsModule } from './modules/ai-insights/ai-insights.module';
 import { RecognitionModule } from './modules/recognition/recognition.module';
 import { DeiModule } from './modules/dei/dei.module';
 import { SystemModule } from './modules/system/system.module';
+import { PostulantsModule } from './modules/postulants/postulants.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -52,6 +53,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     RecognitionModule,
     DeiModule,
     SystemModule,
+    PostulantsModule,
   ],
   controllers: [AppController],
   providers: [

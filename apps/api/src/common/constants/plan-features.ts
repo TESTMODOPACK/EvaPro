@@ -26,6 +26,7 @@ export const PlanFeature = {
   PDI: 'PDI',
   NINE_BOX: 'NINE_BOX',
   CALIBRATION: 'CALIBRATION',
+  POSTULANTS: 'POSTULANTS',
 
   // Enterprise
   AI_INSIGHTS: 'AI_INSIGHTS',
@@ -64,6 +65,7 @@ export const PLAN_FEATURES = {
     PlanFeature.PDI,
     PlanFeature.NINE_BOX,
     PlanFeature.CALIBRATION,
+    PlanFeature.POSTULANTS,
   ],
   enterprise: [
     PlanFeature.EVAL_90_180,
@@ -78,6 +80,7 @@ export const PLAN_FEATURES = {
     PlanFeature.PDI,
     PlanFeature.NINE_BOX,
     PlanFeature.CALIBRATION,
+    PlanFeature.POSTULANTS,
     PlanFeature.AI_INSIGHTS,
     PlanFeature.PUBLIC_API,
   ],
