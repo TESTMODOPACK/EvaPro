@@ -227,6 +227,7 @@ export default function PlantillasPage() {
     setName(tpl.name);
     setDescription(tpl.description || '');
     setSections(tpl.sections?.length > 0 ? tpl.sections : [emptySection()]);
+    setChangeNote('');
     setMode('edit');
   };
 
@@ -480,7 +481,7 @@ export default function PlantillasPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.35rem' }}>
                           <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>v{v.version}</span>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {new Date(v.changedAt).toLocaleDateString('es-ES', {
+                            {new Date(v.changedAt).toLocaleString('es-ES', {
                               day: 'numeric', month: 'short', year: 'numeric',
                               hour: '2-digit', minute: '2-digit',
                             })}
