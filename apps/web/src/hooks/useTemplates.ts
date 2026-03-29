@@ -48,3 +48,25 @@ export function useDuplicateTemplate() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
   });
 }
+
+export function useVersionHistory(id: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['template-versions', id],
+    queryFn: () => api.templates.versionHistory(token!, id!),
+    enabled: !!token && !!id,
+  });
+}
+
+export function useRestoreVersion() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) =>
+      api.templates.restoreVersion(token!, id, version),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['templates'] });
+      qc.invalidateQueries({ queryKey: ['template-versions', id] });
+    },
+  });
+}

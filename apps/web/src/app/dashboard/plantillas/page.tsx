@@ -7,6 +7,8 @@ import {
   useUpdateTemplate,
   useRemoveTemplate,
   useDuplicateTemplate,
+  useVersionHistory,
+  useRestoreVersion,
 } from '@/hooks/useTemplates';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
@@ -183,12 +185,19 @@ export default function PlantillasPage() {
   const removeTemplate = useRemoveTemplate();
   const duplicateTemplate = useDuplicateTemplate();
 
-  const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'preview'>('list');
+  const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'preview' | 'history'>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [sections, setSections] = useState<Section[]>([emptySection()]);
   const [saving, setSaving] = useState(false);
+  const [changeNote, setChangeNote] = useState('');
+
+  // Version history
+  const [historyTemplateId, setHistoryTemplateId] = useState<string | null>(null);
+  const [historyTemplateName, setHistoryTemplateName] = useState('');
+  const { data: versionData, isLoading: versionLoading } = useVersionHistory(historyTemplateId);
+  const restoreVersion = useRestoreVersion();
 
   // CSV Import
   const [showImport, setShowImport] = useState(false);
@@ -205,6 +214,7 @@ export default function PlantillasPage() {
     setDescription('');
     setSections([emptySection()]);
     setEditingId(null);
+    setChangeNote('');
   };
 
   const handleNew = () => {
@@ -234,7 +244,8 @@ export default function PlantillasPage() {
 
     setSaving(true);
     try {
-      const data = { name, description, sections };
+      const data: any = { name, description, sections };
+      if (editingId && changeNote.trim()) data.changeNote = changeNote.trim();
       if (editingId) {
         await updateTemplate.mutateAsync({ id: editingId, data });
       } else {
@@ -263,6 +274,22 @@ export default function PlantillasPage() {
       await duplicateTemplate.mutateAsync(id);
     } catch (err: any) {
       alert(err.message || 'Error al duplicar');
+    }
+  };
+
+  const handleOpenHistory = (tpl: any) => {
+    setHistoryTemplateId(tpl.id);
+    setHistoryTemplateName(tpl.name);
+    setMode('history');
+  };
+
+  const handleRestoreVersion = async (version: number) => {
+    if (!historyTemplateId) return;
+    if (!confirm(`¿Restaurar la versión ${version}? El estado actual se guardará como snapshot automático.`)) return;
+    try {
+      await restoreVersion.mutateAsync({ id: historyTemplateId, version });
+    } catch (err: any) {
+      alert(err.message || 'Error al restaurar');
     }
   };
 
@@ -395,6 +422,94 @@ export default function PlantillasPage() {
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // History mode
+  if (mode === 'history') {
+    return (
+      <div style={{ padding: '2rem 2.5rem', maxWidth: '800px' }}>
+        <button
+          className="btn-ghost"
+          onClick={() => { setMode('list'); setHistoryTemplateId(null); }}
+          style={{ marginBottom: '1.5rem', fontSize: '0.82rem' }}
+        >
+          &larr; Volver a plantillas
+        </button>
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '0.15rem' }}>Historial de versiones</h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: 0 }}>{historyTemplateName}</p>
+        </div>
+
+        {versionLoading ? (
+          <Spinner />
+        ) : !versionData ? (
+          <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+            No se pudo cargar el historial
+          </div>
+        ) : (
+          <>
+            {/* Current version card */}
+            <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '3px solid var(--accent)', background: 'rgba(99,102,241,0.04)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span className="badge badge-accent" style={{ fontSize: '0.72rem', marginBottom: '0.4rem', display: 'inline-block' }}>Versión actual</span>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>v{versionData.currentVersion}</div>
+                </div>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  {versionData.totalVersions} versión{versionData.totalVersions !== 1 ? 'es' : ''} en historial
+                </span>
+              </div>
+            </div>
+
+            {/* History list */}
+            {versionData.history.length === 0 ? (
+              <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: 0 }}>
+                  No hay versiones anteriores. El historial se genera automáticamente al guardar cambios en las secciones.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {versionData.history.map((v: any) => (
+                  <div key={v.version} className="card animate-fade-up" style={{ padding: '1.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.35rem' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>v{v.version}</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {new Date(v.changedAt).toLocaleDateString('es-ES', {
+                              day: 'numeric', month: 'short', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          {v.sectionCount} sección{v.sectionCount !== 1 ? 'es' : ''} · {v.questionCount} pregunta{v.questionCount !== 1 ? 's' : ''}
+                        </div>
+                        {v.changeNote && (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontStyle: 'italic', marginTop: '0.4rem', paddingLeft: '0.6rem', borderLeft: '2px solid var(--border)' }}>
+                            &ldquo;{v.changeNote}&rdquo;
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem', whiteSpace: 'nowrap', marginLeft: '1rem' }}
+                        disabled={restoreVersion.isPending}
+                        onClick={() => handleRestoreVersion(v.version)}
+                      >
+                        {restoreVersion.isPending ? '...' : 'Restaurar'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
     );
   }
@@ -558,6 +673,21 @@ export default function PlantillasPage() {
         <button className="btn-ghost" style={{ fontSize: '0.85rem', marginBottom: '1.5rem', width: '100%', padding: '0.75rem', border: '1.5px dashed var(--border)' }} onClick={addSection}>
           + Agregar sección
         </button>
+
+        {/* Change note — only when editing */}
+        {editingId && (
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Nota de cambio <span style={{ textTransform: 'none', fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span>
+            </label>
+            <textarea
+              style={{ ...inputStyle, minHeight: '48px', resize: 'vertical' }}
+              value={changeNote}
+              onChange={(e) => setChangeNote(e.target.value)}
+              placeholder="Describe qué cambió en esta versión..."
+            />
+          </div>
+        )}
 
         {/* Save */}
         <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -751,6 +881,9 @@ export default function PlantillasPage() {
                   </button>
                   <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }} onClick={() => handleDuplicate(tpl.id)}>
                     Duplicar
+                  </button>
+                  <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }} onClick={() => handleOpenHistory(tpl)}>
+                    Historial
                   </button>
                   <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', color: 'var(--danger)' }} onClick={() => handleDelete(tpl.id, tpl.name)}>
                     Eliminar
