@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAnalytics } from '@/hooks/usePerformanceHistory';
 import { useCycles } from '@/hooks/useCycles';
 import { useCompetencyHeatmap } from '@/hooks/useReports';
@@ -34,6 +34,12 @@ function heatColor(avg: number | null, maxScale: number): string {
 function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
   const [deptFilter, setDeptFilter] = useState('');
   const [sortByAvg, setSortByAvg] = useState(false);
+
+  // Reset filters when cycle changes to avoid stale dept selection
+  useEffect(() => {
+    setDeptFilter('');
+    setSortByAvg(false);
+  }, [cycleId]);
 
   // Unfiltered query — used to populate department dropdown and as base data
   const { data: unfilteredData } = useCompetencyHeatmap(cycleId);
@@ -165,9 +171,9 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
                 <td style={{ padding: '0.55rem 0.75rem', fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>
                   {row.section}
                 </td>
-                {row.values.map((cell: any, ci: number) => (
+                {row.values.map((cell: any) => (
                   <td
-                    key={ci}
+                    key={cell.department}
                     style={{
                       padding: '0.55rem 0.5rem',
                       textAlign: 'center',
