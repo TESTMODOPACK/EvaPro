@@ -89,13 +89,19 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       const es: typeof editState = {};
       if (data.entries) {
         for (const entry of data.entries) {
-          const rationaleType = useCausals.includes(entry.rationale ?? '')
-            ? (entry.rationale ?? '')
-            : (entry.rationale ? 'Otro' : '');
+          const r = entry.rationale ?? '';
+          let rationaleType = '';
+          if (!r) {
+            rationaleType = '';
+          } else if (useCausals.includes(r)) {
+            rationaleType = r;
+          } else {
+            rationaleType = 'Otro';
+          }
           es[entry.id] = {
             adjustedScore: entry.adjustedScore ?? entry.originalScore ?? '',
             adjustedPotential: entry.adjustedPotential ?? entry.originalPotential ?? '',
-            rationale: entry.rationale ?? '',
+            rationale: r,
             rationaleType,
           };
         }
