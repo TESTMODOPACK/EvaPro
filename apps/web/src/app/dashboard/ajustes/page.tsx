@@ -43,6 +43,10 @@ export default function AjustesPage() {
   const [newPassword, setNewPassword] = useState('');
   const [saved, setSaved] = useState(false);
   const [passwordSaved, setPasswordSaved] = useState(false);
+  const [tenantTimezone, setTenantTimezone] = useState('');
+  const [tenantSessionTimeout, setTenantSessionTimeout] = useState('');
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   // Populate form once user loads
   useEffect(() => {
@@ -63,6 +67,8 @@ export default function AjustesPage() {
         setTenantName(t.name || '');
         setTenantRut(t.rut ? formatRut(t.rut) : '');
         setTenantSettings(t.settings || {});
+        setTenantTimezone(t.settings?.timezone || '');
+        setTenantSessionTimeout(t.settings?.sessionTimeoutMinutes?.toString() || '');
       })
       .catch(() => {});
   }, [token, isTenantAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -239,6 +245,83 @@ export default function AjustesPage() {
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
             {t('settings.company.readOnlyNote')}
           </p>
+        </div>
+      )}
+
+      {/* Organization Settings (tenant_admin only) */}
+      {isTenantAdmin && (
+        <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+            {t('settings.org.title')}
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+            {t('settings.org.subtitle')}
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+            <div>
+              <label style={labelStyle}>{t('settings.org.timezone')}</label>
+              <select
+                className="input"
+                value={tenantTimezone}
+                onChange={(e) => setTenantTimezone(e.target.value)}
+              >
+                <option value="">{t('settings.org.timezoneDefault')}</option>
+                <option value="America/Santiago">America/Santiago (CLT, UTC-3/-4)</option>
+                <option value="America/Argentina/Buenos_Aires">America/Buenos Aires (ART, UTC-3)</option>
+                <option value="America/Bogota">America/Bogota (COT, UTC-5)</option>
+                <option value="America/Mexico_City">America/Mexico City (CST, UTC-6)</option>
+                <option value="America/Lima">America/Lima (PET, UTC-5)</option>
+                <option value="America/Sao_Paulo">America/Sao Paulo (BRT, UTC-3)</option>
+                <option value="America/New_York">America/New York (EST, UTC-5)</option>
+                <option value="Europe/Madrid">Europe/Madrid (CET, UTC+1)</option>
+                <option value="Europe/London">Europe/London (GMT, UTC+0)</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>{t('settings.org.sessionTimeout')}</label>
+              <select
+                className="input"
+                value={tenantSessionTimeout}
+                onChange={(e) => setTenantSessionTimeout(e.target.value)}
+              >
+                <option value="">{t('settings.org.sessionDefault')}</option>
+                <option value="15">15 minutos</option>
+                <option value="30">30 minutos</option>
+                <option value="60">1 hora</option>
+                <option value="120">2 horas</option>
+                <option value="480">8 horas</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={settingsSaving}
+              style={{ opacity: settingsSaving ? 0.6 : 1 }}
+              onClick={async () => {
+                if (!token) return;
+                setSettingsSaving(true);
+                try {
+                  await api.tenants.updateSettings(token, {
+                    timezone: tenantTimezone || null,
+                    sessionTimeoutMinutes: tenantSessionTimeout ? parseInt(tenantSessionTimeout, 10) : null,
+                  });
+                  setSettingsSaved(true);
+                  setTimeout(() => setSettingsSaved(false), 3000);
+                } catch { /* silently fail */ }
+                setSettingsSaving(false);
+              }}
+            >
+              {settingsSaving ? t('common.saving') : t('common.save')}
+            </button>
+            {settingsSaved && (
+              <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>
+                {t('settings.org.saved')}
+              </span>
+            )}
+          </div>
         </div>
       )}
 

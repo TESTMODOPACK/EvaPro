@@ -238,6 +238,80 @@ export class RemindersService {
     }
   }
 
+  // ─── 4b. Recordatorio previo a check-in programado (diario 7:45am) ──────
+
+  @Cron('45 7 * * *')
+  async remindUpcomingCheckins() {
+    this.logger.log('[Cron] Checking upcoming check-ins (next 24h)...');
+    try {
+      // scheduledDate is a 'date' column (no time component), so compare with date-only strings
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+      const tomorrowDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+
+      // Find check-ins scheduled for today or tomorrow that are still SCHEDULED
+      const upcoming = await this.checkinRepo
+        .createQueryBuilder('c')
+        .leftJoinAndSelect('c.manager', 'mgr')
+        .leftJoinAndSelect('c.employee', 'emp')
+        .where('c.status = :status', { status: 'scheduled' })
+        .andWhere('c.scheduledDate >= :today', { today: todayStr })
+        .andWhere('c.scheduledDate <= :tomorrow', { tomorrow: tomorrowStr })
+        .getMany();
+
+      if (upcoming.length === 0) return;
+
+      const notifications: Array<{
+        tenantId: string;
+        userId: string;
+        type: NotificationType;
+        title: string;
+        message: string;
+        metadata?: Record<string, any>;
+      }> = [];
+
+      for (const ci of upcoming) {
+        const scheduledStr = new Date(ci.scheduledDate).toLocaleDateString('es-CL', {
+          weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+        });
+
+        // Notify manager
+        const empName = ci.employee
+          ? `${ci.employee.firstName} ${ci.employee.lastName}`
+          : 'un colaborador';
+        notifications.push({
+          tenantId: ci.tenantId,
+          userId: ci.managerId,
+          type: NotificationType.CHECKIN_SCHEDULED,
+          title: 'Check-in programado para pronto',
+          message: `Tienes un check-in con ${empName} programado para ${scheduledStr}.`,
+          metadata: { checkinId: ci.id, scheduledDate: ci.scheduledDate },
+        });
+
+        // Notify employee
+        const mgrName = ci.manager
+          ? `${ci.manager.firstName} ${ci.manager.lastName}`
+          : 'tu jefatura';
+        notifications.push({
+          tenantId: ci.tenantId,
+          userId: ci.employeeId,
+          type: NotificationType.CHECKIN_SCHEDULED,
+          title: 'Check-in programado para pronto',
+          message: `Tienes un check-in con ${mgrName} programado para ${scheduledStr}.`,
+          metadata: { checkinId: ci.id, scheduledDate: ci.scheduledDate },
+        });
+      }
+
+      if (notifications.length > 0) {
+        await this.notificationsService.createBulk(notifications);
+        this.logger.log(`[Cron] Created ${notifications.length} upcoming check-in reminders`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in remindUpcomingCheckins: ${error}`);
+    }
+  }
+
   // ─── 5. Check-ins sin realizar (semanal, lunes 8am) ─────────────────
 
   @Cron('0 8 * * 1')

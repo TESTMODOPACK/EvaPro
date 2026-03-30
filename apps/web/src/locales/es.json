@@ -148,6 +148,15 @@
       "competencies": "Competencias iniciales",
       "readOnlyNote": "Para modificar estos datos, contacta al administrador del sistema."
     },
+    "org": {
+      "title": "Configuración de la organización",
+      "subtitle": "Zona horaria y duración de sesión para tu organización",
+      "timezone": "Zona horaria",
+      "timezoneDefault": "— Usar predeterminada del servidor —",
+      "sessionTimeout": "Duración de sesión",
+      "sessionDefault": "— Predeterminada (15 min) —",
+      "saved": "Configuración guardada"
+    },
     "profile": {
       "title": "Perfil de usuario",
       "subtitle": "Información de tu cuenta en EvaPro",

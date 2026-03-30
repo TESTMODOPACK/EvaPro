@@ -52,6 +52,13 @@ export class TenantsController {
     return this.tenantsService.setCustomSetting(req.user.tenantId, key, values);
   }
 
+  /** Update tenant general settings (timezone, sessionTimeout, etc.) */
+  @Patch('me/settings')
+  @Roles('super_admin', 'tenant_admin')
+  updateMySettings(@Request() req: any, @Body() dto: Record<string, any>) {
+    return this.tenantsService.updateTenantSettings(req.user.tenantId, dto);
+  }
+
   @Get('system-stats')
   getSystemStats() {
     return this.tenantsService.getSystemStats();

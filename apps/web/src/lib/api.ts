@@ -205,6 +205,11 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ values }),
       }, token),
+    updateSettings: (token: string, settings: Record<string, any>) =>
+      request<any>("/tenants/me/settings", {
+        method: "PATCH",
+        body: JSON.stringify(settings),
+      }, token),
   },
 
   auditLogs: {

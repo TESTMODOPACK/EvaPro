@@ -49,6 +49,16 @@ const CUSTOM_SETTINGS_DEFAULTS: Record<string, string[]> = {
     'Semestral',
     'Trimestral',
   ],
+  departments: [
+    'Tecnología',
+    'Recursos Humanos',
+    'Ventas',
+    'Marketing',
+    'Operaciones',
+    'Finanzas',
+    'Legal',
+    'Administración',
+  ],
 };
 
 const VALID_CUSTOM_KEYS = Object.keys(CUSTOM_SETTINGS_DEFAULTS);
@@ -194,6 +204,45 @@ export class TenantsService {
     tenant.settings = { ...(tenant.settings || {}), [key]: sanitized };
     await this.tenantRepository.save(tenant);
     return values;
+  }
+
+  private static readonly VALID_TIMEZONES = [
+    'America/Santiago', 'America/Argentina/Buenos_Aires', 'America/Bogota',
+    'America/Mexico_City', 'America/Lima', 'America/Sao_Paulo',
+    'America/New_York', 'Europe/Madrid', 'Europe/London', 'UTC',
+  ];
+
+  async updateTenantSettings(tenantId: string, dto: Record<string, any>): Promise<any> {
+    const tenant = await this.findById(tenantId);
+    const currentSettings = tenant.settings || {};
+
+    // Timezone validation
+    if (dto.timezone !== undefined) {
+      if (dto.timezone === null || dto.timezone === '') {
+        currentSettings.timezone = null;
+      } else if (typeof dto.timezone === 'string' && TenantsService.VALID_TIMEZONES.includes(dto.timezone)) {
+        currentSettings.timezone = dto.timezone;
+      } else {
+        throw new BadRequestException(`Zona horaria no válida: ${dto.timezone}`);
+      }
+    }
+
+    // Session timeout validation (must be positive integer in minutes)
+    if (dto.sessionTimeoutMinutes !== undefined) {
+      if (dto.sessionTimeoutMinutes === null) {
+        currentSettings.sessionTimeoutMinutes = null;
+      } else {
+        const val = Number(dto.sessionTimeoutMinutes);
+        if (!Number.isInteger(val) || val < 5 || val > 1440) {
+          throw new BadRequestException('La duración de sesión debe ser un número entero entre 5 y 1440 minutos');
+        }
+        currentSettings.sessionTimeoutMinutes = val;
+      }
+    }
+
+    tenant.settings = currentSettings;
+    await this.tenantRepository.save(tenant);
+    return { timezone: currentSettings.timezone, sessionTimeoutMinutes: currentSettings.sessionTimeoutMinutes };
   }
 
   async getAllCustomSettings(tenantId: string): Promise<Record<string, string[]>> {
