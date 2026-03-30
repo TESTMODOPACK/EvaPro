@@ -1,0 +1,214 @@
+{
+  "nav": {
+    "mySpace": "Mi Espacio",
+    "dashboard": "Dashboard",
+    "myPerformance": "Mi Desempeño",
+    "evaluation": "Evaluación",
+    "evalCycles": "Ciclos de Evaluación",
+    "calibration": "Calibración",
+    "reports": "Reportes",
+    "analytics": "Análisis del Ciclo",
+    "informes": "Informes por Colaborador",
+    "aiInsights": "Insights IA",
+    "talentDev": "Talento y Desarrollo",
+    "talentMap": "Mapa de Talento",
+    "devPlans": "Planes de Desarrollo",
+    "orgDev": "Plan Organizacional",
+    "applicants": "Evaluación Postulantes",
+    "continuous": "Seguimiento Continuo",
+    "objectives": "Objetivos / OKR",
+    "feedback": "Feedback y Check-ins",
+    "recognitions": "Reconocimientos",
+    "dei": "DEI / Diversidad",
+    "config": "Configuración",
+    "users": "Usuarios",
+    "templates": "Plantillas",
+    "competencies": "Competencias",
+    "customData": "Datos Personalizados",
+    "subscription": "Mi Suscripción",
+    "admin": "Administración",
+    "systemPanel": "Panel del Sistema",
+    "organizations": "Organizaciones",
+    "subscriptions": "Suscripciones",
+    "systemLog": "Log del Sistema",
+    "usageMetrics": "Métricas de Uso"
+  },
+  "topbar": {
+    "myProfile": "Mi perfil",
+    "logout": "Cerrar sesión",
+    "userMenu": "Menú de usuario",
+    "userOptions": "Opciones de usuario"
+  },
+  "common": {
+    "save": "Guardar cambios",
+    "saving": "Guardando...",
+    "cancel": "Cancelar",
+    "back": "Volver",
+    "loading": "Cargando...",
+    "error": "Error",
+    "search": "Buscar",
+    "noData": "Sin datos",
+    "create": "Crear",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirm": "Confirmar",
+    "close": "Cerrar",
+    "export": "Exportar",
+    "filters": "Filtros",
+    "clearFilters": "Limpiar filtros",
+    "all": "Todos",
+    "yes": "Sí",
+    "no": "No",
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "optional": "opcional"
+  },
+  "status": {
+    "subscription": {
+      "active": "Activa",
+      "trial": "En trial",
+      "suspended": "Suspendida",
+      "cancelled": "Cancelada",
+      "expired": "Expirada"
+    },
+    "cycle": {
+      "draft": "Borrador",
+      "active": "Activo",
+      "closed": "Cerrado"
+    },
+    "cycleType": {
+      "90": "Evaluación 90°",
+      "180": "Evaluación 180°",
+      "270": "Evaluación 270°",
+      "360": "Evaluación 360°"
+    },
+    "assignment": {
+      "pending": "Pendiente",
+      "in_progress": "En progreso",
+      "completed": "Completada",
+      "submitted": "Enviada"
+    },
+    "relation": {
+      "self": "Autoevaluación",
+      "manager": "Evaluación del jefe",
+      "peer": "Evaluación de par",
+      "direct_report": "Evaluación de reporte directo"
+    },
+    "calibration": {
+      "draft": "Borrador",
+      "in_progress": "En progreso",
+      "completed": "Completada"
+    },
+    "calibrationEntry": {
+      "pending": "Pendiente",
+      "discussed": "En discusión",
+      "agreed": "Acordado",
+      "adjusted": "Ajustado",
+      "approved": "Aprobado",
+      "not_required": "No requiere",
+      "pending_approval": "Aprobación pendiente",
+      "rejected": "Rechazado"
+    },
+    "process": {
+      "draft": "Borrador",
+      "in_progress": "En Progreso",
+      "completed": "Completado",
+      "closed": "Cerrado"
+    },
+    "postulant": {
+      "applied": "Postulado",
+      "evaluating": "En Evaluación",
+      "approved": "Aprobado",
+      "rejected": "Rechazado",
+      "hired": "Contratado"
+    }
+  },
+  "roles": {
+    "super_admin": "Super Admin",
+    "tenant_admin": "Encargado del Sistema",
+    "manager": "Encargado de Equipo",
+    "employee": "Colaborador",
+    "external": "Asesor Externo"
+  },
+  "settings": {
+    "title": "Ajustes",
+    "subtitle": "Configura tu perfil y preferencias de la plataforma",
+    "language": {
+      "title": "Idioma",
+      "description": "Selecciona el idioma de la interfaz",
+      "saved": "Idioma actualizado"
+    },
+    "company": {
+      "title": "Información de la empresa",
+      "subtitle": "Datos registrados de tu organización (solo lectura)",
+      "legalName": "Razón Social",
+      "taxId": "RUT Empresa",
+      "readOnlyNote": "Para modificar estos datos, contacta al administrador del sistema."
+    },
+    "profile": {
+      "title": "Perfil de usuario",
+      "subtitle": "Información de tu cuenta en EvaPro",
+      "email": "Correo electrónico",
+      "role": "Rol",
+      "firstName": "Nombre",
+      "lastName": "Apellido",
+      "position": "Cargo",
+      "positionPlaceholder": "Ej. Director de RRHH",
+      "saved": "✓ Cambios guardados",
+      "saveError": "Error al guardar"
+    },
+    "security": {
+      "title": "Seguridad",
+      "subtitle": "Gestiona la seguridad de tu cuenta",
+      "currentPassword": "Contraseña actual",
+      "newPassword": "Nueva contraseña",
+      "changePassword": "Cambiar contraseña",
+      "passwordSaved": "✓ Contraseña actualizada"
+    }
+  },
+  "login": {
+    "title": "Bienvenido",
+    "subtitle": "Inicia sesión en tu cuenta",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "loginBtn": "Iniciar Sesión",
+    "loggingIn": "Iniciando...",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "errors": {
+      "required": "Ingresa tu correo y contraseña",
+      "invalidRut": "RUT inválido. Verifica el formato y dígito verificador.",
+      "invalidCredentials": "Credenciales inválidas"
+    }
+  },
+  "evaluaciones": {
+    "title": "Ciclos de Evaluación",
+    "myTitle": "Mis Evaluaciones",
+    "subtitle": "Evaluaciones asignadas a ti",
+    "pending": "Pendientes",
+    "completed": "Completadas",
+    "noPending": "No tienes evaluaciones pendientes",
+    "noCompleted": "No tienes evaluaciones completadas",
+    "evaluate": "Evaluar",
+    "viewResult": "Ver resultado"
+  },
+  "usuarios": {
+    "title": "Usuarios",
+    "subtitle": "Gestión de usuarios de la organización",
+    "newUser": "Nuevo Usuario",
+    "editUser": "Editar Usuario",
+    "deactivate": "Desactivar",
+    "activate": "Activar",
+    "searchPlaceholder": "Buscar por nombre o correo...",
+    "filterDepartment": "Departamento",
+    "filterRole": "Rol",
+    "filterStatus": "Estado",
+    "noUsers": "No se encontraron usuarios"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Bienvenido",
+    "pendingEvals": "Evaluaciones pendientes",
+    "activeUsers": "Usuarios activos",
+    "activeCycles": "Ciclos activos"
+  }
+}

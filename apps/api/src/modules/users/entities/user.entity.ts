@@ -72,6 +72,9 @@ export class User {
 
   // ─── End demographic fields ───────────────────────────────────────
 
+  @Column({ type: 'varchar', length: 5, default: 'es', nullable: true })
+  language: string;
+
   @Column({ type: 'varchar', length: 10, nullable: true, name: 'reset_code' })
   resetCode: string | null;
 

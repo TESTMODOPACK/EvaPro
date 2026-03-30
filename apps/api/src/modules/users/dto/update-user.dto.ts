@@ -75,4 +75,8 @@ export class UpdateUserDto {
   @IsIn(['oficina', 'remoto', 'hibrido'])
   @IsOptional()
   workLocation?: string;
+
+  @IsIn(['es', 'en', 'pt'])
+  @IsOptional()
+  language?: string;
 }

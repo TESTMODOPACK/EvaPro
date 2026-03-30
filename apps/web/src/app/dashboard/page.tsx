@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { usePendingEvaluations } from '@/hooks/useEvaluations';
@@ -28,6 +29,7 @@ function Spinner() {
 // ─── Super Admin Dashboard ──────────────────────────────────────────────────
 
 function SuperAdminDashboard() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ function SuperAdminDashboard() {
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>
-          Panel del Sistema
+          {t('nav.systemPanel')}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           {`Administraci\u00f3n central de EvaPro`}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
 import { usePendingEvaluations, useMyCompletedEvaluations } from '@/hooks/useEvaluations';
 import { useAuthStore } from '@/store/auth.store';
@@ -35,6 +36,7 @@ function Spinner() {
 // ─── Employee view: only their assignments ──────────────────────────────────
 
 function EmployeeEvaluationsView() {
+  const { t } = useTranslation();
   const { data: pendingEvals, isLoading: loadingPending } = usePendingEvaluations();
   const { data: completedEvals, isLoading: loadingCompleted } = useMyCompletedEvaluations();
   const userId = useAuthStore((s) => s.user?.userId);
@@ -45,20 +47,20 @@ function EmployeeEvaluationsView() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Mis Evaluaciones</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('evaluaciones.myTitle')}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Evaluaciones asignadas a ti
+          {t('evaluaciones.subtitle')}
         </p>
       </div>
 
       {/* Summary cards */}
       <div className="animate-fade-up-delay-1" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
         <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Pendientes</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.pending')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Completadas</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.completed')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{completed.length}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
@@ -81,7 +83,7 @@ function EmployeeEvaluationsView() {
 
         {loadingPending ? <Spinner /> : pending.length === 0 ? (
           <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No tienes evaluaciones pendientes</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('evaluaciones.noPending')}</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -175,6 +177,7 @@ function EmployeeEvaluationsView() {
 // ─── Admin/Manager view: cycles overview ────────────────────────────────────
 
 function AdminEvaluationsView() {
+  const { t } = useTranslation();
   const { data: cycles, isLoading } = useCycles();
   const userRole = useAuthStore((s) => s.user?.role);
   const isAdmin = userRole === 'tenant_admin';
@@ -185,9 +188,9 @@ function AdminEvaluationsView() {
       {/* Header */}
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Evaluaciones</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('evaluaciones.title')}</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {isAdmin ? 'Gestiona los ciclos de evaluaci\u00f3n de desempe\u00f1o' : 'Ciclos de evaluaci\u00f3n'}
+            {t('evaluaciones.title')}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>

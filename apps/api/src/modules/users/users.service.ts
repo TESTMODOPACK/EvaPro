@@ -196,6 +196,7 @@ export class UsersService {
     if (dto.seniorityLevel !== undefined) user.seniorityLevel = dto.seniorityLevel;
     if (dto.contractType !== undefined) user.contractType = dto.contractType;
     if (dto.workLocation !== undefined) user.workLocation = dto.workLocation;
+    if (dto.language !== undefined) user.language = dto.language;
 
     return this.userRepository.save(user);
   }

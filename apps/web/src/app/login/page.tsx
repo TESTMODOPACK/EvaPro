@@ -2,12 +2,14 @@
 
 import { useState, FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
 import { useAuthStore, decodeJwtPayload } from "@/store/auth.store";
 import { formatRutInput, validateRut, normalizeRut } from "@/lib/rut";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { setAuth, isAuthenticated } = useAuthStore();
 
   const [tenantRut, setTenantRut] = useState("");
@@ -45,9 +47,9 @@ export default function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (!email || !password) { setError("Ingresa tu correo y contraseña"); return; }
+    if (!email || !password) { setError(t('login.errors.required')); return; }
     const rutValue = tenantRut.trim();
-    if (rutValue && !validateRut(rutValue)) { setRutError("RUT inválido. Verifique el formato y dígito verificador."); return; }
+    if (rutValue && !validateRut(rutValue)) { setRutError(t('login.errors.invalidRut')); return; }
     setLoading(true);
     try {
       const tenantIdentifier = rutValue ? normalizeRut(rutValue) : undefined;
@@ -60,7 +62,7 @@ export default function LoginPage() {
       if (err?.message?.includes("fetch") || err?.message?.includes("network")) {
         setError("No se pudo conectar al servidor. Intenta más tarde.");
       } else {
-        setError("Credenciales incorrectas. Verifica tu correo y contraseña.");
+        setError(t('login.errors.invalidCredentials'));
       }
     } finally {
       setLoading(false);
@@ -241,7 +243,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="login-email" style={labelStyle}>Email</label>
+              <label htmlFor="login-email" style={labelStyle}>{t('login.email')}</label>
               <div style={{ position: "relative" }}>
                 <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -256,7 +258,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="login-password" style={labelStyle}>Contraseña</label>
+              <label htmlFor="login-password" style={labelStyle}>{t('login.password')}</label>
               <div style={{ position: "relative" }}>
                 <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -297,7 +299,7 @@ export default function LoginPage() {
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 2px 12px rgba(201,147,58,0.25)"; }}
             >
               {loading && <span className="spinner" style={{ width: "18px", height: "18px", borderColor: "rgba(26,18,6,0.3)", borderTopColor: "#1a1206" }} />}
-              {loading ? "Verificando..." : "Iniciar sesión"}
+              {loading ? t('login.loggingIn') : t('login.loginBtn')}
               {!loading && (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
@@ -313,7 +315,7 @@ export default function LoginPage() {
               onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
               onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}
             >
-              ¿Olvidaste tu contraseña?
+              {t('login.forgotPassword')}
             </button>
           </div>
         </div>

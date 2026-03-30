@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 // ─── Subscription Status ────────────────────────────────────────────────────
 export const subscriptionStatusLabel: Record<string, string> = {
   active: 'Activa',
@@ -136,3 +138,21 @@ export const postulantEntryStatusBadge: Record<string, string> = {
   rejected: 'badge-danger',
   hired: 'badge-success',
 };
+
+// ─── i18n-aware hook ─────────────────────────────────────────────────────────
+// Use this in components; static maps above remain as fallback for non-hook contexts
+
+export function useStatusLabels() {
+  const { t } = useTranslation();
+  return {
+    subscription: (s: string) => t(`status.subscription.${s}`, { defaultValue: subscriptionStatusLabel[s] ?? s }),
+    cycle: (s: string) => t(`status.cycle.${s}`, { defaultValue: cycleStatusLabel[s] ?? s }),
+    cycleType: (s: string) => t(`status.cycleType.${s}`, { defaultValue: cycleTypeLabel[s] ?? s }),
+    assignment: (s: string) => t(`status.assignment.${s}`, { defaultValue: assignmentStatusLabel[s] ?? s }),
+    relation: (s: string) => t(`status.relation.${s}`, { defaultValue: relationTypeLabel[s] ?? s }),
+    calibration: (s: string) => t(`status.calibration.${s}`, { defaultValue: calibrationStatusLabel[s] ?? s }),
+    calibrationEntry: (s: string) => t(`status.calibrationEntry.${s}`, { defaultValue: calibrationEntryStatusLabel[s] ?? s }),
+    process: (s: string) => t(`status.process.${s}`, { defaultValue: processStatusLabel[s] ?? s }),
+    postulant: (s: string) => t(`status.postulant.${s}`, { defaultValue: postulantEntryStatusLabel[s] ?? s }),
+  };
+}

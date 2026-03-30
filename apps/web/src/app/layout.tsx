@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/providers/QueryProvider';
+import I18nProvider from '@/components/I18nProvider';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -23,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="es" className={inter.variable}>
       <body style={{ fontFamily: 'var(--font-inter), system-ui, -apple-system, sans-serif' }}>
-        <QueryProvider>{children}</QueryProvider>
+        <I18nProvider>
+          <QueryProvider>{children}</QueryProvider>
+        </I18nProvider>
       </body>
     </html>
   );

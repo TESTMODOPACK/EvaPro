@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel } from '@/lib/roles';
 import { useMySubscription } from '@/hooks/useSubscription';
@@ -14,6 +15,7 @@ export default function TopBar() {
   const orgName = sub?.tenant?.name || sub?.plan?.name || '';
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -97,7 +99,7 @@ export default function TopBar() {
         <div ref={dropdownRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            aria-label="Menu de usuario"
+            aria-label={t('topbar.userMenu')}
             aria-expanded={dropdownOpen}
             aria-haspopup="true"
             style={{
@@ -138,7 +140,7 @@ export default function TopBar() {
 
           {/* Dropdown menu */}
           {dropdownOpen && (
-            <div role="menu" aria-label="Opciones de usuario" style={{
+            <div role="menu" aria-label={t('topbar.userOptions')} style={{
               position: 'absolute', right: 0, top: '100%', marginTop: '0.5rem',
               background: 'var(--bg-card)', border: '1px solid var(--border)',
               borderRadius: 'var(--radius)', padding: '0.5rem',
@@ -169,7 +171,7 @@ export default function TopBar() {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
                 </svg>
-                Mi perfil
+                {t('topbar.myProfile')}
               </button>
 
               <button
@@ -187,7 +189,7 @@ export default function TopBar() {
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                   <polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
                 </svg>
-                Cerrar sesion
+                {t('topbar.logout')}
               </button>
             </div>
           )}

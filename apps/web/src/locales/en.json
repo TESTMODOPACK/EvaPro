@@ -1,0 +1,214 @@
+{
+  "nav": {
+    "mySpace": "My Space",
+    "dashboard": "Dashboard",
+    "myPerformance": "My Performance",
+    "evaluation": "Evaluation",
+    "evalCycles": "Evaluation Cycles",
+    "calibration": "Calibration",
+    "reports": "Reports",
+    "analytics": "Cycle Analytics",
+    "informes": "Collaborator Reports",
+    "aiInsights": "AI Insights",
+    "talentDev": "Talent & Development",
+    "talentMap": "Talent Map",
+    "devPlans": "Development Plans",
+    "orgDev": "Organizational Plan",
+    "applicants": "Applicant Evaluation",
+    "continuous": "Continuous Tracking",
+    "objectives": "Objectives / OKR",
+    "feedback": "Feedback & Check-ins",
+    "recognitions": "Recognitions",
+    "dei": "DEI / Diversity",
+    "config": "Configuration",
+    "users": "Users",
+    "templates": "Templates",
+    "competencies": "Competencies",
+    "customData": "Custom Data",
+    "subscription": "My Subscription",
+    "admin": "Administration",
+    "systemPanel": "System Panel",
+    "organizations": "Organizations",
+    "subscriptions": "Subscriptions",
+    "systemLog": "System Log",
+    "usageMetrics": "Usage Metrics"
+  },
+  "topbar": {
+    "myProfile": "My profile",
+    "logout": "Sign out",
+    "userMenu": "User menu",
+    "userOptions": "User options"
+  },
+  "common": {
+    "save": "Save changes",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "back": "Back",
+    "loading": "Loading...",
+    "error": "Error",
+    "search": "Search",
+    "noData": "No data",
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "close": "Close",
+    "export": "Export",
+    "filters": "Filters",
+    "clearFilters": "Clear filters",
+    "all": "All",
+    "yes": "Yes",
+    "no": "No",
+    "active": "Active",
+    "inactive": "Inactive",
+    "optional": "optional"
+  },
+  "status": {
+    "subscription": {
+      "active": "Active",
+      "trial": "Trial",
+      "suspended": "Suspended",
+      "cancelled": "Cancelled",
+      "expired": "Expired"
+    },
+    "cycle": {
+      "draft": "Draft",
+      "active": "Active",
+      "closed": "Closed"
+    },
+    "cycleType": {
+      "90": "90° Evaluation",
+      "180": "180° Evaluation",
+      "270": "270° Evaluation",
+      "360": "360° Evaluation"
+    },
+    "assignment": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "completed": "Completed",
+      "submitted": "Submitted"
+    },
+    "relation": {
+      "self": "Self-assessment",
+      "manager": "Manager evaluation",
+      "peer": "Peer evaluation",
+      "direct_report": "Direct report evaluation"
+    },
+    "calibration": {
+      "draft": "Draft",
+      "in_progress": "In progress",
+      "completed": "Completed"
+    },
+    "calibrationEntry": {
+      "pending": "Pending",
+      "discussed": "In discussion",
+      "agreed": "Agreed",
+      "adjusted": "Adjusted",
+      "approved": "Approved",
+      "not_required": "Not required",
+      "pending_approval": "Pending approval",
+      "rejected": "Rejected"
+    },
+    "process": {
+      "draft": "Draft",
+      "in_progress": "In Progress",
+      "completed": "Completed",
+      "closed": "Closed"
+    },
+    "postulant": {
+      "applied": "Applied",
+      "evaluating": "Under Evaluation",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "hired": "Hired"
+    }
+  },
+  "roles": {
+    "super_admin": "Super Admin",
+    "tenant_admin": "System Administrator",
+    "manager": "Team Manager",
+    "employee": "Employee",
+    "external": "External Advisor"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Configure your profile and platform preferences",
+    "language": {
+      "title": "Language",
+      "description": "Select the interface language",
+      "saved": "Language updated"
+    },
+    "company": {
+      "title": "Company information",
+      "subtitle": "Your organization's registered data (read only)",
+      "legalName": "Legal Name",
+      "taxId": "Tax ID",
+      "readOnlyNote": "To modify this data, contact the system administrator."
+    },
+    "profile": {
+      "title": "User profile",
+      "subtitle": "Your account information in EvaPro",
+      "email": "Email",
+      "role": "Role",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "position": "Position",
+      "positionPlaceholder": "e.g. HR Director",
+      "saved": "✓ Changes saved",
+      "saveError": "Error saving"
+    },
+    "security": {
+      "title": "Security",
+      "subtitle": "Manage your account security",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "changePassword": "Change password",
+      "passwordSaved": "✓ Password updated"
+    }
+  },
+  "login": {
+    "title": "Welcome",
+    "subtitle": "Sign in to your account",
+    "email": "Email",
+    "password": "Password",
+    "loginBtn": "Sign In",
+    "loggingIn": "Signing in...",
+    "forgotPassword": "Forgot your password?",
+    "errors": {
+      "required": "Please enter your email and password",
+      "invalidRut": "Invalid RUT. Check the format and check digit.",
+      "invalidCredentials": "Invalid credentials"
+    }
+  },
+  "evaluaciones": {
+    "title": "Evaluation Cycles",
+    "myTitle": "My Evaluations",
+    "subtitle": "Evaluations assigned to you",
+    "pending": "Pending",
+    "completed": "Completed",
+    "noPending": "You have no pending evaluations",
+    "noCompleted": "You have no completed evaluations",
+    "evaluate": "Evaluate",
+    "viewResult": "View result"
+  },
+  "usuarios": {
+    "title": "Users",
+    "subtitle": "Organization user management",
+    "newUser": "New User",
+    "editUser": "Edit User",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "searchPlaceholder": "Search by name or email...",
+    "filterDepartment": "Department",
+    "filterRole": "Role",
+    "filterStatus": "Status",
+    "noUsers": "No users found"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome",
+    "pendingEvals": "Pending evaluations",
+    "activeUsers": "Active users",
+    "activeCycles": "Active cycles"
+  }
+}

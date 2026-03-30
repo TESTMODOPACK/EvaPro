@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 export interface RoleConfig {
   label: string;
   color: string;
@@ -62,6 +64,21 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/mi-desempeno': ['tenant_admin', 'manager', 'employee'],
   '/dashboard/ajustes':      ['super_admin', 'tenant_admin', 'manager', 'employee', 'external'],
 };
+
+// ─── i18n-aware hooks ─────────────────────────────────────────────────────────
+
+export function useRoleLabel(role: string): string {
+  const { t } = useTranslation();
+  return t(`roles.${role}`, { defaultValue: ROLE_CONFIG[role]?.label || role });
+}
+
+export function useAssignableRoles() {
+  const { t } = useTranslation();
+  return ASSIGNABLE_ROLES.map((r) => ({
+    ...r,
+    label: t(`roles.${r.value}`, { defaultValue: r.label }),
+  }));
+}
 
 export function canAccessPage(role: string, path: string): boolean {
   // Exact match

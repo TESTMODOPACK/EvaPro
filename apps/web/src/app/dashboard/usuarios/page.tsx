@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
@@ -43,6 +44,7 @@ const emptyForm = {
 };
 
 export default function UsuariosPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const currentUserRole = useAuthStore((s) => s.user?.role || '');
@@ -460,9 +462,9 @@ export default function UsuariosPage() {
       )}
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Usuarios</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('usuarios.title')}</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Gestiona empleados, roles y jerarquías de la organización
+            {t('usuarios.subtitle')}
           </p>
         </div>
         {isAdmin && (
@@ -504,7 +506,7 @@ export default function UsuariosPage() {
       {/* Filters bar */}
       <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ flex: '1 1 220px' }}>
-          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Buscar</label>
+          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('common.search')}</label>
           <input
             className="input"
             type="text"

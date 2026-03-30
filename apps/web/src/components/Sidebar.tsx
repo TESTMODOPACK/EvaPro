@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { canAccessPage } from '@/lib/roles';
 import { formatRut } from '@/lib/rut';
@@ -131,69 +132,7 @@ const icons = {
   ),
 };
 
-// ─── Nav sections by role ────────────────────────────────────────────────
-
-const tenantNavSections: NavSection[] = [
-  {
-    title: 'Mi Espacio',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', icon: icons.dashboard },
-      { href: '/dashboard/mi-desempeno', label: 'Mi Desempe\u00f1o', icon: icons.myPerformance },
-    ],
-  },
-  {
-    title: 'Evaluaci\u00f3n',
-    items: [
-      { href: '/dashboard/evaluaciones', label: 'Ciclos de Evaluaci\u00f3n', icon: icons.evaluations },
-      { href: '/dashboard/calibracion', label: 'Calibraci\u00f3n', icon: icons.calibration },
-      { href: '/dashboard/reportes', label: 'Reportes', icon: icons.reports },
-      { href: '/dashboard/analytics', label: 'An\u00e1lisis Avanzado', icon: icons.analytics },
-      { href: '/dashboard/informes', label: 'Informes Avanzados', icon: icons.reports },
-      { href: '/dashboard/insights', label: 'Insights IA', icon: '\uD83E\uDD16' },
-    ],
-  },
-  {
-    title: 'Talento y Desarrollo',
-    items: [
-      { href: '/dashboard/talento', label: 'Mapa de Talento', icon: icons.talent },
-      { href: '/dashboard/desarrollo', label: 'Planes de Desarrollo', icon: icons.development },
-      { href: '/dashboard/desarrollo-organizacional', label: 'Plan Organizacional', icon: icons.orgDevelopment },
-      { href: '/dashboard/postulantes', label: 'Evaluación Postulantes', icon: icons.users },
-    ],
-  },
-  {
-    title: 'Seguimiento Continuo',
-    items: [
-      { href: '/dashboard/objetivos', label: 'Objetivos / OKR', icon: icons.objectives },
-      { href: '/dashboard/feedback', label: 'Feedback y Check-ins', icon: icons.feedback },
-      { href: '/dashboard/reconocimientos', label: 'Reconocimientos', icon: '\u2B50' },
-      { href: '/dashboard/dei', label: 'DEI / Diversidad', icon: '\uD83C\uDF0D' },
-    ],
-  },
-  {
-    title: 'Configuraci\u00f3n',
-    items: [
-      { href: '/dashboard/usuarios', label: 'Usuarios', icon: icons.users },
-      { href: '/dashboard/plantillas', label: 'Plantillas', icon: icons.templates },
-      { href: '/dashboard/competencias', label: 'Competencias', icon: icons.competencies },
-      { href: '/dashboard/mantenedores', label: 'Datos Personalizados', icon: icons.settings },
-      { href: '/dashboard/mi-suscripcion', label: 'Mi Suscripci\u00f3n', icon: icons.subscription },
-    ],
-  },
-];
-
-const superAdminSections: NavSection[] = [
-  {
-    title: 'Administraci\u00f3n',
-    items: [
-      { href: '/dashboard', label: 'Panel del Sistema', icon: icons.dashboard },
-      { href: '/dashboard/tenants', label: 'Organizaciones', icon: icons.home },
-      { href: '/dashboard/subscriptions', label: 'Suscripciones', icon: icons.subscription },
-      { href: '/dashboard/audit-log', label: 'Log del Sistema', icon: icons.log },
-      { href: '/dashboard/system-metrics', label: 'M\u00e9tricas de Uso', icon: icons.analytics },
-    ],
-  },
-];
+// ─── Nav sections are built inside the component to support i18n ─────────
 
 // ─── Section label style ──────────────────────────────────────────────────
 
@@ -214,6 +153,69 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
   const { user } = useAuthStore();
   const { data: sub, isError: orgError, refetch: refetchSub } = useMySubscription();
   const orgInfo = sub?.tenant ? { name: sub.tenant.name, rut: sub.tenant.rut || null } : null;
+  const { t } = useTranslation();
+
+  const tenantNavSections: NavSection[] = [
+    {
+      title: t('nav.mySpace'),
+      items: [
+        { href: '/dashboard', label: t('nav.dashboard'), icon: icons.dashboard },
+        { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance'), icon: icons.myPerformance },
+      ],
+    },
+    {
+      title: t('nav.evaluation'),
+      items: [
+        { href: '/dashboard/evaluaciones', label: t('nav.evalCycles'), icon: icons.evaluations },
+        { href: '/dashboard/calibracion', label: t('nav.calibration'), icon: icons.calibration },
+        { href: '/dashboard/reportes', label: t('nav.reports'), icon: icons.reports },
+        { href: '/dashboard/analytics', label: t('nav.analytics'), icon: icons.analytics },
+        { href: '/dashboard/informes', label: t('nav.informes'), icon: icons.reports },
+        { href: '/dashboard/insights', label: t('nav.aiInsights'), icon: '🤖' },
+      ],
+    },
+    {
+      title: t('nav.talentDev'),
+      items: [
+        { href: '/dashboard/talento', label: t('nav.talentMap'), icon: icons.talent },
+        { href: '/dashboard/desarrollo', label: t('nav.devPlans'), icon: icons.development },
+        { href: '/dashboard/desarrollo-organizacional', label: t('nav.orgDev'), icon: icons.orgDevelopment },
+        { href: '/dashboard/postulantes', label: t('nav.applicants'), icon: icons.users },
+      ],
+    },
+    {
+      title: t('nav.continuous'),
+      items: [
+        { href: '/dashboard/objetivos', label: t('nav.objectives'), icon: icons.objectives },
+        { href: '/dashboard/feedback', label: t('nav.feedback'), icon: icons.feedback },
+        { href: '/dashboard/reconocimientos', label: t('nav.recognitions'), icon: '⭐' },
+        { href: '/dashboard/dei', label: t('nav.dei'), icon: '🌍' },
+      ],
+    },
+    {
+      title: t('nav.config'),
+      items: [
+        { href: '/dashboard/usuarios', label: t('nav.users'), icon: icons.users },
+        { href: '/dashboard/plantillas', label: t('nav.templates'), icon: icons.templates },
+        { href: '/dashboard/competencias', label: t('nav.competencies'), icon: icons.competencies },
+        { href: '/dashboard/mantenedores', label: t('nav.customData'), icon: icons.settings },
+        { href: '/dashboard/mi-suscripcion', label: t('nav.subscription'), icon: icons.subscription },
+      ],
+    },
+  ];
+
+  const superAdminSections: NavSection[] = [
+    {
+      title: t('nav.admin'),
+      items: [
+        { href: '/dashboard', label: t('nav.systemPanel'), icon: icons.dashboard },
+        { href: '/dashboard/tenants', label: t('nav.organizations'), icon: icons.home },
+        { href: '/dashboard/subscriptions', label: t('nav.subscriptions'), icon: icons.subscription },
+        { href: '/dashboard/audit-log', label: t('nav.systemLog'), icon: icons.log },
+        { href: '/dashboard/system-metrics', label: t('nav.usageMetrics'), icon: icons.analytics },
+      ],
+    },
+  ];
 
   const sections = user?.role === 'super_admin' ? superAdminSections : tenantNavSections;
 
