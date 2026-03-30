@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { useLocaleStore } from '@/store/locale.store';
 import { api } from '@/lib/api';
 import { calibrationStatusLabel as STATUS_LABEL, calibrationStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
+import { useDepartments } from '@/hooks/useDepartments';
 
 function Spinner() {
   return (
@@ -25,6 +26,7 @@ export default function CalibracionPage() {
   const { locale } = useLocaleStore();
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
+  const { departments: configuredDepartments } = useDepartments();
 
   const [sessions, setSessions] = useState<any[]>([]);
   const [cycles, setCycles] = useState<any[]>([]);
@@ -225,14 +227,15 @@ export default function CalibracionPage() {
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
                   {t('calibracion.form.department')}
                 </label>
-                <input
+                <select
                   className="input"
-                  type="text"
                   value={form.department}
                   onChange={(e) => setForm({ ...form, department: e.target.value })}
-                  placeholder={t('calibracion.form.departmentPlaceholder')}
                   style={{ width: '100%' }}
-                />
+                >
+                  <option value="">{t('calibracion.form.departmentPlaceholder')}</option>
+                  {configuredDepartments.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>

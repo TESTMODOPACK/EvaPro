@@ -44,6 +44,16 @@ export const CUSTOM_SETTINGS_DEFAULTS: Record<string, string[]> = {
     'Semestral',
     'Trimestral',
   ],
+  departments: [
+    'Tecnología',
+    'Recursos Humanos',
+    'Ventas',
+    'Marketing',
+    'Operaciones',
+    'Finanzas',
+    'Legal',
+    'Administración',
+  ],
 };
 
 export const CUSTOM_SETTINGS_META: Record<string, { label: string; description: string }> = {
@@ -70,6 +80,10 @@ export const CUSTOM_SETTINGS_META: Record<string, { label: string; description: 
   evaluationPeriods: {
     label: 'Períodos de Evaluación',
     description: 'Frecuencias de evaluación disponibles en la organización',
+  },
+  departments: {
+    label: 'Departamentos',
+    description: 'Departamentos de la organización disponibles para asignar a colaboradores',
   },
 };
 

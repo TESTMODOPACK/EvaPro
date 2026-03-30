@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useAnalytics } from '@/hooks/usePerformanceHistory';
 import { useCycles } from '@/hooks/useCycles';
 import { useCompetencyHeatmap, useBellCurve } from '@/hooks/useReports';
+import { useDepartments } from '@/hooks/useDepartments';
 import {
   BarChart,
   Bar,
@@ -51,8 +52,8 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
   const activeFilters = deptFilter ? { department: deptFilter } : undefined;
   const { data, isLoading } = useCompetencyHeatmap(cycleId, activeFilters);
 
-  // Derive available departments from unfiltered data (for the dropdown)
-  const availableDepts: string[] = (unfilteredData?.departments as string[]) || [];
+  // Use configured departments from Mantenedores for the filter dropdown
+  const { departments: availableDepts } = useDepartments();
 
   // Helper: compute org-wide average for a row (across all depts, excludes null + privacy-restricted)
   const orgAvg = (row: any): number | null => {

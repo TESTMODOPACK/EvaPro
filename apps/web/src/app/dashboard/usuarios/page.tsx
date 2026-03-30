@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
+import { useDepartments } from '@/hooks/useDepartments';
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -51,6 +52,7 @@ export default function UsuariosPage() {
   const toast = useToastStore();
   const currentUserRole = useAuthStore((s) => s.user?.role || '');
   const isAdmin = currentUserRole === 'super_admin' || currentUserRole === 'tenant_admin';
+  const { departments: configuredDepartments } = useDepartments();
 
   // Pagination + filters state
   const [page, setPage] = useState(1);
@@ -124,7 +126,7 @@ export default function UsuariosPage() {
 
   // Use all users for dropdown options (departments, positions, managers)
   const allUsers = allUsersPag?.data || [];
-  const departments = Array.from(new Set(allUsers.map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  const departments = configuredDepartments;
   const positions = Array.from(new Set(allUsers.map((u: any) => u.position).filter(Boolean))).sort() as string[];
 
   const totalUsers = allUsersPag?.total || 0;
@@ -631,16 +633,14 @@ export default function UsuariosPage() {
             </div>
             <div>
               <label style={labelStyle}>Departamento</label>
-              <input
+              <select
                 style={inputStyle}
-                list="dept-options"
-                placeholder="Seleccionar o escribir nuevo"
                 value={form.department}
                 onChange={(e) => updateField('department', e.target.value)}
-              />
-              <datalist id="dept-options">
-                {departments.map((d) => <option key={d} value={d} />)}
-              </datalist>
+              >
+                <option value="">— Seleccionar departamento —</option>
+                {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
             <div>
               <label style={labelStyle}>Cargo</label>
