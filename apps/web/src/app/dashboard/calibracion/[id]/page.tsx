@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { calibrationEntryStatusLabel as STATUS_LABEL, calibrationEntryStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
@@ -55,6 +56,7 @@ function ScoreDelta({ original, adjusted }: { original: number | null; adjusted:
 }
 
 export default function CalibracionDetailPage({ params }: { params: { id: string } }) {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
 
   const [session, setSession] = useState<any>(null);
@@ -166,7 +168,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
     try {
       await api.talent.calibration.complete(token, params.id);
       await fetchSession();
-      setSuccessMsg(`Sesión de calibración completada. Los ajustes se aplicaron a la Matriz Nine Box.`);
+      setSuccessMsg(t('calibracionDetalle.successMsg'));
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch { /* ignore */ }
     setCompleting(false);
@@ -190,7 +192,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
     return (
       <div style={{ padding: '2rem 2.5rem' }}>
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          No se encontró la sesión de calibración.
+          {t('calibracionDetalle.notFound')}
         </div>
       </div>
     );
@@ -219,7 +221,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   const deptOrder: string[] = [];
   const grouped: Record<string, any[]> = {};
   for (const e of filtered) {
-    const dept = e.user?.department || 'Sin departamento';
+    const dept = e.user?.department || t('calibracionDetalle.noDept');
     if (!grouped[dept]) { grouped[dept] = []; deptOrder.push(dept); }
     grouped[dept].push(e);
   }
@@ -240,15 +242,15 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
             </span>
           </div>
           <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-            {session.cycle && <span>Ciclo: <strong>{session.cycle.name}</strong></span>}
-            {session.department && <span>Departamento: <strong>{session.department}</strong></span>}
-            {session.moderator && <span>Moderador: <strong>{session.moderator.firstName} {session.moderator.lastName}</strong></span>}
+            {session.cycle && <span>{t('calibracionDetalle.cycle')} <strong>{session.cycle.name}</strong></span>}
+            {session.department && <span>{t('calibracionDetalle.department')} <strong>{session.department}</strong></span>}
+            {session.moderator && <span>{t('calibracionDetalle.moderator')} <strong>{session.moderator.firstName} {session.moderator.lastName}</strong></span>}
           </div>
         </div>
         {entries.length > 0 && session.status === 'in_progress' && (
           <button className="btn-primary" onClick={handleComplete} disabled={completing}
             style={{ background: 'var(--success)', padding: '.6rem 1.5rem', flexShrink: 0 }}>
-            {completing ? 'Completando...' : 'Completar calibración'}
+            {completing ? t('calibracionDetalle.completing') : t('calibracionDetalle.completeBtn')}
           </button>
         )}
       </div>
@@ -260,24 +262,24 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', flex: 1 }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{totalEntries}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Total</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{t('calibracionDetalle.statsTotal')}</div>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--warning)' }}>{pendingCount}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Pendientes</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{t('calibracionDetalle.statsPending')}</div>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--success)' }}>{adjustedCount}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Revisados</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{t('calibracionDetalle.statsReviewed')}</div>
               </div>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{deptOrder.length || Object.keys(grouped).length || new Set(entries.map((e) => e.user?.department || 'Sin departamento')).size}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Departamentos</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{deptOrder.length || Object.keys(grouped).length || new Set(entries.map((e) => e.user?.department || t('calibracionDetalle.noDept'))).size}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{t('calibracionDetalle.statsDepts')}</div>
               </div>
             </div>
             <div style={{ flex: 2, minWidth: '200px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Progreso de revisión</span>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{t('calibracionDetalle.progressLabel')}</span>
                 <span style={{ fontSize: '0.82rem', fontWeight: 800, color: progressPct === 100 ? 'var(--success)' : 'var(--accent)' }}>{progressPct}%</span>
               </div>
               <div style={{ height: '8px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
@@ -292,7 +294,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       {isReadOnly && (
         <div className="card" style={{ padding: '0.875rem 1rem', background: 'rgba(245,158,11,0.08)', borderLeft: '4px solid var(--warning)', marginBottom: '1.5rem' }}>
           <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-            🔒 Esta sesión está completada y es de solo lectura. No se pueden realizar más ajustes.
+            {t('calibracionDetalle.readOnly')}
           </p>
         </div>
       )}
@@ -305,10 +307,10 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       {/* Empty state */}
       {entries.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>No hay participantes cargados en esta sesión.</p>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('calibracionDetalle.emptyState')}</p>
           {!isReadOnly && (
             <button className="btn-primary" onClick={handlePopulate} disabled={populating}>
-              {populating ? 'Cargando participantes...' : 'Cargar participantes'}
+              {populating ? t('calibracionDetalle.loadingParticipants') : t('calibracionDetalle.loadParticipants')}
             </button>
           )}
         </div>
@@ -320,7 +322,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
           <input
             className="input"
             type="text"
-            placeholder="Buscar por nombre, cargo o departamento..."
+            placeholder={t('calibracionDetalle.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ flex: 1, minWidth: '220px', fontSize: '0.875rem' }}
@@ -331,26 +333,26 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
             onChange={(e) => setStatusFilter(e.target.value)}
             style={{ fontSize: '0.875rem', minWidth: '160px' }}
           >
-            <option value="all">Todos los estados</option>
-            <option value="pending">Pendientes</option>
-            <option value="discussed">En discusión</option>
-            <option value="agreed">Acordados</option>
-            <option value="adjusted">Ajustados</option>
-            <option value="approved">Aprobados</option>
+            <option value="all">{t('calibracionDetalle.allStatuses')}</option>
+            <option value="pending">{t('calibracionDetalle.filterPending')}</option>
+            <option value="discussed">{t('calibracionDetalle.filterDiscussed')}</option>
+            <option value="agreed">{t('calibracionDetalle.filterAgreed')}</option>
+            <option value="adjusted">{t('calibracionDetalle.filterAdjusted')}</option>
+            <option value="approved">{t('calibracionDetalle.filterApproved')}</option>
           </select>
           {(search || statusFilter !== 'all') && (
             <button className="btn-ghost" style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}
               onClick={() => { setSearch(''); setStatusFilter('all'); }}>
-              Limpiar filtros
+              {t('common.clearFilters')}
             </button>
           )}
           <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
             <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setCollapsedDepts(new Set())}>
-              Expandir todo
+              {t('calibracionDetalle.expandAll')}
             </button>
             <button className="btn-ghost" style={{ fontSize: '0.78rem' }}
               onClick={() => setCollapsedDepts(new Set(deptOrder))}>
-              Colapsar todo
+              {t('calibracionDetalle.collapseAll')}
             </button>
           </div>
         </div>
@@ -361,7 +363,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {deptOrder.length === 0 && (
             <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-              Sin resultados para los filtros aplicados.
+              {t('calibracionDetalle.noFilterResults')}
             </div>
           )}
 
@@ -390,7 +392,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                   <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{dept}</span>
                   <span className="badge badge-ghost" style={{ fontSize: '0.72rem' }}>{deptEntries.length} persona{deptEntries.length !== 1 ? 's' : ''}</span>
                   {deptPending > 0 && <span className="badge badge-warning" style={{ fontSize: '0.72rem' }}>{deptPending} pendiente{deptPending !== 1 ? 's' : ''}</span>}
-                  {deptPct === 100 && <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>✓ Completado</span>}
+                  {deptPct === 100 && <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>{t('calibracionDetalle.deptCompleted')}</span>}
                   <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '120px' }}>
                     <div style={{ flex: 1, height: '5px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden' }}>
                       <div style={{ width: `${deptPct}%`, height: '100%', background: deptPct === 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '999px' }} />
@@ -405,11 +407,11 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                     <table>
                       <thead>
                         <tr>
-                          <th>Colaborador</th>
-                          <th style={{ whiteSpace: 'nowrap' }}>Desempeño</th>
-                          <th style={{ whiteSpace: 'nowrap' }}>Potencial</th>
-                          <th>Causal del ajuste</th>
-                          <th>Estado</th>
+                          <th>{t('calibracionDetalle.colUser')}</th>
+                          <th style={{ whiteSpace: 'nowrap' }}>{t('calibracionDetalle.colPerformance')}</th>
+                          <th style={{ whiteSpace: 'nowrap' }}>{t('calibracionDetalle.colPotential')}</th>
+                          <th>{t('calibracionDetalle.colCausal')}</th>
+                          <th>{t('calibracionDetalle.colStatus')}</th>
                           {!isReadOnly && <th></th>}
                         </tr>
                       </thead>
@@ -478,7 +480,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                                     }}
                                     style={{ width: '100%', fontSize: '0.85rem', opacity: isReadOnly ? 0.7 : 1, cursor: isReadOnly ? 'not-allowed' : undefined }}
                                   >
-                                    <option value="">Seleccionar causal...</option>
+                                    <option value="">{t('calibracionDetalle.selectCausal')}</option>
                                     {CAUSALS.map((c) => <option key={c} value={c}>{c}</option>)}
                                   </select>
                                   {es.rationaleType === 'Otro' && (
@@ -488,7 +490,7 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                                       value={es.rationale}
                                       disabled={isReadOnly}
                                       onChange={(e) => updateEntry(entry.id, 'rationale', e.target.value)}
-                                      placeholder="Describe la causal..."
+                                      placeholder={t('calibracionDetalle.otherCausalPlaceholder')}
                                       style={{ marginTop: '4px', width: '100%', fontSize: '0.85rem', opacity: isReadOnly ? 0.7 : 1 }}
                                     />
                                   )}
@@ -532,14 +534,14 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       {distribution && distribution.expectedVsActual && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Distribución de Calificaciones</h3>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>{t('calibracionDetalle.distribution.title')}</h3>
             <span className={`badge ${distribution.distributionFit === 'desviada' ? 'badge-danger' : 'badge-success'}`}>
-              χ² = {Number(distribution.chiSquared).toFixed(2)} — {distribution.distributionFit === 'desviada' ? 'Desviada' : 'Aceptable'}
+              χ² = {Number(distribution.chiSquared).toFixed(2)} — {distribution.distributionFit === 'desviada' ? t('calibracionDetalle.distribution.deviated') : t('calibracionDetalle.distribution.acceptable')}
             </span>
           </div>
           {distribution.distributionFit === 'desviada' && (
             <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-              ⚠ Distribución desviada — χ² = {Number(distribution.chiSquared).toFixed(2)} (umbral: 9.49). La distribución real no se ajusta a la curva esperada.
+              {t('calibracionDetalle.distribution.deviatedAlert')}
             </div>
           )}
           <ResponsiveContainer width="100%" height={220}>
@@ -549,17 +551,17 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
               <YAxis unit="%" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <Tooltip formatter={(v: any) => `${v}%`} />
               <Legend />
-              <Bar dataKey="actualPercent" name="Real" fill="var(--accent)" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="expectedPercent" name="Esperado" fill="rgba(99,102,241,0.3)" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="actualPercent" name={t('calibracionDetalle.distribution.actual')} fill="var(--accent)" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="expectedPercent" name={t('calibracionDetalle.distribution.expected')} fill="rgba(99,102,241,0.3)" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', marginTop: '1rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <th style={{ textAlign: 'left', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>Bucket</th>
-                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>Esperado</th>
-                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>Real</th>
-                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>Desviación</th>
+                <th style={{ textAlign: 'left', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('calibracionDetalle.distribution.colBucket')}</th>
+                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('calibracionDetalle.distribution.colExpected')}</th>
+                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('calibracionDetalle.distribution.colActual')}</th>
+                <th style={{ textAlign: 'right', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('calibracionDetalle.distribution.colDeviation')}</th>
               </tr>
             </thead>
             <tbody>

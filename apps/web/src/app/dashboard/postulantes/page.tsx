@@ -1,18 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { processStatusLabel, processStatusBadge } from '@/lib/statusMaps';
 import Link from 'next/link';
 
 const TABS = ['all', 'draft', 'in_progress', 'completed', 'closed'];
-const TAB_LABELS: Record<string, string> = {
-  all: 'Todos', draft: 'Borrador', in_progress: 'En Progreso',
-  completed: 'Completado', closed: 'Cerrado',
+const TAB_LABEL_KEYS: Record<string, string> = {
+  all: 'common.all', draft: 'status.process.draft', in_progress: 'status.process.in_progress',
+  completed: 'status.process.completed', closed: 'status.process.closed',
 };
 
 export default function PostulantesPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
   const [processes, setProcesses] = useState<any[]>([]);
@@ -33,38 +35,38 @@ export default function PostulantesPage() {
       <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-            Evaluación de Postulantes
+            {t('postulantes.title')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Procesos de evaluación para candidatos externos e internos
+            {t('postulantes.subtitle')}
           </p>
         </div>
         {role === 'tenant_admin' && (
           <Link href="/dashboard/postulantes/nuevo" className="btn-primary" style={{ fontSize: '0.85rem' }}>
-            + Nuevo Proceso
+            {t('postulantes.newProcess')}
           </Link>
         )}
       </div>
 
       {/* Status tabs */}
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
-        {TABS.map((t) => (
+        {TABS.map((tab_key) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={tab_key}
+            onClick={() => setTab(tab_key)}
             style={{
               padding: '0.5rem 1rem',
               fontSize: '0.82rem',
-              fontWeight: tab === t ? 700 : 500,
-              color: tab === t ? 'var(--accent)' : 'var(--text-muted)',
+              fontWeight: tab === tab_key ? 700 : 500,
+              color: tab === tab_key ? 'var(--accent)' : 'var(--text-muted)',
               background: 'none',
               border: 'none',
-              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
+              borderBottom: tab === tab_key ? '2px solid var(--accent)' : '2px solid transparent',
               cursor: 'pointer',
               marginBottom: '-1px',
             }}
           >
-            {TAB_LABELS[t]}
+            {t(TAB_LABEL_KEYS[tab_key])}
           </button>
         ))}
       </div>
@@ -75,7 +77,7 @@ export default function PostulantesPage() {
         </div>
       ) : processes.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)' }}>No hay procesos de evaluación</p>
+          <p style={{ color: 'var(--text-muted)' }}>{t('postulantes.noProcesses')}</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -95,7 +97,7 @@ export default function PostulantesPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{p.candidateCount || 0}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Candidatos</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('postulantes.candidates')}</div>
                 </div>
                 <span className={`badge ${processStatusBadge[p.status] || 'badge-ghost'}`}>
                   {processStatusLabel[p.status] || p.status}

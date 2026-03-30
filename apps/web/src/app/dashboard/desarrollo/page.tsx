@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
@@ -22,12 +23,12 @@ const STATUS_BADGE: Record<string, string> = {
   cancelado: 'badge badge-danger',
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  borrador: 'Borrador',
-  activo: 'Activo',
-  en_revision: 'En revisión',
-  completado: 'Completado',
-  cancelado: 'Cancelado',
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  borrador: 'desarrollo.status.borrador',
+  activo: 'desarrollo.status.activo',
+  en_revision: 'desarrollo.status.en_revision',
+  completado: 'desarrollo.status.completado',
+  cancelado: 'desarrollo.status.cancelado',
 };
 
 const ACTION_TYPE_BADGE: Record<string, string> = {
@@ -40,14 +41,14 @@ const ACTION_TYPE_BADGE: Record<string, string> = {
   otro: 'badge',
 };
 
-const ACTION_TYPE_LABEL: Record<string, string> = {
-  curso: 'Curso',
-  mentoring: 'Mentoring',
-  proyecto: 'Proyecto',
-  taller: 'Taller',
-  lectura: 'Lectura',
-  rotacion: 'Rotación',
-  otro: 'Otro',
+const ACTION_TYPE_LABEL_KEYS: Record<string, string> = {
+  curso: 'desarrollo.actionType.curso',
+  mentoring: 'desarrollo.actionType.mentoring',
+  proyecto: 'desarrollo.actionType.proyecto',
+  taller: 'desarrollo.actionType.taller',
+  lectura: 'desarrollo.actionType.lectura',
+  rotacion: 'desarrollo.actionType.rotacion',
+  otro: 'desarrollo.actionType.otro',
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
@@ -56,17 +57,17 @@ const PRIORITY_BADGE: Record<string, string> = {
   baja: 'badge badge-accent',
 };
 
-const PRIORITY_LABEL: Record<string, string> = {
-  alta: 'Alta',
-  media: 'Media',
-  baja: 'Baja',
+const PRIORITY_LABEL_KEYS: Record<string, string> = {
+  alta: 'desarrollo.priority.alta',
+  media: 'desarrollo.priority.media',
+  baja: 'desarrollo.priority.baja',
 };
 
-const COMMENT_TYPE_LABEL: Record<string, string> = {
-  comentario: 'Comentario',
-  felicitacion: 'Felicitación',
-  seguimiento: 'Seguimiento',
-  revision: 'Revisión',
+const COMMENT_TYPE_LABEL_KEYS: Record<string, string> = {
+  comentario: 'desarrollo.commentType.comentario',
+  felicitacion: 'desarrollo.commentType.felicitacion',
+  seguimiento: 'desarrollo.commentType.seguimiento',
+  revision: 'desarrollo.commentType.revision',
 };
 
 interface ActionForm {
@@ -91,6 +92,7 @@ interface PlanForm {
 const emptyPlanForm: PlanForm = { userId: '', title: '', description: '', priority: 'media', startDate: '', targetDate: '' };
 
 export default function DesarrolloPage() {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const toast = useToastStore();
   const role = user?.role || '';
@@ -367,10 +369,10 @@ export default function DesarrolloPage() {
   }
 
   const pageTitle = isAdmin
-    ? 'Planes de Desarrollo'
+    ? t('desarrollo.title')
     : isManager
-      ? 'Planes de Desarrollo del Equipo'
-      : 'Mi Plan de Desarrollo';
+      ? t('desarrollo.titleManager')
+      : t('desarrollo.titleEmployee');
 
   const availableUsers = isManager
     ? users.filter((u: any) => u.managerId === user?.userId || u.id === user?.userId)
@@ -386,12 +388,12 @@ export default function DesarrolloPage() {
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>{pageTitle}</h1>
           <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
-            {'Gesti\u00f3n de planes de desarrollo individual (PDI)'}
+            {t('desarrollo.subtitle')}
           </p>
         </div>
         {canCreate && (
           <button className="btn-primary" onClick={() => setShowCreate(!showCreate)}>
-            {showCreate ? 'Cancelar' : '+ Nuevo Plan'}
+            {showCreate ? t('common.cancel') : t('desarrollo.newPlan')}
           </button>
         )}
       </div>
@@ -440,16 +442,16 @@ export default function DesarrolloPage() {
       {showCreate && canCreate && (
         <div className="card animate-fade-up">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 0, marginBottom: '0.25rem' }}>
-            Crear Nuevo Plan de Desarrollo
+            {t('desarrollo.createFormTitle')}
           </h2>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
-            Selecciona un colaborador y define el plan. Una vez creado quedará en estado Borrador hasta que lo actives.
+            {t('desarrollo.createFormSubtitle')}
           </p>
           <form onSubmit={handleCreatePlan} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Colaborador *
+                  {t('desarrollo.form.collaborator')}
                 </label>
                 <select
                   className="input"
@@ -458,7 +460,7 @@ export default function DesarrolloPage() {
                   required
                   style={{ width: '100%' }}
                 >
-                  <option value="">Seleccionar...</option>
+                  <option value="">{t('common.selectPlaceholder')}</option>
                   {availableUsers.map((u: any) => (
                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}</option>
                   ))}
@@ -466,20 +468,20 @@ export default function DesarrolloPage() {
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Título *
+                  {t('desarrollo.form.title')}
                 </label>
                 <input
                   className="input"
                   value={planForm.title}
                   onChange={(e) => setPlanForm({ ...planForm, title: e.target.value })}
                   required
-                  placeholder="Título del plan"
+                  placeholder={t('desarrollo.form.titlePlaceholder')}
                   style={{ width: '100%' }}
                 />
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Prioridad
+                  {t('desarrollo.form.priority')}
                 </label>
                 <select
                   className="input"
@@ -487,29 +489,29 @@ export default function DesarrolloPage() {
                   onChange={(e) => setPlanForm({ ...planForm, priority: e.target.value })}
                   style={{ width: '100%' }}
                 >
-                  <option value="alta">Alta</option>
-                  <option value="media">Media</option>
-                  <option value="baja">Baja</option>
+                  <option value="alta">{t(PRIORITY_LABEL_KEYS.alta)}</option>
+                  <option value="media">{t(PRIORITY_LABEL_KEYS.media)}</option>
+                  <option value="baja">{t(PRIORITY_LABEL_KEYS.baja)}</option>
                 </select>
               </div>
             </div>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Descripción
+                {t('desarrollo.form.description')}
               </label>
               <textarea
                 className="input"
                 value={planForm.description}
                 onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
                 rows={2}
-                placeholder="Descripción del plan (opcional)"
+                placeholder={t('desarrollo.form.descriptionPlaceholder')}
                 style={{ width: '100%', resize: 'vertical' }}
               />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Fecha inicio
+                  {t('desarrollo.form.startDate')}
                 </label>
                 <input
                   className="input"
@@ -521,7 +523,7 @@ export default function DesarrolloPage() {
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Fecha objetivo
+                  {t('desarrollo.form.targetDate')}
                 </label>
                 <input
                   className="input"
@@ -643,7 +645,7 @@ export default function DesarrolloPage() {
                   onChange={(e) => setPlanFormOrgInitiativeId(e.target.value)}
                   style={{ width: '100%' }}
                 >
-                  <option value="">Sin vincular</option>
+                  <option value="">{t('desarrollo.form.noLink')}</option>
                   {orgInitiatives.map((i: any) => (
                     <option key={i.id} value={i.id}>
                       {i.planTitle ? `${i.planTitle} — ` : ''}{i.title}{i.department ? ` (${i.department})` : ' (Toda la empresa)'}
@@ -653,9 +655,9 @@ export default function DesarrolloPage() {
               </div>
             )}
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>Cancelar</button>
+              <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>{t('common.cancel')}</button>
               <button type="submit" className="btn-primary" disabled={creating}>
-                {creating ? 'Creando...' : 'Crear Plan'}
+                {creating ? t('common.creating') : t('desarrollo.createPlan')}
               </button>
             </div>
           </form>
@@ -665,7 +667,7 @@ export default function DesarrolloPage() {
       {/* Plans list */}
       {plans.length === 0 && !loading ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          No hay planes de desarrollo registrados.
+          {t('desarrollo.emptyPlans')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -689,10 +691,10 @@ export default function DesarrolloPage() {
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <span className={STATUS_BADGE[plan.status] || 'badge'}>
-                      {STATUS_LABEL[plan.status] || plan.status}
+                      {t(STATUS_LABEL_KEYS[plan.status] || plan.status, { defaultValue: plan.status })}
                     </span>
                     <span className={PRIORITY_BADGE[plan.priority] || 'badge'}>
-                      {PRIORITY_LABEL[plan.priority] || plan.priority}
+                      {t(PRIORITY_LABEL_KEYS[plan.priority] || plan.priority, { defaultValue: plan.priority })}
                     </span>
                   </div>
                 </div>
@@ -709,7 +711,7 @@ export default function DesarrolloPage() {
                   {/* Progress bar */}
                   <div style={{ marginTop: '0.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
-                      <span>Progreso</span>
+                      <span>{t('desarrollo.progress')}</span>
                       <span style={{ fontWeight: 700 }}>{progress}%</span>
                     </div>
                     <div style={{ height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -725,16 +727,16 @@ export default function DesarrolloPage() {
                     <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
                       {plan.status === 'borrador' && canCreate && (
                         <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} onClick={() => handleActivate(plan.id)}>
-                          Activar
+                          {t('desarrollo.activate')}
                         </button>
                       )}
                       {plan.status === 'activo' && canCreate && (
                         <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} onClick={() => handleCompletePlan(plan.id)}>
-                          Completar
+                          {t('desarrollo.complete')}
                         </button>
                       )}
                       <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }} onClick={() => openDetail(plan)}>
-                        Ver detalle
+                        {t('desarrollo.viewDetail')}
                       </button>
                     </div>
                   </div>
@@ -790,10 +792,10 @@ export default function DesarrolloPage() {
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
                       <span className={STATUS_BADGE[selectedPlan.status] || 'badge'}>
-                        {STATUS_LABEL[selectedPlan.status] || selectedPlan.status}
+                        {t(STATUS_LABEL_KEYS[selectedPlan.status] || selectedPlan.status, { defaultValue: selectedPlan.status })}
                       </span>
                       <span className={PRIORITY_BADGE[selectedPlan.priority] || 'badge'}>
-                        {PRIORITY_LABEL[selectedPlan.priority] || selectedPlan.priority}
+                        {t(PRIORITY_LABEL_KEYS[selectedPlan.priority] || selectedPlan.priority, { defaultValue: selectedPlan.priority })}
                       </span>
                     </div>
                   </div>
@@ -814,7 +816,7 @@ export default function DesarrolloPage() {
                 {/* Progress */}
                 <div style={{ marginBottom: '1.25rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                    <span>Progreso general</span>
+                    <span>{t('desarrollo.overallProgress')}</span>
                     <span style={{ fontWeight: 700 }}>{selectedPlan.progress ?? 0}%</span>
                   </div>
                   <div style={{ height: '10px', background: 'var(--border)', borderRadius: '5px', overflow: 'hidden' }}>
@@ -826,11 +828,11 @@ export default function DesarrolloPage() {
                 <div style={{ marginBottom: '1.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                     <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {'Acciones de Desarrollo'} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({planActions.length})</span>
+                      {t('desarrollo.actions.title')} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({planActions.length})</span>
                     </h3>
                     {(canCreate || selectedPlan.userId === user?.userId) && (
                       <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowAddAction(!showAddAction)}>
-                        {showAddAction ? 'Cancelar' : '+ Agregar acci\u00f3n'}
+                        {showAddAction ? t('common.cancel') : t('desarrollo.actions.add')}
                       </button>
                     )}
                   </div>
@@ -844,7 +846,7 @@ export default function DesarrolloPage() {
                           value={actionForm.title}
                           onChange={(e) => setActionForm({ ...actionForm, title: e.target.value })}
                           required
-                          placeholder="Título de la acción"
+                          placeholder={t('desarrollo.actions.titlePlaceholder')}
                           style={{ fontSize: '0.82rem' }}
                         />
                         <select
@@ -853,8 +855,8 @@ export default function DesarrolloPage() {
                           onChange={(e) => setActionForm({ ...actionForm, type: e.target.value })}
                           style={{ fontSize: '0.82rem' }}
                         >
-                          {Object.entries(ACTION_TYPE_LABEL).map(([val, label]) => (
-                            <option key={val} value={val}>{label}</option>
+                          {Object.entries(ACTION_TYPE_LABEL_KEYS).map(([val, key]) => (
+                            <option key={val} value={val}>{t(key)}</option>
                           ))}
                         </select>
                         <select
@@ -863,7 +865,7 @@ export default function DesarrolloPage() {
                           onChange={(e) => setActionForm({ ...actionForm, competencyId: e.target.value })}
                           style={{ fontSize: '0.82rem' }}
                         >
-                          <option value="">Competencia (opcional)</option>
+                          <option value="">{t('desarrollo.actions.competencyOptional')}</option>
                           {competencies.map((c: any) => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
@@ -880,12 +882,12 @@ export default function DesarrolloPage() {
                         className="input"
                         value={actionForm.description}
                         onChange={(e) => setActionForm({ ...actionForm, description: e.target.value })}
-                        placeholder="Descripción (opcional)"
+                        placeholder={t('desarrollo.actions.descriptionOptional')}
                         style={{ fontSize: '0.82rem' }}
                       />
                       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                         <button type="submit" className="btn-primary" style={{ fontSize: '0.78rem' }} disabled={addingAction}>
-                          {addingAction ? 'Agregando...' : 'Agregar'}
+                          {addingAction ? t('common.adding') : t('common.add')}
                         </button>
                       </div>
                     </form>
@@ -894,7 +896,7 @@ export default function DesarrolloPage() {
                   {/* Actions list */}
                   {planActions.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      Sin acciones registradas
+                      {t('desarrollo.actions.empty')}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -915,8 +917,8 @@ export default function DesarrolloPage() {
                                   onChange={(e) => setEditActionForm({ ...editActionForm, type: e.target.value })}
                                   style={{ fontSize: '0.82rem' }}
                                 >
-                                  {Object.entries(ACTION_TYPE_LABEL).map(([val, label]) => (
-                                    <option key={val} value={val}>{label}</option>
+                                  {Object.entries(ACTION_TYPE_LABEL_KEYS).map(([val, key]) => (
+                                    <option key={val} value={val}>{t(key)}</option>
                                   ))}
                                 </select>
                                 <input
@@ -928,8 +930,8 @@ export default function DesarrolloPage() {
                                 />
                               </div>
                               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                <button className="btn-ghost" style={{ fontSize: '0.75rem' }} onClick={() => setEditingActionId(null)}>Cancelar</button>
-                                <button className="btn-primary" style={{ fontSize: '0.75rem' }} onClick={() => handleEditAction(action.id)}>Guardar</button>
+                                <button className="btn-ghost" style={{ fontSize: '0.75rem' }} onClick={() => setEditingActionId(null)}>{t('common.cancel')}</button>
+                                <button className="btn-primary" style={{ fontSize: '0.75rem' }} onClick={() => handleEditAction(action.id)}>{t('common.save')}</button>
                               </div>
                             </div>
                           ) : (
@@ -937,7 +939,7 @@ export default function DesarrolloPage() {
                               <div style={{ flex: 1, minWidth: '150px' }}>
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                   <span className={ACTION_TYPE_BADGE[action.type] || 'badge'} style={{ fontSize: '0.7rem' }}>
-                                    {ACTION_TYPE_LABEL[action.type] || action.type}
+                                    {t(ACTION_TYPE_LABEL_KEYS[action.type] || action.type, { defaultValue: action.type })}
                                   </span>
                                   <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)', textDecoration: action.status === 'completada' ? 'line-through' : 'none' }}>
                                     {action.title}
@@ -950,13 +952,13 @@ export default function DesarrolloPage() {
                                 </div>
                                 {action.dueDate && (
                                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                                    Vence: {new Date(action.dueDate).toLocaleDateString('es-CL')}
+                                    {t('desarrollo.actions.dueDate')}: {new Date(action.dueDate).toLocaleDateString('es-CL')}
                                   </div>
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                 <span className={action.status === 'completada' ? 'badge badge-success' : 'badge badge-warning'} style={{ fontSize: '0.7rem' }}>
-                                  {action.status === 'completada' ? 'Completada' : 'Pendiente'}
+                                  {action.status === 'completada' ? t('desarrollo.actions.statusCompleted') : t('desarrollo.actions.statusPending')}
                                 </span>
                                 {action.status !== 'completada' && (
                                   <>
@@ -970,10 +972,10 @@ export default function DesarrolloPage() {
                                         description: action.description || '',
                                       });
                                     }}>
-                                      Editar
+                                      {t('common.edit')}
                                     </button>
                                     <button className="btn-primary" style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} onClick={() => handleCompleteAction(action.id)}>
-                                      Completar
+                                      {t('desarrollo.complete')}
                                     </button>
                                   </>
                                 )}
@@ -990,7 +992,7 @@ export default function DesarrolloPage() {
                 <div>
                   <div style={{ paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)', marginBottom: '0.75rem' }}>
                     <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {'Comentarios y Seguimiento'} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({planComments.length})</span>
+                      {t('desarrollo.comments.title')} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({planComments.length})</span>
                     </h3>
                   </div>
 
@@ -1003,15 +1005,15 @@ export default function DesarrolloPage() {
                         onChange={(e) => setCommentType(e.target.value)}
                         style={{ fontSize: '0.82rem', width: '160px' }}
                       >
-                        {Object.entries(COMMENT_TYPE_LABEL).map(([val, label]) => (
-                          <option key={val} value={val}>{label}</option>
+                        {Object.entries(COMMENT_TYPE_LABEL_KEYS).map(([val, key]) => (
+                          <option key={val} value={val}>{t(key)}</option>
                         ))}
                       </select>
                       <input
                         className="input"
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
-                        placeholder="Escribir un comentario..."
+                        placeholder={t('desarrollo.comments.placeholder')}
                         style={{ flex: 1, fontSize: '0.82rem' }}
                       />
                       <button type="submit" className="btn-primary" style={{ fontSize: '0.78rem' }} disabled={addingComment || !commentText.trim()}>
@@ -1023,7 +1025,7 @@ export default function DesarrolloPage() {
                   {/* Comments list */}
                   {planComments.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      {'Sin comentarios a\u00fan'}
+                      {t('desarrollo.comments.empty')}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -1035,7 +1037,7 @@ export default function DesarrolloPage() {
                                 {comment.author ? `${comment.author.firstName} ${comment.author.lastName}` : getUserName(comment.authorId || comment.userId)}
                               </span>
                               <span className="badge" style={{ fontSize: '0.68rem' }}>
-                                {COMMENT_TYPE_LABEL[comment.type] || comment.type}
+                                {t(COMMENT_TYPE_LABEL_KEYS[comment.type] || comment.type, { defaultValue: comment.type })}
                               </span>
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -1048,7 +1050,7 @@ export default function DesarrolloPage() {
                                   style={{ fontSize: '0.68rem', padding: '0.15rem 0.3rem', color: 'var(--danger)' }}
                                   onClick={() => handleDeleteComment(comment.id)}
                                 >
-                                  Eliminar
+                                  {t('common.delete')}
                                 </button>
                               )}
                             </div>
@@ -1067,17 +1069,17 @@ export default function DesarrolloPage() {
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     {selectedPlan.status === 'borrador' && canCreate && (
                       <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={() => handleActivate(selectedPlan.id)}>
-                        {'Activar Plan'}
+                        {t('desarrollo.activatePlan')}
                       </button>
                     )}
                     {selectedPlan.status === 'activo' && canCreate && (
                       <button className="btn-primary" style={{ fontSize: '0.82rem', background: 'var(--success)' }} onClick={() => handleCompletePlan(selectedPlan.id)}>
-                        {'Marcar como Completado'}
+                        {t('desarrollo.markCompleted')}
                       </button>
                     )}
                   </div>
                   <button className="btn-ghost" onClick={() => { setSelectedPlan(null); setEditingActionId(null); }}>
-                    Cerrar
+                    {t('common.close')}
                   </button>
                 </div>
               </>

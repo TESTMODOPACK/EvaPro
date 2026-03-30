@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useLocaleStore } from '@/store/locale.store';
 import { api } from '@/lib/api';
 import { calibrationStatusLabel as STATUS_LABEL, calibrationStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
 
@@ -14,11 +16,13 @@ function Spinner() {
   );
 }
 
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+function formatDate(d: string, loc: string) {
+  return new Date(d).toLocaleDateString(loc === 'pt' ? 'pt-BR' : loc === 'en' ? 'en-US' : 'es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function CalibracionPage() {
+  const { t } = useTranslation();
+  const { locale } = useLocaleStore();
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
 
@@ -42,7 +46,7 @@ export default function CalibracionPage() {
     // Llamadas separadas: un error en ciclos no borra las sesiones
     api.talent.calibration.list(token)
       .then((sess) => setSessions(sess || []))
-      .catch(() => setLoadError('No se pudieron cargar las sesiones. Intenta recargar la página.'))
+      .catch(() => setLoadError(t('calibracion.loadError')))
       .finally(() => setLoading(false));
     api.cycles.list(token)
       .then((cyc) => setCycles(cyc || []))
@@ -67,7 +71,7 @@ export default function CalibracionPage() {
       setDist({ low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 });
       setShowForm(false);
     } catch (err: any) {
-      setCreateError(err?.message || 'Error al crear la sesión. Intenta de nuevo.');
+      setCreateError(err?.message || t('calibracion.createError'));
     }
     setCreating(false);
   }
@@ -82,10 +86,10 @@ export default function CalibracionPage() {
         <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-              {`Calibraci\u00f3n de Evaluaciones`}
+              {t('calibracion.title')}
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-              {`Sesiones colaborativas para ajustar y validar puntajes de desempe\u00f1o y potencial`}
+              {t('calibracion.subtitle')}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -94,10 +98,10 @@ export default function CalibracionPage() {
               onClick={() => setShowGuide(!showGuide)}
               style={{ fontSize: '0.82rem' }}
             >
-              {showGuide ? `Ocultar gu\u00eda` : `C\u00f3mo funciona`}
+              {showGuide ? t('calibracion.hideGuide') : t('calibracion.howItWorks')}
             </button>
             <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-              {showForm ? 'Cancelar' : `Nueva sesi\u00f3n`}
+              {showForm ? t('common.cancel') : t('calibracion.newSession')}
             </button>
           </div>
         </div>
@@ -106,69 +110,69 @@ export default function CalibracionPage() {
         {showGuide && (
           <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-              {`Gu\u00eda de uso: Calibraci\u00f3n de Evaluaciones`}
+              {t('calibracion.guide.title')}
             </h3>
 
             {/* Qué es */}
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                {`\u00bfQu\u00e9 es la calibraci\u00f3n?`}
+                {t('calibracion.guide.whatIs')}
               </div>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-                {`Es un proceso donde el comit\u00e9 de liderazgo revisa y ajusta los puntajes de las evaluaciones para garantizar equidad y consistencia entre equipos. Se utiliza principalmente en evaluaciones 360\u00b0.`}
+                {t('calibracion.guide.whatIsDesc')}
               </p>
             </div>
 
             {/* Cuándo se usa */}
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                {`\u00bfCu\u00e1ndo se usa?`}
+                {t('calibracion.guide.whenUsed')}
               </div>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-                {`Despu\u00e9s de que todas las evaluaciones del ciclo est\u00e1n completadas, antes de entregar los resultados. Es una etapa del ciclo de evaluaci\u00f3n que se activa en evaluaciones 360\u00b0.`}
+                {t('calibracion.guide.whenUsedDesc')}
               </p>
             </div>
 
             {/* Flujo */}
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                {`Flujo de calibraci\u00f3n`}
+                {t('calibracion.guide.flow')}
               </div>
               <ol style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
-                <li>{`Crear sesi\u00f3n vinculada a un ciclo cerrado o en etapa de calibraci\u00f3n`}</li>
-                <li>{`Cargar participantes desde Gesti\u00f3n de Talento`}</li>
-                <li>{`Revisar puntajes y realizar ajustes justificados`}</li>
-                <li>{`Ajustes mayores a 1 punto requieren justificaci\u00f3n escrita`}</li>
-                <li>{`Completar la sesi\u00f3n \u2014 los puntajes calibrados se aplican a la Matriz Nine Box`}</li>
+                <li>{t('calibracion.guide.flowStep1')}</li>
+                <li>{t('calibracion.guide.flowStep2')}</li>
+                <li>{t('calibracion.guide.flowStep3')}</li>
+                <li>{t('calibracion.guide.flowStep4')}</li>
+                <li>{t('calibracion.guide.flowStep5')}</li>
               </ol>
             </div>
 
             {/* Conexión con otras funciones */}
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                {`Conexi\u00f3n con otras funciones`}
+                {t('calibracion.guide.connections')}
               </div>
               <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
-                <li><strong>{`Ciclos de Evaluaci\u00f3n:`}</strong>{` la calibraci\u00f3n es una etapa del ciclo 360\u00b0`}</li>
-                <li><strong>{`Talento (Nine Box):`}</strong>{` el resultado calibrado alimenta la matriz de talento`}</li>
-                <li><strong>{`Reportes:`}</strong>{` los puntajes calibrados se reflejan en analytics`}</li>
+                <li>{t('calibracion.guide.connCycles')}</li>
+                <li>{t('calibracion.guide.connTalent')}</li>
+                <li>{t('calibracion.guide.connReports')}</li>
               </ul>
             </div>
 
             {/* Permisos */}
             <div>
               <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                {`Permisos`}
+                {t('calibracion.guide.permissions')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  <strong>{`Administrador:`}</strong>{` Crea sesiones, ajusta puntajes, cierra la calibraci\u00f3n`}
+                  {t('calibracion.guide.permAdmin')}
                 </div>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  <strong>{`Encargado de Equipo:`}</strong>{` Puede participar como revisor en sesiones de su departamento`}
+                  {t('calibracion.guide.permManager')}
                 </div>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  <strong>{`Colaborador:`}</strong>{` No tiene acceso a esta funci\u00f3n`}
+                  {t('calibracion.guide.permEmployee')}
                 </div>
               </div>
             </div>
@@ -180,30 +184,30 @@ export default function CalibracionPage() {
           <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
             <div style={{ marginBottom: '1.25rem' }}>
               <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.2rem', color: 'var(--text-primary)' }}>
-                {`Nueva sesión de calibración`}
+                {t('calibracion.form.title')}
               </h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
-                {`Completa los datos para crear la sesión. Los campos marcados con * son obligatorios.`}
+                {t('calibracion.form.subtitle')}
               </p>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                  {`Nombre *`}
+                  {t('calibracion.form.name')}
                 </label>
                 <input
                   className="input"
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder={`Ej: Calibración Q1 2026`}
+                  placeholder={t('calibracion.form.namePlaceholder')}
                   style={{ width: '100%' }}
                 />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                  {`Ciclo de evaluación *`}
+                  {t('calibracion.form.cycle')}
                 </label>
                 <select
                   className="input"
@@ -211,7 +215,7 @@ export default function CalibracionPage() {
                   onChange={(e) => setForm({ ...form, cycleId: e.target.value })}
                   style={{ width: '100%' }}
                 >
-                  <option value="">{`Seleccionar ciclo...`}</option>
+                  <option value="">{t('calibracion.form.cyclePlaceholder')}</option>
                   {cycles.map((c: any) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
@@ -219,27 +223,27 @@ export default function CalibracionPage() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                  {`Departamento (opcional)`}
+                  {t('calibracion.form.department')}
                 </label>
                 <input
                   className="input"
                   type="text"
                   value={form.department}
                   onChange={(e) => setForm({ ...form, department: e.target.value })}
-                  placeholder={`Ej: Tecnología`}
+                  placeholder={t('calibracion.form.departmentPlaceholder')}
                   style={{ width: '100%' }}
                 />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                  {`Notas (opcional)`}
+                  {t('calibracion.form.notes')}
                 </label>
                 <textarea
                   className="input"
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   rows={2}
-                  placeholder={`Observaciones o contexto de la sesión...`}
+                  placeholder={t('calibracion.form.notesPlaceholder')}
                   style={{ width: '100%', resize: 'vertical' }}
                 />
               </div>
@@ -254,8 +258,8 @@ export default function CalibracionPage() {
                   onChange={(e) => setUseCustomDist(e.target.checked)}
                   style={{ accentColor: 'var(--accent)' }}
                 />
-                {'Configurar distribución esperada'}
-                <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(por defecto: campana 10/20/40/20/10)</span>
+                {t('calibracion.form.distribution')}
+                <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>{t('calibracion.form.distributionDefault')}</span>
               </label>
               {useCustomDist && (
                 <div style={{ padding: '1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -283,7 +287,7 @@ export default function CalibracionPage() {
                     ))}
                   </div>
                   <div style={{ fontSize: '0.78rem', textAlign: 'right', fontWeight: 600, color: distSum === 100 ? 'var(--success)' : 'var(--danger)' }}>
-                    Total: {distSum}% {distSum === 100 ? '✓' : `— debe ser 100%`}
+                    Total: {distSum}% {distSum === 100 ? '✓' : t('calibracion.form.distributionMustBe100')}
                   </div>
                 </div>
               )}
@@ -299,14 +303,14 @@ export default function CalibracionPage() {
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button className="btn-secondary" onClick={() => { setShowForm(false); setCreateError(''); }}>
-                Cancelar
+                {t('common.cancel')}
               </button>
               <button
                 className="btn-primary"
                 onClick={handleCreate}
                 disabled={creating || !form.name || !form.cycleId || (useCustomDist && distSum !== 100)}
               >
-                {creating ? `Creando...` : `Crear sesión`}
+                {creating ? t('calibracion.form.creating') : t('calibracion.form.create')}
               </button>
             </div>
           </div>
@@ -315,10 +319,10 @@ export default function CalibracionPage() {
         {/* Sessions list */}
         {loadError ? (
           <div className="card" style={{ padding: '1.5rem', borderLeft: '4px solid var(--danger)', background: 'rgba(239,68,68,0.05)' }}>
-            <p style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Error al cargar</p>
+            <p style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>{t('calibracion.errorLoadTitle')}</p>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>{loadError}</p>
-            <button className="btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => { setLoadError(''); setLoading(true); api.talent.calibration.list(token!).then((s) => setSessions(s || [])).catch(() => setLoadError('No se pudieron cargar las sesiones. Intenta recargar la página.')).finally(() => setLoading(false)); }}>
-              Reintentar
+            <button className="btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => { setLoadError(''); setLoading(true); api.talent.calibration.list(token!).then((s) => setSessions(s || [])).catch(() => setLoadError(t('calibracion.loadError'))).finally(() => setLoading(false)); }}>
+              {t('calibracion.retry')}
             </button>
           </div>
         ) : loading ? (
@@ -331,10 +335,10 @@ export default function CalibracionPage() {
               </svg>
             </div>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-              {`No hay sesiones de calibraci\u00f3n creadas a\u00fan.`}
+              {t('calibracion.noSessions')}
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-              {`Crea una sesi\u00f3n vinculada a un ciclo completado para comenzar`}
+              {t('calibracion.noSessionsHint')}
             </p>
           </div>
         ) : (
@@ -369,7 +373,7 @@ export default function CalibracionPage() {
                       background: 'rgba(99,102,241,0.1)', padding: '0.2rem 0.65rem',
                       borderRadius: '999px', letterSpacing: '0.02em',
                     }}>
-                      {s.department || `General`}
+                      {s.department || t('calibracion.general')}
                     </span>
                     <span className={`badge ${STATUS_BADGE[s.status] || 'badge-accent'}`}>
                       {STATUS_LABEL[s.status] || s.status}
@@ -400,7 +404,7 @@ export default function CalibracionPage() {
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6, flexShrink: 0 }}>
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
                       </svg>
-                      <span>{formatDate(s.createdAt)}</span>
+                      <span>{formatDate(s.createdAt, locale)}</span>
                     </div>
                   </div>
 
@@ -408,8 +412,8 @@ export default function CalibracionPage() {
                   {isActive && (
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Progreso</span>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-hover)' }}>En curso</span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t('calibracion.progress')}</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-hover)' }}>{t('calibracion.inProgress')}</span>
                       </div>
                       <div style={{ height: '5px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
                         <div style={{ width: '50%', height: '100%', borderRadius: '999px', background: 'var(--accent)', transition: 'width 0.5s ease' }} />
@@ -419,8 +423,8 @@ export default function CalibracionPage() {
                   {isDone && (
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Progreso</span>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--success)' }}>Completada</span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t('calibracion.progress')}</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--success)' }}>{t('calibracion.completed')}</span>
                       </div>
                       <div style={{ height: '5px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
                         <div style={{ width: '100%', height: '100%', borderRadius: '999px', background: 'var(--success)', transition: 'width 0.5s ease' }} />

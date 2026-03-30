@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
 import {
@@ -38,13 +39,7 @@ const typeBadge: Record<string, string> = {
   SMART: 'badge-success',
 };
 
-const statusLabel: Record<string, string> = {
-  draft: 'Borrador',
-  pending_approval: 'Pendiente de aprobación',
-  active: 'En progreso',
-  completed: 'Completado',
-  abandoned: 'Abandonado',
-};
+// statusLabel is now built inside the component using t() — see ObjetivosPage
 
 const statusBadge: Record<string, string> = {
   draft: 'badge-warning',
@@ -54,14 +49,7 @@ const statusBadge: Record<string, string> = {
   abandoned: 'badge-danger',
 };
 
-const filterPills: { key: FilterStatus; label: string }[] = [
-  { key: 'all', label: 'Todos' },
-  { key: 'draft', label: 'Borradores' },
-  { key: 'pending_approval', label: 'Por aprobar' },
-  { key: 'active', label: 'En progreso' },
-  { key: 'completed', label: 'Completados' },
-  { key: 'abandoned', label: 'Abandonados' },
-];
+// filterPills is now built inside the component using t() — see ObjetivosPage
 
 const commentTypeBadge: Record<string, string> = {
   comentario: 'badge-accent',
@@ -88,13 +76,14 @@ function daysUntil(targetDate: string | null): number | null {
 }
 
 /** Returns deadline alert config based on days remaining */
-function deadlineAlert(days: number | null, status: string): { color: string; text: string; icon: string } | null {
+function deadlineAlert(days: number | null, status: string, t: (key: string, opts?: any) => string): { color: string; text: string; icon: string } | null {
   if (days === null || status === 'completed' || status === 'abandoned') return null;
-  if (days < 0) return { color: 'var(--danger)', text: `Vencido hace ${Math.abs(days)} día${Math.abs(days) !== 1 ? 's' : ''}`, icon: '!' };
-  if (days === 0) return { color: 'var(--danger)', text: 'Vence hoy', icon: '!' };
-  if (days <= 3) return { color: 'var(--danger)', text: `Vence en ${days} día${days !== 1 ? 's' : ''}`, icon: '!' };
-  if (days <= 7) return { color: 'var(--warning)', text: `Vence en ${days} días`, icon: '~' };
-  if (days <= 15) return { color: '#f59e0b', text: `Vence en ${days} días`, icon: '' };
+  const absDays = Math.abs(days);
+  if (days < 0) return { color: 'var(--danger)', text: absDays === 1 ? t('objetivos.expiredDays', { count: absDays }) : t('objetivos.expiredDaysPlural', { count: absDays }), icon: '!' };
+  if (days === 0) return { color: 'var(--danger)', text: t('objetivos.dueToday'), icon: '!' };
+  if (days <= 3) return { color: 'var(--danger)', text: days === 1 ? t('objetivos.dueInDays', { count: days }) : t('objetivos.dueInDaysPlural', { count: days }), icon: '!' };
+  if (days <= 7) return { color: 'var(--warning)', text: t('objetivos.dueInDaysPlural', { count: days }), icon: '~' };
+  if (days <= 15) return { color: '#f59e0b', text: t('objetivos.dueInDaysPlural', { count: days }), icon: '' };
   return null;
 }
 
@@ -723,12 +712,13 @@ function TreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
 }
 
 function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean }) {
+  const { t } = useTranslation();
   if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
   if (!data || data.length === 0) {
     return (
       <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No hay objetivos para mostrar en el árbol</p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.25rem' }}>Los objetivos con "objetivo padre" asignado aparecerán aquí como jerarquía</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('objetivos.treeNoData')}</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.25rem' }}>{t('objetivos.treeHint')}</p>
       </div>
     );
   }
@@ -750,8 +740,26 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 
 export default function ObjetivosPage() {
+  const { t } = useTranslation();
   const userRole = useAuthStore((s) => s.user?.role) || '';
   const userId = useAuthStore((s) => s.user?.userId) || '';
+
+  const statusLabel: Record<string, string> = {
+    draft: t('objetivos.objStatus.draft'),
+    pending_approval: t('objetivos.objStatus.pending_approval'),
+    active: t('objetivos.objStatus.in_progress'),
+    completed: t('objetivos.objStatus.completed'),
+    abandoned: t('objetivos.objStatus.cancelled'),
+  };
+
+  const filterPills: { key: FilterStatus; label: string }[] = [
+    { key: 'all', label: 'Todos' },
+    { key: 'draft', label: t('objetivos.objStatus.draft') },
+    { key: 'pending_approval', label: t('objetivos.objStatus.pending_approval') },
+    { key: 'active', label: t('objetivos.objStatus.in_progress') },
+    { key: 'completed', label: t('objetivos.objStatus.completed') },
+    { key: 'abandoned', label: t('objetivos.objStatus.cancelled') },
+  ];
 
   const isAdmin = userRole === 'tenant_admin';
   const isManager = userRole === 'manager';
@@ -856,16 +864,16 @@ export default function ObjetivosPage() {
 
   // Title and subtitle based on role
   const pageTitle = isAdmin
-    ? 'Objetivos de la organización'
+    ? t('objetivos.orgObjectives')
     : isManager
-      ? 'Objetivos del equipo'
-      : 'Mis Objetivos';
+      ? t('objetivos.title')
+      : t('objetivos.title');
 
   const pageSubtitle = isAdmin
-    ? 'Define y supervisa los objetivos de todos los colaboradores'
+    ? t('objetivos.subtitle')
     : isManager
-      ? 'Gestiona los objetivos de tu equipo y los tuyos propios'
-      : 'Visualiza, propone y actualiza el progreso de tus objetivos';
+      ? t('objetivos.subtitle')
+      : t('objetivos.subtitle');
 
   function handleCreate() {
     if (!form.title.trim()) return;
@@ -922,7 +930,7 @@ export default function ObjetivosPage() {
   function handleSubmitForApproval(id: string) {
     setSubmitApprovalError(null);
     submitForApproval.mutate(id, {
-      onError: (err: any) => setSubmitApprovalError({ id, message: err.message || 'Error al enviar a aprobación' }),
+      onError: (err: any) => setSubmitApprovalError({ id, message: err.message || t('objetivos.sendApprovalError') }),
     });
   }
 
@@ -958,11 +966,11 @@ export default function ObjetivosPage() {
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-            {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+            {showGuide ? t('objetivos.hideGuide') : t('objetivos.howItWorks')}
           </button>
           {canCreate && (
             <button className="btn-primary" onClick={() => { setShowForm(!showForm); setShowGuide(false); }}>
-              {showForm ? 'Cancelar' : isEmployee ? '+ Proponer Objetivo' : '+ Nuevo Objetivo'}
+              {showForm ? t('common.cancel') : isEmployee ? '+ Proponer Objetivo' : `+ ${t('objetivos.newObjective')}`}
             </button>
           )}
         </div>
@@ -976,7 +984,7 @@ export default function ObjetivosPage() {
           borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--warning)',
           lineHeight: 1.5,
         }}>
-          Los objetivos que propongas quedarán en estado &lsquo;Borrador&rsquo; hasta que tu encargado los apruebe.
+          {t('objetivos.guide.draftNote')}
         </div>
       )}
 
@@ -984,11 +992,10 @@ export default function ObjetivosPage() {
       {showGuide && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid #6366f1' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: '#6366f1' }}>
-            Guía de uso: Objetivos
+            {t('objetivos.guide.title')}
           </h3>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
-            Los objetivos permiten definir metas medibles para cada colaborador, alineadas con la estrategia de la organización.
-            Se pueden vincular a ciclos de evaluación para medir el cumplimiento en las revisiones de desempeño.
+            {t('objetivos.guide.desc')}
           </p>
 
           {/* Types explanation */}
@@ -1000,11 +1007,10 @@ export default function ObjetivosPage() {
               <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.15)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   <span className="badge badge-accent">OKR</span>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Meta con resultados clave</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{t('objetivos.guide.typeOkr')}</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
-                  Define <strong>qué quieres lograr</strong> (el objetivo) y <strong>cómo sabrás que lo lograste</strong> (los resultados clave).
-                  Se usa cuando la meta es grande y necesitas dividirla en pasos medibles.
+                  {t('objetivos.guide.typeOkrDesc')}
                 </p>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   <strong style={{ color: '#6366f1' }}>Ejemplo:</strong> &quot;Mejorar la satisfacción del cliente&quot; con resultados clave como:
@@ -1016,11 +1022,10 @@ export default function ObjetivosPage() {
               <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   <span className="badge badge-warning">KPI</span>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Indicador numérico de rendimiento</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{t('objetivos.guide.typeKpi')}</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
-                  Es un <strong>número que se mide de forma continua</strong> para saber si el trabajo va bien.
-                  Se actualiza periódicamente (semanal, mensual) y permite detectar tendencias.
+                  {t('objetivos.guide.typeKpiDesc')}
                 </p>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(245,158,11,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   <strong style={{ color: '#f59e0b' }}>Ejemplo:</strong> &quot;Ventas mensuales: alcanzar $5.000.000&quot;, &quot;Tickets resueltos por semana: 30&quot;,
@@ -1032,11 +1037,10 @@ export default function ObjetivosPage() {
               <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   <span className="badge badge-success">SMART</span>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Tarea concreta con fecha límite</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{t('objetivos.guide.typeSmart')}</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
-                  Es un objetivo <strong>específico, medible, alcanzable, relevante y con plazo definido</strong>.
-                  Se usa para tareas o proyectos puntuales que tienen un inicio y un fin claro.
+                  {t('objetivos.guide.typeSmartDesc')}
                 </p>
                 <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(16,185,129,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   <strong style={{ color: '#10b981' }}>Ejemplo:</strong> &quot;Completar la certificación de seguridad antes del 30 de junio&quot;,
@@ -1049,7 +1053,7 @@ export default function ObjetivosPage() {
 
           {/* Role permissions */}
           <div style={{ marginBottom: '0.75rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Qué puede hacer cada perfil</div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('objetivos.guide.permissions')}</div>
             <div className="table-wrapper" style={{ fontSize: '0.78rem' }}>
               <table>
                 <thead>
@@ -1074,7 +1078,7 @@ export default function ObjetivosPage() {
 
           {/* Workflow */}
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Flujo de trabajo</div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('objetivos.guide.flow')}</div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.78rem' }}>
               {[
                 { step: '1', label: 'Crear / Proponer', desc: 'Se define título, tipo y fecha. Queda como Borrador' },
@@ -1128,7 +1132,7 @@ export default function ObjetivosPage() {
               color: activeTab === 'tree' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: '-2px',
             }}
           >
-            Árbol de Alineación
+            {t('objetivos.treeTitle')}
           </button>
         </div>
       )}
@@ -1191,7 +1195,7 @@ export default function ObjetivosPage() {
             <input
               className="input"
               type="text"
-              placeholder="Buscar por nombre o título..."
+              placeholder={t('objetivos.searchPlaceholder')}
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', width: '220px' }}
@@ -1243,7 +1247,7 @@ export default function ObjetivosPage() {
                 style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', color: 'var(--text-muted)' }}
                 onClick={() => { setSearchFilter(''); setDeptFilter(''); setTypeFilter(''); setUserFilter('all'); }}
               >
-                ✕ Limpiar filtros
+                {t('objetivos.clearFilters')}
               </button>
             )}
           </div>
@@ -1276,7 +1280,7 @@ export default function ObjetivosPage() {
                 style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', color: 'var(--text-muted)' }}
                 onClick={() => { setSearchFilter(''); setTypeFilter(''); }}
               >
-                ✕ Limpiar
+                {t('objetivos.clear')}
               </button>
             )}
           </div>
@@ -1313,12 +1317,12 @@ export default function ObjetivosPage() {
             )}
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Título
+                {t('objetivos.form.title')}
               </label>
               <input
                 className="input"
                 type="text"
-                placeholder="Título del objetivo..."
+                placeholder={t('objetivos.form.titlePlaceholder')}
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 style={{ width: '100%' }}
@@ -1326,7 +1330,7 @@ export default function ObjetivosPage() {
             </div>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Descripción
+                {t('objetivos.form.description')}
               </label>
               <textarea
                 className="input"
@@ -1340,7 +1344,7 @@ export default function ObjetivosPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Tipo
+                  {t('objetivos.form.type')}
                 </label>
                 <select
                   className="input"
@@ -1355,7 +1359,7 @@ export default function ObjetivosPage() {
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Fecha objetivo
+                  {t('objetivos.form.dueDate')}
                 </label>
                 <input
                   className="input"
@@ -1370,7 +1374,7 @@ export default function ObjetivosPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Peso (%) <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(0–100, opcional)</span>
+                  {t('objetivos.form.weight')} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(0–100, opcional)</span>
                 </label>
                 <input
                   className="input"
@@ -1387,7 +1391,7 @@ export default function ObjetivosPage() {
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Ciclo de evaluación <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span>
+                  {t('objetivos.form.cycle')} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span>
                 </label>
                 <select
                   className="input"
@@ -1407,7 +1411,7 @@ export default function ObjetivosPage() {
             {/* Parent objective selector — cascading OKR alignment */}
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Objetivo padre <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional — para alineación jerárquica)</span>
+                {t('objetivos.form.parent')} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional — para alineación jerárquica)</span>
               </label>
               <select
                 className="input"
@@ -1415,7 +1419,7 @@ export default function ObjetivosPage() {
                 onChange={(e) => setForm({ ...form, parentObjectiveId: e.target.value })}
                 style={{ width: '100%' }}
               >
-                <option value="">Sin objetivo padre (nivel raíz)</option>
+                <option value="">{t('objetivos.form.noParent')}</option>
                 {(objectives || []).filter((o: any) => o.status !== 'abandoned').map((o: any) => (
                   <option key={o.id} value={o.id}>
                     [{o.type}] {o.title}
@@ -1543,7 +1547,7 @@ export default function ObjetivosPage() {
               const color = progressColor(progress);
               const isExpanded = expandedId === obj.id;
               const days = daysUntil(obj.targetDate);
-              const alert = deadlineAlert(days, obj.status);
+              const alert = deadlineAlert(days, obj.status, t);
               const assignedName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : null;
 
               return (
@@ -1738,12 +1742,12 @@ export default function ObjetivosPage() {
                       </div>
                       <div style={{ marginBottom: '0.5rem' }}>
                         <label style={{ fontSize: '0.72rem', color: noteRequired ? 'var(--warning)' : 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                          {isOverrideByAdmin ? 'Motivo de la actualización *' : 'Notas sobre el avance'}
+                          {isOverrideByAdmin ? t('objetivos.form.updateReason') : t('objetivos.form.notes')}
                         </label>
                         <textarea
                           className="input"
                           rows={2}
-                          placeholder={isOverrideByAdmin ? 'Ej: Actualizado en reunión de seguimiento del 27/03...' : 'Notas sobre el avance...'}
+                          placeholder={isOverrideByAdmin ? 'Ej: Actualizado en reunión de seguimiento del 27/03...' : t('objetivos.form.notesPlaceholder')}
                           value={progressForm.notes}
                           onChange={(e) => setProgressForm({ ...progressForm, notes: e.target.value })}
                           style={{
@@ -1753,7 +1757,7 @@ export default function ObjetivosPage() {
                         />
                         {noteRequired && !progressForm.notes.trim() && (
                           <p style={{ fontSize: '0.72rem', color: 'var(--warning)', marginTop: '0.2rem' }}>
-                            La nota es obligatoria cuando actualizas el progreso de otro colaborador.
+                            {t('objetivos.form.progressNote')}
                           </p>
                         )}
                       </div>

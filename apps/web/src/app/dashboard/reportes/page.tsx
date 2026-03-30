@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
 import { useCycleSummary } from '@/hooks/useReports';
 import { useAuthStore } from '@/store/auth.store';
@@ -21,6 +22,7 @@ function Spinner() {
 }
 
 export default function ReportesPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
@@ -73,9 +75,9 @@ export default function ReportesPage() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Reportes</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('reportes.title')}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {'An\u00e1lisis de desempe\u00f1o por ciclo'}
+          {t('reportes.subtitle')}
         </p>
       </div>
 
@@ -85,38 +87,38 @@ export default function ReportesPage() {
           onClick={() => setShowGuide(!showGuide)}
           style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}
         >
-          {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfQu\u00e9 incluyen los reportes?'}
+          {showGuide ? t('reportes.hideGuide') : t('reportes.showGuide')}
         </button>
 
         {showGuide && (
           <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-              {'Gu\u00eda de uso: Reportes'}
+              {t('reportes.guide.title')}
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
-              {'Los reportes consolidan los resultados de un ciclo de evaluaci\u00f3n. Selecciona un ciclo para ver el resumen ejecutivo con m\u00e9tricas clave, desglose por departamento y la posibilidad de exportar los datos.'}
+              {t('reportes.guide.desc')}
             </p>
 
             <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Contenido del reporte'}</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('reportes.guide.contentTitle')}</div>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <li><strong>Resumen ejecutivo:</strong>{' Total de evaluaciones, puntaje promedio general, tasa de completitud'}</li>
-                <li><strong>Desglose por departamento:</strong>{' Puntaje promedio, cantidad de evaluaciones y barra comparativa por cada \u00e1rea'}</li>
-                <li><strong>{'Exportaci\u00f3n:'}</strong>{' Descarga en formato CSV (para Excel) o PDF (para presentaciones)'}</li>
+                <li>{t('reportes.guide.contentSummary')}</li>
+                <li>{t('reportes.guide.contentDept')}</li>
+                <li>{t('reportes.guide.contentExport')}</li>
               </ul>
             </div>
 
             <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Conexi\u00f3n con otras funciones'}</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('reportes.guide.connectionsTitle')}</div>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <li><strong>{'An\u00e1lisis Avanzado:'}</strong>{' Para gr\u00e1ficos m\u00e1s detallados (distribuci\u00f3n, benchmarks) usa la p\u00e1gina de An\u00e1lisis'}</li>
-                <li><strong>{'Calibraci\u00f3n:'}</strong>{' Los puntajes calibrados se reflejan autom\u00e1ticamente en los reportes'}</li>
-                <li><strong>{'Desempe\u00f1o individual:'}</strong>{' Haz clic en un colaborador para ver su historial detallado'}</li>
+                <li>{t('reportes.guide.connAnalytics')}</li>
+                <li>{t('reportes.guide.connCalibration')}</li>
+                <li>{t('reportes.guide.connIndividual')}</li>
               </ul>
             </div>
 
             <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' Solo Administradores y Encargados de Equipo pueden acceder a los reportes. Los Encargados ven solo los datos de su equipo.'}
+              <strong style={{ color: 'var(--accent)' }}>{t('reportes.guide.permissions')}</strong>
             </div>
           </div>
         )}
@@ -129,20 +131,20 @@ export default function ReportesPage() {
         ) : !cycles || cycles.length === 0 ? (
           <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              No hay ciclos disponibles
+              {t('reportes.noCycles')}
             </p>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Ciclo:
+              {t('reportes.cycleLabel')}
             </label>
             <select
               style={selectStyle}
               value={selectedCycleId || ''}
               onChange={(e) => setSelectedCycleId(e.target.value || null)}
             >
-              <option value="">Selecciona un ciclo</option>
+              <option value="">{t('reportes.selectCycle')}</option>
               {cycles.map((c: any) => (
                 <option key={c.id} value={c.id}>
                   {c.name} ({c.status})
@@ -176,22 +178,22 @@ export default function ReportesPage() {
               >
                 {[
                   {
-                    label: 'Promedio global',
+                    label: t('reportes.globalAvg'),
                     value: summary.averageScore ? `${Number(summary.averageScore).toFixed(1)} — ${getScoreLabel(Number(summary.averageScore))}` : '–',
                     color: summary.averageScore ? getScoreColor(Number(summary.averageScore)) : '#f59e0b',
                   },
                   {
-                    label: 'Evaluados',
+                    label: t('reportes.evaluated'),
                     value: String(summary.completedAssignments || 0),
                     color: '#6366f1',
                   },
                   {
-                    label: 'Tasa de completado',
+                    label: t('reportes.completionRate'),
                     value: summary.completionRate != null ? `${summary.completionRate}%` : '–',
                     color: '#10b981',
                   },
                   {
-                    label: 'Total asignaciones',
+                    label: t('reportes.totalAssignments'),
                     value: String(summary.totalAssignments || 0),
                     color: '#38bdf8',
                   },
@@ -220,9 +222,9 @@ export default function ReportesPage() {
               {/* Department breakdown */}
               {summary.departmentBreakdown && summary.departmentBreakdown.length > 0 && (
                 <div className="card animate-fade-up-delay-2" style={{ padding: '1.5rem', marginBottom: '1.25rem' }}>
-                  <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>Promedio por departamento</h2>
+                  <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>{t('reportes.deptAvg')}</h2>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-                    Puntuacion media de evaluaciones completadas
+                    {t('reportes.avgScore')}
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
@@ -234,7 +236,7 @@ export default function ReportesPage() {
                         return (
                           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                             <div style={{ minWidth: '100px', fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right', fontWeight: 500 }}>
-                              {d.department || 'Sin depto.'}
+                              {d.department || t('reportes.noDept')}
                             </div>
                             <div style={{ flex: 1, height: '10px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
                               <div
@@ -261,7 +263,7 @@ export default function ReportesPage() {
               {/* Export actions */}
               <div className="card animate-fade-up-delay-3" style={{ padding: '1.25rem 1.5rem' }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.875rem' }}>
-                  Exportar reporte
+                  {t('reportes.exportBtn')}
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                   {/* PDF */}
@@ -274,7 +276,7 @@ export default function ReportesPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
                     </svg>
-                    {exporting === 'pdf' ? 'Generando...' : 'PDF'}
+                    {exporting === 'pdf' ? t('reportes.generating') : t('reportes.exportPdf')}
                   </button>
 
                   {/* Excel */}
@@ -287,7 +289,7 @@ export default function ReportesPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
                     </svg>
-                    {exporting === 'xlsx' ? 'Generando...' : 'Excel (.xlsx)'}
+                    {exporting === 'xlsx' ? t('reportes.generating') : t('reportes.exportExcel')}
                   </button>
 
                   {/* PowerPoint */}
@@ -300,7 +302,7 @@ export default function ReportesPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
                     </svg>
-                    {exporting === 'pptx' ? 'Generando...' : 'PowerPoint'}
+                    {exporting === 'pptx' ? t('reportes.generating') : t('reportes.exportPpt')}
                   </button>
 
                   {/* CSV */}
@@ -313,11 +315,11 @@ export default function ReportesPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
-                    {exporting === 'csv' ? 'Generando...' : 'CSV'}
+                    {exporting === 'csv' ? t('reportes.generating') : t('reportes.exportCsv')}
                   </button>
                 </div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-                  Excel incluye 4 hojas: Resumen, Por Departamento, Detalle de evaluaciones y Ranking por evaluado.
+                  {t('reportes.excelNote')}
                 </p>
               </div>
             </>

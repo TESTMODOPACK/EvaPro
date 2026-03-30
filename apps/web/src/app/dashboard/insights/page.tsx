@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
@@ -336,6 +337,7 @@ const riskBadge: Record<string, { cls: string; label: string }> = {
 };
 
 function FlightRiskSection() {
+  const { t } = useTranslation();
   const { data, isLoading, error } = useFlightRisk();
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -346,7 +348,7 @@ function FlightRiskSection() {
       <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
         <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{'📊'}</p>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          {'No se pudo cargar el análisis de riesgo de fuga. Puede que no haya suficientes datos.'}
+          {t('insights.flightRiskError')}
         </p>
       </div>
     );
@@ -447,7 +449,7 @@ function FlightRiskSection() {
       </div>
 
       <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-        {'Puntuación algorítmica basada en: desempeño (30%), OKRs (25%), feedback (20%), objetivos en riesgo (15%), 9-box (10%) • Solo visible para administradores'}
+        {t('insights.scoreNote')}
       </p>
     </div>
   );
@@ -456,6 +458,7 @@ function FlightRiskSection() {
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 export default function InsightsPage() {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const role = user?.role || '';
   const isAdmin = role === 'tenant_admin' || role === 'super_admin';
@@ -493,10 +496,10 @@ export default function InsightsPage() {
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-          {'\uD83E\uDD16 Insights IA'}
+          {t('insights.title')}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {'An\u00e1lisis inteligente de evaluaciones con Claude AI \u2014 Res\u00famenes, detecci\u00f3n de sesgos y sugerencias de desarrollo'}
+          {t('insights.subtitle')}
         </p>
       </div>
 

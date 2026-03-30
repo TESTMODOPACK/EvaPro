@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useToastStore } from '@/store/toast.store';
 import {
   useTemplates,
@@ -105,6 +106,7 @@ function ConditionBuilder({
   allQuestions: Question[];
   excludeId?: string;
 }) {
+  const { t } = useTranslation();
   const eligible = allQuestions.filter(
     (q) => (q.type === 'scale' || q.type === 'multi') && q.id !== excludeId,
   );
@@ -130,7 +132,7 @@ function ConditionBuilder({
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem', flexWrap: 'wrap', paddingLeft: '1.2rem', alignItems: 'center' }}>
           {eligible.length === 0 ? (
             <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>
-              No hay preguntas de escala/múltiple disponibles como trigger
+              {t('plantillas.noTrigger')}
             </span>
           ) : (
             <>
@@ -179,6 +181,7 @@ function ConditionBuilder({
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PlantillasPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore();
   const { data: templates, isLoading, refetch: reloadTemplates } = useTemplates();
@@ -242,7 +245,7 @@ export default function PlantillasPage() {
 
   const handleSave = async () => {
     if (!name.trim()) { toast.warning('El nombre es requerido'); return; }
-    if (sections.some((s) => !s.title.trim())) { toast.warning('Todas las secciones necesitan título'); return; }
+    if (sections.some((s) => !s.title.trim())) { toast.warning(t('plantillas.allSectionsNeedTitle')); return; }
     if (sections.some((s) => s.questions.some((q) => !q.text.trim()))) { toast.warning('Todas las preguntas necesitan texto'); return; }
 
     setSaving(true);
@@ -288,7 +291,7 @@ export default function PlantillasPage() {
 
   const handleRestoreVersion = async (version: number) => {
     if (!historyTemplateId) return;
-    if (!confirm(`¿Restaurar la versión ${version}? El estado actual se guardará como snapshot automático.`)) return;
+    if (!confirm(t('plantillas.restoreConfirm', { version }))) return;
     try {
       await restoreVersion.mutateAsync({ id: historyTemplateId, version });
     } catch (err: any) {
@@ -458,11 +461,11 @@ export default function PlantillasPage() {
             <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '3px solid var(--accent)', background: 'rgba(99,102,241,0.04)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <span className="badge badge-accent" style={{ fontSize: '0.72rem', marginBottom: '0.4rem', display: 'inline-block' }}>Versión actual</span>
+                  <span className="badge badge-accent" style={{ fontSize: '0.72rem', marginBottom: '0.4rem', display: 'inline-block' }}>{t('plantillas.versionCurrent')}</span>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>v{versionData.currentVersion}</div>
                 </div>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  {versionData.totalVersions} versión{versionData.totalVersions !== 1 ? 'es' : ''} en historial
+                  {versionData.totalVersions} {versionData.totalVersions !== 1 ? t('plantillas.countHistoryPlural') : t('plantillas.countHistory')}
                 </span>
               </div>
             </div>
@@ -471,7 +474,7 @@ export default function PlantillasPage() {
             {versionData.history.length === 0 ? (
               <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: 0 }}>
-                  No hay versiones anteriores. El historial se genera automáticamente al guardar cambios en las secciones.
+                  {t('plantillas.noHistory')}
                 </p>
               </div>
             ) : (
@@ -490,7 +493,7 @@ export default function PlantillasPage() {
                           </span>
                         </div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                          {v.sectionCount} sección{v.sectionCount !== 1 ? 'es' : ''} · {v.questionCount} pregunta{v.questionCount !== 1 ? 's' : ''}
+                          {v.sectionCount} {v.sectionCount !== 1 ? t('plantillas.countSectionsPlural') : t('plantillas.countSections')} · {v.questionCount} {v.questionCount !== 1 ? t('plantillas.countQuestionsPlural') : t('plantillas.countQuestions')}
                         </div>
                         {v.changeNote && (
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontStyle: 'italic', marginTop: '0.4rem', paddingLeft: '0.6rem', borderLeft: '2px solid var(--border)' }}>
@@ -546,9 +549,9 @@ export default function PlantillasPage() {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Descripción
+                {t('plantillas.description')}
               </label>
-              <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descripción opcional de la plantilla" />
+              <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('plantillas.descriptionPlaceholder')} />
             </div>
           </div>
         </div>
@@ -557,10 +560,10 @@ export default function PlantillasPage() {
         {sections.map((sec, si) => (
           <div key={sec.id} className="card" style={{ padding: '1.5rem', marginBottom: '1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Sección {si + 1}</h3>
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>{t('plantillas.sectionN', { n: si + 1 })}</h3>
               {sections.length > 1 && (
                 <button className="btn-ghost" style={{ fontSize: '0.75rem', color: 'var(--danger)', padding: '0.2rem 0.5rem' }} onClick={() => removeSection(si)}>
-                  Eliminar sección
+                  {t('plantillas.deleteSection')}
                 </button>
               )}
             </div>
@@ -569,7 +572,7 @@ export default function PlantillasPage() {
               style={{ ...inputStyle, fontWeight: 600 }}
               value={sec.title}
               onChange={(e) => updateSection(si, 'title', e.target.value)}
-              placeholder="Título de la sección *"
+              placeholder={t('plantillas.sectionTitle')}
             />
             <ConditionBuilder
               condition={sec.condition}
@@ -650,9 +653,9 @@ export default function PlantillasPage() {
                     <button
                       className="btn-ghost"
                       style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', marginTop: '0.25rem' }}
-                      onClick={() => updateQuestion(si, qi, 'options', [...(q.options || []), `Opción ${(q.options?.length || 0) + 1}`])}
+                      onClick={() => updateQuestion(si, qi, 'options', [...(q.options || []), `${t('plantillas.optionN', { n: (q.options?.length || 0) + 1 })}`])}
                     >
-                      + Agregar opción
+                      {t('plantillas.addOption')}
                     </button>
                   </div>
                 )}
@@ -674,7 +677,7 @@ export default function PlantillasPage() {
         ))}
 
         <button className="btn-ghost" style={{ fontSize: '0.85rem', marginBottom: '1.5rem', width: '100%', padding: '0.75rem', border: '1.5px dashed var(--border)' }} onClick={addSection}>
-          + Agregar sección
+          {t('plantillas.addSection')}
         </button>
 
         {/* Change note — only when editing */}
@@ -687,7 +690,7 @@ export default function PlantillasPage() {
               style={{ ...inputStyle, minHeight: '48px', resize: 'vertical' }}
               value={changeNote}
               onChange={(e) => setChangeNote(e.target.value)}
-              placeholder="Describe qué cambió en esta versión..."
+              placeholder={t('plantillas.changeNote')}
             />
           </div>
         )}
@@ -695,10 +698,10 @@ export default function PlantillasPage() {
         {/* Save */}
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ padding: '0.65rem 1.5rem' }}>
-            {saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear plantilla'}
+            {saving ? t('common.loading') : editingId ? t('common.save') : 'Crear plantilla'}
           </button>
           <button className="btn-ghost" onClick={() => { resetForm(); setMode('list'); }}>
-            Cancelar
+            {t('common.cancel')}
           </button>
         </div>
       </div>
@@ -711,9 +714,9 @@ export default function PlantillasPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Plantillas</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('plantillas.title')}</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Formularios de evaluación reutilizables con secciones y preguntas
+            {t('plantillas.subtitle')}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -724,7 +727,7 @@ export default function PlantillasPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            Nueva plantilla
+            {t('plantillas.newTemplate')}
           </button>
         </div>
       </div>
@@ -842,7 +845,7 @@ export default function PlantillasPage() {
               <polyline points="14 2 14 8 20 8" />
             </svg>
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>No hay plantillas creadas</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>{t('plantillas.noTemplates')}</p>
           <button className="btn-primary" onClick={handleNew}>Crear primera plantilla</button>
         </div>
       ) : (
@@ -861,7 +864,7 @@ export default function PlantillasPage() {
                   </p>
                 )}
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                  {(tpl.sections || []).length} secciones &middot; {totalQuestions} preguntas
+                  {(tpl.sections || []).length} {(tpl.sections || []).length !== 1 ? t('plantillas.countSectionsPlural') : t('plantillas.countSections')} &middot; {totalQuestions} {totalQuestions !== 1 ? t('plantillas.countQuestionsPlural') : t('plantillas.countQuestions')}
                 </div>
 
                 {/* Section preview */}

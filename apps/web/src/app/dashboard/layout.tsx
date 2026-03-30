@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
@@ -10,6 +11,7 @@ import Toast from '@/components/Toast';
 import { useMySubscription } from '@/hooks/useSubscription';
 
 function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
+  const { t } = useTranslation();
   return (
     <div style={{
       background: 'linear-gradient(135deg, rgba(201,147,58,0.12) 0%, rgba(201,147,58,0.06) 100%)',
@@ -29,7 +31,7 @@ function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
           </svg>
         </div>
         <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>
-          Completa la configuración inicial para sacar el máximo partido a EvaPro.
+          {t('layout.onboardingBanner')}
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
@@ -43,7 +45,7 @@ function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
             transition: 'background 0.15s',
           }}
         >
-          Configurar ahora →
+          {t('layout.configureNow')}
         </Link>
         <button
           onClick={onDismiss}
@@ -52,7 +54,7 @@ function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
             color: 'var(--text-muted)', padding: '4px', borderRadius: '4px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
-          title="Descartar"
+          title={t('layout.dismiss')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -64,6 +66,7 @@ function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const router   = useRouter();
   const pathname = usePathname();
   const { isAuthenticated, token, user, logout } = useAuthStore();
@@ -137,12 +140,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </svg>
               </div>
               <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>
-                {subStatus === 'none' ? 'Sin suscripción activa' : 'Suscripción suspendida'}
+                {subStatus === 'none' ? t('layout.noSubscription') : t('layout.suspended')}
               </h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                {subStatus === 'none'
-                  ? 'Tu organización no tiene un plan asignado. Contacta al administrador del sistema para activar una suscripción.'
-                  : 'Tu suscripción ha sido suspendida. Contacta al administrador del sistema para reactivarla.'}
+                {subStatus === 'none' ? t('layout.noSubscriptionMsg') : t('layout.suspendedMsg')}
               </p>
               <button
                 className="btn-ghost"

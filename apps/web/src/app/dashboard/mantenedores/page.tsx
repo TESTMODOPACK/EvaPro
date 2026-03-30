@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { CUSTOM_SETTINGS_DEFAULTS, CUSTOM_SETTINGS_META, CUSTOM_SETTINGS_KEYS } from '@/lib/constants';
@@ -16,6 +17,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 export default function MantenedoresPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
 
   const [customSettings, setCustomSettings] = useState<Record<string, string[]>>({});
@@ -82,7 +84,7 @@ export default function MantenedoresPage() {
   if (loading) {
     return (
       <div style={{ padding: '2rem 2.5rem' }}>
-        <p style={{ color: 'var(--text-muted)' }}>Cargando configuración...</p>
+        <p style={{ color: 'var(--text-muted)' }}>{t('mantenedores.loading')}</p>
       </div>
     );
   }
@@ -91,11 +93,10 @@ export default function MantenedoresPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-          Datos Personalizados
+          {t('mantenedores.title')}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Configura las listas y opciones que tu organización utiliza en el sistema.
-          Cada sección incluye valores predeterminados que puedes personalizar según las necesidades de tu empresa.
+          {t('mantenedores.subtitle')}
         </p>
       </div>
 
@@ -137,7 +138,7 @@ export default function MantenedoresPage() {
                 <div>
                   <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>{meta.label}</span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginLeft: '0.75rem' }}>
-                    {items.length} {items.length === 1 ? 'elemento' : 'elementos'}
+                    {items.length} {items.length === 1 ? t('mantenedores.element') : t('mantenedores.elements')}
                   </span>
                 </div>
                 <span style={{
@@ -176,7 +177,7 @@ export default function MantenedoresPage() {
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(key, idx)}
-                          title="Eliminar"
+                          title={t('common.delete')}
                           style={{
                             background: 'none',
                             border: 'none',
@@ -193,7 +194,7 @@ export default function MantenedoresPage() {
                     ))}
                     {items.length === 0 && (
                       <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontStyle: 'italic', padding: '0.5rem 0' }}>
-                        Sin elementos. Agrega uno o restaura los predeterminados.
+                        {t('mantenedores.noElements')}
                       </p>
                     )}
                   </div>
@@ -206,7 +207,7 @@ export default function MantenedoresPage() {
                       value={expandedKey === key ? newItemText : ''}
                       onChange={(e) => setNewItemText(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddItem(key); } }}
-                      placeholder="Nuevo elemento..."
+                      placeholder={t('mantenedores.newElement')}
                       style={{ flex: 1, fontSize: '0.88rem' }}
                     />
                     <button
@@ -216,7 +217,7 @@ export default function MantenedoresPage() {
                       disabled={!newItemText.trim()}
                       style={{ fontSize: '0.85rem', padding: '0.45rem 1rem', opacity: !newItemText.trim() ? 0.5 : 1 }}
                     >
-                      Agregar
+                      {t('mantenedores.add')}
                     </button>
                   </div>
 
@@ -229,7 +230,7 @@ export default function MantenedoresPage() {
                       disabled={isSaving}
                       style={{ fontSize: '0.85rem', padding: '0.45rem 1.2rem', opacity: isSaving ? 0.6 : 1 }}
                     >
-                      {isSaving ? 'Guardando...' : 'Guardar cambios'}
+                      {isSaving ? t('mantenedores.saving') : t('mantenedores.saveBtn')}
                     </button>
                     <button
                       type="button"
@@ -244,16 +245,16 @@ export default function MantenedoresPage() {
                         cursor: 'pointer',
                       }}
                     >
-                      Restaurar predeterminados
+                      {t('mantenedores.restoreDefaults')}
                     </button>
                     {justSaved && (
                       <span style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600 }}>
-                        &#10003; Guardado
+                        &#10003; {t('mantenedores.saved')}
                       </span>
                     )}
                     {hasError && (
                       <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>
-                        {items.length === 0 ? 'Agrega al menos un elemento' : 'Error al guardar'}
+                        {items.length === 0 ? t('mantenedores.atLeastOne') : t('mantenedores.saveError')}
                       </span>
                     )}
                   </div>

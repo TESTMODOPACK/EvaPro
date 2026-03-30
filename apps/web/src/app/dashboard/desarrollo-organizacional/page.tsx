@@ -1,21 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import ConfirmModal from '@/components/ConfirmModal';
 
 // ─── Tipos auxiliares ────────────────────────────────────────────────────────
 
-const STATUS_LABEL: Record<string, string> = {
-  borrador: 'Borrador',
-  activo: 'Activo',
-  completado: 'Completado',
-  cancelado: 'Cancelado',
-  pendiente: 'Pendiente',
-  en_curso: 'En curso',
-  completada: 'Completada',
-  cancelada: 'Cancelada',
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  borrador: 'orgDesarrollo.status.borrador',
+  activo: 'orgDesarrollo.status.activo',
+  completado: 'orgDesarrollo.status.completado',
+  cancelado: 'orgDesarrollo.status.cancelado',
+  pendiente: 'orgDesarrollo.status.pendiente',
+  en_curso: 'orgDesarrollo.status.en_curso',
+  completada: 'orgDesarrollo.status.completada',
+  cancelada: 'orgDesarrollo.status.cancelada',
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -29,14 +30,14 @@ const STATUS_BADGE: Record<string, string> = {
   cancelada: 'badge-danger',
 };
 
-const ACTION_TYPES = [
-  { value: 'curso', label: 'Curso' },
-  { value: 'mentoring', label: 'Mentoring' },
-  { value: 'proyecto', label: 'Proyecto' },
-  { value: 'taller', label: 'Taller' },
-  { value: 'lectura', label: 'Lectura' },
-  { value: 'rotacion', label: 'Rotación' },
-  { value: 'otro', label: 'Otro' },
+const ACTION_TYPE_KEYS = [
+  { value: 'curso', key: 'desarrollo.actionType.curso' },
+  { value: 'mentoring', key: 'desarrollo.actionType.mentoring' },
+  { value: 'proyecto', key: 'desarrollo.actionType.proyecto' },
+  { value: 'taller', key: 'desarrollo.actionType.taller' },
+  { value: 'lectura', key: 'desarrollo.actionType.lectura' },
+  { value: 'rotacion', key: 'desarrollo.actionType.rotacion' },
+  { value: 'otro', key: 'desarrollo.actionType.otro' },
 ];
 
 function Spinner() {
@@ -64,6 +65,7 @@ function ProgressBar({ value }: { value: number }) {
 // ─── Componente principal ────────────────────────────────────────────────────
 
 export default function DesarrolloOrganizacionalPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
   const userDept = useAuthStore((s) => (s.user as any)?.department);
@@ -371,7 +373,7 @@ export default function DesarrolloOrganizacionalPage() {
       <div style={{ padding: '2rem 2.5rem' }}>
         <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
           <p style={{ fontSize: '0.9rem' }}>
-            Los planes de desarrollo organizacional son gestionados por el administrador y los managers.
+            {t('orgDesarrollo.employeeRestricted')}
           </p>
         </div>
       </div>
@@ -388,12 +390,12 @@ export default function DesarrolloOrganizacionalPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
-              Plan de Desarrollo Organizacional
+              {t('orgDesarrollo.title')}
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
               {isAdmin
-                ? 'Define iniciativas estratégicas de formación y desarrollo para toda la empresa o por departamento.'
-                : 'Consulta las iniciativas de desarrollo definidas para tu equipo.'}
+                ? t('orgDesarrollo.subtitleAdmin')
+                : t('orgDesarrollo.subtitleManager')}
             </p>
           </div>
           {isAdmin && (
@@ -403,7 +405,7 @@ export default function DesarrolloOrganizacionalPage() {
               setShowPlanForm(true);
               setError('');
             }}>
-              + Nuevo plan
+              {t('orgDesarrollo.newPlan')}
             </button>
           )}
         </div>
@@ -432,12 +434,12 @@ export default function DesarrolloOrganizacionalPage() {
         {showPlanForm && isAdmin && (
           <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderTop: '3px solid var(--accent)' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
-              {editingPlanId ? 'Editar plan' : 'Nuevo plan estratégico'}
+              {editingPlanId ? t('orgDesarrollo.editPlan') : t('orgDesarrollo.newStrategicPlan')}
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 160px', gap: '1rem', marginBottom: '1rem' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                  Título *
+                  {t('orgDesarrollo.form.title')}
                 </label>
                 <input
                   className="input"
@@ -448,7 +450,7 @@ export default function DesarrolloOrganizacionalPage() {
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                  Año *
+                  {t('orgDesarrollo.form.year')}
                 </label>
                 <input
                   className="input"
@@ -462,20 +464,20 @@ export default function DesarrolloOrganizacionalPage() {
               {editingPlanId && (
                 <div>
                   <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                    Estado
+                    {t('common.status')}
                   </label>
                   <select className="input" value={planForm.status} onChange={(e) => setPlanForm({ ...planForm, status: e.target.value })}>
-                    <option value="borrador">Borrador</option>
-                    <option value="activo">Activo</option>
-                    <option value="completado">Completado</option>
-                    <option value="cancelado">Cancelado</option>
+                    <option value="borrador">{t(STATUS_LABEL_KEYS.borrador)}</option>
+                    <option value="activo">{t(STATUS_LABEL_KEYS.activo)}</option>
+                    <option value="completado">{t(STATUS_LABEL_KEYS.completado)}</option>
+                    <option value="cancelado">{t(STATUS_LABEL_KEYS.cancelado)}</option>
                   </select>
                 </div>
               )}
             </div>
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                Descripción
+                {t('orgDesarrollo.form.description')}
               </label>
               <textarea
                 className="input"
@@ -488,10 +490,10 @@ export default function DesarrolloOrganizacionalPage() {
             </div>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button className="btn-primary" onClick={handleSavePlan} disabled={savingPlan}>
-                {savingPlan ? 'Guardando...' : editingPlanId ? 'Actualizar' : 'Crear plan'}
+                {savingPlan ? t('common.saving') : editingPlanId ? t('common.update') : t('orgDesarrollo.createPlan')}
               </button>
               <button className="btn-ghost" onClick={() => { setShowPlanForm(false); setEditingPlanId(null); setError(''); }}>
-                Cancelar
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -502,12 +504,12 @@ export default function DesarrolloOrganizacionalPage() {
           <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>🏢</div>
             <p style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-              No hay planes organizacionales aún
+              {t('orgDesarrollo.noPlans')}
             </p>
             <p style={{ fontSize: '0.85rem' }}>
               {isAdmin
-                ? 'Crea el primer plan estratégico para comenzar a definir iniciativas de desarrollo.'
-                : 'El administrador aún no ha creado ningún plan organizacional.'}
+                ? t('orgDesarrollo.noPlansAdmin')
+                : t('orgDesarrollo.noPlansManager')}
             </p>
           </div>
         )}
@@ -524,21 +526,21 @@ export default function DesarrolloOrganizacionalPage() {
               >
                 {plans.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.year} — {p.title} ({STATUS_LABEL[p.status] ?? p.status})
+                    {p.year} — {p.title} ({t(STATUS_LABEL_KEYS[p.status] ?? p.status, { defaultValue: p.status })})
                   </option>
                 ))}
               </select>
               {isAdmin && selectedPlan && (
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button className="btn-ghost" style={{ fontSize: '0.8rem', padding: '0.3rem 0.7rem' }} onClick={() => startEditPlan(selectedPlan)}>
-                    Editar plan
+                    {t('orgDesarrollo.editPlan')}
                   </button>
                   <button
                     className="btn-ghost"
                     style={{ fontSize: '0.8rem', padding: '0.3rem 0.7rem', color: 'var(--danger)' }}
                     onClick={() => handleDeletePlan(selectedPlan.id, selectedPlan.title)}
                   >
-                    Eliminar
+                    {t('common.delete')}
                   </button>
                 </div>
               )}
@@ -548,24 +550,24 @@ export default function DesarrolloOrganizacionalPage() {
             {selectedPlan && (
               <div className="card" style={{ padding: '1rem 1.5rem', marginBottom: '1.25rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Estado</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>{t('common.status')}</span>
                   <span className={`badge ${STATUS_BADGE[selectedPlan.status] ?? 'badge-accent'}`} style={{ marginTop: '0.2rem' }}>
-                    {STATUS_LABEL[selectedPlan.status] ?? selectedPlan.status}
+                    {t(STATUS_LABEL_KEYS[selectedPlan.status] ?? selectedPlan.status, { defaultValue: selectedPlan.status })}
                   </span>
                 </div>
                 <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Iniciativas</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>{t('orgDesarrollo.initiatives')}</span>
                   <strong style={{ fontSize: '1.1rem' }}>{initiatives.length}</strong>
                 </div>
                 {depts.length > 0 && (
                   <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Departamentos</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>{t('orgDesarrollo.departments')}</span>
                     <span style={{ fontSize: '0.85rem' }}>{depts.join(', ')}</span>
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: '160px' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                    Progreso promedio: <strong>{avgProgress}%</strong>
+                    {t('orgDesarrollo.avgProgress')}: <strong>{avgProgress}%</strong>
                   </span>
                   <ProgressBar value={avgProgress} />
                 </div>
@@ -581,7 +583,7 @@ export default function DesarrolloOrganizacionalPage() {
                       setError('');
                     }}
                   >
-                    + Nueva iniciativa
+                    {t('orgDesarrollo.newInitiative')}
                   </button>
                 )}
               </div>
@@ -591,12 +593,12 @@ export default function DesarrolloOrganizacionalPage() {
             {showInitForm && isAdmin && (
               <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderTop: '3px solid var(--accent)' }}>
                 <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
-                  {editingInitId ? 'Editar iniciativa' : 'Nueva iniciativa'}
+                  {editingInitId ? t('orgDesarrollo.editInitiative') : t('orgDesarrollo.newInitiativeForm')}
                 </h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                   <div style={{ gridColumn: 'span 2' }}>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      Título *
+                      {t('orgDesarrollo.form.initiativeTitle')}
                     </label>
                     <input
                       className="input"
@@ -607,10 +609,10 @@ export default function DesarrolloOrganizacionalPage() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      Departamento
+                      {t('orgDesarrollo.form.department')}
                     </label>
                     <select className="input" value={initForm.department} onChange={(e) => setInitForm({ ...initForm, department: e.target.value })}>
-                      <option value="">Toda la empresa</option>
+                      <option value="">{t('orgDesarrollo.allCompany')}</option>
                       {departments.map((d) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
@@ -618,7 +620,7 @@ export default function DesarrolloOrganizacionalPage() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      Fecha límite
+                      {t('orgDesarrollo.form.targetDate')}
                     </label>
                     <input
                       className="input"
@@ -629,10 +631,10 @@ export default function DesarrolloOrganizacionalPage() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      Responsable
+                      {t('orgDesarrollo.form.responsible')}
                     </label>
                     <select className="input" value={initForm.responsibleId} onChange={(e) => setInitForm({ ...initForm, responsibleId: e.target.value })}>
-                      <option value="">Sin asignar</option>
+                      <option value="">{t('common.unassigned')}</option>
                       {users.filter((u: any) => u.isActive !== false).map((u: any) => (
                         <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
                       ))}
@@ -640,7 +642,7 @@ export default function DesarrolloOrganizacionalPage() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      Progreso (%)
+                      {t('orgDesarrollo.form.progress')}
                     </label>
                     <input
                       className="input"
@@ -653,7 +655,7 @@ export default function DesarrolloOrganizacionalPage() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      Presupuesto (opcional)
+                      {t('orgDesarrollo.form.budget')}
                     </label>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <input
@@ -674,7 +676,7 @@ export default function DesarrolloOrganizacionalPage() {
                   </div>
                   <div style={{ gridColumn: 'span 2' }}>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      Descripción
+                      {t('orgDesarrollo.form.description')}
                     </label>
                     <textarea
                       className="input"
@@ -690,7 +692,7 @@ export default function DesarrolloOrganizacionalPage() {
                   <div style={{ gridColumn: 'span 2' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                       <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        Participantes
+                        {t('orgDesarrollo.form.participants')}
                         {initForm.participantIds.length > 0 && (
                           <span style={{ marginLeft: '0.5rem', background: 'var(--accent)', color: '#fff', borderRadius: '999px', padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>
                             {initForm.participantIds.length}
@@ -710,7 +712,7 @@ export default function DesarrolloOrganizacionalPage() {
                               setInitForm({ ...initForm, participantIds: e.target.checked ? activeIds : [] });
                             }}
                           />
-                          Seleccionar todos
+                          {t('common.selectAll')}
                         </label>
                         {initForm.participantIds.length > 0 && (
                           <button
@@ -718,14 +720,14 @@ export default function DesarrolloOrganizacionalPage() {
                             onClick={() => setInitForm({ ...initForm, participantIds: [] })}
                             style={{ fontSize: '0.72rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                           >
-                            Limpiar
+                            {t('common.clear')}
                           </button>
                         )}
                       </div>
                     </div>
                     <input
                       className="input"
-                      placeholder="Buscar colaborador..."
+                      placeholder={t('orgDesarrollo.form.searchParticipant')}
                       value={participantSearch}
                       onChange={(e) => setParticipantSearch(e.target.value)}
                       style={{ marginBottom: '0.4rem', fontSize: '0.82rem' }}
@@ -789,7 +791,7 @@ export default function DesarrolloOrganizacionalPage() {
                           (u.department || '').toLowerCase().includes(q);
                       }).length === 0 && (
                         <div style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                          Sin resultados
+                          {t('common.noResults')}
                         </div>
                       )}
                     </div>
@@ -800,10 +802,10 @@ export default function DesarrolloOrganizacionalPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   <button className="btn-primary" onClick={handleSaveInitiative} disabled={savingInit}>
-                    {savingInit ? 'Guardando...' : editingInitId ? 'Actualizar' : 'Crear iniciativa'}
+                    {savingInit ? t('common.saving') : editingInitId ? t('common.update') : t('orgDesarrollo.createInitiative')}
                   </button>
                   <button className="btn-ghost" onClick={() => { setShowInitForm(false); setEditingInitId(null); setParticipantSearch(''); setError(''); }}>
-                    Cancelar
+                    {t('common.cancel')}
                   </button>
                 </div>
               </div>
@@ -815,9 +817,9 @@ export default function DesarrolloOrganizacionalPage() {
             {/* Sin iniciativas */}
             {!initLoading && initiatives.length === 0 && selectedPlanId && (
               <div className="card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Sin iniciativas</p>
+                <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>{t('orgDesarrollo.noInitiatives')}</p>
                 <p style={{ fontSize: '0.85rem' }}>
-                  {isAdmin ? 'Haz clic en "+ Nueva iniciativa" para comenzar.' : 'No hay iniciativas definidas para este plan.'}
+                  {isAdmin ? t('orgDesarrollo.noInitiativesAdmin') : t('orgDesarrollo.noInitiativesManager')}
                 </p>
               </div>
             )}
@@ -844,10 +846,10 @@ export default function DesarrolloOrganizacionalPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
                         <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{ini.title}</span>
                         <span className={`badge ${STATUS_BADGE[ini.status] ?? 'badge-accent'}`} style={{ fontSize: '0.72rem' }}>
-                          {STATUS_LABEL[ini.status] ?? ini.status}
+                          {t(STATUS_LABEL_KEYS[ini.status] ?? ini.status, { defaultValue: ini.status })}
                         </span>
                         <span className="badge badge-accent" style={{ fontSize: '0.72rem', background: 'rgba(99,102,241,0.1)', color: 'var(--accent)' }}>
-                          {ini.department ?? 'Toda la empresa'}
+                          {ini.department ?? t('orgDesarrollo.allCompany')}
                         </span>
                       </div>
                       <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
@@ -880,14 +882,14 @@ export default function DesarrolloOrganizacionalPage() {
                             style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
                             onClick={(e) => { e.stopPropagation(); startEditInitiative(ini); }}
                           >
-                            Editar
+                            {t('common.edit')}
                           </button>
                           <button
                             className="btn-ghost"
                             style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', color: 'var(--danger)' }}
                             onClick={(e) => { e.stopPropagation(); handleDeleteInitiative(ini.id, ini.title); }}
                           >
-                            Eliminar
+                            {t('common.delete')}
                           </button>
                         </>
                       )}
@@ -911,7 +913,7 @@ export default function DesarrolloOrganizacionalPage() {
                       {/* Actualizar progreso (admin) */}
                       {isAdmin && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexShrink: 0 }}>Progreso:</span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexShrink: 0 }}>{t('desarrollo.progress')}:</span>
                           <input
                             type="range"
                             min={0}
@@ -946,7 +948,7 @@ export default function DesarrolloOrganizacionalPage() {
                       {/* Acciones */}
                       <div style={{ marginBottom: '1rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                          <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Acciones</span>
+                          <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{t('orgDesarrollo.actionsSection')}</span>
                           {isAdmin && (
                             <button
                               className="btn-ghost"
@@ -958,7 +960,7 @@ export default function DesarrolloOrganizacionalPage() {
                                 setError('');
                               }}
                             >
-                              + Agregar acción
+                              {t('desarrollo.actions.add')}
                             </button>
                           )}
                         </div>
@@ -969,7 +971,7 @@ export default function DesarrolloOrganizacionalPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: '0.75rem', marginBottom: '0.75rem' }}>
                               <div>
                                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>
-                                  Título *
+                                  {t('orgDesarrollo.form.actionTitle')}
                                 </label>
                                 <input
                                   className="input"
@@ -981,11 +983,11 @@ export default function DesarrolloOrganizacionalPage() {
                               </div>
                               <div>
                                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>
-                                  Tipo
+                                  {t('orgDesarrollo.form.actionType')}
                                 </label>
                                 <select className="input" style={{ fontSize: '0.82rem' }} value={actionForm.actionType} onChange={(e) => setActionForm({ ...actionForm, actionType: e.target.value })}>
-                                  {ACTION_TYPES.map((t) => (
-                                    <option key={t.value} value={t.value}>{t.label}</option>
+                                  {ACTION_TYPE_KEYS.map((at) => (
+                                    <option key={at.value} value={at.value}>{t(at.key)}</option>
                                   ))}
                                 </select>
                               </div>
@@ -993,7 +995,7 @@ export default function DesarrolloOrganizacionalPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                               <div>
                                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>
-                                  Fecha límite
+                                  {t('orgDesarrollo.form.targetDate')}
                                 </label>
                                 <input
                                   className="input"
@@ -1005,10 +1007,10 @@ export default function DesarrolloOrganizacionalPage() {
                               </div>
                               <div>
                                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>
-                                  Responsable
+                                  {t('orgDesarrollo.form.responsible')}
                                 </label>
                                 <select className="input" style={{ fontSize: '0.82rem' }} value={actionForm.assignedToId} onChange={(e) => setActionForm({ ...actionForm, assignedToId: e.target.value })}>
-                                  <option value="">Sin asignar</option>
+                                  <option value="">{t('common.unassigned')}</option>
                                   {users.filter((u: any) => u.isActive !== false).map((u: any) => (
                                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
                                   ))}
@@ -1022,14 +1024,14 @@ export default function DesarrolloOrganizacionalPage() {
                                 onClick={() => handleAddAction(ini.id)}
                                 disabled={savingAction}
                               >
-                                {savingAction ? '...' : editingActionId ? 'Actualizar' : 'Agregar'}
+                                {savingAction ? '...' : editingActionId ? t('common.update') : t('common.add')}
                               </button>
                               <button
                                 className="btn-ghost"
                                 style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
                                 onClick={() => { setShowActionForm(null); setEditingActionId(null); }}
                               >
-                                Cancelar
+                                {t('common.cancel')}
                               </button>
                             </div>
                           </div>
@@ -1037,17 +1039,17 @@ export default function DesarrolloOrganizacionalPage() {
 
                         {/* Lista de acciones */}
                         {actions.length === 0 ? (
-                          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin acciones definidas</p>
+                          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{t('orgDesarrollo.noActions')}</p>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                             {actions.map((a: any) => (
                               <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                                 <span className={`badge ${STATUS_BADGE[a.status] ?? 'badge-accent'}`} style={{ fontSize: '0.68rem', flexShrink: 0 }}>
-                                  {STATUS_LABEL[a.status] ?? a.status}
+                                  {t(STATUS_LABEL_KEYS[a.status] ?? a.status, { defaultValue: a.status })}
                                 </span>
                                 <span style={{ flex: 1, fontSize: '0.83rem', fontWeight: 500 }}>{a.title}</span>
                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0 }}>
-                                  {ACTION_TYPES.find((t) => t.value === a.actionType)?.label ?? a.actionType}
+                                  {t(ACTION_TYPE_KEYS.find((at) => at.value === a.actionType)?.key ?? a.actionType, { defaultValue: a.actionType })}
                                 </span>
                                 {a.dueDate && (
                                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0 }}>
@@ -1076,7 +1078,7 @@ export default function DesarrolloOrganizacionalPage() {
                                         setShowActionForm(ini.id);
                                       }}
                                     >
-                                      Editar
+                                      {t('common.edit')}
                                     </button>
                                     <button
                                       className="btn-ghost"
@@ -1097,7 +1099,7 @@ export default function DesarrolloOrganizacionalPage() {
                       {pdis !== undefined && (
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
                           <span style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                            PDIs vinculados: {pdis.length}
+                            {t('orgDesarrollo.linkedPdis')}: {pdis.length}
                           </span>
                           {pdis.length > 0 && (
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
@@ -1105,7 +1107,7 @@ export default function DesarrolloOrganizacionalPage() {
                                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.7rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.78rem' }}>
                                   <span style={{ fontWeight: 500 }}>{p.userName}</span>
                                   <span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-accent'}`} style={{ fontSize: '0.65rem' }}>
-                                    {STATUS_LABEL[p.status] ?? p.status}
+                                    {t(STATUS_LABEL_KEYS[p.status] ?? p.status, { defaultValue: p.status })}
                                   </span>
                                   <span style={{ color: 'var(--text-muted)' }}>{p.progress}%</span>
                                 </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import ConfirmModal from '@/components/ConfirmModal';
 import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
@@ -18,12 +19,7 @@ const statusBadge: Record<string, string> = {
   rejected: 'badge-danger',
 };
 
-const statusLabel: Record<string, string> = {
-  scheduled: 'Programado',
-  completed: 'Completado',
-  cancelled: 'Cancelado',
-  rejected: 'Rechazado',
-};
+// statusLabel is now built inside CheckInsTab using t()
 
 const sentimentIcon: Record<Sentiment, { icon: string; color: string }> = {
   positive: { icon: '\u2191', color: 'var(--success)' },
@@ -50,10 +46,18 @@ function userName(user?: { firstName: string; lastName: string }) {
 /* ─── Check-ins Tab ──────────────────────────────────────────────────────── */
 
 function CheckInsTab() {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const role = user?.role || '';
   const currentUserId = user?.userId || '';
   const canCreateCheckIn = role === 'tenant_admin' || role === 'manager' || role === 'super_admin';
+
+  const statusLabel: Record<string, string> = {
+    scheduled: t('feedback.statusScheduled'),
+    completed: t('feedback.statusCompleted'),
+    cancelled: t('feedback.statusCancelled'),
+    rejected: t('feedback.statusRejected'),
+  };
 
   const { data: checkIns, isLoading } = useCheckIns();
   const { data: usersPage } = useUsers();
@@ -106,7 +110,7 @@ function CheckInsTab() {
         <h2 style={{ fontWeight: 700, fontSize: '1rem' }}>{'Check-ins 1:1'}</h2>
         {canCreateCheckIn && (
           <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancelar' : '+ Nuevo Check-in'}
+            {showForm ? t('common.cancel') : t('feedback.newCheckIn')}
           </button>
         )}
       </div>
@@ -160,7 +164,7 @@ function CheckInsTab() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <button className="btn-primary" onClick={handleCreate} disabled={createCheckIn.isPending || !form.employeeId || !form.scheduledDate || !form.scheduledTime || !form.topic}>
-              {createCheckIn.isPending ? 'Creando...' : 'Crear Check-in'}
+              {createCheckIn.isPending ? t('common.loading') : t('feedback.createCheckIn')}
             </button>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
               {'Se enviar\u00e1 invitaci\u00f3n por email al colaborador con archivo de calendario (.ics)'}
@@ -173,7 +177,7 @@ function CheckInsTab() {
       {rejectModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="card" style={{ padding: '1.5rem', maxWidth: '450px', width: '90%' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.5rem' }}>{'Rechazar Check-in'}</h3>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.5rem' }}>{t('feedback.rejectCheckIn')}</h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
               {'Rechazar: '}<strong>{rejectModal.topic}</strong>
             </p>
@@ -182,9 +186,9 @@ function CheckInsTab() {
             </label>
             <textarea className="input" rows={3} placeholder="Indica el motivo del rechazo..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ width: '100%', resize: 'vertical', marginBottom: '1rem' }} />
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-              <button className="btn-ghost" onClick={() => { setRejectModal(null); setRejectReason(''); }}>{'Cancelar'}</button>
+              <button className="btn-ghost" onClick={() => { setRejectModal(null); setRejectReason(''); }}>{t('common.cancel')}</button>
               <button className="btn-primary" style={{ background: 'var(--danger)' }} onClick={handleReject} disabled={rejectCheckIn.isPending || !rejectReason.trim()}>
-                {rejectCheckIn.isPending ? 'Rechazando...' : 'Confirmar Rechazo'}
+                {rejectCheckIn.isPending ? t('common.loading') : t('feedback.confirmReject')}
               </button>
             </div>
           </div>
@@ -196,8 +200,8 @@ function CheckInsTab() {
         <Spinner />
       ) : sorted.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{'No hay check-ins registrados'}</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{'Crea tu primer check-in 1:1'}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{t('feedback.noCheckIns')}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('feedback.noCheckInsHint')}</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -231,12 +235,12 @@ function CheckInsTab() {
                 <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', flexShrink: 0 }}>
                   {ci.status === 'scheduled' && canCreateCheckIn && (
                     <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }} onClick={() => completeCheckIn.mutate(ci.id)} disabled={completeCheckIn.isPending}>
-                      {'Completar'}
+                      {t('feedback.complete')}
                     </button>
                   )}
                   {ci.status === 'scheduled' && ci.employeeId === currentUserId && (
                     <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => setRejectModal({ id: ci.id, topic: ci.topic })}>
-                      {'Rechazar'}
+                      {t('feedback.reject')}
                     </button>
                   )}
                 </div>
@@ -252,6 +256,7 @@ function CheckInsTab() {
 /* ─── Quick Feedback Tab ─────────────────────────────────────────────────── */
 
 function QuickFeedbackTab() {
+  const { t } = useTranslation();
   const { data: received, isLoading: loadingReceived } = useReceivedFeedback();
   const { data: given, isLoading: loadingGiven } = useGivenFeedback();
   const { data: summary } = useFeedbackSummary();
@@ -311,9 +316,9 @@ function QuickFeedbackTab() {
       {summary && (
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
           {[
-            { label: 'Positivos', count: summary.positive, color: 'var(--success)' },
-            { label: 'Neutrales', count: summary.neutral, color: 'var(--text-muted)' },
-            { label: 'Constructivos', count: summary.constructive, color: '#f59e0b' },
+            { label: t('feedback.positive'), count: summary.positive, color: 'var(--success)' },
+            { label: t('feedback.neutral'), count: summary.neutral, color: 'var(--text-muted)' },
+            { label: t('feedback.constructive'), count: summary.constructive, color: '#f59e0b' },
           ].map((s) => (
             <div
               key={s.label}
@@ -330,19 +335,19 @@ function QuickFeedbackTab() {
       {/* Sub-tabs + action */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {(['received', 'given'] as const).map((t) => (
+          {(['received', 'given'] as const).map((tab) => (
             <button
-              key={t}
-              className={subTab === t ? 'btn-primary' : 'btn-ghost'}
+              key={tab}
+              className={subTab === tab ? 'btn-primary' : 'btn-ghost'}
               style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}
-              onClick={() => setSubTab(t)}
+              onClick={() => setSubTab(tab)}
             >
-              {t === 'received' ? 'Recibido' : 'Enviado'}
+              {tab === 'received' ? t('feedback.received') : t('feedback.sent')}
             </button>
           ))}
         </div>
         <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancelar' : '+ Dar Feedback'}
+          {showForm ? t('common.cancel') : t('feedback.giveFeedback')}
         </button>
       </div>
 
@@ -383,9 +388,9 @@ function QuickFeedbackTab() {
               Sentimiento
             </label>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {sentimentBtn('positive', 'Positivo', '#10b981')}
-              {sentimentBtn('neutral', 'Neutral', '#6b7280')}
-              {sentimentBtn('constructive', 'Constructivo', '#f59e0b')}
+              {sentimentBtn('positive', t('feedback.positive'), '#10b981')}
+              {sentimentBtn('neutral', t('feedback.neutral'), '#6b7280')}
+              {sentimentBtn('constructive', t('feedback.constructive'), '#f59e0b')}
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end', marginBottom: '0.75rem' }}>
@@ -417,7 +422,7 @@ function QuickFeedbackTab() {
             onClick={handleSend}
             disabled={sendFeedback.isPending || !form.toUserId || !form.message}
           >
-            {sendFeedback.isPending ? 'Enviando...' : 'Enviar Feedback'}
+            {sendFeedback.isPending ? t('common.loading') : t('feedback.sendFeedback')}
           </button>
         </div>
       )}
@@ -428,7 +433,7 @@ function QuickFeedbackTab() {
       ) : !feedbackList || feedbackList.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            No hay feedback {subTab === 'received' ? 'recibido' : 'enviado'}
+            {subTab === 'received' ? t('feedback.noFeedbackReceived') : t('feedback.noFeedbackSent')}
           </p>
         </div>
       ) : (
@@ -476,6 +481,7 @@ function QuickFeedbackTab() {
 /* ─── Meeting Locations Tab ──────────────────────────────────────────────── */
 
 function LocationsTab() {
+  const { t } = useTranslation();
   const { data: locations, isLoading, error: loadError } = useMeetingLocations();
   const createLocation = useCreateLocation();
   const deleteLocation = useDeleteLocation();
@@ -509,7 +515,7 @@ function LocationsTab() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
         <h2 style={{ fontWeight: 700, fontSize: '1rem' }}>{'Lugares de Reuni\u00f3n'}</h2>
         <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancelar' : '+ Nuevo Lugar'}
+          {showForm ? t('common.cancel') : t('feedback.newLocation')}
         </button>
       </div>
 
@@ -552,7 +558,7 @@ function LocationsTab() {
             </div>
           )}
           <button className="btn-primary" onClick={handleCreate} disabled={createLocation.isPending || !form.name}>
-            {createLocation.isPending ? 'Creando...' : 'Crear Lugar'}
+            {createLocation.isPending ? t('common.loading') : t('feedback.createLocation')}
           </button>
         </div>
       )}
@@ -565,7 +571,7 @@ function LocationsTab() {
       )}
       {isLoading ? <Spinner /> : !locations || locations.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{'No hay lugares registrados'}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('feedback.noLocations')}</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -594,7 +600,7 @@ function LocationsTab() {
                 })}
                 disabled={deleteLocation.isPending}
               >
-                {'Desactivar'}
+                {t('feedback.deactivate')}
               </button>
             </div>
           ))}
@@ -617,6 +623,7 @@ function LocationsTab() {
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 
 export default function FeedbackPage() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ActiveTab>('checkins');
   const [showGuide, setShowGuide] = useState(false);
 
@@ -635,9 +642,9 @@ export default function FeedbackPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{'Retroalimentaci\u00f3n Continua'}</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('feedback.title')}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {'Check-ins 1:1 y retroalimentaci\u00f3n r\u00e1pida entre colaboradores'}
+          {t('feedback.subtitle')}
         </p>
       </div>
 
@@ -756,9 +763,9 @@ export default function FeedbackPage() {
 
       {/* Tabs */}
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-        {tabBtn('checkins', 'Check-ins 1:1')}
-        {tabBtn('quick', 'Feedback R\u00e1pido')}
-        {tabBtn('locations', 'Lugares de Reuni\u00f3n')}
+        {tabBtn('checkins', t('feedback.tabCheckIns'))}
+        {tabBtn('quick', t('feedback.tabQuickFeedback'))}
+        {tabBtn('locations', t('feedback.tabLocations'))}
       </div>
 
       {/* Content */}

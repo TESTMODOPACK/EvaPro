@@ -1,21 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 
 type ActiveTab = 'ninebox' | 'segmentation';
 
-const POOL_LABEL: Record<string, string> = {
-  star: 'Estrella',
-  high_performer: 'Alto rendimiento',
-  core_player: 'Profesional clave',
-  high_potential: 'Alto potencial',
-  enigma: 'Enigma',
-  risk: 'Riesgo',
-  inconsistent: 'Inconsistente',
-  underperformer: 'Bajo rend. con potencial',
-  dysfunctional: 'Bajo rendimiento',
+const POOL_LABEL_KEY: Record<string, string> = {
+  star: 'talento.quadrants.star',
+  high_performer: 'talento.quadrants.high_performer',
+  core_player: 'talento.quadrants.core_player',
+  high_potential: 'talento.quadrants.high_potential',
+  enigma: 'talento.quadrants.enigma',
+  risk: 'talento.quadrants.risk',
+  inconsistent: 'talento.quadrants.inconsistent',
+  underperformer: 'talento.quadrants.underperformer',
+  dysfunctional: 'talento.quadrants.dysfunctional',
 };
 
 const POOL_BADGE: Record<string, string> = {
@@ -42,29 +43,29 @@ const RISK_LABEL: Record<string, string> = {
   low: 'Bajo',
 };
 
-const READINESS_LABEL: Record<string, string> = {
-  ready_now: 'Listo ahora',
-  ready_1_year: 'En 1 año',
-  ready_2_years: 'En 2 años',
-  not_ready: 'No listo',
+const READINESS_LABEL_KEY: Record<string, string> = {
+  ready_now: 'talento.readinessNow',
+  ready_1_year: 'talento.readiness1yr',
+  ready_2_years: 'talento.readiness2yr',
+  not_ready: 'talento.readinessNo',
 };
 
 /* Nine-box grid definition: [row][col] — Top row = high performance */
 const NINE_BOX_GRID = [
   [
-    { box: 6, label: 'Enigma', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.5)', textColor: '#b45309' },
-    { box: 8, label: 'Alto rendimiento', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.5)', textColor: '#047857' },
-    { box: 9, label: 'Estrella', bg: 'rgba(16,185,129,0.25)', border: 'rgba(16,185,129,0.7)', textColor: '#047857' },
+    { box: 6, labelKey: 'talento.quadrants.enigma', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.5)', textColor: '#b45309' },
+    { box: 8, labelKey: 'talento.quadrants.high_performer', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.5)', textColor: '#047857' },
+    { box: 9, labelKey: 'talento.quadrants.star', bg: 'rgba(16,185,129,0.25)', border: 'rgba(16,185,129,0.7)', textColor: '#047857' },
   ],
   [
-    { box: 3, label: 'Riesgo', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.5)', textColor: '#b91c1c' },
-    { box: 5, label: 'Profesional clave', bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.5)', textColor: '#4338ca' },
-    { box: 7, label: 'Alto potencial', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.5)', textColor: '#047857' },
+    { box: 3, labelKey: 'talento.quadrants.risk', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.5)', textColor: '#b91c1c' },
+    { box: 5, labelKey: 'talento.quadrants.core_player', bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.5)', textColor: '#4338ca' },
+    { box: 7, labelKey: 'talento.quadrants.high_potential', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.5)', textColor: '#047857' },
   ],
   [
-    { box: 1, label: 'Bajo rendimiento', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.6)', textColor: '#b91c1c' },
-    { box: 2, label: 'Bajo rend. con potencial', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.4)', textColor: '#b91c1c' },
-    { box: 4, label: 'Inconsistente', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', textColor: '#b45309' },
+    { box: 1, labelKey: 'talento.quadrants.dysfunctional', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.6)', textColor: '#b91c1c' },
+    { box: 2, labelKey: 'talento.quadrants.underperformer', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.4)', textColor: '#b91c1c' },
+    { box: 4, labelKey: 'talento.quadrants.inconsistent', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', textColor: '#b45309' },
   ],
 ];
 
@@ -100,6 +101,7 @@ function ScoreBar({ value, max = 10, color }: { value: number | null; max?: numb
 /* ========================================================================== */
 
 function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[]; selectedCycleId: string; onCycleChange: (id: string) => void }) {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token)!;
   const userRole = useAuthStore((s) => s.user?.role);
   const isAdmin = userRole === 'tenant_admin' || userRole === 'super_admin';
@@ -142,7 +144,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
           text: 'No se generaron evaluaciones. Verifica que el ciclo tenga evaluaciones completadas antes de generar.',
         });
       } else {
-        setGenerateMsg({ type: 'success', text: `✓ ${total} evaluaciones de talento generadas correctamente. Haz clic en un cuadrante para ver los colaboradores.` });
+        setGenerateMsg({ type: 'success', text: `✓ ${total} ${t('talento.generateSuccess')}` });
         setTimeout(() => setGenerateMsg(null), 7000);
       }
     } catch (e: any) {
@@ -249,7 +251,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 
         {selectedCycleId && isAdmin && (
           <button className="btn-primary" onClick={handleGenerate} disabled={generating}>
-            {generating ? 'Generando...' : 'Generar evaluación de talento'}
+            {generating ? t('talento.generating') : t('talento.generateBtn')}
           </button>
         )}
       </div>
@@ -312,7 +314,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                       }}
                     >
                       <div style={{ fontWeight: 800, fontSize: '1.6rem', color: cell.textColor }}>{count}</div>
-                      <div style={{ fontSize: '.78rem', color: cell.textColor, fontWeight: 700, marginTop: '.25rem' }}>{cell.label}</div>
+                      <div style={{ fontSize: '.78rem', color: cell.textColor, fontWeight: 700, marginTop: '.25rem' }}>{t(cell.labelKey)}</div>
                       <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: '.15rem' }}>Cuadrante {cell.box}</div>
                     </div>
                   );
@@ -343,7 +345,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                   }}>
                     <span style={{ fontWeight: 800, fontSize: '1.4rem', color: cell?.textColor }}>{selectedUsers.length}</span>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: '.95rem', color: cell?.textColor }}>{cell?.label}</div>
+                      <div style={{ fontWeight: 700, fontSize: '.95rem', color: cell?.textColor }}>{cell ? t(cell.labelKey) : ''}</div>
                       <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>Cuadrante {selectedBox} — {isAdmin ? 'clic en una fila para editar' : 'vista de solo lectura'}</div>
                     </div>
                   </div>
@@ -365,7 +367,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                       display: 'flex', alignItems: 'center', gap: '.5rem',
                     }}>
                       <span style={{ fontSize: '.9rem' }}>✎</span>
-                      <span>Haz clic en cualquier fila para editar <strong>Potencial</strong>, <strong>Preparación</strong> y <strong>Riesgo de Fuga</strong> del colaborador.</span>
+                      <span>{t('talento.editHint')}</span>
                     </div>
                   )}
                   <div className="table-wrapper" style={{ margin: 0, overflowX: 'auto' }}>
@@ -375,10 +377,10 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                           <SortTh field="name" label="Colaborador" />
                           <SortTh field="dept" label="Departamento" />
                           <th>{`Clasificaci\u00f3n`}</th>
-                          <SortTh field="performance" label="Desempeño" title="Calculado automáticamente desde el promedio de evaluaciones completadas" />
-                          <SortTh field="potential" label="Potencial ✎" title="Puntaje 0–10 ingresado manualmente por admin/encargado. Haz clic en una fila para editarlo." />
-                          <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title="Preparación para ascenso — ingresada manualmente por admin/encargado">{'Preparación ✎'}</th>
-                          <SortTh field="risk" label="Riesgo Fuga ✎" title="Riesgo de salida del colaborador — ingresado manualmente por admin/encargado" />
+                          <SortTh field="performance" label={t('talento.colPerformance')} title={t('talento.colPerformanceHint')} />
+                          <SortTh field="potential" label={t('talento.colPotential')} title={t('talento.colPotentialHint')} />
+                          <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title={t('talento.colReadinessHint')}>{t('talento.colReadiness')}</th>
+                          <SortTh field="risk" label={t('talento.colFlightRisk')} title={t('talento.colFlightRiskHint')} />
                           {isAdmin && <th></th>}
                         </tr>
                       </thead>
@@ -398,7 +400,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                               </td>
                               <td style={{ color: 'var(--text-secondary)', fontSize: '.875rem' }}>{u.department || '\u2014'}</td>
                               <td>
-                                <span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL[a.talentPool] || a.talentPool}</span>
+                                <span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL_KEY[a.talentPool] ? t(POOL_LABEL_KEY[a.talentPool]) : a.talentPool}</span>
                               </td>
                               <td style={{ minWidth: '110px' }}>
                                 <ScoreBar value={a.performanceScore} color="var(--accent)" />
@@ -407,7 +409,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                                 <ScoreBar value={a.potentialScore} color="var(--success)" />
                               </td>
                               <td style={{ fontSize: '.875rem', color: 'var(--text-secondary)' }}>
-                                {READINESS_LABEL[a.readiness] || a.readiness || '\u2014'}
+                                {READINESS_LABEL_KEY[a.readiness] ? t(READINESS_LABEL_KEY[a.readiness]) : a.readiness || '\u2014'}
                               </td>
                               <td>
                                 {a.flightRisk
@@ -417,7 +419,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                               {isAdmin && (
                                 <td onClick={(e) => { e.stopPropagation(); startEdit(a); }}>
                                   <button className="btn-ghost" style={{ fontSize: '.78rem', padding: '.25rem .6rem' }}>
-                                    Editar ✎
+                                    {t('talento.editBtn')}
                                   </button>
                                 </td>
                               )}
@@ -436,7 +438,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 
       {!loading && !selectedCycleId && (
         <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-          Selecciona un ciclo para ver la matriz Nine Box.
+          {t('talento.selectCycle')}
         </p>
       )}
 
@@ -471,7 +473,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
             {/* Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <label style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
-                Potencial (0–10)
+                {t('talento.editPotential')}
                 <input
                   className="input"
                   type="number" min={0} max={10} step={0.5}
@@ -481,17 +483,17 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
               </label>
 
               <label style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
-                {`Preparaci\u00f3n para ascenso`}
+                {t('talento.editClassification')}
                 <select
                   className="input"
                   value={editForm.readiness}
                   onChange={(e) => setEditForm({ ...editForm, readiness: e.target.value })}
                 >
                   <option value="">{'\u2014'}</option>
-                  <option value="ready_now">Listo ahora</option>
-                  <option value="ready_1_year">{`En 1 a\u00f1o`}</option>
-                  <option value="ready_2_years">{`En 2 a\u00f1os`}</option>
-                  <option value="not_ready">No listo</option>
+                  <option value="ready_now">{t('talento.readinessNow')}</option>
+                  <option value="ready_1_year">{t('talento.readiness1yr')}</option>
+                  <option value="ready_2_years">{t('talento.readiness2yr')}</option>
+                  <option value="not_ready">{t('talento.readinessNo')}</option>
                 </select>
               </label>
 
@@ -543,6 +545,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 /* ========================================================================== */
 
 function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[]; selectedCycleId: string; onCycleChange: (id: string) => void }) {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token)!;
   const [segData, setSegData] = useState<any>(null);
   const [assessments, setAssessments] = useState<any[]>([]);
@@ -688,7 +691,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
                   {poolCounts[pool] || 0}
                 </span>
                 <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                  {POOL_LABEL[pool]}
+                  {POOL_LABEL_KEY[pool] ? t(POOL_LABEL_KEY[pool]) : pool}
                 </span>
               </button>
             ))}
@@ -725,11 +728,11 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
                     <tr>
                       <SortTh field="name" label="Colaborador" />
                       <SortTh field="dept" label="Departamento" />
-                      <SortTh field="pool" label="Clasificación" />
-                      <SortTh field="performance" label="Desempeño" title="Calculado automáticamente desde el promedio de evaluaciones completadas" />
-                      <SortTh field="potential" label="Potencial ✎" title="Puntaje 0–10 ingresado manualmente por admin/encargado en la pestaña Nine Box" />
-                      <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title="Preparación para ascenso — ingresada manualmente en la pestaña Nine Box">{'Preparación ✎'}</th>
-                      <SortTh field="risk" label="Riesgo Fuga ✎" title="Riesgo de salida — ingresado manualmente en la pestaña Nine Box" />
+                      <SortTh field="pool" label={t('talento.editClassification')} />
+                      <SortTh field="performance" label={t('talento.colPerformance')} title={t('talento.colPerformanceHint')} />
+                      <SortTh field="potential" label={t('talento.colPotential')} title={t('talento.colPotentialHint')} />
+                      <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title={t('talento.colReadinessHint')}>{t('talento.colReadiness')}</th>
+                      <SortTh field="risk" label={t('talento.colFlightRisk')} title={t('talento.colFlightRiskHint')} />
                     </tr>
                   </thead>
                   <tbody>
@@ -745,7 +748,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
                           <td style={{ color: 'var(--text-secondary)', fontSize: '.875rem' }}>{u.department || '\u2014'}</td>
                           <td>
                             <span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>
-                              {POOL_LABEL[a.talentPool] || a.talentPool}
+                              {POOL_LABEL_KEY[a.talentPool] ? t(POOL_LABEL_KEY[a.talentPool]) : a.talentPool}
                             </span>
                           </td>
                           <td style={{ minWidth: '110px' }}>
@@ -755,7 +758,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
                             <ScoreBar value={a.potentialScore} color="var(--success)" />
                           </td>
                           <td style={{ fontSize: '.875rem', color: 'var(--text-secondary)' }}>
-                            {READINESS_LABEL[a.readiness] || a.readiness || '\u2014'}
+                            {READINESS_LABEL_KEY[a.readiness] ? t(READINESS_LABEL_KEY[a.readiness]) : a.readiness || '\u2014'}
                           </td>
                           <td>
                             {a.flightRisk
@@ -784,7 +787,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
                 {`No hay evaluaciones de talento para este ciclo.`}
               </p>
               <p style={{ fontSize: '.85rem' }}>
-                {`Genera una evaluación primero desde la pestaña Nine Box.`}
+                {t('talento.generateFirst')}
               </p>
             </div>
           )}
@@ -793,7 +796,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
 
       {!loading && !selectedCycleId && (
         <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-          {`Selecciona un ciclo para ver la segmentación de talento.`}
+          {t('talento.selectCycle')}
         </p>
       )}
     </div>
@@ -805,6 +808,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
 /* ========================================================================== */
 
 export default function TalentoPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [tab, setTab] = useState<ActiveTab>('ninebox');
   const [cycles, setCycles] = useState<any[]>([]);
@@ -826,9 +830,9 @@ export default function TalentoPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
     <div className="animate-fade-up">
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{`Gesti\u00f3n de Talento`}</h1>
+        <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{t('talento.title')}</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '.875rem', marginTop: '.25rem' }}>
-          {`Matriz Nine Box, segmentaci\u00f3n por clasificaci\u00f3n y gesti\u00f3n del talento organizacional`}
+          {t('talento.subtitle')}
         </p>
       </div>
 
@@ -899,7 +903,7 @@ export default function TalentoPage() {
               ))}
             </div>
             <p style={{ fontSize: '.78rem', color: 'var(--text-muted)', margin: 0, fontStyle: 'italic' }}>
-              {'↑ Eje Y: Desempeño (basado en evaluaciones). → Eje X: Potencial (evaluado manualmente por el encargado/admin).'}
+              {t('talento.matrixAxisNote')}
             </p>
           </div>
 
@@ -933,18 +937,16 @@ export default function TalentoPage() {
       {/* Info card */}
       <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
         <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-          {'¿Cómo funciona la Gestión de Talento?'}
+          {t('talento.guide.title')}
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', alignItems: 'start' }}>
           {/* Column 1 — axes explanation */}
           <div>
             <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {'Pestaña: Matriz Nine Box'}
+              {t('talento.guide.nineBoxTitle')}
             </p>
             <ul style={{ margin: '0 0 .75rem', paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li>{'Clasifica colaboradores en una matriz 3×3 cruzando Desempeño (eje vertical) y Potencial (eje horizontal)'}</li>
-              <li>{'Haz clic en cualquier cuadrante para ver los colaboradores asignados'}</li>
-              <li>{'Los admins pueden editar Potencial (0–10), Preparación para ascenso y Riesgo de Fuga directamente en la tabla'}</li>
+              <li>{t('talento.guide.nineBoxDesc')}</li>
             </ul>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '.25rem', fontSize: '.7rem' }}>
               {([
@@ -970,20 +972,18 @@ export default function TalentoPage() {
           {/* Column 2 — segmentation + data sources */}
           <div>
             <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {'Pestaña: Segmentación'}
+              {t('talento.guide.segmentationTitle')}
             </p>
             <ul style={{ margin: '0 0 .75rem', paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li>{'Vista plana de todos los colaboradores clasificados, con búsqueda y filtros por pool'}</li>
-              <li>{'Útil para encontrar a todos los "Estrellas" o buscar a una persona sin saber en qué cuadrante está'}</li>
+              <li>{t('talento.guide.segmentationDesc')}</li>
             </ul>
             <p style={{ margin: '0 0 0.4rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {'¿De dónde vienen los datos?'}
+              {t('talento.guide.dataSourceTitle')}
             </p>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li><strong>{'Desempeño'}</strong>{': calculado automáticamente desde el promedio de evaluaciones completadas'}</li>
-              <li><strong>{'Potencial'}</strong>{': ingresado manualmente por el admin/encargado (escala 0–10)'}</li>
-              <li><strong>{'Preparación'}</strong>{': ingresado manualmente (Listo ahora / En 1 año / En 2 años / No listo)'}</li>
-              <li><strong>{'Riesgo de Fuga'}</strong>{': ingresado manualmente (Alto / Medio / Bajo)'}</li>
+              <li>{t('talento.guide.dataPerformance')}</li>
+              <li>{t('talento.guide.dataPotential')}</li>
+              <li>{t('talento.guide.dataReadiness')}</li>
             </ul>
           </div>
         </div>
@@ -992,22 +992,22 @@ export default function TalentoPage() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '1.5rem', borderBottom: '2px solid var(--border)' }}>
         {([
-          { key: 'ninebox' as const, label: 'Matriz Nine Box' },
-          { key: 'segmentation' as const, label: `Segmentaci\u00f3n` },
-        ]).map((t) => (
+          { key: 'ninebox' as const, label: t('talento.tabNineBox') },
+          { key: 'segmentation' as const, label: t('talento.tabSegmentation') },
+        ]).map((tab_item) => (
           <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
+            key={tab_item.key}
+            onClick={() => setTab(tab_item.key)}
             className="btn-ghost"
             style={{
-              borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
+              borderBottom: tab === tab_item.key ? '2px solid var(--accent)' : '2px solid transparent',
               borderRadius: 0,
-              fontWeight: tab === t.key ? 700 : 500,
-              color: tab === t.key ? 'var(--accent)' : 'var(--text-secondary)',
+              fontWeight: tab === tab_item.key ? 700 : 500,
+              color: tab === tab_item.key ? 'var(--accent)' : 'var(--text-secondary)',
               marginBottom: '-2px',
             }}
           >
-            {t.label}
+            {tab_item.label}
           </button>
         ))}
       </div>

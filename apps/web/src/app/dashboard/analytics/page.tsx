@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAnalytics } from '@/hooks/usePerformanceHistory';
 import { useCycles } from '@/hooks/useCycles';
 import { useCompetencyHeatmap, useBellCurve } from '@/hooks/useReports';
@@ -33,6 +34,7 @@ function heatColor(avg: number | null, maxScale: number): string {
 }
 
 function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
+  const { t } = useTranslation();
   const [deptFilter, setDeptFilter] = useState('');
   const [sortByAvg, setSortByAvg] = useState(false);
 
@@ -159,7 +161,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
             {/* Org average column — only shown when no dept filter active */}
             {!deptFilter && (
               <th style={{ padding: '0.5rem 0.5rem', color: 'var(--accent)', fontWeight: 700, fontSize: '0.72rem', textAlign: 'center', borderLeft: '2px solid var(--border)', whiteSpace: 'nowrap' }}>
-                Org Ø
+                {t('analytics.orgAvg')}
               </th>
             )}
           </tr>
@@ -223,13 +225,14 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
 /* ─── Bell Curve Section ──────────────────────────────────────────── */
 
 function BellCurveSection({ cycleId }: { cycleId: string }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useBellCurve(cycleId);
 
   if (isLoading) return <Spinner />;
   if (!data || !data.histogram || data.count === 0) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos suficientes para la curva de distribución</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('analytics.noDataCurve')}</p>
       </div>
     );
   }
@@ -238,7 +241,7 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
         <p style={{ color: 'var(--warning)', fontSize: '0.85rem', fontWeight: 600 }}>
-          {data.message || `Se requieren al menos 5 evaluaciones para mostrar la distribución (actualmente: ${data.count})`}
+          {data.message || t('analytics.minDataRequired')}
         </p>
       </div>
     );
@@ -262,26 +265,26 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
   const stddev = Number(data.stddev);
 
   const meanMsg =
-    mean >= 7.5 ? { text: 'Puntaje promedio muy alto — tendencia generalizada de buenos resultados. Verificar si puede haber sesgo de leniencia.', color: 'var(--success)' }
-    : mean >= 6.0 ? { text: 'Puntaje promedio alto — la organización muestra buen desempeño general.', color: 'var(--success)' }
-    : mean >= 4.5 ? { text: 'Puntaje promedio en rango medio — desempeño heterogéneo entre colaboradores.', color: 'var(--warning)' }
-    : { text: 'Puntaje promedio bajo — existen áreas de mejora significativas en la organización.', color: 'var(--danger)' };
+    mean >= 7.5 ? { text: t('analytics.alertLeniency'), color: 'var(--success)' }
+    : mean >= 6.0 ? { text: t('analytics.alertLeniency'), color: 'var(--success)' }
+    : mean >= 4.5 ? { text: t('analytics.alertCentral'), color: 'var(--warning)' }
+    : { text: t('analytics.alertHarshness'), color: 'var(--danger)' };
 
   const dispMsg =
-    stddev < 1.0 ? { text: 'Dispersión muy baja (σ=' + data.stddev + '): los evaluadores tienden a asignar puntajes muy similares, lo que puede indicar poca diferenciación o uniformidad de criterios.', icon: '⚠️' }
-    : stddev > 2.5 ? { text: 'Dispersión alta (σ=' + data.stddev + '): hay mucha variabilidad entre los puntajes, lo que puede reflejar criterios inconsistentes entre jefaturas o equipos.', icon: '⚠️' }
-    : { text: 'Dispersión normal (σ=' + data.stddev + '): la variabilidad es saludable y permite distinguir bien los niveles de desempeño.', icon: '✅' };
+    stddev < 1.0 ? { text: t('analytics.dispersionLow', { stddev: data.stddev }), icon: '⚠️' }
+    : stddev > 2.5 ? { text: t('analytics.dispersionHigh', { stddev: data.stddev }), icon: '⚠️' }
+    : { text: t('analytics.dispersionNormal', { stddev: data.stddev }), icon: '✅' };
 
   const biasMsg =
-    pctHigh > 60 ? '⚠️ Más del 60% de las evaluaciones quedaron en zona alta. Posible sesgo de leniencia — considerar calibración.'
-    : pctLow > 60 ? '⚠️ Más del 60% de las evaluaciones quedaron en zona baja. Puede haber sesgo de dureza o problemas de desempeño generalizados.'
-    : pctMid > 65 ? '⚠️ Alta concentración en la franja media. Baja diferenciación — la escala puede no estar siendo bien utilizada.'
+    pctHigh > 60 ? t('analytics.alertLeniency')
+    : pctLow > 60 ? t('analytics.alertHarshness')
+    : pctMid > 65 ? t('analytics.alertCentral')
     : null;
 
   return (
     <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
       <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-        Distribución de Puntajes (Curva de Bell)
+        {t('analytics.distributionTitle')}
       </h2>
       <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
         Histograma de puntajes con curva normal superpuesta
@@ -293,7 +296,7 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
           <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{data.mean}</span>
         </div>
         <div>
-          <span style={{ color: 'var(--text-muted)' }}>Desv. Estándar: </span>
+          <span style={{ color: 'var(--text-muted)' }}>{t('analytics.stdDev')} </span>
           <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.stddev}</span>
         </div>
         <div>
@@ -303,10 +306,8 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
       </div>
 
       <div style={{ padding: '0.55rem 0.85rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem', fontSize: '0.77rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        <strong style={{ color: 'var(--text-secondary)' }}>¿Cómo leer este gráfico?</strong>
-        {' '}Las barras muestran cuántos colaboradores obtuvieron cada rango de puntaje.
-        La línea amarilla es la curva normal teórica con la misma media y desviación.
-        Si las barras siguen de cerca esa línea, la distribución es equilibrada.
+        <strong style={{ color: 'var(--text-secondary)' }}>{t('analytics.howToRead')}</strong>
+        {' '}{t('analytics.howToReadDesc')}
       </div>
 
       <ResponsiveContainer width="100%" height={300}>
@@ -335,18 +336,18 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
       {/* Análisis de resultados */}
       <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
         <p style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.85rem', color: 'var(--text-primary)' }}>
-          Análisis de resultados
+          {t('analytics.analysisTitle')}
         </p>
 
         <div style={{ marginBottom: '1rem' }}>
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Distribución por zona
+            {t('analytics.distributionZone')}
           </p>
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             {[
-              { label: 'Bajo (<4)', pct: pctLow, cnt: cntLow, color: 'var(--danger)', bg: 'rgba(239,68,68,0.08)' },
-              { label: 'Medio (4–7)', pct: pctMid, cnt: cntMid, color: 'var(--warning)', bg: 'rgba(245,158,11,0.08)' },
-              { label: 'Alto (>7)', pct: pctHigh, cnt: cntHigh, color: 'var(--success)', bg: 'rgba(16,185,129,0.08)' },
+              { label: t('analytics.zoneLow'), pct: pctLow, cnt: cntLow, color: 'var(--danger)', bg: 'rgba(239,68,68,0.08)' },
+              { label: t('analytics.zoneMid'), pct: pctMid, cnt: cntMid, color: 'var(--warning)', bg: 'rgba(245,158,11,0.08)' },
+              { label: t('analytics.zoneHigh'), pct: pctHigh, cnt: cntHigh, color: 'var(--success)', bg: 'rgba(16,185,129,0.08)' },
             ].map((z) => (
               <div key={z.label} style={{ flex: '1 1 120px', padding: '0.6rem 0.85rem', background: z.bg, borderRadius: 'var(--radius-sm)', border: `1px solid ${z.color}33` }}>
                 <p style={{ fontSize: '1.3rem', fontWeight: 800, color: z.color, margin: 0 }}>{z.pct}%</p>
@@ -370,7 +371,7 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
             <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>{dispMsg.icon}</span>
             <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-              <strong>Dispersión:</strong> {dispMsg.text}
+              <strong>{t('analytics.dispersion')}</strong> {dispMsg.text}
             </span>
           </div>
 
@@ -378,7 +379,7 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
             <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
               <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>🔔</span>
               <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                <strong>Alerta de distribución:</strong> {biasMsg.replace(/^⚠️\s*/, '')}
+                <strong>{t('analytics.distributionAlert')}</strong> {biasMsg.replace(/^⚠️\s*/, '')}
               </span>
             </div>
           )}
@@ -401,6 +402,7 @@ const selectStyle: React.CSSProperties = {
 };
 
 export default function AnalyticsPage() {
+  const { t } = useTranslation();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const { data: analytics, isLoading: loadingAnalytics } = useAnalytics(selectedCycleId);
@@ -439,9 +441,9 @@ export default function AnalyticsPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Análisis del Ciclo</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('analytics.title')}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Distribución estadística, mapa de competencias y rendimiento por equipo
+          {t('analytics.subtitle')}
         </p>
       </div>
 
@@ -451,54 +453,39 @@ export default function AnalyticsPage() {
           onClick={() => setShowGuide(!showGuide)}
           style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}
         >
-          {showGuide ? '▼ Ocultar guía' : '▶ ¿Qué muestra esta página?'}
+          {showGuide ? t('analytics.hideGuide') : t('analytics.showGuide')}
         </button>
 
         {showGuide && (
           <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-              Guía de uso: Análisis del Ciclo
+              {t('analytics.guide.title')}
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
-              Esta página presenta estadísticas organizacionales de los resultados de evaluación por ciclo.
-              Selecciona un ciclo para ver las métricas. Los datos provienen de las evaluaciones completadas.
+              {t('analytics.guide.desc')}
             </p>
 
             <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Gráficos disponibles</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('analytics.guide.chartsTitle')}</div>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <li>
-                  <strong>Distribución de Puntajes (Curva de Bell):</strong>{' '}
-                  Histograma con curva normal superpuesta. Muestra si la distribución es equilibrada o si hay sesgo
-                  (leniencia, dureza o baja diferenciación). Incluye análisis automático de tendencia central, dispersión y alertas de distribución.
-                </li>
-                <li>
-                  <strong>Comparación por Departamento:</strong>{' '}
-                  Puntaje promedio de cada departamento. Permite identificar áreas de la organización con mejor o menor desempeño.
-                </li>
-                <li>
-                  <strong>Mapa de Competencias por Departamento:</strong>{' '}
-                  Matriz departamento × sección de plantilla. Verde = alto, amarillo = medio, rojo = bajo.
-                  Departamentos con menos de 5 evaluados se ocultan por privacidad.
-                </li>
-                <li>
-                  <strong>Rendimiento por Equipo:</strong>{' '}
-                  Ranking de encargados ordenado por puntaje promedio de sus colaboradores. Incluye tamaño del equipo.
-                </li>
+                <li>{t('analytics.guide.chartBell')}</li>
+                <li>{t('analytics.guide.chartDept')}</li>
+                <li>{t('analytics.guide.chartHeatmap')}</li>
+                <li>{t('analytics.guide.chartManagers')}</li>
               </ul>
             </div>
 
             <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Conexión con otras funciones</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('analytics.guide.connectionsTitle')}</div>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <li><strong>Informes por Colaborador:</strong>{' Para análisis individual (por persona), ve a la sección Informes'}</li>
-                <li><strong>Calibración:</strong>{' Si hubo calibración, los puntajes ajustados se reflejan aquí'}</li>
-                <li><strong>Talento (Nine Box):</strong>{' Los puntajes de desempeño vistos aquí alimentan el eje de desempeño del Nine Box'}</li>
+                <li>{t('analytics.guide.connReports')}</li>
+                <li>{t('analytics.guide.connCalibration')}</li>
+                <li>{t('analytics.guide.connTalent')}</li>
               </ul>
             </div>
 
             <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' Solo Administradores y Encargados de Equipo pueden acceder a esta página. Los Colaboradores ven sus resultados individuales en "Mi Desempeño".'}
+              <strong style={{ color: 'var(--accent)' }}>{t('analytics.guide.permissions')}</strong>
             </div>
           </div>
         )}
