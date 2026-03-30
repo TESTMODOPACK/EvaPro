@@ -309,7 +309,40 @@ export class FeedbackService {
 
   // ─── Quick Feedback ───────────────────────────────────────────────────────
 
+  // B4.1: Prohibited words list for content filtering
+  private readonly PROHIBITED_WORDS = [
+    'idiota', 'estupido', 'estúpido', 'imbecil', 'imbécil', 'inutil', 'inútil',
+    'incompetente', 'basura', 'mediocre', 'perdedor', 'tarado', 'tonto',
+    'maldito', 'desgraciado', 'miserable', 'porqueria', 'porquería',
+  ];
+
+  private validateFeedbackContent(message: string): void {
+    const trimmed = message.trim();
+    if (trimmed.length < 20) {
+      throw new BadRequestException(
+        `El feedback debe tener al menos 20 caracteres (actual: ${trimmed.length}). Proporciona un mensaje más descriptivo.`,
+      );
+    }
+    // Normalize: lowercase, strip accents/diacritics, remove non-alpha chars for comparison
+    const normalized = trimmed
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // strip combining diacritics
+      .replace(/[^a-z\s]/g, '');       // keep only letters and spaces
+    const normalizedWords = this.PROHIBITED_WORDS.map((w) =>
+      w.normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+    );
+    const found = normalizedWords.find((word) => normalized.includes(word));
+    if (found) {
+      throw new BadRequestException(
+        'El feedback contiene lenguaje inapropiado. El feedback debe estar enfocado en comportamientos y resultados, no en la persona.',
+      );
+    }
+  }
+
   async createQuickFeedback(tenantId: string, fromUserId: string, dto: CreateQuickFeedbackDto): Promise<QuickFeedback> {
+    this.validateFeedbackContent(dto.message);
+
     const qf = this.quickFeedbackRepo.create({
       tenantId,
       fromUserId,

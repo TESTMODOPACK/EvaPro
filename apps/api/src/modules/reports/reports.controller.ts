@@ -19,6 +19,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
+import { AuditService } from '../audit/audit.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { FeatureGuard } from '../../common/guards/feature.guard';
@@ -31,7 +32,15 @@ export class ReportsController {
   constructor(
     private readonly reportsService: ReportsService,
     private readonly kpiService: KpiService,
+    private readonly auditService: AuditService,
   ) {}
+
+  // B7.1: Fire-and-forget audit log for report access
+  private logAccess(req: any, reportType: string, meta?: Record<string, any>) {
+    this.auditService
+      .log(req.user.tenantId, req.user.userId, 'report.viewed', 'report', undefined, { reportType, ...meta })
+      .catch(() => {});
+  }
 
   // ─── Custom KPIs ──────────────────────────────────────────────────────
 
@@ -98,6 +107,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     const filters = (department || position) ? { department, position } : undefined;
+    this.logAccess(req, 'cycle_summary', { cycleId, filters });
     return this.reportsService.cycleSummary(cycleId, req.user.tenantId, filters);
   }
 
@@ -109,6 +119,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     this.validateUserAccess(req, userId);
+    this.logAccess(req, 'individual_results', { cycleId, targetUserId: userId });
     return this.reportsService.individualResults(cycleId, userId, req.user.tenantId, req.user.userId, req.user.role);
   }
 
@@ -123,6 +134,7 @@ export class ReportsController {
     if (role === 'manager' && managerId !== userId) {
       throw new ForbiddenException('Solo puedes ver los resultados de tu propio equipo');
     }
+    this.logAccess(req, 'team_results', { cycleId, managerId });
     return this.reportsService.teamResults(cycleId, managerId, req.user.tenantId);
   }
 
@@ -134,6 +146,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     this.validateUserAccess(req, userId);
+    this.logAccess(req, 'performance_history', { targetUserId: userId });
     const filters = cycleType ? { cycleType } : undefined;
     return this.reportsService.getPerformanceHistory(req.user.tenantId, userId, filters);
   }
@@ -144,6 +157,7 @@ export class ReportsController {
     @Query('cycleId') cycleId: string,
     @Request() req: any,
   ) {
+    this.logAccess(req, 'analytics', { cycleId });
     return this.reportsService.getAnalytics(req.user.tenantId, cycleId);
   }
 
@@ -158,6 +172,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     this.validateUserAccess(req, userId);
+    this.logAccess(req, 'competency_radar', { cycleId, targetUserId: userId });
     return this.reportsService.competencyRadar(cycleId, userId, req.user.tenantId);
   }
 
@@ -170,6 +185,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     this.validateUserAccess(req, userId);
+    this.logAccess(req, 'self_vs_others', { cycleId, targetUserId: userId });
     return this.reportsService.selfVsOthers(cycleId, userId, req.user.tenantId);
   }
 
@@ -183,6 +199,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     const filters = (department || position) ? { department, position } : undefined;
+    this.logAccess(req, 'bell_curve', { cycleId, filters });
     return this.reportsService.bellCurve(cycleId, req.user.tenantId, filters);
   }
 
@@ -196,6 +213,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     const filters = (department || position) ? { department, position } : undefined;
+    this.logAccess(req, 'performance_heatmap', { cycleId, filters });
     return this.reportsService.performanceHeatmap(cycleId, req.user.tenantId, filters);
   }
 
@@ -211,6 +229,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     const filters = (department || position) ? { department, position } : undefined;
+    this.logAccess(req, 'competency_heatmap', { cycleId, filters });
     return this.reportsService.competencyHeatmap(cycleId, req.user.tenantId, filters);
   }
 
@@ -225,6 +244,7 @@ export class ReportsController {
     @Request() req: any,
   ) {
     this.validateUserAccess(req, userId);
+    this.logAccess(req, 'gap_analysis_individual', { cycleId, targetUserId: userId });
     return this.reportsService.gapAnalysisIndividual(cycleId, userId, req.user.tenantId);
   }
 
@@ -240,6 +260,7 @@ export class ReportsController {
     if (role === 'manager' && managerId !== userId) {
       throw new ForbiddenException('Solo puedes ver el gap analysis de tu propio equipo');
     }
+    this.logAccess(req, 'gap_analysis_team', { cycleId, managerId });
     return this.reportsService.gapAnalysisTeam(cycleId, managerId, req.user.tenantId);
   }
 
@@ -253,6 +274,10 @@ export class ReportsController {
     @Request() req: any,
     @Res() res: Response,
   ) {
+    this.auditService
+      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', cycleId, { format: format || 'csv' })
+      .catch(() => {});
+
     if (format === 'pdf') {
       const pdfBuffer = await this.reportsService.exportPdf(cycleId, req.user.tenantId);
       res.setHeader('Content-Type', 'application/pdf');

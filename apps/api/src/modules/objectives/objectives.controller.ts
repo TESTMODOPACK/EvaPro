@@ -85,6 +85,20 @@ export class ObjectivesController {
     return this.objectivesService.getObjectiveTree(req.user.tenantId);
   }
 
+  @Get('history-by-period')
+  getHistoryByPeriod(
+    @Request() req: any,
+    @Query('userId') userId?: string,
+    @Query('cycleId') cycleId?: string,
+  ) {
+    const role = req.user.role;
+    // Employees can only see their own history
+    const effectiveUserId = (role === 'employee' || role === 'external')
+      ? req.user.userId
+      : userId;
+    return this.objectivesService.getObjectiveHistory(req.user.tenantId, effectiveUserId, cycleId);
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseUUIDPipe) id: string,

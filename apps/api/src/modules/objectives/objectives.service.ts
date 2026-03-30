@@ -114,6 +114,93 @@ export class ObjectivesService {
     });
   }
 
+  /**
+   * B1.3: OKR history grouped by evaluation cycle / period.
+   * Returns closed/completed objectives with their Key Results, grouped by cycle.
+   */
+  async getObjectiveHistory(
+    tenantId: string,
+    userId?: string,
+    cycleId?: string,
+  ) {
+    const qb = this.objectiveRepo.createQueryBuilder('o')
+      .where('o.tenantId = :tenantId', { tenantId })
+      .andWhere('o.status IN (:...statuses)', {
+        statuses: [ObjectiveStatus.COMPLETED, ObjectiveStatus.ABANDONED],
+      });
+
+    if (userId) {
+      qb.andWhere('o.userId = :userId', { userId });
+    }
+    if (cycleId) {
+      qb.andWhere('o.cycleId = :cycleId', { cycleId });
+    }
+
+    qb.leftJoinAndSelect('o.user', 'user')
+      .orderBy('o.updatedAt', 'DESC');
+
+    const objectives = await qb.getMany();
+
+    if (objectives.length === 0) {
+      return { periods: [], totalObjectives: 0 };
+    }
+
+    // Load Key Results for all objectives
+    const objectiveIds = objectives.map((o) => o.id);
+    const keyResults = await this.keyResultRepo
+      .createQueryBuilder('kr')
+      .where('kr.objectiveId IN (:...ids)', { ids: objectiveIds })
+      .getMany();
+
+    const krByObjective = new Map<string, typeof keyResults>();
+    for (const kr of keyResults) {
+      const list = krByObjective.get(kr.objectiveId) || [];
+      list.push(kr);
+      krByObjective.set(kr.objectiveId, list);
+    }
+
+    // Group by cycleId (null cycleId grouped as 'sin_ciclo')
+    const groups = new Map<string, Objective[]>();
+    for (const obj of objectives) {
+      const key = obj.cycleId || 'sin_ciclo';
+      const list = groups.get(key) || [];
+      list.push(obj);
+      groups.set(key, list);
+    }
+
+    // Load cycle names
+    const cycleIds = [...groups.keys()].filter((k) => k !== 'sin_ciclo');
+    const cycles = cycleIds.length > 0
+      ? await this.cycleRepo.find({ where: { id: In(cycleIds) }, select: ['id', 'name', 'startDate', 'endDate', 'type', 'period'] })
+      : [];
+    const cycleMap = new Map(cycles.map((c) => [c.id, c]));
+
+    const periods = [...groups.entries()].map(([key, objs]) => {
+      const cycle = cycleMap.get(key);
+      const totalProgress = objs.reduce((sum, o) => sum + (o.progress || 0), 0);
+      return {
+        cycleId: key === 'sin_ciclo' ? null : key,
+        cycleName: cycle?.name || 'Sin ciclo asignado',
+        startDate: cycle?.startDate || null,
+        endDate: cycle?.endDate || null,
+        cycleType: cycle?.type || null,
+        totalObjectives: objs.length,
+        completedCount: objs.filter((o) => o.status === ObjectiveStatus.COMPLETED).length,
+        abandonedCount: objs.filter((o) => o.status === ObjectiveStatus.ABANDONED).length,
+        avgProgress: objs.length > 0 ? Math.round(totalProgress / objs.length) : 0,
+        objectives: objs.map((o) => ({
+          ...o,
+          keyResults: krByObjective.get(o.id) || [],
+        })),
+      };
+    });
+
+    return {
+      periods,
+      totalObjectives: objectives.length,
+    };
+  }
+
   async findById(tenantId: string, id: string): Promise<Objective> {
     const obj = await this.objectiveRepo.findOne({
       where: { id, tenantId },

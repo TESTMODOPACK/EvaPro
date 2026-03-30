@@ -15,10 +15,12 @@ import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
 import { ReportsController } from './reports.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
     SubscriptionsModule,
+    AuditModule,
     TypeOrmModule.forFeature([
       EvaluationCycle,
       EvaluationAssignment,

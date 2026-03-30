@@ -12,10 +12,16 @@ import { FormTemplate } from '../templates/entities/form-template.entity';
 import { User } from '../users/entities/user.entity';
 import { RoleCompetency } from '../development/entities/role-competency.entity';
 import { Competency } from '../development/entities/competency.entity';
+import { AuditService } from '../audit/audit.service';
 
 export interface ReportFilters {
   department?: string;
   position?: string;
+  gender?: string;
+  seniorityLevel?: string;
+  contractType?: string;
+  workLocation?: string;
+  nationality?: string;
 }
 
 /**
@@ -43,6 +49,7 @@ export class ReportsService {
     private readonly roleCompetencyRepo: Repository<RoleCompetency>,
     @InjectRepository(Competency)
     private readonly competencyRepo: Repository<Competency>,
+    private readonly auditService: AuditService,
   ) {}
 
   // ─── Shared filter interface ──────────────────────────────────────────
@@ -59,6 +66,21 @@ export class ReportsService {
     }
     if (filters.position) {
       qb.andWhere(`${userAlias}.position = :position`, { position: filters.position });
+    }
+    if (filters.gender) {
+      qb.andWhere(`${userAlias}.gender = :gender`, { gender: filters.gender });
+    }
+    if (filters.seniorityLevel) {
+      qb.andWhere(`${userAlias}.seniorityLevel = :seniorityLevel`, { seniorityLevel: filters.seniorityLevel });
+    }
+    if (filters.contractType) {
+      qb.andWhere(`${userAlias}.contractType = :contractType`, { contractType: filters.contractType });
+    }
+    if (filters.workLocation) {
+      qb.andWhere(`${userAlias}.workLocation = :workLocation`, { workLocation: filters.workLocation });
+    }
+    if (filters.nationality) {
+      qb.andWhere(`${userAlias}.nationality = :nationality`, { nationality: filters.nationality });
     }
   }
 

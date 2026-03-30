@@ -4,8 +4,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as nodemailer from 'nodemailer';
+import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
@@ -13,8 +15,11 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
     private readonly auditService: AuditService,
   ) {}
 
@@ -57,8 +62,25 @@ export class AuthService {
       ipAddress,
     );
 
+    // B11.1: Per-tenant session timeout (falls back to global JWT_EXPIRATION)
+    let expiresIn = this.configService.get('JWT_EXPIRATION', '15m');
+    if (user.tenantId) {
+      try {
+        const tenant = await this.tenantRepo.findOne({
+          where: { id: user.tenantId },
+          select: ['id', 'settings'],
+        });
+        const timeout = tenant?.settings?.sessionTimeoutMinutes;
+        if (typeof timeout === 'number' && timeout > 0) {
+          expiresIn = `${timeout}m`;
+        }
+      } catch {
+        // Fallback to global timeout on any error
+      }
+    }
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: this.jwtService.sign(payload, { expiresIn }),
     };
   }
 
@@ -112,7 +134,7 @@ export class AuthService {
     const smtpFrom = process.env.SMTP_FROM || 'noreply@evapro.app';
 
     if (!smtpHost || !smtpUser || !smtpPass) {
-      console.warn('[EvaPro] SMTP not configured — reset code:', code, 'for', to);
+      console.warn('[EvaPro] SMTP not configured — reset code sent for', to);
       return;
     }
 
