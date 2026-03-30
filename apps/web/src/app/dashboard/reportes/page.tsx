@@ -6,6 +6,7 @@ import { useCycleSummary } from '@/hooks/useReports';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { getScoreLabel, getScoreColor } from '@/lib/scales';
+import { useToastStore } from '@/store/toast.store';
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -21,6 +22,7 @@ function Spinner() {
 
 export default function ReportesPage() {
   const token = useAuthStore((s) => s.token);
+  const toast = useToastStore();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const { data: summary, isLoading: loadingSummary } = useCycleSummary(selectedCycleId);
@@ -51,7 +53,7 @@ export default function ReportesPage() {
       link.click();
       URL.revokeObjectURL(link.href);
     } catch (err: any) {
-      alert(err.message || 'Error al exportar');
+      toast.error(err.message || 'Error al exportar');
     } finally {
       setExporting(null);
     }

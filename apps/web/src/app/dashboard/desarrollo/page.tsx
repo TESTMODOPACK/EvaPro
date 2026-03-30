@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import { useToastStore } from '@/store/toast.store';
+import ConfirmModal from '@/components/ConfirmModal';
 
 function Spinner() {
   return (
@@ -90,10 +92,19 @@ const emptyPlanForm: PlanForm = { userId: '', title: '', description: '', priori
 
 export default function DesarrolloPage() {
   const { token, user } = useAuthStore();
+  const toast = useToastStore();
   const role = user?.role || '';
   const isAdmin = role === 'tenant_admin';
   const isManager = role === 'manager';
   const canCreate = isAdmin || isManager;
+
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    detail?: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<any[]>([]);
@@ -190,7 +201,7 @@ export default function DesarrolloPage() {
       setShowCreate(false);
       await loadData();
     } catch (e: any) {
-      alert(e.message || 'Error al crear plan');
+      toast.error(e.message || 'Error al crear plan');
     } finally {
       setCreating(false);
     }
@@ -204,7 +215,7 @@ export default function DesarrolloPage() {
       const result = await api.development.suggest(token, planForm.userId, suggestCycleId);
       setSuggestResult(result);
     } catch (e: any) {
-      alert(e.message || 'No se encontr\u00f3 evaluaci\u00f3n de talento para este usuario y ciclo');
+      toast.error(e.message || 'No se encontr\u00f3 evaluaci\u00f3n de talento para este usuario y ciclo');
     } finally {
       setSuggestLoading(false);
     }
@@ -237,7 +248,7 @@ export default function DesarrolloPage() {
       await loadData();
       if (selectedPlan?.id === planId) await openDetail({ id: planId });
     } catch (e: any) {
-      alert(e.message || 'Error al activar plan');
+      toast.error(e.message || 'Error al activar plan');
     }
   }
 
@@ -248,7 +259,7 @@ export default function DesarrolloPage() {
       await loadData();
       if (selectedPlan?.id === planId) await openDetail({ id: planId });
     } catch (e: any) {
-      alert(e.message || 'Error al completar plan');
+      toast.error(e.message || 'Error al completar plan');
     }
   }
 
@@ -268,7 +279,7 @@ export default function DesarrolloPage() {
       setShowAddAction(false);
       await openDetail({ id: selectedPlan.id });
     } catch (e: any) {
-      alert(e.message || 'Error al agregar acci\u00f3n');
+      toast.error(e.message || 'Error al agregar acci\u00f3n');
     } finally {
       setAddingAction(false);
     }
@@ -281,7 +292,7 @@ export default function DesarrolloPage() {
       if (selectedPlan) await openDetail({ id: selectedPlan.id });
       await loadData();
     } catch (e: any) {
-      alert(e.message || 'Error al completar acci\u00f3n');
+      toast.error(e.message || 'Error al completar acci\u00f3n');
     }
   }
 
@@ -298,7 +309,7 @@ export default function DesarrolloPage() {
       setEditingActionId(null);
       if (selectedPlan) await openDetail({ id: selectedPlan.id });
     } catch (e: any) {
-      alert(e.message || 'Error al editar acci\u00f3n');
+      toast.error(e.message || 'Error al editar acci\u00f3n');
     }
   }
 
@@ -316,7 +327,7 @@ export default function DesarrolloPage() {
       const comments = await api.development.comments.list(token, selectedPlan.id);
       setPlanComments(Array.isArray(comments) ? comments : []);
     } catch (e: any) {
-      alert(e.message || 'Error al agregar comentario');
+      toast.error(e.message || 'Error al agregar comentario');
     } finally {
       setAddingComment(false);
     }
@@ -324,14 +335,20 @@ export default function DesarrolloPage() {
 
   async function handleDeleteComment(commentId: string) {
     if (!token || !selectedPlan) return;
-    if (!confirm('\u00bfEliminar este comentario?')) return;
-    try {
-      await api.development.comments.remove(token, selectedPlan.id, commentId);
-      const comments = await api.development.comments.list(token, selectedPlan.id);
-      setPlanComments(Array.isArray(comments) ? comments : []);
-    } catch (e: any) {
-      alert(e.message || 'Error al eliminar comentario');
-    }
+    setConfirmState({
+      message: '¿Eliminar comentario?',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.development.comments.remove(token, selectedPlan.id, commentId);
+          const comments = await api.development.comments.list(token, selectedPlan.id);
+          setPlanComments(Array.isArray(comments) ? comments : []);
+        } catch (e: any) {
+          toast.error(e.message || 'Error al eliminar comentario');
+        }
+      },
+    });
   }
 
   function getUserName(userId: string) {
@@ -1069,6 +1086,16 @@ export default function DesarrolloPage() {
         </div>
       )}
     </div>
+    {confirmState && (
+      <ConfirmModal
+        message={confirmState.message}
+        detail={confirmState.detail}
+        danger={confirmState.danger}
+        confirmLabel={confirmState.confirmLabel}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+    )}
     </div>
   );
 }

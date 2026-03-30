@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import { useToastStore } from '@/store/toast.store';
+import ConfirmModal from '@/components/ConfirmModal';
 
 function Spinner() {
   return (
@@ -36,7 +38,16 @@ const emptyForm: CompetencyForm = { name: '', category: 'tecnica', description: 
 
 export default function CompetenciasPage() {
   const { token, user } = useAuthStore();
+  const toast = useToastStore();
   const isAdmin = user?.role === 'tenant_admin';
+
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    detail?: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const [showGuide, setShowGuide] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -88,7 +99,7 @@ export default function CompetenciasPage() {
       setShowCreate(false);
       await loadData();
     } catch (e: any) {
-      alert(e.message || 'Error al crear competencia');
+      toast.error(e.message || 'Error al crear competencia');
     } finally {
       setCreating(false);
     }
@@ -105,19 +116,25 @@ export default function CompetenciasPage() {
       setEditingId(null);
       await loadData();
     } catch (e: any) {
-      alert(e.message || 'Error al actualizar competencia');
+      toast.error(e.message || 'Error al actualizar competencia');
     }
   }
 
   async function handleDeactivate(id: string) {
     if (!token) return;
-    if (!confirm('\u00bfDesactivar esta competencia?')) return;
-    try {
-      await api.development.competencies.deactivate(token, id);
-      await loadData();
-    } catch (e: any) {
-      alert(e.message || 'Error al desactivar competencia');
-    }
+    setConfirmState({
+      message: '¿Desactivar esta competencia?',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.development.competencies.deactivate(token, id);
+          await loadData();
+        } catch (e: any) {
+          toast.error(e.message || 'Error al desactivar competencia');
+        }
+      },
+    });
   }
 
   if (!isAdmin) {
@@ -388,6 +405,16 @@ export default function CompetenciasPage() {
         </div>
       )}
     </div>
+    {confirmState && (
+      <ConfirmModal
+        message={confirmState.message}
+        detail={confirmState.detail}
+        danger={confirmState.danger}
+        confirmLabel={confirmState.confirmLabel}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+    )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { api, UserData, UserNoteData, PerformanceHistoryEntry } from '@/lib/api';
 import { getRoleLabel, getRoleColor } from '@/lib/roles';
+import { useToastStore } from '@/store/toast.store';
 
 function Spinner() {
   return (
@@ -74,6 +75,7 @@ export default function UserProfilePage() {
   const router = useRouter();
   const userId = params.id as string;
   const token = useAuthStore((s) => s.token);
+  const toast = useToastStore();
   const currentUser = useAuthStore((s) => s.user);
 
   const [user, setUser] = useState<UserData | null>(null);
@@ -125,7 +127,7 @@ export default function UserProfilePage() {
       const updated = await api.users.listNotes(token, userId);
       setNotes(updated);
     } catch (err: any) {
-      alert(err.message || 'Error al crear nota');
+      toast.error(err.message || 'Error al crear nota');
     } finally {
       setSavingNote(false);
     }
@@ -137,7 +139,7 @@ export default function UserProfilePage() {
       await api.users.deleteNote(token, userId, noteId);
       setNotes(notes.filter((n) => n.id !== noteId));
     } catch (err: any) {
-      alert(err.message || 'Error al eliminar');
+      toast.error(err.message || 'Error al eliminar');
     }
   };
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import ConfirmModal from '@/components/ConfirmModal';
 
 // ─── Tipos auxiliares ────────────────────────────────────────────────────────
 
@@ -68,6 +69,15 @@ export default function DesarrolloOrganizacionalPage() {
   const userDept = useAuthStore((s) => (s.user as any)?.department);
 
   const isAdmin = role === 'tenant_admin';
+
+  // ── Confirm modal ──────────────────────────────────────────────────────
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    detail?: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // ── Estado general ─────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -182,15 +192,22 @@ export default function DesarrolloOrganizacionalPage() {
   }
 
   async function handleDeletePlan(id: string, title: string) {
-    if (!token || !confirm(`¿Eliminar el plan "${title}"?`)) return;
-    try {
-      await api.orgDevelopment.plans.delete(token, id);
-      showSuccess('Plan eliminado');
-      if (selectedPlanId === id) setSelectedPlanId('');
-      await loadData();
-    } catch (e: any) {
-      setError(e.message ?? 'Error al eliminar el plan');
-    }
+    if (!token) return;
+    setConfirmState({
+      message: `¿Eliminar el plan "${title}"?`,
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.orgDevelopment.plans.delete(token, id);
+          showSuccess('Plan eliminado');
+          if (selectedPlanId === id) setSelectedPlanId('');
+          await loadData();
+        } catch (e: any) {
+          setError(e.message ?? 'Error al eliminar el plan');
+        }
+      },
+    });
   }
 
   // ─── CRUD Iniciativas ─────────────────────────────────────────────────────
@@ -250,14 +267,21 @@ export default function DesarrolloOrganizacionalPage() {
   }
 
   async function handleDeleteInitiative(id: string, title: string) {
-    if (!token || !confirm(`¿Eliminar la iniciativa "${title}"?`)) return;
-    try {
-      await api.orgDevelopment.initiatives.delete(token, id);
-      showSuccess('Iniciativa eliminada');
-      setInitiatives((prev) => prev.filter((i) => i.id !== id));
-    } catch (e: any) {
-      setError(e.message ?? 'Error al eliminar la iniciativa');
-    }
+    if (!token) return;
+    setConfirmState({
+      message: `¿Eliminar la iniciativa "${title}"?`,
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.orgDevelopment.initiatives.delete(token, id);
+          showSuccess('Iniciativa eliminada');
+          setInitiatives((prev) => prev.filter((i) => i.id !== id));
+        } catch (e: any) {
+          setError(e.message ?? 'Error al eliminar la iniciativa');
+        }
+      },
+    });
   }
 
   // ─── CRUD Acciones ────────────────────────────────────────────────────────
@@ -297,15 +321,22 @@ export default function DesarrolloOrganizacionalPage() {
   }
 
   async function handleDeleteAction(actionId: string) {
-    if (!token || !confirm('¿Eliminar esta acción?')) return;
-    try {
-      await api.orgDevelopment.actions.delete(token, actionId);
-      showSuccess('Acción eliminada');
-      const data = await api.orgDevelopment.initiatives.listByPlan(token, selectedPlanId);
-      setInitiatives(data ?? []);
-    } catch (e: any) {
-      setError(e.message ?? 'Error al eliminar la acción');
-    }
+    if (!token) return;
+    setConfirmState({
+      message: '¿Eliminar esta acción?',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.orgDevelopment.actions.delete(token, actionId);
+          showSuccess('Acción eliminada');
+          const data = await api.orgDevelopment.initiatives.listByPlan(token, selectedPlanId);
+          setInitiatives(data ?? []);
+        } catch (e: any) {
+          setError(e.message ?? 'Error al eliminar la acción');
+        }
+      },
+    });
   }
 
   async function loadLinkedPdis(initiativeId: string) {
@@ -969,6 +1000,16 @@ export default function DesarrolloOrganizacionalPage() {
         )}
 
       </div>
+    {confirmState && (
+      <ConfirmModal
+        message={confirmState.message}
+        detail={confirmState.detail}
+        danger={confirmState.danger}
+        confirmLabel={confirmState.confirmLabel}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+    )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useToastStore } from '@/store/toast.store';
 import {
   useTemplates,
   useCreateTemplate,
@@ -179,6 +180,7 @@ function ConditionBuilder({
 
 export default function PlantillasPage() {
   const token = useAuthStore((s) => s.token);
+  const toast = useToastStore();
   const { data: templates, isLoading, refetch: reloadTemplates } = useTemplates();
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
@@ -239,9 +241,9 @@ export default function PlantillasPage() {
   };
 
   const handleSave = async () => {
-    if (!name.trim()) return alert('El nombre es requerido');
-    if (sections.some((s) => !s.title.trim())) return alert('Todas las secciones necesitan título');
-    if (sections.some((s) => s.questions.some((q) => !q.text.trim()))) return alert('Todas las preguntas necesitan texto');
+    if (!name.trim()) { toast.warning('El nombre es requerido'); return; }
+    if (sections.some((s) => !s.title.trim())) { toast.warning('Todas las secciones necesitan título'); return; }
+    if (sections.some((s) => s.questions.some((q) => !q.text.trim()))) { toast.warning('Todas las preguntas necesitan texto'); return; }
 
     setSaving(true);
     try {
@@ -255,7 +257,7 @@ export default function PlantillasPage() {
       resetForm();
       setMode('list');
     } catch (err: any) {
-      alert(err.message || 'Error al guardar');
+      toast.error(err.message || 'Error al guardar');
     } finally {
       setSaving(false);
     }
@@ -266,7 +268,7 @@ export default function PlantillasPage() {
     try {
       await removeTemplate.mutateAsync(id);
     } catch (err: any) {
-      alert(err.message || 'Error al eliminar');
+      toast.error(err.message || 'Error al eliminar');
     }
   };
 
@@ -274,7 +276,7 @@ export default function PlantillasPage() {
     try {
       await duplicateTemplate.mutateAsync(id);
     } catch (err: any) {
-      alert(err.message || 'Error al duplicar');
+      toast.error(err.message || 'Error al duplicar');
     }
   };
 
@@ -290,7 +292,7 @@ export default function PlantillasPage() {
     try {
       await restoreVersion.mutateAsync({ id: historyTemplateId, version });
     } catch (err: any) {
-      alert(err.message || 'Error al restaurar');
+      toast.error(err.message || 'Error al restaurar');
     }
   };
 

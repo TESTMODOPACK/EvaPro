@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useToastStore } from '@/store/toast.store';
+import ConfirmModal from '@/components/ConfirmModal';
 import {
   useObjectives,
   useCreateObjective,
@@ -123,6 +125,7 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
   const deleteComment = useDeleteObjectiveComment();
 
   const token = useAuthStore((s) => s.token);
+  const toast = useToastStore();
   const [content, setContent] = useState('');
   const [type, setType] = useState<CommentType>('comentario');
   const [attachmentUrl, setAttachmentUrl] = useState('');
@@ -150,7 +153,7 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
       setAttachmentUrl(result.url);
       setAttachmentName(result.originalName || file.name);
     } catch (err: any) {
-      alert(err.message || 'Error al subir el archivo');
+      toast.error(err.message || 'Error al subir el archivo');
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -334,6 +337,14 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
   const updateKR = useUpdateKeyResult();
   const deleteKR = useDeleteKeyResult();
 
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    detail?: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   const [showAddKR, setShowAddKR] = useState(false);
   const [krForm, setKrForm] = useState({ description: '', unit: '%', baseValue: 0, targetValue: 100 });
   const [editingKrId, setEditingKrId] = useState<string | null>(null);
@@ -423,7 +434,11 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
                     <button
                       className="btn-ghost"
                       style={{ fontSize: '0.7rem', padding: '0.15rem 0.3rem', color: 'var(--danger)' }}
-                      onClick={() => { if (confirm('Eliminar este KR?')) deleteKR.mutate(kr.id); }}
+                      onClick={() => setConfirmState({
+                        message: 'Eliminar este KR?',
+                        danger: true,
+                        onConfirm: () => { setConfirmState(null); deleteKR.mutate(kr.id); },
+                      })}
                     >
                       &times;
                     </button>
@@ -457,6 +472,16 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
         </div>
       ) : (
         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Sin Key Results. Agrega resultados clave para medir el avance.</p>
+      )}
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message}
+          detail={confirmState.detail}
+          danger={confirmState.danger}
+          confirmLabel={confirmState.confirmLabel}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(null)}
+        />
       )}
     </div>
   );
@@ -751,6 +776,14 @@ export default function ObjetivosPage() {
 
   // Fetch cycles for objective assignment
   const { data: cycles } = useCycles();
+
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    detail?: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [userFilter, setUserFilter] = useState<string>('all');
@@ -1654,9 +1687,11 @@ export default function ObjetivosPage() {
                     <button
                       className="btn-ghost"
                       style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--danger)' }}
-                      onClick={() => {
-                        if (confirm('Eliminar este objetivo?')) deleteObjective.mutate(obj.id);
-                      }}
+                      onClick={() => setConfirmState({
+                        message: 'Eliminar este objetivo?',
+                        danger: true,
+                        onConfirm: () => { setConfirmState(null); deleteObjective.mutate(obj.id); },
+                      })}
                     >
                       Eliminar
                     </button>
@@ -1756,6 +1791,16 @@ export default function ObjetivosPage() {
         </div>
       )}
       </>
+      )}
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message}
+          detail={confirmState.detail}
+          danger={confirmState.danger}
+          confirmLabel={confirmState.confirmLabel}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(null)}
+        />
       )}
     </div>
   );

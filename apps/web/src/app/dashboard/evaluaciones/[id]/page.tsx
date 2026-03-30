@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import ConfirmModal from '@/components/ConfirmModal';
+import { useToastStore } from '@/store/toast.store';
 import {
   useCycleById,
   useCycleAssignments,
@@ -26,6 +28,7 @@ export default function CycleDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
+  const toast = useToastStore();
   const user = useAuthStore((s) => s.user);
   const { data: cycle, isLoading, isError } = useCycleById(id);
   const { data: assignments } = useCycleAssignments(id);
@@ -39,6 +42,14 @@ export default function CycleDetailPage() {
   const { data: usersData } = useUsers();
 
   const token = useAuthStore((s) => s.token);
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    detail?: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState('');
   const [closing, setClosing] = useState(false);
@@ -76,53 +87,64 @@ export default function CycleDetailPage() {
 
   const handleAutoGenerate = async () => {
     if (!token) return;
-    const confirmed = window.confirm(
-      '\u00bfGenerar asignaciones autom\u00e1ticamente seg\u00fan el tipo de ciclo y estructura organizacional?\n\nSe crear\u00e1n autoevaluaciones, evaluaciones de jefe directo y reportes directos seg\u00fan corresponda. Las asignaciones de pares deben agregarse manualmente.',
-    );
-    if (!confirmed) return;
-    setAutoGenerating(true);
-    setAutoGenResult(null);
-    try {
-      const result = await api.peerAssignments.autoGenerate(token, id);
-      setAutoGenResult(result);
-      // Refetch peer assignments
-      window.location.reload();
-    } catch (e: any) {
-      alert(e.message || 'Error al generar asignaciones');
-    } finally {
-      setAutoGenerating(false);
-    }
+    setConfirmState({
+      message: '¿Generar asignaciones automáticamente?',
+      detail: 'Se crearán autoevaluaciones, evaluaciones de jefe directo y reportes directos según corresponda. Las asignaciones de pares deben agregarse manualmente.',
+      danger: false,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setAutoGenerating(true);
+        setAutoGenResult(null);
+        try {
+          const result = await api.peerAssignments.autoGenerate(token, id);
+          setAutoGenResult(result);
+          window.location.reload();
+        } catch (e: any) {
+          toast.error(e.message || 'Error al generar asignaciones');
+        } finally {
+          setAutoGenerating(false);
+        }
+      },
+    });
   };
 
   const handleLaunch = async () => {
-    const confirmed = window.confirm(
-      '¿Estás seguro de que quieres lanzar este ciclo? Las evaluaciones se enviarán a todos los participantes.',
-    );
-    if (!confirmed) return;
-    setLaunching(true);
-    setLaunchError('');
-    try {
-      await launchCycle.mutateAsync(id);
-    } catch (e: any) {
-      setLaunchError(
-        e?.message || 'Error al lanzar el ciclo. Verifica que el ciclo tenga asignaciones configuradas e inténtalo de nuevo.',
-      );
-    } finally {
-      setLaunching(false);
-    }
+    setConfirmState({
+      message: '¿Lanzar este ciclo?',
+      detail: 'Las evaluaciones se enviarán a todos los participantes.',
+      danger: false,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setLaunching(true);
+        setLaunchError('');
+        try {
+          await launchCycle.mutateAsync(id);
+        } catch (e: any) {
+          setLaunchError(
+            e?.message || 'Error al lanzar el ciclo. Verifica que el ciclo tenga asignaciones configuradas e inténtalo de nuevo.',
+          );
+        } finally {
+          setLaunching(false);
+        }
+      },
+    });
   };
 
   const handleClose = async () => {
-    const confirmed = window.confirm(
-      '¿Cerrar este ciclo? No se podrán enviar más evaluaciones.',
-    );
-    if (!confirmed) return;
-    setClosing(true);
-    try {
-      await closeCycle.mutateAsync(id);
-    } finally {
-      setClosing(false);
-    }
+    setConfirmState({
+      message: '¿Cerrar este ciclo?',
+      detail: 'No se podrán enviar más evaluaciones.',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setClosing(true);
+        try {
+          await closeCycle.mutateAsync(id);
+        } finally {
+          setClosing(false);
+        }
+      },
+    });
   };
 
   const openEdit = () => {
@@ -308,7 +330,7 @@ export default function CycleDetailPage() {
                 <button
                   className="btn-ghost"
                   onClick={() =>
-                    window.alert('Recordatorios enviados a los participantes pendientes.')
+                    toast.success('Recordatorios enviados a los participantes pendientes.')
                   }
                   style={{ fontSize: '0.85rem' }}
                 >
@@ -1029,6 +1051,16 @@ export default function CycleDetailPage() {
         >
           No hay asignaciones en este ciclo a&uacute;n.
         </div>
+      )}
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message}
+          detail={confirmState.detail}
+          danger={confirmState.danger}
+          confirmLabel={confirmState.confirmLabel}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(null)}
+        />
       )}
     </div>
   );

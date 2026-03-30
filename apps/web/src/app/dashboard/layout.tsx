@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
+import Toast from '@/components/Toast';
 import { useMySubscription } from '@/hooks/useSubscription';
 
 function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
@@ -187,6 +188,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {showOnboarding && <OnboardingBanner onDismiss={dismissOnboarding} />}
         {children}
       </main>
+      <Toast />
     </div>
   );
 }

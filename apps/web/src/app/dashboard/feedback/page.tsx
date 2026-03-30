@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import ConfirmModal from '@/components/ConfirmModal';
 import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
@@ -479,6 +480,14 @@ function LocationsTab() {
   const createLocation = useCreateLocation();
   const deleteLocation = useDeleteLocation();
 
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    detail?: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', type: 'physical', address: '', capacity: '' });
   const [createError, setCreateError] = useState('');
@@ -575,12 +584,31 @@ function LocationsTab() {
                   {loc.capacity && <span>{'Capacidad: '}{loc.capacity}</span>}
                 </div>
               </div>
-              <button className="btn-ghost" style={{ fontSize: '0.75rem', color: 'var(--danger)' }} onClick={() => { if (confirm('\u00bfDesactivar este lugar?')) deleteLocation.mutate(loc.id); }} disabled={deleteLocation.isPending}>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: '0.75rem', color: 'var(--danger)' }}
+                onClick={() => setConfirmState({
+                  message: '¿Desactivar este lugar?',
+                  danger: true,
+                  onConfirm: () => { setConfirmState(null); deleteLocation.mutate(loc.id); },
+                })}
+                disabled={deleteLocation.isPending}
+              >
                 {'Desactivar'}
               </button>
             </div>
           ))}
         </div>
+      )}
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message}
+          detail={confirmState.detail}
+          danger={confirmState.danger}
+          confirmLabel={confirmState.confirmLabel}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(null)}
+        />
       )}
     </div>
   );

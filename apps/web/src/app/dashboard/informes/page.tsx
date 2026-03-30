@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import { useToastStore } from '@/store/toast.store';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 import { useCompetencyRadar, useSelfVsOthers, useHeatmap } from '@/hooks/useReports';
@@ -352,6 +353,7 @@ function HeatmapSection({ cycleId }: { cycleId: string }) {
 
 export default function InformesPage() {
   const token = useAuthStore((s) => s.token);
+  const toast = useToastStore();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const { data: usersPage } = useUsers();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
@@ -373,7 +375,7 @@ export default function InformesPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert(err.message || 'Error al descargar el reporte');
+      toast.error(err.message || 'Error al descargar el reporte');
     } finally {
       setExporting(null);
     }

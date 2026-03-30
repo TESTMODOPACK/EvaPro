@@ -32,6 +32,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [savingAssessment, setSavingAssessment] = useState(false);
   const [assessmentSaved, setAssessmentSaved] = useState(false);
 
+  // Config tab edit form
+  const [configEditing, setConfigEditing] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [configForm, setConfigForm] = useState({ title: '', position: '', department: '', description: '', startDate: '', endDate: '' });
+
   async function fetchProcess() {
     if (!token) return;
     setLoading(true);
@@ -127,6 +133,35 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const entries = process.entries || [];
   const evaluators = process.evaluators || [];
   const competencies = process.competencies || [];
+
+  const openConfigEdit = () => {
+    setConfigForm({
+      title: process.title || '',
+      position: process.position || '',
+      department: process.department || '',
+      description: process.description || '',
+      startDate: process.startDate ? process.startDate.slice(0, 10) : '',
+      endDate: process.endDate ? process.endDate.slice(0, 10) : '',
+    });
+    setConfigEditing(true);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!token) return;
+    setConfigSaving(true);
+    try {
+      await api.postulants.processes.update(token, params.id, {
+        ...configForm,
+        startDate: configForm.startDate || undefined,
+        endDate: configForm.endDate || undefined,
+      });
+      setConfigSaved(true);
+      setConfigEditing(false);
+      setTimeout(() => setConfigSaved(false), 3000);
+      await fetchProcess();
+    } catch { /* ignore */ }
+    setConfigSaving(false);
+  };
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
@@ -389,49 +424,164 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       )}
 
       {/* ─── Tab: Configuración ───────────────────────────────────────── */}
-      {tab === 'configuracion' && isAdmin && (
-        <div>
-          <div className="card" style={{ padding: '1.5rem', marginBottom: '1rem' }}>
-            <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Estado del Proceso</h2>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {['draft', 'in_progress', 'completed', 'closed'].map((s) => (
-                <button
-                  key={s}
-                  className={process.status === s ? 'btn-primary' : ''}
-                  onClick={async () => {
-                    if (!token) return;
-                    await api.postulants.processes.update(token, params.id, { status: s });
-                    await fetchProcess();
-                  }}
-                  style={{
-                    padding: '0.4rem 1rem', fontSize: '0.82rem', borderRadius: '6px',
-                    border: process.status === s ? 'none' : '1px solid var(--border)',
-                    background: process.status === s ? undefined : 'transparent',
-                    cursor: 'pointer',
-                    color: process.status === s ? undefined : 'var(--text-secondary)',
-                  }}
-                >
-                  {processStatusLabel[s]}
-                </button>
-              ))}
-            </div>
-          </div>
+      {tab === 'configuracion' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+          {/* ── Información del Proceso ── */}
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Evaluadores Asignados</h2>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              {evaluators.map((ev: any) => (
-                <span key={ev.id} className="badge badge-accent" style={{ fontSize: '0.82rem' }}>
-                  {ev.evaluator?.firstName} {ev.evaluator?.lastName}
-                </span>
-              ))}
-              {evaluators.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin evaluadores asignados</p>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Información del Proceso</h2>
+              {isAdmin && !configEditing && (
+                <button className="btn-ghost" onClick={openConfigEdit} style={{ fontSize: '0.82rem' }}>
+                  ✏️ Editar
+                </button>
+              )}
             </div>
+
+            {!configEditing ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem 1.5rem', fontSize: '0.875rem' }}>
+                {[
+                  { label: 'Título', value: process.title },
+                  { label: 'Cargo', value: process.position },
+                  { label: 'Departamento', value: process.department || '—' },
+                  { label: 'Inicio', value: process.startDate ? new Date(process.startDate).toLocaleDateString('es-CL') : '—' },
+                  { label: 'Cierre', value: process.endDate ? new Date(process.endDate).toLocaleDateString('es-CL') : '—' },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>{label}</div>
+                    <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{value}</div>
+                  </div>
+                ))}
+                {process.description && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Descripción</div>
+                    <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{process.description}</div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Título *</label>
+                    <input className="input" value={configForm.title} onChange={(e) => setConfigForm((f) => ({ ...f, title: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Cargo *</label>
+                    <input className="input" value={configForm.position} onChange={(e) => setConfigForm((f) => ({ ...f, position: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Departamento</label>
+                    <input className="input" value={configForm.department} onChange={(e) => setConfigForm((f) => ({ ...f, department: e.target.value }))} />
+                  </div>
+                  <div />
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Fecha Inicio</label>
+                    <input className="input" type="date" value={configForm.startDate} onChange={(e) => setConfigForm((f) => ({ ...f, startDate: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Fecha Cierre</label>
+                    <input className="input" type="date" value={configForm.endDate} onChange={(e) => setConfigForm((f) => ({ ...f, endDate: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Descripción</label>
+                  <textarea className="input" rows={3} value={configForm.description} onChange={(e) => setConfigForm((f) => ({ ...f, description: e.target.value }))} style={{ resize: 'vertical' }} />
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button className="btn-primary" onClick={handleSaveConfig} disabled={configSaving || !configForm.title || !configForm.position}>
+                    {configSaving ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                  <button className="btn-ghost" onClick={() => setConfigEditing(false)}>Cancelar</button>
+                </div>
+              </div>
+            )}
+            {configSaved && (
+              <p style={{ color: 'var(--success)', fontSize: '0.82rem', marginTop: '0.5rem', fontWeight: 600 }}>✓ Proceso actualizado</p>
+            )}
           </div>
-        </div>
-      )}
-      {tab === 'configuracion' && !isAdmin && (
-        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Solo el administrador puede modificar la configuración del proceso
+
+          {/* ── Estado del Proceso ── */}
+          {isAdmin && (
+            <div className="card" style={{ padding: '1.5rem' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>Estado del Proceso</h2>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {['draft', 'in_progress', 'completed', 'closed'].map((s) => (
+                  <button
+                    key={s}
+                    className={process.status === s ? 'btn-primary' : ''}
+                    onClick={async () => {
+                      if (!token) return;
+                      await api.postulants.processes.update(token, params.id, { status: s });
+                      await fetchProcess();
+                    }}
+                    style={{
+                      padding: '0.4rem 1rem', fontSize: '0.82rem', borderRadius: '6px',
+                      border: process.status === s ? 'none' : '1px solid var(--border)',
+                      background: process.status === s ? undefined : 'transparent',
+                      cursor: 'pointer',
+                      color: process.status === s ? undefined : 'var(--text-secondary)',
+                    }}
+                  >
+                    {processStatusLabel[s]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Evaluadores ── */}
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>
+              Evaluadores Asignados
+              <span style={{ fontWeight: 400, fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>({evaluators.length})</span>
+            </h2>
+            {evaluators.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin evaluadores asignados. Los evaluadores se asignan al crear el proceso.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {evaluators.map((ev: any) => (
+                  <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(201,147,58,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.82rem', color: 'var(--accent)', flexShrink: 0 }}>
+                      {(ev.evaluator?.firstName?.[0] || '?')}{ev.evaluator?.lastName?.[0] || ''}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{ev.evaluator?.firstName} {ev.evaluator?.lastName}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ev.evaluator?.email}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Competencias del Proceso ── */}
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+              Competencias a Evaluar
+              <span style={{ fontWeight: 400, fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>({competencies.length})</span>
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+              Las competencias se determinan automáticamente según el cargo del proceso. Se usan en el Scorecard de cada candidato.
+            </p>
+            {competencies.length === 0 ? (
+              <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.07)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.2)', fontSize: '0.85rem', color: 'var(--warning)' }}>
+                No hay competencias asociadas al cargo <strong>{process.position}</strong>. Configúralas en Competencias → Competencias por Rol.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                {competencies.map((rc: any) => (
+                  <div key={rc.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.75rem', background: 'rgba(99,102,241,0.07)', borderRadius: '999px', border: '1px solid rgba(99,102,241,0.2)', fontSize: '0.8rem' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{rc.competency?.name || rc.name}</span>
+                    {rc.expectedLevel && (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>— nivel {rc.expectedLevel}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 

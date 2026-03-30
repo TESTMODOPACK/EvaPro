@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import NavConfirmModal from '@/components/ConfirmModal';
 import {
   useEvaluationDetail,
   useSaveResponse,
@@ -190,6 +191,13 @@ export default function ResponderEvaluacionPage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [showConfirm, setShowConfirm] = useState(false);
   const [hasUnsaved, setHasUnsaved] = useState(false);
+  const [navConfirmState, setNavConfirmState] = useState<{
+    message: string;
+    detail?: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Initialize from existing response ─────────────────────────────────────
@@ -404,8 +412,20 @@ export default function ResponderEvaluacionPage() {
           <button
             className="btn-ghost"
             onClick={() => {
-              if (hasUnsaved && !window.confirm('Tienes cambios sin guardar. ¿Salir de todas formas?')) return;
-              router.push(`/dashboard/evaluaciones/${cycleId}`);
+              if (hasUnsaved) {
+                setNavConfirmState({
+                  message: 'Tienes cambios sin guardar',
+                  detail: '¿Salir de todas formas? Se perderán los cambios no guardados.',
+                  danger: false,
+                  confirmLabel: 'Salir sin guardar',
+                  onConfirm: () => {
+                    setNavConfirmState(null);
+                    router.push(`/dashboard/evaluaciones/${cycleId}`);
+                  },
+                });
+              } else {
+                router.push(`/dashboard/evaluaciones/${cycleId}`);
+              }
             }}
             style={{ fontSize: '0.82rem', padding: '0.3rem 0.65rem' }}
           >
@@ -635,6 +655,16 @@ export default function ResponderEvaluacionPage() {
 
         <div style={{ height: '5rem' }} />
       </div>
+      {navConfirmState && (
+        <NavConfirmModal
+          message={navConfirmState.message}
+          detail={navConfirmState.detail}
+          danger={navConfirmState.danger}
+          confirmLabel={navConfirmState.confirmLabel}
+          onConfirm={navConfirmState.onConfirm}
+          onCancel={() => setNavConfirmState(null)}
+        />
+      )}
     </>
   );
 }

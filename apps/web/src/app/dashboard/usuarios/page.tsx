@@ -7,6 +7,7 @@ import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/u
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 import { api } from '@/lib/api';
+import { useToastStore } from '@/store/toast.store';
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -47,6 +48,7 @@ export default function UsuariosPage() {
   const { t } = useTranslation();
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
+  const toast = useToastStore();
   const currentUserRole = useAuthStore((s) => s.user?.role || '');
   const isAdmin = currentUserRole === 'super_admin' || currentUserRole === 'tenant_admin';
 
@@ -208,7 +210,7 @@ export default function UsuariosPage() {
     try {
       await removeUser.mutateAsync(id);
     } catch (err: any) {
-      alert(err.message || 'Error al eliminar usuario');
+      toast.error(err.message || 'Error al eliminar usuario');
     }
   };
 
