@@ -584,7 +584,7 @@
       "whatIs": "What is this module?",
       "whatIsDesc": "The Applicant Evaluation module manages selection processes for internal and external candidates. Each process is linked to a specific position and uses the organization's competency model to evaluate candidates objectively and systematically. Multiple evaluators can independently rate each candidate, and the system automatically calculates average scores to facilitate comparison.",
       "flow": "Process flow",
-      "flowStep1": "The administrator creates an evaluation process specifying the position, department, dates and assigned evaluators.",
+      "flowStep1": "The administrator creates an evaluation process specifying the position and department. Department managers are automatically assigned as evaluators, and guest evaluators from other areas can be added.",
       "flowStep2": "Candidates are added to the process (new external applicants or existing internal employees).",
       "flowStep3": "Each evaluator accesses the Scorecard tab and rates the candidate on each position competency (1-10 scale).",
       "flowStep4": "The system automatically calculates the final score as the average of all evaluations received.",

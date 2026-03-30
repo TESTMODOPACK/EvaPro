@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import { useDepartments } from '@/hooks/useDepartments';
 
 export default function NuevoProcesoPage() {
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
+  const { departments: configuredDepartments } = useDepartments();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -26,6 +28,29 @@ export default function NuevoProcesoPage() {
       setUsers((res as any).data || res || []);
     }).catch(() => {});
   }, [token]);
+
+  // Auto-suggest department managers when department changes
+  const eligibleEvaluators = users.filter((u: any) => ['tenant_admin', 'manager'].includes(u.role));
+  const deptEvaluators = department
+    ? eligibleEvaluators.filter((u: any) => u.department === department)
+    : [];
+  const otherEvaluators = department
+    ? eligibleEvaluators.filter((u: any) => u.department !== department)
+    : eligibleEvaluators;
+
+  useEffect(() => {
+    if (!department) return;
+    // Auto-select managers from the selected department
+    const deptManagerIds = eligibleEvaluators
+      .filter((u: any) => u.department === department)
+      .map((u: any) => u.id);
+    if (deptManagerIds.length > 0) {
+      setEvaluatorIds((prev) => {
+        const combined = Array.from(new Set([...prev, ...deptManagerIds]));
+        return combined;
+      });
+    }
+  }, [department]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,8 +116,10 @@ export default function NuevoProcesoPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div>
               <label style={labelStyle}>Departamento</label>
-              <input className="input" value={department} onChange={(e) => setDepartment(e.target.value)}
-                placeholder="Ej: Tecnología" />
+              <select className="input" value={department} onChange={(e) => setDepartment(e.target.value)}>
+                <option value="">— Seleccionar departamento —</option>
+                {configuredDepartments.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
               <div>
@@ -117,32 +144,88 @@ export default function NuevoProcesoPage() {
         <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
           <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Evaluadores</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-            Selecciona quiénes evaluarán a los candidatos en este proceso
+            {department
+              ? `Los managers de "${department}" se asignan automáticamente. Puedes agregar evaluadores invitados de otras áreas.`
+              : 'Selecciona quiénes evaluarán a los candidatos en este proceso'}
           </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {users.filter((u: any) => ['tenant_admin', 'manager'].includes(u.role)).map((u: any) => (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => toggleEvaluator(u.id)}
-                style={{
-                  padding: '0.4rem 0.85rem',
-                  fontSize: '0.82rem',
-                  borderRadius: '20px',
-                  border: evaluatorIds.includes(u.id) ? '2px solid var(--accent)' : '1px solid var(--border)',
-                  background: evaluatorIds.includes(u.id) ? 'rgba(201,147,58,0.1)' : 'transparent',
-                  color: evaluatorIds.includes(u.id) ? 'var(--accent)' : 'var(--text-secondary)',
-                  fontWeight: evaluatorIds.includes(u.id) ? 600 : 400,
-                  cursor: 'pointer',
-                }}
-              >
-                {u.firstName} {u.lastName}
-              </button>
-            ))}
-            {users.filter((u: any) => ['tenant_admin', 'manager'].includes(u.role)).length === 0 && (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No hay usuarios disponibles</p>
-            )}
-          </div>
+
+          {/* Department evaluators (auto-suggested) */}
+          {department && deptEvaluators.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
+                Evaluadores del departamento ({department})
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {deptEvaluators.map((u: any) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => toggleEvaluator(u.id)}
+                    style={{
+                      padding: '0.4rem 0.85rem',
+                      fontSize: '0.82rem',
+                      borderRadius: '20px',
+                      border: evaluatorIds.includes(u.id) ? '2px solid var(--accent)' : '1px solid var(--border)',
+                      background: evaluatorIds.includes(u.id) ? 'rgba(201,147,58,0.1)' : 'transparent',
+                      color: evaluatorIds.includes(u.id) ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontWeight: evaluatorIds.includes(u.id) ? 600 : 400,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {u.firstName} {u.lastName}
+                    {u.position ? ` (${u.position})` : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {department && deptEvaluators.length === 0 && (
+            <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(245,158,11,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              No hay managers asignados al departamento "{department}". Selecciona evaluadores de otras áreas.
+            </div>
+          )}
+
+          {/* Other area evaluators (invitados) */}
+          {otherEvaluators.length > 0 && (
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
+                {department ? 'Evaluadores invitados (otras áreas)' : 'Evaluadores disponibles'}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {otherEvaluators.map((u: any) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => toggleEvaluator(u.id)}
+                    style={{
+                      padding: '0.4rem 0.85rem',
+                      fontSize: '0.82rem',
+                      borderRadius: '20px',
+                      border: evaluatorIds.includes(u.id) ? '2px solid var(--accent)' : '1px solid var(--border)',
+                      background: evaluatorIds.includes(u.id) ? 'rgba(201,147,58,0.1)' : 'transparent',
+                      color: evaluatorIds.includes(u.id) ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontWeight: evaluatorIds.includes(u.id) ? 600 : 400,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {u.firstName} {u.lastName}
+                    {u.department ? ` (${u.department})` : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {eligibleEvaluators.length === 0 && (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No hay usuarios disponibles como evaluadores</p>
+          )}
+
+          {evaluatorIds.length > 0 && (
+            <div style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              {evaluatorIds.length} evaluador(es) seleccionado(s)
+            </div>
+          )}
         </div>
 
         {error && (

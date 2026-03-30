@@ -584,7 +584,7 @@
       "whatIs": "¿Qué es este módulo?",
       "whatIsDesc": "El módulo de Evaluación de Postulantes permite gestionar procesos de selección para candidatos internos y externos. Cada proceso se asocia a un cargo específico y utiliza el modelo de competencias de la organización para evaluar a los candidatos de forma objetiva y estructurada. Múltiples evaluadores pueden calificar independientemente a cada candidato, y el sistema calcula automáticamente los puntajes promedio para facilitar la comparación.",
       "flow": "Flujo del proceso",
-      "flowStep1": "El administrador crea un proceso de evaluación indicando el cargo, departamento, fechas y evaluadores asignados.",
+      "flowStep1": "El administrador crea un proceso de evaluación indicando el cargo y departamento. Los managers del departamento se asignan automáticamente como evaluadores, y se pueden agregar evaluadores invitados de otras áreas.",
       "flowStep2": "Se agregan los candidatos al proceso (nuevos postulantes externos o colaboradores internos existentes).",
       "flowStep3": "Cada evaluador accede a la pestaña Scorecard y califica al candidato en cada competencia del cargo (escala 1-10).",
       "flowStep4": "El sistema calcula automáticamente el puntaje final como promedio de todas las evaluaciones recibidas.",

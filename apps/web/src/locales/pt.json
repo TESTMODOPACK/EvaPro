@@ -584,7 +584,7 @@
       "whatIs": "O que é este módulo?",
       "whatIsDesc": "O módulo de Avaliação de Candidatos permite gerenciar processos de seleção para candidatos internos e externos. Cada processo está associado a um cargo específico e utiliza o modelo de competências da organização para avaliar os candidatos de forma objetiva e estruturada. Múltiplos avaliadores podem qualificar independentemente cada candidato, e o sistema calcula automaticamente as pontuações médias para facilitar a comparação.",
       "flow": "Fluxo do processo",
-      "flowStep1": "O administrador cria um processo de avaliação indicando o cargo, departamento, datas e avaliadores designados.",
+      "flowStep1": "O administrador cria um processo de avaliação indicando o cargo e departamento. Os gestores do departamento são designados automaticamente como avaliadores, e avaliadores convidados de outras áreas podem ser adicionados.",
       "flowStep2": "Os candidatos são adicionados ao processo (novos candidatos externos ou colaboradores internos existentes).",
       "flowStep3": "Cada avaliador acessa a aba Scorecard e qualifica o candidato em cada competência do cargo (escala 1-10).",
       "flowStep4": "O sistema calcula automaticamente a pontuação final como média de todas as avaliações recebidas.",
