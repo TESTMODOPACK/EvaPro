@@ -63,6 +63,9 @@ export class TalentAssessment {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  @Column({ type: 'text', nullable: true, name: 'potential_justification', comment: 'Justificación obligatoria al evaluar potencial' })
+  potentialJustification: string | null;
+
   @Column({ type: 'uuid', name: 'assessed_by', nullable: true })
   assessedBy: string | null;
 

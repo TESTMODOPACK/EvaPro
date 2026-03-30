@@ -9,6 +9,7 @@ import {
   Request,
   ParseUUIDPipe,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -88,6 +89,21 @@ export class DevelopmentController {
     @Request() req: any,
   ) {
     return this.developmentService.deactivateCompetency(req.user.tenantId, id);
+  }
+
+  // B8.3: Competency profile — actual vs expected for a user's role
+  @Get('competency-profile/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getCompetencyProfile(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Request() req: any,
+  ) {
+    // Employees can only see their own profile
+    const { role } = req.user;
+    if (role === 'employee' && req.user.userId !== userId) {
+      throw new ForbiddenException('Solo puedes ver tu propio perfil de competencias');
+    }
+    return this.developmentService.getCompetencyProfile(req.user.tenantId, userId);
   }
 
   // ─── Plans (requires PDI feature) ──────────────────────────────────────

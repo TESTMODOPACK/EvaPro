@@ -13,12 +13,15 @@ import { DevelopmentAction } from './entities/development-action.entity';
 import { DevelopmentComment } from './entities/development-comment.entity';
 import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
+import { RoleCompetency } from './entities/role-competency.entity';
 
 @Injectable()
 export class DevelopmentService {
   constructor(
     @InjectRepository(Competency)
     private readonly competencyRepo: Repository<Competency>,
+    @InjectRepository(RoleCompetency)
+    private readonly roleCompetencyRepo: Repository<RoleCompetency>,
     @InjectRepository(DevelopmentPlan)
     private readonly planRepo: Repository<DevelopmentPlan>,
     @InjectRepository(DevelopmentAction)
@@ -137,6 +140,72 @@ export class DevelopmentService {
     });
   }
 
+  // ─── Competency Profile: Actual vs Expected ─────────────────────────────
+
+  /**
+   * B8.3: Returns the user's competency profile comparing actual evaluation scores
+   * against the expected level for their role (position).
+   */
+  async getCompetencyProfile(tenantId: string, userId: string) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId, tenantId },
+      select: ['id', 'firstName', 'lastName', 'position'],
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // Get expected competencies for the user's role
+    const roleCompetencies = user.position
+      ? await this.roleCompetencyRepo.find({
+          where: { tenantId, position: user.position },
+          relations: ['competency'],
+        })
+      : [];
+
+    // Get user's latest talent assessment for actual scores
+    const assessment = await this.assessmentRepo.findOne({
+      where: { tenantId, userId },
+      order: { updatedAt: 'DESC' },
+    });
+
+    // Get development actions only for this user's plans
+    const userPlans = await this.planRepo.find({
+      where: { tenantId, userId },
+      select: ['id'],
+    });
+    const userPlanIds = userPlans.map((p) => p.id);
+    const userActions = userPlanIds.length > 0
+      ? await this.actionRepo.find({ where: { tenantId, planId: In(userPlanIds) } })
+      : [];
+
+    // Build profile comparing expected vs actual per competency
+    // Note: actualLevel requires per-competency evaluation data (from 360 responses),
+    // which is not directly available here. We set it to null and flag competencies
+    // that have development actions (indicating identified gaps).
+    const profile = roleCompetencies.map((rc) => {
+      const relatedActions = userActions.filter((a) => a.competencyId === rc.competencyId);
+      const hasGap = relatedActions.length > 0;
+      return {
+        competencyId: rc.competencyId,
+        competencyName: rc.competency?.name || 'N/A',
+        competencyCategory: rc.competency?.category || null,
+        expectedLevel: rc.expectedLevel,
+        hasIdentifiedGap: hasGap,
+        developmentActions: relatedActions.length,
+        completedActions: relatedActions.filter((a) => a.status === 'completada').length,
+        pendingActions: relatedActions.filter((a) => a.status === 'pendiente' || a.status === 'en_progreso').length,
+      };
+    });
+
+    return {
+      user: { id: user.id, firstName: user.firstName, lastName: user.lastName, position: user.position },
+      position: user.position,
+      totalCompetencies: profile.length,
+      competenciesWithGap: profile.filter((p) => p.hasIdentifiedGap).length,
+      competenciesFullyCovered: profile.filter((p) => p.developmentActions > 0 && p.pendingActions === 0).length,
+      profile,
+    };
+  }
+
   // ─── Plans CRUD ────────────────────────────────────────────────────────
 
   async createPlan(tenantId: string, createdBy: string, dto: Partial<DevelopmentPlan>, role?: string) {
@@ -239,9 +308,34 @@ export class DevelopmentService {
     }
     if (!plan.actions || plan.actions.length === 0) {
       throw new BadRequestException(
-        'No se puede activar un plan sin acciones de desarrollo. Agrega al menos una acci\u00f3n antes de activar.',
+        'No se puede activar un plan sin acciones de desarrollo. Agrega al menos una acción antes de activar.',
       );
     }
+
+    // B9.1: All actions must be linked to a competency gap
+    const actionsWithoutCompetency = plan.actions.filter((a) => !a.competencyId);
+    if (actionsWithoutCompetency.length > 0) {
+      throw new BadRequestException(
+        `${actionsWithoutCompetency.length} acción(es) no están vinculadas a una competencia. Todas las acciones deben estar asociadas a una brecha de competencia para activar el plan.`,
+      );
+    }
+
+    // B8.1: Validate that the user's role has at least 3 competencies mapped
+    const user = await this.userRepo.findOne({
+      where: { id: plan.userId, tenantId },
+      select: ['id', 'position'],
+    });
+    if (user?.position) {
+      const roleCompCount = await this.roleCompetencyRepo.count({
+        where: { tenantId, position: user.position },
+      });
+      if (roleCompCount > 0 && roleCompCount < 3) {
+        throw new BadRequestException(
+          `El rol "${user.position}" tiene solo ${roleCompCount} competencia(s) asignada(s). Se requieren mínimo 3 competencias críticas por rol para activar un plan de desarrollo.`,
+        );
+      }
+    }
+
     plan.status = 'activo';
     return this.planRepo.save(plan);
   }

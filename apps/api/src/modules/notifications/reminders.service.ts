@@ -295,6 +295,98 @@ export class RemindersService {
     }
   }
 
+  // ─── 5b. Escalación: 2+ check-ins consecutivos sin completar → HRBP (semanal miércoles 9am) ──
+
+  @Cron('0 9 * * 3')
+  async escalateMissedCheckins() {
+    this.logger.log('[Cron] Checking for 2+ consecutive missed check-ins...');
+    try {
+      const now = new Date();
+
+      // Get distinct manager-employee pairs that have recent check-ins (last 90 days)
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      const recentCheckins = await this.checkinRepo
+        .createQueryBuilder('c')
+        .where('c.scheduledDate > :start', { start: ninetyDaysAgo.toISOString() })
+        .andWhere('c.scheduledDate < :now', { now: now.toISOString() })
+        .orderBy('c.managerId', 'ASC')
+        .addOrderBy('c.employeeId', 'ASC')
+        .addOrderBy('c.scheduledDate', 'DESC')
+        .take(5000) // Limit to prevent memory issues
+        .getMany();
+
+      // Group by manager-employee pair and count consecutive missed from most recent
+      const pairConsecutiveMissed = new Map<string, { count: number; tenantId: string }>();
+      const pairsByKey = new Map<string, typeof recentCheckins>();
+      for (const ci of recentCheckins) {
+        const key = `${ci.managerId}|${ci.employeeId}`;
+        const list = pairsByKey.get(key) || [];
+        list.push(ci);
+        pairsByKey.set(key, list);
+      }
+
+      for (const [key, checkins] of pairsByKey.entries()) {
+        // Already sorted DESC by scheduledDate — count consecutive misses from most recent
+        let consecutiveMissed = 0;
+        for (const ci of checkins) {
+          if (ci.status === 'scheduled') {
+            consecutiveMissed++;
+          } else {
+            break; // A completed/cancelled check-in breaks the streak
+          }
+        }
+        if (consecutiveMissed >= 2) {
+          pairConsecutiveMissed.set(key, {
+            count: consecutiveMissed,
+            tenantId: checkins[0].tenantId,
+          });
+        }
+      }
+
+      if (pairConsecutiveMissed.size === 0) return;
+
+      const notifications: Array<{
+        tenantId: string;
+        userId: string;
+        type: NotificationType;
+        title: string;
+        message: string;
+        metadata?: Record<string, any>;
+      }> = [];
+
+      // Batch-load admins for affected tenants
+      const tenantIds = [...new Set([...pairConsecutiveMissed.values()].map((v) => v.tenantId))];
+      const admins = await this.userRepo.find({
+        where: { tenantId: In(tenantIds), role: In(['tenant_admin']), isActive: true },
+        select: ['id', 'tenantId'],
+      });
+
+      for (const [key, { count, tenantId }] of pairConsecutiveMissed.entries()) {
+        const [managerId, employeeId] = key.split('|');
+        const tenantAdmins = admins.filter((a) => a.tenantId === tenantId);
+        for (const admin of tenantAdmins) {
+          notifications.push({
+            tenantId,
+            userId: admin.id,
+            type: NotificationType.CHECKIN_OVERDUE,
+            title: 'Escalación: check-ins consecutivos sin realizar',
+            message: `Un manager tiene ${count} check-in(s) consecutivos sin completar con un colaborador. Se requiere seguimiento.`,
+            metadata: { managerId, employeeId, consecutiveMissed: count },
+          });
+        }
+      }
+
+      if (notifications.length > 0) {
+        await this.notificationsService.createBulk(notifications);
+        this.logger.log(`[Cron] Created ${notifications.length} missed check-in escalation notifications`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in escalateMissedCheckins: ${error}`);
+    }
+  }
+
   // ─── 6. Escalación: evaluaciones vencidas → manager + admin (diario 10am) ──
 
   @Cron('0 10 * * *')

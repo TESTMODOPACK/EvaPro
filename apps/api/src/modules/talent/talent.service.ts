@@ -157,7 +157,18 @@ export class TalentService {
     const assessment = await this.assessmentRepo.findOne({ where: { id }, relations: ['user'] });
     if (!assessment) throw new NotFoundException('Assessment no encontrado');
 
-    if (dto.potentialScore !== undefined) assessment.potentialScore = dto.potentialScore;
+    // B8.2: Fresh justification is mandatory on every potential score change
+    if (dto.potentialScore !== undefined) {
+      if (!dto.potentialJustification || dto.potentialJustification.trim().length === 0) {
+        throw new BadRequestException(
+          'La evaluación de potencial requiere una justificación textual. Explique las razones de la calificación asignada.',
+        );
+      }
+      assessment.potentialScore = dto.potentialScore;
+      assessment.potentialJustification = dto.potentialJustification;
+    } else if (dto.potentialJustification !== undefined) {
+      assessment.potentialJustification = dto.potentialJustification;
+    }
     if (dto.readiness !== undefined) assessment.readiness = dto.readiness;
     if (dto.flightRisk !== undefined) assessment.flightRisk = dto.flightRisk;
     if (dto.notes !== undefined) assessment.notes = dto.notes;
