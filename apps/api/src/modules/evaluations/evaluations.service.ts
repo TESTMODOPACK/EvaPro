@@ -19,7 +19,8 @@ import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignme
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { PlanFeature } from '../../common/constants/plan-features';
-import { Objective } from '../objectives/entities/objective.entity';
+import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
+import { KeyResult } from '../objectives/entities/key-result.entity';
 
 @Injectable()
 export class EvaluationsService {
@@ -40,6 +41,8 @@ export class EvaluationsService {
     private readonly stageRepo: Repository<CycleStage>,
     @InjectRepository(Objective)
     private readonly objectiveRepo: Repository<Objective>,
+    @InjectRepository(KeyResult)
+    private readonly keyResultRepo: Repository<KeyResult>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
@@ -264,10 +267,50 @@ export class EvaluationsService {
   async updateStage(stageId: string, tenantId: string, data: { startDate?: string; endDate?: string; name?: string }): Promise<CycleStage> {
     const stage = await this.stageRepo.findOne({ where: { id: stageId, tenantId } });
     if (!stage) throw new NotFoundException('Etapa no encontrada');
-    if (data.startDate) stage.startDate = new Date(data.startDate);
-    if (data.endDate) stage.endDate = new Date(data.endDate);
+
+    const newStart = data.startDate ? new Date(data.startDate) : stage.startDate;
+    const newEnd = data.endDate ? new Date(data.endDate) : stage.endDate;
+
+    if (newStart >= newEnd) {
+      throw new BadRequestException('La fecha de inicio de la etapa debe ser anterior a la fecha de fin');
+    }
+
+    // B6.1: Validate no date overlap with other stages of the same cycle
+    if (data.startDate || data.endDate) {
+      await this.validateStageOverlap(stage.cycleId, tenantId, stageId, newStart, newEnd);
+    }
+
+    if (data.startDate) stage.startDate = newStart;
+    if (data.endDate) stage.endDate = newEnd;
     if (data.name) stage.name = data.name;
     return this.stageRepo.save(stage);
+  }
+
+  private async validateStageOverlap(
+    cycleId: string,
+    tenantId: string,
+    excludeStageId: string,
+    newStart: Date,
+    newEnd: Date,
+  ): Promise<void> {
+    const otherStages = await this.stageRepo.find({
+      where: { cycleId, tenantId },
+    });
+
+    for (const other of otherStages) {
+      if (other.id === excludeStageId) continue;
+      if (!other.startDate || !other.endDate) continue;
+
+      const otherStart = new Date(other.startDate);
+      const otherEnd = new Date(other.endDate);
+
+      // Check overlap: two ranges overlap if one starts before the other ends and vice versa
+      if (newStart < otherEnd && newEnd > otherStart) {
+        throw new BadRequestException(
+          `Las fechas se superponen con la etapa "${other.name}" (${otherStart.toISOString().slice(0, 10)} - ${otherEnd.toISOString().slice(0, 10)}). Las etapas no pueden tener fechas solapadas.`,
+        );
+      }
+    }
   }
 
   async updateCycle(id: string, tenantId: string, dto: UpdateCycleDto): Promise<EvaluationCycle> {
@@ -293,8 +336,8 @@ export class EvaluationsService {
 
   async deleteCycle(id: string, tenantId: string): Promise<void> {
     const cycle = await this.findCycleById(id, tenantId);
-    if (cycle.status === CycleStatus.ACTIVE) {
-      throw new BadRequestException('No se puede eliminar un ciclo activo. Ciérralo primero.');
+    if (cycle.status === CycleStatus.ACTIVE || cycle.status === CycleStatus.PAUSED) {
+      throw new BadRequestException('No se puede eliminar un ciclo activo o pausado. Ciérralo primero.');
     }
     if (cycle.status === CycleStatus.CLOSED) {
       throw new BadRequestException('No se puede eliminar un ciclo cerrado. Los datos de evaluación deben preservarse.');
@@ -657,12 +700,56 @@ export class EvaluationsService {
 
   async closeCycle(id: string, tenantId: string, userId: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
-    if (cycle.status !== CycleStatus.ACTIVE) {
-      throw new BadRequestException('Solo se puede cerrar un ciclo activo');
+    if (cycle.status !== CycleStatus.ACTIVE && cycle.status !== CycleStatus.PAUSED) {
+      throw new BadRequestException('Solo se puede cerrar un ciclo activo o pausado');
     }
     cycle.status = CycleStatus.CLOSED;
     const saved = await this.cycleRepo.save(cycle);
+
+    // Mark all non-completed stages as completed to keep consistency
+    await this.stageRepo
+      .createQueryBuilder()
+      .update(CycleStage)
+      .set({ status: StageStatus.COMPLETED })
+      .where('cycleId = :cycleId', { cycleId: id })
+      .andWhere('tenantId = :tenantId', { tenantId })
+      .andWhere('status != :completed', { completed: StageStatus.COMPLETED })
+      .execute();
+
     await this.auditService.log(tenantId, userId, 'cycle.closed', 'cycle', id);
+    return saved;
+  }
+
+  async pauseCycle(id: string, tenantId: string, userId: string): Promise<EvaluationCycle> {
+    const cycle = await this.findCycleById(id, tenantId);
+    if (cycle.status !== CycleStatus.ACTIVE) {
+      throw new BadRequestException('Solo se puede pausar un ciclo activo');
+    }
+    cycle.status = CycleStatus.PAUSED;
+    cycle.settings = {
+      ...cycle.settings,
+      pausedAt: new Date().toISOString(),
+      pausedBy: userId,
+    };
+    const saved = await this.cycleRepo.save(cycle);
+    await this.auditService.log(tenantId, userId, 'cycle.paused', 'cycle', id);
+    return saved;
+  }
+
+  async resumeCycle(id: string, tenantId: string, userId: string): Promise<EvaluationCycle> {
+    const cycle = await this.findCycleById(id, tenantId);
+    if (cycle.status !== CycleStatus.PAUSED) {
+      throw new BadRequestException('Solo se puede reanudar un ciclo pausado');
+    }
+    cycle.status = CycleStatus.ACTIVE;
+    const { pausedAt, pausedBy, ...restSettings } = cycle.settings || {};
+    cycle.settings = {
+      ...restSettings,
+      resumedAt: new Date().toISOString(),
+      resumedBy: userId,
+    };
+    const saved = await this.cycleRepo.save(cycle);
+    await this.auditService.log(tenantId, userId, 'cycle.resumed', 'cycle', id);
     return saved;
   }
 
@@ -729,6 +816,7 @@ export class EvaluationsService {
 
     // Pre-load evaluatee's objectives for the cycle period (OKR context)
     let evaluateeObjectives: Objective[] = [];
+    let evaluateeObjectivesSummary: any = null;
     try {
       // First try objectives linked to this specific cycle
       evaluateeObjectives = await this.objectiveRepo.find({
@@ -748,11 +836,54 @@ export class EvaluationsService {
           .limit(20);
         evaluateeObjectives = await qb.getMany();
       }
+
+      // B3.1: For self-evaluations, enrich objectives with Key Results and summary
+      if (evaluateeObjectives.length > 0) {
+        const objectiveIds = evaluateeObjectives.map((o) => o.id);
+        const keyResults = await this.keyResultRepo
+          .createQueryBuilder('kr')
+          .where('kr.objectiveId IN (:...ids)', { ids: objectiveIds })
+          .andWhere('kr.tenantId = :tenantId', { tenantId })
+          .getMany();
+
+        // Group KRs by objective
+        const krByObjective = new Map<string, KeyResult[]>();
+        for (const kr of keyResults) {
+          const list = krByObjective.get(kr.objectiveId) || [];
+          list.push(kr);
+          krByObjective.set(kr.objectiveId, list);
+        }
+
+        // Attach KRs to each objective as a virtual property
+        for (const obj of evaluateeObjectives) {
+          (obj as any).keyResults = krByObjective.get(obj.id) || [];
+        }
+
+        // Calculate summary for the self-evaluation form context
+        const activeOrCompleted = evaluateeObjectives.filter(
+          (o) => o.status === ObjectiveStatus.ACTIVE || o.status === ObjectiveStatus.COMPLETED,
+        );
+        const totalProgress = activeOrCompleted.reduce((sum, o) => sum + (o.progress || 0), 0);
+        const avgProgress = activeOrCompleted.length > 0
+          ? Math.round(totalProgress / activeOrCompleted.length)
+          : 0;
+        const completedCount = evaluateeObjectives.filter((o) => o.status === ObjectiveStatus.COMPLETED).length;
+        const atRiskCount = activeOrCompleted.filter((o) => (o.progress || 0) < 40).length;
+
+        evaluateeObjectivesSummary = {
+          totalObjectives: evaluateeObjectives.length,
+          activeOrCompleted: activeOrCompleted.length,
+          completedCount,
+          atRiskCount,
+          avgProgress,
+          totalKeyResults: keyResults.length,
+        };
+      }
     } catch {
       // Objectives module may not exist — graceful fallback
     }
 
-    return { assignment, template, response, evaluateeObjectives };
+    return { assignment, template, response, evaluateeObjectives, evaluateeObjectivesSummary };
   }
 
   // ─── Responses ────────────────────────────────────────────────────────────
@@ -830,6 +961,11 @@ export class EvaluationsService {
       }
     }
 
+    // B2.1: Validate all required template items are answered before submitting
+    if (assignment.cycle.templateId) {
+      await this.validateRequiredAnswers(assignment.cycle.templateId, dto.answers);
+    }
+
     // Calculate overall score from scale answers
     const overallScore = this.calculateScore(dto.answers, assignment.cycle.templateId);
 
@@ -860,6 +996,34 @@ export class EvaluationsService {
     );
 
     return { assignment, response };
+  }
+
+  private async validateRequiredAnswers(templateId: string, answers: any): Promise<void> {
+    const template = await this.templateRepo.findOne({ where: { id: templateId } });
+    if (!template || !template.sections) return;
+
+    const missingQuestions: string[] = [];
+    for (const section of template.sections) {
+      if (!section.questions) continue;
+      for (const question of section.questions) {
+        if (!question.required) continue;
+        const answer = answers?.[question.id];
+        const isEmpty =
+          answer === undefined ||
+          answer === null ||
+          answer === '' ||
+          (Array.isArray(answer) && answer.length === 0);
+        if (isEmpty) {
+          missingQuestions.push(question.text || question.id);
+        }
+      }
+    }
+
+    if (missingQuestions.length > 0) {
+      throw new BadRequestException(
+        `Faltan respuestas obligatorias (${missingQuestions.length}): ${missingQuestions.slice(0, 5).join(', ')}${missingQuestions.length > 5 ? '...' : ''}`,
+      );
+    }
   }
 
   private calculateScore(answers: any, templateId: string | null): number | null {

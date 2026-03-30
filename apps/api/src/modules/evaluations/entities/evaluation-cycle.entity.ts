@@ -21,6 +21,7 @@ export enum CycleType {
 export enum CycleStatus {
   DRAFT = 'draft',
   ACTIVE = 'active',
+  PAUSED = 'paused',
   CLOSED = 'closed',
   CANCELLED = 'cancelled',
 }

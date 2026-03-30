@@ -12,6 +12,7 @@ import { EvaluationsController } from './evaluations.controller';
 import { AuditModule } from '../audit/audit.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { Objective } from '../objectives/entities/objective.entity';
+import { KeyResult } from '../objectives/entities/key-result.entity';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { Objective } from '../objectives/entities/objective.entity';
       FormTemplate,
       User,
       Objective,
+      KeyResult,
     ]),
     AuditModule,
     SubscriptionsModule,

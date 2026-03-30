@@ -85,6 +85,24 @@ export class EvaluationsController {
     return this.evaluationsService.closeCycle(id, req.user.tenantId, req.user.userId);
   }
 
+  @Post('evaluation-cycles/:id/pause')
+  @Roles('super_admin', 'tenant_admin')
+  pauseCycle(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.pauseCycle(id, req.user.tenantId, req.user.userId);
+  }
+
+  @Post('evaluation-cycles/:id/resume')
+  @Roles('super_admin', 'tenant_admin')
+  resumeCycle(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.resumeCycle(id, req.user.tenantId, req.user.userId);
+  }
+
   // ─── Cycle Stages (B3.14) ──────────────────────────────────────────────
 
   @Get('evaluation-cycles/:cycleId/stages')

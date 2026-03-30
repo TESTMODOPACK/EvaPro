@@ -83,6 +83,9 @@ export class EvaluationAssignment {
   @Column({ type: 'timestamptz', name: 'completed_at', nullable: true })
   completedAt: Date;
 
+  @Column({ type: 'int', name: 'reminder_count', default: 0 })
+  reminderCount: number;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }

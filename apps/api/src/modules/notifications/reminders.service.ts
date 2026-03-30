@@ -13,6 +13,7 @@ import { DevelopmentPlan } from '../development/entities/development-plan.entity
 import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { ReportsService } from '../reports/reports.service';
 
 /**
  * Servicio de recordatorios automáticos.
@@ -52,6 +53,7 @@ export class RemindersService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly reportsService: ReportsService,
   ) {}
 
   // ─── 1. Evaluaciones pendientes (cada 6 horas) ───────────────────────
@@ -83,6 +85,20 @@ export class RemindersService {
 
         if (notifications.length > 0) {
           await this.notificationsService.createBulk(notifications);
+          // B2.2: Increment reminder count only for assignments that actually had notifications sent
+          // (those with a valid evaluator and where the notification wasn't deduplicated)
+          const notifiedAssignmentIds = new Set(
+            notifications.map((n) => n.metadata?.assignmentId).filter(Boolean),
+          );
+          const toUpdate = pendingAssignments.filter(
+            (a) => a.evaluator && notifiedAssignmentIds.has(a.id),
+          );
+          for (const a of toUpdate) {
+            a.reminderCount = (a.reminderCount || 0) + 1;
+          }
+          if (toUpdate.length > 0) {
+            await this.assignmentRepo.save(toUpdate);
+          }
           this.logger.log(`[Cron] Created ${notifications.length} evaluation reminders for cycle ${cycle.name}`);
         }
       }
@@ -376,6 +392,74 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in escalateOverdueEvaluations: ${error}`);
+    }
+  }
+
+  // ─── 6b. Escalación: evaluadores con 2+ recordatorios sin respuesta → HRBP (diario 10:15am) ──
+
+  @Cron('15 10 * * *')
+  async escalateUnresponsiveEvaluators() {
+    this.logger.log('[Cron] Escalating unresponsive evaluators (2+ reminders)...');
+    try {
+      const activeCycles = await this.cycleRepo.find({
+        where: { status: CycleStatus.ACTIVE },
+      });
+
+      const notifications: Array<{
+        tenantId: string;
+        userId: string;
+        type: NotificationType;
+        title: string;
+        message: string;
+        metadata?: Record<string, any>;
+      }> = [];
+
+      for (const cycle of activeCycles) {
+        // Find assignments with 2+ reminders that are still not completed
+        const unresponsive = await this.assignmentRepo
+          .createQueryBuilder('a')
+          .leftJoinAndSelect('a.evaluator', 'evaluator')
+          .leftJoinAndSelect('a.evaluatee', 'evaluatee')
+          .where('a.cycleId = :cycleId', { cycleId: cycle.id })
+          .andWhere('a.reminderCount >= :min', { min: 2 })
+          .andWhere('a.status != :completed', { completed: AssignmentStatus.COMPLETED })
+          .getMany();
+
+        if (unresponsive.length === 0) continue;
+
+        // Notify HRBP / tenant admins about unresponsive evaluators
+        const admins = await this.userRepo.find({
+          where: { tenantId: cycle.tenantId, role: In(['tenant_admin']), isActive: true },
+        });
+
+        const evaluatorNames = [...new Set(
+          unresponsive
+            .filter((a) => a.evaluator)
+            .map((a) => `${a.evaluator.firstName} ${a.evaluator.lastName} (${a.reminderCount} recordatorios)`),
+        )];
+
+        for (const admin of admins) {
+          notifications.push({
+            tenantId: cycle.tenantId,
+            userId: admin.id,
+            type: NotificationType.ESCALATION_EVALUATION_OVERDUE,
+            title: 'Escalación: evaluadores sin respuesta tras múltiples recordatorios',
+            message: `Ciclo "${cycle.name}": ${unresponsive.length} evaluación(es) sin completar después de 2+ recordatorios. Evaluadores: ${evaluatorNames.slice(0, 5).join(', ')}${evaluatorNames.length > 5 ? ` y ${evaluatorNames.length - 5} más` : ''}.`,
+            metadata: {
+              cycleId: cycle.id,
+              unresponsiveCount: unresponsive.length,
+              evaluatorNames,
+            },
+          });
+        }
+      }
+
+      if (notifications.length > 0) {
+        await this.notificationsService.createBulk(notifications);
+        this.logger.log(`[Cron] Created ${notifications.length} unresponsive evaluator escalation notifications`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in escalateUnresponsiveEvaluators: ${error}`);
     }
   }
 
@@ -693,7 +777,91 @@ export class RemindersService {
     }
   }
 
-  // ─── 14. Auto-renovación de suscripciones (diario 2am) ───────────────
+  // ─── 14. Auto-cierre de ciclos vencidos + generación de informe (diario 0:00) ──
+
+  @Cron('0 0 * * *')
+  async autoCloseCycles() {
+    this.logger.log('[Cron] Checking for cycles to auto-close...');
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Find active cycles whose end date has passed (close on or after the end date)
+      const expiredCycles = await this.cycleRepo
+        .createQueryBuilder('c')
+        .where('c.status = :status', { status: CycleStatus.ACTIVE })
+        .andWhere('c.endDate < :today', { today })
+        .getMany();
+
+      for (const cycle of expiredCycles) {
+        try {
+          // Close the cycle
+          cycle.status = CycleStatus.CLOSED;
+
+          // Generate closure summary report and store in settings
+          const summary = await this.reportsService.cycleSummary(cycle.id, cycle.tenantId);
+          cycle.settings = {
+            ...cycle.settings,
+            closureSummary: summary,
+            autoClosedAt: new Date().toISOString(),
+          };
+          await this.cycleRepo.save(cycle);
+
+          // Notify all participants
+          const assignments = await this.assignmentRepo.find({
+            where: { cycleId: cycle.id },
+            select: ['evaluatorId', 'evaluateeId', 'tenantId'],
+          });
+
+          // Unique participant IDs
+          const participantIds = [...new Set([
+            ...assignments.map((a) => a.evaluatorId),
+            ...assignments.map((a) => a.evaluateeId),
+          ])];
+
+          const notifications = participantIds
+            .filter((id) => id != null)
+            .map((userId) => ({
+              tenantId: cycle.tenantId,
+              userId,
+              type: NotificationType.CYCLE_CLOSED,
+              title: `Ciclo "${cycle.name}" cerrado`,
+              message: `El ciclo de evaluación "${cycle.name}" ha sido cerrado automáticamente. Los resultados están disponibles para consulta.`,
+              metadata: { cycleId: cycle.id },
+            }));
+
+          if (notifications.length > 0) {
+            await this.notificationsService.createBulk(notifications);
+          }
+
+          // Send email to tenant admins
+          const admins = await this.userRepo.find({
+            where: { tenantId: cycle.tenantId, role: In(['tenant_admin']), isActive: true },
+            select: ['id', 'email', 'firstName'],
+          });
+          for (const admin of admins) {
+            if (admin.email) {
+              this.emailService
+                .sendCycleClosed(admin.email, { firstName: admin.firstName, cycleName: cycle.name, cycleId: cycle.id })
+                .catch((err: Error) => this.logger.error(`[Cron] Failed to send cycle closed email: ${err.message}`));
+            }
+          }
+
+          this.logger.log(`[Cron] Auto-closed cycle "${cycle.name}" (${cycle.id}) with summary report`);
+        } catch (cycleError) {
+          this.logger.error(`[Cron] Error auto-closing cycle ${cycle.id}: ${cycleError}`);
+        }
+      }
+
+      if (expiredCycles.length > 0) {
+        this.logger.log(`[Cron] Auto-closed ${expiredCycles.length} expired cycle(s)`);
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in autoCloseCycles: ${error}`);
+    }
+  }
+
+  // ─── 15. Auto-renovación de suscripciones (diario 2am) ───────────────
 
   @Cron('0 2 * * *')
   async processAutoRenewals() {

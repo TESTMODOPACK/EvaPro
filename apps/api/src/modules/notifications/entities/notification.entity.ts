@@ -19,6 +19,7 @@ export enum NotificationType {
   PDI_ACTION_DUE = 'pdi_action_due',
   OBJECTIVE_AT_RISK = 'objective_at_risk',
   CYCLE_CLOSING = 'cycle_closing',
+  CYCLE_CLOSED = 'cycle_closed',
   CALIBRATION_PENDING = 'calibration_pending',
   FEEDBACK_RECEIVED = 'feedback_received',
   STAGE_ADVANCED = 'stage_advanced',
