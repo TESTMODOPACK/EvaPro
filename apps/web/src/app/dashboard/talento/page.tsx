@@ -106,6 +106,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
   const [nineBoxData, setNineBoxData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generateMsg, setGenerateMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
@@ -117,6 +118,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
     if (!selectedCycleId) { setNineBoxData(null); return; }
     setLoading(true);
     setSelectedBox(null);
+    setGenerateMsg(null);
     api.talent.nineBox(token, selectedCycleId)
       .then((d) => setNineBoxData(d))
       .catch(() => setNineBoxData(null))
@@ -126,11 +128,26 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
   async function handleGenerate() {
     if (!selectedCycleId) return;
     setGenerating(true);
+    setGenerateMsg(null);
     try {
       await api.talent.generate(token, selectedCycleId);
       const d = await api.talent.nineBox(token, selectedCycleId);
       setNineBoxData(d);
-    } catch { /* ignore */ }
+      const total = d?.boxes
+        ? Object.values(d.boxes as Record<string, any>).reduce((sum: number, b: any) => sum + (b?.users?.length || 0), 0)
+        : 0;
+      if (total === 0) {
+        setGenerateMsg({
+          type: 'error',
+          text: 'No se generaron evaluaciones. Verifica que el ciclo tenga evaluaciones completadas antes de generar.',
+        });
+      } else {
+        setGenerateMsg({ type: 'success', text: `✓ ${total} evaluaciones de talento generadas correctamente. Haz clic en un cuadrante para ver los colaboradores.` });
+        setTimeout(() => setGenerateMsg(null), 7000);
+      }
+    } catch (e: any) {
+      setGenerateMsg({ type: 'error', text: e?.message || 'Error al generar evaluaciones de talento. Intenta nuevamente.' });
+    }
     setGenerating(false);
   }
 
@@ -172,10 +189,10 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
     else { setSortField(field); setSortDir('asc'); }
   }
 
-  function SortTh({ field, label }: { field: string; label: string }) {
+  function SortTh({ field, label, title }: { field: string; label: string; title?: string }) {
     const active = sortField === field;
     return (
-      <th onClick={() => toggleSort(field)} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+      <th onClick={() => toggleSort(field)} title={title} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem' }}>
           {label}
           <span style={{ fontSize: '.65rem', opacity: active ? 1 : 0.3, color: active ? 'var(--accent)' : 'inherit' }}>
@@ -231,10 +248,28 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 
         {selectedCycleId && isAdmin && (
           <button className="btn-primary" onClick={handleGenerate} disabled={generating}>
-            {generating ? 'Generando...' : 'Generar evaluaci\u00f3n de talento'}
+            {generating ? 'Generando...' : 'Generar evaluación de talento'}
           </button>
         )}
       </div>
+
+      {/* Generate feedback message */}
+      {generateMsg && (
+        <div style={{
+          padding: '.65rem 1rem',
+          borderRadius: 'var(--radius-sm)',
+          marginBottom: '1rem',
+          fontSize: '.85rem',
+          fontWeight: 500,
+          background: generateMsg.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${generateMsg.type === 'success' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.25)'}`,
+          color: generateMsg.type === 'success' ? 'var(--success)' : 'var(--danger)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+        }}>
+          <span>{generateMsg.text}</span>
+          <button onClick={() => setGenerateMsg(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontWeight: 700, fontSize: '1rem', lineHeight: 1 }}>×</button>
+        </div>
+      )}
 
       {loading && <Spinner />}
 
@@ -327,10 +362,10 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                           <SortTh field="name" label="Colaborador" />
                           <SortTh field="dept" label="Departamento" />
                           <th>{`Clasificaci\u00f3n`}</th>
-                          <SortTh field="performance" label={`Desempe\u00f1o`} />
-                          <SortTh field="potential" label="Potencial" />
-                          <th style={{ whiteSpace: 'nowrap' }}>{`Preparaci\u00f3n`}</th>
-                          <SortTh field="risk" label="Riesgo de Fuga" />
+                          <SortTh field="performance" label="Desempeño" title="Calculado automáticamente desde el promedio de evaluaciones completadas" />
+                          <SortTh field="potential" label="Potencial ✎" title="Puntaje 0–10 ingresado manualmente por admin/encargado. Haz clic en una fila para editarlo." />
+                          <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title="Preparación para ascenso — ingresada manualmente por admin/encargado">{'Preparación ✎'}</th>
+                          <SortTh field="risk" label="Riesgo Fuga ✎" title="Riesgo de salida del colaborador — ingresado manualmente por admin/encargado" />
                           {isAdmin && <th></th>}
                         </tr>
                       </thead>
@@ -537,11 +572,12 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
       return sortDir === 'asc' ? cmp : -cmp;
     });
 
-  function SortTh({ field, label, align }: { field: string; label: string; align?: string }) {
+  function SortTh({ field, label, align, title }: { field: string; label: string; align?: string; title?: string }) {
     const active = sortField === field;
     return (
       <th
         onClick={() => toggleSort(field)}
+        title={title}
         style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', textAlign: (align as any) || 'left' }}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem' }}>
@@ -556,6 +592,12 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
 
   return (
     <div>
+      {/* Tab description */}
+      <div style={{ marginBottom: '1rem', padding: '.6rem .9rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '.82rem', color: 'var(--text-secondary)' }}>
+        {'Vista completa de todos los colaboradores clasificados. Busca por nombre o filtra por pool de talento. Para editar Potencial, Preparación y Riesgo de Fuga, usa la pestaña '}
+        <strong>{'Matriz Nine Box'}</strong>{'.'}
+      </div>
+
       {/* Cycle selector */}
       <div style={{ marginBottom: '1.5rem' }}>
         <select
@@ -636,11 +678,11 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
                     <tr>
                       <SortTh field="name" label="Colaborador" />
                       <SortTh field="dept" label="Departamento" />
-                      <SortTh field="pool" label={`Clasificaci\u00f3n`} />
-                      <SortTh field="performance" label={`Desempe\u00f1o`} />
-                      <SortTh field="potential" label="Potencial" />
-                      <th style={{ whiteSpace: 'nowrap' }}>{`Preparaci\u00f3n`}</th>
-                      <SortTh field="risk" label="Riesgo de Fuga" />
+                      <SortTh field="pool" label="Clasificación" />
+                      <SortTh field="performance" label="Desempeño" title="Calculado automáticamente desde el promedio de evaluaciones completadas" />
+                      <SortTh field="potential" label="Potencial ✎" title="Puntaje 0–10 ingresado manualmente por admin/encargado en la pestaña Nine Box" />
+                      <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title="Preparación para ascenso — ingresada manualmente en la pestaña Nine Box">{'Preparación ✎'}</th>
+                      <SortTh field="risk" label="Riesgo Fuga ✎" title="Riesgo de salida — ingresado manualmente en la pestaña Nine Box" />
                     </tr>
                   </thead>
                   <tbody>
@@ -786,15 +828,32 @@ export default function TalentoPage() {
 
           {/* Section 3 */}
           <div style={{ marginBottom: '1.25rem' }}>
-            <p style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--accent)', marginBottom: '.35rem' }}>
-              {'Los 9 cuadrantes:'}
+            <p style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--accent)', marginBottom: '.75rem' }}>
+              {'Los 9 cuadrantes (Desempeño ↑ — Potencial →):'}
             </p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '.84rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-              <li><strong>{'Cuadrante 1 (Alto-Alto):'}</strong>{` Estrella / Top Talent \u2192 promover y retener`}</li>
-              <li><strong>{'Cuadrante 2 (Alto-Bajo):'}</strong>{` Alto potencial, bajo rendimiento \u2192 desarrollar`}</li>
-              <li><strong>{'Cuadrante 3 (Bajo-Alto):'}</strong>{` Buen rendimiento, bajo potencial \u2192 reconocer`}</li>
-              <li><strong>{'Cuadrante 4-9:'}</strong>{` Combinaciones intermedias con acciones sugeridas`}</li>
-            </ul>
+            {/* Visual mini-grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '.35rem', marginBottom: '.75rem', fontSize: '.75rem' }}>
+              {[
+                { box: 6, label: 'Enigma', bg: 'rgba(245,158,11,0.15)', color: '#b45309', desc: 'Alto desempeño, bajo potencial' },
+                { box: 8, label: 'Alto rendimiento', bg: 'rgba(16,185,129,0.15)', color: '#047857', desc: 'Alto desempeño, potencial medio' },
+                { box: 9, label: '⭐ Estrella', bg: 'rgba(16,185,129,0.25)', color: '#047857', desc: 'Alto desempeño, alto potencial' },
+                { box: 3, label: 'Riesgo', bg: 'rgba(239,68,68,0.15)', color: '#b91c1c', desc: 'Desempeño medio, bajo potencial' },
+                { box: 5, label: 'Profesional clave', bg: 'rgba(99,102,241,0.15)', color: '#4338ca', desc: 'Desempeño medio, potencial medio' },
+                { box: 7, label: 'Alto potencial', bg: 'rgba(16,185,129,0.15)', color: '#047857', desc: 'Desempeño medio, alto potencial' },
+                { box: 1, label: 'Bajo rendimiento', bg: 'rgba(239,68,68,0.2)', color: '#b91c1c', desc: 'Bajo desempeño, bajo potencial' },
+                { box: 2, label: 'Bajo rend. c/potencial', bg: 'rgba(239,68,68,0.1)', color: '#b91c1c', desc: 'Bajo desempeño, potencial medio' },
+                { box: 4, label: 'Inconsistente', bg: 'rgba(245,158,11,0.12)', color: '#b45309', desc: 'Bajo desempeño, alto potencial' },
+              ].map((cell) => (
+                <div key={cell.box} style={{ background: cell.bg, borderRadius: '6px', padding: '.4rem .5rem', textAlign: 'center' }}>
+                  <div style={{ fontWeight: 800, color: cell.color, fontSize: '.72rem' }}>{cell.label}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '.65rem', marginTop: '.1rem', lineHeight: 1.3 }}>{cell.desc}</div>
+                  <div style={{ fontSize: '.6rem', color: 'var(--text-muted)', marginTop: '.15rem', opacity: 0.6 }}>Cuad. {cell.box}</div>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: '.78rem', color: 'var(--text-muted)', margin: 0, fontStyle: 'italic' }}>
+              {'↑ Eje Y: Desempeño (basado en evaluaciones). → Eje X: Potencial (evaluado manualmente por el encargado/admin).'}
+            </p>
           </div>
 
           {/* Section 4 */}
@@ -826,28 +885,58 @@ export default function TalentoPage() {
 
       {/* Info card */}
       <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.5rem' }}>
-          {`\u00bfC\u00f3mo funciona la Gesti\u00f3n de Talento?`}
+        <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+          {'¿Cómo funciona la Gestión de Talento?'}
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', alignItems: 'start' }}>
+          {/* Column 1 — axes explanation */}
           <div>
-            <p style={{ margin: '0 0 0.35rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              Matriz Nine Box (9 Cuadrantes)
+            <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {'Pestaña: Matriz Nine Box'}
             </p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li>{`Cruza dos dimensiones: Desempe\u00f1o (resultado de evaluaciones) y Potencial (evaluado manualmente)`}</li>
-              <li>{'Clasifica autom\u00e1ticamente a cada colaborador en uno de 9 cuadrantes (Estrella, Alto Potencial, Riesgo, etc.)'}</li>
-              <li>{`El administrador puede ajustar el puntaje de potencial, preparaci\u00f3n para ascenso y riesgo de fuga`}</li>
+            <ul style={{ margin: '0 0 .75rem', paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+              <li>{'Clasifica colaboradores en una matriz 3×3 cruzando Desempeño (eje vertical) y Potencial (eje horizontal)'}</li>
+              <li>{'Haz clic en cualquier cuadrante para ver los colaboradores asignados'}</li>
+              <li>{'Los admins pueden editar Potencial (0–10), Preparación para ascenso y Riesgo de Fuga directamente en la tabla'}</li>
             </ul>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '.25rem', fontSize: '.7rem' }}>
+              {([
+                { label: 'Enigma', bg: 'rgba(245,158,11,0.2)', color: '#b45309' },
+                { label: 'Alto rend.', bg: 'rgba(16,185,129,0.15)', color: '#047857' },
+                { label: '⭐ Estrella', bg: 'rgba(16,185,129,0.3)', color: '#047857' },
+                { label: 'Riesgo', bg: 'rgba(239,68,68,0.15)', color: '#b91c1c' },
+                { label: 'Prof. clave', bg: 'rgba(99,102,241,0.15)', color: '#4338ca' },
+                { label: 'Alto pot.', bg: 'rgba(16,185,129,0.15)', color: '#047857' },
+                { label: 'Bajo rend.', bg: 'rgba(239,68,68,0.2)', color: '#b91c1c' },
+                { label: 'Bajo+pot.', bg: 'rgba(239,68,68,0.1)', color: '#b91c1c' },
+                { label: 'Inconsist.', bg: 'rgba(245,158,11,0.12)', color: '#b45309' },
+              ] as {label:string;bg:string;color:string}[]).map((c, i) => (
+                <div key={i} style={{ background: c.bg, borderRadius: '4px', padding: '.3rem .35rem', textAlign: 'center', fontWeight: 700, color: c.color, lineHeight: 1.2 }}>
+                  {c.label}
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: '.4rem 0 0', fontSize: '.67rem', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>
+              {'Fila sup.=Alto Desempeño · Fila inf.=Bajo Desempeño · Col.izq.=Bajo Potencial · Col.der.=Alto Potencial'}
+            </p>
           </div>
+          {/* Column 2 — segmentation + data sources */}
           <div>
-            <p style={{ margin: '0 0 0.35rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {`Conexi\u00f3n con otras funcionalidades`}
+            <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {'Pestaña: Segmentación'}
+            </p>
+            <ul style={{ margin: '0 0 .75rem', paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+              <li>{'Vista plana de todos los colaboradores clasificados, con búsqueda y filtros por pool'}</li>
+              <li>{'Útil para encontrar a todos los "Estrellas" o buscar a una persona sin saber en qué cuadrante está'}</li>
+            </ul>
+            <p style={{ margin: '0 0 0.4rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
+              {'¿De dónde vienen los datos?'}
             </p>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li><strong>{`Evaluaciones de Desempe\u00f1o`}</strong>{`: Los puntajes de desempe\u00f1o se generan autom\u00e1ticamente desde las evaluaciones completadas`}</li>
-              <li><strong>{`Calibraci\u00f3n`}</strong>{`: Permite ajustar puntajes en sesi\u00f3n colaborativa antes de finalizar la clasificaci\u00f3n`}</li>
-              <li><strong>{'Planes de Desarrollo'}</strong>{`: Los resultados del Nine Box sugieren acciones de desarrollo seg\u00fan el cuadrante del colaborador`}</li>
+              <li><strong>{'Desempeño'}</strong>{': calculado automáticamente desde el promedio de evaluaciones completadas'}</li>
+              <li><strong>{'Potencial'}</strong>{': ingresado manualmente por el admin/encargado (escala 0–10)'}</li>
+              <li><strong>{'Preparación'}</strong>{': ingresado manualmente (Listo ahora / En 1 año / En 2 años / No listo)'}</li>
+              <li><strong>{'Riesgo de Fuga'}</strong>{': ingresado manualmente (Alto / Medio / Bajo)'}</li>
             </ul>
           </div>
         </div>
