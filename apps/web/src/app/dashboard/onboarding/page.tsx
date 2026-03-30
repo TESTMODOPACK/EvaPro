@@ -375,6 +375,7 @@ export default function OnboardingPage() {
   const token = useAuthStore((s) => s.token);
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
   const [loadingTenant, setLoadingTenant] = useState(true);
   const [state, setState] = useState<WizardState>({
     orgName: '', orgRut: '', orgIndustry: '', orgSize: '',
@@ -421,15 +422,30 @@ export default function OnboardingPage() {
   };
 
   const handleFinish = async () => {
+    if (!token) return;
     setSaving(true);
+    setFinishError(null);
     try {
-      // Mark onboarding complete in localStorage
+      // Auto-generate cycle defaults — no date fields exist in the wizard
+      const today = new Date();
+      const endDate = new Date(today);
+      endDate.setDate(endDate.getDate() + 90);
+      const fmt = (d: Date) => d.toISOString().split('T')[0];
+
+      const orgSuffix = state.orgName ? ` — ${state.orgName}` : '';
+      const result = await api.cycles.create(token, {
+        name: `Evaluación Inicial ${today.getFullYear()}${orgSuffix}`,
+        description: 'Ciclo inicial creado desde la configuración de la plataforma.',
+        type: '90',
+        period: 'annual',
+        startDate: fmt(today),
+        endDate: fmt(endDate),
+      });
+
       localStorage.setItem(STORAGE_KEY, '1');
-      router.push('/dashboard/evaluaciones?nuevo=1');
-    } catch {
-      localStorage.setItem(STORAGE_KEY, '1');
-      router.push('/dashboard');
-    } finally {
+      router.push(`/dashboard/evaluaciones/${result.id}`);
+    } catch (err: any) {
+      setFinishError(err.message || 'Error al crear el ciclo. Intenta nuevamente.');
       setSaving(false);
     }
   };
@@ -488,6 +504,17 @@ export default function OnboardingPage() {
           </p>
 
           {currentStep.component}
+
+          {/* Error banner */}
+          {finishError && (
+            <div style={{
+              marginTop: '1.25rem', padding: '0.75rem 1rem',
+              background: 'rgba(239,68,68,0.08)', border: '1px solid var(--danger)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.83rem',
+            }}>
+              {finishError}
+            </div>
+          )}
 
           {/* Navigation */}
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '2rem', justifyContent: 'space-between' }}>
