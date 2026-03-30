@@ -944,7 +944,7 @@ export class EvaluationsService {
       .andWhere('a.evaluatorId = :userId', { userId })
       .andWhere('a.status IN (:...statuses)', { statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS] })
       .andWhere('c.status = :active', { active: CycleStatus.ACTIVE })
-      .orderBy('a.due_date', 'ASC')
+      .orderBy('a.dueDate', 'ASC')
       .take(5)
       .getMany();
 

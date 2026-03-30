@@ -377,6 +377,8 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [loadingTenant, setLoadingTenant] = useState(true);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [tenantSettings, setTenantSettings] = useState<Record<string, any>>({});
   const [state, setState] = useState<WizardState>({
     orgName: '', orgRut: '', orgIndustry: '', orgSize: '',
     teamEmails: '',
@@ -391,6 +393,8 @@ export default function OnboardingPage() {
     if (!token) return;
     api.tenants.me(token)
       .then((tenant: any) => {
+        setTenantId(tenant.id || null);
+        setTenantSettings(tenant.settings || {});
         setState((prev) => ({
           ...prev,
           orgName: tenant.name || prev.orgName,
@@ -422,11 +426,30 @@ export default function OnboardingPage() {
   };
 
   const handleFinish = async () => {
-    if (!token) return;
+    if (!token) {
+      setFinishError('No hay sesión activa. Recarga la página e intenta nuevamente.');
+      return;
+    }
     setSaving(true);
     setFinishError(null);
+
+    // ── Step 1: Save org settings (industry, size, competencies) to tenant ──
+    if (tenantId) {
+      try {
+        const mergedSettings = {
+          ...tenantSettings,
+          ...(state.orgIndustry ? { industry: state.orgIndustry } : {}),
+          ...(state.orgSize ? { size: state.orgSize } : {}),
+          ...(state.selectedCompetencies.length > 0 ? { initialCompetencies: state.selectedCompetencies } : {}),
+        };
+        await api.tenants.update(token, tenantId, { settings: mergedSettings });
+      } catch {
+        // Non-critical: settings save failure should not block cycle creation
+      }
+    }
+
+    // ── Step 2: Create the initial evaluation cycle ──
     try {
-      // Auto-generate cycle defaults — no date fields exist in the wizard
       const today = new Date();
       const endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 90);
@@ -445,7 +468,7 @@ export default function OnboardingPage() {
       localStorage.setItem(STORAGE_KEY, '1');
       router.push(`/dashboard/evaluaciones/${result.id}`);
     } catch (err: any) {
-      setFinishError(err.message || 'Error al crear el ciclo. Intenta nuevamente.');
+      setFinishError(err.message || 'Error al crear el ciclo de evaluación. Intenta nuevamente.');
       setSaving(false);
     }
   };
