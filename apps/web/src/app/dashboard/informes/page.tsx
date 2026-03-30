@@ -359,7 +359,7 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
   if (!data || !data.histogram || data.count === 0) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos suficientes para la curva de distribucion</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos suficientes para la curva de distribución</p>
       </div>
     );
   }
@@ -368,29 +368,65 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
         <p style={{ color: 'var(--warning)', fontSize: '0.85rem', fontWeight: 600 }}>
-          {data.message || `Se requieren al menos 5 evaluaciones para mostrar la distribuci\u00f3n (actualmente: ${data.count})`}
+          {data.message || `Se requieren al menos 5 evaluaciones para mostrar la distribución (actualmente: ${data.count})`}
         </p>
       </div>
     );
   }
 
+  // ── Compute zone breakdown from histogram buckets ──
+  const total = data.count || 1;
+  let cntLow = 0, cntMid = 0, cntHigh = 0;
+  for (const bucket of (data.histogram as any[])) {
+    const start = parseFloat((bucket.range as string).split('-')[0]);
+    if (!isNaN(start)) {
+      if (start < 4) cntLow += bucket.count;
+      else if (start < 7) cntMid += bucket.count;
+      else cntHigh += bucket.count;
+    }
+  }
+  const pctLow = Math.round((cntLow / total) * 100);
+  const pctMid = Math.round((cntMid / total) * 100);
+  const pctHigh = Math.round((cntHigh / total) * 100);
+
+  const mean = Number(data.mean);
+  const stddev = Number(data.stddev);
+
+  // ── Interpretive messages ──
+  const meanMsg =
+    mean >= 7.5 ? { text: 'Puntaje promedio muy alto — tendencia generalizada de buenos resultados. Verificar si puede haber sesgo de leniencia.', color: 'var(--success)' }
+    : mean >= 6.0 ? { text: 'Puntaje promedio alto — la organización muestra buen desempeño general.', color: 'var(--success)' }
+    : mean >= 4.5 ? { text: 'Puntaje promedio en rango medio — desempeño heterogéneo entre colaboradores.', color: 'var(--warning)' }
+    : { text: 'Puntaje promedio bajo — existen áreas de mejora significativas en la organización.', color: 'var(--danger)' };
+
+  const dispMsg =
+    stddev < 1.0 ? { text: 'Dispersión muy baja (σ=' + data.stddev + '): los evaluadores tienden a asignar puntajes muy similares, lo que puede indicar poca diferenciación o uniformidad de criterios.', icon: '⚠️' }
+    : stddev > 2.5 ? { text: 'Dispersión alta (σ=' + data.stddev + '): hay mucha variabilidad entre los puntajes, lo que puede reflejar criterios inconsistentes entre jefaturas o equipos.', icon: '⚠️' }
+    : { text: 'Dispersión normal (σ=' + data.stddev + '): la variabilidad es saludable y permite distinguir bien los niveles de desempeño.', icon: '✅' };
+
+  const biasMsg =
+    pctHigh > 60 ? '⚠️ Más del 60% de las evaluaciones quedaron en zona alta. Posible sesgo de leniencia — considerar calibración.'
+    : pctLow > 60 ? '⚠️ Más del 60% de las evaluaciones quedaron en zona baja. Puede haber sesgo de dureza o problemas de desempeño generalizados.'
+    : pctMid > 65 ? '⚠️ Alta concentración en la franja media. Baja diferenciación — la escala puede no estar siendo bien utilizada.'
+    : null;
+
   return (
     <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
       <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-        Distribucion de Puntajes (Curva de Bell)
+        Distribución de Puntajes (Curva de Bell)
       </h2>
       <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
         Histograma de puntajes con curva normal superpuesta
       </p>
 
-      {/* Stats */}
+      {/* Stats row */}
       <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.85rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
         <div>
           <span style={{ color: 'var(--text-muted)' }}>Promedio: </span>
           <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{data.mean}</span>
         </div>
         <div>
-          <span style={{ color: 'var(--text-muted)' }}>Desv. Est\u00e1ndar: </span>
+          <span style={{ color: 'var(--text-muted)' }}>Desv. Estándar: </span>
           <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.stddev}</span>
         </div>
         <div>
@@ -399,18 +435,15 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
         </div>
       </div>
 
-      {/* Contextual note */}
-      <div style={{ padding: '0.6rem 0.85rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        <strong style={{ color: 'var(--text-secondary)' }}>\u00bfC\u00f3mo leer este gr\u00e1fico?</strong>
-        {' '}Las barras muestran cu\u00e1ntos colaboradores obtuvieron cada rango de puntaje.
-        La l\u00ednea amarilla es la curva normal te\u00f3rica con la misma media y desviaci\u00f3n.
-        {Number(data.stddev) < 1.0
-          ? ' \u26a0\ufe0f Desviaci\u00f3n baja: los puntajes est\u00e1n muy concentrados, puede indicar poca diferenciaci\u00f3n entre evaluadores.'
-          : Number(data.stddev) > 2.5
-          ? ' \u26a0\ufe0f Desviaci\u00f3n alta: hay mucha dispersi\u00f3n en los puntajes, lo que sugiere criterios de evaluaci\u00f3n muy distintos entre equipos.'
-          : ' Distribuci\u00f3n con dispersi\u00f3n normal — criterios de evaluaci\u00f3n consistentes en la organizaci\u00f3n.'}
+      {/* How to read */}
+      <div style={{ padding: '0.55rem 0.85rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem', fontSize: '0.77rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        <strong style={{ color: 'var(--text-secondary)' }}>¿Cómo leer este gráfico?</strong>
+        {' '}Las barras muestran cuántos colaboradores obtuvieron cada rango de puntaje.
+        La línea amarilla es la curva normal teórica con la misma media y desviación.
+        Si las barras siguen de cerca esa línea, la distribución es equilibrada.
       </div>
 
+      {/* Chart */}
       <ResponsiveContainer width="100%" height={300}>
         <ComposedChart data={data.histogram} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -433,6 +466,64 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
           <Area type="monotone" dataKey="normalY" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} strokeWidth={2} name="Curva Normal" dot={false} />
         </ComposedChart>
       </ResponsiveContainer>
+
+      {/* ── Análisis de resultados ── */}
+      <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+        <p style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.85rem', color: 'var(--text-primary)' }}>
+          Análisis de resultados
+        </p>
+
+        {/* Zone breakdown */}
+        <div style={{ marginBottom: '1rem' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Distribución por zona
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {[
+              { label: 'Bajo (<4)', pct: pctLow, cnt: cntLow, color: 'var(--danger)', bg: 'rgba(239,68,68,0.08)' },
+              { label: 'Medio (4–7)', pct: pctMid, cnt: cntMid, color: 'var(--warning)', bg: 'rgba(245,158,11,0.08)' },
+              { label: 'Alto (>7)', pct: pctHigh, cnt: cntHigh, color: 'var(--success)', bg: 'rgba(16,185,129,0.08)' },
+            ].map((z) => (
+              <div key={z.label} style={{ flex: '1 1 120px', padding: '0.6rem 0.85rem', background: z.bg, borderRadius: 'var(--radius-sm)', border: `1px solid ${z.color}33` }}>
+                <p style={{ fontSize: '1.3rem', fontWeight: 800, color: z.color, margin: 0 }}>{z.pct}%</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.1rem 0 0' }}>{z.label}</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>{z.cnt} persona{z.cnt !== 1 ? 's' : ''}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Interpretive bullets */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          {/* Mean */}
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
+            <span style={{ color: meanMsg.color, fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>
+              {mean >= 6.0 ? '✅' : mean >= 4.5 ? '⚠️' : '🔴'}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+              <strong>Tendencia central:</strong> {meanMsg.text}
+            </span>
+          </div>
+
+          {/* Dispersion */}
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
+            <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>{dispMsg.icon}</span>
+            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+              <strong>Dispersión:</strong> {dispMsg.text}
+            </span>
+          </div>
+
+          {/* Bias warning if applicable */}
+          {biasMsg && (
+            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
+              <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>🔔</span>
+              <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                <strong>Alerta de distribución:</strong> {biasMsg.replace(/^⚠️\s*/, '')}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
