@@ -9,11 +9,6 @@ import { useCompetencyRadar, useSelfVsOthers, useHeatmap, useBellCurve, useCompe
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
 import {
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -74,7 +69,7 @@ function scoreLabel(score: number): string {
   return 'Alto';
 }
 
-/* ─── Radar Chart Section ──────────────────────────────────────────── */
+/* ─── Competency Bar Chart Section (replaces Radar) ─────────────── */
 
 function CompetencyRadarSection({ cycleId, userId }: { cycleId: string; userId: string }) {
   const { data, isLoading } = useCompetencyRadar(cycleId, userId);
@@ -90,57 +85,83 @@ function CompetencyRadarSection({ cycleId, userId }: { cycleId: string; userId: 
     );
   }
 
-  const radarData = data.sections.map((s: any) => ({
-    subject: (s.section || '').length > 20 ? (s.section || '').slice(0, 18) + '...' : (s.section || 'Sin nombre'),
+  const allRelations: string[] = Array.from(
+    new Set(data.sections.flatMap((s: any) => Object.keys(s.byRelation))),
+  ) as string[];
+
+  const maxScale = Math.max(...data.sections.map((s: any) => s.maxScale || 5));
+
+  // One entry per section — dynamic keys for each relation type
+  const chartData = data.sections.map((s: any) => ({
+    section:
+      (s.section || 'Sin nombre').length > 24
+        ? (s.section || '').slice(0, 22) + '\u2026'
+        : (s.section || 'Sin nombre'),
     fullName: s.section || 'Sin nombre',
-    overall: s.overall,
-    maxScale: s.maxScale,
     ...s.byRelation,
   }));
 
-  const allRelations: string[] = Array.from(new Set(data.sections.flatMap((s: any) => Object.keys(s.byRelation)))) as string[];
+  // Height scales with number of sections × number of relation bars
+  const chartHeight = Math.max(260, data.sections.length * Math.max(52, allRelations.length * 22 + 16));
+
+  const barTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.85rem', fontSize: '0.78rem' }}>
+        <p style={{ fontWeight: 700, marginBottom: '0.3rem' }}>{payload[0]?.payload?.fullName}</p>
+        {payload.map((p: any) => (
+          <p key={p.dataKey} style={{ color: p.fill || 'var(--text-secondary)', margin: '0.1rem 0' }}>
+            {p.name}: <strong>{p.value?.toFixed(2)}</strong> / {maxScale}
+          </p>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
       <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-        {'Radar de Competencias'}
+        {'Puntaje por Secci\u00f3n y Evaluador'}
       </h2>
       <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
         {'Puntaje promedio por secci\u00f3n de la plantilla, desglosado por tipo de evaluador'}
       </p>
-      <ResponsiveContainer width="100%" height={380}>
-        <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%">
-          <PolarGrid stroke="var(--border)" />
-          <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
-          <PolarRadiusAxis angle={90} domain={[0, Math.max(...radarData.map((d: any) => d.maxScale || 5))]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <BarChart
+          data={chartData}
+          layout="vertical"
+          margin={{ top: 4, right: 30, bottom: 4, left: 8 }}
+          barGap={3}
+          barCategoryGap="28%"
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+          <XAxis
+            type="number"
+            domain={[0, maxScale]}
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+            axisLine={{ stroke: 'var(--border)' }}
+            tickLine={{ stroke: 'var(--border)' }}
+          />
+          <YAxis
+            type="category"
+            dataKey="section"
+            width={148}
+            tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+            axisLine={{ stroke: 'var(--border)' }}
+            tickLine={{ stroke: 'var(--border)' }}
+          />
+          <Tooltip content={barTooltip} />
+          <Legend wrapperStyle={{ fontSize: '0.78rem' }} />
           {allRelations.map((rel) => (
-            <Radar
+            <Bar
               key={rel}
-              name={relationLabels[rel] || rel}
               dataKey={rel}
-              stroke={relationColors[rel] || 'var(--accent)'}
+              name={relationLabels[rel] || rel}
               fill={relationColors[rel] || 'var(--accent)'}
-              fillOpacity={0.15}
-              strokeWidth={2}
+              radius={[0, 3, 3, 0]}
             />
           ))}
-          <Tooltip
-            content={({ active, payload }: any) => {
-              if (!active || !payload?.length) return null;
-              return (
-                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.85rem', fontSize: '0.78rem' }}>
-                  <p style={{ fontWeight: 700, marginBottom: '0.3rem' }}>{payload[0]?.payload?.fullName}</p>
-                  {payload.map((p: any) => (
-                    <p key={p.dataKey} style={{ color: p.stroke }}>
-                      {p.name}: {p.value?.toFixed(2)}
-                    </p>
-                  ))}
-                </div>
-              );
-            }}
-          />
-          <Legend wrapperStyle={{ fontSize: '0.78rem' }} />
-        </RadarChart>
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );
@@ -406,70 +427,129 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
 
 /* ─── Competency Heatmap Section ──────────────────────────────────── */
 
-function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
-  const { data, isLoading } = useCompetencyHeatmap(cycleId);
+function heatColor(avg: number | null, maxScale: number): string {
+  if (avg === null) return 'var(--bg-surface)';
+  const ratio = avg / maxScale;
+  if (ratio >= 0.75) return 'rgba(16,185,129,0.22)';
+  if (ratio >= 0.55) return 'rgba(245,158,11,0.18)';
+  return 'rgba(239,68,68,0.20)';
+}
 
-  if (isLoading) return <div className="card" style={{ padding: '1.5rem' }}><p style={{ color: 'var(--text-muted)' }}>Cargando mapa de competencias...</p></div>;
-  if (!data || data.message || !data.grid || data.grid.length === 0) {
+function CompetencyHeatmapSection({
+  cycleId,
+  deptFilter,
+  posFilter,
+}: {
+  cycleId: string;
+  deptFilter?: string;
+  posFilter?: string;
+}) {
+  const activeFilters =
+    deptFilter || posFilter
+      ? { department: deptFilter, position: posFilter }
+      : undefined;
+  const { data, isLoading } = useCompetencyHeatmap(cycleId, activeFilters);
+
+  if (isLoading) return (
+    <div className="card" style={{ padding: '1.5rem' }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Cargando mapa de competencias...</p>
+    </div>
+  );
+
+  if (!data || !data.grid || data.grid.length === 0) {
     return (
       <div className="card" style={{ padding: '1.5rem' }}>
-        <h3 style={{ marginBottom: '0.5rem' }}>Mapa de Competencias por Departamento</h3>
-        <p style={{ color: 'var(--text-muted)' }}>{data?.message || 'Sin datos disponibles'}</p>
+        <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.5rem' }}>
+          Mapa de Competencias por Departamento
+        </h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          {(data as any)?.message || 'Sin datos disponibles para este ciclo'}
+        </p>
       </div>
     );
   }
 
-  const getColor = (avg: number | null) => {
-    if (avg === null) return '#f1f5f9';
-    if (avg >= 4) return '#dcfce7';
-    if (avg >= 3) return '#fef9c3';
-    if (avg >= 2) return '#fed7aa';
-    return '#fecaca';
-  };
-
-  const getTextColor = (avg: number | null) => {
-    if (avg === null) return '#94a3b8';
-    if (avg >= 4) return '#166534';
-    if (avg >= 3) return '#854d0e';
-    if (avg >= 2) return '#9a3412';
-    return '#991b1b';
-  };
+  const { departments, grid, privacyThreshold } = data;
+  const hasPrivacyRows = (departments as string[]).some((d) =>
+    (grid as any[]).some((r: any) => r.values.find((v: any) => v.department === d && v.privacyRestricted)),
+  );
 
   return (
-    <div className="card" style={{ padding: '1.5rem' }}>
-      <h3 style={{ marginBottom: '1rem' }}>Mapa de Competencias por Departamento</h3>
+    <div className="card animate-fade-up" style={{ padding: '1.5rem', overflow: 'auto' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+        <div>
+          <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.2rem' }}>
+            Mapa de Competencias por Departamento
+          </h2>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Puntaje promedio por secci&oacute;n &mdash; filas: competencias, columnas: departamentos
+            {(deptFilter || posFilter) && (
+              <span style={{ color: 'var(--accent)', marginLeft: '0.4rem' }}>
+                &bull; filtrado por {[deptFilter, posFilter].filter(Boolean).join(' / ')}
+              </span>
+            )}
+          </p>
+        </div>
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.72rem', alignItems: 'center', flexShrink: 0 }}>
+          <span style={{ display: 'inline-block', width: 12, height: 12, background: 'rgba(16,185,129,0.22)', borderRadius: 2, border: '1px solid var(--border)' }} />
+          <span style={{ color: 'var(--text-muted)', marginRight: '0.4rem' }}>Alto</span>
+          <span style={{ display: 'inline-block', width: 12, height: 12, background: 'rgba(245,158,11,0.18)', borderRadius: 2, border: '1px solid var(--border)' }} />
+          <span style={{ color: 'var(--text-muted)', marginRight: '0.4rem' }}>Medio</span>
+          <span style={{ display: 'inline-block', width: 12, height: 12, background: 'rgba(239,68,68,0.20)', borderRadius: 2, border: '1px solid var(--border)' }} />
+          <span style={{ color: 'var(--text-muted)' }}>Bajo</span>
+        </div>
+      </div>
+
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '500px' }}>
           <thead>
-            <tr>
-              <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)', minWidth: '150px' }}>
-                Competencia / Sección
+            <tr style={{ borderBottom: '2px solid var(--border)' }}>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', minWidth: '150px' }}>
+                Secci&oacute;n / Competencia
               </th>
-              {data.departments.map((dept: string) => (
-                <th key={dept} style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '2px solid var(--border)', minWidth: '100px' }}>
-                  {dept}
+              {(departments as string[]).map((dept: string) => (
+                <th key={dept} style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', maxWidth: '110px' }} title={dept}>
+                  {dept.length > 14 ? dept.slice(0, 13) + '\u2026' : dept}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.grid.map((row: any) => (
-              <tr key={row.section}>
-                <td style={{ padding: '0.5rem', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>
+            {(grid as any[]).map((row: any) => (
+              <tr key={row.section} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '0.55rem 0.75rem', fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>
                   {row.section}
                 </td>
                 {row.values.map((cell: any) => (
-                  <td key={cell.department} style={{
-                    padding: '0.5rem',
-                    textAlign: 'center',
-                    borderBottom: '1px solid var(--border)',
-                    backgroundColor: getColor(cell.avg),
-                    color: getTextColor(cell.avg),
-                    fontWeight: 600,
-                  }}>
-                    {cell.avg !== null ? cell.avg.toFixed(1) : '—'}
-                    {cell.count > 0 && (
-                      <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, opacity: 0.7 }}>
+                  <td
+                    key={cell.department}
+                    style={{
+                      padding: '0.55rem 0.5rem',
+                      textAlign: 'center',
+                      background: cell.privacyRestricted
+                        ? 'transparent'
+                        : heatColor(cell.avg, row.maxScale ?? 5),
+                      fontWeight: cell.avg !== null && !cell.privacyRestricted ? 700 : 400,
+                      color: cell.privacyRestricted
+                        ? 'var(--text-muted)'
+                        : cell.avg !== null
+                          ? 'var(--text-primary)'
+                          : 'var(--text-muted)',
+                      fontSize: '0.82rem',
+                    }}
+                    title={
+                      cell.privacyRestricted
+                        ? `Privacidad: se requieren al menos ${privacyThreshold} evaluados`
+                        : cell.avg !== null
+                          ? `${cell.count} respuestas \u00b7 escala 1-${row.maxScale ?? 5}`
+                          : 'Sin datos'
+                    }
+                  >
+                    {cell.privacyRestricted ? '\uD83D\uDD12' : cell.avg !== null ? cell.avg.toFixed(1) : '\u2014'}
+                    {!cell.privacyRestricted && cell.count > 0 && (
+                      <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 400, opacity: 0.6 }}>
                         n={cell.count}
                       </span>
                     )}
@@ -480,12 +560,12 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
           </tbody>
         </table>
       </div>
-      <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-        <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#fecaca', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />0-2 Bajo</span>
-        <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#fed7aa', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />2-3 Regular</span>
-        <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#fef9c3', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />3-4 Bueno</span>
-        <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#dcfce7', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />4-5 Excelente</span>
-      </div>
+
+      {hasPrivacyRows && (
+        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+          {'\uD83D\uDD12 Departamentos con menos de '}{privacyThreshold}{' evaluados se ocultan para proteger la privacidad'}
+        </p>
+      )}
     </div>
   );
 }
@@ -609,8 +689,9 @@ export default function InformesPage() {
       </div>
 
       {/* Selectors */}
-      <div className="animate-fade-up" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div>
+      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
+        {/* Row 1: Cycle */}
+        <div style={{ marginBottom: '1rem' }}>
           <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>{'Ciclo'}</label>
           {loadingCycles ? <Spinner /> : (
             <select style={selectStyle} value={selectedCycleId || ''} onChange={(e) => setSelectedCycleId(e.target.value || null)}>
@@ -621,39 +702,52 @@ export default function InformesPage() {
             </select>
           )}
         </div>
-        <div>
-          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>{'Colaborador (para Radar y Self vs Others)'}</label>
-          <select style={selectStyle} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
-            <option value="">{'Seleccionar colaborador...'}</option>
-            {users
-              .filter((u: any) => (!filterDepartment || u.department === filterDepartment) && (!filterPosition || u.position === filterPosition))
-              .map((u: any) => (
-                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}</option>
-              ))
-            }
-          </select>
-        </div>
-        <div>
-          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Departamento</label>
-          <select style={selectStyle} value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)}>
-            <option value="">Todos</option>
-            {departments.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Cargo</label>
-          <select style={selectStyle} value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)}>
-            <option value="">Todos</option>
-            {positions.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
-        {(filterDepartment || filterPosition) && (
-          <button
-            onClick={() => { setFilterDepartment(''); setFilterPosition(''); }}
-            style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, padding: '0.45rem 0', alignSelf: 'flex-end' }}
-          >
-            Limpiar filtros
-          </button>
+
+        {/* Row 2: Dept + Cargo + User — all affect CompetencyHeatmap; Dept+Cargo also filter user list */}
+        {selectedCycleId && (
+          <div style={{ padding: '0.85rem 1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+            <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.65rem' }}>
+              Filtros &mdash; afectan el Mapa de Competencias y la lista de colaboradores
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Departamento</label>
+                <select style={{ ...selectStyle, minWidth: '180px' }} value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)}>
+                  <option value="">Todos</option>
+                  {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Cargo</label>
+                <select style={{ ...selectStyle, minWidth: '180px' }} value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)}>
+                  <option value="">Todos</option>
+                  {positions.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                  {'Colaborador \u2014 Puntaje por Secci\u00f3n y Self vs Others'}
+                </label>
+                <select style={selectStyle} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
+                  <option value="">Todos (ver resumen general)</option>
+                  {users
+                    .filter((u: any) => (!filterDepartment || u.department === filterDepartment) && (!filterPosition || u.position === filterPosition))
+                    .map((u: any) => (
+                      <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` \u2014 ${u.position}` : ''}</option>
+                    ))
+                  }
+                </select>
+              </div>
+              {(filterDepartment || filterPosition) && (
+                <button
+                  onClick={() => { setFilterDepartment(''); setFilterPosition(''); }}
+                  style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, padding: '0.45rem 0', alignSelf: 'flex-end' }}
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -667,18 +761,16 @@ export default function InformesPage() {
       {/* Content */}
       {selectedCycleId && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Per-user views */}
-          {selectedUserId && (
+          {/* Per-user views — only when a specific user is selected */}
+          {selectedUserId ? (
             <>
               <CompetencyRadarSection cycleId={selectedCycleId} userId={selectedUserId} />
               <SelfVsOthersSection cycleId={selectedCycleId} userId={selectedUserId} />
             </>
-          )}
-
-          {!selectedUserId && (
-            <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {'Selecciona un colaborador para ver el Radar de Competencias y la comparativa Self vs Others'}
+          ) : (
+            <div className="card" style={{ padding: '1.25rem 1.5rem', borderLeft: '3px solid var(--accent)' }}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                {'Selecciona un colaborador para ver el gr\u00e1fico de Puntaje por Secci\u00f3n y la comparativa Autoevaluaci\u00f3n vs Evaluadores'}
               </p>
             </div>
           )}
@@ -686,11 +778,20 @@ export default function InformesPage() {
           {/* Bell Curve */}
           <BellCurveSection cycleId={selectedCycleId} />
 
-          {/* Competency Heatmap */}
-          <CompetencyHeatmapSection cycleId={selectedCycleId} />
+          {/* Competency Heatmap — responds to Dept + Cargo filters */}
+          <CompetencyHeatmapSection
+            cycleId={selectedCycleId}
+            deptFilter={filterDepartment || undefined}
+            posFilter={filterPosition || undefined}
+          />
 
-          {/* Heatmap always visible with cycle */}
-          <HeatmapSection cycleId={selectedCycleId} />
+          {/* Heatmap por Departamento — vista global, no aplica filtros de dept */}
+          <div>
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontStyle: 'italic' }}>
+              El Mapa de Calor muestra todos los departamentos del ciclo sin filtrar &mdash; es la vista global de distribuci&oacute;n de desempe&ntilde;o.
+            </p>
+            <HeatmapSection cycleId={selectedCycleId} />
+          </div>
         </div>
       )}
     </div>
