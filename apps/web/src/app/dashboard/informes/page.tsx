@@ -384,19 +384,31 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
       </p>
 
       {/* Stats */}
-      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', fontSize: '0.8rem' }}>
+      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.85rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
         <div>
           <span style={{ color: 'var(--text-muted)' }}>Promedio: </span>
           <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{data.mean}</span>
         </div>
         <div>
-          <span style={{ color: 'var(--text-muted)' }}>Desv. Est.: </span>
+          <span style={{ color: 'var(--text-muted)' }}>Desv. Est\u00e1ndar: </span>
           <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.stddev}</span>
         </div>
         <div>
-          <span style={{ color: 'var(--text-muted)' }}>Total: </span>
-          <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.count} evaluaciones</span>
+          <span style={{ color: 'var(--text-muted)' }}>Total evaluaciones: </span>
+          <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.count}</span>
         </div>
+      </div>
+
+      {/* Contextual note */}
+      <div style={{ padding: '0.6rem 0.85rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        <strong style={{ color: 'var(--text-secondary)' }}>\u00bfC\u00f3mo leer este gr\u00e1fico?</strong>
+        {' '}Las barras muestran cu\u00e1ntos colaboradores obtuvieron cada rango de puntaje.
+        La l\u00ednea amarilla es la curva normal te\u00f3rica con la misma media y desviaci\u00f3n.
+        {Number(data.stddev) < 1.0
+          ? ' \u26a0\ufe0f Desviaci\u00f3n baja: los puntajes est\u00e1n muy concentrados, puede indicar poca diferenciaci\u00f3n entre evaluadores.'
+          : Number(data.stddev) > 2.5
+          ? ' \u26a0\ufe0f Desviaci\u00f3n alta: hay mucha dispersi\u00f3n en los puntajes, lo que sugiere criterios de evaluaci\u00f3n muy distintos entre equipos.'
+          : ' Distribuci\u00f3n con dispersi\u00f3n normal — criterios de evaluaci\u00f3n consistentes en la organizaci\u00f3n.'}
       </div>
 
       <ResponsiveContainer width="100%" height={300}>
@@ -635,7 +647,7 @@ export default function InformesPage() {
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Informes Avanzados</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Radar de competencias, comparativa autoevaluación vs evaluadores y mapa de calor
+            Distribuci&oacute;n de puntajes, mapa de competencias y an&aacute;lisis individual por colaborador
           </p>
         </div>
         {selectedCycleId && (
@@ -669,20 +681,82 @@ export default function InformesPage() {
       {/* Guide */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button onClick={() => setShowGuide(!showGuide)} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}>
-          {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfQu\u00e9 muestra esta p\u00e1gina?'}
+          {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfC\u00f3mo usar esta p\u00e1gina?'}
         </button>
         {showGuide && (
           <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-              {'Gu\u00eda de uso: Informes Avanzados'}
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem', color: 'var(--accent)' }}>
+              Gu&iacute;a de uso: Informes Avanzados
             </h3>
-            <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-              <li><strong>{'Radar de Competencias:'}</strong>{' Gr\u00e1fico tipo radar que muestra el puntaje promedio por cada secci\u00f3n de la plantilla de evaluaci\u00f3n, desglosado por tipo de evaluador (autoevaluaci\u00f3n, encargado, par, reporte directo).'}</li>
-              <li><strong>{'Autoevaluaci\u00f3n vs Evaluadores:'}</strong>{' Compara el puntaje que el colaborador se asign\u00f3 versus lo que sus evaluadores le dieron. Incluye indicador de brecha (gap) y su interpretaci\u00f3n.'}</li>
-              <li><strong>{'Mapa de Calor:'}</strong>{' Vista de todos los departamentos con barra de distribuci\u00f3n (rojo/amarillo/verde) mostrando cu\u00e1ntos colaboradores est\u00e1n en nivel bajo, medio o alto. Se expande para ver detalle.'}</li>
-            </ul>
-            <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--accent)' }}>{'Permisos:'}</strong>{' Solo Administradores y Encargados de Equipo pueden acceder.'}
+
+            {/* Section A */}
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '1rem' }}>📊</span>
+                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                  Vista General &mdash; resultados del ciclo completo
+                </span>
+              </div>
+              <ul style={{ margin: 0, paddingLeft: '1.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+                <li>
+                  <strong>Distribuci&oacute;n de Puntajes (Curva de Bell):</strong>{' '}
+                  Histograma que muestra cu&aacute;ntos colaboradores obtuvieron cada rango de puntaje en el ciclo.
+                  La l&iacute;nea amarilla superpuesta es la curva normal te&oacute;rica.
+                  Permite ver si los resultados siguen una distribuci&oacute;n balanceada o si hay un sesgo
+                  (muchos puntajes muy altos o muy bajos), lo cual puede indicar leniencia, dureza o falta de diferenciaci&oacute;n en las evaluaciones.
+                  Incluye media y desviaci&oacute;n est&aacute;ndar para comparar entre ciclos.
+                </li>
+                <li>
+                  <strong>Mapa de Competencias por Departamento:</strong>{' '}
+                  Tabla de calor (filas = secciones de la plantilla, columnas = departamentos).
+                  El color indica el nivel: verde alto, amarillo medio, rojo bajo.
+                  Permite identificar qu&eacute; &aacute;reas de competencia son d&eacute;biles en qu&eacute; departamentos.
+                  Usa los filtros <em>Departamento</em> y <em>Cargo</em> para acotar la vista.
+                  Departamentos con menos de 5 evaluados se ocultan por privacidad.
+                </li>
+                <li>
+                  <strong>Mapa de Calor por Departamento:</strong>{' '}
+                  Vista global de todos los departamentos con barra rojo/amarillo/verde mostrando
+                  cu&aacute;ntos colaboradores est&aacute;n en nivel bajo, medio o alto.
+                  Siempre muestra todos los departamentos del ciclo (no aplica filtros).
+                  Haz clic en un departamento para ver el detalle individual.
+                </li>
+              </ul>
+            </div>
+
+            {/* Section B */}
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '1rem' }}>👤</span>
+                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                  Vista Individual &mdash; an&aacute;lisis de un colaborador espec&iacute;fico
+                </span>
+              </div>
+              <ul style={{ margin: 0, paddingLeft: '1.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+                <li>
+                  <strong>Puntaje por Secci&oacute;n y Evaluador:</strong>{' '}
+                  Gr&aacute;fico de barras horizontales agrupadas: cada secci&oacute;n de la plantilla tiene una barra
+                  por tipo de evaluador (autoevaluaci&oacute;n, encargado, par, reporte directo).
+                  Permite comparar si el colaborador se eval&uacute;a igual o diferente a como lo ven sus evaluadores
+                  secci&oacute;n por secci&oacute;n.
+                </li>
+                <li>
+                  <strong>Autoevaluaci&oacute;n vs Evaluadores:</strong>{' '}
+                  Compara el puntaje global del colaborador versus el promedio de sus evaluadores.
+                  Incluye indicador de brecha (gap): un gap positivo grande significa que el colaborador
+                  se eval&uacute;a mucho mejor de lo que lo ven otros; un gap negativo indica subestimaci&oacute;n.
+                </li>
+              </ul>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem', paddingLeft: '1.4rem' }}>
+                Para ver esta secci&oacute;n, selecciona un colaborador en el selector inferior.
+                Usa <em>Departamento</em> y <em>Cargo</em> para filtrar la lista.
+              </p>
+            </div>
+
+            <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' '}
+              Solo Administradores y Encargados de Equipo pueden acceder a esta p&aacute;gina.
+              Los colaboradores ven sus resultados individuales en <em>Mi Desempe&ntilde;o</em>.
             </div>
           </div>
         )}
@@ -703,11 +777,11 @@ export default function InformesPage() {
           )}
         </div>
 
-        {/* Row 2: Dept + Cargo + User — all affect CompetencyHeatmap; Dept+Cargo also filter user list */}
+        {/* Dept + Cargo filters — affect CompetencyHeatmap and collaborator list */}
         {selectedCycleId && (
           <div style={{ padding: '0.85rem 1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
             <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.65rem' }}>
-              Filtros &mdash; afectan el Mapa de Competencias y la lista de colaboradores
+              Filtros &mdash; Mapa de Competencias y lista de colaboradores
             </p>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
@@ -724,20 +798,6 @@ export default function InformesPage() {
                   {positions.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                  {'Colaborador \u2014 Puntaje por Secci\u00f3n y Self vs Others'}
-                </label>
-                <select style={selectStyle} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
-                  <option value="">Todos (ver resumen general)</option>
-                  {users
-                    .filter((u: any) => (!filterDepartment || u.department === filterDepartment) && (!filterPosition || u.position === filterPosition))
-                    .map((u: any) => (
-                      <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` \u2014 ${u.position}` : ''}</option>
-                    ))
-                  }
-                </select>
-              </div>
               {(filterDepartment || filterPosition) && (
                 <button
                   onClick={() => { setFilterDepartment(''); setFilterPosition(''); }}
@@ -751,7 +811,7 @@ export default function InformesPage() {
         )}
       </div>
 
-      {/* No selections */}
+      {/* No cycle selected */}
       {!selectedCycleId && (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{'Selecciona un ciclo para ver los informes'}</p>
@@ -760,38 +820,98 @@ export default function InformesPage() {
 
       {/* Content */}
       {selectedCycleId && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Per-user views — only when a specific user is selected */}
-          {selectedUserId ? (
-            <>
-              <CompetencyRadarSection cycleId={selectedCycleId} userId={selectedUserId} />
-              <SelfVsOthersSection cycleId={selectedCycleId} userId={selectedUserId} />
-            </>
-          ) : (
-            <div className="card" style={{ padding: '1.25rem 1.5rem', borderLeft: '3px solid var(--accent)' }}>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                {'Selecciona un colaborador para ver el gr\u00e1fico de Puntaje por Secci\u00f3n y la comparativa Autoevaluaci\u00f3n vs Evaluadores'}
-              </p>
-            </div>
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-          {/* Bell Curve */}
-          <BellCurveSection cycleId={selectedCycleId} />
-
-          {/* Competency Heatmap — responds to Dept + Cargo filters */}
-          <CompetencyHeatmapSection
-            cycleId={selectedCycleId}
-            deptFilter={filterDepartment || undefined}
-            posFilter={filterPosition || undefined}
-          />
-
-          {/* Heatmap por Departamento — vista global, no aplica filtros de dept */}
+          {/* ── SECCIÓN GENERAL ─────────────────────────────────────── */}
           <div>
-            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontStyle: 'italic' }}>
-              El Mapa de Calor muestra todos los departamentos del ciclo sin filtrar &mdash; es la vista global de distribuci&oacute;n de desempe&ntilde;o.
-            </p>
-            <HeatmapSection cycleId={selectedCycleId} />
+            {/* Section header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)' }}>
+              <span style={{ fontSize: '1.1rem' }}>📊</span>
+              <div>
+                <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                  Vista General
+                </h2>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                  Resultados del ciclo completo &mdash; Distribuci&oacute;n de puntajes y desempe&ntilde;o por departamento
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              {/* Bell Curve */}
+              <BellCurveSection cycleId={selectedCycleId} />
+
+              {/* Competency Heatmap — responds to Dept + Cargo page filters */}
+              <CompetencyHeatmapSection
+                cycleId={selectedCycleId}
+                deptFilter={filterDepartment || undefined}
+                posFilter={filterPosition || undefined}
+              />
+
+              {/* Heatmap por Departamento — always global, no filters applied */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Vista global del ciclo &mdash; muestra todos los departamentos sin importar los filtros activos
+                  </span>
+                </div>
+                <HeatmapSection cycleId={selectedCycleId} />
+              </div>
+            </div>
           </div>
+
+          {/* ── SECCIÓN INDIVIDUAL ──────────────────────────────────── */}
+          <div>
+            {/* Section header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)' }}>
+              <span style={{ fontSize: '1.1rem' }}>👤</span>
+              <div>
+                <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                  Vista Individual
+                </h2>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                  An&aacute;lisis de un colaborador espec&iacute;fico &mdash; Puntaje por secci&oacute;n y comparativa de evaluadores
+                </p>
+              </div>
+            </div>
+
+            {/* User selector */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                Colaborador
+              </label>
+              <select style={selectStyle} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
+                <option value="">Selecciona un colaborador&hellip;</option>
+                {users
+                  .filter((u: any) => (!filterDepartment || u.department === filterDepartment) && (!filterPosition || u.position === filterPosition))
+                  .map((u: any) => (
+                    <option key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName}{u.department ? ` \u2014 ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}
+                    </option>
+                  ))
+                }
+              </select>
+              {(filterDepartment || filterPosition) && (
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                  Lista filtrada por: {[filterDepartment, filterPosition].filter(Boolean).join(' / ')}
+                </p>
+              )}
+            </div>
+
+            {selectedUserId ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <CompetencyRadarSection cycleId={selectedCycleId} userId={selectedUserId} />
+                <SelfVsOthersSection cycleId={selectedCycleId} userId={selectedUserId} />
+              </div>
+            ) : (
+              <div className="card" style={{ padding: '2rem', textAlign: 'center', border: '1px dashed var(--border)' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: 0 }}>
+                  Selecciona un colaborador de la lista para ver su gr&aacute;fico de puntaje por secci&oacute;n y la comparativa Autoevaluaci&oacute;n vs Evaluadores
+                </p>
+              </div>
+            )}
+          </div>
+
         </div>
       )}
     </div>
