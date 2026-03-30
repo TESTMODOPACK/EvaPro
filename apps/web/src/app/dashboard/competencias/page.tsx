@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
+import { CUSTOM_SETTINGS_DEFAULTS } from '@/lib/constants';
 
 function Spinner() {
   return (
@@ -14,18 +15,28 @@ function Spinner() {
   );
 }
 
-const CATEGORY_BADGE: Record<string, string> = {
-  tecnica: 'badge badge-accent',
-  blanda: 'badge badge-success',
-  gestion: 'badge badge-warning',
-  liderazgo: 'badge badge-danger',
-};
+// ─── Paleta de colores para categorías dinámicas ──────────────────────────────
+// Se asigna por índice (posición en la lista de Mantenedores), rotando entre 5 estilos.
+const BADGE_PALETTE = [
+  { badge: 'badge badge-accent',   dot: 'var(--accent)'   },
+  { badge: 'badge badge-success',  dot: 'var(--success)'  },
+  { badge: 'badge badge-warning',  dot: 'var(--warning)'  },
+  { badge: 'badge badge-danger',   dot: 'var(--danger)'   },
+  { badge: 'badge',                dot: 'var(--text-muted)' },
+];
 
-const CATEGORY_LABEL: Record<string, string> = {
-  tecnica: 'Técnica',
-  blanda: 'Blanda',
-  gestion: 'Gestión',
+// Legado: mapeo de claves antiguas a nombres legibles (para competencias existentes
+// que fueron guardadas con las claves hardcodeadas anteriores).
+const LEGACY_LABEL: Record<string, string> = {
+  tecnica:   'Técnica',
+  blanda:    'Blanda',
+  gestion:   'Gestión',
   liderazgo: 'Liderazgo',
+  // También cubrir mayúsculas por si acaso
+  Tecnica:   'Técnica',
+  Blanda:    'Blanda',
+  Gestion:   'Gestión',
+  Liderazgo: 'Liderazgo',
 };
 
 interface CompetencyForm {
@@ -33,8 +44,6 @@ interface CompetencyForm {
   category: string;
   description: string;
 }
-
-const emptyForm: CompetencyForm = { name: '', category: 'tecnica', description: '' };
 
 export default function CompetenciasPage() {
   const { token, user } = useAuthStore();
@@ -54,14 +63,45 @@ export default function CompetenciasPage() {
   const [competencies, setCompetencies] = useState<any[]>([]);
   const [error, setError] = useState('');
 
+  // ── Categorías dinámicas desde Mantenedores ──────────────────────────────
+  const [categories, setCategories] = useState<string[]>(
+    CUSTOM_SETTINGS_DEFAULTS.competencyCategories,
+  );
+
+  // Derivados: índice → paleta de color, nombre legible
+  const categoryIndex = (cat: string) => {
+    const idx = categories.indexOf(cat);
+    return idx >= 0 ? idx : -1;
+  };
+  const getCategoryBadge = (cat: string): string => {
+    const idx = categoryIndex(cat);
+    if (idx >= 0) return BADGE_PALETTE[idx % BADGE_PALETTE.length].badge;
+    // Legado: claves antiguas hardcodeadas
+    if (cat === 'tecnica') return BADGE_PALETTE[0].badge;
+    if (cat === 'blanda')  return BADGE_PALETTE[1].badge;
+    if (cat === 'gestion') return BADGE_PALETTE[2].badge;
+    if (cat === 'liderazgo') return BADGE_PALETTE[3].badge;
+    return BADGE_PALETTE[4].badge;
+  };
+  const getCategoryLabel = (cat: string): string => {
+    // Si está en la lista actual, mostrarlo tal cual (ya es el nombre legible)
+    if (categories.includes(cat)) return cat;
+    // Legado: traducir claves antiguas
+    return LEGACY_LABEL[cat] ?? cat;
+  };
+  const getCategoryDot = (cat: string): string => {
+    const idx = categoryIndex(cat);
+    return idx >= 0 ? BADGE_PALETTE[idx % BADGE_PALETTE.length].dot : 'var(--text-muted)';
+  };
+
   // Create form
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState<CompetencyForm>(emptyForm);
+  const [form, setForm] = useState<CompetencyForm>({ name: '', category: '', description: '' });
   const [creating, setCreating] = useState(false);
 
   // Edit inline
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<CompetencyForm>(emptyForm);
+  const [editForm, setEditForm] = useState<CompetencyForm>({ name: '', category: '', description: '' });
 
   useEffect(() => {
     if (!token) return;
@@ -74,11 +114,23 @@ export default function CompetenciasPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.development.competencies.list(token!);
+      const [res, settings] = await Promise.all([
+        api.development.competencies.list(token!),
+        api.tenants.getAllCustomSettings(token!).catch(() => ({} as Record<string, string[]>)),
+      ]);
       setCompetencies(Array.isArray(res) ? res : []);
+
+      // Cargar categorías desde Mantenedores; usar defaults si no están configuradas
+      const rawCats = (settings as Record<string, string[]>)?.competencyCategories;
+      const cats: string[] = rawCats?.length
+        ? rawCats
+        : CUSTOM_SETTINGS_DEFAULTS.competencyCategories;
+      setCategories(cats);
+
+      // Sincronizar el valor por defecto del formulario con la primera categoría disponible
+      setForm((f) => ({ ...f, category: f.category || cats[0] || '' }));
     } catch (e: any) {
       const msg = e.message || 'Error al cargar competencias';
-      // Make PDI acronym readable
       setError(msg.replace(/"PDI"/g, '"Planes de Desarrollo Individual (PDI)"'));
     } finally {
       setLoading(false);
@@ -95,7 +147,7 @@ export default function CompetenciasPage() {
         category: form.category,
         description: form.description || undefined,
       });
-      setForm(emptyForm);
+      setForm({ name: '', category: categories[0] || '', description: '' });
       setShowCreate(false);
       await loadData();
     } catch (e: any) {
@@ -205,22 +257,22 @@ export default function CompetenciasPage() {
           </p>
 
           <div style={{ marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Categor\u00edas disponibles'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{'Categor\u00edas configuradas'}</div>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                {'Edita las categor\u00edas en Mantenedores \u2192 Categor\u00edas de Competencias'}
+              </span>
+            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <span className="badge badge-accent">{'T\u00e9cnica'}</span>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{'Habilidades espec\u00edficas del rol (programaci\u00f3n, an\u00e1lisis de datos, dise\u00f1o)'}</span>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.4rem' }}>
-              <span className="badge badge-success">Blanda</span>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{'Habilidades interpersonales (comunicaci\u00f3n, trabajo en equipo, empat\u00eda)'}</span>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.4rem' }}>
-              <span className="badge badge-warning">{'Gesti\u00f3n'}</span>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{'Capacidades de administraci\u00f3n (planificaci\u00f3n, organizaci\u00f3n, toma de decisiones)'}</span>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.4rem' }}>
-              <span className="badge badge-danger">Liderazgo</span>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{'Competencias de direcci\u00f3n (visi\u00f3n estrat\u00e9gica, motivaci\u00f3n, delegaci\u00f3n)'}</span>
+              {categories.map((cat, i) => (
+                <span
+                  key={cat}
+                  className={BADGE_PALETTE[i % BADGE_PALETTE.length].badge}
+                  style={{ fontSize: '0.78rem' }}
+                >
+                  {cat}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -264,10 +316,9 @@ export default function CompetenciasPage() {
                   onChange={(e) => setForm({ ...form, category: e.target.value })}
                   style={{ padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
                 >
-                  <option value="tecnica">{'T\u00e9cnica'}</option>
-                  <option value="blanda">Blanda</option>
-                  <option value="gestion">{'Gesti\u00f3n'}</option>
-                  <option value="liderazgo">Liderazgo</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
               </label>
             </div>
@@ -327,10 +378,16 @@ export default function CompetenciasPage() {
                             onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                             style={{ padding: '0.35rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
                           >
-                            <option value="tecnica">{'T\u00e9cnica'}</option>
-                            <option value="blanda">Blanda</option>
-                            <option value="gestion">{'Gesti\u00f3n'}</option>
-                            <option value="liderazgo">Liderazgo</option>
+                            {/* Mostrar las categorías actuales de Mantenedores */}
+                            {categories.map((cat) => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                            {/* Si la categoría guardada no está en la lista actual (legado), mostrarla igual */}
+                            {editForm.category && !categories.includes(editForm.category) && (
+                              <option value={editForm.category}>
+                                {getCategoryLabel(editForm.category)} (legado)
+                              </option>
+                            )}
                           </select>
                         </td>
                         <td style={{ padding: '0.5rem 1rem' }}>
@@ -356,8 +413,8 @@ export default function CompetenciasPage() {
                       <>
                         <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-primary)' }}>{comp.name}</td>
                         <td style={{ padding: '0.75rem 1rem' }}>
-                          <span className={CATEGORY_BADGE[comp.category] || 'badge'} style={{ fontSize: '0.72rem' }}>
-                            {CATEGORY_LABEL[comp.category] || comp.category}
+                          <span className={getCategoryBadge(comp.category)} style={{ fontSize: '0.72rem' }}>
+                            {getCategoryLabel(comp.category)}
                           </span>
                         </td>
                         <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -377,7 +434,8 @@ export default function CompetenciasPage() {
                                 setEditingId(comp.id);
                                 setEditForm({
                                   name: comp.name || '',
-                                  category: comp.category || 'tecnica',
+                                  // Si la categoría guardada no está en la lista actual, mantenerla tal cual
+                                  category: comp.category || categories[0] || '',
                                   description: comp.description || '',
                                 });
                               }}
