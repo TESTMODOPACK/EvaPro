@@ -76,11 +76,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [isAuthenticated, token, router, logout]);
 
-  // Show the onboarding banner every login for tenant_admin.
-  // Dismiss is session-only (React state only — never persisted to localStorage).
+  // Show the onboarding banner for tenant_admin only if they haven't completed onboarding.
+  // Completion is persisted in localStorage ('evapro_onboarding_done').
   useEffect(() => {
     if (user?.role === 'tenant_admin' && !pathname.startsWith('/dashboard/onboarding')) {
-      setShowOnboarding(true);
+      const done = typeof window !== 'undefined'
+        ? localStorage.getItem('evapro_onboarding_done')
+        : null;
+      if (!done) setShowOnboarding(true);
     }
   }, [user, pathname]);
 

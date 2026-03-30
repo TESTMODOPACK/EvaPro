@@ -117,15 +117,23 @@ function StepEmpresa({ state, onChange }: { state: WizardState; onChange: (k: ke
       </div>
 
       <div>
-        <label style={labelStyle}>Industria <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span></label>
-        <select style={inputStyle} value={state.orgIndustry} onChange={(e) => onChange('orgIndustry', e.target.value)}>
+        <label style={labelStyle}>
+          Industria <span style={{ color: 'var(--danger)', marginLeft: '2px' }}>*</span>
+        </label>
+        <select
+          style={{ ...inputStyle, borderColor: !state.orgIndustry ? 'rgba(239,68,68,0.4)' : 'var(--border)' }}
+          value={state.orgIndustry}
+          onChange={(e) => onChange('orgIndustry', e.target.value)}
+        >
           <option value="">Seleccionar industria...</option>
           {INDUSTRY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </div>
 
       <div>
-        <label style={labelStyle}>Tamaño del equipo <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span></label>
+        <label style={labelStyle}>
+          Tamaño del equipo <span style={{ color: 'var(--danger)', marginLeft: '2px' }}>*</span>
+        </label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
           {SIZE_OPTIONS.map((o) => (
             <button
@@ -145,7 +153,22 @@ function StepEmpresa({ state, onChange }: { state: WizardState; onChange: (k: ke
             </button>
           ))}
         </div>
+        {!state.orgSize && (
+          <p style={{ fontSize: '0.75rem', color: 'rgba(239,68,68,0.8)', marginTop: '0.4rem' }}>
+            Selecciona el tamaño de tu equipo para continuar
+          </p>
+        )}
       </div>
+
+      {(!state.orgIndustry || !state.orgSize) && (
+        <div style={{
+          padding: '0.6rem 0.9rem', background: 'rgba(239,68,68,0.05)',
+          border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)',
+          fontSize: '0.78rem', color: 'var(--danger)',
+        }}>
+          Completa los campos obligatorios (<strong>*</strong>) para continuar.
+        </div>
+      )}
     </div>
   );
 }
@@ -414,15 +437,17 @@ export default function OnboardingPage() {
 
   const steps = [
     { title: 'Tu empresa', subtitle: 'Cuéntanos sobre tu organización', component: <StepEmpresa state={state} onChange={onChange} /> },
-    { title: 'Tu equipo', subtitle: 'Agrega a tus colaboradores', component: <StepEquipo state={state} onChange={onChange} /> },
+    { title: 'Tu equipo', subtitle: 'Agrega colaboradores — opcional, puedes hacerlo después', component: <StepEquipo state={state} onChange={onChange} /> },
     { title: 'Competencias', subtitle: 'Define qué evaluar', component: <StepCompetencias state={state} onChange={onChange} /> },
     { title: 'Plantilla', subtitle: 'Elige tu primera plantilla', component: <StepPlantilla state={state} onChange={onChange} /> },
     { title: '¡Listo!', subtitle: 'Tu plataforma está configurada', component: <StepListo state={state} /> },
   ];
 
   const canNext = () => {
-    // Step 1 is always valid — orgName comes pre-loaded from the system
-    return !loadingTenant;
+    if (loadingTenant) return false;
+    // Step 1 requires industry and team size
+    if (step === 0) return !!state.orgIndustry && !!state.orgSize;
+    return true;
   };
 
   const handleFinish = async () => {
@@ -438,6 +463,7 @@ export default function OnboardingPage() {
       try {
         const mergedSettings = {
           ...tenantSettings,
+          onboardingDone: true,
           ...(state.orgIndustry ? { industry: state.orgIndustry } : {}),
           ...(state.orgSize ? { size: state.orgSize } : {}),
           ...(state.selectedCompetencies.length > 0 ? { initialCompetencies: state.selectedCompetencies } : {}),

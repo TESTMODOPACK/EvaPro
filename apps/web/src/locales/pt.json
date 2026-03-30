@@ -143,6 +143,9 @@
       "subtitle": "Dados registrados da sua organização (somente leitura)",
       "legalName": "Razão Social",
       "taxId": "CNPJ",
+      "industry": "Indústria",
+      "size": "Tamanho da equipe",
+      "competencies": "Competências iniciais",
       "readOnlyNote": "Para modificar esses dados, entre em contato com o administrador do sistema."
     },
     "profile": {

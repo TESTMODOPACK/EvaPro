@@ -42,6 +42,12 @@ export default function CycleDetailPage() {
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState('');
   const [closing, setClosing] = useState(false);
+
+  // ── Inline edit state ────────────────────────────────────────────────────
+  const [editing, setEditing] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editForm, setEditForm] = useState({ name: '', description: '', startDate: '', endDate: '' });
   const [peerEvaluateeId, setPeerEvaluateeId] = useState('');
   const [peerEvaluatorId, setPeerEvaluatorId] = useState('');
   const [peerRelationType, setPeerRelationType] = useState('');
@@ -116,6 +122,38 @@ export default function CycleDetailPage() {
       await closeCycle.mutateAsync(id);
     } finally {
       setClosing(false);
+    }
+  };
+
+  const openEdit = () => {
+    if (!cycle) return;
+    setEditForm({
+      name: cycle.name || '',
+      description: cycle.description || '',
+      startDate: cycle.startDate ? String(cycle.startDate).split('T')[0] : '',
+      endDate:   cycle.endDate   ? String(cycle.endDate).split('T')[0]   : '',
+    });
+    setEditError('');
+    setEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!token) return;
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await api.cycles.update(token, id, {
+        name:        editForm.name.trim()        || undefined,
+        description: editForm.description.trim() || undefined,
+        startDate:   editForm.startDate          || undefined,
+        endDate:     editForm.endDate            || undefined,
+      });
+      setEditing(false);
+      window.location.reload();
+    } catch (e: any) {
+      setEditError(e.message || 'Error al guardar los cambios. Verifica las fechas e inténtalo de nuevo.');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -245,7 +283,16 @@ export default function CycleDetailPage() {
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {cycle.status !== 'closed' && !editing && (
+              <button
+                className="btn-ghost"
+                onClick={openEdit}
+                style={{ fontSize: '0.82rem' }}
+              >
+                ✏️ Editar ciclo
+              </button>
+            )}
             {cycle.status === 'draft' && (
               <button
                 className="btn-primary"
@@ -283,46 +330,184 @@ export default function CycleDetailPage() {
           </div>
         </div>
 
-        {/* Details row */}
+        {/* Inline edit form */}
+        {editing && (
+          <div style={{
+            marginBottom: '1rem', padding: '1.25rem',
+            background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)',
+            border: '1.5px solid var(--accent)', display: 'flex', flexDirection: 'column', gap: '1rem',
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Nombre del ciclo
+                </label>
+                <input
+                  className="input"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Nombre del ciclo..."
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Fecha de inicio
+                </label>
+                <input
+                  className="input"
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Fecha de cierre
+                </label>
+                <input
+                  className="input"
+                  type="date"
+                  value={editForm.endDate}
+                  onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))}
+                />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Descripción
+                </label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={editForm.description}
+                  onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Descripción del ciclo..."
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+            </div>
+            {editError && (
+              <p style={{ color: 'var(--danger)', fontSize: '0.82rem', margin: 0 }}>⚠ {editError}</p>
+            )}
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                className="btn-primary"
+                onClick={handleSaveEdit}
+                disabled={editSaving}
+                style={{ opacity: editSaving ? 0.6 : 1 }}
+              >
+                {editSaving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+              <button
+                className="btn-ghost"
+                onClick={() => setEditing(false)}
+                disabled={editSaving}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Details row — visual summary cards */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '1rem',
-            padding: '1rem',
-            background: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-sm, 0.5rem)',
-            border: '1px solid var(--border)',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: '0.75rem',
           }}
         >
           {cycle.startDate && (
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Inicio
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.9rem 1rem', background: 'var(--bg-surface)',
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+            }}>
+              <div style={{
+                width: '34px', height: '34px', borderRadius: '8px', flexShrink: 0,
+                background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
               </div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                {new Date(cycle.startDate).toLocaleDateString('es-ES')}
+              <div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>Inicio</div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {new Date(cycle.startDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </div>
               </div>
             </div>
           )}
           {cycle.endDate && (
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Cierre
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.9rem 1rem', background: 'var(--bg-surface)',
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+            }}>
+              <div style={{
+                width: '34px', height: '34px', borderRadius: '8px', flexShrink: 0,
+                background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                  <polyline points="9 14 11 16 15 12"/>
+                </svg>
               </div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                {new Date(cycle.endDate).toLocaleDateString('es-ES')}
+              <div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>Cierre</div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {new Date(cycle.endDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </div>
               </div>
             </div>
           )}
-          <div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Asignaciones
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.75rem',
+            padding: '0.9rem 1rem', background: 'var(--bg-surface)',
+            borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+          }}>
+            <div style={{
+              width: '34px', height: '34px', borderRadius: '8px', flexShrink: 0,
+              background: 'rgba(201,147,58,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9933A" strokeWidth="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
             </div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              {completedAssignments}/{totalAssignments}
+            <div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>Asignaciones</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {completedAssignments}/{totalAssignments}
+                {totalAssignments > 0 && (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--text-muted)', marginLeft: '0.4rem' }}>
+                    ({progressPct}%)
+                  </span>
+                )}
+              </div>
             </div>
           </div>
+          {cycle.type && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.9rem 1rem', background: 'var(--bg-surface)',
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+            }}>
+              <div style={{
+                width: '34px', height: '34px', borderRadius: '8px', flexShrink: 0,
+                background: 'rgba(16,185,129,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>Tipo</div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Evaluación {cycle.type}°
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {launchError && (

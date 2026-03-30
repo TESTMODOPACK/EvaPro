@@ -143,6 +143,9 @@
       "subtitle": "Datos registrados de tu organización (solo lectura)",
       "legalName": "Razón Social",
       "taxId": "RUT Empresa",
+      "industry": "Industria",
+      "size": "Tamaño del equipo",
+      "competencies": "Competencias iniciales",
       "readOnlyNote": "Para modificar estos datos, contacta al administrador del sistema."
     },
     "profile": {

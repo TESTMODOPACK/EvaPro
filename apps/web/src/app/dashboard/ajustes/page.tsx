@@ -32,6 +32,7 @@ export default function AjustesPage() {
   const { locale, setLocale } = useLocaleStore();
   const token = useAuthStore((s) => s.token);
   const [langSaved, setLangSaved] = useState(false);
+  const [tenantSettings, setTenantSettings] = useState<Record<string, any>>({});
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -49,6 +50,14 @@ export default function AjustesPage() {
       setPosition(user.position || '');
     }
   }, [user]);
+
+  // Load tenant settings (industry, size, competencies) for tenant_admin
+  useEffect(() => {
+    if (!token || !isTenantAdmin) return;
+    api.tenants.me(token)
+      .then((t: any) => setTenantSettings(t.settings || {}))
+      .catch(() => {});
+  }, [token, isTenantAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLanguageChange = async (lang: SupportedLocale) => {
     setLocale(lang);
@@ -184,6 +193,40 @@ export default function AjustesPage() {
                 style={{ opacity: 0.7, cursor: 'not-allowed', fontFamily: 'monospace' }}
               />
             </div>
+            {tenantSettings.industry && (
+              <div>
+                <label style={labelStyle}>{t('settings.company.industry')}</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={tenantSettings.industry}
+                  readOnly
+                  style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                />
+              </div>
+            )}
+            {tenantSettings.size && (
+              <div>
+                <label style={labelStyle}>{t('settings.company.size')}</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={tenantSettings.size}
+                  readOnly
+                  style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                />
+              </div>
+            )}
+            {Array.isArray(tenantSettings.initialCompetencies) && tenantSettings.initialCompetencies.length > 0 && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>{t('settings.company.competencies')}</label>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+                  {tenantSettings.initialCompetencies.map((c: string) => (
+                    <span key={c} className="badge badge-accent" style={{ fontSize: '0.78rem' }}>{c}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
             {t('settings.company.readOnlyNote')}
