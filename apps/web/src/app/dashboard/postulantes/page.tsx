@@ -20,6 +20,7 @@ export default function PostulantesPage() {
   const [processes, setProcesses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('all');
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -41,12 +42,111 @@ export default function PostulantesPage() {
             {t('postulantes.subtitle')}
           </p>
         </div>
-        {role === 'tenant_admin' && (
-          <Link href="/dashboard/postulantes/nuevo" className="btn-primary" style={{ fontSize: '0.85rem' }}>
-            {t('postulantes.newProcess')}
-          </Link>
-        )}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            className="btn-ghost"
+            onClick={() => setShowGuide(!showGuide)}
+            style={{ fontSize: '0.82rem' }}
+          >
+            {showGuide ? t('postulantes.hideGuide') : t('postulantes.howItWorks')}
+          </button>
+          {role === 'tenant_admin' && (
+            <Link href="/dashboard/postulantes/nuevo" className="btn-primary" style={{ fontSize: '0.85rem' }}>
+              {t('postulantes.newProcess')}
+            </Link>
+          )}
+        </div>
       </div>
+
+      {/* Usage Guide */}
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+            {t('postulantes.guide.title')}
+          </h3>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              {t('postulantes.guide.whatIs')}
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+              {t('postulantes.guide.whatIsDesc')}
+            </p>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              {t('postulantes.guide.flow')}
+            </div>
+            <ol style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
+              <li>{t('postulantes.guide.flowStep1')}</li>
+              <li>{t('postulantes.guide.flowStep2')}</li>
+              <li>{t('postulantes.guide.flowStep3')}</li>
+              <li>{t('postulantes.guide.flowStep4')}</li>
+              <li>{t('postulantes.guide.flowStep5')}</li>
+              <li>{t('postulantes.guide.flowStep6')}</li>
+            </ol>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              {t('postulantes.guide.rules')}
+            </div>
+            <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
+              <li>{t('postulantes.guide.rule1')}</li>
+              <li>{t('postulantes.guide.rule2')}</li>
+              <li>{t('postulantes.guide.rule3')}</li>
+              <li>{t('postulantes.guide.rule4')}</li>
+              <li>{t('postulantes.guide.rule5')}</li>
+            </ul>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              {t('postulantes.guide.statuses')}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {[
+                { label: t('postulantes.guide.statusApplied'), desc: t('postulantes.guide.statusAppliedDesc'), cls: 'badge-ghost' },
+                { label: t('postulantes.guide.statusEvaluating'), desc: t('postulantes.guide.statusEvaluatingDesc'), cls: 'badge-accent' },
+                { label: t('postulantes.guide.statusApproved'), desc: t('postulantes.guide.statusApprovedDesc'), cls: 'badge-success' },
+                { label: t('postulantes.guide.statusRejected'), desc: t('postulantes.guide.statusRejectedDesc'), cls: 'badge-danger' },
+                { label: t('postulantes.guide.statusHired'), desc: t('postulantes.guide.statusHiredDesc'), cls: 'badge-success' },
+              ].map((s) => (
+                <div key={s.label} style={{ padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4, flex: '1 1 180px' }}>
+                  <span className={`badge ${s.cls}`} style={{ marginRight: '0.4rem' }}>{s.label}</span>
+                  {s.desc}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              {t('postulantes.guide.connections')}
+            </div>
+            <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
+              <li>{t('postulantes.guide.connCompetencies')}</li>
+              <li>{t('postulantes.guide.connTalent')}</li>
+              <li>{t('postulantes.guide.connUsers')}</li>
+            </ul>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              {t('postulantes.guide.permissions')}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {t('postulantes.guide.permAdmin')}
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {t('postulantes.guide.permManager')}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Status tabs */}
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
