@@ -104,7 +104,9 @@ export default function DesarrolloOrganizacionalPage() {
   const [initForm, setInitForm] = useState({
     title: '', description: '', department: '', targetDate: '',
     responsibleId: '', progress: 0, budget: '', currency: 'UF',
+    participantIds: [] as string[],
   });
+  const [participantSearch, setParticipantSearch] = useState('');
   const [savingInit, setSavingInit] = useState(false);
 
   // ── Acciones de iniciativa ─────────────────────────────────────────────
@@ -229,6 +231,7 @@ export default function DesarrolloOrganizacionalPage() {
         progress: Number(initForm.progress) || 0,
         budget: initForm.budget ? Number(initForm.budget) : null,
         currency: initForm.currency || 'UF',
+        participantIds: initForm.participantIds,
       };
       if (editingInitId) {
         await api.orgDevelopment.initiatives.update(token, editingInitId, payload);
@@ -239,7 +242,8 @@ export default function DesarrolloOrganizacionalPage() {
       }
       setShowInitForm(false);
       setEditingInitId(null);
-      setInitForm({ title: '', description: '', department: '', targetDate: '', responsibleId: '', progress: 0, budget: '', currency: 'UF' });
+      setParticipantSearch('');
+      setInitForm({ title: '', description: '', department: '', targetDate: '', responsibleId: '', progress: 0, budget: '', currency: 'UF', participantIds: [] });
       // Reload initiatives
       const data = await api.orgDevelopment.initiatives.listByPlan(token, selectedPlanId);
       setInitiatives(data ?? []);
@@ -260,7 +264,9 @@ export default function DesarrolloOrganizacionalPage() {
       progress: ini.progress ?? 0,
       budget: ini.budget != null ? String(ini.budget) : '',
       currency: ini.currency ?? 'UF',
+      participantIds: ini.participantIds ?? [],
     });
+    setParticipantSearch('');
     setEditingInitId(ini.id);
     setShowInitForm(true);
     setError('');
@@ -569,7 +575,8 @@ export default function DesarrolloOrganizacionalPage() {
                     style={{ marginLeft: 'auto', flexShrink: 0 }}
                     onClick={() => {
                       setEditingInitId(null);
-                      setInitForm({ title: '', description: '', department: '', targetDate: '', responsibleId: '', progress: 0, budget: '', currency: 'UF' });
+                      setParticipantSearch('');
+                      setInitForm({ title: '', description: '', department: '', targetDate: '', responsibleId: '', progress: 0, budget: '', currency: 'UF', participantIds: [] });
                       setShowInitForm(true);
                       setError('');
                     }}
@@ -678,12 +685,124 @@ export default function DesarrolloOrganizacionalPage() {
                       style={{ resize: 'vertical' }}
                     />
                   </div>
+
+                  {/* Participants multi-select */}
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        Participantes
+                        {initForm.participantIds.length > 0 && (
+                          <span style={{ marginLeft: '0.5rem', background: 'var(--accent)', color: '#fff', borderRadius: '999px', padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>
+                            {initForm.participantIds.length}
+                          </span>
+                        )}
+                      </label>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={
+                              users.filter((u: any) => u.isActive !== false).length > 0 &&
+                              users.filter((u: any) => u.isActive !== false).every((u: any) => initForm.participantIds.includes(u.id))
+                            }
+                            onChange={(e) => {
+                              const activeIds = users.filter((u: any) => u.isActive !== false).map((u: any) => u.id);
+                              setInitForm({ ...initForm, participantIds: e.target.checked ? activeIds : [] });
+                            }}
+                          />
+                          Seleccionar todos
+                        </label>
+                        {initForm.participantIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setInitForm({ ...initForm, participantIds: [] })}
+                            style={{ fontSize: '0.72rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          >
+                            Limpiar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <input
+                      className="input"
+                      placeholder="Buscar colaborador..."
+                      value={participantSearch}
+                      onChange={(e) => setParticipantSearch(e.target.value)}
+                      style={{ marginBottom: '0.4rem', fontSize: '0.82rem' }}
+                    />
+                    <div style={{
+                      maxHeight: '180px', overflowY: 'auto',
+                      border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                      background: 'var(--bg-surface)',
+                    }}>
+                      {users
+                        .filter((u: any) => u.isActive !== false)
+                        .filter((u: any) => {
+                          if (!participantSearch.trim()) return true;
+                          const q = participantSearch.toLowerCase();
+                          return (
+                            `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+                            (u.department || '').toLowerCase().includes(q) ||
+                            (u.position || '').toLowerCase().includes(q)
+                          );
+                        })
+                        .map((u: any) => {
+                          const checked = initForm.participantIds.includes(u.id);
+                          return (
+                            <label
+                              key={u.id}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '0.6rem',
+                                padding: '0.45rem 0.75rem', cursor: 'pointer',
+                                background: checked ? 'rgba(99,102,241,0.07)' : 'transparent',
+                                borderBottom: '1px solid var(--border)',
+                                transition: 'background 0.1s',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const ids = e.target.checked
+                                    ? [...initForm.participantIds, u.id]
+                                    : initForm.participantIds.filter((id) => id !== u.id);
+                                  setInitForm({ ...initForm, participantIds: ids });
+                                }}
+                              />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: checked ? 600 : 400, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {u.firstName} {u.lastName}
+                                </div>
+                                {(u.department || u.position) && (
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                    {[u.position, u.department].filter(Boolean).join(' · ')}
+                                  </div>
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      {users.filter((u: any) => u.isActive !== false).filter((u: any) => {
+                        if (!participantSearch.trim()) return true;
+                        const q = participantSearch.toLowerCase();
+                        return `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+                          (u.department || '').toLowerCase().includes(q);
+                      }).length === 0 && (
+                        <div style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                          Sin resultados
+                        </div>
+                      )}
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem', marginBottom: 0 }}>
+                      Los colaboradores seleccionados recibirán un correo cuando la iniciativa esté en curso.
+                    </p>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   <button className="btn-primary" onClick={handleSaveInitiative} disabled={savingInit}>
                     {savingInit ? 'Guardando...' : editingInitId ? 'Actualizar' : 'Crear iniciativa'}
                   </button>
-                  <button className="btn-ghost" onClick={() => { setShowInitForm(false); setEditingInitId(null); setError(''); }}>
+                  <button className="btn-ghost" onClick={() => { setShowInitForm(false); setEditingInitId(null); setParticipantSearch(''); setError(''); }}>
                     Cancelar
                   </button>
                 </div>
@@ -734,6 +853,11 @@ export default function DesarrolloOrganizacionalPage() {
                       <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                         {responsible && (
                           <span>👤 {responsible.firstName} {responsible.lastName}</span>
+                        )}
+                        {Array.isArray(ini.participantIds) && ini.participantIds.length > 0 && (
+                          <span title={`${ini.participantIds.length} colaborador${ini.participantIds.length !== 1 ? 'es' : ''} asignado${ini.participantIds.length !== 1 ? 's' : ''}`}>
+                            👥 {ini.participantIds.length} participante{ini.participantIds.length !== 1 ? 's' : ''}
+                          </span>
                         )}
                         {ini.targetDate && (
                           <span>📅 {new Date(ini.targetDate).toLocaleDateString('es-CL')}</span>

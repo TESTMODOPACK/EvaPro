@@ -2,17 +2,21 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { OrgDevelopmentPlan } from './entities/org-development-plan.entity';
 import { OrgDevelopmentInitiative } from './entities/org-development-initiative.entity';
 import { OrgDevelopmentAction } from './entities/org-development-action.entity';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { User } from '../users/entities/user.entity';
+import { EmailService } from '../notifications/email.service';
 
 @Injectable()
 export class OrgDevelopmentService {
+  private readonly logger = new Logger(OrgDevelopmentService.name);
+
   constructor(
     @InjectRepository(OrgDevelopmentPlan)
     private readonly planRepo: Repository<OrgDevelopmentPlan>,
@@ -24,7 +28,66 @@ export class OrgDevelopmentService {
     private readonly pdiRepo: Repository<DevelopmentPlan>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly emailService: EmailService,
   ) {}
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /**
+   * Sends initiative-assigned emails to all participant users.
+   * Called when an initiative goes live (status → en_curso) or when new participants are added.
+   */
+  private async notifyParticipants(
+    initiative: OrgDevelopmentInitiative,
+    participantIds: string[],
+    tenantId: string,
+    planTitle: string,
+    planYear: number,
+  ): Promise<void> {
+    if (!participantIds.length) return;
+
+    // Resolve user records for notification
+    const users = await this.userRepo.find({
+      where: { id: In(participantIds), tenantId, isActive: true },
+      select: ['id', 'email', 'firstName', 'lastName'],
+    });
+
+    const responsible = initiative.responsibleId
+      ? await this.userRepo.findOne({
+          where: { id: initiative.responsibleId, tenantId },
+          select: ['firstName', 'lastName'],
+        })
+      : null;
+
+    const responsibleName = responsible
+      ? `${responsible.firstName} ${responsible.lastName}`
+      : null;
+
+    const targetDateLabel = initiative.targetDate
+      ? new Date(initiative.targetDate).toLocaleDateString('es-CL')
+      : null;
+
+    // Fire-and-forget notifications; individual failures are logged, not rethrown
+    await Promise.allSettled(
+      users.map((u) =>
+        this.emailService
+          .sendInitiativeAssigned(u.email, {
+            firstName: u.firstName,
+            initiativeTitle: initiative.title,
+            planTitle,
+            planYear,
+            department: initiative.department,
+            targetDate: targetDateLabel,
+            responsibleName,
+          })
+          .catch((err) =>
+            this.logger.warn(
+              `Failed to send initiative email to ${u.email}: ${err?.message}`,
+            ),
+          ),
+      ),
+    );
+  }
 
   // ─── Planes ──────────────────────────────────────────────────────────────
 
@@ -158,6 +221,8 @@ export class OrgDevelopmentService {
       responsibleId?: string | null;
       budget?: number | null;
       currency?: string;
+      participantIds?: string[];
+      status?: string;
     },
   ): Promise<OrgDevelopmentInitiative> {
     const plan = await this.planRepo.findOne({ where: { id: planId, tenantId } });
@@ -173,8 +238,17 @@ export class OrgDevelopmentService {
       responsibleId: dto.responsibleId ?? null,
       budget: dto.budget ?? null,
       currency: dto.currency ?? 'UF',
+      participantIds: dto.participantIds ?? [],
+      status: dto.status ?? 'pendiente',
     });
-    return this.initiativeRepo.save(initiative);
+    const saved = await this.initiativeRepo.save(initiative);
+
+    // Notify participants if the initiative starts in active state
+    if (saved.status === 'en_curso' && saved.participantIds.length > 0) {
+      this.notifyParticipants(saved, saved.participantIds, tenantId, plan.title, plan.year).catch(() => {/* non-critical */});
+    }
+
+    return saved;
   }
 
   async updateInitiative(
@@ -190,10 +264,14 @@ export class OrgDevelopmentService {
       progress?: number;
       budget?: number | null;
       currency?: string;
+      participantIds?: string[];
     },
   ): Promise<OrgDevelopmentInitiative> {
     const ini = await this.initiativeRepo.findOne({ where: { id, tenantId } });
     if (!ini) throw new NotFoundException('Iniciativa no encontrada');
+
+    const prevStatus = ini.status;
+    const prevParticipantIds = ini.participantIds ?? [];
 
     if (dto.title !== undefined) ini.title = dto.title;
     if (dto.description !== undefined) ini.description = dto.description ?? null;
@@ -204,8 +282,33 @@ export class OrgDevelopmentService {
     if (dto.progress !== undefined) ini.progress = Math.min(100, Math.max(0, dto.progress));
     if (dto.budget !== undefined) ini.budget = dto.budget ?? null;
     if (dto.currency !== undefined) ini.currency = dto.currency;
+    if (dto.participantIds !== undefined) ini.participantIds = dto.participantIds;
 
-    return this.initiativeRepo.save(ini);
+    const saved = await this.initiativeRepo.save(ini);
+
+    // Determine who to notify:
+    // 1. Status just changed to 'en_curso' → notify all current participants
+    // 2. Status was already 'en_curso' → notify only newly added participants
+    if (saved.participantIds.length > 0) {
+      let toNotify: string[] = [];
+      if (dto.status === 'en_curso' && prevStatus !== 'en_curso') {
+        // Initiative just went live → notify everyone
+        toNotify = saved.participantIds;
+      } else if (saved.status === 'en_curso' && dto.participantIds !== undefined) {
+        // Already active, participants updated → notify only newly added
+        const prevSet = new Set(prevParticipantIds);
+        toNotify = saved.participantIds.filter((pid) => !prevSet.has(pid));
+      }
+
+      if (toNotify.length > 0) {
+        const plan = await this.planRepo.findOne({ where: { id: ini.planId, tenantId } });
+        if (plan) {
+          this.notifyParticipants(saved, toNotify, tenantId, plan.title, plan.year).catch(() => {/* non-critical */});
+        }
+      }
+    }
+
+    return saved;
   }
 
   async deleteInitiative(tenantId: string, id: string): Promise<void> {

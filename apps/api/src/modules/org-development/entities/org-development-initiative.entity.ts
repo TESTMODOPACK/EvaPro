@@ -53,6 +53,13 @@ export class OrgDevelopmentInitiative {
   @Column({ type: 'varchar', length: 10, default: 'UF' })
   currency: string;
 
+  /**
+   * IDs de los colaboradores explícitamente asignados a esta iniciativa.
+   * Un array vacío significa que la iniciativa aplica a todos (o se filtra por `department`).
+   */
+  @Column({ type: 'jsonb', name: 'participant_ids', default: [] })
+  participantIds: string[];
+
   @ManyToOne(() => OrgDevelopmentPlan, (p) => p.initiatives)
   @JoinColumn({ name: 'plan_id' })
   plan: OrgDevelopmentPlan;

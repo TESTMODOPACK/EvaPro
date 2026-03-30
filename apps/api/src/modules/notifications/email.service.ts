@@ -240,6 +240,46 @@ export class EmailService {
     );
   }
 
+  // ─── Template: Initiative Assigned ───────────────────────────────────────
+
+  async sendInitiativeAssigned(
+    email: string,
+    data: {
+      firstName: string;
+      initiativeTitle: string;
+      planTitle: string;
+      planYear: number;
+      department: string | null;
+      targetDate: string | null;
+      responsibleName: string | null;
+    },
+  ) {
+    const deptLabel = data.department ?? 'Toda la empresa';
+    const rows: Array<{ label: string; value: string }> = [
+      { label: 'Plan', value: `${data.planTitle} (${data.planYear})` },
+      { label: 'Alcance', value: deptLabel },
+    ];
+    if (data.responsibleName) rows.push({ label: 'Responsable', value: data.responsibleName });
+    if (data.targetDate) rows.push({ label: 'Fecha límite', value: data.targetDate });
+
+    await this.send(
+      email,
+      `Nueva iniciativa de desarrollo asignada: ${data.initiativeTitle}`,
+      this.wrap({
+        preheader: `Has sido incluido/a en la iniciativa "${data.initiativeTitle}" del plan ${data.planTitle}.`,
+        body: `
+          ${this.heading(`Iniciativa de desarrollo asignada 🚀`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, has sido incluido/a en una nueva iniciativa de desarrollo organizacional.`)}
+          ${this.infoBox([{ label: 'Iniciativa', value: data.initiativeTitle }, ...rows])}
+          ${this.paragraph('Esta iniciativa forma parte del plan de desarrollo de tu organización. Puedes ver los detalles y las acciones asociadas en la plataforma.')}
+          ${this.cta('Ver plan de desarrollo', `${this.appUrl}/dashboard/desarrollo-organizacional`)}
+          ${this.divider()}
+          ${this.smallText('Si tienes preguntas sobre esta iniciativa, consulta con el responsable o con el área de RRHH.')}
+        `,
+      }),
+    );
+  }
+
   // ─── Template: Template/Competency Review Pending ─────────────────────────
 
   async sendPendingReview(

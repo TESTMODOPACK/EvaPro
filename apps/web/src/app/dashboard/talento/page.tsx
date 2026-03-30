@@ -108,7 +108,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
   const [generating, setGenerating] = useState(false);
   const [generateMsg, setGenerateMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingAssessment, setEditingAssessment] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
   const [sortField, setSortField] = useState<string>('name');
@@ -162,7 +162,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
   }
 
   function startEdit(a: any) {
-    setEditingId(a.id);
+    setEditingAssessment(a);
     setEditForm({
       potentialScore: a.potentialScore ?? '',
       readiness: a.readiness ?? '',
@@ -171,13 +171,14 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
     });
   }
 
-  async function handleSave(assessmentId: string) {
+  async function handleSave() {
+    if (!editingAssessment) return;
     setSaving(true);
     try {
-      await api.talent.update(token, assessmentId, editForm);
+      await api.talent.update(token, editingAssessment.id, editForm);
       const d = await api.talent.nineBox(token, selectedCycleId);
       setNineBoxData(d);
-      setEditingId(null);
+      setEditingAssessment(null);
     } catch { /* ignore */ }
     setSaving(false);
   }
@@ -355,6 +356,18 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                 </div>
               ) : (
                 <div className="card" style={{ padding: 0, borderRadius: '0 0 var(--radius) var(--radius)' }}>
+                  {isAdmin && (
+                    <div style={{
+                      padding: '.5rem 1.25rem',
+                      background: 'rgba(99,102,241,0.05)',
+                      borderBottom: '1px solid var(--border)',
+                      fontSize: '.78rem', color: 'var(--text-secondary)',
+                      display: 'flex', alignItems: 'center', gap: '.5rem',
+                    }}>
+                      <span style={{ fontSize: '.9rem' }}>✎</span>
+                      <span>Haz clic en cualquier fila para editar <strong>Potencial</strong>, <strong>Preparación</strong> y <strong>Riesgo de Fuga</strong> del colaborador.</span>
+                    </div>
+                  )}
                   <div className="table-wrapper" style={{ margin: 0, overflowX: 'auto' }}>
                     <table style={{ minWidth: '760px' }}>
                       <thead>
@@ -373,100 +386,39 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                         {selectedUsers.map((a: any) => {
                           const u = a.user || a;
                           const accent = POOL_ACCENT[a.talentPool] || 'var(--accent)';
-                          const isEditing = editingId === a.id;
                           return (
-                            <tr key={a.id} style={{ borderLeft: `3px solid ${accent}`, cursor: isAdmin && !isEditing ? 'pointer' : 'default' }}>
-                              {!isEditing ? (
-                                <>
-                                  <td onClick={() => isAdmin && startEdit(a)}>
-                                    <div style={{ fontWeight: 700, fontSize: '.9rem' }}>{u.firstName} {u.lastName}</div>
-                                    {u.position && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: '.1rem' }}>{u.position}</div>}
-                                  </td>
-                                  <td onClick={() => isAdmin && startEdit(a)} style={{ color: 'var(--text-secondary)', fontSize: '.875rem' }}>{u.department || '\u2014'}</td>
-                                  <td onClick={() => isAdmin && startEdit(a)}>
-                                    <span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL[a.talentPool] || a.talentPool}</span>
-                                  </td>
-                                  <td onClick={() => isAdmin && startEdit(a)} style={{ minWidth: '110px' }}>
-                                    <ScoreBar value={a.performanceScore} color="var(--accent)" />
-                                  </td>
-                                  <td onClick={() => isAdmin && startEdit(a)} style={{ minWidth: '110px' }}>
-                                    <ScoreBar value={a.potentialScore} color="var(--success)" />
-                                  </td>
-                                  <td onClick={() => isAdmin && startEdit(a)} style={{ fontSize: '.875rem', color: 'var(--text-secondary)' }}>
-                                    {READINESS_LABEL[a.readiness] || a.readiness || '\u2014'}
-                                  </td>
-                                  <td onClick={() => isAdmin && startEdit(a)}>
-                                    {a.flightRisk
-                                      ? <span className={`badge ${RISK_BADGE[a.flightRisk]}`}>{RISK_LABEL[a.flightRisk]}</span>
-                                      : <span style={{ color: 'var(--text-muted)' }}>{'\u2014'}</span>}
-                                  </td>
-                                  {isAdmin && (
-                                    <td>
-                                      <button className="btn-ghost" onClick={() => startEdit(a)} style={{ fontSize: '.78rem', padding: '.25rem .6rem' }}>
-                                        Editar
-                                      </button>
-                                    </td>
-                                  )}
-                                </>
-                              ) : (
-                                <td colSpan={isAdmin ? 8 : 7} style={{ padding: '1rem' }}>
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr auto', gap: '.75rem', alignItems: 'end' }}>
-                                    <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
-                                      Potencial (0-10)
-                                      <input
-                                        className="input"
-                                        type="number" min={0} max={10} step={0.5}
-                                        value={editForm.potentialScore}
-                                        onChange={(e) => setEditForm({ ...editForm, potentialScore: +e.target.value })}
-                                        style={{ width: '100%', fontSize: '.85rem' }}
-                                      />
-                                    </label>
-                                    <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
-                                      {`Preparaci\u00f3n`}
-                                      <select
-                                        className="input"
-                                        value={editForm.readiness}
-                                        onChange={(e) => setEditForm({ ...editForm, readiness: e.target.value })}
-                                        style={{ width: '100%', fontSize: '.85rem' }}
-                                      >
-                                        <option value="">{'\u2014'}</option>
-                                        <option value="ready_now">Listo ahora</option>
-                                        <option value="ready_1_year">{`En 1 a\u00f1o`}</option>
-                                        <option value="ready_2_years">{`En 2 a\u00f1os`}</option>
-                                        <option value="not_ready">No listo</option>
-                                      </select>
-                                    </label>
-                                    <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
-                                      Riesgo de Fuga
-                                      <select
-                                        className="input"
-                                        value={editForm.flightRisk}
-                                        onChange={(e) => setEditForm({ ...editForm, flightRisk: e.target.value })}
-                                        style={{ width: '100%', fontSize: '.85rem' }}
-                                      >
-                                        <option value="">{'\u2014'}</option>
-                                        <option value="high">Alto</option>
-                                        <option value="medium">Medio</option>
-                                        <option value="low">Bajo</option>
-                                      </select>
-                                    </label>
-                                    <label style={{ fontSize: '.8rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
-                                      Notas
-                                      <textarea
-                                        className="input"
-                                        value={editForm.notes}
-                                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                                        rows={2}
-                                        style={{ width: '100%', fontSize: '.85rem', resize: 'vertical' }}
-                                      />
-                                    </label>
-                                    <div style={{ display: 'flex', gap: '.5rem' }}>
-                                      <button className="btn-primary" onClick={() => handleSave(a.id)} disabled={saving}>
-                                        {saving ? 'Guardando...' : 'Guardar'}
-                                      </button>
-                                      <button className="btn-ghost" onClick={() => setEditingId(null)}>Cancelar</button>
-                                    </div>
-                                  </div>
+                            <tr
+                              key={a.id}
+                              onClick={() => isAdmin && startEdit(a)}
+                              style={{ borderLeft: `3px solid ${accent}`, cursor: isAdmin ? 'pointer' : 'default' }}
+                            >
+                              <td>
+                                <div style={{ fontWeight: 700, fontSize: '.9rem' }}>{u.firstName} {u.lastName}</div>
+                                {u.position && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: '.1rem' }}>{u.position}</div>}
+                              </td>
+                              <td style={{ color: 'var(--text-secondary)', fontSize: '.875rem' }}>{u.department || '\u2014'}</td>
+                              <td>
+                                <span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL[a.talentPool] || a.talentPool}</span>
+                              </td>
+                              <td style={{ minWidth: '110px' }}>
+                                <ScoreBar value={a.performanceScore} color="var(--accent)" />
+                              </td>
+                              <td style={{ minWidth: '110px' }}>
+                                <ScoreBar value={a.potentialScore} color="var(--success)" />
+                              </td>
+                              <td style={{ fontSize: '.875rem', color: 'var(--text-secondary)' }}>
+                                {READINESS_LABEL[a.readiness] || a.readiness || '\u2014'}
+                              </td>
+                              <td>
+                                {a.flightRisk
+                                  ? <span className={`badge ${RISK_BADGE[a.flightRisk]}`}>{RISK_LABEL[a.flightRisk]}</span>
+                                  : <span style={{ color: 'var(--text-muted)' }}>{'\u2014'}</span>}
+                              </td>
+                              {isAdmin && (
+                                <td onClick={(e) => { e.stopPropagation(); startEdit(a); }}>
+                                  <button className="btn-ghost" style={{ fontSize: '.78rem', padding: '.25rem .6rem' }}>
+                                    Editar ✎
+                                  </button>
                                 </td>
                               )}
                             </tr>
@@ -486,6 +438,101 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
         <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
           Selecciona un ciclo para ver la matriz Nine Box.
         </p>
+      )}
+
+      {/* ── Edit modal ───────────────────────────────────────────────── */}
+      {editingAssessment && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setEditingAssessment(null); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div className="card animate-fade-up" style={{ width: '100%', maxWidth: '460px', padding: '1.5rem' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '1rem' }}>Editar datos de talento</div>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: '.2rem' }}>
+                  {(editingAssessment.user || editingAssessment).firstName}{' '}
+                  {(editingAssessment.user || editingAssessment).lastName}
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingAssessment(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.3rem', color: 'var(--text-muted)', lineHeight: 1, padding: '.1rem .3rem' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Fields */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <label style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
+                Potencial (0–10)
+                <input
+                  className="input"
+                  type="number" min={0} max={10} step={0.5}
+                  value={editForm.potentialScore}
+                  onChange={(e) => setEditForm({ ...editForm, potentialScore: +e.target.value })}
+                />
+              </label>
+
+              <label style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
+                {`Preparaci\u00f3n para ascenso`}
+                <select
+                  className="input"
+                  value={editForm.readiness}
+                  onChange={(e) => setEditForm({ ...editForm, readiness: e.target.value })}
+                >
+                  <option value="">{'\u2014'}</option>
+                  <option value="ready_now">Listo ahora</option>
+                  <option value="ready_1_year">{`En 1 a\u00f1o`}</option>
+                  <option value="ready_2_years">{`En 2 a\u00f1os`}</option>
+                  <option value="not_ready">No listo</option>
+                </select>
+              </label>
+
+              <label style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
+                Riesgo de Fuga
+                <select
+                  className="input"
+                  value={editForm.flightRisk}
+                  onChange={(e) => setEditForm({ ...editForm, flightRisk: e.target.value })}
+                >
+                  <option value="">{'\u2014'}</option>
+                  <option value="high">Alto</option>
+                  <option value="medium">Medio</option>
+                  <option value="low">Bajo</option>
+                </select>
+              </label>
+
+              <label style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
+                Notas internas
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  style={{ resize: 'vertical' }}
+                  placeholder={`Observaciones del colaborador\u2026`}
+                />
+              </label>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+              <button className="btn-ghost" onClick={() => setEditingAssessment(null)}>
+                Cancelar
+              </button>
+              <button className="btn-primary" onClick={handleSave} disabled={saving}>
+                {saving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

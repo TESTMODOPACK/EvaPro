@@ -7,6 +7,7 @@ import { OrgDevelopmentInitiative } from './entities/org-development-initiative.
 import { OrgDevelopmentAction } from './entities/org-development-action.entity';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { User } from '../users/entities/user.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { User } from '../users/entities/user.entity';
       DevelopmentPlan,
       User,
     ]),
+    NotificationsModule,
   ],
   controllers: [OrgDevelopmentController],
   providers: [OrgDevelopmentService],

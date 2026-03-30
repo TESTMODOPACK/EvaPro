@@ -474,6 +474,35 @@ export default function OnboardingPage() {
       }
     }
 
+    // ── Step 1b: Create Competency entity records for each selected competency ──
+    // This ensures the Competencias module is pre-populated after onboarding.
+    if (state.selectedCompetencies.length > 0) {
+      const competencyMap: Record<string, { label: string; category: string }> = {
+        liderazgo:             { label: 'Liderazgo',                   category: 'Habilidades directivas' },
+        comunicacion:          { label: 'Comunicación efectiva',       category: 'Habilidades interpersonales' },
+        trabajo_equipo:        { label: 'Trabajo en equipo',           category: 'Habilidades interpersonales' },
+        orientacion_resultados:{ label: 'Orientación a resultados',    category: 'Desempeño' },
+        innovacion:            { label: 'Innovación y creatividad',    category: 'Desempeño' },
+        adaptabilidad:         { label: 'Adaptabilidad al cambio',     category: 'Habilidades personales' },
+        resolucion_problemas:  { label: 'Resolución de problemas',     category: 'Habilidades personales' },
+        enfoque_cliente:       { label: 'Enfoque en el cliente',       category: 'Desempeño' },
+        desarrollo_personas:   { label: 'Desarrollo de personas',      category: 'Habilidades directivas' },
+        planificacion:         { label: 'Planificación y organización', category: 'Habilidades personales' },
+      };
+      // Fire-and-forget: failures are non-critical (competencies can be created manually)
+      await Promise.allSettled(
+        state.selectedCompetencies.map((key) => {
+          const meta = competencyMap[key];
+          if (!meta) return Promise.resolve();
+          return api.development.competencies.create(token, {
+            name: meta.label,
+            category: meta.category,
+            description: `Competencia definida durante la configuración inicial de la empresa.`,
+          });
+        }),
+      );
+    }
+
     // ── Step 2: Create the initial evaluation cycle ──
     try {
       const today = new Date();

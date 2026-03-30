@@ -7,15 +7,28 @@ import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel } from '@/lib/roles';
 import { useMySubscription } from '@/hooks/useSubscription';
 import NotificationBell from './NotificationBell';
+import { useLocaleStore, SupportedLocale } from '@/store/locale.store';
+import { api } from '@/lib/api';
+
+const LANG_FLAGS: Record<SupportedLocale, string> = { es: 'ES', en: 'EN', pt: 'PT' };
 
 export default function TopBar() {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, token } = useAuthStore();
   const { data: sub } = useMySubscription();
   const orgName = sub?.tenant?.name || sub?.plan?.name || '';
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
+  const { locale, setLocale } = useLocaleStore();
+
+  const handleLangChange = async (lang: SupportedLocale) => {
+    if (lang === locale) return;
+    setLocale(lang);
+    if (user?.userId && token) {
+      try { await api.users.update(token, user.userId, { language: lang }); } catch { /* non-critical */ }
+    }
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -91,8 +104,41 @@ export default function TopBar() {
         </span>
       </div>
 
-      {/* Right: Notifications + User */}
+      {/* Right: Language + Notifications + User */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+
+        {/* Language selector */}
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          overflow: 'hidden', height: '30px',
+        }}>
+          {(['es', 'en', 'pt'] as SupportedLocale[]).map((lang, i) => (
+            <button
+              key={lang}
+              onClick={() => handleLangChange(lang)}
+              title={lang === 'es' ? 'Español' : lang === 'en' ? 'English' : 'Português'}
+              style={{
+                padding: '0 9px',
+                height: '100%',
+                border: 'none',
+                borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
+                background: locale === lang ? 'rgba(201,147,58,0.12)' : 'transparent',
+                color: locale === lang ? 'var(--gold)' : 'var(--text-muted)',
+                fontWeight: locale === lang ? 700 : 400,
+                fontSize: '0.7rem',
+                letterSpacing: '0.04em',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => { if (locale !== lang) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+              onMouseLeave={(e) => { if (locale !== lang) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {LANG_FLAGS[lang]}
+            </button>
+          ))}
+        </div>
+
         <NotificationBell />
 
         {/* User dropdown */}

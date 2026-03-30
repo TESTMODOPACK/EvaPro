@@ -13,6 +13,9 @@ import {
   assignmentStatusBadge as evalStatusBadge,
   relationTypeLabel as relationLabels,
 } from '@/lib/statusMaps';
+import { api } from '@/lib/api';
+import { useToastStore } from '@/store/toast.store';
+import ConfirmModal from '@/components/ConfirmModal';
 
 const typeLabels: Record<string, string> = {
   '90': '90\u00b0',
@@ -178,10 +181,36 @@ function EmployeeEvaluationsView() {
 
 function AdminEvaluationsView() {
   const { t } = useTranslation();
-  const { data: cycles, isLoading } = useCycles();
+  const { data: cycles, isLoading, mutate } = useCycles() as any;
   const userRole = useAuthStore((s) => s.user?.role);
+  const token = useAuthStore((s) => s.token)!;
   const isAdmin = userRole === 'tenant_admin';
   const [showGuide, setShowGuide] = useState(false);
+  const toast = useToastStore();
+  const [confirmState, setConfirmState] = useState<{
+    message: string; detail?: string; onConfirm: () => void;
+  } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function handleDeleteCycle(cycleId: string, cycleName: string) {
+    setConfirmState({
+      message: `¿Eliminar el ciclo "${cycleName}"?`,
+      detail: 'Esta acción no se puede deshacer. El ciclo será eliminado permanentemente.',
+      onConfirm: async () => {
+        setConfirmState(null);
+        setDeleting(cycleId);
+        try {
+          await api.cycles.remove(token, cycleId);
+          toast.success(`Ciclo "${cycleName}" eliminado correctamente`);
+          if (mutate) mutate();
+        } catch (e: any) {
+          toast.error(e?.message || 'Error al eliminar el ciclo');
+        } finally {
+          setDeleting(null);
+        }
+      },
+    });
+  }
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -406,11 +435,55 @@ function AdminEvaluationsView() {
                       </div>
                     </div>
                   )}
+
+                  {/* Delete button — only visible for draft cycles, admins only */}
+                  {isAdmin && cycle.status === 'draft' && (
+                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteCycle(cycle.id, cycle.name);
+                        }}
+                        disabled={deleting === cycle.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '0.35rem',
+                          padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-sm)',
+                          border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)',
+                          color: 'var(--danger)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                          transition: 'all 0.15s',
+                          opacity: deleting === cycle.id ? 0.6 : 1,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.06)'; }}
+                        title="Solo se pueden eliminar ciclos en estado Borrador"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                          <path d="M10 11v6M14 11v6" />
+                          <path d="M9 6V4h6v2" />
+                        </svg>
+                        {deleting === cycle.id ? 'Eliminando...' : 'Eliminar borrador'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </Link>
             );
           })}
         </div>
+      )}
+
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message}
+          detail={confirmState.detail}
+          danger
+          confirmLabel="Eliminar"
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(null)}
+        />
       )}
     </div>
   );
