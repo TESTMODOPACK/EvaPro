@@ -33,6 +33,8 @@ export default function AjustesPage() {
   const token = useAuthStore((s) => s.token);
   const [langSaved, setLangSaved] = useState(false);
   const [tenantSettings, setTenantSettings] = useState<Record<string, any>>({});
+  const [tenantName, setTenantName] = useState('');
+  const [tenantRut, setTenantRut] = useState('');
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -51,11 +53,17 @@ export default function AjustesPage() {
     }
   }, [user]);
 
-  // Load tenant settings (industry, size, competencies) for tenant_admin
+  // Load full tenant data (name, rut, settings) for tenant_admin.
+  // We use api.tenants.me() directly instead of useMySubscription() because
+  // the subscription endpoint may not include rut or settings fields.
   useEffect(() => {
     if (!token || !isTenantAdmin) return;
     api.tenants.me(token)
-      .then((t: any) => setTenantSettings(t.settings || {}))
+      .then((t: any) => {
+        setTenantName(t.name || '');
+        setTenantRut(t.rut ? formatRut(t.rut) : '');
+        setTenantSettings(t.settings || {});
+      })
       .catch(() => {});
   }, [token, isTenantAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -178,7 +186,7 @@ export default function AjustesPage() {
               <input
                 className="input"
                 type="text"
-                value={orgName}
+                value={tenantName || orgName || ''}
                 readOnly
                 style={{ opacity: 0.7, cursor: 'not-allowed' }}
               />
@@ -188,7 +196,7 @@ export default function AjustesPage() {
               <input
                 className="input"
                 type="text"
-                value={orgRut || 'No registrado'}
+                value={tenantRut || orgRut || 'No registrado'}
                 readOnly
                 style={{ opacity: 0.7, cursor: 'not-allowed', fontFamily: 'monospace' }}
               />

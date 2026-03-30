@@ -319,9 +319,9 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                   No hay empleados en este cuadrante.
                 </div>
               ) : (
-                <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '0 0 var(--radius) var(--radius)' }}>
-                  <div className="table-wrapper" style={{ margin: 0 }}>
-                    <table>
+                <div className="card" style={{ padding: 0, borderRadius: '0 0 var(--radius) var(--radius)' }}>
+                  <div className="table-wrapper" style={{ margin: 0, overflowX: 'auto' }}>
+                    <table style={{ minWidth: '760px' }}>
                       <thead>
                         <tr>
                           <SortTh field="name" label="Colaborador" />
@@ -629,9 +629,9 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
 
           {/* Assessments table */}
           {assessments.length > 0 && (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div className="table-wrapper" style={{ margin: 0 }}>
-                <table>
+            <div className="card" style={{ padding: 0 }}>
+              <div className="table-wrapper" style={{ margin: 0, overflowX: 'auto' }}>
+                <table style={{ minWidth: '720px' }}>
                   <thead>
                     <tr>
                       <SortTh field="name" label="Colaborador" />

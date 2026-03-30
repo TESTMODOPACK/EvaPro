@@ -88,7 +88,7 @@ export default function AuditLogPage() {
       {loading ? (
         <Spinner />
       ) : (
-        <div className="card animate-fade-up-delay-1" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="card animate-fade-up-delay-1" style={{ padding: 0 }}>
           {logs.length === 0 ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
               Sin registros de auditoria
