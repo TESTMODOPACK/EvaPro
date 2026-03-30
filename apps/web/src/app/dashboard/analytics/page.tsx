@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAnalytics } from '@/hooks/usePerformanceHistory';
 import { useCycles } from '@/hooks/useCycles';
-import { useCompetencyHeatmap } from '@/hooks/useReports';
+import { useCompetencyHeatmap, useBellCurve } from '@/hooks/useReports';
 import {
   BarChart,
   Bar,
@@ -12,7 +12,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell,
+  ComposedChart,
+  Area,
 } from 'recharts';
 
 function Spinner() {
@@ -219,15 +220,174 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
   );
 }
 
-function bucketColor(range: string): string {
-  // Parse the first number of the range (0-10 scale) to determine color
-  const match = range.match(/([\d.]+)/);
-  if (!match) return 'var(--accent)';
-  const num = Number(match[1]);
-  if (num < 4) return 'var(--danger)';
-  if (num < 7) return 'var(--warning)';
-  return 'var(--success)';
+/* ─── Bell Curve Section ──────────────────────────────────────────── */
+
+function BellCurveSection({ cycleId }: { cycleId: string }) {
+  const { data, isLoading } = useBellCurve(cycleId);
+
+  if (isLoading) return <Spinner />;
+  if (!data || !data.histogram || data.count === 0) {
+    return (
+      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos suficientes para la curva de distribución</p>
+      </div>
+    );
+  }
+
+  if (data.privacyRestricted) {
+    return (
+      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--warning)', fontSize: '0.85rem', fontWeight: 600 }}>
+          {data.message || `Se requieren al menos 5 evaluaciones para mostrar la distribución (actualmente: ${data.count})`}
+        </p>
+      </div>
+    );
+  }
+
+  const total = data.count || 1;
+  let cntLow = 0, cntMid = 0, cntHigh = 0;
+  for (const bucket of (data.histogram as any[])) {
+    const start = parseFloat((bucket.range as string).split('-')[0]);
+    if (!isNaN(start)) {
+      if (start < 4) cntLow += bucket.count;
+      else if (start < 7) cntMid += bucket.count;
+      else cntHigh += bucket.count;
+    }
+  }
+  const pctLow = Math.round((cntLow / total) * 100);
+  const pctMid = Math.round((cntMid / total) * 100);
+  const pctHigh = Math.round((cntHigh / total) * 100);
+
+  const mean = Number(data.mean);
+  const stddev = Number(data.stddev);
+
+  const meanMsg =
+    mean >= 7.5 ? { text: 'Puntaje promedio muy alto — tendencia generalizada de buenos resultados. Verificar si puede haber sesgo de leniencia.', color: 'var(--success)' }
+    : mean >= 6.0 ? { text: 'Puntaje promedio alto — la organización muestra buen desempeño general.', color: 'var(--success)' }
+    : mean >= 4.5 ? { text: 'Puntaje promedio en rango medio — desempeño heterogéneo entre colaboradores.', color: 'var(--warning)' }
+    : { text: 'Puntaje promedio bajo — existen áreas de mejora significativas en la organización.', color: 'var(--danger)' };
+
+  const dispMsg =
+    stddev < 1.0 ? { text: 'Dispersión muy baja (σ=' + data.stddev + '): los evaluadores tienden a asignar puntajes muy similares, lo que puede indicar poca diferenciación o uniformidad de criterios.', icon: '⚠️' }
+    : stddev > 2.5 ? { text: 'Dispersión alta (σ=' + data.stddev + '): hay mucha variabilidad entre los puntajes, lo que puede reflejar criterios inconsistentes entre jefaturas o equipos.', icon: '⚠️' }
+    : { text: 'Dispersión normal (σ=' + data.stddev + '): la variabilidad es saludable y permite distinguir bien los niveles de desempeño.', icon: '✅' };
+
+  const biasMsg =
+    pctHigh > 60 ? '⚠️ Más del 60% de las evaluaciones quedaron en zona alta. Posible sesgo de leniencia — considerar calibración.'
+    : pctLow > 60 ? '⚠️ Más del 60% de las evaluaciones quedaron en zona baja. Puede haber sesgo de dureza o problemas de desempeño generalizados.'
+    : pctMid > 65 ? '⚠️ Alta concentración en la franja media. Baja diferenciación — la escala puede no estar siendo bien utilizada.'
+    : null;
+
+  return (
+    <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
+      <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+        Distribución de Puntajes (Curva de Bell)
+      </h2>
+      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+        Histograma de puntajes con curva normal superpuesta
+      </p>
+
+      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.85rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
+        <div>
+          <span style={{ color: 'var(--text-muted)' }}>Promedio: </span>
+          <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{data.mean}</span>
+        </div>
+        <div>
+          <span style={{ color: 'var(--text-muted)' }}>Desv. Estándar: </span>
+          <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.stddev}</span>
+        </div>
+        <div>
+          <span style={{ color: 'var(--text-muted)' }}>Total evaluaciones: </span>
+          <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.count}</span>
+        </div>
+      </div>
+
+      <div style={{ padding: '0.55rem 0.85rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem', fontSize: '0.77rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        <strong style={{ color: 'var(--text-secondary)' }}>¿Cómo leer este gráfico?</strong>
+        {' '}Las barras muestran cuántos colaboradores obtuvieron cada rango de puntaje.
+        La línea amarilla es la curva normal teórica con la misma media y desviación.
+        Si las barras siguen de cerca esa línea, la distribución es equilibrada.
+      </div>
+
+      <ResponsiveContainer width="100%" height={300}>
+        <ComposedChart data={data.histogram} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <XAxis dataKey="range" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={1} />
+          <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+          <Tooltip
+            content={({ active, payload }: any) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]?.payload;
+              return (
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.85rem', fontSize: '0.78rem' }}>
+                  <p style={{ fontWeight: 700 }}>Rango: {d?.rangeLabel}</p>
+                  <p style={{ color: '#6366f1' }}>Cantidad: {d?.count}</p>
+                  <p style={{ color: '#f59e0b' }}>Curva normal: {d?.normalY?.toFixed(1)}</p>
+                </div>
+              );
+            }}
+          />
+          <Bar dataKey="count" fill="#6366f1" fillOpacity={0.7} radius={[2, 2, 0, 0]} name="Evaluaciones" />
+          <Area type="monotone" dataKey="normalY" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} strokeWidth={2} name="Curva Normal" dot={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+
+      {/* Análisis de resultados */}
+      <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+        <p style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.85rem', color: 'var(--text-primary)' }}>
+          Análisis de resultados
+        </p>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Distribución por zona
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {[
+              { label: 'Bajo (<4)', pct: pctLow, cnt: cntLow, color: 'var(--danger)', bg: 'rgba(239,68,68,0.08)' },
+              { label: 'Medio (4–7)', pct: pctMid, cnt: cntMid, color: 'var(--warning)', bg: 'rgba(245,158,11,0.08)' },
+              { label: 'Alto (>7)', pct: pctHigh, cnt: cntHigh, color: 'var(--success)', bg: 'rgba(16,185,129,0.08)' },
+            ].map((z) => (
+              <div key={z.label} style={{ flex: '1 1 120px', padding: '0.6rem 0.85rem', background: z.bg, borderRadius: 'var(--radius-sm)', border: `1px solid ${z.color}33` }}>
+                <p style={{ fontSize: '1.3rem', fontWeight: 800, color: z.color, margin: 0 }}>{z.pct}%</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.1rem 0 0' }}>{z.label}</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>{z.cnt} persona{z.cnt !== 1 ? 's' : ''}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
+            <span style={{ color: meanMsg.color, fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>
+              {mean >= 6.0 ? '✅' : mean >= 4.5 ? '⚠️' : '🔴'}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+              <strong>Tendencia central:</strong> {meanMsg.text}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
+            <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>{dispMsg.icon}</span>
+            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+              <strong>Dispersión:</strong> {dispMsg.text}
+            </span>
+          </div>
+
+          {biasMsg && (
+            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
+              <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>🔔</span>
+              <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                <strong>Alerta de distribución:</strong> {biasMsg.replace(/^⚠️\s*/, '')}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
+
 
 const selectStyle: React.CSSProperties = {
   padding: '0.5rem 0.75rem',
@@ -279,9 +439,9 @@ export default function AnalyticsPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{'An\u00e1lisis Avanzado'}</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Análisis del Ciclo</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {'Distribuci\u00f3n de puntajes, comparaci\u00f3n por departamento y referencias de equipo'}
+          Distribución estadística, mapa de competencias y rendimiento por equipo
         </p>
       </div>
 
@@ -291,39 +451,54 @@ export default function AnalyticsPage() {
           onClick={() => setShowGuide(!showGuide)}
           style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}
         >
-          {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfQu\u00e9 muestra esta p\u00e1gina?'}
+          {showGuide ? '▼ Ocultar guía' : '▶ ¿Qué muestra esta página?'}
         </button>
 
         {showGuide && (
           <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-              {'Gu\u00eda de uso: An\u00e1lisis Avanzado'}
+              Guía de uso: Análisis del Ciclo
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
-              {'Esta p\u00e1gina presenta visualizaciones estad\u00edsticas de los resultados de evaluaci\u00f3n por ciclo. Selecciona un ciclo para ver las m\u00e9tricas. Los datos se alimentan de las evaluaciones completadas.'}
+              Esta página presenta estadísticas organizacionales de los resultados de evaluación por ciclo.
+              Selecciona un ciclo para ver las métricas. Los datos provienen de las evaluaciones completadas.
             </p>
 
             <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Gr\u00e1ficos disponibles'}</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Gráficos disponibles</div>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <li><strong>{'Distribuci\u00f3n de Puntajes:'}</strong>{' Histograma con rangos de 0.5 puntos (escala 0-10). Muestra cu\u00e1ntas evaluaciones caen en cada rango. Rojo = bajo (<4), Amarillo = medio (4-7), Verde = alto (>7).'}</li>
-                <li><strong>{'Comparaci\u00f3n por Departamento:'}</strong>{' Puntaje promedio de cada departamento. Permite identificar \u00e1reas de la organizaci\u00f3n con mejor o menor desempe\u00f1o.'}</li>
-                <li><strong>{'Mapa de Competencias:'}</strong>{' Matriz departamento \u00d7 competencia. Muestra el puntaje promedio en cada secci\u00f3n de la plantilla por departamento. Verde = alto, amarillo = medio, rojo = bajo. Departamentos con menos de 5 evaluados se ocultan por privacidad.'}</li>
-                <li><strong>{'Rendimiento por Equipo:'}</strong>{' Ranking de encargados de equipo ordenado por puntaje promedio de sus colaboradores. Incluye tama\u00f1o del equipo.'}</li>
+                <li>
+                  <strong>Distribución de Puntajes (Curva de Bell):</strong>{' '}
+                  Histograma con curva normal superpuesta. Muestra si la distribución es equilibrada o si hay sesgo
+                  (leniencia, dureza o baja diferenciación). Incluye análisis automático de tendencia central, dispersión y alertas de distribución.
+                </li>
+                <li>
+                  <strong>Comparación por Departamento:</strong>{' '}
+                  Puntaje promedio de cada departamento. Permite identificar áreas de la organización con mejor o menor desempeño.
+                </li>
+                <li>
+                  <strong>Mapa de Competencias por Departamento:</strong>{' '}
+                  Matriz departamento × sección de plantilla. Verde = alto, amarillo = medio, rojo = bajo.
+                  Departamentos con menos de 5 evaluados se ocultan por privacidad.
+                </li>
+                <li>
+                  <strong>Rendimiento por Equipo:</strong>{' '}
+                  Ranking de encargados ordenado por puntaje promedio de sus colaboradores. Incluye tamaño del equipo.
+                </li>
               </ul>
             </div>
 
             <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'Conexi\u00f3n con otras funciones'}</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Conexión con otras funciones</div>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <li><strong>{'Ciclos de Evaluaci\u00f3n:'}</strong>{' Los datos provienen de las evaluaciones completadas en cada ciclo'}</li>
-                <li><strong>{'Calibraci\u00f3n:'}</strong>{' Si hubo calibraci\u00f3n, los puntajes ajustados se reflejan aqu\u00ed'}</li>
-                <li><strong>Talento (Nine Box):</strong>{' Los puntajes de desempe\u00f1o vistos aqu\u00ed alimentan el eje de desempe\u00f1o del Nine Box'}</li>
+                <li><strong>Informes por Colaborador:</strong>{' Para análisis individual (por persona), ve a la sección Informes'}</li>
+                <li><strong>Calibración:</strong>{' Si hubo calibración, los puntajes ajustados se reflejan aquí'}</li>
+                <li><strong>Talento (Nine Box):</strong>{' Los puntajes de desempeño vistos aquí alimentan el eje de desempeño del Nine Box'}</li>
               </ul>
             </div>
 
             <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' Solo Administradores y Encargados de Equipo pueden acceder a esta p\u00e1gina. Los Colaboradores ven sus resultados individuales en "Mi Desempe\u00f1o".'}
+              <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' Solo Administradores y Encargados de Equipo pueden acceder a esta página. Los Colaboradores ven sus resultados individuales en "Mi Desempeño".'}
             </div>
           </div>
         )}
@@ -379,40 +554,8 @@ export default function AnalyticsPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-              {/* 1. Score Distribution */}
-              {analytics.scoreDistribution && analytics.scoreDistribution.length > 0 && (
-                <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-                  <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-                    {'Distribuci\u00f3n de Puntajes'}
-                  </h2>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-                    Cantidad de evaluaciones por rango de puntaje
-                  </p>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={analytics.scoreDistribution} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                      <XAxis
-                        dataKey="range"
-                        tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                        axisLine={{ stroke: 'var(--border)' }}
-                        tickLine={{ stroke: 'var(--border)' }}
-                      />
-                      <YAxis
-                        tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                        axisLine={{ stroke: 'var(--border)' }}
-                        tickLine={{ stroke: 'var(--border)' }}
-                        allowDecimals={false}
-                      />
-                      <Tooltip content={customTooltip} />
-                      <Bar dataKey="count" name="Evaluaciones" radius={[4, 4, 0, 0]}>
-                        {analytics.scoreDistribution.map((entry: any, idx: number) => (
-                          <Cell key={idx} fill={bucketColor(entry.range)} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+              {/* 1. Bell Curve Distribution */}
+              <BellCurveSection cycleId={selectedCycleId} />
 
               {/* 2. Department Comparison */}
               {analytics.departmentComparison && analytics.departmentComparison.length > 0 && (

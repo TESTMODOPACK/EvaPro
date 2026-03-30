@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
-import { useCompetencyRadar, useSelfVsOthers, useHeatmap, useBellCurve, useCompetencyHeatmap } from '@/hooks/useReports';
+import { useCompetencyRadar, useSelfVsOthers, useHeatmap } from '@/hooks/useReports';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
 import {
@@ -18,8 +18,6 @@ import {
   Tooltip,
   Cell,
   Legend,
-  ComposedChart,
-  Area,
 } from 'recharts';
 
 function Spinner() {
@@ -350,329 +348,6 @@ function HeatmapSection({ cycleId }: { cycleId: string }) {
   );
 }
 
-/* ─── Bell Curve Section ──────────────────────────────────────────── */
-
-function BellCurveSection({ cycleId }: { cycleId: string }) {
-  const { data, isLoading } = useBellCurve(cycleId);
-
-  if (isLoading) return <Spinner />;
-  if (!data || !data.histogram || data.count === 0) {
-    return (
-      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos suficientes para la curva de distribución</p>
-      </div>
-    );
-  }
-
-  if (data.privacyRestricted) {
-    return (
-      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--warning)', fontSize: '0.85rem', fontWeight: 600 }}>
-          {data.message || `Se requieren al menos 5 evaluaciones para mostrar la distribución (actualmente: ${data.count})`}
-        </p>
-      </div>
-    );
-  }
-
-  // ── Compute zone breakdown from histogram buckets ──
-  const total = data.count || 1;
-  let cntLow = 0, cntMid = 0, cntHigh = 0;
-  for (const bucket of (data.histogram as any[])) {
-    const start = parseFloat((bucket.range as string).split('-')[0]);
-    if (!isNaN(start)) {
-      if (start < 4) cntLow += bucket.count;
-      else if (start < 7) cntMid += bucket.count;
-      else cntHigh += bucket.count;
-    }
-  }
-  const pctLow = Math.round((cntLow / total) * 100);
-  const pctMid = Math.round((cntMid / total) * 100);
-  const pctHigh = Math.round((cntHigh / total) * 100);
-
-  const mean = Number(data.mean);
-  const stddev = Number(data.stddev);
-
-  // ── Interpretive messages ──
-  const meanMsg =
-    mean >= 7.5 ? { text: 'Puntaje promedio muy alto — tendencia generalizada de buenos resultados. Verificar si puede haber sesgo de leniencia.', color: 'var(--success)' }
-    : mean >= 6.0 ? { text: 'Puntaje promedio alto — la organización muestra buen desempeño general.', color: 'var(--success)' }
-    : mean >= 4.5 ? { text: 'Puntaje promedio en rango medio — desempeño heterogéneo entre colaboradores.', color: 'var(--warning)' }
-    : { text: 'Puntaje promedio bajo — existen áreas de mejora significativas en la organización.', color: 'var(--danger)' };
-
-  const dispMsg =
-    stddev < 1.0 ? { text: 'Dispersión muy baja (σ=' + data.stddev + '): los evaluadores tienden a asignar puntajes muy similares, lo que puede indicar poca diferenciación o uniformidad de criterios.', icon: '⚠️' }
-    : stddev > 2.5 ? { text: 'Dispersión alta (σ=' + data.stddev + '): hay mucha variabilidad entre los puntajes, lo que puede reflejar criterios inconsistentes entre jefaturas o equipos.', icon: '⚠️' }
-    : { text: 'Dispersión normal (σ=' + data.stddev + '): la variabilidad es saludable y permite distinguir bien los niveles de desempeño.', icon: '✅' };
-
-  const biasMsg =
-    pctHigh > 60 ? '⚠️ Más del 60% de las evaluaciones quedaron en zona alta. Posible sesgo de leniencia — considerar calibración.'
-    : pctLow > 60 ? '⚠️ Más del 60% de las evaluaciones quedaron en zona baja. Puede haber sesgo de dureza o problemas de desempeño generalizados.'
-    : pctMid > 65 ? '⚠️ Alta concentración en la franja media. Baja diferenciación — la escala puede no estar siendo bien utilizada.'
-    : null;
-
-  return (
-    <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-      <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-        Distribución de Puntajes (Curva de Bell)
-      </h2>
-      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-        Histograma de puntajes con curva normal superpuesta
-      </p>
-
-      {/* Stats row */}
-      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.85rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
-        <div>
-          <span style={{ color: 'var(--text-muted)' }}>Promedio: </span>
-          <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{data.mean}</span>
-        </div>
-        <div>
-          <span style={{ color: 'var(--text-muted)' }}>Desv. Estándar: </span>
-          <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.stddev}</span>
-        </div>
-        <div>
-          <span style={{ color: 'var(--text-muted)' }}>Total evaluaciones: </span>
-          <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.count}</span>
-        </div>
-      </div>
-
-      {/* How to read */}
-      <div style={{ padding: '0.55rem 0.85rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem', fontSize: '0.77rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        <strong style={{ color: 'var(--text-secondary)' }}>¿Cómo leer este gráfico?</strong>
-        {' '}Las barras muestran cuántos colaboradores obtuvieron cada rango de puntaje.
-        La línea amarilla es la curva normal teórica con la misma media y desviación.
-        Si las barras siguen de cerca esa línea, la distribución es equilibrada.
-      </div>
-
-      {/* Chart */}
-      <ResponsiveContainer width="100%" height={300}>
-        <ComposedChart data={data.histogram} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey="range" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={1} />
-          <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
-          <Tooltip
-            content={({ active, payload }: any) => {
-              if (!active || !payload?.length) return null;
-              const d = payload[0]?.payload;
-              return (
-                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.85rem', fontSize: '0.78rem' }}>
-                  <p style={{ fontWeight: 700 }}>Rango: {d?.rangeLabel}</p>
-                  <p style={{ color: '#6366f1' }}>Cantidad: {d?.count}</p>
-                  <p style={{ color: '#f59e0b' }}>Curva normal: {d?.normalY?.toFixed(1)}</p>
-                </div>
-              );
-            }}
-          />
-          <Bar dataKey="count" fill="#6366f1" fillOpacity={0.7} radius={[2, 2, 0, 0]} name="Evaluaciones" />
-          <Area type="monotone" dataKey="normalY" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} strokeWidth={2} name="Curva Normal" dot={false} />
-        </ComposedChart>
-      </ResponsiveContainer>
-
-      {/* ── Análisis de resultados ── */}
-      <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
-        <p style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.85rem', color: 'var(--text-primary)' }}>
-          Análisis de resultados
-        </p>
-
-        {/* Zone breakdown */}
-        <div style={{ marginBottom: '1rem' }}>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Distribución por zona
-          </p>
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            {[
-              { label: 'Bajo (<4)', pct: pctLow, cnt: cntLow, color: 'var(--danger)', bg: 'rgba(239,68,68,0.08)' },
-              { label: 'Medio (4–7)', pct: pctMid, cnt: cntMid, color: 'var(--warning)', bg: 'rgba(245,158,11,0.08)' },
-              { label: 'Alto (>7)', pct: pctHigh, cnt: cntHigh, color: 'var(--success)', bg: 'rgba(16,185,129,0.08)' },
-            ].map((z) => (
-              <div key={z.label} style={{ flex: '1 1 120px', padding: '0.6rem 0.85rem', background: z.bg, borderRadius: 'var(--radius-sm)', border: `1px solid ${z.color}33` }}>
-                <p style={{ fontSize: '1.3rem', fontWeight: 800, color: z.color, margin: 0 }}>{z.pct}%</p>
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.1rem 0 0' }}>{z.label}</p>
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>{z.cnt} persona{z.cnt !== 1 ? 's' : ''}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Interpretive bullets */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-          {/* Mean */}
-          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
-            <span style={{ color: meanMsg.color, fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>
-              {mean >= 6.0 ? '✅' : mean >= 4.5 ? '⚠️' : '🔴'}
-            </span>
-            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-              <strong>Tendencia central:</strong> {meanMsg.text}
-            </span>
-          </div>
-
-          {/* Dispersion */}
-          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
-            <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>{dispMsg.icon}</span>
-            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-              <strong>Dispersión:</strong> {dispMsg.text}
-            </span>
-          </div>
-
-          {/* Bias warning if applicable */}
-          {biasMsg && (
-            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', fontSize: '0.82rem' }}>
-              <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>🔔</span>
-              <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                <strong>Alerta de distribución:</strong> {biasMsg.replace(/^⚠️\s*/, '')}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Competency Heatmap Section ──────────────────────────────────── */
-
-function heatColor(avg: number | null, maxScale: number): string {
-  if (avg === null) return 'var(--bg-surface)';
-  const ratio = avg / maxScale;
-  if (ratio >= 0.75) return 'rgba(16,185,129,0.22)';
-  if (ratio >= 0.55) return 'rgba(245,158,11,0.18)';
-  return 'rgba(239,68,68,0.20)';
-}
-
-function CompetencyHeatmapSection({
-  cycleId,
-  deptFilter,
-  posFilter,
-}: {
-  cycleId: string;
-  deptFilter?: string;
-  posFilter?: string;
-}) {
-  const activeFilters =
-    deptFilter || posFilter
-      ? { department: deptFilter, position: posFilter }
-      : undefined;
-  const { data, isLoading } = useCompetencyHeatmap(cycleId, activeFilters);
-
-  if (isLoading) return (
-    <div className="card" style={{ padding: '1.5rem' }}>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Cargando mapa de competencias...</p>
-    </div>
-  );
-
-  if (!data || !data.grid || data.grid.length === 0) {
-    return (
-      <div className="card" style={{ padding: '1.5rem' }}>
-        <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.5rem' }}>
-          Mapa de Competencias por Departamento
-        </h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          {(data as any)?.message || 'Sin datos disponibles para este ciclo'}
-        </p>
-      </div>
-    );
-  }
-
-  const { departments, grid, privacyThreshold } = data;
-  const hasPrivacyRows = (departments as string[]).some((d) =>
-    (grid as any[]).some((r: any) => r.values.find((v: any) => v.department === d && v.privacyRestricted)),
-  );
-
-  return (
-    <div className="card animate-fade-up" style={{ padding: '1.5rem', overflow: 'auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-        <div>
-          <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.2rem' }}>
-            Mapa de Competencias por Departamento
-          </h2>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Puntaje promedio por secci&oacute;n &mdash; filas: competencias, columnas: departamentos
-            {(deptFilter || posFilter) && (
-              <span style={{ color: 'var(--accent)', marginLeft: '0.4rem' }}>
-                &bull; filtrado por {[deptFilter, posFilter].filter(Boolean).join(' / ')}
-              </span>
-            )}
-          </p>
-        </div>
-        {/* Legend */}
-        <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.72rem', alignItems: 'center', flexShrink: 0 }}>
-          <span style={{ display: 'inline-block', width: 12, height: 12, background: 'rgba(16,185,129,0.22)', borderRadius: 2, border: '1px solid var(--border)' }} />
-          <span style={{ color: 'var(--text-muted)', marginRight: '0.4rem' }}>Alto</span>
-          <span style={{ display: 'inline-block', width: 12, height: 12, background: 'rgba(245,158,11,0.18)', borderRadius: 2, border: '1px solid var(--border)' }} />
-          <span style={{ color: 'var(--text-muted)', marginRight: '0.4rem' }}>Medio</span>
-          <span style={{ display: 'inline-block', width: 12, height: 12, background: 'rgba(239,68,68,0.20)', borderRadius: 2, border: '1px solid var(--border)' }} />
-          <span style={{ color: 'var(--text-muted)' }}>Bajo</span>
-        </div>
-      </div>
-
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '500px' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid var(--border)' }}>
-              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', minWidth: '150px' }}>
-                Secci&oacute;n / Competencia
-              </th>
-              {(departments as string[]).map((dept: string) => (
-                <th key={dept} style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', maxWidth: '110px' }} title={dept}>
-                  {dept.length > 14 ? dept.slice(0, 13) + '\u2026' : dept}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(grid as any[]).map((row: any) => (
-              <tr key={row.section} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '0.55rem 0.75rem', fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-                  {row.section}
-                </td>
-                {row.values.map((cell: any) => (
-                  <td
-                    key={cell.department}
-                    style={{
-                      padding: '0.55rem 0.5rem',
-                      textAlign: 'center',
-                      background: cell.privacyRestricted
-                        ? 'transparent'
-                        : heatColor(cell.avg, row.maxScale ?? 5),
-                      fontWeight: cell.avg !== null && !cell.privacyRestricted ? 700 : 400,
-                      color: cell.privacyRestricted
-                        ? 'var(--text-muted)'
-                        : cell.avg !== null
-                          ? 'var(--text-primary)'
-                          : 'var(--text-muted)',
-                      fontSize: '0.82rem',
-                    }}
-                    title={
-                      cell.privacyRestricted
-                        ? `Privacidad: se requieren al menos ${privacyThreshold} evaluados`
-                        : cell.avg !== null
-                          ? `${cell.count} respuestas \u00b7 escala 1-${row.maxScale ?? 5}`
-                          : 'Sin datos'
-                    }
-                  >
-                    {cell.privacyRestricted ? '\uD83D\uDD12' : cell.avg !== null ? cell.avg.toFixed(1) : '\u2014'}
-                    {!cell.privacyRestricted && cell.count > 0 && (
-                      <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 400, opacity: 0.6 }}>
-                        n={cell.count}
-                      </span>
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {hasPrivacyRows && (
-        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-          {'\uD83D\uDD12 Departamentos con menos de '}{privacyThreshold}{' evaluados se ocultan para proteger la privacidad'}
-        </p>
-      )}
-    </div>
-  );
-}
-
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 export default function InformesPage() {
@@ -736,9 +411,9 @@ export default function InformesPage() {
       {/* Header */}
       <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Informes Avanzados</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Informes por Colaborador</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Distribuci&oacute;n de puntajes, mapa de competencias y an&aacute;lisis individual por colaborador
+            Mapa de calor por departamento, análisis individual y exportación de informes
           </p>
         </div>
         {selectedCycleId && (
@@ -777,7 +452,7 @@ export default function InformesPage() {
         {showGuide && (
           <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem', color: 'var(--accent)' }}>
-              Gu&iacute;a de uso: Informes Avanzados
+              Guía de uso: Informes por Colaborador
             </h3>
 
             {/* Section A */}
@@ -785,34 +460,22 @@ export default function InformesPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <span style={{ fontSize: '1rem' }}>📊</span>
                 <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
-                  Vista General &mdash; resultados del ciclo completo
+                  Vista General — visión global del ciclo por departamento
                 </span>
               </div>
               <ul style={{ margin: 0, paddingLeft: '1.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
                 <li>
-                  <strong>Distribuci&oacute;n de Puntajes (Curva de Bell):</strong>{' '}
-                  Histograma que muestra cu&aacute;ntos colaboradores obtuvieron cada rango de puntaje en el ciclo.
-                  La l&iacute;nea amarilla superpuesta es la curva normal te&oacute;rica.
-                  Permite ver si los resultados siguen una distribuci&oacute;n balanceada o si hay un sesgo
-                  (muchos puntajes muy altos o muy bajos), lo cual puede indicar leniencia, dureza o falta de diferenciaci&oacute;n en las evaluaciones.
-                  Incluye media y desviaci&oacute;n est&aacute;ndar para comparar entre ciclos.
-                </li>
-                <li>
-                  <strong>Mapa de Competencias por Departamento:</strong>{' '}
-                  Tabla de calor (filas = secciones de la plantilla, columnas = departamentos).
-                  El color indica el nivel: verde alto, amarillo medio, rojo bajo.
-                  Permite identificar qu&eacute; &aacute;reas de competencia son d&eacute;biles en qu&eacute; departamentos.
-                  Usa los filtros <em>Departamento</em> y <em>Cargo</em> para acotar la vista.
-                  Departamentos con menos de 5 evaluados se ocultan por privacidad.
-                </li>
-                <li>
                   <strong>Mapa de Calor por Departamento:</strong>{' '}
                   Vista global de todos los departamentos con barra rojo/amarillo/verde mostrando
-                  cu&aacute;ntos colaboradores est&aacute;n en nivel bajo, medio o alto.
-                  Siempre muestra todos los departamentos del ciclo (no aplica filtros).
-                  Haz clic en un departamento para ver el detalle individual.
+                  cuántos colaboradores están en nivel bajo, medio o alto.
+                  Haz clic en un departamento para ver el detalle individual con el nombre y puntaje de cada persona.
+                  Siempre muestra todos los departamentos del ciclo (sin filtros).
                 </li>
               </ul>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem', paddingLeft: '1.4rem' }}>
+                Para ver la distribución estadística del ciclo (Curva de Bell) y el Mapa de Competencias por Departamento,
+                visita la página <strong>Análisis del Ciclo</strong>.
+              </p>
             </div>
 
             {/* Section B */}
@@ -820,34 +483,34 @@ export default function InformesPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <span style={{ fontSize: '1rem' }}>👤</span>
                 <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
-                  Vista Individual &mdash; an&aacute;lisis de un colaborador espec&iacute;fico
+                  Vista Individual — análisis de un colaborador específico
                 </span>
               </div>
               <ul style={{ margin: 0, paddingLeft: '1.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
                 <li>
-                  <strong>Puntaje por Secci&oacute;n y Evaluador:</strong>{' '}
-                  Gr&aacute;fico de barras horizontales agrupadas: cada secci&oacute;n de la plantilla tiene una barra
-                  por tipo de evaluador (autoevaluaci&oacute;n, encargado, par, reporte directo).
-                  Permite comparar si el colaborador se eval&uacute;a igual o diferente a como lo ven sus evaluadores
-                  secci&oacute;n por secci&oacute;n.
+                  <strong>Puntaje por Sección y Evaluador:</strong>{' '}
+                  Gráfico de barras horizontales agrupadas: cada sección de la plantilla tiene una barra
+                  por tipo de evaluador (autoevaluación, encargado, par, reporte directo).
+                  Permite comparar si el colaborador se evalúa igual o diferente a como lo ven sus evaluadores
+                  sección por sección.
                 </li>
                 <li>
-                  <strong>Autoevaluaci&oacute;n vs Evaluadores:</strong>{' '}
+                  <strong>Autoevaluación vs Evaluadores:</strong>{' '}
                   Compara el puntaje global del colaborador versus el promedio de sus evaluadores.
                   Incluye indicador de brecha (gap): un gap positivo grande significa que el colaborador
-                  se eval&uacute;a mucho mejor de lo que lo ven otros; un gap negativo indica subestimaci&oacute;n.
+                  se evalúa mucho mejor de lo que lo ven otros; un gap negativo indica subestimación.
                 </li>
               </ul>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem', paddingLeft: '1.4rem' }}>
-                Para ver esta secci&oacute;n, selecciona un colaborador en el selector inferior.
+                Selecciona un colaborador en el selector de abajo.
                 Usa <em>Departamento</em> y <em>Cargo</em> para filtrar la lista.
               </p>
             </div>
 
             <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
               <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>{' '}
-              Solo Administradores y Encargados de Equipo pueden acceder a esta p&aacute;gina.
-              Los colaboradores ven sus resultados individuales en <em>Mi Desempe&ntilde;o</em>.
+              Solo Administradores y Encargados de Equipo pueden acceder a esta página.
+              Los colaboradores ven sus resultados individuales en <em>Mi Desempeño</em>.
             </div>
           </div>
         )}
@@ -868,11 +531,11 @@ export default function InformesPage() {
           )}
         </div>
 
-        {/* Dept + Cargo filters — affect CompetencyHeatmap and collaborator list */}
+        {/* Dept + Cargo filters — affect collaborator list */}
         {selectedCycleId && (
           <div style={{ padding: '0.85rem 1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
             <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.65rem' }}>
-              Filtros &mdash; Mapa de Competencias y lista de colaboradores
+              Filtros &mdash; lista de colaboradores
             </p>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
@@ -923,31 +586,13 @@ export default function InformesPage() {
                   Vista General
                 </h2>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
-                  Resultados del ciclo completo &mdash; Distribuci&oacute;n de puntajes y desempe&ntilde;o por departamento
+                  Mapa de calor por departamento — haz clic para ver el detalle individual
                 </p>
               </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {/* Bell Curve */}
-              <BellCurveSection cycleId={selectedCycleId} />
-
-              {/* Competency Heatmap — responds to Dept + Cargo page filters */}
-              <CompetencyHeatmapSection
-                cycleId={selectedCycleId}
-                deptFilter={filterDepartment || undefined}
-                posFilter={filterPosition || undefined}
-              />
-
-              {/* Heatmap por Departamento — always global, no filters applied */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    Vista global del ciclo &mdash; muestra todos los departamentos sin importar los filtros activos
-                  </span>
-                </div>
-                <HeatmapSection cycleId={selectedCycleId} />
-              </div>
+              <HeatmapSection cycleId={selectedCycleId} />
             </div>
           </div>
 
