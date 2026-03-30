@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, Request, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Query, Body, Param, UseGuards, Request, ParseUUIDPipe } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -30,5 +30,36 @@ export class DeiController {
     @Query('dimension') dimension: string,
   ) {
     return this.deiService.getGapReport(req.user.tenantId, cycleId, dimension || 'gender');
+  }
+
+  // ─── DEI Configuration ──────────────────────────────────────────────
+  @Get('config')
+  getConfig(@Request() req: any) {
+    return this.deiService.getConfig(req.user.tenantId);
+  }
+
+  @Patch('config')
+  updateConfig(@Request() req: any, @Body() dto: any) {
+    return this.deiService.updateConfig(req.user.tenantId, dto);
+  }
+
+  // ─── Corrective Actions ─────────────────────────────────────────────
+  @Get('corrective-actions')
+  listCorrectiveActions(@Request() req: any) {
+    return this.deiService.listCorrectiveActions(req.user.tenantId);
+  }
+
+  @Post('corrective-actions')
+  createCorrectiveAction(@Request() req: any, @Body() dto: any) {
+    return this.deiService.createCorrectiveAction(req.user.tenantId, req.user.userId, dto);
+  }
+
+  @Patch('corrective-actions/:id')
+  updateCorrectiveAction(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: any,
+  ) {
+    return this.deiService.updateCorrectiveAction(req.user.tenantId, id, dto);
   }
 }

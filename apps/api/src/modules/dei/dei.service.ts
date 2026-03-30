@@ -1,11 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
+import { DeiCorrectiveAction } from './entities/dei-corrective-action.entity';
 
-const PRIVACY_MIN = 5; // Minimum group size for DEI metrics
+const DEFAULT_PRIVACY_MIN = 10; // Minimum group size for DEI metrics (spec: 10 personas)
+const DEFAULT_MEDIUM_THRESHOLD = 1.5; // Gap >= 1.5 points = medium alert
+const DEFAULT_HIGH_THRESHOLD = 2.0; // Gap >= 2.0 points = high alert
 
 export interface GroupMetric {
   group: string;
@@ -19,7 +23,20 @@ export class DeiService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationResponse) private readonly responseRepo: Repository<EvaluationResponse>,
     @InjectRepository(EvaluationAssignment) private readonly assignRepo: Repository<EvaluationAssignment>,
+    @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(DeiCorrectiveAction) private readonly correctiveActionRepo: Repository<DeiCorrectiveAction>,
   ) {}
+
+  /** Get tenant-configurable DEI thresholds (falls back to defaults) */
+  private async getThresholds(tenantId: string) {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+    const dei = tenant?.settings?.dei || {};
+    return {
+      privacyMin: typeof dei.privacyMin === 'number' && dei.privacyMin >= 5 ? dei.privacyMin : DEFAULT_PRIVACY_MIN,
+      mediumThreshold: typeof dei.mediumThreshold === 'number' && dei.mediumThreshold > 0 ? dei.mediumThreshold : DEFAULT_MEDIUM_THRESHOLD,
+      highThreshold: typeof dei.highThreshold === 'number' && dei.highThreshold > 0 ? dei.highThreshold : DEFAULT_HIGH_THRESHOLD,
+    };
+  }
 
   // ─── Demographic Composition ────────────────────────────────────────
 
@@ -33,6 +50,8 @@ export class DeiService {
     const total = users.length;
     if (total === 0) return { total: 0, message: 'Sin usuarios activos' };
 
+    const thresholds = await this.getThresholds(tenantId);
+
     return {
       total,
       gender: this.groupBy(users, 'gender', total),
@@ -42,14 +61,17 @@ export class DeiService {
       nationality: this.groupBy(users, 'nationality', total),
       ageRanges: this.calculateAgeRanges(users, total),
       tenureRanges: this.calculateTenureRanges(users, total),
-      departmentBreakdown: this.departmentDiversity(users),
+      departmentBreakdown: this.departmentDiversity(users, thresholds.privacyMin),
       dataCompleteness: this.calculateDataCompleteness(users),
+      privacyThreshold: thresholds.privacyMin,
     };
   }
 
   // ─── Evaluation Equity Analysis ─────────────────────────────────────
 
   async getEquityAnalysis(tenantId: string, cycleId: string) {
+    const thresholds = await this.getThresholds(tenantId);
+
     // Get all completed responses with evaluatee demographics
     const rows = await this.responseRepo
       .createQueryBuilder('r')
@@ -73,13 +95,13 @@ export class DeiService {
     const alerts: Array<{ type: string; severity: string; message: string; data: any }> = [];
 
     // Gender equity
-    const genderScores = this.groupScores(rows, 'gender');
-    const genderAlert = this.detectBias(genderScores, 'Género');
+    const genderScores = this.groupScores(rows, 'gender', thresholds.privacyMin);
+    const genderAlert = this.detectBias(genderScores, 'Género', thresholds);
     if (genderAlert) alerts.push(genderAlert);
 
     // Seniority equity
-    const seniorityScores = this.groupScores(rows, 'seniority');
-    const seniorityAlert = this.detectBias(seniorityScores, 'Nivel de seniority');
+    const seniorityScores = this.groupScores(rows, 'seniority', thresholds.privacyMin);
+    const seniorityAlert = this.detectBias(seniorityScores, 'Nivel de seniority', thresholds);
     if (seniorityAlert) alerts.push(seniorityAlert);
 
     // Age equity
@@ -87,8 +109,8 @@ export class DeiService {
       ...r,
       ageGroup: r.birthDate ? this.getAgeGroup(new Date(r.birthDate)) : null,
     }));
-    const ageScores = this.groupScores(rowsWithAge, 'ageGroup');
-    const ageAlert = this.detectBias(ageScores, 'Rango etario');
+    const ageScores = this.groupScores(rowsWithAge, 'ageGroup', thresholds.privacyMin);
+    const ageAlert = this.detectBias(ageScores, 'Rango etario', thresholds);
     if (ageAlert) alerts.push(ageAlert);
 
     // Tenure equity
@@ -96,8 +118,8 @@ export class DeiService {
       ...r,
       tenureGroup: r.hireDate ? this.getTenureGroup(new Date(r.hireDate)) : null,
     }));
-    const tenureScores = this.groupScores(rowsWithTenure, 'tenureGroup');
-    const tenureAlert = this.detectBias(tenureScores, 'Antigüedad');
+    const tenureScores = this.groupScores(rowsWithTenure, 'tenureGroup', thresholds.privacyMin);
+    const tenureAlert = this.detectBias(tenureScores, 'Antigüedad', thresholds);
     if (tenureAlert) alerts.push(tenureAlert);
 
     return {
@@ -116,6 +138,7 @@ export class DeiService {
   // ─── Pay / Score Gap Report ─────────────────────────────────────────
 
   async getGapReport(tenantId: string, cycleId: string, dimension: string) {
+    const thresholds = await this.getThresholds(tenantId);
     const validDimensions = ['gender', 'seniority', 'department', 'nationality'];
     const col = validDimensions.includes(dimension) ? dimension : 'gender';
     const colMap: Record<string, string> = { gender: 'u.gender', seniority: 'u.seniority_level', department: 'u.department', nationality: 'u.nationality' };
@@ -134,7 +157,7 @@ export class DeiService {
       .addSelect('MAX(r.overall_score)', 'maxScore')
       .addSelect('COUNT(DISTINCT u.id)', 'userCount')
       .groupBy(`${colMap[col]}`)
-      .having('COUNT(DISTINCT u.id) >= :min', { min: PRIVACY_MIN })
+      .having('COUNT(DISTINCT u.id) >= :min', { min: thresholds.privacyMin })
       .orderBy('AVG(r.overall_score)', 'DESC')
       .getRawMany();
 
@@ -155,7 +178,7 @@ export class DeiService {
         userCount: parseInt(r.userCount),
         gapFromAvg: parseFloat((parseFloat(r.avgScore) - overallAvg).toFixed(2)),
       })),
-      privacyThreshold: PRIVACY_MIN,
+      privacyThreshold: thresholds.privacyMin,
     };
   }
 
@@ -172,7 +195,7 @@ export class DeiService {
       .sort((a, b) => b.count - a.count);
   }
 
-  private groupScores(rows: any[], field: string) {
+  private groupScores(rows: any[], field: string, privacyMin = DEFAULT_PRIVACY_MIN) {
     const groups: Record<string, number[]> = {};
     for (const r of rows) {
       const val = r[field] || 'Sin especificar';
@@ -181,7 +204,7 @@ export class DeiService {
     }
 
     return Object.entries(groups)
-      .filter(([_, scores]) => scores.length >= PRIVACY_MIN)
+      .filter(([_, scores]) => scores.length >= privacyMin)
       .map(([group, scores]) => {
         const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
         return {
@@ -195,18 +218,22 @@ export class DeiService {
       .sort((a, b) => b.avgScore - a.avgScore);
   }
 
-  private detectBias(groupScores: any[], dimensionName: string) {
+  private detectBias(
+    groupScores: any[],
+    dimensionName: string,
+    thresholds = { mediumThreshold: DEFAULT_MEDIUM_THRESHOLD, highThreshold: DEFAULT_HIGH_THRESHOLD },
+  ) {
     if (groupScores.length < 2) return null;
     const maxAvg = Math.max(...groupScores.map((g: any) => g.avgScore));
     const minAvg = Math.min(...groupScores.map((g: any) => g.avgScore));
     const gap = maxAvg - minAvg;
 
-    if (gap >= 1.5) {
+    if (gap >= thresholds.mediumThreshold) {
       const highGroup = groupScores.find((g: any) => g.avgScore === maxAvg);
       const lowGroup = groupScores.find((g: any) => g.avgScore === minAvg);
       return {
         type: 'score_gap',
-        severity: gap >= 2.0 ? 'high' : 'medium',
+        severity: gap >= thresholds.highThreshold ? 'high' : 'medium',
         message: `Brecha de ${gap.toFixed(1)} puntos en ${dimensionName}: "${highGroup.group}" (${highGroup.avgScore}) vs "${lowGroup.group}" (${lowGroup.avgScore})`,
         data: { dimension: dimensionName, gap: Math.round(gap * 100) / 100, highGroup: highGroup.group, lowGroup: lowGroup.group },
       };
@@ -254,7 +281,7 @@ export class DeiService {
       .sort((a, b) => a.group.localeCompare(b.group));
   }
 
-  private departmentDiversity(users: User[]) {
+  private departmentDiversity(users: User[], privacyMin = DEFAULT_PRIVACY_MIN) {
     const depts: Record<string, { total: number; genders: Record<string, number> }> = {};
     for (const u of users) {
       const dept = u.department || 'Sin departamento';
@@ -270,7 +297,7 @@ export class DeiService {
         gender: g, count: c, percentage: Math.round((c / data.total) * 1000) / 10,
       })),
     }))
-    .filter((d) => d.total >= PRIVACY_MIN) // Privacy: exclude small departments
+    .filter((d) => d.total >= privacyMin) // Privacy: exclude small departments
     .sort((a, b) => b.total - a.total);
   }
 
@@ -281,5 +308,105 @@ export class DeiService {
       const filled = users.filter((u) => u[f] != null).length;
       return { field: f, filled, total, percentage: Math.round((filled / total) * 1000) / 10 };
     });
+  }
+
+  // ─── DEI Configuration ────────────────────────────────────────────────
+
+  async getConfig(tenantId: string) {
+    const thresholds = await this.getThresholds(tenantId);
+    return thresholds;
+  }
+
+  async updateConfig(tenantId: string, config: { privacyMin?: number; mediumThreshold?: number; highThreshold?: number }) {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+
+    const currentDei = tenant.settings?.dei || {};
+
+    if (config.privacyMin !== undefined) {
+      const val = Number(config.privacyMin);
+      if (!Number.isInteger(val) || val < 5 || val > 50) {
+        throw new BadRequestException('El mínimo de personas debe ser un entero entre 5 y 50');
+      }
+      currentDei.privacyMin = val;
+    }
+    if (config.mediumThreshold !== undefined) {
+      const val = Number(config.mediumThreshold);
+      if (isNaN(val) || val < 0.5 || val > 5) {
+        throw new BadRequestException('El umbral medio debe estar entre 0.5 y 5 puntos');
+      }
+      currentDei.mediumThreshold = Math.round(val * 10) / 10;
+    }
+    if (config.highThreshold !== undefined) {
+      const val = Number(config.highThreshold);
+      if (isNaN(val) || val < 0.5 || val > 5) {
+        throw new BadRequestException('El umbral alto debe estar entre 0.5 y 5 puntos');
+      }
+      currentDei.highThreshold = Math.round(val * 10) / 10;
+    }
+
+    // Validate high > medium
+    const effectiveMedium = currentDei.mediumThreshold ?? DEFAULT_MEDIUM_THRESHOLD;
+    const effectiveHigh = currentDei.highThreshold ?? DEFAULT_HIGH_THRESHOLD;
+    if (effectiveHigh <= effectiveMedium) {
+      throw new BadRequestException(`El umbral alto (${effectiveHigh}) debe ser mayor al umbral medio (${effectiveMedium})`);
+    }
+
+    tenant.settings = { ...(tenant.settings || {}), dei: currentDei };
+    await this.tenantRepo.save(tenant);
+    return this.getThresholds(tenantId);
+  }
+
+  // ─── Corrective Actions CRUD ──────────────────────────────────────────
+
+  async listCorrectiveActions(tenantId: string) {
+    return this.correctiveActionRepo.find({
+      where: { tenantId },
+      relations: ['responsible', 'creator'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createCorrectiveAction(tenantId: string, createdBy: string, dto: {
+    alertType: string;
+    severity: string;
+    alertMessage: string;
+    cycleId?: string;
+    action: string;
+    responsibleId?: string;
+  }) {
+    const ca = this.correctiveActionRepo.create({
+      tenantId,
+      createdBy,
+      alertType: dto.alertType,
+      severity: dto.severity,
+      alertMessage: dto.alertMessage,
+      cycleId: dto.cycleId || null,
+      action: dto.action,
+      responsibleId: dto.responsibleId || null,
+      status: 'pending',
+    });
+    return this.correctiveActionRepo.save(ca);
+  }
+
+  async updateCorrectiveAction(tenantId: string, id: string, dto: {
+    status?: string;
+    action?: string;
+    evidence?: string;
+    responsibleId?: string;
+  }) {
+    const ca = await this.correctiveActionRepo.findOne({ where: { id, tenantId } });
+    if (!ca) throw new NotFoundException('Acción correctiva no encontrada');
+    const VALID_STATUSES = ['pending', 'in_progress', 'completed', 'cancelled'];
+    if (dto.status !== undefined) {
+      if (!VALID_STATUSES.includes(dto.status)) {
+        throw new BadRequestException(`Estado no válido: ${dto.status}. Valores permitidos: ${VALID_STATUSES.join(', ')}`);
+      }
+      ca.status = dto.status;
+    }
+    if (dto.action !== undefined) ca.action = dto.action;
+    if (dto.evidence !== undefined) ca.evidence = dto.evidence;
+    if (dto.responsibleId !== undefined) ca.responsibleId = dto.responsibleId;
+    return this.correctiveActionRepo.save(ca);
   }
 }

@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDemographics, useEquityAnalysis, useGapReport } from '@/hooks/useDei';
 import { useCycles } from '@/hooks/useCycles';
+import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 
 const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#3b82f6', '#ec4899', '#14b8a6'];
 
@@ -69,10 +71,29 @@ function DataCompletenessBar({ data }: { data: Array<{ field: string; percentage
 export default function DeiPage() {
   const { data: demo, isLoading: loadingDemo, isError: demoError } = useDemographics();
   const { data: cycles } = useCycles();
+  const token = useAuthStore((s) => s.token);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [dimension, setDimension] = useState('gender');
   const { data: equity } = useEquityAnalysis(selectedCycleId);
   const { data: gap } = useGapReport(selectedCycleId, dimension);
+
+  // DEI Config state
+  const [deiConfig, setDeiConfig] = useState({ privacyMin: 10, mediumThreshold: 1.5, highThreshold: 2.0 });
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+
+  // Corrective actions state
+  const [actions, setActions] = useState<any[]>([]);
+  const [showActions, setShowActions] = useState(false);
+  const [newAction, setNewAction] = useState({ alertType: '', severity: 'medium', alertMessage: '', action: '' });
+  const [actionSaving, setActionSaving] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    api.dei.getConfig(token).then(setDeiConfig).catch(() => {});
+    api.dei.listCorrectiveActions(token).then(setActions).catch(() => {});
+  }, [token]);
 
   return (
     <div style={{ maxWidth: '1000px' }}>
@@ -239,6 +260,215 @@ export default function DeiPage() {
           <p>Sin usuarios activos. Agrega colaboradores para ver metricas DEI.</p>
         </div>
       )}
+
+      {/* DEI Configuration */}
+      <div style={{ marginTop: '2rem' }}>
+        <button
+          className="btn-ghost"
+          onClick={() => setShowConfig(!showConfig)}
+          style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }}
+        >
+          {showConfig ? 'Ocultar configuracion' : 'Configuracion DEI'}
+        </button>
+
+        {showConfig && (
+          <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>Umbrales de Alerta DEI</h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Configura los umbrales que determinan cuando se generan alertas de sesgo y el minimo de personas para mostrar metricas por grupo.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
+                  Minimo personas por grupo
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min={5}
+                  max={50}
+                  value={deiConfig.privacyMin}
+                  onChange={(e) => setDeiConfig({ ...deiConfig, privacyMin: parseInt(e.target.value) || 10 })}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
+                  Umbral alerta media (puntos)
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min={0.5}
+                  max={5}
+                  step={0.1}
+                  value={deiConfig.mediumThreshold}
+                  onChange={(e) => setDeiConfig({ ...deiConfig, mediumThreshold: parseFloat(e.target.value) || 1.5 })}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
+                  Umbral alerta alta (puntos)
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={5}
+                  step={0.1}
+                  value={deiConfig.highThreshold}
+                  onChange={(e) => setDeiConfig({ ...deiConfig, highThreshold: parseFloat(e.target.value) || 2.0 })}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                className="btn-primary"
+                disabled={configSaving}
+                onClick={async () => {
+                  if (!token) return;
+                  setConfigSaving(true);
+                  try {
+                    const result = await api.dei.updateConfig(token, deiConfig);
+                    setDeiConfig(result);
+                    setConfigSaved(true);
+                    setTimeout(() => setConfigSaved(false), 3000);
+                  } catch { /* silently fail */ }
+                  setConfigSaving(false);
+                }}
+              >
+                {configSaving ? 'Guardando...' : 'Guardar umbrales'}
+              </button>
+              {configSaved && <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>Guardado</span>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Corrective Actions */}
+      <div style={{ marginTop: '1rem' }}>
+        <button
+          className="btn-ghost"
+          onClick={() => setShowActions(!showActions)}
+          style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }}
+        >
+          {showActions ? 'Ocultar acciones correctivas' : `Acciones correctivas (${actions.length})`}
+        </button>
+
+        {showActions && (
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>Registro de Acciones Correctivas</h3>
+
+            {/* New action form */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem', padding: '1rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>Dimension</label>
+                <select className="input" value={newAction.alertType} onChange={(e) => setNewAction({ ...newAction, alertType: e.target.value })} style={{ fontSize: '0.82rem' }}>
+                  <option value="">Seleccionar</option>
+                  <option value="gender">Genero</option>
+                  <option value="seniority">Seniority</option>
+                  <option value="age">Edad</option>
+                  <option value="tenure">Antiguedad</option>
+                  <option value="department">Departamento</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>Severidad</label>
+                <select className="input" value={newAction.severity} onChange={(e) => setNewAction({ ...newAction, severity: e.target.value })} style={{ fontSize: '0.82rem' }}>
+                  <option value="medium">Media</option>
+                  <option value="high">Alta</option>
+                </select>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>Descripcion de la accion correctiva</label>
+                <textarea
+                  className="input"
+                  value={newAction.action}
+                  onChange={(e) => setNewAction({ ...newAction, action: e.target.value })}
+                  placeholder="Describir la accion a tomar para corregir la brecha identificada..."
+                  rows={2}
+                  style={{ fontSize: '0.82rem', resize: 'vertical' }}
+                />
+              </div>
+              <div>
+                <button
+                  className="btn-primary"
+                  disabled={actionSaving || !newAction.alertType || !newAction.action.trim()}
+                  style={{ fontSize: '0.82rem' }}
+                  onClick={async () => {
+                    if (!token) return;
+                    setActionSaving(true);
+                    try {
+                      const created = await api.dei.createCorrectiveAction(token, {
+                        alertType: newAction.alertType,
+                        severity: newAction.severity,
+                        alertMessage: `Accion correctiva registrada para dimension: ${newAction.alertType}`,
+                        action: newAction.action,
+                        cycleId: selectedCycleId || undefined,
+                      });
+                      setActions((prev) => [created, ...prev]);
+                      setNewAction({ alertType: '', severity: 'medium', alertMessage: '', action: '' });
+                    } catch { /* silently fail */ }
+                    setActionSaving(false);
+                  }}
+                >
+                  {actionSaving ? 'Registrando...' : 'Registrar accion'}
+                </button>
+              </div>
+            </div>
+
+            {/* Actions table */}
+            {actions.length > 0 ? (
+              <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                    <th style={{ padding: '0.5rem 0.5rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Dimension</th>
+                    <th style={{ padding: '0.5rem 0.5rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Accion</th>
+                    <th style={{ padding: '0.5rem 0.5rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Estado</th>
+                    <th style={{ padding: '0.5rem 0.5rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {actions.map((a: any) => (
+                    <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light, #eee)' }}>
+                      <td style={{ padding: '0.5rem' }}>
+                        <span className={`badge ${a.severity === 'high' ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: '0.72rem', marginRight: '0.3rem' }}>
+                          {a.severity === 'high' ? 'ALTA' : 'MEDIA'}
+                        </span>
+                        {a.alertType}
+                      </td>
+                      <td style={{ padding: '0.5rem', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.action}</td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <select
+                          className="input"
+                          value={a.status}
+                          onChange={async (e) => {
+                            if (!token) return;
+                            try {
+                              await api.dei.updateCorrectiveAction(token, a.id, { status: e.target.value });
+                              setActions((prev) => prev.map((x) => x.id === a.id ? { ...x, status: e.target.value } : x));
+                            } catch { /* silently fail */ }
+                          }}
+                          style={{ fontSize: '0.78rem', padding: '0.25rem 0.4rem', width: 'auto' }}
+                        >
+                          <option value="pending">Pendiente</option>
+                          <option value="in_progress">En progreso</option>
+                          <option value="completed">Completada</option>
+                          <option value="cancelled">Cancelada</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>
+                        {new Date(a.createdAt).toLocaleDateString('es-CL')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No hay acciones correctivas registradas.</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

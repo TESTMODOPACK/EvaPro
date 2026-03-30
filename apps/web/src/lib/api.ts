@@ -685,6 +685,14 @@ export const api = {
     equity: (token: string, cycleId: string) => request<any>(`/dei/equity?cycleId=${cycleId}`, {}, token),
     gapReport: (token: string, cycleId: string, dimension = 'gender') =>
       request<any>(`/dei/gap-report?cycleId=${cycleId}&dimension=${dimension}`, {}, token),
+    getConfig: (token: string) => request<any>("/dei/config", {}, token),
+    updateConfig: (token: string, config: Record<string, any>) =>
+      request<any>("/dei/config", { method: "PATCH", body: JSON.stringify(config) }, token),
+    listCorrectiveActions: (token: string) => request<any[]>("/dei/corrective-actions", {}, token),
+    createCorrectiveAction: (token: string, data: any) =>
+      request<any>("/dei/corrective-actions", { method: "POST", body: JSON.stringify(data) }, token),
+    updateCorrectiveAction: (token: string, id: string, data: any) =>
+      request<any>(`/dei/corrective-actions/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
   },
 
   recognition: {
