@@ -63,6 +63,9 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/notificaciones': ['super_admin', 'tenant_admin', 'manager', 'employee', 'external'],
   '/dashboard/mi-desempeno': ['tenant_admin', 'manager', 'employee'],
   '/dashboard/ajustes':      ['super_admin', 'tenant_admin', 'manager', 'employee', 'external'],
+  '/dashboard/reconocimientos': ['tenant_admin', 'manager', 'employee'],
+  '/dashboard/dei':          ['tenant_admin', 'manager'],
+  '/dashboard/onboarding':   ['tenant_admin', 'manager', 'employee'],
 };
 
 // ─── i18n-aware hooks ─────────────────────────────────────────────────────────
