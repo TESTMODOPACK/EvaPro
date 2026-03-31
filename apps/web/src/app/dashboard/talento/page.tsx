@@ -728,11 +728,11 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
                     <tr>
                       <SortTh field="name" label="Colaborador" />
                       <SortTh field="dept" label="Departamento" />
-                      <SortTh field="pool" label={t('talento.editClassification')} />
+                      <SortTh field="pool" label={t('talento.segClassification')} />
                       <SortTh field="performance" label={t('talento.colPerformance')} title={t('talento.colPerformanceHint')} />
-                      <SortTh field="potential" label={t('talento.colPotential')} title={t('talento.colPotentialHint')} />
-                      <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title={t('talento.colReadinessHint')}>{t('talento.colReadiness')}</th>
-                      <SortTh field="risk" label={t('talento.colFlightRisk')} title={t('talento.colFlightRiskHint')} />
+                      <SortTh field="potential" label={t('talento.segPotential')} title={t('talento.segPotentialHint')} />
+                      <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title={t('talento.segReadinessHint')}>{t('talento.segReadiness')}</th>
+                      <SortTh field="risk" label={t('talento.segFlightRisk')} title={t('talento.segFlightRiskHint')} />
                     </tr>
                   </thead>
                   <tbody>
