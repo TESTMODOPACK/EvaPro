@@ -791,6 +791,36 @@
     "tabQuickFeedback": "Quick Feedback",
     "tabLocations": "Meeting Locations"
   },
+  "notificaciones": {
+    "title": "Notifications",
+    "unread": "unread",
+    "allRead": "All notifications read",
+    "marking": "Marking...",
+    "markAllRead": "Mark all as read",
+    "empty": "No notifications",
+    "emptyHint": "Notifications are generated automatically when there are pending evaluations, check-ins, feedback received and more.",
+    "types": {
+      "evaluation_pending": "Pending evaluation",
+      "evaluation_completed": "Evaluation completed",
+      "checkin_scheduled": "Check-in scheduled",
+      "checkin_rejected": "Check-in rejected",
+      "checkin_overdue": "Check-in overdue",
+      "feedback_received": "Feedback received",
+      "pdi_action_due": "IDP action due",
+      "objective_at_risk": "Objective at risk",
+      "cycle_closing": "Cycle closing soon",
+      "cycle_closed": "Cycle closed",
+      "calibration_pending": "Calibration pending",
+      "stage_advanced": "Stage advanced",
+      "escalation_evaluation_overdue": "Evaluation escalation",
+      "escalation_pdi_overdue": "IDP escalation",
+      "escalation_objective_critical": "Critical objective",
+      "pdi_required": "IDP required",
+      "subscription_expiring": "Subscription expiring",
+      "subscription_expiring_urgent": "Subscription urgent",
+      "general": "General"
+    }
+  },
   "reconocimientos": {
     "title": "Recognition",
     "subtitle": "Recognize your colleagues, earn points and get badges for your achievements",

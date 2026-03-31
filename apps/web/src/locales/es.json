@@ -791,6 +791,36 @@
     "tabQuickFeedback": "Feedback Rápido",
     "tabLocations": "Lugares de Reunión"
   },
+  "notificaciones": {
+    "title": "Notificaciones",
+    "unread": "sin leer",
+    "allRead": "Todas las notificaciones leídas",
+    "marking": "Marcando...",
+    "markAllRead": "Marcar todas como leídas",
+    "empty": "No hay notificaciones",
+    "emptyHint": "Las notificaciones se generan automáticamente cuando hay evaluaciones pendientes, check-ins, feedback recibido y más.",
+    "types": {
+      "evaluation_pending": "Evaluación pendiente",
+      "evaluation_completed": "Evaluación completada",
+      "checkin_scheduled": "Check-in programado",
+      "checkin_rejected": "Check-in rechazado",
+      "checkin_overdue": "Check-in atrasado",
+      "feedback_received": "Feedback recibido",
+      "pdi_action_due": "Acción PDI vencida",
+      "objective_at_risk": "Objetivo en riesgo",
+      "cycle_closing": "Ciclo por cerrar",
+      "cycle_closed": "Ciclo cerrado",
+      "calibration_pending": "Calibración pendiente",
+      "stage_advanced": "Etapa avanzada",
+      "escalation_evaluation_overdue": "Escalación evaluación",
+      "escalation_pdi_overdue": "Escalación PDI",
+      "escalation_objective_critical": "Objetivo crítico",
+      "pdi_required": "PDI requerido",
+      "subscription_expiring": "Suscripción por vencer",
+      "subscription_expiring_urgent": "Suscripción urgente",
+      "general": "General"
+    }
+  },
   "reconocimientos": {
     "title": "Reconocimientos",
     "subtitle": "Reconoce a tus compañeros, gana puntos y obtén badges por tus logros",

@@ -791,6 +791,36 @@
     "tabQuickFeedback": "Feedback Rápido",
     "tabLocations": "Locais de Reunião"
   },
+  "notificaciones": {
+    "title": "Notificações",
+    "unread": "não lidas",
+    "allRead": "Todas as notificações lidas",
+    "marking": "Marcando...",
+    "markAllRead": "Marcar todas como lidas",
+    "empty": "Sem notificações",
+    "emptyHint": "As notificações são geradas automaticamente quando há avaliações pendentes, check-ins, feedback recebido e mais.",
+    "types": {
+      "evaluation_pending": "Avaliação pendente",
+      "evaluation_completed": "Avaliação concluída",
+      "checkin_scheduled": "Check-in agendado",
+      "checkin_rejected": "Check-in rejeitado",
+      "checkin_overdue": "Check-in atrasado",
+      "feedback_received": "Feedback recebido",
+      "pdi_action_due": "Ação PDI vencida",
+      "objective_at_risk": "Objetivo em risco",
+      "cycle_closing": "Ciclo por fechar",
+      "cycle_closed": "Ciclo fechado",
+      "calibration_pending": "Calibração pendente",
+      "stage_advanced": "Etapa avançada",
+      "escalation_evaluation_overdue": "Escalação avaliação",
+      "escalation_pdi_overdue": "Escalação PDI",
+      "escalation_objective_critical": "Objetivo crítico",
+      "pdi_required": "PDI necessário",
+      "subscription_expiring": "Assinatura por vencer",
+      "subscription_expiring_urgent": "Assinatura urgente",
+      "general": "Geral"
+    }
+  },
   "reconocimientos": {
     "title": "Reconhecimentos",
     "subtitle": "Reconheça seus colegas, ganhe pontos e obtenha badges pelas suas conquistas",

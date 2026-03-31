@@ -1,35 +1,28 @@
 'use client';
 
+import { useTranslation } from 'react-i18next';
 import { useNotifications, useMarkAsRead, useMarkAllAsRead, useUnreadCount } from '@/hooks/useNotifications';
 
 const typeIcons: Record<string, string> = {
-  EVALUATION_PENDING: '\uD83D\uDCDD',
-  EVALUATION_COMPLETED: '\u2705',
-  CHECKIN_SCHEDULED: '\uD83D\uDCC5',
-  CHECKIN_REJECTED: '\u274C',
-  CHECKIN_OVERDUE: '\u23F0',
-  FEEDBACK_RECEIVED: '\uD83D\uDCAC',
-  PDI_ACTION_DUE: '\uD83C\uDFAF',
-  OBJECTIVE_AT_RISK: '\u26A0\uFE0F',
-  CYCLE_CLOSING: '\uD83D\uDD14',
-  CALIBRATION_PENDING: '\u2696\uFE0F',
-  STAGE_ADVANCED: '\u27A1\uFE0F',
-  GENERAL: '\uD83D\uDD35',
-};
-
-const typeLabels: Record<string, string> = {
-  EVALUATION_PENDING: 'Evaluaci\u00f3n pendiente',
-  EVALUATION_COMPLETED: 'Evaluaci\u00f3n completada',
-  CHECKIN_SCHEDULED: 'Check-in programado',
-  CHECKIN_REJECTED: 'Check-in rechazado',
-  CHECKIN_OVERDUE: 'Check-in atrasado',
-  FEEDBACK_RECEIVED: 'Feedback recibido',
-  PDI_ACTION_DUE: 'Acci\u00f3n PDI vencida',
-  OBJECTIVE_AT_RISK: 'Objetivo en riesgo',
-  CYCLE_CLOSING: 'Ciclo por cerrar',
-  CALIBRATION_PENDING: 'Calibraci\u00f3n pendiente',
-  STAGE_ADVANCED: 'Etapa avanzada',
-  GENERAL: 'General',
+  evaluation_pending: '\uD83D\uDCDD',
+  evaluation_completed: '\u2705',
+  checkin_scheduled: '\uD83D\uDCC5',
+  checkin_rejected: '\u274C',
+  checkin_overdue: '\u23F0',
+  feedback_received: '\uD83D\uDCAC',
+  pdi_action_due: '\uD83C\uDFAF',
+  objective_at_risk: '\u26A0\uFE0F',
+  cycle_closing: '\uD83D\uDD14',
+  cycle_closed: '\u2705',
+  calibration_pending: '\u2696\uFE0F',
+  stage_advanced: '\u27A1\uFE0F',
+  escalation_evaluation_overdue: '\uD83D\uDEA8',
+  escalation_pdi_overdue: '\uD83D\uDEA8',
+  escalation_objective_critical: '\uD83D\uDEA8',
+  pdi_required: '\uD83D\uDCCB',
+  subscription_expiring: '\u23F3',
+  subscription_expiring_urgent: '\u26A0\uFE0F',
+  general: '\uD83D\uDD35',
 };
 
 function Spinner() {
@@ -45,6 +38,7 @@ function formatDate(d: string) {
 }
 
 export default function NotificacionesPage() {
+  const { t } = useTranslation();
   const { data: notifications, isLoading } = useNotifications(100);
   const { data: unreadData } = useUnreadCount();
   const markAsRead = useMarkAsRead();
@@ -57,11 +51,11 @@ export default function NotificacionesPage() {
       {/* Header */}
       <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{'Notificaciones'}</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('notificaciones.title')}</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
             {unreadCount > 0
-              ? `${unreadCount} notificaci${unreadCount === 1 ? '\u00f3n' : 'ones'} sin leer`
-              : 'Todas las notificaciones le\u00eddas'}
+              ? `${unreadCount} ${t('notificaciones.unread')}`
+              : t('notificaciones.allRead')}
           </p>
         </div>
         {unreadCount > 0 && (
@@ -71,7 +65,7 @@ export default function NotificacionesPage() {
             onClick={() => markAllAsRead.mutate()}
             disabled={markAllAsRead.isPending}
           >
-            {markAllAsRead.isPending ? 'Marcando...' : 'Marcar todas como le\u00eddas'}
+            {markAllAsRead.isPending ? t('notificaciones.marking') : t('notificaciones.markAllRead')}
           </button>
         )}
       </div>
@@ -82,9 +76,9 @@ export default function NotificacionesPage() {
       ) : !notifications || notifications.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'\uD83D\uDD14'}</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{'No hay notificaciones'}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{t('notificaciones.empty')}</p>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-            {'Las notificaciones se generan autom\u00e1ticamente cuando hay evaluaciones pendientes, check-ins, feedback recibido y m\u00e1s.'}
+            {t('notificaciones.emptyHint')}
           </p>
         </div>
       ) : (
@@ -106,7 +100,7 @@ export default function NotificacionesPage() {
               }}
             >
               <span style={{ fontSize: '1.3rem', flexShrink: 0, marginTop: '0.1rem' }}>
-                {typeIcons[n.type] || typeIcons.GENERAL}
+                {typeIcons[n.type] || typeIcons.general}
               </span>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.25rem' }}>
@@ -115,7 +109,7 @@ export default function NotificacionesPage() {
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
                     <span className={`badge ${n.isRead ? 'badge-ghost' : 'badge-accent'}`} style={{ fontSize: '0.6rem' }}>
-                      {typeLabels[n.type] || n.type}
+                      {t(`notificaciones.types.${n.type}`, { defaultValue: n.type })}
                     </span>
                     {!n.isRead && (
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
