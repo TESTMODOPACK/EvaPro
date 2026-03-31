@@ -32,13 +32,20 @@ function SuperAdminDashboard() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [stats, setStats] = useState<any>(null);
+  const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!token) return;
-    api.tenants.systemStats(token)
-      .then(setStats)
+    Promise.all([
+      api.tenants.systemStats(token),
+      api.tenants.listAllTickets(token).catch(() => []),
+    ])
+      .then(([statsData, ticketsData]) => {
+        setStats(statsData);
+        setTickets(Array.isArray(ticketsData) ? ticketsData : []);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
@@ -108,13 +115,72 @@ function SuperAdminDashboard() {
         ))}
       </div>
 
+      {/* Tickets summary */}
+      {tickets.length > 0 && (() => {
+        const open = tickets.filter((t: any) => t.status === 'open').length;
+        const inReview = tickets.filter((t: any) => t.status === 'in_review').length;
+        const responded = tickets.filter((t: any) => t.status === 'responded').length;
+        const pending = open + inReview;
+        return (
+          <div className="card animate-fade-up-delay-1" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: pending > 0 ? '4px solid var(--accent)' : '4px solid var(--success)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: pending > 0 ? '0.75rem' : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1.3rem' }}>{'📋'}</span>
+                <div>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>Solicitudes</h3>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+                    {pending > 0 ? `${pending} solicitud${pending !== 1 ? 'es' : ''} pendiente${pending !== 1 ? 's' : ''} de respuesta` : 'Todas las solicitudes respondidas'}
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1.2rem', color: open > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{open}</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Abiertas</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1.2rem', color: inReview > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>{inReview}</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>En revisión</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--success)' }}>{responded}</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Respondidas</div>
+                </div>
+                <Link href="/dashboard/solicitudes" className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem', textDecoration: 'none' }}>
+                  Ver todas
+                </Link>
+              </div>
+            </div>
+            {/* Recent open tickets preview */}
+            {open > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {tickets.filter((t: any) => t.status === 'open').slice(0, 3).map((t: any) => (
+                  <Link key={t.id} href="/dashboard/solicitudes" style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'rgba(201,147,58,0.04)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
+                      <div>
+                        <span style={{ fontWeight: 600 }}>{t.subject}</span>
+                        <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem', fontSize: '0.75rem' }}>
+                          {t.tenant?.name || ''} · {new Date(t.createdAt).toLocaleDateString('es-CL')}
+                        </span>
+                      </div>
+                      <span className="badge badge-warning" style={{ fontSize: '0.68rem' }}>Abierta</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Quick nav */}
       <div className="animate-fade-up-delay-1" style={{ display: 'flex', gap: '0.75rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
         {[
           { label: 'Organizaciones', href: '/dashboard/tenants' },
           { label: 'Suscripciones', href: '/dashboard/subscriptions' },
           { label: 'Log del Sistema', href: '/dashboard/audit-log' },
-          { label: 'Metricas de Uso', href: '/dashboard/system-metrics' },
+          { label: 'Métricas de Uso', href: '/dashboard/system-metrics' },
+          { label: 'Solicitudes', href: '/dashboard/solicitudes' },
         ].map((nav, i) => (
           <Link key={i} href={nav.href} className="btn-ghost" style={{ fontSize: '0.85rem', textDecoration: 'none' }}>
             {nav.label}

@@ -8,6 +8,8 @@ import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { SupportTicket } from './entities/support-ticket.entity';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 
 const CUSTOM_SETTINGS_DEFAULTS: Record<string, string[]> = {
   calibrationCausals: [
@@ -105,6 +107,7 @@ export class TenantsService {
     private readonly subscriptionRepo: Repository<Subscription>,
     @InjectRepository(SupportTicket)
     private readonly ticketRepo: Repository<SupportTicket>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async findBySlug(slug: string): Promise<Tenant> {
@@ -477,7 +480,28 @@ export class TenantsService {
       priority: dto.priority || 'normal',
       status: 'open',
     });
-    return this.ticketRepo.save(ticket);
+    const saved = await this.ticketRepo.save(ticket);
+
+    // Notify all super_admins about the new ticket
+    const superAdmins = await this.userRepository.find({
+      where: { role: 'super_admin', isActive: true },
+      select: ['id'],
+    });
+    const tenant = await this.tenantRepository.findOne({ where: { id: tenantId }, select: ['id', 'name'] });
+    const orgName = tenant?.name || '';
+    const notifications = superAdmins.map((sa) => ({
+      tenantId: null as any,
+      userId: sa.id,
+      type: NotificationType.GENERAL,
+      title: `Nueva solicitud: ${dto.subject}`,
+      message: `${orgName} ha enviado una solicitud de tipo "${dto.category}". Prioridad: ${dto.priority || 'normal'}.`,
+      metadata: { ticketId: saved.id, tenantId, category: dto.category },
+    }));
+    if (notifications.length > 0) {
+      this.notificationsService.createBulk(notifications).catch(() => {});
+    }
+
+    return saved;
   }
 
   async respondTicket(ticketId: string, respondedBy: string, response: string, status?: string) {
@@ -485,6 +509,16 @@ export class TenantsService {
     if (!ticket) throw new NotFoundException('Solicitud no encontrada');
     ticket.response = response;
     ticket.respondedBy = respondedBy;
+
+    // Notify the ticket creator about the response
+    this.notificationsService.create({
+      tenantId: ticket.tenantId,
+      userId: ticket.createdBy,
+      type: NotificationType.GENERAL,
+      title: `Solicitud respondida: ${ticket.subject}`,
+      message: `Tu solicitud "${ticket.subject}" ha sido respondida. Revisa la respuesta en la sección de Solicitudes.`,
+      metadata: { ticketId },
+    }).catch(() => {});
     ticket.respondedAt = new Date();
     ticket.status = status || 'responded';
     return this.ticketRepo.save(ticket);
