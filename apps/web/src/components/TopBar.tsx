@@ -12,7 +12,7 @@ import { api } from '@/lib/api';
 
 const LANG_FLAGS: Record<SupportedLocale, string> = { es: 'ES', en: 'EN', pt: 'PT' };
 
-export default function TopBar() {
+export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
   const router = useRouter();
   const { user, logout, token } = useAuthStore();
   const { data: sub } = useMySubscription();
@@ -64,7 +64,7 @@ export default function TopBar() {
     : user?.email || '';
 
   return (
-    <header style={{
+    <header className="topbar-desktop" style={{
       position: 'fixed',
       top: 0,
       left: '260px',
@@ -78,8 +78,19 @@ export default function TopBar() {
       padding: '0 1.5rem',
       zIndex: 40,
     }}>
-      {/* Left: Brand */}
+      {/* Left: Hamburger + Brand */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        {/* Hamburger menu button (mobile only) */}
+        <button
+          className="hamburger-btn"
+          onClick={onMenuClick}
+          style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: 'var(--accent)' }}
+          aria-label="Menu"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
         {/* Ascenda mini logo icon — 7 growing bars */}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '24px' }}>
           {[6, 9, 12, 15, 18, 21, 24].map((h, i) => (

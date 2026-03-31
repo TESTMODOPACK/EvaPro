@@ -284,3 +284,38 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
   animation: spin 0.7s linear infinite;
   display: inline-block;
 }
+
+/* ── Mobile Responsive ─────────────────────────────────── */
+
+/* Sidebar: hidden on mobile, shown via .sidebar-open */
+@media (max-width: 768px) {
+  .sidebar-desktop {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 100;
+  }
+  .sidebar-desktop.sidebar-open {
+    transform: translateX(0);
+  }
+  .sidebar-overlay {
+    display: block !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+  }
+  .topbar-desktop {
+    left: 0 !important;
+  }
+  .hamburger-btn {
+    display: flex !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .sidebar-overlay {
+    display: none !important;
+  }
+  .hamburger-btn {
+    display: none !important;
+  }
+}

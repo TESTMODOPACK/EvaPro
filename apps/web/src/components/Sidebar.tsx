@@ -149,7 +149,7 @@ const sectionLabelStyle: React.CSSProperties = {
 
 // ─── Component ───────────────────────────────────────────────────────────
 
-export default function Sidebar({ currentPath }: { currentPath: string }) {
+export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath: string; isOpen?: boolean; onToggle?: () => void }) {
   const { user } = useAuthStore();
   const { data: sub, isError: orgError, refetch: refetchSub } = useMySubscription();
   const orgInfo = sub?.tenant ? { name: sub.tenant.name, rut: sub.tenant.rut || null } : null;
@@ -256,12 +256,21 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
   const sections = user?.role === 'super_admin' ? superAdminSections : tenantNavSections;
 
   return (
-    <aside style={{
+    <>
+    {/* Mobile overlay */}
+    {isOpen && (
+      <div
+        className="sidebar-overlay"
+        onClick={onToggle}
+        style={{ display: 'none', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 90 }}
+      />
+    )}
+    <aside className={`sidebar-desktop${isOpen ? ' sidebar-open' : ''}`} style={{
       position: 'fixed', top: 0, left: 0, bottom: 0, width: '260px',
       background: '#1a1206',
       borderRight: '1px solid rgba(201,147,58,0.15)',
       display: 'flex', flexDirection: 'column',
-      zIndex: 50,
+      zIndex: 100,
     }}>
       {/* Sidebar header — Ascenda bars icon */}
       <div style={{ padding: '1.25rem 1.25rem 0.75rem', borderBottom: '1px solid var(--border)' }}>
@@ -342,5 +351,6 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
 
       {/* User info moved to TopBar component */}
     </aside>
+    </>
   );
 }

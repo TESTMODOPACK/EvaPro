@@ -72,6 +72,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { isAuthenticated, token, user, logout } = useAuthStore();
   const { data: sub, isLoading: subLoading, isError: subError } = useMySubscription();
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Close mobile sidebar on navigation
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!isAuthenticated || token === 'demo-token' || !token) {
@@ -118,9 +124,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!isAllowed) {
       return (
         <div style={{ display: 'flex', minHeight: '100vh' }}>
-          <Sidebar currentPath={pathname} />
-          <TopBar />
-          <main style={{
+          <Sidebar currentPath={pathname} isOpen={sidebarOpen} onToggle={() => setSidebarOpen(false)} />
+          <TopBar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+          <main className="main-content" style={{
             flex: 1, marginLeft: '260px', marginTop: '56px', background: 'var(--bg-base)',
             minHeight: 'calc(100vh - 56px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
@@ -176,11 +182,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Sidebar currentPath={pathname} />
-      <TopBar />
-      <main style={{
+      <Sidebar currentPath={pathname} isOpen={sidebarOpen} onToggle={() => setSidebarOpen(false)} />
+      <TopBar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+      <main className="main-content" style={{
         flex: 1,
-        marginLeft: '260px',
+        marginLeft: '260px', /* overridden to 0 on mobile via .main-content class */
         marginTop: '56px',
         background: 'var(--bg-base)',
         minHeight: 'calc(100vh - 56px)',
