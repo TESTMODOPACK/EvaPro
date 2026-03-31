@@ -440,17 +440,17 @@ export default function DesarrolloPage() {
 
       {/* Create form */}
       {showCreate && canCreate && (
-        <div className="card animate-fade-up">
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 0, marginBottom: '0.25rem' }}>
+        <div className="card animate-fade-up" style={{ padding: '1.75rem', borderLeft: '4px solid var(--accent)' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 0.25rem' }}>
             {t('desarrollo.createFormTitle')}
           </h2>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 1.25rem' }}>
             {t('desarrollo.createFormSubtitle')}
           </p>
           <form onSubmit={handleCreatePlan} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
                   {t('desarrollo.form.collaborator')}
                 </label>
                 <select
@@ -460,14 +460,14 @@ export default function DesarrolloPage() {
                   required
                   style={{ width: '100%' }}
                 >
-                  <option value="">{t('common.selectPlaceholder')}</option>
+                  <option value="">{t('desarrollo.form.selectCollaborator')}</option>
                   {availableUsers.map((u: any) => (
                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
                   {t('desarrollo.form.title')}
                 </label>
                 <input
@@ -480,7 +480,7 @@ export default function DesarrolloPage() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
                   {t('desarrollo.form.priority')}
                 </label>
                 <select
@@ -496,7 +496,7 @@ export default function DesarrolloPage() {
               </div>
             </div>
             <div>
-              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
                 {t('desarrollo.form.description')}
               </label>
               <textarea
@@ -510,7 +510,7 @@ export default function DesarrolloPage() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
                   {t('desarrollo.form.startDate')}
                 </label>
                 <input
@@ -522,7 +522,7 @@ export default function DesarrolloPage() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
                   {t('desarrollo.form.targetDate')}
                 </label>
                 <input
@@ -635,7 +635,7 @@ export default function DesarrolloPage() {
             {/* Vinculación opcional a iniciativa organizacional */}
             {orgInitiatives.length > 0 && (
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
                   Vincular a iniciativa organizacional{' '}
                   <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional)</span>
                 </label>

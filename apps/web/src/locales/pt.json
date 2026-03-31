@@ -67,6 +67,7 @@
     "optional": "opcional",
     "previous": "Anterior",
     "next": "Seguinte",
+    "selectPlaceholder": "— Selecionar —",
     "creating": "Criando...",
     "update": "Atualizar"
   },
@@ -687,7 +688,8 @@
       "descriptionPlaceholder": "Objetivos e foco do plano...",
       "startDate": "Data de início",
       "targetDate": "Data limite",
-      "noLink": "— Sem vínculo —"
+      "noLink": "— Sem vínculo —",
+      "selectCollaborator": "— Selecionar colaborador —"
     },
     "actions": {
       "title": "Ações de Desenvolvimento",

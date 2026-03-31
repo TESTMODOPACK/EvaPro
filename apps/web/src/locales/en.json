@@ -67,6 +67,7 @@
     "optional": "optional",
     "previous": "Previous",
     "next": "Next",
+    "selectPlaceholder": "— Select —",
     "creating": "Creating...",
     "update": "Update"
   },
@@ -687,7 +688,8 @@
       "descriptionPlaceholder": "Plan objectives and focus...",
       "startDate": "Start date",
       "targetDate": "Target date",
-      "noLink": "— No link —"
+      "noLink": "— No link —",
+      "selectCollaborator": "— Select collaborator —"
     },
     "actions": {
       "title": "Development Actions",
