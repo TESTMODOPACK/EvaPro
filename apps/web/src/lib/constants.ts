@@ -20,14 +20,6 @@ export const CUSTOM_SETTINGS_DEFAULTS: Record<string, string[]> = {
     '4 - Supera expectativas',
     '5 - Excepcional',
   ],
-  competencyCategories: [
-    'Liderazgo',
-    'Competencias técnicas',
-    'Valores organizacionales',
-    'Comunicación',
-    'Trabajo en equipo',
-    'Orientación a resultados',
-  ],
   objectiveTypes: [
     'Estratégico',
     'Operativo',
@@ -101,10 +93,6 @@ export const CUSTOM_SETTINGS_META: Record<string, { label: string; description: 
     label: 'Escalas de Evaluación',
     description: 'Etiquetas para los niveles de la escala de desempeño',
   },
-  competencyCategories: {
-    label: 'Categorías de Competencias',
-    description: 'Tipos de competencias que se evalúan en la organización',
-  },
   objectiveTypes: {
     label: 'Tipos de Objetivos',
     description: 'Clasificación de objetivos disponibles para los colaboradores',
@@ -128,3 +116,17 @@ export const CUSTOM_SETTINGS_META: Record<string, { label: string; description: 
 };
 
 export const CUSTOM_SETTINGS_KEYS = Object.keys(CUSTOM_SETTINGS_DEFAULTS);
+
+/**
+ * Default competency categories. These are NOT a custom setting — they serve
+ * as initial options when no competencies exist yet. The canonical source of
+ * categories is the Competency entity itself (category field).
+ */
+export const DEFAULT_COMPETENCY_CATEGORIES = [
+  'Liderazgo',
+  'Competencias técnicas',
+  'Valores organizacionales',
+  'Comunicación',
+  'Trabajo en equipo',
+  'Orientación a resultados',
+];

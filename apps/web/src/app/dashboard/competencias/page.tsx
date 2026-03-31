@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
-import { CUSTOM_SETTINGS_DEFAULTS } from '@/lib/constants';
+import { DEFAULT_COMPETENCY_CATEGORIES } from '@/lib/constants';
 
 function Spinner() {
   return (
@@ -63,10 +63,8 @@ export default function CompetenciasPage() {
   const [competencies, setCompetencies] = useState<any[]>([]);
   const [error, setError] = useState('');
 
-  // ── Categorías dinámicas desde Mantenedores ──────────────────────────────
-  const [categories, setCategories] = useState<string[]>(
-    CUSTOM_SETTINGS_DEFAULTS.competencyCategories,
-  );
+  // ── Categorías derivadas de las competencias existentes ────────────────
+  const [categories, setCategories] = useState<string[]>(DEFAULT_COMPETENCY_CATEGORIES);
 
   // Derivados: índice → paleta de color, nombre legible
   const categoryIndex = (cat: string) => {
@@ -114,21 +112,18 @@ export default function CompetenciasPage() {
     setLoading(true);
     setError('');
     try {
-      const [res, settings] = await Promise.all([
-        api.development.competencies.list(token!),
-        api.tenants.getAllCustomSettings(token!).catch(() => ({} as Record<string, string[]>)),
-      ]);
-      setCompetencies(Array.isArray(res) ? res : []);
+      const res = await api.development.competencies.list(token!);
+      const comps = Array.isArray(res) ? res : [];
+      setCompetencies(comps);
 
-      // Cargar categorías desde Mantenedores; usar defaults si no están configuradas
-      const rawCats = (settings as Record<string, string[]>)?.competencyCategories;
-      const cats: string[] = rawCats?.length
-        ? rawCats
-        : CUSTOM_SETTINGS_DEFAULTS.competencyCategories;
-      setCategories(cats);
+      // Derivar categorías de las competencias existentes + defaults
+      const existingCats = Array.from(new Set(comps.map((c: any) => c.category).filter(Boolean))) as string[];
+      const allCats = Array.from(new Set([...existingCats, ...DEFAULT_COMPETENCY_CATEGORIES]));
+      allCats.sort();
+      setCategories(allCats);
 
-      // Sincronizar el valor por defecto del formulario con la primera categoría disponible
-      setForm((f) => ({ ...f, category: f.category || cats[0] || '' }));
+      // Sincronizar el valor por defecto del formulario con la primera categoría
+      setForm((f) => ({ ...f, category: f.category || allCats[0] || '' }));
     } catch (e: any) {
       const msg = e.message || 'Error al cargar competencias';
       setError(msg.replace(/"PDI"/g, '"Planes de Desarrollo Individual (PDI)"'));

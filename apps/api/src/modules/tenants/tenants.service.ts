@@ -26,14 +26,6 @@ const CUSTOM_SETTINGS_DEFAULTS: Record<string, string[]> = {
     '4 - Supera expectativas',
     '5 - Excepcional',
   ],
-  competencyCategories: [
-    'Liderazgo',
-    'Competencias técnicas',
-    'Valores organizacionales',
-    'Comunicación',
-    'Trabajo en equipo',
-    'Orientación a resultados',
-  ],
   objectiveTypes: [
     'Estratégico',
     'Operativo',
@@ -240,13 +232,7 @@ export class TenantsService {
         entity = 'usuarios';
         break;
       }
-      case 'competencyCategories': {
-        // Competencies use category field
-        const compRepo = this.userRepository.manager.getRepository('competencies');
-        count = await compRepo.count({ where: { tenantId, category: value } });
-        entity = 'competencias';
-        break;
-      }
+      // competencyCategories removed — categories managed via Competencias page
       case 'evaluationPeriods': {
         const cycleRepo = this.userRepository.manager.getRepository('evaluation_cycles');
         count = await cycleRepo.createQueryBuilder('c')
