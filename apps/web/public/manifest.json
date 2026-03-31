@@ -1,0 +1,27 @@
+{
+  "name": "Ascenda Performance",
+  "short_name": "Ascenda",
+  "description": "Plataforma de evaluación de desempeño empresarial",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#1a1206",
+  "theme_color": "#C9933A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "es",
+  "dir": "ltr"
+}
