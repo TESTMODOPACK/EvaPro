@@ -1,37 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNotifications, useMarkAsRead, useMarkAllAsRead, useUnreadCount } from '@/hooks/useNotifications';
 
 const typeIcons: Record<string, string> = {
-  evaluation_pending: '\uD83D\uDCDD',
-  evaluation_completed: '\u2705',
-  checkin_scheduled: '\uD83D\uDCC5',
-  checkin_rejected: '\u274C',
-  checkin_overdue: '\u23F0',
-  feedback_received: '\uD83D\uDCAC',
-  pdi_action_due: '\uD83C\uDFAF',
-  objective_at_risk: '\u26A0\uFE0F',
-  cycle_closing: '\uD83D\uDD14',
-  cycle_closed: '\u2705',
-  calibration_pending: '\u2696\uFE0F',
-  stage_advanced: '\u27A1\uFE0F',
-  escalation_evaluation_overdue: '\uD83D\uDEA8',
-  escalation_pdi_overdue: '\uD83D\uDEA8',
-  escalation_objective_critical: '\uD83D\uDEA8',
-  pdi_required: '\uD83D\uDCCB',
-  subscription_expiring: '\u23F3',
-  subscription_expiring_urgent: '\u26A0\uFE0F',
+  evaluation_pending: '\uD83D\uDCDD', evaluation_completed: '\u2705',
+  checkin_scheduled: '\uD83D\uDCC5', checkin_rejected: '\u274C', checkin_overdue: '\u23F0',
+  feedback_received: '\uD83D\uDCAC', pdi_action_due: '\uD83C\uDFAF',
+  objective_at_risk: '\u26A0\uFE0F', cycle_closing: '\uD83D\uDD14', cycle_closed: '\u2705',
+  calibration_pending: '\u2696\uFE0F', stage_advanced: '\u27A1\uFE0F',
+  escalation_evaluation_overdue: '\uD83D\uDEA8', escalation_pdi_overdue: '\uD83D\uDEA8',
+  escalation_objective_critical: '\uD83D\uDEA8', pdi_required: '\uD83D\uDCCB',
+  subscription_expiring: '\u23F3', subscription_expiring_urgent: '\u26A0\uFE0F',
   general: '\uD83D\uDD35',
 };
-
-function Spinner() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-      <span className="spinner" />
-    </div>
-  );
-}
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -39,17 +22,20 @@ function formatDate(d: string) {
 
 export default function NotificacionesPage() {
   const { t } = useTranslation();
-  const { data: notifications, isLoading } = useNotifications(100);
+  const { data: notifications, isLoading } = useNotifications(200);
   const { data: unreadData } = useUnreadCount();
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
+  const [filter, setFilter] = useState<'unread' | 'all'>('all');
 
   const unreadCount = unreadData?.count || 0;
+  const allNotifs = notifications || [];
+  const filtered = filter === 'unread' ? allNotifs.filter((n: any) => !n.isRead) : allNotifs;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '800px' }}>
       {/* Header */}
-      <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('notificaciones.title')}</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
@@ -70,20 +56,44 @@ export default function NotificacionesPage() {
         )}
       </div>
 
+      {/* Filter tabs */}
+      <div className="animate-fade-up" style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
+        {(['all', 'unread'] as const).map((f) => (
+          <button key={f} onClick={() => setFilter(f)}
+            style={{
+              padding: '0.5rem 1rem', fontSize: '0.82rem',
+              fontWeight: filter === f ? 700 : 500,
+              color: filter === f ? 'var(--accent)' : 'var(--text-muted)',
+              background: 'none', border: 'none',
+              borderBottom: filter === f ? '2px solid var(--accent)' : '2px solid transparent',
+              cursor: 'pointer', marginBottom: '-1px',
+            }}>
+            {f === 'all' ? t('notificaciones.tabAll') : t('notificaciones.tabUnread')}
+            {f === 'unread' && unreadCount > 0 && (
+              <span style={{ marginLeft: '0.4rem', background: 'var(--accent)', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: '0.68rem', fontWeight: 700 }}>
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* List */}
       {isLoading ? (
-        <Spinner />
-      ) : !notifications || notifications.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>
+      ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'\uD83D\uDD14'}</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{t('notificaciones.empty')}</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-            {t('notificaciones.emptyHint')}
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
+            {filter === 'unread' ? t('notificaciones.noUnread') : t('notificaciones.empty')}
           </p>
+          {filter === 'all' && (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{t('notificaciones.emptyHint')}</p>
+          )}
         </div>
       ) : (
         <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {notifications.map((n: any) => (
+          {filtered.map((n: any) => (
             <div
               key={n.id}
               className="card"
@@ -91,12 +101,10 @@ export default function NotificacionesPage() {
               style={{
                 padding: '1rem 1.25rem',
                 cursor: n.isRead ? 'default' : 'pointer',
-                background: n.isRead ? 'var(--bg-surface)' : 'rgba(99,102,241,0.04)',
+                background: n.isRead ? 'var(--bg-surface)' : 'rgba(201,147,58,0.04)',
                 borderLeft: n.isRead ? 'none' : '3px solid var(--accent)',
                 transition: 'background 0.15s',
-                display: 'flex',
-                gap: '0.75rem',
-                alignItems: 'flex-start',
+                display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
               }}
             >
               <span style={{ fontSize: '1.3rem', flexShrink: 0, marginTop: '0.1rem' }}>

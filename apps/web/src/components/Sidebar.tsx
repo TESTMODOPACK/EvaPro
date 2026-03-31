@@ -224,6 +224,7 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
         { href: '/dashboard/competencias', label: t('nav.competencies'), icon: icons.competencies },
         { href: '/dashboard/mantenedores', label: t('nav.customData'), icon: icons.settings },
         { href: '/dashboard/mi-suscripcion', label: t('nav.subscription'), icon: icons.subscription },
+        { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: '📋' },
         { href: '/dashboard/ajustes', label: t('nav.settings'), icon: icons.settings },
       ],
     }] : [
@@ -247,6 +248,7 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
         { href: '/dashboard/subscriptions', label: t('nav.subscriptions'), icon: icons.subscription },
         { href: '/dashboard/audit-log', label: t('nav.systemLog'), icon: icons.log },
         { href: '/dashboard/system-metrics', label: t('nav.usageMetrics'), icon: icons.analytics },
+        { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: '📋' },
       ],
     },
   ];

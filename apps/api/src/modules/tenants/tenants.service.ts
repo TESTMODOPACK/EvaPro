@@ -7,6 +7,7 @@ import { User } from '../users/entities/user.entity';
 import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
+import { SupportTicket } from './entities/support-ticket.entity';
 
 const CUSTOM_SETTINGS_DEFAULTS: Record<string, string[]> = {
   calibrationCausals: [
@@ -74,6 +75,8 @@ export class TenantsService {
     private readonly auditLogRepo: Repository<AuditLog>,
     @InjectRepository(Subscription)
     private readonly subscriptionRepo: Repository<Subscription>,
+    @InjectRepository(SupportTicket)
+    private readonly ticketRepo: Repository<SupportTicket>,
   ) {}
 
   async findBySlug(slug: string): Promise<Tenant> {
@@ -363,5 +366,48 @@ export class TenantsService {
       .getRawMany();
 
     return { usersPerMonth, tenantActivity };
+  }
+
+  // ─── Support Tickets ────────────────────────────────────────────────
+
+  async listTickets(tenantId?: string) {
+    const where = tenantId ? { tenantId } : {};
+    return this.ticketRepo.find({
+      where,
+      relations: ['creator', 'responder', 'tenant'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createTicket(tenantId: string, createdBy: string, dto: {
+    category: string; subject: string; description: string; priority?: string;
+  }) {
+    const ticket = this.ticketRepo.create({
+      tenantId,
+      createdBy,
+      category: dto.category,
+      subject: dto.subject,
+      description: dto.description,
+      priority: dto.priority || 'normal',
+      status: 'open',
+    });
+    return this.ticketRepo.save(ticket);
+  }
+
+  async respondTicket(ticketId: string, respondedBy: string, response: string, status?: string) {
+    const ticket = await this.ticketRepo.findOne({ where: { id: ticketId } });
+    if (!ticket) throw new NotFoundException('Solicitud no encontrada');
+    ticket.response = response;
+    ticket.respondedBy = respondedBy;
+    ticket.respondedAt = new Date();
+    ticket.status = status || 'responded';
+    return this.ticketRepo.save(ticket);
+  }
+
+  async updateTicketStatus(ticketId: string, status: string) {
+    const ticket = await this.ticketRepo.findOne({ where: { id: ticketId } });
+    if (!ticket) throw new NotFoundException('Solicitud no encontrada');
+    ticket.status = status;
+    return this.ticketRepo.save(ticket);
   }
 }

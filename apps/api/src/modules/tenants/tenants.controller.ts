@@ -94,4 +94,48 @@ export class TenantsController {
   deactivate(@Param('id', ParseUUIDPipe) id: string) {
     return this.tenantsService.deactivate(id);
   }
+
+  // ─── Support Tickets ──────────────────────────────────────────────
+
+  /** Tenant admin: list own tickets */
+  @Get('me/tickets')
+  @Roles('super_admin', 'tenant_admin')
+  listMyTickets(@Request() req: any) {
+    return this.tenantsService.listTickets(req.user.tenantId);
+  }
+
+  /** Tenant admin: create ticket */
+  @Post('me/tickets')
+  @Roles('tenant_admin')
+  createTicket(@Request() req: any, @Body() dto: any) {
+    return this.tenantsService.createTicket(req.user.tenantId, req.user.userId, dto);
+  }
+
+  /** Super admin: list ALL tickets across tenants */
+  @Get('tickets/all')
+  @Roles('super_admin')
+  listAllTickets() {
+    return this.tenantsService.listTickets();
+  }
+
+  /** Super admin: respond to a ticket */
+  @Patch('tickets/:ticketId/respond')
+  @Roles('super_admin')
+  respondTicket(
+    @Param('ticketId', ParseUUIDPipe) ticketId: string,
+    @Body() dto: { response: string; status?: string },
+    @Request() req: any,
+  ) {
+    return this.tenantsService.respondTicket(ticketId, req.user.userId, dto.response, dto.status);
+  }
+
+  /** Super admin: update ticket status */
+  @Patch('tickets/:ticketId/status')
+  @Roles('super_admin')
+  updateTicketStatus(
+    @Param('ticketId', ParseUUIDPipe) ticketId: string,
+    @Body() dto: { status: string },
+  ) {
+    return this.tenantsService.updateTicketStatus(ticketId, dto.status);
+  }
 }
