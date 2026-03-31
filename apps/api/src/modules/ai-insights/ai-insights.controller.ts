@@ -152,13 +152,13 @@ export class AiInsightsController {
 
   // ─── PDF Export ──────────────────────────────────────────────────────
 
-  @Get('summary/:userId/:cycleId/pdf')
+  @Get('summary-pdf/:userId/:cycleId')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   async exportSummaryPdf(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
-    @Res() res: Response,
+    @Res({ passthrough: true }) res: Response,
   ) {
     this.validateAccess(req, userId);
     const buffer = await this.aiService.exportSummaryPdf(req.user.tenantId, cycleId, userId);

@@ -461,8 +461,15 @@ function FlightRiskSection() {
                       <tr style={{ background: 'rgba(99,102,241,0.03)' }}>
                         <td colSpan={6} style={{ padding: '0.75rem 1.5rem' }}>
                           <ul style={{ margin: 0, paddingLeft: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-                            {(s.factors as string[]).map((f: string, fi: number) => (
-                              <li key={fi}>{f}</li>
+                            {(s.factors || []).map((f: any, fi: number) => (
+                              <li key={fi}>
+                                <strong>{f.label || f}</strong>: {f.value || ''}
+                                {f.impact && (
+                                  <span style={{ marginLeft: '0.3rem', color: f.impact === 'negative' ? 'var(--danger)' : f.impact === 'positive' ? 'var(--success)' : 'var(--text-muted)', fontSize: '0.72rem' }}>
+                                    ({f.impact === 'negative' ? 'riesgo' : f.impact === 'positive' ? 'favorable' : 'neutral'})
+                                  </span>
+                                )}
+                              </li>
                             ))}
                           </ul>
                         </td>
@@ -649,7 +656,7 @@ export default function InsightsPage() {
       </div>
 
       {/* Content */}
-      {!selectedCycleId && activeTab !== 'flight-risk' && (
+      {!selectedCycleId && !['flight-risk', 'prediction', 'retention'].includes(activeTab) && (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
             {'Selecciona un ciclo de evaluaci\u00f3n para comenzar el an\u00e1lisis con IA'}

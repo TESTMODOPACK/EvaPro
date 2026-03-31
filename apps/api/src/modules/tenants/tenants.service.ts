@@ -206,7 +206,7 @@ export class TenantsService {
     const tenant = await this.findById(tenantId);
     tenant.settings = { ...(tenant.settings || {}), [key]: sanitized };
     await this.tenantRepository.save(tenant);
-    return values;
+    return sanitized;
   }
 
   private static readonly VALID_TIMEZONES = [

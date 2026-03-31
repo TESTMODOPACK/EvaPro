@@ -259,6 +259,7 @@ export class AiInsightsService {
 
   async analyzeBias(tenantId: string, cycleId: string, generatedBy: string): Promise<AiInsight> {
     await this.checkRateLimit(tenantId);
+    await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
     const cached = await this.getCached(tenantId, InsightType.BIAS, cycleId);
     if (cached) return cached;
@@ -355,6 +356,7 @@ export class AiInsightsService {
 
   async generateSuggestions(tenantId: string, cycleId: string, userId: string, generatedBy: string): Promise<AiInsight> {
     await this.checkRateLimit(tenantId);
+    await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
     const cached = await this.getCached(tenantId, InsightType.SUGGESTIONS, cycleId, userId);
     if (cached) return cached;
