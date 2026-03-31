@@ -328,7 +328,9 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
                     href={item.href}
                     className={`sidebar-link${isActive ? ' active' : ''}`}
                   >
-                    {item.icon}
+                    <span style={{ width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: typeof item.icon === 'string' ? '1rem' : undefined }}>
+                      {item.icon}
+                    </span>
                     {item.label}
                   </Link>
                 );
