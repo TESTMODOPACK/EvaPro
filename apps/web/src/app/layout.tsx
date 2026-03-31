@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/providers/QueryProvider';
@@ -12,21 +12,28 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#C9933A',
+};
+
 export const metadata: Metadata = {
   title: 'Ascenda Performance – Evaluación de Desempeño',
   description: 'Plataforma multi-tenant de evaluación de desempeño para empresas',
   manifest: '/manifest.json',
-  themeColor: '#C9933A',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'Ascenda',
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
+  icons: {
+    apple: '/icons/icon.svg',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
   },
 };
 
@@ -37,11 +44,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className={inter.variable}>
-      <head>
-        <link rel="apple-touch-icon" href="/icons/icon.svg" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="mobile-web-app-capable" content="yes" />
-      </head>
       <body style={{ fontFamily: 'var(--font-inter), system-ui, -apple-system, sans-serif' }}>
         <I18nProvider>
           <QueryProvider>{children}</QueryProvider>
