@@ -109,6 +109,37 @@ export class AiInsightsController {
     return this.aiService.getFlightRiskScores(req.user.tenantId);
   }
 
+  // ─── F15: Performance Prediction ──────────────────────────────────────
+
+  @Get('prediction/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getPerformancePrediction(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Request() req: any,
+  ) {
+    this.validateAccess(req, userId);
+    return this.aiService.getPerformancePrediction(req.user.tenantId, userId);
+  }
+
+  // ─── F15: Retention Recommendations ──────────────────────────────────
+
+  @Get('retention')
+  @Roles('super_admin', 'tenant_admin')
+  getRetentionRecommendations(@Request() req: any) {
+    return this.aiService.getRetentionRecommendations(req.user.tenantId);
+  }
+
+  // ─── F15: Explainability (XAI) ──────────────────────────────────────
+
+  @Get('explainability/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getExplainability(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Request() req: any,
+  ) {
+    return this.aiService.getExplainability(req.user.tenantId, userId);
+  }
+
   // ─── Cache Management ─────────────────────────────────────────────────
 
   @Delete('cache/:cycleId')

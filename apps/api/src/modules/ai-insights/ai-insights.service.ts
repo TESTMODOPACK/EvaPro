@@ -12,7 +12,7 @@ import { Objective } from '../objectives/entities/objective.entity';
 import { QuickFeedback } from '../feedback/entities/quick-feedback.entity';
 import { Competency } from '../development/entities/competency.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
-import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
+import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { buildSummaryPrompt } from './prompts/summary.prompt';
 import { buildBiasPrompt } from './prompts/bias.prompt';
 import { buildSuggestionsPrompt } from './prompts/suggestions.prompt';
@@ -623,6 +623,211 @@ export class AiInsightsService {
     };
 
     return { generatedAt: new Date().toISOString(), totalEmployees: employees.length, summary, scores: results };
+  }
+
+  // ─── F15: Performance Prediction ──────────────────────────────────────
+
+  async getPerformancePrediction(tenantId: string, userId: string) {
+    // Require at least 2 completed cycles with data
+    const closedCycles = await this.cycleRepo.find({
+      where: { tenantId, status: CycleStatus.CLOSED },
+      order: { endDate: 'ASC' },
+    });
+
+    // Get scores per cycle for this user
+    const cycleScores: Array<{ cycleName: string; endDate: string; avgScore: number }> = [];
+    for (const cycle of closedCycles) {
+      const assignments = await this.assignmentRepo.find({
+        where: { cycleId: cycle.id, evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
+        select: ['id'],
+      });
+      if (assignments.length === 0) continue;
+
+      const responses = await this.responseRepo
+        .createQueryBuilder('r')
+        .where('r.assignmentId IN (:...ids)', { ids: assignments.map((a) => a.id) })
+        .andWhere('r.overall_score IS NOT NULL')
+        .getMany();
+
+      if (responses.length === 0) continue;
+      const avg = responses.reduce((sum, r) => sum + Number(r.overallScore), 0) / responses.length;
+      cycleScores.push({
+        cycleName: cycle.name,
+        endDate: cycle.endDate?.toISOString?.() || '',
+        avgScore: Math.round(avg * 100) / 100,
+      });
+    }
+
+    if (cycleScores.length < 2) {
+      return {
+        available: false,
+        message: `Se requieren al menos 2 ciclos completados con evaluaciones para generar predicciones. Actualmente hay ${cycleScores.length}.`,
+        cyclesAvailable: cycleScores.length,
+        history: cycleScores,
+      };
+    }
+
+    // Linear trend calculation
+    const scores = cycleScores.map((cs) => cs.avgScore);
+    const n = scores.length;
+    const xMean = (n - 1) / 2;
+    const yMean = scores.reduce((a, b) => a + b, 0) / n;
+    let numSum = 0;
+    let denSum = 0;
+    for (let i = 0; i < n; i++) {
+      numSum += (i - xMean) * (scores[i] - yMean);
+      denSum += (i - xMean) * (i - xMean);
+    }
+    const slope = denSum !== 0 ? numSum / denSum : 0;
+    const predicted = Math.max(0, Math.min(10, Math.round((yMean + slope * (n - xMean)) * 100) / 100));
+
+    const trend = slope > 0.2 ? 'improving' : slope < -0.2 ? 'declining' : 'stable';
+    const confidence = Math.min(0.95, 0.5 + (n - 2) * 0.15); // More cycles = more confidence
+
+    return {
+      available: true,
+      predictedScore: predicted,
+      trend,
+      trendSlope: Math.round(slope * 100) / 100,
+      confidence: Math.round(confidence * 100) / 100,
+      history: cycleScores,
+      cyclesUsed: n,
+      explanation: trend === 'improving'
+        ? `Tendencia al alza: el desempeño ha mejorado en promedio ${Math.abs(Math.round(slope * 100) / 100)} puntos por ciclo.`
+        : trend === 'declining'
+          ? `Tendencia a la baja: el desempeño ha disminuido en promedio ${Math.abs(Math.round(slope * 100) / 100)} puntos por ciclo. Se recomienda intervención.`
+          : `Desempeño estable: las variaciones entre ciclos son mínimas (±${Math.abs(Math.round(slope * 100) / 100)} por ciclo).`,
+    };
+  }
+
+  // ─── F15: Retention Recommendations ──────────────────────────────────
+
+  async getRetentionRecommendations(tenantId: string) {
+    const flightRiskData = await this.getFlightRiskScores(tenantId);
+    const highRisk = flightRiskData.scores.filter((s) => s.riskLevel === 'high');
+    const mediumRisk = flightRiskData.scores.filter((s) => s.riskLevel === 'medium').slice(0, 5);
+
+    const recommendations: Array<{
+      userId: string;
+      name: string;
+      department: string | null;
+      riskScore: number;
+      riskLevel: string;
+      actions: Array<{ type: string; description: string; priority: string }>;
+    }> = [];
+
+    for (const emp of [...highRisk, ...mediumRisk]) {
+      const actions: Array<{ type: string; description: string; priority: string }> = [];
+
+      // Analyze factors to suggest specific actions
+      for (const factor of emp.factors) {
+        if (factor.label.includes('evaluación') && factor.impact === 'negative') {
+          actions.push({
+            type: 'pdi',
+            description: `Crear plan de desarrollo individual enfocado en las brechas identificadas en evaluaciones (score: ${factor.value}).`,
+            priority: 'alta',
+          });
+        }
+        if (factor.label.includes('OKR') && factor.impact === 'negative') {
+          actions.push({
+            type: 'coaching',
+            description: `Asignar sesiones de coaching para mejorar cumplimiento de objetivos (${factor.value} completado).`,
+            priority: 'alta',
+          });
+        }
+        if (factor.label.includes('feedback') && factor.impact === 'negative') {
+          actions.push({
+            type: 'engagement',
+            description: `Incrementar frecuencia de check-ins 1:1 y feedback para aumentar engagement (${factor.value} feedbacks en 90 días).`,
+            priority: 'media',
+          });
+        }
+        if (factor.label.includes('riesgo') && factor.impact === 'negative') {
+          actions.push({
+            type: 'retention',
+            description: 'Revisar compensación y beneficios. Considerar rotación a proyecto de mayor impacto.',
+            priority: 'alta',
+          });
+        }
+      }
+
+      // Always add generic high-risk actions
+      if (emp.riskLevel === 'high' && actions.length < 2) {
+        actions.push({
+          type: 'conversation',
+          description: 'Programar conversación de retención con el manager directo para entender motivaciones y expectativas.',
+          priority: 'alta',
+        });
+      }
+
+      recommendations.push({
+        userId: emp.userId,
+        name: emp.name,
+        department: emp.department,
+        riskScore: emp.riskScore,
+        riskLevel: emp.riskLevel,
+        actions,
+      });
+    }
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totalHighRisk: highRisk.length,
+      totalMediumRisk: flightRiskData.summary.medium,
+      recommendations,
+    };
+  }
+
+  // ─── F15: Explainability (XAI) ──────────────────────────────────────
+
+  async getExplainability(tenantId: string, userId: string) {
+    // Get flight risk data for this specific user
+    const flightRiskData = await this.getFlightRiskScores(tenantId);
+    const userScore = flightRiskData.scores.find((s) => s.userId === userId);
+    if (!userScore) {
+      return { available: false, message: 'No se encontraron datos de riesgo para este usuario.' };
+    }
+
+    // Get performance prediction
+    const prediction = await this.getPerformancePrediction(tenantId, userId);
+
+    // Build detailed explanation per factor with weight attribution
+    const factorWeights: Record<string, number> = {
+      'Puntaje evaluación': 30,
+      'Cumplimiento OKRs': 25,
+      'Feedback recibido': 20,
+      'Objetivos en riesgo': 15,
+      'Evaluación talento': 10,
+    };
+
+    const detailedFactors = userScore.factors.map((f) => {
+      const weight = factorWeights[f.label] || 0;
+      return {
+        ...f,
+        weight,
+        contribution: `${weight}% del score total`,
+        explanation: f.impact === 'negative'
+          ? `Este factor contribuye al riesgo: ${f.label} = ${f.value}. Peso: ${weight}%.`
+          : f.impact === 'positive'
+            ? `Este factor reduce el riesgo: ${f.label} = ${f.value}. Peso: ${weight}%.`
+            : `Factor neutral: ${f.label} = ${f.value}. Peso: ${weight}%.`,
+      };
+    });
+
+    return {
+      available: true,
+      userId: userScore.userId,
+      name: userScore.name,
+      riskScore: userScore.riskScore,
+      riskLevel: userScore.riskLevel,
+      factors: detailedFactors,
+      prediction: prediction.available ? {
+        predictedScore: prediction.predictedScore,
+        trend: prediction.trend,
+        confidence: prediction.confidence,
+      } : null,
+      methodology: 'Score compuesto de 5 señales ponderadas: evaluación (30%), OKRs (25%), feedback (20%), objetivos en riesgo (15%), evaluación de talento (10%). Cada señal se califica de 0 a su peso máximo según umbrales predefinidos. Score total: 0-100 (bajo ≤30, medio 31-60, alto >60).',
+    };
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────

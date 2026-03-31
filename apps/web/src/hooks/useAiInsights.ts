@@ -87,3 +87,36 @@ export function useFlightRisk() {
     retry: false,
   });
 }
+
+export function usePerformancePrediction(userId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['ai', 'prediction', userId],
+    queryFn: () => api.ai.getPerformancePrediction(token!, userId!),
+    enabled: !!token && !!userId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+export function useRetentionRecommendations() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['ai', 'retention'],
+    queryFn: () => api.ai.getRetentionRecommendations(token!),
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+export function useExplainability(userId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['ai', 'explainability', userId],
+    queryFn: () => api.ai.getExplainability(token!, userId!),
+    enabled: !!token && !!userId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}

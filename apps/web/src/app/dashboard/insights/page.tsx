@@ -10,9 +10,10 @@ import {
   useAiBias, useAnalyzeBias,
   useAiSuggestions, useGenerateSuggestions,
   useFlightRisk,
+  usePerformancePrediction, useRetentionRecommendations, useExplainability,
 } from '@/hooks/useAiInsights';
 
-type Tab = 'summary' | 'bias' | 'suggestions' | 'flight-risk';
+type Tab = 'summary' | 'bias' | 'suggestions' | 'flight-risk' | 'prediction' | 'retention';
 
 function Spinner() {
   return (
@@ -583,7 +584,9 @@ export default function InsightsPage() {
         {selectedCycleId && tabBtn('summary', 'Resumen IA')}
         {selectedCycleId && isAdmin && tabBtn('bias', 'Detecci\u00f3n de Sesgos')}
         {selectedCycleId && tabBtn('suggestions', 'Sugerencias de Desarrollo')}
-        {isAdmin && tabBtn('flight-risk', '⚠️ Riesgo de Fuga')}
+        {isAdmin && tabBtn('flight-risk', '\u26A0\uFE0F Riesgo de Fuga')}
+        {tabBtn('prediction', '\uD83D\uDCC8 Predicciones')}
+        {isAdmin && tabBtn('retention', '\uD83D\uDEE1\uFE0F Retenci\u00f3n')}
       </div>
 
       {/* Content */}
@@ -632,6 +635,157 @@ export default function InsightsPage() {
       {activeTab === 'flight-risk' && isAdmin && (
         <div className="animate-fade-up">
           <FlightRiskSection />
+        </div>
+      )}
+
+      {/* Prediction Tab */}
+      {activeTab === 'prediction' && (
+        <PredictionSection userId={selectedUserId} />
+      )}
+
+      {/* Retention Tab */}
+      {activeTab === 'retention' && isAdmin && (
+        <RetentionSection />
+      )}
+    </div>
+  );
+}
+
+/* ─── Prediction Section ───────────────────────────────────────────── */
+function PredictionSection({ userId }: { userId: string | null }) {
+  const { t } = useTranslation();
+  const { data, isLoading } = usePerformancePrediction(userId);
+
+  if (!userId) {
+    return (
+      <div className="card animate-fade-up" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+        <p>{t('insights.selectUserForPrediction')}</p>
+      </div>
+    );
+  }
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
+
+  if (!data) return null;
+
+  if (!data.available) {
+    return (
+      <div className="card animate-fade-up" style={{ padding: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+        <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.5rem' }}>{t('insights.predictionNotAvailable')}</h3>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>{data.message}</p>
+        {data.history?.length > 0 && (
+          <div style={{ marginTop: '1rem' }}>
+            <p style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '0.5rem' }}>{t('insights.historyAvailable')}:</p>
+            {data.history.map((h: any, i: number) => (
+              <span key={i} className="badge badge-ghost" style={{ marginRight: '0.5rem', fontSize: '0.75rem' }}>
+                {h.cycleName}: {h.avgScore}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const trendIcon = data.trend === 'improving' ? '\uD83D\uDCC8' : data.trend === 'declining' ? '\uD83D\uDCC9' : '\u27A1\uFE0F';
+  const trendColor = data.trend === 'improving' ? 'var(--success)' : data.trend === 'declining' ? 'var(--danger)' : 'var(--accent)';
+
+  return (
+    <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Prediction card */}
+      <div className="card" style={{ padding: '1.5rem' }}>
+        <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>{t('insights.predictionTitle')}</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+          <div className="card" style={{ padding: '1rem', textAlign: 'center', border: '2px solid var(--accent)' }}>
+            <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--accent)' }}>{data.predictedScore}</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('insights.predictedScore')}</div>
+          </div>
+          <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem' }}>{trendIcon}</div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 600, color: trendColor }}>
+              {data.trend === 'improving' ? t('insights.trendUp') : data.trend === 'declining' ? t('insights.trendDown') : t('insights.trendStable')}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{t('insights.slope')}: {data.trendSlope > 0 ? '+' : ''}{data.trendSlope}/ciclo</div>
+          </div>
+          <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>{Math.round(data.confidence * 100)}%</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('insights.confidence')}</div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{data.cyclesUsed} {t('insights.cyclesUsed')}</div>
+          </div>
+        </div>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>{data.explanation}</p>
+      </div>
+
+      {/* History */}
+      <div className="card" style={{ padding: '1.5rem' }}>
+        <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>{t('insights.scoreHistory')}</h4>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {data.history?.map((h: any, i: number) => (
+            <div key={i} className="card" style={{ padding: '0.5rem 1rem', textAlign: 'center', minWidth: 100 }}>
+              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--accent)' }}>{h.avgScore}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{h.cycleName}</div>
+            </div>
+          ))}
+          <div className="card" style={{ padding: '0.5rem 1rem', textAlign: 'center', minWidth: 100, border: '2px dashed var(--accent)', opacity: 0.7 }}>
+            <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--accent)' }}>{data.predictedScore}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{t('insights.predicted')}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Retention Section ────────────────────────────────────────────── */
+function RetentionSection() {
+  const { t } = useTranslation();
+  const { data, isLoading } = useRetentionRecommendations();
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
+  if (!data) return null;
+
+  return (
+    <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--danger)' }}>{data.totalHighRisk}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('insights.highRiskEmployees')}</div>
+        </div>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--accent)' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>{data.totalMediumRisk}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('insights.mediumRiskEmployees')}</div>
+        </div>
+      </div>
+
+      {/* Recommendations per employee */}
+      {data.recommendations?.map((rec: any) => (
+        <div key={rec.userId} className="card" style={{ padding: '1.25rem', borderLeft: `4px solid ${rec.riskLevel === 'high' ? 'var(--danger)' : 'var(--accent)'}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <div>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{rec.name}</span>
+              {rec.department && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{rec.department}</span>}
+            </div>
+            <span className={`badge ${rec.riskLevel === 'high' ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: '0.72rem' }}>
+              {t('insights.riskScore')}: {rec.riskScore}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {rec.actions?.map((action: any, i: number) => (
+              <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.82rem', padding: '0.4rem 0.6rem', background: 'rgba(201,147,58,0.04)', borderRadius: 'var(--radius-sm)' }}>
+                <span className={`badge ${action.priority === 'alta' ? 'badge-danger' : action.priority === 'media' ? 'badge-warning' : 'badge-ghost'}`} style={{ fontSize: '0.68rem', flexShrink: 0 }}>
+                  {action.priority}
+                </span>
+                <span style={{ color: 'var(--text-secondary)' }}>{action.description}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {data.recommendations?.length === 0 && (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <p>{t('insights.noRiskEmployees')}</p>
         </div>
       )}
     </div>
