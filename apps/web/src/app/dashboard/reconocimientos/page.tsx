@@ -18,9 +18,14 @@ const ICONS: Record<string, string> = {
 };
 const REACTIONS = ['\uD83D\uDC4F', '\u2764\uFE0F', '\uD83D\uDE80', '\uD83D\uDD25', '\uD83D\uDCAA', '\uD83C\uDF1F'];
 
-const TAB_KEYS = ['wall', 'leaderboard', 'challenges', 'badges'] as const;
-const TAB_LABELS: Record<string, string> = { wall: 'Muro', leaderboard: 'Ranking', challenges: 'Desafíos', badges: 'Insignias' };
-const TAB_ICONS: Record<string, string> = { wall: '\uD83D\uDCE3', leaderboard: '\uD83C\uDFC6', challenges: '\uD83C\uDFAF', badges: '\uD83C\uDFC5' };
+const TAB_KEYS = ['wall', 'leaderboard', 'challenges', 'badges', 'store'] as const;
+const TAB_LABELS: Record<string, string> = { wall: 'Muro', leaderboard: 'Ranking', challenges: 'Desafíos', badges: 'Insignias', store: 'Tienda' };
+const TAB_ICONS: Record<string, string> = { wall: '\uD83D\uDCE3', leaderboard: '\uD83C\uDFC6', challenges: '\uD83C\uDFAF', badges: '\uD83C\uDFC5', store: '\uD83D\uDED2' };
+const CRITERIA_TYPES = [
+  { value: 'recognitions_received', label: 'Reconocimientos recibidos' },
+  { value: 'recognitions_sent', label: 'Reconocimientos enviados' },
+  { value: 'total_points', label: 'Puntos acumulados' },
+];
 
 function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, emoji: string) => void }) {
   const [showReactions, setShowReactions] = useState(false);
@@ -139,7 +144,8 @@ export default function ReconocimientosPage() {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
   const isAdmin = role === 'tenant_admin' || role === 'super_admin';
-  const [tab, setTab] = useState<'wall' | 'leaderboard' | 'challenges' | 'badges'>('wall');
+  const isManager = role === 'manager';
+  const [tab, setTab] = useState<typeof TAB_KEYS[number]>('wall');
   const [myChallenges, setMyChallenges] = useState<any[]>([]);
   const [allBadges, setAllBadges] = useState<any[]>([]);
   const [showCreateBadge, setShowCreateBadge] = useState(false);
@@ -147,6 +153,22 @@ export default function ReconocimientosPage() {
   const [badgeSaving, setBadgeSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [period, setPeriod] = useState<string>('month');
+  // Challenge admin
+  const [showCreateChallenge, setShowCreateChallenge] = useState(false);
+  const [challengeForm, setChallengeForm] = useState({ name: '', description: '', criteriaType: 'recognitions_received', criteriaThreshold: 10, pointsReward: 50, startDate: '', endDate: '' });
+  const [challengeSaving, setChallengeSaving] = useState(false);
+  // Store / Catalog
+  const [catalog, setCatalog] = useState<any[]>([]);
+  const [myRedemptions, setMyRedemptions] = useState<any[]>([]);
+  const [showCreateItem, setShowCreateItem] = useState(false);
+  const [itemForm, setItemForm] = useState({ name: '', description: '', pointsCost: 100, category: '', stock: -1 });
+  const [itemSaving, setItemSaving] = useState(false);
+  // Budget
+  const [budget, setBudget] = useState<any>(null);
+  // Approvals
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+  // Leaderboard opt-in
+  const [deptFilter, setDeptFilter] = useState('');
   const { data: wall, refetch: refetchWall } = useRecognitionWall(page);
   const { data: myBadges } = useMyBadges();
   const { data: myPoints } = useMyPoints();
@@ -162,7 +184,13 @@ export default function ReconocimientosPage() {
     if (!token) return;
     api.recognition.myChallenges(token).then(setMyChallenges).catch(() => {});
     api.recognition.badges(token).then(setAllBadges).catch(() => {});
-  }, [token]);
+    api.recognition.catalog(token).then(setCatalog).catch(() => {});
+    api.recognition.myRedemptions(token).then(setMyRedemptions).catch(() => {});
+    api.recognition.budget(token).then(setBudget).catch(() => {});
+    if (isAdmin || isManager) {
+      api.recognition.pendingApprovals(token).then(setPendingApprovals).catch(() => {});
+    }
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1000px' }}>
@@ -178,10 +206,33 @@ export default function ReconocimientosPage() {
         </div>
       </div>
 
+      {/* Pending approvals banner */}
+      {(isAdmin || isManager) && pendingApprovals.length > 0 && (
+        <div className="card animate-fade-up" style={{ padding: '0.75rem 1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem' }}>{t('reconocimientos.pendingApprovals', { count: pendingApprovals.length })}</span>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {pendingApprovals.slice(0, 3).map((pa: any) => (
+              <div key={pa.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{pa.fromUser?.firstName} → {pa.toUser?.firstName}</span>
+                <button className="btn-primary" style={{ fontSize: '0.72rem', padding: '2px 8px' }}
+                  onClick={async () => { if (!token) return; await api.recognition.approve(token, pa.id, true); setPendingApprovals(prev => prev.filter(x => x.id !== pa.id)); }}>
+                  {t('reconocimientos.approve')}
+                </button>
+                <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px' }}
+                  onClick={async () => { if (!token) return; await api.recognition.approve(token, pa.id, false); setPendingApprovals(prev => prev.filter(x => x.id !== pa.id)); }}>
+                  {t('reconocimientos.reject')}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
-      <div className="animate-fade-up" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      <div className="animate-fade-up" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
         {[
           { value: myPoints?.totalPoints || 0, label: t('reconocimientos.myPoints') },
+          { value: budget ? `${budget.remaining}/${budget.allocated}` : '—', label: t('reconocimientos.monthlyBudget') },
           { value: (myBadges as any)?.length || 0, label: t('reconocimientos.myBadges') },
           { value: stats?.totalRecognitions || 0, label: t('reconocimientos.totalRecognitions') },
           { value: stats?.monthlyRecognitions || 0, label: t('reconocimientos.thisMonth') },
@@ -316,9 +367,67 @@ export default function ReconocimientosPage() {
       {/* Challenges Tab */}
       {tab === 'challenges' && (
         <div className="animate-fade-up">
-          {myChallenges.length === 0 ? (
+          {/* Admin: Create challenge */}
+          {isAdmin && (
+            <div style={{ marginBottom: '1rem' }}>
+              <button className="btn-primary" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }} onClick={() => setShowCreateChallenge(!showCreateChallenge)}>
+                {showCreateChallenge ? t('common.cancel') : t('reconocimientos.createChallenge')}
+              </button>
+              {showCreateChallenge && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.challengeName')}</label>
+                      <input className="input" value={challengeForm.name} onChange={e => setChallengeForm({ ...challengeForm, name: e.target.value })} placeholder="Ej: Embajador del mes" style={{ fontSize: '0.82rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.badgeCriteria')}</label>
+                      <select className="input" value={challengeForm.criteriaType} onChange={e => setChallengeForm({ ...challengeForm, criteriaType: e.target.value })} style={{ fontSize: '0.82rem' }}>
+                        {CRITERIA_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.badgeThreshold')}</label>
+                      <input className="input" type="number" min={1} value={challengeForm.criteriaThreshold} onChange={e => setChallengeForm({ ...challengeForm, criteriaThreshold: parseInt(e.target.value) || 10 })} style={{ fontSize: '0.82rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.badgeReward')}</label>
+                      <input className="input" type="number" min={0} value={challengeForm.pointsReward} onChange={e => setChallengeForm({ ...challengeForm, pointsReward: parseInt(e.target.value) || 0 })} style={{ fontSize: '0.82rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.startDate')}</label>
+                      <input className="input" type="date" value={challengeForm.startDate} onChange={e => setChallengeForm({ ...challengeForm, startDate: e.target.value })} style={{ fontSize: '0.82rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.endDate')}</label>
+                      <input className="input" type="date" value={challengeForm.endDate} onChange={e => setChallengeForm({ ...challengeForm, endDate: e.target.value })} style={{ fontSize: '0.82rem' }} />
+                    </div>
+                  </div>
+                  <button className="btn-primary" style={{ fontSize: '0.82rem' }} disabled={challengeSaving || !challengeForm.name.trim()}
+                    onClick={async () => {
+                      if (!token) return;
+                      setChallengeSaving(true);
+                      try {
+                        await api.recognition.createChallenge(token, challengeForm);
+                        const updated = await api.recognition.myChallenges(token);
+                        setMyChallenges(updated);
+                        setChallengeForm({ name: '', description: '', criteriaType: 'recognitions_received', criteriaThreshold: 10, pointsReward: 50, startDate: '', endDate: '' });
+                        setShowCreateChallenge(false);
+                      } catch {}
+                      setChallengeSaving(false);
+                    }}>
+                    {challengeSaving ? t('common.saving') : t('reconocimientos.createChallenge')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {myChallenges.length === 0 && !showCreateChallenge ? (
             <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'\uD83C\uDFAF'}</p>
+              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'🎯'}</p>
               <p>{t('reconocimientos.noChallenges')}</p>
             </div>
           ) : (
@@ -499,6 +608,123 @@ export default function ReconocimientosPage() {
             <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
               <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'🏅'}</p>
               <p>{t('reconocimientos.noBadges')}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Store Tab */}
+      {tab === 'store' && (
+        <div className="animate-fade-up">
+          {/* My redemption history */}
+          {myRedemptions.length > 0 && (
+            <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+              <h4 style={{ margin: '0 0 0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>{t('reconocimientos.myRedemptions')}</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                {myRedemptions.slice(0, 5).map((r: any) => (
+                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', padding: '0.35rem 0', borderBottom: '1px solid var(--border)' }}>
+                    <span>{r.item?.name || 'Item'}</span>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--accent)', fontWeight: 600 }}>-{r.pointsSpent} pts</span>
+                      <span className={`badge ${r.status === 'delivered' ? 'badge-success' : r.status === 'cancelled' ? 'badge-danger' : 'badge-accent'}`} style={{ fontSize: '0.68rem' }}>{r.status}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Admin: Create catalog item */}
+          {isAdmin && (
+            <div style={{ marginBottom: '1rem' }}>
+              <button className="btn-primary" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }} onClick={() => setShowCreateItem(!showCreateItem)}>
+                {showCreateItem ? t('common.cancel') : t('reconocimientos.createItem')}
+              </button>
+              {showCreateItem && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.itemName')}</label>
+                      <input className="input" value={itemForm.name} onChange={e => setItemForm({ ...itemForm, name: e.target.value })} placeholder="Ej: Dia libre" style={{ fontSize: '0.82rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.itemCategory')}</label>
+                      <select className="input" value={itemForm.category} onChange={e => setItemForm({ ...itemForm, category: e.target.value })} style={{ fontSize: '0.82rem' }}>
+                        <option value="">{t('reconocimientos.itemCategoryNone')}</option>
+                        <option value="experiencia">{t('reconocimientos.catExperience')}</option>
+                        <option value="beneficio">{t('reconocimientos.catBenefit')}</option>
+                        <option value="regalo">{t('reconocimientos.catGift')}</option>
+                        <option value="tiempo_libre">{t('reconocimientos.catTimeOff')}</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.itemCost')}</label>
+                      <input className="input" type="number" min={1} value={itemForm.pointsCost} onChange={e => setItemForm({ ...itemForm, pointsCost: parseInt(e.target.value) || 100 })} style={{ fontSize: '0.82rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>{t('reconocimientos.itemStock')}</label>
+                      <input className="input" type="number" min={-1} value={itemForm.stock} onChange={e => setItemForm({ ...itemForm, stock: parseInt(e.target.value) })} style={{ fontSize: '0.82rem' }} />
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>-1 = {t('reconocimientos.unlimited')}</span>
+                    </div>
+                  </div>
+                  <button className="btn-primary" style={{ fontSize: '0.82rem' }} disabled={itemSaving || !itemForm.name.trim()}
+                    onClick={async () => {
+                      if (!token) return;
+                      setItemSaving(true);
+                      try {
+                        const created = await api.recognition.createCatalogItem(token, itemForm);
+                        setCatalog(prev => [...prev, created]);
+                        setItemForm({ name: '', description: '', pointsCost: 100, category: '', stock: -1 });
+                        setShowCreateItem(false);
+                      } catch {}
+                      setItemSaving(false);
+                    }}>
+                    {itemSaving ? t('common.saving') : t('reconocimientos.createItem')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Catalog grid */}
+          {catalog.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
+              {catalog.map((item: any) => (
+                <div key={item.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem' }}>{item.name}</div>
+                    {item.description && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.5rem' }}>{item.description}</p>}
+                    {item.category && <span className="badge badge-ghost" style={{ fontSize: '0.68rem', marginBottom: '0.5rem' }}>{item.category}</span>}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--accent)', fontSize: '1rem' }}>{item.pointsCost} pts</span>
+                    <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
+                      disabled={(myPoints?.totalPoints || 0) < item.pointsCost}
+                      onClick={async () => {
+                        if (!token) return;
+                        try {
+                          await api.recognition.redeem(token, item.id);
+                          const [updatedRedemptions, updatedBudget] = await Promise.all([
+                            api.recognition.myRedemptions(token),
+                            api.recognition.budget(token),
+                          ]);
+                          setMyRedemptions(updatedRedemptions);
+                          setBudget(updatedBudget);
+                        } catch {}
+                      }}>
+                      {t('reconocimientos.redeem')}
+                    </button>
+                  </div>
+                  {item.stock !== -1 && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>{t('reconocimientos.stockLeft')}: {item.stock}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'🛒'}</p>
+              <p>{t('reconocimientos.emptyStore')}</p>
             </div>
           )}
         </div>
