@@ -64,7 +64,11 @@
     "no": "No",
     "active": "Active",
     "inactive": "Inactive",
-    "optional": "optional"
+    "optional": "optional",
+    "previous": "Previous",
+    "next": "Next",
+    "creating": "Creating...",
+    "update": "Update"
   },
   "status": {
     "subscription": {
@@ -786,6 +790,31 @@
     "tabCheckIns": "Check-ins 1:1",
     "tabQuickFeedback": "Quick Feedback",
     "tabLocations": "Meeting Locations"
+  },
+  "reconocimientos": {
+    "title": "Recognition",
+    "subtitle": "Recognize your colleagues, earn points and get badges for your achievements",
+    "myPoints": "My Points",
+    "myBadges": "My Badges",
+    "totalRecognitions": "Total Recognitions",
+    "thisMonth": "This Month",
+    "sendTitle": "Send recognition",
+    "selectPerson": "Select person...",
+    "valueOptional": "Corporate value (optional)",
+    "messagePlaceholder": "Write your recognition...",
+    "sending": "Sending...",
+    "send": "Send recognition",
+    "emptyWall": "No recognitions yet. Be the first to recognize a colleague.",
+    "week": "Week",
+    "month": "Month",
+    "quarter": "Quarter",
+    "allTime": "All time",
+    "colEmployee": "Employee",
+    "colDepartment": "Department",
+    "colPoints": "Points",
+    "noLeaderboard": "No data for this period",
+    "topValues": "Most recognized values",
+    "noBadges": "You haven't earned any badges yet. Keep participating to earn them."
   },
   "dei": {
     "title": "Diversity, Equity & Inclusion (DEI)",

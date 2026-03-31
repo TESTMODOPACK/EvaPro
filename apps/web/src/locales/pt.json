@@ -64,7 +64,11 @@
     "no": "Não",
     "active": "Ativo",
     "inactive": "Inativo",
-    "optional": "opcional"
+    "optional": "opcional",
+    "previous": "Anterior",
+    "next": "Seguinte",
+    "creating": "Criando...",
+    "update": "Atualizar"
   },
   "status": {
     "subscription": {
@@ -786,6 +790,31 @@
     "tabCheckIns": "Check-ins 1:1",
     "tabQuickFeedback": "Feedback Rápido",
     "tabLocations": "Locais de Reunião"
+  },
+  "reconocimientos": {
+    "title": "Reconhecimentos",
+    "subtitle": "Reconheça seus colegas, ganhe pontos e obtenha badges pelas suas conquistas",
+    "myPoints": "Meus Pontos",
+    "myBadges": "Meus Badges",
+    "totalRecognitions": "Total de Reconhecimentos",
+    "thisMonth": "Este Mês",
+    "sendTitle": "Enviar reconhecimento",
+    "selectPerson": "Selecionar pessoa...",
+    "valueOptional": "Valor corporativo (opcional)",
+    "messagePlaceholder": "Escreva seu reconhecimento...",
+    "sending": "Enviando...",
+    "send": "Enviar reconhecimento",
+    "emptyWall": "Ainda não há reconhecimentos. Seja o primeiro a reconhecer um colega.",
+    "week": "Semana",
+    "month": "Mês",
+    "quarter": "Trimestre",
+    "allTime": "Tudo",
+    "colEmployee": "Colaborador",
+    "colDepartment": "Departamento",
+    "colPoints": "Pontos",
+    "noLeaderboard": "Sem dados para este período",
+    "topValues": "Valores mais reconhecidos",
+    "noBadges": "Você ainda não obteve badges. Continue participando para ganhá-los."
   },
   "dei": {
     "title": "Diversidade, Equidade e Inclusão (DEI)",
