@@ -42,7 +42,9 @@ export class TalentController {
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
-    return this.talentService.findByCycle(req.user.tenantId, cycleId);
+    const { role, userId } = req.user;
+    const managerId = role === 'manager' ? userId : undefined;
+    return this.talentService.findByCycle(req.user.tenantId, cycleId, managerId);
   }
 
   @Get('cycle/:cycleId/nine-box')
@@ -50,7 +52,9 @@ export class TalentController {
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
-    return this.talentService.getNineBoxSummary(req.user.tenantId, cycleId);
+    const { role, userId } = req.user;
+    const managerId = role === 'manager' ? userId : undefined;
+    return this.talentService.getNineBoxSummary(req.user.tenantId, cycleId, managerId);
   }
 
   @Get('cycle/:cycleId/segmentation')
@@ -58,7 +62,9 @@ export class TalentController {
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
-    return this.talentService.getSegmentation(req.user.tenantId, cycleId);
+    const { role, userId } = req.user;
+    const managerId = role === 'manager' ? userId : undefined;
+    return this.talentService.getSegmentation(req.user.tenantId, cycleId, managerId);
   }
 
   @Patch(':id')

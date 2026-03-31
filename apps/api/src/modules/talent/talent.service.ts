@@ -137,12 +137,20 @@ export class TalentService {
 
   // ─── CRUD Assessments ─────────────────────────────────────────────────
 
-  async findByCycle(tenantId: string, cycleId: string): Promise<TalentAssessment[]> {
-    return this.assessmentRepo.find({
-      where: { tenantId, cycleId },
-      relations: ['user'],
-      order: { performanceScore: 'DESC' },
-    });
+  async findByCycle(tenantId: string, cycleId: string, managerId?: string): Promise<TalentAssessment[]> {
+    const qb = this.assessmentRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.user', 'u')
+      .where('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.cycleId = :cycleId', { cycleId })
+      .orderBy('a.performanceScore', 'DESC');
+
+    // Manager scope: only show their direct reports
+    if (managerId) {
+      qb.andWhere('u.managerId = :managerId', { managerId });
+    }
+
+    return qb.getMany();
   }
 
   async findByUser(tenantId: string, userId: string): Promise<TalentAssessment[]> {
@@ -182,8 +190,8 @@ export class TalentService {
     return this.assessmentRepo.save(assessment);
   }
 
-  async getNineBoxSummary(tenantId: string, cycleId: string): Promise<any> {
-    const assessments = await this.findByCycle(tenantId, cycleId);
+  async getNineBoxSummary(tenantId: string, cycleId: string, managerId?: string): Promise<any> {
+    const assessments = await this.findByCycle(tenantId, cycleId, managerId);
 
     const boxes: Record<number, { position: number; label: string; count: number; users: any[] }> = {};
     for (let i = 1; i <= 9; i++) {
@@ -211,8 +219,8 @@ export class TalentService {
     return { boxes, total: assessments.length };
   }
 
-  async getSegmentation(tenantId: string, cycleId: string): Promise<any> {
-    const assessments = await this.findByCycle(tenantId, cycleId);
+  async getSegmentation(tenantId: string, cycleId: string, managerId?: string): Promise<any> {
+    const assessments = await this.findByCycle(tenantId, cycleId, managerId);
 
     const byPool: Record<string, number> = {};
     const byReadiness: Record<string, number> = {};
