@@ -155,53 +155,87 @@ export default function Sidebar({ currentPath }: { currentPath: string }) {
   const orgInfo = sub?.tenant ? { name: sub.tenant.name, rut: sub.tenant.rut || null } : null;
   const { t } = useTranslation();
 
+  const isAdmin = user?.role === 'tenant_admin';
+  const isManager = user?.role === 'manager';
+  const isAdminOrManager = isAdmin || isManager;
+
   const tenantNavSections: NavSection[] = [
+    // ─── Mi Espacio (todos los roles) ───────────────────────────
     {
       title: t('nav.mySpace'),
       items: [
         { href: '/dashboard', label: t('nav.dashboard'), icon: icons.dashboard },
         { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance'), icon: icons.myPerformance },
+        { href: '/dashboard/notificaciones', label: t('nav.notifications'), icon: '🔔' },
       ],
     },
+    // ─── Desempeño (evaluaciones, reportes, analytics) ──────────
     {
       title: t('nav.evaluation'),
       items: [
         { href: '/dashboard/evaluaciones', label: t('nav.evalCycles'), icon: icons.evaluations },
-        { href: '/dashboard/calibracion', label: t('nav.calibration'), icon: icons.calibration },
-        { href: '/dashboard/reportes', label: t('nav.reports'), icon: icons.reports },
-        { href: '/dashboard/analytics', label: t('nav.analytics'), icon: icons.analytics },
-        { href: '/dashboard/informes', label: t('nav.informes'), icon: icons.reports },
-        { href: '/dashboard/insights', label: t('nav.aiInsights'), icon: '🤖' },
+        ...(isAdminOrManager ? [
+          { href: '/dashboard/calibracion', label: t('nav.calibration'), icon: icons.calibration },
+          { href: '/dashboard/reportes', label: t('nav.reports'), icon: icons.reports },
+          { href: '/dashboard/informes', label: t('nav.informes'), icon: icons.reports },
+          { href: '/dashboard/analytics', label: t('nav.analytics'), icon: icons.analytics },
+          { href: '/dashboard/insights', label: t('nav.aiInsights'), icon: '🤖' },
+        ] : []),
       ],
     },
+    // ─── Gestión de Talento ─────────────────────────────────────
     {
       title: t('nav.talentDev'),
       items: [
-        { href: '/dashboard/talento', label: t('nav.talentMap'), icon: icons.talent },
+        ...(isAdminOrManager ? [
+          { href: '/dashboard/talento', label: t('nav.talentMap'), icon: icons.talent },
+        ] : []),
         { href: '/dashboard/desarrollo', label: t('nav.devPlans'), icon: icons.development },
-        { href: '/dashboard/desarrollo-organizacional', label: t('nav.orgDev'), icon: icons.orgDevelopment },
-        { href: '/dashboard/postulantes', label: t('nav.applicants'), icon: icons.users },
+        ...(isAdminOrManager ? [
+          { href: '/dashboard/desarrollo-organizacional', label: t('nav.orgDev'), icon: icons.orgDevelopment },
+          { href: '/dashboard/postulantes', label: t('nav.applicants'), icon: icons.users },
+        ] : []),
       ],
     },
+    // ─── Gestión Continua (OKRs, feedback, reconocimiento) ─────
     {
       title: t('nav.continuous'),
       items: [
         { href: '/dashboard/objetivos', label: t('nav.objectives'), icon: icons.objectives },
         { href: '/dashboard/feedback', label: t('nav.feedback'), icon: icons.feedback },
         { href: '/dashboard/reconocimientos', label: t('nav.recognitions'), icon: '⭐' },
-        { href: '/dashboard/dei', label: t('nav.dei'), icon: '🌍' },
       ],
     },
-    {
+    // ─── Personas y Diversidad (admin/manager) ─────────────────
+    ...(isAdminOrManager ? [{
+      title: t('nav.people'),
+      items: [
+        { href: '/dashboard/dei', label: t('nav.dei'), icon: '🌍' },
+        ...(isAdmin ? [
+          { href: '/dashboard/usuarios', label: t('nav.users'), icon: icons.users },
+        ] : []),
+      ],
+    }] : []),
+    // ─── Configuración (admin) ─────────────────────────────────
+    ...(isAdmin ? [{
       title: t('nav.config'),
       items: [
-        { href: '/dashboard/usuarios', label: t('nav.users'), icon: icons.users },
         { href: '/dashboard/plantillas', label: t('nav.templates'), icon: icons.templates },
         { href: '/dashboard/competencias', label: t('nav.competencies'), icon: icons.competencies },
         { href: '/dashboard/mantenedores', label: t('nav.customData'), icon: icons.settings },
         { href: '/dashboard/mi-suscripcion', label: t('nav.subscription'), icon: icons.subscription },
+        { href: '/dashboard/ajustes', label: t('nav.settings'), icon: icons.settings },
       ],
-    },
+    }] : [
+      // Non-admin: solo ajustes y suscripción
+      {
+        title: t('nav.config'),
+        items: [
+          { href: '/dashboard/ajustes', label: t('nav.settings'), icon: icons.settings },
+          { href: '/dashboard/mi-suscripcion', label: t('nav.subscription'), icon: icons.subscription },
+        ],
+      },
+    ]),
   ];
 
   const superAdminSections: NavSection[] = [
