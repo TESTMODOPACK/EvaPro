@@ -19,7 +19,7 @@ const ICONS: Record<string, string> = {
 const REACTIONS = ['\uD83D\uDC4F', '\u2764\uFE0F', '\uD83D\uDE80', '\uD83D\uDD25', '\uD83D\uDCAA', '\uD83C\uDF1F'];
 
 const TAB_KEYS = ['wall', 'leaderboard', 'challenges', 'badges'] as const;
-const TAB_LABELS: Record<string, string> = { wall: 'Muro', leaderboard: 'Ranking', challenges: 'Desafíos', badges: 'Badges' };
+const TAB_LABELS: Record<string, string> = { wall: 'Muro', leaderboard: 'Ranking', challenges: 'Desafíos', badges: 'Insignias' };
 const TAB_ICONS: Record<string, string> = { wall: '\uD83D\uDCE3', leaderboard: '\uD83C\uDFC6', challenges: '\uD83C\uDFAF', badges: '\uD83C\uDFC5' };
 
 function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, emoji: string) => void }) {

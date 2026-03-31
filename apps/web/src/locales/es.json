@@ -823,9 +823,9 @@
   },
   "reconocimientos": {
     "title": "Reconocimientos",
-    "subtitle": "Reconoce a tus compañeros, gana puntos y obtén badges por tus logros",
+    "subtitle": "Reconoce a tus compañeros, gana puntos y obtén insignias por tus logros",
     "myPoints": "Mis Puntos",
-    "myBadges": "Mis Badges",
+    "myBadges": "Mis Insignias",
     "totalRecognitions": "Total Reconocimientos",
     "thisMonth": "Este Mes",
     "sendTitle": "Enviar reconocimiento",
@@ -844,7 +844,7 @@
     "colPoints": "Puntos",
     "noLeaderboard": "Sin datos para este período",
     "topValues": "Valores más reconocidos",
-    "noBadges": "Aún no has obtenido badges. Sigue participando para ganarlos.",
+    "noBadges": "Aún no has obtenido insignias. Sigue participando para ganarlas.",
     "noChallenges": "No hay desafíos activos. El administrador puede crear nuevos desafíos.",
     "challengeCompleted": "Completado",
     "challengeEnds": "Vence"
