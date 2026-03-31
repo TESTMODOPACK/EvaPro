@@ -633,13 +633,13 @@ export default function CycleDetailPage() {
           {peerList.length > 0 && (
             <div style={{ padding: '0 1.5rem 1rem' }}>
               {/* Filter bar */}
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem', paddingTop: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.5rem', marginBottom: '0.75rem', paddingTop: '0.75rem' }}>
                 <input
                   className="input"
                   placeholder="Buscar evaluado..."
                   value={peerFilterSearch}
                   onChange={(e) => setPeerFilterSearch(e.target.value)}
-                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem', width: '180px' }}
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
                 />
                 {deptOptions.length > 0 && (
                   <select
@@ -868,13 +868,13 @@ export default function CycleDetailPage() {
                 </div>
               </div>
               {/* Filter bar */}
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.5rem', marginTop: '0.75rem' }}>
                 <input
                   className="input"
                   placeholder="Buscar nombre..."
                   value={assignFilterSearch}
                   onChange={(e) => setAssignFilterSearch(e.target.value)}
-                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem', width: '170px' }}
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
                 />
                 {deptOptions.length > 0 && (
                   <select
