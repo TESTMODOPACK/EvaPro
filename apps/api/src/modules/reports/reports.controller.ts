@@ -106,9 +106,16 @@ export class ReportsController {
     @Query('position') position: string,
     @Request() req: any,
   ) {
-    const filters = (department || position) ? { department, position } : undefined;
-    this.logAccess(req, 'cycle_summary', { cycleId, filters });
-    return this.reportsService.cycleSummary(cycleId, req.user.tenantId, filters);
+    const { role, userId } = req.user;
+    // Managers only see their team's data
+    const managerId = role === 'manager' ? userId : undefined;
+    const filters: any = {};
+    if (department) filters.department = department;
+    if (position) filters.position = position;
+    if (managerId) filters.managerId = managerId;
+    const hasFilters = Object.keys(filters).length > 0 ? filters : undefined;
+    this.logAccess(req, 'cycle_summary', { cycleId, filters: hasFilters });
+    return this.reportsService.cycleSummary(cycleId, req.user.tenantId, hasFilters);
   }
 
   @Get('cycle/:cycleId/individual/:userId')
@@ -157,8 +164,11 @@ export class ReportsController {
     @Query('cycleId') cycleId: string,
     @Request() req: any,
   ) {
-    this.logAccess(req, 'analytics', { cycleId });
-    return this.reportsService.getAnalytics(req.user.tenantId, cycleId);
+    const { role, userId } = req.user;
+    // Managers only see analytics for their direct reports
+    const managerId = role === 'manager' ? userId : undefined;
+    this.logAccess(req, 'analytics', { cycleId, managerId });
+    return this.reportsService.getAnalytics(req.user.tenantId, cycleId, managerId);
   }
 
   // ─── Bloque C: Advanced reports ────────────────────────────────────────

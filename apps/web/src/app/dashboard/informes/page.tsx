@@ -354,6 +354,8 @@ function HeatmapSection({ cycleId }: { cycleId: string }) {
 
 export default function InformesPage() {
   const token = useAuthStore((s) => s.token);
+  const currentUserId = useAuthStore((s) => s.user?.userId);
+  const currentRole = useAuthStore((s) => s.user?.role);
   const toast = useToastStore();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const { data: usersPage } = useUsers();
@@ -388,7 +390,11 @@ export default function InformesPage() {
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterPosition, setFilterPosition] = useState('');
 
-  const users = usersPage?.data || [];
+  const allUsers = usersPage?.data || [];
+  // Managers only see their direct reports; admins see all
+  const users = currentRole === 'manager'
+    ? allUsers.filter((u: any) => u.managerId === currentUserId)
+    : allUsers;
 
   // Reset user selection when filters change
   const filterKey = `${filterDepartment}|${filterPosition}`;

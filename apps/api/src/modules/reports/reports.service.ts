@@ -22,6 +22,7 @@ export interface ReportFilters {
   contractType?: string;
   workLocation?: string;
   nationality?: string;
+  managerId?: string; // Filter evaluatees to a manager's direct reports
 }
 
 /**
@@ -81,6 +82,9 @@ export class ReportsService {
     }
     if (filters.nationality) {
       qb.andWhere(`${userAlias}.nationality = :nationality`, { nationality: filters.nationality });
+    }
+    if (filters.managerId) {
+      qb.andWhere(`${userAlias}.managerId = :managerId`, { managerId: filters.managerId });
     }
   }
 
@@ -790,16 +794,21 @@ export class ReportsService {
 
   // ─── Analytics ──────────────────────────────────────────────────────────
 
-  async getAnalytics(tenantId: string, cycleId: string) {
+  async getAnalytics(tenantId: string, cycleId: string, managerId?: string) {
     // Score distribution (buckets of 0.5 in scale 0-10)
-    const responses = await this.responseRepo
+    const responseQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
-      .andWhere('r.overall_score IS NOT NULL')
-      .select('r.overall_score', 'score')
-      .getRawMany();
+      .andWhere('r.overall_score IS NOT NULL');
+
+    // Manager scope: only show data for direct reports
+    if (managerId) {
+      responseQb.innerJoin(User, 'scope_u', 'scope_u.id = a.evaluatee_id AND scope_u.manager_id = :managerId', { managerId });
+    }
+
+    const responses = await responseQb.select('r.overall_score', 'score').getRawMany();
 
     const buckets = Array.from({ length: 20 }, (_, i) => ({
       range: `${(i * 0.5).toFixed(1)}-${((i + 1) * 0.5).toFixed(1)}`,
@@ -812,14 +821,18 @@ export class ReportsService {
     }
 
     // Department comparison
-    const deptComparison = await this.responseRepo
+    const deptQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
-      .andWhere('u.department IS NOT NULL')
+      .andWhere('u.department IS NOT NULL');
+    if (managerId) {
+      deptQb.andWhere('u.manager_id = :managerId', { managerId });
+    }
+    const deptComparison = await deptQb
       .select('u.department', 'department')
       .addSelect('AVG(r.overall_score)', 'avgScore')
       .addSelect('COUNT(DISTINCT u.id)', 'count')
