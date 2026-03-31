@@ -713,5 +713,23 @@ export const api = {
     leaderboard: (token: string, period = 'month', limit = 20) =>
       request<any[]>(`/recognition/leaderboard?period=${period}&limit=${limit}`, {}, token),
     stats: (token: string) => request<any>("/recognition/stats", {}, token),
+    budget: (token: string) => request<any>("/recognition/budget/mine", {}, token),
+    pendingApprovals: (token: string) => request<any[]>("/recognition/approvals/pending", {}, token),
+    approve: (token: string, id: string, approved: boolean) =>
+      request<any>(`/recognition/${id}/approve`, { method: "POST", body: JSON.stringify({ approved }) }, token),
+    catalog: (token: string) => request<any[]>("/recognition/catalog", {}, token),
+    createCatalogItem: (token: string, data: any) =>
+      request<any>("/recognition/catalog", { method: "POST", body: JSON.stringify(data) }, token),
+    redeem: (token: string, itemId: string) =>
+      request<any>(`/recognition/redeem/${itemId}`, { method: "POST" }, token),
+    myRedemptions: (token: string) => request<any[]>("/recognition/redemptions/mine", {}, token),
+    challenges: (token: string) => request<any[]>("/recognition/challenges", {}, token),
+    myChallenges: (token: string) => request<any[]>("/recognition/challenges/mine", {}, token),
+    createChallenge: (token: string, data: any) =>
+      request<any>("/recognition/challenges", { method: "POST", body: JSON.stringify(data) }, token),
+    leaderboardOptIn: (token: string, period = 'month', limit = 20, department?: string) =>
+      request<any[]>(`/recognition/leaderboard-optin?period=${period}&limit=${limit}${department ? `&department=${department}` : ''}`, {}, token),
+    toggleOptIn: (token: string, optIn: boolean) =>
+      request<any>("/recognition/leaderboard-optin/toggle", { method: "POST", body: JSON.stringify({ optIn }) }, token),
   },
 };

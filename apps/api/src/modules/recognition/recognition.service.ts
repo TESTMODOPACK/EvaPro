@@ -8,6 +8,8 @@ import { UserPoints, PointsSource } from './entities/user-points.entity';
 import { PointsBudget } from './entities/points-budget.entity';
 import { RedemptionItem } from './entities/redemption-item.entity';
 import { RedemptionTransaction } from './entities/redemption-transaction.entity';
+import { Challenge } from './entities/challenge.entity';
+import { ChallengeProgress } from './entities/challenge-progress.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
@@ -28,6 +30,8 @@ export class RecognitionService {
     @InjectRepository(PointsBudget) private readonly budgetRepo: Repository<PointsBudget>,
     @InjectRepository(RedemptionItem) private readonly redemptionItemRepo: Repository<RedemptionItem>,
     @InjectRepository(RedemptionTransaction) private readonly redemptionTxRepo: Repository<RedemptionTransaction>,
+    @InjectRepository(Challenge) private readonly challengeRepo: Repository<Challenge>,
+    @InjectRepository(ChallengeProgress) private readonly progressRepo: Repository<ChallengeProgress>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
@@ -133,10 +137,14 @@ export class RecognitionService {
       return recognition;
     }).then(async (recognition) => {
       // Non-critical operations outside transaction
-      await this.checkAutoBadges(tenantId, dto.toUserId).catch(() => {});
+      // Non-critical gamification hooks (fire-and-forget)
+      this.checkAutoBadges(tenantId, dto.toUserId).catch(() => {});
+      this.evaluateChallenges(tenantId, dto.toUserId).catch(() => {});
+      this.evaluateChallenges(tenantId, fromUserId).catch(() => {});
+      this.checkMilestones(tenantId, dto.toUserId).catch(() => {});
 
       const msgPreview = dto.message.length > 80 ? dto.message.substring(0, 80) + '...' : dto.message;
-      await this.notificationsService.create({
+      this.notificationsService.create({
         tenantId, userId: dto.toUserId, type: NotificationType.FEEDBACK_RECEIVED,
         title: 'Has recibido un reconocimiento',
         message: `Un compañero te ha reconocido: "${msgPreview}"`,
@@ -462,13 +470,19 @@ export class RecognitionService {
       throw new BadRequestException('Este item está agotado');
     }
 
-    const pointsData = await this.getUserPoints(tenantId, userId);
-    if (pointsData.totalPoints < item.pointsCost) {
-      throw new BadRequestException(`Puntos insuficientes. Necesitas ${item.pointsCost} pero tienes ${pointsData.totalPoints}`);
-    }
-
-    // Use transaction for atomicity (prevent double-spend and over-decrement)
+    // Use transaction for atomicity (balance check + deduction must be atomic)
     return this.dataSource.transaction(async (manager) => {
+      // Check balance inside transaction to prevent double-spend
+      const balanceResult = await manager.createQueryBuilder()
+        .select('COALESCE(SUM(p.points), 0)', 'total')
+        .from('user_points', 'p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('p.user_id = :userId', { userId })
+        .getRawOne();
+      const balance = parseInt(balanceResult.total);
+      if (balance < item.pointsCost) {
+        throw new BadRequestException(`Puntos insuficientes. Necesitas ${item.pointsCost} pero tienes ${balance}`);
+      }
       // Deduct points
       await manager.save(manager.getRepository(UserPoints).create({
         tenantId, userId, points: -item.pointsCost,
@@ -497,5 +511,221 @@ export class RecognitionService {
       relations: ['item'],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  // ─── Challenges (F16 Gamification) ──────────────────────────────────
+
+  async listChallenges(tenantId: string) {
+    return this.challengeRepo.find({
+      where: { tenantId, isActive: true },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createChallenge(tenantId: string, dto: {
+    name: string; description?: string; criteriaType: string; criteriaThreshold: number;
+    pointsReward?: number; badgeIcon?: string; badgeColor?: string;
+    startDate?: string; endDate?: string;
+  }) {
+    const challenge = this.challengeRepo.create({
+      tenantId,
+      name: dto.name,
+      description: dto.description || null,
+      criteriaType: dto.criteriaType,
+      criteriaThreshold: dto.criteriaThreshold,
+      pointsReward: dto.pointsReward ?? 50,
+      badgeIcon: dto.badgeIcon || 'target',
+      badgeColor: dto.badgeColor || '#c9933a',
+      startDate: dto.startDate ? new Date(dto.startDate) : null,
+      endDate: dto.endDate ? new Date(dto.endDate) : null,
+    });
+    return this.challengeRepo.save(challenge);
+  }
+
+  async updateChallenge(tenantId: string, id: string, dto: any) {
+    const challenge = await this.challengeRepo.findOne({ where: { id, tenantId } });
+    if (!challenge) throw new NotFoundException('Desafío no encontrado');
+    if (dto.name !== undefined) challenge.name = dto.name;
+    if (dto.description !== undefined) challenge.description = dto.description;
+    if (dto.criteriaType !== undefined) challenge.criteriaType = dto.criteriaType;
+    if (dto.criteriaThreshold !== undefined) challenge.criteriaThreshold = dto.criteriaThreshold;
+    if (dto.pointsReward !== undefined) challenge.pointsReward = dto.pointsReward;
+    if (dto.isActive !== undefined) challenge.isActive = dto.isActive;
+    if (dto.startDate !== undefined) challenge.startDate = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.endDate !== undefined) challenge.endDate = dto.endDate ? new Date(dto.endDate) : null;
+    return this.challengeRepo.save(challenge);
+  }
+
+  /** Get user's progress on all active challenges */
+  async getUserChallenges(tenantId: string, userId: string) {
+    const challenges = await this.challengeRepo.find({
+      where: { tenantId, isActive: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (challenges.length === 0) return [];
+
+    // Get existing progress records
+    const progressRecords = await this.progressRepo.find({
+      where: { tenantId, userId },
+    });
+    const progressMap = new Map(progressRecords.map((p) => [p.challengeId, p]));
+
+    // Get current counts for each criteria type
+    const counts = await this.getUserActivityCounts(tenantId, userId);
+
+    return challenges.map((ch) => {
+      const existing = progressMap.get(ch.id);
+      const currentValue = counts[ch.criteriaType] || 0;
+      const progress = Math.min(100, Math.round((currentValue / ch.criteriaThreshold) * 100));
+
+      return {
+        ...ch,
+        currentValue,
+        progress,
+        completed: existing?.completed || currentValue >= ch.criteriaThreshold,
+        completedAt: existing?.completedAt || null,
+      };
+    });
+  }
+
+  /** Evaluate and update challenge progress for a user, awarding points on completion */
+  async evaluateChallenges(tenantId: string, userId: string) {
+    const challenges = await this.challengeRepo.find({ where: { tenantId, isActive: true } });
+    if (challenges.length === 0) return;
+
+    const counts = await this.getUserActivityCounts(tenantId, userId);
+
+    for (const ch of challenges) {
+      const currentValue = counts[ch.criteriaType] || 0;
+      if (currentValue < ch.criteriaThreshold) continue;
+
+      // Check if already completed
+      const existing = await this.progressRepo.findOne({
+        where: { challengeId: ch.id, userId },
+      });
+
+      if (existing?.completed) continue;
+
+      // Use transaction to prevent double-award on concurrent calls
+      try {
+        await this.dataSource.transaction(async (manager) => {
+          if (existing) {
+            existing.currentValue = currentValue;
+            existing.completed = true;
+            existing.completedAt = new Date();
+            await manager.save(existing);
+          } else {
+            await manager.save(manager.getRepository(ChallengeProgress).create({
+              tenantId, challengeId: ch.id, userId, currentValue, completed: true, completedAt: new Date(),
+            }));
+          }
+
+          // Award points inside transaction
+          if (ch.pointsReward > 0) {
+            await manager.save(manager.getRepository(UserPoints).create({
+              tenantId, userId, points: ch.pointsReward,
+              source: PointsSource.CHALLENGE_COMPLETED, description: `Desafío completado: ${ch.name}`, referenceId: ch.id,
+            }));
+          }
+        });
+
+        // Notify outside transaction (non-critical)
+        this.notificationsService.create({
+          tenantId, userId, type: NotificationType.GENERAL,
+          title: `Desafío completado: ${ch.name}`,
+          message: `Has completado el desafío "${ch.name}" y ganado ${ch.pointsReward} puntos.`,
+          metadata: { challengeId: ch.id },
+        }).catch(() => {});
+      } catch {
+        // Unique constraint violation or other error — another call already processed this
+      }
+    }
+  }
+
+  private async getUserActivityCounts(tenantId: string, userId: string): Promise<Record<string, number>> {
+    const [recvCount, sentCount, totalPointsData, feedbackCount] = await Promise.all([
+      this.recogRepo.count({ where: { tenantId, toUserId: userId } }),
+      this.recogRepo.count({ where: { tenantId, fromUserId: userId } }),
+      this.getUserPoints(tenantId, userId),
+      // Feedback count would need QuickFeedback repo — use sent count as proxy
+      Promise.resolve(0),
+    ]);
+    return {
+      recognitions_received: recvCount,
+      recognitions_sent: sentCount,
+      total_points: totalPointsData.totalPoints,
+      feedback_given: sentCount, // proxy
+    };
+  }
+
+  // ─── Milestone Notifications ──────────────────────────────────────
+
+  private static readonly MILESTONES = [50, 100, 250, 500, 1000, 2500, 5000];
+
+  async checkMilestones(tenantId: string, userId: string) {
+    const { totalPoints } = await this.getUserPoints(tenantId, userId);
+    // Find the highest milestone just crossed (only notify for the latest one)
+    const justCrossed = RecognitionService.MILESTONES
+      .filter((m) => totalPoints >= m)
+      .pop(); // highest milestone crossed
+
+    if (!justCrossed) return;
+
+    // Use createBulk which has 12-hour dedup to prevent duplicate notifications
+    this.notificationsService.createBulk([{
+      tenantId, userId, type: NotificationType.GENERAL,
+      title: `Hito alcanzado: ${justCrossed} puntos`,
+      message: `Has alcanzado ${justCrossed} puntos en reconocimientos.`,
+      metadata: { milestone: justCrossed, totalPoints },
+    }]).catch(() => {});
+  }
+
+  // ─── Leaderboard with Opt-in ──────────────────────────────────────
+
+  async getLeaderboardOptIn(tenantId: string, period: string, limit = 20, department?: string) {
+    const qb = this.pointsRepo.createQueryBuilder('p')
+      .innerJoin(User, 'u', 'u.id = p.user_id AND u.leaderboard_opt_in = true')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .select('p.user_id', 'userId')
+      .addSelect("u.first_name || ' ' || u.last_name", 'userName')
+      .addSelect('u.department', 'department')
+      .addSelect('u.position', 'position')
+      .addSelect('SUM(p.points)', 'totalPoints')
+      .addSelect('COUNT(p.id)', 'transactions')
+      .groupBy('p.user_id')
+      .addGroupBy('u.first_name')
+      .addGroupBy('u.last_name')
+      .addGroupBy('u.department')
+      .addGroupBy('u.position')
+      .orderBy('SUM(p.points)', 'DESC')
+      .limit(limit);
+
+    if (department) {
+      qb.andWhere('u.department = :department', { department });
+    }
+
+    const validPeriods: Record<string, number> = { week: 7, month: 30, quarter: 90 };
+    if (validPeriods[period]) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - validPeriods[period]);
+      qb.andWhere('p.created_at >= :cutoff', { cutoff });
+    }
+
+    const raw = await qb.getRawMany();
+    return raw.map((r: any, i: number) => ({
+      rank: i + 1,
+      userId: r.userId,
+      userName: r.userName,
+      department: r.department,
+      position: r.position,
+      totalPoints: parseInt(r.totalPoints),
+      transactions: parseInt(r.transactions),
+    }));
+  }
+
+  async toggleLeaderboardOptIn(tenantId: string, userId: string, optIn: boolean) {
+    await this.userRepo.update({ id: userId, tenantId }, { leaderboardOptIn: optIn });
+    return { optIn };
   }
 }

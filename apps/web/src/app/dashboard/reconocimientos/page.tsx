@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useRecognitionWall, useCreateRecognition, useAddReaction,
@@ -18,9 +18,9 @@ const ICONS: Record<string, string> = {
 };
 const REACTIONS = ['\uD83D\uDC4F', '\u2764\uFE0F', '\uD83D\uDE80', '\uD83D\uDD25', '\uD83D\uDCAA', '\uD83C\uDF1F'];
 
-const TAB_KEYS = ['wall', 'leaderboard', 'badges'] as const;
-const TAB_LABELS: Record<string, string> = { wall: 'Muro', leaderboard: 'Ranking', badges: 'Badges' };
-const TAB_ICONS: Record<string, string> = { wall: '\uD83D\uDCE3', leaderboard: '\uD83C\uDFC6', badges: '\uD83C\uDFC5' };
+const TAB_KEYS = ['wall', 'leaderboard', 'challenges', 'badges'] as const;
+const TAB_LABELS: Record<string, string> = { wall: 'Muro', leaderboard: 'Ranking', challenges: 'Desafíos', badges: 'Badges' };
+const TAB_ICONS: Record<string, string> = { wall: '\uD83D\uDCE3', leaderboard: '\uD83C\uDFC6', challenges: '\uD83C\uDFAF', badges: '\uD83C\uDFC5' };
 
 function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, emoji: string) => void }) {
   const [showReactions, setShowReactions] = useState(false);
@@ -136,7 +136,9 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
 
 export default function ReconocimientosPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<'wall' | 'leaderboard' | 'badges'>('wall');
+  const token = useAuthStore((s) => s.token);
+  const [tab, setTab] = useState<'wall' | 'leaderboard' | 'challenges' | 'badges'>('wall');
+  const [myChallenges, setMyChallenges] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [period, setPeriod] = useState<string>('month');
   const { data: wall, refetch: refetchWall } = useRecognitionWall(page);
@@ -149,6 +151,11 @@ export default function ReconocimientosPage() {
   const handleReact = (id: string, emoji: string) => {
     reactMut.mutate({ id, emoji });
   };
+
+  useEffect(() => {
+    if (!token) return;
+    api.recognition.myChallenges(token).then(setMyChallenges).catch(() => {});
+  }, [token]);
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1000px' }}>
@@ -296,6 +303,50 @@ export default function ReconocimientosPage() {
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Challenges Tab */}
+      {tab === 'challenges' && (
+        <div className="animate-fade-up">
+          {myChallenges.length === 0 ? (
+            <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'\uD83C\uDFAF'}</p>
+              <p>{t('reconocimientos.noChallenges')}</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {myChallenges.map((ch: any) => (
+                <div key={ch.id} className="card" style={{ padding: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                        <span style={{ fontSize: '1.2rem' }}>{ICONS[ch.badgeIcon] || '\uD83C\uDFAF'}</span>
+                        <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{ch.name}</span>
+                        {ch.completed && <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>{t('reconocimientos.challengeCompleted')}</span>}
+                      </div>
+                      {ch.description && <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>{ch.description}</p>}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 700, color: ch.completed ? 'var(--success)' : 'var(--accent)' }}>{ch.progress}%</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{ch.pointsReward} pts</div>
+                    </div>
+                  </div>
+                  {/* Progress bar */}
+                  <div style={{ height: 8, background: 'var(--bg-secondary)', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', width: `${ch.progress}%`, borderRadius: 4, transition: 'width 0.3s',
+                      background: ch.completed ? 'var(--success)' : 'var(--accent)',
+                    }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.3rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    <span>{ch.currentValue} / {ch.criteriaThreshold}</span>
+                    {ch.endDate && <span>{t('reconocimientos.challengeEnds')}: {new Date(ch.endDate).toLocaleDateString('es-CL')}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

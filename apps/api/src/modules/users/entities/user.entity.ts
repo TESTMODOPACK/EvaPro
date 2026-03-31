@@ -50,6 +50,9 @@ export class User {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  @Column({ type: 'boolean', default: true, name: 'leaderboard_opt_in', comment: 'User opts into gamification leaderboard' })
+  leaderboardOptIn: boolean;
+
   // ─── Demographic fields (optional, for DEI analytics) ─────────────
 
   @Column({ type: 'varchar', length: 20, nullable: true, comment: 'masculino|femenino|no_binario|prefiero_no_decir' })

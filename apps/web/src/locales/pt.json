@@ -844,7 +844,10 @@
     "colPoints": "Pontos",
     "noLeaderboard": "Sem dados para este período",
     "topValues": "Valores mais reconhecidos",
-    "noBadges": "Você ainda não obteve badges. Continue participando para ganhá-los."
+    "noBadges": "Você ainda não obteve badges. Continue participando para ganhá-los.",
+    "noChallenges": "Sem desafios ativos. O administrador pode criar novos desafios.",
+    "challengeCompleted": "Concluído",
+    "challengeEnds": "Termina"
   },
   "dei": {
     "title": "Diversidade, Equidade e Inclusão (DEI)",

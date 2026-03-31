@@ -162,4 +162,51 @@ export class RecognitionController {
   getMyRedemptions(@Request() req: any) {
     return this.service.getUserRedemptions(req.user.tenantId, req.user.userId);
   }
+
+  // ─── Challenges (F16 Gamification) ──────────────────────────────
+
+  @Get('challenges')
+  listChallenges(@Request() req: any) {
+    return this.service.listChallenges(req.user.tenantId);
+  }
+
+  @Get('challenges/mine')
+  getMyChallenges(@Request() req: any) {
+    return this.service.getUserChallenges(req.user.tenantId, req.user.userId);
+  }
+
+  @Post('challenges')
+  @Roles('super_admin', 'tenant_admin')
+  createChallenge(@Request() req: any, @Body() dto: any) {
+    return this.service.createChallenge(req.user.tenantId, dto);
+  }
+
+  @Patch('challenges/:id')
+  @Roles('super_admin', 'tenant_admin')
+  updateChallenge(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: any,
+  ) {
+    return this.service.updateChallenge(req.user.tenantId, id, dto);
+  }
+
+  // ─── Leaderboard Opt-in ──────────────────────────────────────────
+
+  @Get('leaderboard-optin')
+  getLeaderboardOptIn(
+    @Request() req: any,
+    @Query('period') period: string,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('department') department: string,
+  ) {
+    const validPeriods = ['week', 'month', 'quarter', 'all'];
+    const safePeriod = validPeriods.includes(period) ? period : 'month';
+    return this.service.getLeaderboardOptIn(req.user.tenantId, safePeriod, Math.min(limit, 50), department || undefined);
+  }
+
+  @Post('leaderboard-optin/toggle')
+  toggleOptIn(@Request() req: any, @Body() dto: { optIn: boolean }) {
+    return this.service.toggleLeaderboardOptIn(req.user.tenantId, req.user.userId, dto.optIn);
+  }
 }
