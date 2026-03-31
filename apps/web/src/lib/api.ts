@@ -747,4 +747,16 @@ export const api = {
     toggleOptIn: (token: string, optIn: boolean) =>
       request<any>("/recognition/leaderboard-optin/toggle", { method: "POST", body: JSON.stringify({ optIn }) }, token),
   },
+
+  signatures: {
+    request: (token: string, documentType: string, documentId: string) =>
+      request<any>("/signatures/request", { method: "POST", body: JSON.stringify({ documentType, documentId }) }, token),
+    verify: (token: string, documentType: string, documentId: string, code: string) =>
+      request<any>("/signatures/verify", { method: "POST", body: JSON.stringify({ documentType, documentId, code }) }, token),
+    list: (token: string, documentType: string, documentId: string) =>
+      request<any[]>(`/signatures/${documentType}/${documentId}`, {}, token),
+    listAll: (token: string) => request<any[]>("/signatures", {}, token),
+    verifyIntegrity: (token: string, id: string) =>
+      request<any>(`/signatures/${id}/verify`, {}, token),
+  },
 };

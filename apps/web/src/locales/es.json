@@ -834,6 +834,27 @@
     "tabQuickFeedback": "Feedback Rápido",
     "tabLocations": "Lugares de Reunión"
   },
+  "firmas": {
+    "signTitle": "Firma Digital",
+    "signDesc": "Se enviará un código de verificación a tu correo electrónico para confirmar tu firma en el siguiente documento:",
+    "sendCode": "Enviar código",
+    "sending": "Enviando...",
+    "enterCode": "Ingresa el código",
+    "enterCodeDesc": "Revisa tu correo e ingresa el código de 6 dígitos que recibiste.",
+    "resend": "Reenviar código",
+    "verifying": "Verificando...",
+    "signBtn": "Firmar documento",
+    "signed": "Documento firmado",
+    "signedDesc": "Tu firma digital ha sido registrada con hash SHA-256, timestamp e IP.",
+    "signedBadge": "Firmado",
+    "signedBy": "Firmado por",
+    "docType": {
+      "evaluation_cycle": "Ciclo de Evaluación",
+      "calibration_session": "Sesión de Calibración",
+      "development_plan": "Plan de Desarrollo",
+      "evaluation_response": "Evaluación Individual"
+    }
+  },
   "solicitudes": {
     "title": "Solicitudes",
     "subtitle": "Envía solicitudes de soporte, mejoras o nuevos desarrollos al equipo de EvaPro",

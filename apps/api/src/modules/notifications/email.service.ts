@@ -336,6 +336,35 @@ export class EmailService {
     );
   }
 
+  // ─── Template: Signature OTP ──────────────────────────────────────────────
+
+  async sendSignatureOtp(
+    email: string,
+    data: { firstName: string; documentType: string; documentName: string; code: string; expiryMinutes: number },
+  ) {
+    await this.send(
+      email,
+      `Código de firma digital — ${data.documentName}`,
+      this.wrap({
+        preheader: `Tu código de firma es ${data.code}. Válido por ${data.expiryMinutes} minutos.`,
+        body: `
+          ${this.heading('Firma Digital Solicitada ✍️')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se ha solicitado tu firma digital para el siguiente documento:`)}
+          ${this.infoBox([
+            { label: 'Tipo', value: data.documentType },
+            { label: 'Documento', value: data.documentName },
+          ])}
+          ${this.paragraph('Ingresa el siguiente código para confirmar tu firma:')}
+          <div style="background:#f8fafc;border-radius:12px;padding:20px;text-align:center;margin:0 0 1.5rem;">
+            <span style="font-size:2.5rem;font-weight:800;letter-spacing:0.3em;color:#0f172a;">${data.code}</span>
+          </div>
+          ${this.alertBox(`Este código expira en <strong>${data.expiryMinutes} minutos</strong>. Si no solicitaste esta firma, ignora este correo.`, 'warning')}
+          ${this.paragraph('La firma digital registra tu identidad, fecha/hora e IP como evidencia de aceptación del documento.')}
+        `,
+      }),
+    );
+  }
+
   // ─── HTML Builder Helpers ──────────────────────────────────────────────────
 
   private wrap({ body, preheader = '', accentColor = '#C9933A' }: {
