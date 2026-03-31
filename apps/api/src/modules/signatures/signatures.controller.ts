@@ -37,17 +37,6 @@ export class SignaturesController {
     );
   }
 
-  /** List signatures for a document */
-  @Get(':documentType/:documentId')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  getSignatures(
-    @Param('documentType') documentType: string,
-    @Param('documentId', ParseUUIDPipe) documentId: string,
-    @Request() req: any,
-  ) {
-    return this.signaturesService.getSignatures(req.user.tenantId, documentType, documentId);
-  }
-
   /** List all signatures for the tenant (admin) */
   @Get()
   @Roles('super_admin', 'tenant_admin')
@@ -55,13 +44,24 @@ export class SignaturesController {
     return this.signaturesService.getSignaturesByTenant(req.user.tenantId);
   }
 
-  /** Verify integrity of a signature */
-  @Get(':id/verify')
+  /** Verify integrity of a signature (MUST be before :documentType/:documentId) */
+  @Get('verify/:id')
   @Roles('super_admin', 'tenant_admin', 'manager')
   verifyIntegrity(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
     return this.signaturesService.verifyIntegrity(req.user.tenantId, id);
+  }
+
+  /** List signatures for a document */
+  @Get('document/:documentType/:documentId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getSignatures(
+    @Param('documentType') documentType: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Request() req: any,
+  ) {
+    return this.signaturesService.getSignatures(req.user.tenantId, documentType, documentId);
   }
 }

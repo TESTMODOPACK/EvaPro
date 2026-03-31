@@ -84,6 +84,12 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true, name: 'reset_code_expires' })
   resetCodeExpires: Date | null;
 
+  @Column({ type: 'varchar', length: 10, nullable: true, name: 'signature_otp' })
+  signatureOtp: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'signature_otp_expires' })
+  signatureOtpExpires: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }

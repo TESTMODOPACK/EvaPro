@@ -44,13 +44,13 @@ export class SignaturesService {
     // Validate document exists
     const docName = await this.getDocumentName(tenantId, documentType, documentId);
 
-    // Generate 6-digit OTP
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    // Generate cryptographically secure 6-digit OTP
+    const code = String(crypto.randomInt(100000, 999999));
     const expires = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // Store OTP in user entity (reuse reset code fields)
-    user.resetCode = code;
-    user.resetCodeExpires = expires;
+    // Store OTP in dedicated signature fields (not shared with password reset)
+    user.signatureOtp = code;
+    user.signatureOtpExpires = expires;
     await this.userRepo.save(user);
 
     // Send OTP email
@@ -78,17 +78,25 @@ export class SignaturesService {
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    // Verify OTP
-    if (!user.resetCode || user.resetCode !== otpCode) {
+    // Check for existing valid signature (prevent duplicates)
+    const existing = await this.signatureRepo.findOne({
+      where: { tenantId, documentType, documentId, signedBy: userId, status: 'valid' },
+    });
+    if (existing) {
+      throw new BadRequestException('Este documento ya fue firmado por ti.');
+    }
+
+    // Verify OTP (dedicated signature fields)
+    if (!user.signatureOtp || user.signatureOtp !== otpCode) {
       throw new BadRequestException('Código de verificación inválido');
     }
-    if (!user.resetCodeExpires || new Date() > user.resetCodeExpires) {
+    if (!user.signatureOtpExpires || new Date() > user.signatureOtpExpires) {
       throw new BadRequestException('El código de verificación ha expirado. Solicita uno nuevo.');
     }
 
     // Clear OTP
-    user.resetCode = null;
-    user.resetCodeExpires = null;
+    user.signatureOtp = null;
+    user.signatureOtpExpires = null;
     await this.userRepo.save(user);
 
     // Generate document hash

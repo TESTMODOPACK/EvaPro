@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
@@ -20,6 +20,7 @@ export default function SignatureModal({ documentType, documentId, documentName,
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const submittingRef = useRef(false);
 
   const handleRequest = async () => {
     if (!token) return;
@@ -35,7 +36,8 @@ export default function SignatureModal({ documentType, documentId, documentName,
   };
 
   const handleVerify = async () => {
-    if (!token || !code.trim()) return;
+    if (!token || !code.trim() || submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setError('');
     try {

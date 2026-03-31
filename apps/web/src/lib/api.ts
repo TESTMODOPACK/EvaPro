@@ -754,9 +754,9 @@ export const api = {
     verify: (token: string, documentType: string, documentId: string, code: string) =>
       request<any>("/signatures/verify", { method: "POST", body: JSON.stringify({ documentType, documentId, code }) }, token),
     list: (token: string, documentType: string, documentId: string) =>
-      request<any[]>(`/signatures/${documentType}/${documentId}`, {}, token),
+      request<any[]>(`/signatures/document/${documentType}/${documentId}`, {}, token),
     listAll: (token: string) => request<any[]>("/signatures", {}, token),
     verifyIntegrity: (token: string, id: string) =>
-      request<any>(`/signatures/${id}/verify`, {}, token),
+      request<any>(`/signatures/verify/${id}`, {}, token),
   },
 };
