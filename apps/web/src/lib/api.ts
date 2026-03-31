@@ -671,6 +671,9 @@ export const api = {
       request<any>(`/ai/suggestions/${userId}/${cycleId}`, { method: "POST" }, token),
     getFlightRisk: (token: string) =>
       request<any>(`/ai/flight-risk`, {}, token),
+    getUsage: (token: string) => request<any>('/ai/usage', {}, token),
+    exportSummaryPdf: (token: string, cycleId: string, userId: string) =>
+      `${BASE_URL}/ai/summary/${userId}/${cycleId}/pdf`,
     getPerformancePrediction: (token: string, userId: string) =>
       request<any>(`/ai/prediction/${userId}`, {}, token),
     getRetentionRecommendations: (token: string) =>

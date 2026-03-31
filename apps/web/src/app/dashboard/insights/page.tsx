@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 import {
   useAiSummary, useGenerateSummary,
   useAiBias, useAnalyzeBias,
@@ -57,8 +58,24 @@ const severityBadge: Record<string, string> = {
 /* ─── Summary Tab ──────────────────────────────────────────────────── */
 
 function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }) {
+  const { t } = useTranslation();
+  const token = useAuthStore((s) => s.token);
   const { data: cached, isLoading } = useAiSummary(cycleId, userId);
   const generate = useGenerateSummary();
+
+  const handleDownloadPdf = async () => {
+    if (!token) return;
+    try {
+      const url = api.ai.exportSummaryPdf(token, cycleId, userId);
+      const res = await fetch(url as unknown as string, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Error');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `informe-ia-${userId}.pdf`;
+      a.click();
+    } catch {}
+  };
 
   if (isLoading) return <Spinner />;
 
@@ -67,20 +84,23 @@ function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }
   if (!data) {
     return (
       <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-        <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{'\uD83E\uDD16'}</p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-          {'No hay resumen de IA generado para este colaborador en este ciclo'}
+        <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{'🤖'}</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+          {t('insights.noSummary')}
+        </p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '1rem' }}>
+          {t('insights.weeklyLimit')}
         </p>
         <button
           className="btn-primary"
           onClick={() => generate.mutate({ cycleId, userId })}
           disabled={generate.isPending}
         >
-          {generate.isPending ? 'Generando con IA...' : 'Generar Resumen con IA'}
+          {generate.isPending ? t('insights.generating') : t('insights.generateBtn')}
         </button>
         {generate.isPending && (
           <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            {'Esto puede tomar 10-30 segundos...'}
+            {t('insights.generatingHint')}
           </p>
         )}
       </div>
@@ -89,9 +109,15 @@ function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Download PDF button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={handleDownloadPdf}>
+          {'📄'} {t('insights.downloadPdf')}
+        </button>
+      </div>
       {/* Executive Summary */}
       <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
-        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.5rem' }}>{'Resumen Ejecutivo'}</h3>
+        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.5rem' }}>{t('insights.execSummary')}</h3>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{data.executiveSummary}</p>
       </div>
 
@@ -468,10 +494,18 @@ export default function InsightsPage() {
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const { data: usersPage } = useUsers();
 
+  const token = useAuthStore((s) => s.token);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('summary');
   const [showGuide, setShowGuide] = useState(false);
+  const [quota, setQuota] = useState<any>(null);
+
+  // Load usage quota
+  React.useEffect(() => {
+    if (!token) return;
+    api.ai.getUsage(token).then(setQuota).catch(() => {});
+  }, [token]);
 
   const allUsers = usersPage?.data || [];
   // Managers only see their direct reports; admins see all
@@ -508,6 +542,26 @@ export default function InsightsPage() {
           {t('insights.subtitle')}
         </p>
       </div>
+
+      {/* Quota indicator */}
+      {quota && (
+        <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '0.6rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem',
+            background: quota.nearLimit ? 'rgba(239,68,68,0.06)' : 'rgba(201,147,58,0.06)',
+            border: quota.nearLimit ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(201,147,58,0.15)',
+          }}>
+            <span style={{ color: quota.nearLimit ? 'var(--danger)' : 'var(--text-secondary)' }}>
+              {quota.nearLimit ? '⚠️ ' : '📊 '}
+              {t('insights.quotaUsage', { used: quota.weeklyUsed, limit: quota.weeklyLimit, remaining: quota.remaining })}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              {t('insights.quotaWeekly')}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Guide toggle */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>

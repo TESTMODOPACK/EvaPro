@@ -600,7 +600,16 @@
     "highRiskEmployees": "Empleados Alto Riesgo",
     "mediumRiskEmployees": "Empleados Riesgo Medio",
     "riskScore": "Score riesgo",
-    "noRiskEmployees": "No hay empleados en riesgo alto o medio. ¡Excelente!"
+    "noRiskEmployees": "No hay empleados en riesgo alto o medio. ¡Excelente!",
+    "noSummary": "No hay resumen de IA generado para este colaborador en este ciclo",
+    "weeklyLimit": "Cada generación consume de tu cuota semanal de informes de IA",
+    "generating": "Generando con IA...",
+    "generateBtn": "Generar Resumen con IA",
+    "generatingHint": "Esto puede tomar 10-30 segundos...",
+    "downloadPdf": "Descargar PDF",
+    "execSummary": "Resumen Ejecutivo",
+    "quotaUsage": "Informes IA: {{used}} de {{limit}} usados esta semana ({{remaining}} restantes)",
+    "quotaWeekly": "Cuota semanal"
   },
   "mantenedores": {
     "title": "Datos Personalizados",

@@ -600,7 +600,16 @@
     "highRiskEmployees": "Colaboradores Alto Risco",
     "mediumRiskEmployees": "Colaboradores Risco Médio",
     "riskScore": "Score risco",
-    "noRiskEmployees": "Nenhum colaborador em risco alto ou médio. Excelente!"
+    "noRiskEmployees": "Nenhum colaborador em risco alto ou médio. Excelente!",
+    "noSummary": "Nenhum resumo de IA gerado para este colaborador neste ciclo",
+    "weeklyLimit": "Cada geração utiliza sua cota semanal de relatórios de IA",
+    "generating": "Gerando com IA...",
+    "generateBtn": "Gerar Resumo com IA",
+    "generatingHint": "Isso pode levar 10-30 segundos...",
+    "downloadPdf": "Baixar PDF",
+    "execSummary": "Resumo Executivo",
+    "quotaUsage": "Relatórios IA: {{used}} de {{limit}} usados esta semana ({{remaining}} restantes)",
+    "quotaWeekly": "Cota semanal"
   },
   "mantenedores": {
     "title": "Dados Personalizados",

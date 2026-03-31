@@ -110,7 +110,7 @@ export class AiInsightsService {
     return { deleted: result.affected || 0 };
   }
 
-  /** Check rate limit: max N calls per tenant per day */
+  /** Check rate limit: max N calls per tenant per day (safety net) */
   private async checkRateLimit(tenantId: string): Promise<void> {
     const dayAgo = new Date();
     dayAgo.setDate(dayAgo.getDate() - 1);
@@ -122,6 +122,31 @@ export class AiInsightsService {
     if (recentCount >= MAX_CALLS_PER_TENANT_PER_DAY) {
       throw new BadRequestException(
         `Se alcanzó el límite diario de ${MAX_CALLS_PER_TENANT_PER_DAY} análisis de IA por organización. Intente mañana.`,
+      );
+    }
+  }
+
+  /**
+   * Check weekly limit per role:
+   * - manager: 50 AI generations per week
+   * - tenant_admin: 100 AI generations per week
+   */
+  private async checkWeeklyRoleLimit(tenantId: string, generatedBy: string): Promise<void> {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const weeklyCount = await this.insightRepo.count({
+      where: { tenantId, generatedBy, createdAt: MoreThan(weekAgo) },
+    });
+
+    // Determine the user's role to apply the right limit
+    const user = await this.userRepo.findOne({ where: { id: generatedBy }, select: ['id', 'role'] });
+    const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
+    const weeklyLimit = isAdmin ? 100 : 50;
+
+    if (weeklyCount >= weeklyLimit) {
+      throw new BadRequestException(
+        `Has alcanzado el límite semanal de ${weeklyLimit} informes de IA. El límite se renueva cada 7 días.`,
       );
     }
   }
@@ -172,6 +197,7 @@ export class AiInsightsService {
 
   async generateSummary(tenantId: string, cycleId: string, userId: string, generatedBy: string): Promise<AiInsight> {
     await this.checkRateLimit(tenantId);
+    await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
     const cached = await this.getCached(tenantId, InsightType.SUMMARY, cycleId, userId);
     if (cached) return cached;
@@ -828,6 +854,113 @@ export class AiInsightsService {
       } : null,
       methodology: 'Score compuesto de 5 señales ponderadas: evaluación (30%), OKRs (25%), feedback (20%), objetivos en riesgo (15%), evaluación de talento (10%). Cada señal se califica de 0 a su peso máximo según umbrales predefinidos. Score total: 0-100 (bajo ≤30, medio 31-60, alto >60).',
     };
+  }
+
+  // ─── Usage / Quota ──────────────────────────────────────────────────
+
+  async getUsageQuota(tenantId: string, userId: string) {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const weeklyUsed = await this.insightRepo.count({
+      where: { tenantId, generatedBy: userId, createdAt: MoreThan(weekAgo) },
+    });
+
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'role'] });
+    const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
+    const weeklyLimit = isAdmin ? 100 : 50;
+    const remaining = Math.max(0, weeklyLimit - weeklyUsed);
+    const nearLimit = remaining <= Math.ceil(weeklyLimit * 0.1); // Alert when 10% or less remaining
+
+    return {
+      weeklyUsed,
+      weeklyLimit,
+      remaining,
+      nearLimit,
+      message: nearLimit
+        ? `Atención: te quedan ${remaining} de ${weeklyLimit} informes de IA esta semana.`
+        : null,
+    };
+  }
+
+  // ─── PDF Export ──────────────────────────────────────────────────────
+
+  async exportSummaryPdf(tenantId: string, cycleId: string, userId: string): Promise<Buffer> {
+    const insight = await this.getInsight(tenantId, InsightType.SUMMARY, cycleId, userId);
+    if (!insight) throw new NotFoundException('No hay resumen de IA generado para este colaborador');
+
+    const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+    const data = insight.content;
+
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const accent = [201, 147, 58]; // #C9933A (Ascenda gold)
+
+    // Header
+    doc.setFillColor(26, 18, 6);
+    doc.rect(0, 0, pageWidth, 28, 'F');
+    doc.setFillColor(accent[0], accent[1], accent[2]);
+    doc.rect(0, 27, pageWidth, 1.5, 'F');
+    doc.setTextColor(232, 201, 122);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Ascenda Performance — Informe IA', 14, 13);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${user?.firstName || ''} ${user?.lastName || ''} · ${cycle?.name || ''} · ${new Date().toLocaleDateString('es-CL')}`, 14, 22);
+
+    let y = 36;
+    const leftMargin = 14;
+    const maxWidth = pageWidth - 28;
+
+    const addSection = (title: string, content: string | string[]) => {
+      if (y > 260) { doc.addPage(); y = 20; }
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(accent[0], accent[1], accent[2]);
+      doc.text(title, leftMargin, y);
+      y += 6;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(55, 65, 81);
+
+      if (Array.isArray(content)) {
+        for (const item of content) {
+          if (y > 265) { doc.addPage(); y = 20; }
+          const lines = doc.splitTextToSize(`• ${item}`, maxWidth);
+          doc.text(lines, leftMargin + 2, y);
+          y += lines.length * 4.5;
+        }
+      } else {
+        const lines = doc.splitTextToSize(content, maxWidth);
+        doc.text(lines, leftMargin, y);
+        y += lines.length * 4.5;
+      }
+      y += 4;
+    };
+
+    if (data.executiveSummary) addSection('Resumen Ejecutivo', data.executiveSummary);
+    if (data.strengths?.length) addSection('Fortalezas', data.strengths);
+    if (data.areasForImprovement?.length) addSection('Áreas de Mejora', data.areasForImprovement);
+    if (data.perceptionGap) addSection('Brecha de Percepción', data.perceptionGap);
+    if (data.trend) addSection('Tendencia', data.trend);
+    if (data.recommendations?.length) addSection('Recomendaciones', data.recommendations);
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      const footerY = doc.internal.pageSize.getHeight() - 8;
+      doc.text(`Generado por Ascenda Performance con IA — ${new Date().toLocaleDateString('es-CL')}`, leftMargin, footerY);
+      doc.text(`Página ${p} de ${pageCount}`, pageWidth - 14, footerY, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────

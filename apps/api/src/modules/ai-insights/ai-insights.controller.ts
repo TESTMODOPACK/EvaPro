@@ -5,11 +5,13 @@ import {
   Delete,
   Param,
   Query,
+  Res,
   UseGuards,
   Request,
   ParseUUIDPipe,
   ForbiddenException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
@@ -138,6 +140,31 @@ export class AiInsightsController {
     @Request() req: any,
   ) {
     return this.aiService.getExplainability(req.user.tenantId, userId);
+  }
+
+  // ─── Usage Quota ──────────────────────────────────────────────────────
+
+  @Get('usage')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getUsage(@Request() req: any) {
+    return this.aiService.getUsageQuota(req.user.tenantId, req.user.userId);
+  }
+
+  // ─── PDF Export ──────────────────────────────────────────────────────
+
+  @Get('summary/:userId/:cycleId/pdf')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  async exportSummaryPdf(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    this.validateAccess(req, userId);
+    const buffer = await this.aiService.exportSummaryPdf(req.user.tenantId, cycleId, userId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=informe-ia-${userId}.pdf`);
+    return res.send(buffer);
   }
 
   // ─── Cache Management ─────────────────────────────────────────────────
