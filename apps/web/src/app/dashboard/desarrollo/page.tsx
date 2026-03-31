@@ -116,6 +116,7 @@ export default function DesarrolloPage() {
 
   // Create form
   const [showCreate, setShowCreate] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
   const [creating, setCreating] = useState(false);
 
@@ -391,11 +392,16 @@ export default function DesarrolloPage() {
             {t('desarrollo.subtitle')}
           </p>
         </div>
-        {canCreate && (
-          <button className="btn-primary" onClick={() => setShowCreate(!showCreate)}>
-            {showCreate ? t('common.cancel') : t('desarrollo.newPlan')}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+            {showGuide ? t('desarrollo.hideGuide') : t('desarrollo.showGuide')}
           </button>
-        )}
+          {canCreate && (
+            <button className="btn-primary" onClick={() => setShowCreate(!showCreate)}>
+              {showCreate ? t('common.cancel') : t('desarrollo.newPlan')}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -404,39 +410,39 @@ export default function DesarrolloPage() {
         </div>
       )}
 
-      {/* Info card */}
-      <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)' }}>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.5rem' }}>
-          {'\u00bfQu\u00e9 son los Planes de Desarrollo Individual (PDI)?'}
-        </p>
-        <p style={{ margin: '0 0 0.75rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          {'Los PDI permiten definir acciones concretas para el crecimiento profesional de cada colaborador. Cada plan se compone de acciones espec\u00edficas (cursos, mentor\u00edas, proyectos, talleres, lecturas o rotaciones) vinculadas a competencias del cat\u00e1logo organizacional.'}
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-          <div>
-            <p style={{ margin: '0 0 0.25rem', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {'Flujo de trabajo'}
-            </p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li><strong>{'1. Crear plan (Borrador)'}</strong>{' \u2192 El Administrador o Encargado crea un PDI para un colaborador'}</li>
-              <li><strong>{'2. Activar plan'}</strong>{' \u2192 Se confirma y el colaborador puede ver sus acciones asignadas'}</li>
-              <li><strong>{'3. Ejecutar acciones'}</strong>{' \u2192 El colaborador completa cursos, proyectos, mentor\u00edas, etc.'}</li>
-              <li><strong>{'4. Completar plan'}</strong>{' \u2192 Solo el Administrador o Encargado marca el plan como finalizado'}</li>
-            </ul>
-          </div>
-          <div>
-            <p style={{ margin: '0 0 0.25rem', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {'Permisos y conexiones'}
-            </p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li><strong>{'Administrador / Encargado'}</strong>{': Crean planes, agregan acciones, activan y completan'}</li>
-              <li><strong>{'Colaborador'}</strong>{': Ve su plan, completa acciones individuales, agrega comentarios'}</li>
-              <li><strong>{'Evaluaci\u00f3n de Talento'}</strong>{': Sugiere competencias seg\u00fan la Matriz Nine Box'}</li>
-              <li><strong>{'Cat\u00e1logo de Competencias'}</strong>{': Las acciones se vinculan a competencias organizacionales'}</li>
-            </ul>
+      {/* Guide toggle button */}
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+            {t('desarrollo.guide.title')}
+          </h3>
+          <p style={{ margin: '0 0 0.75rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            {t('desarrollo.guide.whatIsDesc')}
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('desarrollo.guide.flow')}</div>
+              <ol style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+                <li>{t('desarrollo.guide.flowStep1')}</li>
+                <li>{t('desarrollo.guide.flowStep2')}</li>
+                <li>{t('desarrollo.guide.flowStep3')}</li>
+                <li>{t('desarrollo.guide.flowStep4')}</li>
+              </ol>
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('desarrollo.guide.permissions')}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {t('desarrollo.guide.permAdmin')}
+                </div>
+                <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {t('desarrollo.guide.permEmployee')}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Create form */}
       {showCreate && canCreate && (
@@ -664,14 +670,21 @@ export default function DesarrolloPage() {
         </div>
       )}
 
-      {/* Plans list */}
-      {plans.length === 0 && !loading ? (
+      {/* Plans list — managers only see their team's plans */}
+      {(() => {
+        const visiblePlans = isManager
+          ? plans.filter((p: any) => {
+              const planUser = users.find((u: any) => u.id === p.userId);
+              return planUser?.managerId === user?.userId || p.userId === user?.userId;
+            })
+          : plans;
+        return visiblePlans.length === 0 && !loading ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           {t('desarrollo.emptyPlans')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {plans.map((plan: any) => {
+          {visiblePlans.map((plan: any) => {
             const progress = plan.progress ?? 0;
             const planUser = plan.user || users.find((u: any) => u.id === plan.userId);
             const userName = planUser ? `${planUser.firstName} ${planUser.lastName}` : getUserName(plan.userId);
@@ -745,7 +758,8 @@ export default function DesarrolloPage() {
             );
           })}
         </div>
-      )}
+      );
+      })()}
 
       {/* Plan detail modal */}
       {selectedPlan && (

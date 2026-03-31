@@ -689,6 +689,20 @@
     "complete": "Complete",
     "markCompleted": "Mark as Completed",
     "viewDetail": "View Detail",
+    "showGuide": "Usage guide",
+    "hideGuide": "Hide guide",
+    "guide": {
+      "title": "How do Development Plans work?",
+      "whatIsDesc": "IDPs define concrete actions for each employee's professional growth. Each plan is composed of specific actions (courses, mentoring, projects, workshops, readings or rotations) linked to competencies from the organizational catalog.",
+      "flow": "Workflow",
+      "flowStep1": "Create plan (Draft) — Administrator or Manager creates an IDP for an employee",
+      "flowStep2": "Activate plan — Confirmed and the employee can see their assigned actions",
+      "flowStep3": "Execute actions — The employee completes courses, projects, mentoring, etc.",
+      "flowStep4": "Complete plan — Only the Administrator or Manager marks the plan as finished",
+      "permissions": "Permissions",
+      "permAdmin": "Administrator / Manager: Create plans, add actions, activate and complete",
+      "permEmployee": "Employee: Views their plan, completes individual actions, adds comments"
+    },
     "form": {
       "collaborator": "Collaborator",
       "title": "Plan title",

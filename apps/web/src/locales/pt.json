@@ -689,6 +689,20 @@
     "complete": "Concluir",
     "markCompleted": "Marcar como Concluído",
     "viewDetail": "Ver Detalhe",
+    "showGuide": "Guia de uso",
+    "hideGuide": "Ocultar guia",
+    "guide": {
+      "title": "Como funcionam os Planos de Desenvolvimento?",
+      "whatIsDesc": "Os PDIs permitem definir ações concretas para o crescimento profissional de cada colaborador. Cada plano é composto por ações específicas (cursos, mentorias, projetos, workshops, leituras ou rotações) vinculadas a competências do catálogo organizacional.",
+      "flow": "Fluxo de trabalho",
+      "flowStep1": "Criar plano (Rascunho) — O Administrador ou Gestor cria um PDI para um colaborador",
+      "flowStep2": "Ativar plano — Confirmado e o colaborador pode ver suas ações atribuídas",
+      "flowStep3": "Executar ações — O colaborador completa cursos, projetos, mentorias, etc.",
+      "flowStep4": "Concluir plano — Apenas o Administrador ou Gestor marca o plano como finalizado",
+      "permissions": "Permissões",
+      "permAdmin": "Administrador / Gestor: Criam planos, adicionam ações, ativam e concluem",
+      "permEmployee": "Colaborador: Vê seu plano, conclui ações individuais, adiciona comentários"
+    },
     "form": {
       "collaborator": "Colaborador",
       "title": "Título do plano",
