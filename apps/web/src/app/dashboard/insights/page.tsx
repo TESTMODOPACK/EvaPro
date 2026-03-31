@@ -464,6 +464,7 @@ export default function InsightsPage() {
   const role = user?.role || '';
   const isAdmin = role === 'tenant_admin' || role === 'super_admin';
 
+  const currentUserId = useAuthStore((s) => s.user?.userId);
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const { data: usersPage } = useUsers();
 
@@ -472,7 +473,11 @@ export default function InsightsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('summary');
   const [showGuide, setShowGuide] = useState(false);
 
-  const users = usersPage?.data || [];
+  const allUsers = usersPage?.data || [];
+  // Managers only see their direct reports; admins see all
+  const users = role === 'manager'
+    ? allUsers.filter((u: any) => u.managerId === currentUserId)
+    : allUsers;
   const sortedCycles = cycles
     ? [...cycles].sort((a: any, b: any) => {
         if (a.status === 'closed' && b.status !== 'closed') return -1;
