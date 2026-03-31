@@ -37,7 +37,7 @@ function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, e
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>
             <strong>{item.fromUser.firstName} {item.fromUser.lastName}</strong>
-            <span style={{ color: 'var(--text-muted)', margin: '0 0.3rem' }}>\u2192</span>
+            <span style={{ color: 'var(--text-muted)', margin: '0 0.3rem' }}>→</span>
             <strong>{item.toUser.firstName} {item.toUser.lastName}</strong>
             {item.value && (
               <span className="badge badge-accent" style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
@@ -48,7 +48,7 @@ function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, e
           <p style={{ margin: '0.25rem 0 0.5rem', fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--text-primary)' }}>{item.message}</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              +{item.points} pts \u00B7 {new Date(item.createdAt).toLocaleDateString('es-CL')}
+              +{item.points} pts · {new Date(item.createdAt).toLocaleDateString('es-CL')}
             </span>
             {Object.entries(item.reactions || {}).map(([emoji, users]) => (
               <button key={emoji} onClick={() => onReact(item.id, emoji)}
@@ -109,12 +109,12 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
 
   return (
     <form onSubmit={handleSubmit} className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-      <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 700 }}>\u2728 {t('reconocimientos.sendTitle')}</h4>
+      <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 700 }}>{'✨'} {t('reconocimientos.sendTitle')}</h4>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
         <select className="input" value={toUserId} onChange={(e) => setToUserId(e.target.value)} required>
           <option value="">{t('reconocimientos.selectPerson')}</option>
           {(Array.isArray(users) ? users : []).filter((u: any) => u.id !== user?.userId).map((u: any) => (
-            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` \u2014 ${u.department}` : ''}</option>
+            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}</option>
           ))}
         </select>
         <select className="input" value={valueId} onChange={(e) => setValueId(e.target.value)}>
@@ -229,7 +229,7 @@ export default function ReconocimientosPage() {
           <NewRecognitionForm onSuccess={() => refetchWall()} t={t} />
           {wall?.data?.length === 0 && (
             <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>\u2728</p>
+              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'✨'}</p>
               <p>{t('reconocimientos.emptyWall')}</p>
             </div>
           )}
@@ -368,7 +368,7 @@ export default function ReconocimientosPage() {
           )}
           {(!myBadges || (myBadges as any[]).length === 0) && (
             <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>\uD83C\uDFC5</p>
+              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'🏅'}</p>
               <p>{t('reconocimientos.noBadges')}</p>
             </div>
           )}
