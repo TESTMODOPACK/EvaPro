@@ -137,8 +137,14 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
 export default function ReconocimientosPage() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.user?.role);
+  const isAdmin = role === 'tenant_admin' || role === 'super_admin';
   const [tab, setTab] = useState<'wall' | 'leaderboard' | 'challenges' | 'badges'>('wall');
   const [myChallenges, setMyChallenges] = useState<any[]>([]);
+  const [allBadges, setAllBadges] = useState<any[]>([]);
+  const [showCreateBadge, setShowCreateBadge] = useState(false);
+  const [badgeForm, setBadgeForm] = useState({ name: '', description: '', icon: 'star', color: '#c9933a', criteriaType: '', criteriaThreshold: 10, pointsReward: 50 });
+  const [badgeSaving, setBadgeSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [period, setPeriod] = useState<string>('month');
   const { data: wall, refetch: refetchWall } = useRecognitionWall(page);
@@ -155,6 +161,7 @@ export default function ReconocimientosPage() {
   useEffect(() => {
     if (!token) return;
     api.recognition.myChallenges(token).then(setMyChallenges).catch(() => {});
+    api.recognition.badges(token).then(setAllBadges).catch(() => {});
   }, [token]);
 
   return (
@@ -353,6 +360,7 @@ export default function ReconocimientosPage() {
       {/* Badges Tab */}
       {tab === 'badges' && (
         <div className="animate-fade-up">
+          {/* Top values */}
           {(stats?.topValues || []).length > 0 && (
             <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
               <h4 style={{ margin: '0 0 0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>{t('reconocimientos.topValues')}</h4>
@@ -366,7 +374,128 @@ export default function ReconocimientosPage() {
               </div>
             </div>
           )}
-          {(!myBadges || (myBadges as any[]).length === 0) && (
+
+          {/* All badges catalog */}
+          <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h4 style={{ margin: 0, fontWeight: 700, fontSize: '0.9rem' }}>{t('reconocimientos.badgesCatalog')}</h4>
+              {isAdmin && (
+                <button className="btn-primary" style={{ fontSize: '0.8rem' }} onClick={() => setShowCreateBadge(!showCreateBadge)}>
+                  {showCreateBadge ? t('common.cancel') : t('reconocimientos.createBadge')}
+                </button>
+              )}
+            </div>
+
+            {/* Create badge form (admin only) */}
+            {showCreateBadge && isAdmin && (
+              <div style={{ padding: '1rem', background: 'rgba(201,147,58,0.04)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>
+                      {t('reconocimientos.badgeName')}
+                    </label>
+                    <input className="input" value={badgeForm.name} onChange={(e) => setBadgeForm({ ...badgeForm, name: e.target.value })}
+                      placeholder="Ej: Colaborador Estrella" style={{ fontSize: '0.82rem' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>
+                      {t('reconocimientos.badgeIcon')}
+                    </label>
+                    <select className="input" value={badgeForm.icon} onChange={(e) => setBadgeForm({ ...badgeForm, icon: e.target.value })} style={{ fontSize: '0.82rem' }}>
+                      {Object.entries(ICONS).map(([key, emoji]) => (
+                        <option key={key} value={key}>{emoji} {key}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>
+                    {t('reconocimientos.badgeDescription')}
+                  </label>
+                  <input className="input" value={badgeForm.description} onChange={(e) => setBadgeForm({ ...badgeForm, description: e.target.value })}
+                    placeholder="Descripción de la insignia..." style={{ fontSize: '0.82rem' }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>
+                      {t('reconocimientos.badgeCriteria')}
+                    </label>
+                    <select className="input" value={badgeForm.criteriaType} onChange={(e) => setBadgeForm({ ...badgeForm, criteriaType: e.target.value })} style={{ fontSize: '0.82rem' }}>
+                      <option value="">{t('reconocimientos.badgeManualOnly')}</option>
+                      <option value="recognitions_received">{t('reconocimientos.criteriaReceived')}</option>
+                      <option value="recognitions_sent">{t('reconocimientos.criteriaSent')}</option>
+                      <option value="total_points">{t('reconocimientos.criteriaPoints')}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>
+                      {t('reconocimientos.badgeThreshold')}
+                    </label>
+                    <input className="input" type="number" min={1} value={badgeForm.criteriaThreshold}
+                      onChange={(e) => setBadgeForm({ ...badgeForm, criteriaThreshold: parseInt(e.target.value) || 10 })} style={{ fontSize: '0.82rem' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>
+                      {t('reconocimientos.badgeReward')}
+                    </label>
+                    <input className="input" type="number" min={0} value={badgeForm.pointsReward}
+                      onChange={(e) => setBadgeForm({ ...badgeForm, pointsReward: parseInt(e.target.value) || 0 })} style={{ fontSize: '0.82rem' }} />
+                  </div>
+                </div>
+                <button className="btn-primary" style={{ fontSize: '0.82rem' }} disabled={badgeSaving || !badgeForm.name.trim()}
+                  onClick={async () => {
+                    if (!token) return;
+                    setBadgeSaving(true);
+                    try {
+                      const created = await api.recognition.createBadge(token, {
+                        name: badgeForm.name, description: badgeForm.description || undefined,
+                        icon: badgeForm.icon, color: badgeForm.color,
+                        criteria: badgeForm.criteriaType ? { type: badgeForm.criteriaType, threshold: badgeForm.criteriaThreshold } : undefined,
+                        pointsReward: badgeForm.pointsReward,
+                      });
+                      setAllBadges((prev) => [...prev, created]);
+                      setBadgeForm({ name: '', description: '', icon: 'star', color: '#c9933a', criteriaType: '', criteriaThreshold: 10, pointsReward: 50 });
+                      setShowCreateBadge(false);
+                    } catch {}
+                    setBadgeSaving(false);
+                  }}>
+                  {badgeSaving ? t('common.saving') : t('reconocimientos.createBadge')}
+                </button>
+              </div>
+            )}
+
+            {/* Badge cards grid */}
+            {allBadges.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                {allBadges.map((b: any) => {
+                  const earned = (myBadges as any[] || []).some((ub: any) => ub.badgeId === b.id || ub.badge?.id === b.id);
+                  return (
+                    <div key={b.id} className="card" style={{
+                      padding: '1rem', textAlign: 'center',
+                      opacity: earned ? 1 : 0.5,
+                      border: earned ? '2px solid var(--accent)' : undefined,
+                    }}>
+                      <div style={{ fontSize: '2rem', marginBottom: '0.3rem' }}>{ICONS[b.icon] || '⭐'}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.2rem' }}>{b.name}</div>
+                      {b.description && <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 0.3rem' }}>{b.description}</p>}
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        {b.criteria?.type
+                          ? `${b.criteria.type === 'recognitions_received' ? t('reconocimientos.criteriaReceived') : b.criteria.type === 'recognitions_sent' ? t('reconocimientos.criteriaSent') : t('reconocimientos.criteriaPoints')}: ${b.criteria.threshold}`
+                          : t('reconocimientos.badgeManualAward')}
+                      </div>
+                      {b.pointsReward > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600 }}>+{b.pointsReward} pts</div>}
+                      {earned && <span className="badge badge-success" style={{ fontSize: '0.68rem', marginTop: '0.3rem' }}>{t('reconocimientos.badgeEarned')}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{t('reconocimientos.noBadgesDefined')}</p>
+            )}
+          </div>
+
+          {/* My earned badges */}
+          {(!myBadges || (myBadges as any[]).length === 0) && allBadges.length === 0 && (
             <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
               <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'🏅'}</p>
               <p>{t('reconocimientos.noBadges')}</p>
