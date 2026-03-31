@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Query, UseGuards, Request,
+  Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request,
   ParseUUIDPipe, ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -103,5 +103,63 @@ export class RecognitionController {
   @Roles('super_admin', 'tenant_admin', 'manager')
   getStats(@Request() req: any) {
     return this.service.getStats(req.user.tenantId);
+  }
+
+  // ─── Points Budget ──────────────────────────────────────────────
+  @Get('budget/mine')
+  getMyBudget(@Request() req: any) {
+    return this.service.getUserBudget(req.user.tenantId, req.user.userId);
+  }
+
+  // ─── Monetary Approval ──────────────────────────────────────────
+  @Get('approvals/pending')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getPendingApprovals(@Request() req: any) {
+    return this.service.getPendingApprovals(req.user.tenantId);
+  }
+
+  @Post(':id/approve')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  approveRecognition(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { approved: boolean },
+  ) {
+    return this.service.approveRecognition(req.user.tenantId, id, req.user.userId, dto.approved);
+  }
+
+  // ─── Redemption Catalog ──────────────────────────────────────────
+  @Get('catalog')
+  listCatalog(@Request() req: any) {
+    return this.service.listRedemptionItems(req.user.tenantId);
+  }
+
+  @Post('catalog')
+  @Roles('super_admin', 'tenant_admin')
+  createCatalogItem(@Request() req: any, @Body() dto: any) {
+    return this.service.createRedemptionItem(req.user.tenantId, dto);
+  }
+
+  @Patch('catalog/:id')
+  @Roles('super_admin', 'tenant_admin')
+  updateCatalogItem(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: any,
+  ) {
+    return this.service.updateRedemptionItem(req.user.tenantId, id, dto);
+  }
+
+  @Post('redeem/:itemId')
+  redeemItem(
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Request() req: any,
+  ) {
+    return this.service.redeemItem(req.user.tenantId, req.user.userId, itemId);
+  }
+
+  @Get('redemptions/mine')
+  getMyRedemptions(@Request() req: any) {
+    return this.service.getUserRedemptions(req.user.tenantId, req.user.userId);
   }
 }

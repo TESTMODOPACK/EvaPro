@@ -45,6 +45,18 @@ export class FormTemplate {
   @Column({ type: 'boolean', default: false, name: 'is_default' })
   isDefault: boolean;
 
+  /** Primary language of this template (ISO 639-1: es, en, pt) */
+  @Column({ type: 'varchar', length: 5, default: 'es' })
+  language: string;
+
+  /**
+   * JSONB storing translated versions of sections.
+   * Structure: { "en": sections[], "pt": sections[] }
+   * The primary language content lives in the `sections` field.
+   */
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  translations: Record<string, any>;
+
   // ─── Workflow ────────────────────────────────────────────────────────
 
   /** draft: editing | proposed: awaiting admin review | published: ready to use | rejected */

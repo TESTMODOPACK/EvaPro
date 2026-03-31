@@ -5,6 +5,9 @@ import { Recognition } from './entities/recognition.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
 import { UserPoints, PointsSource } from './entities/user-points.entity';
+import { PointsBudget } from './entities/points-budget.entity';
+import { RedemptionItem } from './entities/redemption-item.entity';
+import { RedemptionTransaction } from './entities/redemption-transaction.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
@@ -13,6 +16,7 @@ const MAX_RECOGNITIONS_PER_DAY = 5;
 const MAX_RECOGNITIONS_SAME_PERSON_PER_DAY = 2;
 const DEFAULT_RECOGNITION_POINTS = 10;
 const SENDER_POINTS = 2;
+const DEFAULT_MONTHLY_BUDGET = 100;
 
 @Injectable()
 export class RecognitionService {
@@ -21,6 +25,9 @@ export class RecognitionService {
     @InjectRepository(Badge) private readonly badgeRepo: Repository<Badge>,
     @InjectRepository(UserBadge) private readonly userBadgeRepo: Repository<UserBadge>,
     @InjectRepository(UserPoints) private readonly pointsRepo: Repository<UserPoints>,
+    @InjectRepository(PointsBudget) private readonly budgetRepo: Repository<PointsBudget>,
+    @InjectRepository(RedemptionItem) private readonly redemptionItemRepo: Repository<RedemptionItem>,
+    @InjectRepository(RedemptionTransaction) private readonly redemptionTxRepo: Repository<RedemptionTransaction>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
@@ -52,7 +59,7 @@ export class RecognitionService {
   }
 
   async createRecognition(tenantId: string, fromUserId: string, dto: {
-    toUserId: string; message: string; valueId?: string;
+    toUserId: string; message: string; valueId?: string; isMonetary?: boolean;
   }) {
     if (fromUserId === dto.toUserId) {
       throw new BadRequestException('No puedes enviarte reconocimiento a ti mismo');
@@ -78,8 +85,18 @@ export class RecognitionService {
       throw new BadRequestException(`Solo puedes enviar ${MAX_RECOGNITIONS_SAME_PERSON_PER_DAY} reconocimientos por dia a la misma persona`);
     }
 
-    // Use transaction for atomicity
+    const isMonetary = dto.isMonetary ?? false;
+
+    // Use transaction for atomicity (budget check + creation must be atomic)
     return this.dataSource.transaction(async (manager) => {
+      // B10.1: Check monthly points budget inside transaction
+      const budget = await this.getOrCreateBudget(tenantId, fromUserId);
+      if (budget.spent + DEFAULT_RECOGNITION_POINTS > budget.allocated) {
+        throw new BadRequestException(
+          `Presupuesto mensual agotado. Has usado ${budget.spent} de ${budget.allocated} puntos este mes.`,
+        );
+      }
+
       const recognition = await manager.save(manager.getRepository(Recognition).create({
         tenantId,
         fromUserId,
@@ -89,17 +106,29 @@ export class RecognitionService {
         points: DEFAULT_RECOGNITION_POINTS,
         isPublic: true,
         reactions: {},
+        isMonetary,
+        approvalStatus: isMonetary ? 'pending' : 'not_required',
       }));
 
-      // Award points to receiver and sender
-      await manager.save(manager.getRepository(UserPoints).create({
-        tenantId, userId: dto.toUserId, points: DEFAULT_RECOGNITION_POINTS,
-        source: PointsSource.RECOGNITION_RECEIVED, description: 'Reconocimiento recibido', referenceId: recognition.id,
-      }));
-      await manager.save(manager.getRepository(UserPoints).create({
-        tenantId, userId: fromUserId, points: SENDER_POINTS,
-        source: PointsSource.RECOGNITION_SENT, description: 'Reconocimiento enviado', referenceId: recognition.id,
-      }));
+      // Update budget spent atomically
+      await manager.createQueryBuilder()
+        .update('points_budgets')
+        .set({ spent: () => `spent + ${DEFAULT_RECOGNITION_POINTS}` })
+        .where('id = :id', { id: budget.id })
+        .execute();
+
+      // B10.2: For non-monetary recognitions, award points immediately
+      // For monetary ones, points are awarded only after manager approval
+      if (!isMonetary) {
+        await manager.save(manager.getRepository(UserPoints).create({
+          tenantId, userId: dto.toUserId, points: DEFAULT_RECOGNITION_POINTS,
+          source: PointsSource.RECOGNITION_RECEIVED, description: 'Reconocimiento recibido', referenceId: recognition.id,
+        }));
+        await manager.save(manager.getRepository(UserPoints).create({
+          tenantId, userId: fromUserId, points: SENDER_POINTS,
+          source: PointsSource.RECOGNITION_SENT, description: 'Reconocimiento enviado', referenceId: recognition.id,
+        }));
+      }
 
       return recognition;
     }).then(async (recognition) => {
@@ -317,5 +346,156 @@ export class RecognitionService {
     const totalBadgesEarned = await this.userBadgeRepo.count({ where: { tenantId } });
 
     return { totalRecognitions, monthlyRecognitions, topValues, totalBadgesEarned };
+  }
+
+  // ─── Points Budget ──────────────────────────────────────────────────
+
+  private getCurrentMonth(): string {
+    return new Date().toISOString().slice(0, 7); // YYYY-MM
+  }
+
+  async getOrCreateBudget(tenantId: string, userId: string): Promise<PointsBudget> {
+    const month = this.getCurrentMonth();
+    let budget = await this.budgetRepo.findOne({ where: { tenantId, userId, month } });
+    if (!budget) {
+      try {
+        budget = this.budgetRepo.create({
+          tenantId, userId, month, allocated: DEFAULT_MONTHLY_BUDGET, spent: 0,
+        });
+        budget = await this.budgetRepo.save(budget);
+      } catch {
+        // Race condition: another request created the budget first — re-read
+        budget = await this.budgetRepo.findOne({ where: { tenantId, userId, month } });
+        if (!budget) throw new BadRequestException('Error al crear presupuesto mensual');
+      }
+    }
+    return budget;
+  }
+
+  async getUserBudget(tenantId: string, userId: string) {
+    const budget = await this.getOrCreateBudget(tenantId, userId);
+    return {
+      month: budget.month,
+      allocated: budget.allocated,
+      spent: budget.spent,
+      remaining: budget.allocated - budget.spent,
+    };
+  }
+
+  // ─── Monetary Approval ──────────────────────────────────────────────
+
+  async approveRecognition(tenantId: string, recognitionId: string, approvedBy: string, approved: boolean) {
+    return this.dataSource.transaction(async (manager) => {
+      const recog = await manager.findOne(Recognition, { where: { id: recognitionId, tenantId } });
+      if (!recog) throw new NotFoundException('Reconocimiento no encontrado');
+      if (recog.approvalStatus !== 'pending') {
+        throw new BadRequestException('Este reconocimiento no requiere aprobación o ya fue procesado');
+      }
+      recog.approvalStatus = approved ? 'approved' : 'rejected';
+      recog.approvedBy = approvedBy;
+      await manager.save(recog);
+
+      // If approved, award the points now (they were held during creation)
+      if (approved) {
+        await manager.save(manager.getRepository(UserPoints).create({
+          tenantId, userId: recog.toUserId, points: recog.points,
+          source: PointsSource.RECOGNITION_RECEIVED, description: 'Reconocimiento monetario aprobado', referenceId: recog.id,
+        }));
+        await manager.save(manager.getRepository(UserPoints).create({
+          tenantId, userId: recog.fromUserId, points: SENDER_POINTS,
+          source: PointsSource.RECOGNITION_SENT, description: 'Bono por reconocimiento monetario aprobado', referenceId: recog.id,
+        }));
+      }
+
+      return recog;
+    });
+  }
+
+  async getPendingApprovals(tenantId: string) {
+    return this.recogRepo.find({
+      where: { tenantId, approvalStatus: 'pending' },
+      relations: ['fromUser', 'toUser', 'value'],
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  // ─── Redemption Catalog ──────────────────────────────────────────────
+
+  async listRedemptionItems(tenantId: string) {
+    return this.redemptionItemRepo.find({
+      where: { tenantId, isActive: true },
+      order: { pointsCost: 'ASC' },
+    });
+  }
+
+  async createRedemptionItem(tenantId: string, dto: {
+    name: string; description?: string; pointsCost: number; category?: string; stock?: number;
+  }) {
+    const item = this.redemptionItemRepo.create({
+      tenantId,
+      name: dto.name,
+      description: dto.description || null,
+      pointsCost: dto.pointsCost,
+      category: dto.category || null,
+      stock: dto.stock ?? -1,
+    });
+    return this.redemptionItemRepo.save(item);
+  }
+
+  async updateRedemptionItem(tenantId: string, id: string, dto: any) {
+    const item = await this.redemptionItemRepo.findOne({ where: { id, tenantId } });
+    if (!item) throw new NotFoundException('Item no encontrado');
+    if (dto.name !== undefined) item.name = dto.name;
+    if (dto.description !== undefined) item.description = dto.description;
+    if (dto.pointsCost !== undefined) item.pointsCost = dto.pointsCost;
+    if (dto.category !== undefined) item.category = dto.category;
+    if (dto.stock !== undefined) item.stock = dto.stock;
+    if (dto.isActive !== undefined) item.isActive = dto.isActive;
+    return this.redemptionItemRepo.save(item);
+  }
+
+  async redeemItem(tenantId: string, userId: string, itemId: string) {
+    const item = await this.redemptionItemRepo.findOne({ where: { id: itemId, tenantId, isActive: true } });
+    if (!item) throw new NotFoundException('Item no disponible');
+
+    if (item.stock !== -1 && item.stock <= 0) {
+      throw new BadRequestException('Este item está agotado');
+    }
+
+    const pointsData = await this.getUserPoints(tenantId, userId);
+    if (pointsData.totalPoints < item.pointsCost) {
+      throw new BadRequestException(`Puntos insuficientes. Necesitas ${item.pointsCost} pero tienes ${pointsData.totalPoints}`);
+    }
+
+    // Use transaction for atomicity (prevent double-spend and over-decrement)
+    return this.dataSource.transaction(async (manager) => {
+      // Deduct points
+      await manager.save(manager.getRepository(UserPoints).create({
+        tenantId, userId, points: -item.pointsCost,
+        source: PointsSource.MANUAL, description: `Canje: ${item.name}`, referenceId: itemId,
+      }));
+
+      // Decrease stock atomically
+      if (item.stock !== -1) {
+        await manager.createQueryBuilder()
+          .update('redemption_items')
+          .set({ stock: () => 'stock - 1' })
+          .where('id = :id AND stock > 0', { id: itemId })
+          .execute();
+      }
+
+      const tx = manager.getRepository(RedemptionTransaction).create({
+        tenantId, userId, itemId, pointsSpent: item.pointsCost, status: 'pending',
+      });
+      return manager.save(tx);
+    });
+  }
+
+  async getUserRedemptions(tenantId: string, userId: string) {
+    return this.redemptionTxRepo.find({
+      where: { tenantId, userId },
+      relations: ['item'],
+      order: { createdAt: 'DESC' },
+    });
   }
 }

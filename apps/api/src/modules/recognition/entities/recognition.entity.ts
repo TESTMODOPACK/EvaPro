@@ -62,6 +62,15 @@ export class Recognition {
   @Column({ type: 'boolean', default: true, name: 'is_public' })
   isPublic: boolean;
 
+  @Column({ type: 'boolean', default: false, name: 'is_monetary', comment: 'Monetary recognitions require manager approval' })
+  isMonetary: boolean;
+
+  @Column({ type: 'varchar', length: 30, name: 'approval_status', default: 'not_required', comment: 'not_required | pending | approved | rejected' })
+  approvalStatus: string;
+
+  @Column({ type: 'uuid', name: 'approved_by', nullable: true })
+  approvedBy: string | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }

@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   ParseUUIDPipe,
@@ -56,11 +57,18 @@ export class TemplatesController {
   }
 
   @Get(':id')
-  findOne(
+  async findOne(
     @Param('id', ParseUUIDPipe) id: string,
+    @Query('lang') lang: string,
     @Request() req: any,
   ) {
-    return this.templatesService.findById(id, req.user.tenantId);
+    const template = await this.templatesService.findById(id, req.user.tenantId);
+    // If a specific language is requested, return sections in that language
+    if (lang && lang !== template.language) {
+      const localizedSections = this.templatesService.getSectionsForLanguage(template, lang);
+      return { ...template, sections: localizedSections, requestedLanguage: lang };
+    }
+    return template;
   }
 
   @Post()

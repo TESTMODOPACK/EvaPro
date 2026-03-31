@@ -49,9 +49,19 @@ export class TemplatesService {
       description: dto.description,
       sections: dto.sections,
       isDefault: dto.isDefault ?? false,
+      language: dto.language || 'es',
+      translations: dto.translations || {},
       createdBy: userId,
     });
     return this.templateRepo.save(template);
+  }
+
+  /** Get template sections in the requested language (falls back to primary) */
+  getSectionsForLanguage(template: FormTemplate, lang: string): any[] {
+    if (lang === template.language || !template.translations?.[lang]) {
+      return template.sections;
+    }
+    return template.translations[lang];
   }
 
   async update(id: string, tenantId: string, userId: string, dto: UpdateTemplateDto): Promise<FormTemplate> {
@@ -85,6 +95,8 @@ export class TemplatesService {
       ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.sections !== undefined && { sections: dto.sections }),
       ...(dto.isDefault !== undefined && { isDefault: dto.isDefault }),
+      ...(dto.language !== undefined && { language: dto.language }),
+      ...(dto.translations !== undefined && { translations: dto.translations }),
     });
     return this.templateRepo.save(template);
   }

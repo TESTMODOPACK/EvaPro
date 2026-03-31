@@ -16,4 +16,11 @@ export class CreateTemplateDto {
   @IsBoolean()
   @IsOptional()
   isDefault?: boolean;
+
+  @IsString()
+  @IsOptional()
+  language?: string; // ISO 639-1: es, en, pt
+
+  @IsOptional()
+  translations?: Record<string, any>; // { "en": sections[], "pt": sections[] }
 }

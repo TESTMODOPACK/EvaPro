@@ -20,4 +20,11 @@ export class UpdateTemplateDto {
   @IsString()
   @IsOptional()
   changeNote?: string;
+
+  @IsString()
+  @IsOptional()
+  language?: string;
+
+  @IsOptional()
+  translations?: Record<string, any>;
 }
