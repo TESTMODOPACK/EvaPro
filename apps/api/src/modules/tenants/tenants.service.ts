@@ -190,6 +190,59 @@ export class TenantsService {
     return tenant.settings?.[key] ?? CUSTOM_SETTINGS_DEFAULTS[key];
   }
 
+  /**
+   * Check if a custom setting value is in use before allowing deletion.
+   * Returns usage count and entity references.
+   */
+  async checkSettingUsage(tenantId: string, key: string, value: string): Promise<{ inUse: boolean; count: number; entity: string; message: string }> {
+    let count = 0;
+    let entity = '';
+
+    switch (key) {
+      case 'departments': {
+        count = await this.userRepository.count({ where: { tenantId, department: value } });
+        entity = 'usuarios';
+        break;
+      }
+      case 'competencyCategories': {
+        // Competencies use category field
+        const compRepo = this.userRepository.manager.getRepository('competencies');
+        count = await compRepo.count({ where: { tenantId, category: value } });
+        entity = 'competencias';
+        break;
+      }
+      case 'evaluationPeriods': {
+        const cycleRepo = this.userRepository.manager.getRepository('evaluation_cycles');
+        count = await cycleRepo.createQueryBuilder('c')
+          .where('c.tenant_id = :tenantId', { tenantId })
+          .andWhere('c.period = :value', { value: value.toLowerCase() })
+          .getCount();
+        entity = 'ciclos de evaluación';
+        break;
+      }
+      case 'potentialLevels':
+      case 'objectiveTypes':
+      case 'calibrationCausals':
+      case 'evaluationScaleLabels': {
+        // These are used as reference labels, not FK — allow deletion always
+        return { inUse: false, count: 0, entity: '', message: '' };
+      }
+      default:
+        return { inUse: false, count: 0, entity: '', message: '' };
+    }
+
+    if (count > 0) {
+      return {
+        inUse: true,
+        count,
+        entity,
+        message: `No se puede eliminar "${value}" porque está asignado a ${count} ${entity}. Reasigna primero los registros.`,
+      };
+    }
+
+    return { inUse: false, count: 0, entity, message: '' };
+  }
+
   async setCustomSetting(tenantId: string, key: string, values: string[]): Promise<string[]> {
     if (!VALID_CUSTOM_KEYS.includes(key)) {
       throw new BadRequestException(`Clave no válida: ${key}`);
@@ -204,6 +257,17 @@ export class TenantsService {
       throw new BadRequestException('Debe proporcionar al menos un valor válido');
     }
     const tenant = await this.findById(tenantId);
+
+    // Check if any removed values are in use
+    const currentValues: string[] = tenant.settings?.[key] || CUSTOM_SETTINGS_DEFAULTS[key] || [];
+    const removedValues = currentValues.filter((v) => !sanitized.includes(v));
+    for (const removed of removedValues) {
+      const usage = await this.checkSettingUsage(tenantId, key, removed);
+      if (usage.inUse) {
+        throw new BadRequestException(usage.message);
+      }
+    }
+
     tenant.settings = { ...(tenant.settings || {}), [key]: sanitized };
     await this.tenantRepository.save(tenant);
     return sanitized;

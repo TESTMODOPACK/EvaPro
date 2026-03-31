@@ -205,6 +205,9 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ values }),
       }, token),
+    checkSettingUsage: (token: string, key: string, value: string) =>
+      request<{ inUse: boolean; count: number; entity: string; message: string }>(
+        `/tenants/me/custom-settings/${key}/check-usage?value=${encodeURIComponent(value)}`, {}, token),
     updateSettings: (token: string, settings: Record<string, any>) =>
       request<any>("/tenants/me/settings", {
         method: "PATCH",

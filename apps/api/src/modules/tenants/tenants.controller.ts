@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   ParseUUIDPipe,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -43,6 +44,13 @@ export class TenantsController {
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   getCustomSetting(@Request() req: any, @Param('key') key: string) {
     return this.tenantsService.getCustomSetting(req.user.tenantId, key);
+  }
+
+  /** Check if a custom setting value is in use */
+  @Get('me/custom-settings/:key/check-usage')
+  @Roles('super_admin', 'tenant_admin')
+  checkSettingUsage(@Request() req: any, @Param('key') key: string, @Query('value') value: string) {
+    return this.tenantsService.checkSettingUsage(req.user.tenantId, key, value);
   }
 
   /** Update a specific custom setting (tenant_admin only) */

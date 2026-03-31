@@ -67,7 +67,29 @@ export default function MantenedoresPage() {
     setNewItemText('');
   };
 
-  const handleRemoveItem = (key: string, index: number) => {
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [checkingRemove, setCheckingRemove] = useState(false);
+
+  const handleRemoveItem = async (key: string, index: number) => {
+    const value = customSettings[key]?.[index];
+    if (!value || !token) return;
+
+    // Check if value is in use before removing
+    setRemoveError(null);
+    setCheckingRemove(true);
+    try {
+      const usage = await api.tenants.checkSettingUsage(token, key, value);
+      if (usage.inUse) {
+        setRemoveError(usage.message);
+        setCheckingRemove(false);
+        setTimeout(() => setRemoveError(null), 6000);
+        return;
+      }
+    } catch {
+      // If check fails, allow removal (fail-open for non-critical settings)
+    }
+    setCheckingRemove(false);
+
     setCustomSettings((prev) => ({
       ...prev,
       [key]: prev[key].filter((_, i) => i !== index),
@@ -198,6 +220,22 @@ export default function MantenedoresPage() {
                       </p>
                     )}
                   </div>
+
+                  {/* Usage error message */}
+                  {removeError && expandedKey === key && (
+                    <div style={{
+                      padding: '0.6rem 0.85rem', marginBottom: '0.5rem',
+                      background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)',
+                      borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', color: 'var(--danger)',
+                    }}>
+                      {removeError}
+                    </div>
+                  )}
+                  {checkingRemove && expandedKey === key && (
+                    <div style={{ padding: '0.3rem 0.85rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      Verificando uso...
+                    </div>
+                  )}
 
                   {/* Add new item */}
                   <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
