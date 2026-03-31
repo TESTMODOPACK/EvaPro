@@ -5,11 +5,13 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useJobRequirements } from '@/hooks/useJobRequirements';
 
 export default function NuevoProcesoPage() {
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
   const { departments: configuredDepartments } = useDepartments();
+  const { requirements: availableRequirements } = useJobRequirements();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -21,6 +23,8 @@ export default function NuevoProcesoPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [evaluatorIds, setEvaluatorIds] = useState<string[]>([]);
+  const [selectedRequirements, setSelectedRequirements] = useState<string[]>([]);
+  const [customRequirement, setCustomRequirement] = useState('');
 
   useEffect(() => {
     if (!token) return;
@@ -58,10 +62,16 @@ export default function NuevoProcesoPage() {
     setSaving(true);
     setError(null);
     try {
+      // Build description with requirements
+      const reqText = selectedRequirements.length > 0
+        ? `\n\nRequisitos del cargo:\n${selectedRequirements.map((r) => `• ${r}`).join('\n')}`
+        : '';
+      const fullDescription = (description || '') + reqText;
+
       const result = await api.postulants.processes.create(token, {
         title, position,
         department: department || undefined,
-        description: description || undefined,
+        description: fullDescription.trim() || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         evaluatorIds: evaluatorIds.length ? evaluatorIds : undefined,
@@ -136,8 +146,83 @@ export default function NuevoProcesoPage() {
           <div>
             <label style={labelStyle}>Descripción</label>
             <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)}
-              placeholder="Requisitos, contexto del cargo..." rows={3} style={{ resize: 'vertical' }} />
+              placeholder="Contexto del cargo, responsabilidades principales..." rows={3} style={{ resize: 'vertical' }} />
           </div>
+        </div>
+
+        {/* Requirements */}
+        <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Requisitos del Cargo</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+            Selecciona los requisitos que aplican para este puesto. Puedes agregar requisitos personalizados.
+          </p>
+
+          {/* Selected requirements */}
+          {selectedRequirements.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
+              {selectedRequirements.map((req) => (
+                <span key={req} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                  padding: '0.3rem 0.7rem', borderRadius: 20, fontSize: '0.78rem',
+                  background: 'rgba(201,147,58,0.1)', border: '1px solid rgba(201,147,58,0.3)', color: 'var(--accent)', fontWeight: 600,
+                }}>
+                  {req}
+                  <button type="button" onClick={() => setSelectedRequirements((prev) => prev.filter((r) => r !== req))}
+                    style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.9rem', padding: 0, lineHeight: 1 }}>
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Available requirements grid */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginBottom: '0.75rem' }}>
+            {availableRequirements
+              .filter((r) => !selectedRequirements.includes(r))
+              .map((req) => (
+                <button key={req} type="button"
+                  onClick={() => setSelectedRequirements((prev) => [...prev, req])}
+                  style={{
+                    padding: '0.3rem 0.7rem', borderRadius: 20, fontSize: '0.75rem',
+                    border: '1px solid var(--border)', background: 'transparent',
+                    color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.15s',
+                  }}>
+                  + {req}
+                </button>
+              ))}
+          </div>
+
+          {/* Custom requirement input */}
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input className="input" type="text" value={customRequirement}
+              onChange={(e) => setCustomRequirement(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && customRequirement.trim()) {
+                  e.preventDefault();
+                  setSelectedRequirements((prev) => [...prev, customRequirement.trim()]);
+                  setCustomRequirement('');
+                }
+              }}
+              placeholder="Agregar requisito personalizado..."
+              style={{ flex: 1, fontSize: '0.82rem' }} />
+            <button type="button" className="btn-ghost" style={{ fontSize: '0.82rem' }}
+              disabled={!customRequirement.trim()}
+              onClick={() => {
+                if (customRequirement.trim()) {
+                  setSelectedRequirements((prev) => [...prev, customRequirement.trim()]);
+                  setCustomRequirement('');
+                }
+              }}>
+              Agregar
+            </button>
+          </div>
+
+          {selectedRequirements.length > 0 && (
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+              {selectedRequirements.length} requisito{selectedRequirements.length !== 1 ? 's' : ''} seleccionado{selectedRequirements.length !== 1 ? 's' : ''}
+            </p>
+          )}
         </div>
 
         {/* Evaluators */}

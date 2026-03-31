@@ -54,6 +54,42 @@ export const CUSTOM_SETTINGS_DEFAULTS: Record<string, string[]> = {
     'Legal',
     'Administración',
   ],
+  jobRequirements: [
+    'Educación media completa',
+    'Título técnico de nivel superior',
+    'Título profesional universitario',
+    'Postgrado / Magíster',
+    'Certificaciones profesionales vigentes',
+    'Sin experiencia requerida',
+    '1-2 años de experiencia en cargo similar',
+    '3-5 años de experiencia en cargo similar',
+    '5-10 años de experiencia en el área',
+    'Más de 10 años de experiencia',
+    'Experiencia en liderazgo de equipos',
+    'Experiencia en gestión de proyectos',
+    'Dominio de herramientas Office / Google Workspace',
+    'Manejo de software especializado del área',
+    'Conocimiento de normativa legal del sector',
+    'Manejo de ERP / sistemas de gestión',
+    'Habilidades de análisis de datos',
+    'Manejo de idioma inglés (nivel intermedio o superior)',
+    'Trabajo en equipo',
+    'Comunicación efectiva',
+    'Orientación a resultados',
+    'Capacidad de resolución de problemas',
+    'Liderazgo y toma de decisiones',
+    'Adaptabilidad al cambio',
+    'Proactividad e iniciativa',
+    'Disponibilidad para trabajar presencial',
+    'Disponibilidad para trabajo remoto/híbrido',
+    'Disponibilidad para viajar',
+    'Disponibilidad inmediata',
+    'Licencia de conducir vigente',
+    'Currículum vitae actualizado',
+    'Certificado de antecedentes',
+    'Referencias laborales (mínimo 2)',
+    'Pretensiones de renta',
+  ],
 };
 
 export const CUSTOM_SETTINGS_META: Record<string, { label: string; description: string }> = {
@@ -84,6 +120,10 @@ export const CUSTOM_SETTINGS_META: Record<string, { label: string; description: 
   departments: {
     label: 'Departamentos',
     description: 'Departamentos de la organización disponibles para asignar a colaboradores',
+  },
+  jobRequirements: {
+    label: 'Requisitos de Cargo',
+    description: 'Requisitos predefinidos que se pueden seleccionar al crear un proceso de evaluación de postulantes',
   },
 };
 
