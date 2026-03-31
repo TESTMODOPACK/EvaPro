@@ -28,6 +28,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { useUsers } from '@/hooks/useUsers';
 import { useCycles } from '@/hooks/useCycles';
 import { getRoleLabel } from '@/lib/roles';
+import { useDepartments } from '@/hooks/useDepartments';
 
 type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
@@ -495,10 +496,8 @@ function TeamSummaryView() {
 
   const { members, totals } = data;
 
-  // Build unique departments for filter
-  const departments: string[] = Array.from(
-    new Set(members.map((m: any) => m.department).filter(Boolean))
-  ).sort() as string[];
+  // Use configured departments from Mantenedores
+  const { departments } = useDepartments();
 
   // Apply filters
   const filtered = members.filter((m: any) => {
@@ -835,10 +834,8 @@ export default function ObjetivosPage() {
     uniqueUsers.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // Dept options for filter dropdown
-  const deptOptions = Array.from(new Set(
-    (objectives || []).map((o: any) => o.user?.department).filter(Boolean)
-  )).sort() as string[];
+  // Use configured departments from Mantenedores
+  const { departments: deptOptions } = useDepartments();
 
   // Filter objectives
   const filtered = objectives

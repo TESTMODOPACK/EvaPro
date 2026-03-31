@@ -8,6 +8,7 @@ import { useToastStore } from '@/store/toast.store';
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 import { useCompetencyRadar, useSelfVsOthers, useHeatmap } from '@/hooks/useReports';
 import { useCycles } from '@/hooks/useCycles';
+import { useDepartments } from '@/hooks/useDepartments';
 import { useUsers } from '@/hooks/useUsers';
 import {
   ResponsiveContainer,
@@ -397,8 +398,8 @@ export default function InformesPage() {
     setSelectedUserId(null);
   }
 
-  // Extract unique departments and positions from users
-  const departments = Array.from(new Set(users.map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  // Use configured departments from Mantenedores
+  const { departments } = useDepartments();
   const positions = Array.from(new Set(users.map((u: any) => u.position).filter(Boolean))).sort() as string[];
   const sortedCycles = cycles
     ? [...cycles].sort((a: any, b: any) => {

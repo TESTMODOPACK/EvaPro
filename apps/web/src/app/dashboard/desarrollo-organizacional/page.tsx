@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import ConfirmModal from '@/components/ConfirmModal';
+import { useDepartments } from '@/hooks/useDepartments';
 
 // ─── Tipos auxiliares ────────────────────────────────────────────────────────
 
@@ -121,8 +122,8 @@ export default function DesarrolloOrganizacionalPage() {
   // ── PDIs vinculados ────────────────────────────────────────────────────
   const [linkedPdis, setLinkedPdis] = useState<Record<string, any[]>>({});
 
-  // ── Departamentos únicos del tenant ───────────────────────────────────
-  const departments = Array.from(new Set(users.map((u: any) => u.department).filter(Boolean))).sort();
+  // ── Departamentos configurados en Mantenedores ───────────────────────
+  const { departments } = useDepartments();
 
   // ─── Carga inicial ────────────────────────────────────────────────────────
 
