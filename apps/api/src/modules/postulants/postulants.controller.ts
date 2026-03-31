@@ -97,4 +97,33 @@ export class PostulantsController {
   getComparative(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getComparative(req.user.tenantId, id);
   }
+
+  // ─── CV Upload & AI Analysis ──────────────────────────────────────
+
+  @Patch(':id/cv')
+  @Roles('super_admin', 'tenant_admin')
+  uploadCv(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { cvUrl: string },
+    @Request() req: any,
+  ) {
+    return this.service.uploadCv(req.user.tenantId, id, dto.cvUrl);
+  }
+
+  @Post(':id/analyze-cv')
+  @Roles('super_admin', 'tenant_admin')
+  analyzeCv(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.service.analyzeCvWithAi(req.user.tenantId, id);
+  }
+
+  @Get(':id/cv-analysis')
+  getCvAnalysis(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.service.getCvAnalysis(req.user.tenantId, id);
+  }
 }

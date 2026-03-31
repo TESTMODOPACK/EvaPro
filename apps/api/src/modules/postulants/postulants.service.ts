@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import Anthropic from '@anthropic-ai/sdk';
 import { Postulant } from './entities/postulant.entity';
 import { PostulantProcess, ProcessStatus } from './entities/postulant-process.entity';
 import { PostulantProcessEntry, PostulantEntryStatus } from './entities/postulant-process-entry.entity';
@@ -10,8 +11,13 @@ import { User } from '../users/entities/user.entity';
 import { RoleCompetency } from '../development/entities/role-competency.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 
+const CV_ANALYSIS_MODEL = 'claude-haiku-4-5';
+
 @Injectable()
 export class PostulantsService {
+  private readonly logger = new Logger(PostulantsService.name);
+  private aiClient: Anthropic | null = null;
+
   constructor(
     @InjectRepository(Postulant) private readonly postulantRepo: Repository<Postulant>,
     @InjectRepository(PostulantProcess) private readonly processRepo: Repository<PostulantProcess>,
@@ -21,7 +27,12 @@ export class PostulantsService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(RoleCompetency) private readonly roleCompRepo: Repository<RoleCompetency>,
     @InjectRepository(TalentAssessment) private readonly talentRepo: Repository<TalentAssessment>,
-  ) {}
+  ) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (apiKey) {
+      this.aiClient = new Anthropic({ apiKey });
+    }
+  }
 
   // ─── Postulants CRUD ────────────────────────────────────────────────
 
@@ -320,5 +331,137 @@ export class PostulantsService {
       .getRawOne();
     const avg = result?.avg ? parseFloat(result.avg) : null;
     await this.entryRepo.update(entryId, { finalScore: avg });
+  }
+
+  // ─── CV Upload & AI Analysis ──────────────────────────────────────
+
+  async uploadCv(tenantId: string, postulantId: string, cvUrl: string) {
+    const postulant = await this.postulantRepo.findOne({ where: { id: postulantId, tenantId } });
+    if (!postulant) throw new NotFoundException('Postulante no encontrado');
+    postulant.cvUrl = cvUrl;
+    return this.postulantRepo.save(postulant);
+  }
+
+  async saveCvAnalysis(tenantId: string, postulantId: string, analysis: any) {
+    const postulant = await this.postulantRepo.findOne({ where: { id: postulantId, tenantId } });
+    if (!postulant) throw new NotFoundException('Postulante no encontrado');
+    postulant.cvAnalysis = analysis;
+    return this.postulantRepo.save(postulant);
+  }
+
+  async getCvAnalysis(tenantId: string, postulantId: string) {
+    const postulant = await this.postulantRepo.findOne({ where: { id: postulantId, tenantId } });
+    if (!postulant) throw new NotFoundException('Postulante no encontrado');
+    return { cvUrl: postulant.cvUrl, cvAnalysis: postulant.cvAnalysis };
+  }
+
+  async analyzeCvWithAi(tenantId: string, postulantId: string) {
+    if (!this.aiClient) {
+      throw new ServiceUnavailableException('La funcionalidad de IA no está disponible. Configure ANTHROPIC_API_KEY.');
+    }
+
+    const postulant = await this.postulantRepo.findOne({ where: { id: postulantId, tenantId } });
+    if (!postulant) throw new NotFoundException('Postulante no encontrado');
+    if (!postulant.cvUrl) {
+      throw new BadRequestException('El postulante no tiene un CV subido. Sube un CV primero.');
+    }
+
+    // Always re-analyze when explicitly requested (POST endpoint is intentional)
+
+    // Fetch the CV file and convert to base64 for Anthropic document API
+    let cvBase64 = '';
+    let cvMediaType = 'application/pdf';
+    let usePlainText = false;
+    try {
+      const response = await fetch(postulant.cvUrl);
+      if (!response.ok) throw new Error('Failed to fetch CV');
+      const contentType = response.headers.get('content-type') || '';
+      const buffer = Buffer.from(await response.arrayBuffer());
+      cvBase64 = buffer.toString('base64');
+      cvMediaType = contentType.includes('pdf') ? 'application/pdf'
+        : contentType.includes('word') || contentType.includes('docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : 'application/pdf';
+      // If file is too large (>5MB), fallback to text
+      if (buffer.length > 5 * 1024 * 1024) {
+        usePlainText = true;
+      }
+    } catch {
+      usePlainText = true;
+    }
+
+    const postulantContext = `Nombre: ${postulant.firstName} ${postulant.lastName}\nEmail: ${postulant.email}\nTeléfono: ${postulant.phone || 'No disponible'}\nFuente: ${postulant.source || 'No especificada'}\nNotas: ${postulant.notes || 'Sin notas'}`;
+
+    // Get process context if the postulant is in any active process
+    const entries = await this.entryRepo.find({
+      where: { postulantId },
+      relations: ['process'],
+    });
+    const processContext = entries.length > 0
+      ? `Cargo al que postula: ${entries[0].process?.position || 'No especificado'}. Departamento: ${entries[0].process?.department || 'No especificado'}.`
+      : '';
+
+    const prompt = `Eres un experto en recursos humanos y selección de personal. Analiza el CV/documento adjunto y la información del postulante para generar un perfil profesional estructurado.
+
+${processContext}
+
+Información del postulante:
+${postulantContext}
+
+${usePlainText ? 'Nota: No se pudo leer el archivo del CV. Genera el perfil basándote solo en la información disponible.' : 'El documento adjunto es el CV del postulante. Analízalo en detalle.'}
+
+Responde SOLO con un JSON válido (sin markdown, sin backticks) con esta estructura exacta:
+{
+  "resumenProfesional": "Resumen de 2-3 oraciones del perfil del candidato",
+  "fortalezas": ["fortaleza 1", "fortaleza 2", "fortaleza 3"],
+  "areasDesarrollo": ["área 1", "área 2"],
+  "experienciaRelevante": "Descripción de la experiencia más relevante para el cargo",
+  "nivelEducativo": "Nivel educativo identificado",
+  "anosExperiencia": "Estimación de años de experiencia",
+  "competenciasClave": ["competencia 1", "competencia 2", "competencia 3", "competencia 4"],
+  "idiomasDetectados": ["idioma 1"],
+  "recomendacion": "Recomendación general sobre el candidato para el cargo",
+  "nivelAjuste": "alto|medio|bajo",
+  "observaciones": "Observaciones adicionales"
+}`;
+
+    try {
+      // Build message content: use document block if we have base64, otherwise plain text
+      const messageContent: any[] = [];
+      if (!usePlainText && cvBase64) {
+        messageContent.push({
+          type: 'document',
+          source: { type: 'base64', media_type: cvMediaType, data: cvBase64 },
+        });
+      }
+      messageContent.push({ type: 'text', text: prompt });
+
+      const response = await this.aiClient.messages.create({
+        model: CV_ANALYSIS_MODEL,
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: messageContent }],
+      });
+
+      const textBlock = response.content.find((b) => b.type === 'text');
+      const rawText = textBlock?.text || '{}';
+
+      // Parse JSON response
+      let analysis: any;
+      try {
+        analysis = JSON.parse(rawText);
+      } catch {
+        // Try to extract JSON from response
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : { resumenProfesional: rawText, error: 'No se pudo parsear la respuesta' };
+      }
+
+      // Save analysis
+      postulant.cvAnalysis = analysis;
+      await this.postulantRepo.save(postulant);
+
+      return analysis;
+    } catch (error: any) {
+      this.logger.error(`CV Analysis AI error: ${error.message}`);
+      throw new BadRequestException(`Error al analizar el CV: ${error.message || 'Error desconocido'}`);
+    }
   }
 }

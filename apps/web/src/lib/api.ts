@@ -330,6 +330,12 @@ export const api = {
       request<void>("/postulants/assessments", { method: "POST", body: JSON.stringify(data) }, token),
     scorecard: (token: string, entryId: string) =>
       request<any>(`/postulants/entries/${entryId}/scorecard`, {}, token),
+    uploadCv: (token: string, postulantId: string, cvUrl: string) =>
+      request<any>(`/postulants/${postulantId}/cv`, { method: "PATCH", body: JSON.stringify({ cvUrl }) }, token),
+    analyzeCv: (token: string, postulantId: string) =>
+      request<any>(`/postulants/${postulantId}/analyze-cv`, { method: "POST" }, token),
+    getCvAnalysis: (token: string, postulantId: string) =>
+      request<any>(`/postulants/${postulantId}/cv-analysis`, {}, token),
   },
 
   users: {

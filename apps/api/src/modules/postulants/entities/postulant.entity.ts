@@ -47,6 +47,12 @@ export class Postulant {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'cv_url', comment: 'URL del CV subido (Cloudinary)' })
+  cvUrl: string | null;
+
+  @Column({ type: 'jsonb', nullable: true, name: 'cv_analysis', comment: 'Análisis de CV generado por IA' })
+  cvAnalysis: any;
+
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 

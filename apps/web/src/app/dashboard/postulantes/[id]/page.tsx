@@ -27,6 +27,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [allPostulants, setAllPostulants] = useState<any[]>([]);
   const [selectedExistingId, setSelectedExistingId] = useState('');
 
+  // CV Analysis
+  const [showCvPanel, setShowCvPanel] = useState(false);
+  const [selectedPostulantForCv, setSelectedPostulantForCv] = useState<any>(null);
+
   // Assessment
   const [assessmentScores, setAssessmentScores] = useState<Record<string, { score: number; comment: string }>>({});
   const [savingAssessment, setSavingAssessment] = useState(false);
@@ -251,10 +255,26 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}>
                       Scorecard
                     </button>
+                    {entry.postulant?.type === 'external' && isAdmin && (
+                      <button className="btn-ghost" onClick={() => { setSelectedPostulantForCv(entry.postulant); setShowCvPanel(true); }}
+                        style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}>
+                        {entry.postulant?.cvAnalysis ? '📋 Perfil IA' : '📄 CV'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
+          )}
+
+          {/* CV Analysis Panel */}
+          {showCvPanel && selectedPostulantForCv && (
+            <CvAnalysisPanel
+              postulant={selectedPostulantForCv}
+              token={token!}
+              onClose={() => { setShowCvPanel(false); setSelectedPostulantForCv(null); }}
+              onUpdate={() => fetchProcess()}
+            />
           )}
         </div>
       )}
@@ -646,6 +666,193 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── CV Analysis Panel Component ──────────────────────────────── */
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+function CvAnalysisPanel({ postulant, token, onClose, onUpdate }: {
+  postulant: any; token: string; onClose: () => void; onUpdate: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<any>(postulant.cvAnalysis || null);
+  const [cvUrl, setCvUrl] = useState<string | null>(postulant.cvUrl || null);
+  const [error, setError] = useState('');
+
+  const handleUploadCv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      // Upload file
+      const formData = new FormData();
+      formData.append('file', file);
+      const uploadRes = await fetch(`${BASE_URL}/uploads`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error('Error al subir archivo');
+      const { url } = await uploadRes.json();
+
+      // Save CV URL
+      await api.postulants.uploadCv(token, postulant.id, url);
+      setCvUrl(url);
+      onUpdate();
+    } catch (err: any) {
+      setError(err.message || 'Error al subir CV');
+    }
+    // Reset file input so same file can be re-selected
+    e.target.value = '';
+    setUploading(false);
+  };
+
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    setError('');
+    try {
+      const result = await api.postulants.analyzeCv(token, postulant.id);
+      setAnalysis(result);
+      onUpdate();
+    } catch (err: any) {
+      setError(err.message || 'Error al analizar CV');
+    }
+    setAnalyzing(false);
+  };
+
+  const fitColor = (level: string) => {
+    if (level === 'alto') return 'var(--success)';
+    if (level === 'medio') return 'var(--accent)';
+    return 'var(--danger)';
+  };
+
+  return (
+    <div className="card animate-fade-up" style={{ padding: '1.75rem', marginTop: '1rem', borderLeft: '4px solid var(--accent)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>
+          Análisis de CV — {postulant.firstName} {postulant.lastName}
+        </h3>
+        <button className="btn-ghost" onClick={onClose} style={{ fontSize: '0.82rem' }}>Cerrar</button>
+      </div>
+
+      {/* Upload section */}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <label style={{
+          padding: '0.4rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem',
+          border: '1px dashed var(--border)', cursor: 'pointer', color: 'var(--text-secondary)',
+        }}>
+          {uploading ? 'Subiendo...' : cvUrl ? '📄 Cambiar CV' : '📄 Subir CV (PDF/Word)'}
+          <input type="file" accept=".pdf,.doc,.docx" onChange={handleUploadCv} style={{ display: 'none' }} />
+        </label>
+        {cvUrl && (
+          <>
+            <a href={cvUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: 'var(--accent)' }}>
+              Ver CV ↗
+            </a>
+            <button className="btn-primary" onClick={handleAnalyze} disabled={analyzing}
+              style={{ fontSize: '0.82rem', padding: '0.4rem 1rem' }}>
+              {analyzing ? 'Analizando con IA...' : analysis ? '🔄 Re-analizar' : '🤖 Analizar con IA'}
+            </button>
+          </>
+        )}
+      </div>
+
+      {analyzing && (
+        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <span className="spinner" style={{ marginBottom: '0.5rem' }} />
+          <p style={{ fontSize: '0.82rem' }}>Analizando el CV con inteligencia artificial... Esto puede tomar 10-20 segundos.</p>
+        </div>
+      )}
+
+      {error && <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginBottom: '0.5rem' }}>{error}</p>}
+
+      {/* Analysis results */}
+      {analysis && !analyzing && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {/* Fit level badge */}
+          {analysis.nivelAjuste && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Nivel de ajuste al cargo:</span>
+              <span style={{ fontWeight: 700, fontSize: '0.88rem', color: fitColor(analysis.nivelAjuste), textTransform: 'uppercase' }}>
+                {analysis.nivelAjuste}
+              </span>
+            </div>
+          )}
+
+          {/* Summary */}
+          {analysis.resumenProfesional && (
+            <div style={{ padding: '0.75rem 1rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              {analysis.resumenProfesional}
+            </div>
+          )}
+
+          {/* Grid: strengths, areas, competencies */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            {analysis.fortalezas?.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.3rem', color: 'var(--success)' }}>Fortalezas</div>
+                <ul style={{ margin: 0, paddingLeft: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                  {analysis.fortalezas.map((f: string, i: number) => <li key={i}>{f}</li>)}
+                </ul>
+              </div>
+            )}
+            {analysis.areasDesarrollo?.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.3rem', color: 'var(--accent)' }}>Áreas de desarrollo</div>
+                <ul style={{ margin: 0, paddingLeft: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                  {analysis.areasDesarrollo.map((a: string, i: number) => <li key={i}>{a}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Competencies chips */}
+          {analysis.competenciasClave?.length > 0 && (
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.3rem' }}>Competencias clave</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                {analysis.competenciasClave.map((c: string, i: number) => (
+                  <span key={i} style={{ padding: '0.2rem 0.6rem', borderRadius: 20, fontSize: '0.72rem', background: 'rgba(201,147,58,0.1)', color: 'var(--accent)', fontWeight: 600 }}>
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Details */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.78rem' }}>
+            {analysis.nivelEducativo && (
+              <div><span style={{ color: 'var(--text-muted)' }}>Educación:</span> {analysis.nivelEducativo}</div>
+            )}
+            {analysis.anosExperiencia && (
+              <div><span style={{ color: 'var(--text-muted)' }}>Experiencia:</span> {analysis.anosExperiencia}</div>
+            )}
+            {analysis.idiomasDetectados?.length > 0 && (
+              <div><span style={{ color: 'var(--text-muted)' }}>Idiomas:</span> {analysis.idiomasDetectados.join(', ')}</div>
+            )}
+          </div>
+
+          {/* Recommendation */}
+          {analysis.recomendacion && (
+            <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--success)', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--success)' }}>Recomendación: </span>
+              {analysis.recomendacion}
+            </div>
+          )}
+
+          {analysis.observaciones && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+              {analysis.observaciones}
+            </p>
+          )}
         </div>
       )}
     </div>
