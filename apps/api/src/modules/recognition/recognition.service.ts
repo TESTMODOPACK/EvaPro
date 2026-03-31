@@ -12,6 +12,7 @@ import { Challenge } from './entities/challenge.entity';
 import { ChallengeProgress } from './entities/challenge-progress.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../notifications/email.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 
 const MAX_RECOGNITIONS_PER_DAY = 5;
@@ -35,6 +36,7 @@ export class RecognitionService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
+    private readonly emailService: EmailService,
   ) {}
 
   // ─── Recognition Wall (Social Feed) ─────────────────────────────────
@@ -150,6 +152,22 @@ export class RecognitionService {
         message: `Un compañero te ha reconocido: "${msgPreview}"`,
         metadata: { recognitionId: recognition.id },
       }).catch(() => {});
+
+      // Send email notification to the recipient
+      const fromUser = await this.userRepo.findOne({ where: { id: fromUserId }, select: ['id', 'firstName', 'lastName'] });
+      const toUserData = await this.userRepo.findOne({ where: { id: dto.toUserId }, select: ['id', 'firstName', 'email'] });
+      if (toUserData?.email && fromUser) {
+        const valueName = dto.valueId
+          ? (await this.recogRepo.findOne({ where: { id: recognition.id }, relations: ['value'] }))?.value?.name
+          : undefined;
+        this.emailService.sendRecognitionReceived(toUserData.email, {
+          firstName: toUserData.firstName,
+          fromName: `${fromUser.firstName} ${fromUser.lastName}`,
+          message: dto.message,
+          valueName: valueName || undefined,
+          points: DEFAULT_RECOGNITION_POINTS,
+        }).catch(() => {});
+      }
 
       return this.recogRepo.findOne({ where: { id: recognition.id }, relations: ['fromUser', 'toUser', 'value'] });
     });

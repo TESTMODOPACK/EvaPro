@@ -308,6 +308,34 @@ export class EmailService {
     );
   }
 
+  // ─── Template: Recognition Received ───────────────────────────────────────
+
+  async sendRecognitionReceived(
+    email: string,
+    data: { firstName: string; fromName: string; message: string; valueName?: string; points: number },
+  ) {
+    const msgPreview = data.message.length > 120 ? data.message.substring(0, 120) + '...' : data.message;
+    await this.send(
+      email,
+      `${data.fromName} te ha reconocido`,
+      this.wrap({
+        preheader: `Has recibido un reconocimiento de ${data.fromName}. +${data.points} puntos.`,
+        body: `
+          ${this.heading(`Has recibido un reconocimiento ⭐`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, <strong>${data.fromName}</strong> te ha enviado un reconocimiento:`)}
+          ${this.alertBox(`"${msgPreview}"`, 'info')}
+          ${this.infoBox([
+            { label: 'De', value: data.fromName },
+            ...(data.valueName ? [{ label: 'Valor corporativo', value: data.valueName }] : []),
+            { label: 'Puntos otorgados', value: `+${data.points}` },
+          ])}
+          ${this.paragraph('Visita el muro de reconocimientos para ver el detalle y reaccionar.')}
+          ${this.cta('Ver reconocimientos', `${this.appUrl}/dashboard/reconocimientos`)}
+        `,
+      }),
+    );
+  }
+
   // ─── HTML Builder Helpers ──────────────────────────────────────────────────
 
   private wrap({ body, preheader = '', accentColor = '#C9933A' }: {
