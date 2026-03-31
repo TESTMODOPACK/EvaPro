@@ -585,60 +585,32 @@ export default function InformesPage() {
       {selectedCycleId && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-          {/* ── SECCIÓN GENERAL ─────────────────────────────────────── */}
+          {/* ── SECCIÓN INDIVIDUAL (primero, más relevante) ────────── */}
           <div>
-            {/* Section header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)' }}>
-              <span style={{ fontSize: '1.1rem' }}>📊</span>
+              <span style={{ fontSize: '1.1rem' }}>{'👤'}</span>
               <div>
-                <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                  Vista General
-                </h2>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
-                  Mapa de calor por departamento — haz clic para ver el detalle individual
-                </p>
+                <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Vista Individual</h2>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Puntaje por sección y comparativa de evaluadores</p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <HeatmapSection cycleId={selectedCycleId} />
-            </div>
-          </div>
-
-          {/* ── SECCIÓN INDIVIDUAL ──────────────────────────────────── */}
-          <div>
-            {/* Section header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)' }}>
-              <span style={{ fontSize: '1.1rem' }}>👤</span>
-              <div>
-                <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                  Vista Individual
-                </h2>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
-                  An&aacute;lisis de un colaborador espec&iacute;fico &mdash; Puntaje por secci&oacute;n y comparativa de evaluadores
-                </p>
-              </div>
-            </div>
-
-            {/* User selector */}
             <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                Colaborador
-              </label>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Colaborador</label>
               <select style={selectStyle} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
-                <option value="">Selecciona un colaborador&hellip;</option>
+                <option value="">Selecciona un colaborador...</option>
                 {users
                   .filter((u: any) => (!filterDepartment || u.department === filterDepartment) && (!filterPosition || u.position === filterPosition))
                   .map((u: any) => (
                     <option key={u.id} value={u.id}>
-                      {u.firstName} {u.lastName}{u.department ? ` \u2014 ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}
+                      {u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}
                     </option>
                   ))
                 }
               </select>
               {(filterDepartment || filterPosition) && (
                 <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                  Lista filtrada por: {[filterDepartment, filterPosition].filter(Boolean).join(' / ')}
+                  Filtrado por: {[filterDepartment, filterPosition].filter(Boolean).join(' / ')}
                 </p>
               )}
             </div>
@@ -651,10 +623,24 @@ export default function InformesPage() {
             ) : (
               <div className="card" style={{ padding: '2rem', textAlign: 'center', border: '1px dashed var(--border)' }}>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: 0 }}>
-                  Selecciona un colaborador de la lista para ver su gr&aacute;fico de puntaje por secci&oacute;n y la comparativa Autoevaluaci&oacute;n vs Evaluadores
+                  Selecciona un colaborador de la lista para ver su informe individual
                 </p>
               </div>
             )}
+          </div>
+
+          {/* ── SECCIÓN GENERAL (referencia, abajo) ────────────────── */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)' }}>
+              <span style={{ fontSize: '1.1rem' }}>{'📊'}</span>
+              <div>
+                <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Vista General</h2>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Mapa de calor por departamento — haz clic para ver el detalle</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <HeatmapSection cycleId={selectedCycleId} />
+            </div>
           </div>
 
         </div>
