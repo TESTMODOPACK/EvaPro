@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { useUnreadCount, useNotifications, useMarkAsRead, useMarkAllAsRead } from '@/hooks/useNotifications';
 
 const typeIcons: Record<string, string> = {
@@ -144,7 +145,7 @@ export default function NotificationBell() {
                   {'Marcar todas como le\u00eddas'}
                 </button>
               )}
-              <a
+              <Link
                 href="/dashboard/notificaciones"
                 style={{
                   fontSize: '0.72rem',
@@ -155,7 +156,7 @@ export default function NotificationBell() {
                 onClick={() => setOpen(false)}
               >
                 {'Ver todas'}
-              </a>
+              </Link>
             </div>
           </div>
 
