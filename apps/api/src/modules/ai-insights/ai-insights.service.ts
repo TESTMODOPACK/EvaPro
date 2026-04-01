@@ -1150,27 +1150,37 @@ export class AiInsightsService {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
-    const prompt = `Eres un experto en reclutamiento y seleccion de personal. Analiza el CV del candidato en el contexto del cargo al que postula.
+    const prompt = `Eres un experto en reclutamiento y seleccion de personal. Tu tarea es analizar el CV de un candidato y cruzarlo con los requisitos del cargo para determinar el nivel de coincidencia.
 
-Contexto del cargo:
 ${context}
 
-URL del CV: ${cvUrl}
+CONTENIDO DEL CV (base64 data URL):
+${cvUrl.length > 200 ? cvUrl.substring(0, 200) + '... [documento completo proporcionado]' : cvUrl}
+
+INSTRUCCIONES:
+1. Analiza la informacion del CV del candidato
+2. Compara CADA requisito del cargo con la experiencia y habilidades del candidato
+3. Calcula el porcentaje de coincidencia basado en cuantos requisitos cumple
+4. Identifica fortalezas, brechas y alertas
 
 Genera un informe en formato JSON con esta estructura exacta:
 {
-  "resumenEjecutivo": "Resumen de 3-5 lineas sobre el candidato",
-  "experienciaRelevante": "Descripcion de experiencia laboral relevante para el cargo",
-  "habilidadesTecnicas": ["habilidad1", "habilidad2", ...],
-  "habilidadesBlandas": ["habilidad1", "habilidad2", ...],
-  "formacionAcademica": "Nivel educativo y estudios relevantes",
+  "resumenEjecutivo": "Resumen de 3-5 lineas evaluando al candidato respecto al cargo",
+  "experienciaRelevante": "Experiencia del candidato que es directamente relevante para este cargo especifico",
+  "habilidadesTecnicas": ["habilidad tecnica 1 detectada", "habilidad 2"],
+  "habilidadesBlandas": ["habilidad blanda 1", "habilidad 2"],
+  "formacionAcademica": "Nivel educativo y como se relaciona con lo requerido",
+  "cumplimientoRequisitos": [
+    {"requisito": "texto del requisito", "cumple": true, "detalle": "como lo cumple o por que no"}
+  ],
   "matchPercentage": 75,
-  "matchJustification": "Justificacion del porcentaje de coincidencia",
-  "alertas": ["alerta1", "alerta2"],
-  "recomendacion": "Recomendacion general sobre el candidato"
+  "matchJustification": "Justificacion detallada del porcentaje de coincidencia basada en el cruce con los requisitos",
+  "alertas": ["alerta sobre brechas o inconsistencias detectadas"],
+  "recomendacion": "Recomendacion sobre si el candidato debe avanzar en el proceso y por que"
 }
 
-Responde SOLO con el JSON, sin texto adicional.`;
+IMPORTANTE: El matchPercentage debe reflejar el cruce REAL entre requisitos del cargo y perfil del candidato.
+Responde SOLO con el JSON, sin texto adicional ni markdown.`;
 
     const { text, tokensUsed } = await this.callClaude(prompt, 3000);
     this.logger.log('CV AI response length: ' + text.length + ' chars');

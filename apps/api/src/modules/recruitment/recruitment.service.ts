@@ -303,10 +303,25 @@ export class RecruitmentService {
     const requirements = candidate.process?.requirements || [];
     const position = candidate.process?.position || '';
 
-    // Build context for AI
-    let context = `Cargo: ${position}\n`;
+    // Build rich context for AI
+    const description = candidate.process?.description || '';
+    const department = candidate.process?.department || '';
+
+    let context = `CARGO: ${position}\n`;
+    if (department) context += `DEPARTAMENTO: ${department}\n`;
+    if (description) context += `DESCRIPCION DEL CARGO:\n${description}\n\n`;
     if (requirements.length > 0) {
-      context += 'Requisitos:\n' + requirements.map((r: any) => `- [${r.category}] ${r.text}`).join('\n') + '\n';
+      // Group requirements by category
+      const byCategory: Record<string, string[]> = {};
+      for (const r of requirements) {
+        const cat = (r as any).category || 'General';
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push((r as any).text);
+      }
+      context += 'REQUISITOS DEL CARGO:\n';
+      for (const [cat, items] of Object.entries(byCategory)) {
+        context += `  ${cat}:\n${items.map((t) => `    - ${t}`).join('\n')}\n`;
+      }
     }
 
     // For internal candidates, add historical context
