@@ -60,11 +60,11 @@ export class SupportTicket {
   @Column({ type: 'timestamptz', name: 'responded_at', nullable: true })
   respondedAt: Date | null;
 
-  @Column({ type: 'jsonb', default: () => "'[]'", comment: 'Attachments from ticket creator: [{ url, name, size }]' })
-  attachments: Array<{ url: string; name: string; size?: number }>;
+  @Column({ type: 'jsonb', default: () => "'[]'", comment: 'Attachments as base64: [{ name, size, type, data }]' })
+  attachments: Array<{ name: string; size?: number; type?: string; data?: string; url?: string }>;
 
-  @Column({ type: 'jsonb', name: 'response_attachments', default: () => "'[]'", comment: 'Attachments from responder: [{ url, name, size }]' })
-  responseAttachments: Array<{ url: string; name: string; size?: number }>;
+  @Column({ type: 'jsonb', name: 'response_attachments', default: () => "'[]'", comment: 'Response attachments as base64: [{ name, size, type, data }]' })
+  responseAttachments: Array<{ name: string; size?: number; type?: string; data?: string; url?: string }>;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;

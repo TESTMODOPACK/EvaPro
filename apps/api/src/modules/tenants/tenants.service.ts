@@ -470,8 +470,18 @@ export class TenantsService {
 
   async createTicket(tenantId: string, createdBy: string, dto: {
     category: string; subject: string; description: string; priority?: string;
-    attachments?: Array<{ url: string; name: string; size?: number }>;
+    attachments?: Array<{ name: string; size?: number; type?: string; data?: string }>;
   }) {
+    // Validate attachment sizes (max 5MB each, stored as base64 in DB)
+    const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
+    if (dto.attachments?.length) {
+      for (const att of dto.attachments) {
+        if (att.size && att.size > MAX_ATTACHMENT_SIZE) {
+          throw new BadRequestException(`El archivo "${att.name}" excede el límite de 5MB.`);
+        }
+      }
+    }
+
     const ticket = this.ticketRepo.create({
       tenantId,
       createdBy,
@@ -506,7 +516,7 @@ export class TenantsService {
     return saved;
   }
 
-  async respondTicket(ticketId: string, respondedBy: string, response: string, status?: string, responseAttachments?: Array<{ url: string; name: string; size?: number }>) {
+  async respondTicket(ticketId: string, respondedBy: string, response: string, status?: string, responseAttachments?: Array<{ name: string; size?: number; type?: string; data?: string }>) {
     const ticket = await this.ticketRepo.findOne({ where: { id: ticketId } });
     if (!ticket) throw new NotFoundException('Solicitud no encontrada');
     ticket.response = response;

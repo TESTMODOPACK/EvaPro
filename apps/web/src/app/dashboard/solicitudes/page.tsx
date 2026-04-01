@@ -24,8 +24,6 @@ export default function SolicitudesPage() {
   const role = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = role === 'super_admin';
 
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
-
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -34,26 +32,41 @@ export default function SolicitudesPage() {
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [responseText, setResponseText] = useState('');
   const [responding, setResponding] = useState(false);
-  const [attachments, setAttachments] = useState<Array<{ url: string; name: string; size?: number }>>([]);
-  const [responseAttachments, setResponseAttachments] = useState<Array<{ url: string; name: string; size?: number }>>([]);
+  const [attachments, setAttachments] = useState<Array<{ name: string; size?: number; type?: string; data?: string; url?: string }>>([]);
+  const [responseAttachments, setResponseAttachments] = useState<Array<{ name: string; size?: number; type?: string; data?: string; url?: string }>>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
 
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit for base64 in DB
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'ticket' | 'response') => {
     const file = e.target.files?.[0];
-    if (!file || !token) return;
+    if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      setUploadError(`El archivo excede el límite de 5MB (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+      setTimeout(() => setUploadError(''), 5000);
+      e.target.value = '';
+      return;
+    }
+
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch(`${BASE_URL}/uploads`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+      // Convert file to base64 and store in DB (no Cloudinary dependency)
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Error al leer el archivo'));
+        reader.readAsDataURL(file);
       });
-      if (!res.ok) throw new Error('Error al subir archivo');
-      const data = await res.json();
-      const attachment = { url: data.url, name: data.originalName || file.name, size: file.size };
+
+      const attachment = {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        data: base64, // data:application/pdf;base64,... or data:image/png;base64,...
+      };
+
       if (target === 'ticket') {
         setAttachments(prev => [...prev, attachment]);
       } else {
@@ -61,7 +74,7 @@ export default function SolicitudesPage() {
       }
       setUploadError('');
     } catch (err: any) {
-      setUploadError(err.message || 'Error al subir el archivo');
+      setUploadError(err.message || 'Error al procesar el archivo');
       setTimeout(() => setUploadError(''), 5000);
     }
     e.target.value = '';
@@ -177,7 +190,7 @@ export default function SolicitudesPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 {attachments.map((a, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', padding: '0.3rem 0.6rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)' }}>
-                    <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', flex: 1 }}>{a.name}</a>
+                    <a href={a.data || a.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', flex: 1 }}>{a.name}</a>
                     <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
                       style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.9rem' }}>×</button>
                   </div>
@@ -224,7 +237,7 @@ export default function SolicitudesPage() {
           {selectedTicket.attachments?.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
               {selectedTicket.attachments.map((a: any, i: number) => (
-                <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                <a key={i} href={a.data || a.url} target="_blank" rel="noopener noreferrer"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.6rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none' }}>
                   {'📎'} {a.name}
                 </a>
@@ -240,7 +253,7 @@ export default function SolicitudesPage() {
               {selectedTicket.responseAttachments?.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
                   {selectedTicket.responseAttachments.map((a: any, i: number) => (
-                    <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                    <a key={i} href={a.data || a.url} target="_blank" rel="noopener noreferrer"
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.6rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', color: 'var(--success)', textDecoration: 'none' }}>
                       {'📎'} {a.name}
                     </a>
