@@ -303,46 +303,7 @@ export const api = {
     },
   },
 
-  postulants: {
-    list: (token: string, search?: string) =>
-      request<any[]>(`/postulants${search ? `?search=${encodeURIComponent(search)}` : ''}`, {}, token),
-    create: (token: string, data: any) =>
-      request<any>("/postulants", { method: "POST", body: JSON.stringify(data) }, token),
-    get: (token: string, id: string) =>
-      request<any>(`/postulants/${id}`, {}, token),
-    processes: {
-      list: (token: string, status?: string) =>
-        request<any[]>(`/postulants/processes${status ? `?status=${status}` : ''}`, {}, token),
-      create: (token: string, data: any) =>
-        request<any>("/postulants/processes", { method: "POST", body: JSON.stringify(data) }, token),
-      get: (token: string, id: string) =>
-        request<any>(`/postulants/processes/${id}`, {}, token),
-      update: (token: string, id: string, data: any) =>
-        request<any>(`/postulants/processes/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
-      addPostulant: (token: string, processId: string, postulantId: string) =>
-        request<any>(`/postulants/processes/${processId}/postulants`, { method: "POST", body: JSON.stringify({ postulantId }) }, token),
-      comparative: (token: string, id: string) =>
-        request<any>(`/postulants/processes/${id}/comparative`, {}, token),
-    },
-    updateEntryStatus: (token: string, entryId: string, status: string, statusNotes?: string) =>
-      request<any>(`/postulants/entries/${entryId}/status`, { method: "PATCH", body: JSON.stringify({ status, statusNotes }) }, token),
-    submitAssessment: (token: string, data: any) =>
-      request<void>("/postulants/assessments", { method: "POST", body: JSON.stringify(data) }, token),
-    scorecard: (token: string, entryId: string) =>
-      request<any>(`/postulants/entries/${entryId}/scorecard`, {}, token),
-    uploadCv: (token: string, postulantId: string, cvUrl: string) =>
-      request<any>(`/postulants/${postulantId}/cv`, { method: "PATCH", body: JSON.stringify({ cvUrl }) }, token),
-    analyzeCv: (token: string, postulantId: string) =>
-      request<any>(`/postulants/${postulantId}/analyze-cv`, { method: "POST" }, token),
-    getCvAnalysis: (token: string, postulantId: string) =>
-      request<any>(`/postulants/${postulantId}/cv-analysis`, {}, token),
-    saveRequirementChecks: (token: string, entryId: string, checks: Array<{ requirement: string; status: string; comment?: string }>) =>
-      request<any>(`/postulants/entries/${entryId}/requirements`, { method: "POST", body: JSON.stringify({ checks }) }, token),
-    getRequirementChecks: (token: string, entryId: string) =>
-      request<any[]>(`/postulants/entries/${entryId}/requirements`, {}, token),
-    getInternalProfile: (token: string, processId: string, userId: string) =>
-      request<any>(`/postulants/processes/${processId}/internal-profile/${userId}`, {}, token),
-  },
+  // postulants — removed, will be rebuilt from scratch
 
   users: {
     list: (token: string, page = 1, limit = 10, filters?: { search?: string; department?: string; role?: string; status?: string }) => {
