@@ -204,6 +204,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/objetivos', label: t('nav.objectives'), icon: icons.objectives },
         { href: '/dashboard/feedback', label: t('nav.feedback'), icon: icons.feedback },
         { href: '/dashboard/reconocimientos', label: t('nav.recognitions'), icon: '⭐' },
+        { href: '/dashboard/encuestas-clima', label: t('nav.surveys', 'Encuestas de Clima'), icon: '📊' },
       ],
     },
     // ─── Personas y Diversidad (admin/manager) ─────────────────

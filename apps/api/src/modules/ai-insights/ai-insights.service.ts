@@ -16,6 +16,7 @@ import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation
 import { buildSummaryPrompt } from './prompts/summary.prompt';
 import { buildBiasPrompt } from './prompts/bias.prompt';
 import { buildSuggestionsPrompt } from './prompts/suggestions.prompt';
+import { buildSurveyAnalysisPrompt } from './prompts/survey-analysis.prompt';
 
 const MODEL = 'claude-haiku-4-5';
 const CACHE_DAYS = 7;
@@ -988,5 +989,48 @@ export class AiInsightsService {
       }
     }
     return texts.slice(0, 20); // Limit to 20 text responses
+  }
+
+  // ─── Survey Analysis ───────────────────────────────────────────────────
+
+  async analyzeSurvey(
+    tenantId: string,
+    surveyId: string,
+    generatedBy: string,
+    surveyData: {
+      surveyTitle: string;
+      responseRate: number;
+      totalResponses: number;
+      overallAverage: number;
+      averageByCategory: any[];
+      averageByQuestion: any[];
+      enps: any;
+      departmentResults: any[];
+      openResponses: any[];
+    },
+  ): Promise<AiInsight> {
+    await this.checkRateLimit(tenantId);
+    await this.checkWeeklyRoleLimit(tenantId, generatedBy);
+
+    // Check cache — reuse cycleId field to store surveyId
+    const cached = await this.getCached(tenantId, InsightType.SURVEY_ANALYSIS, surveyId);
+    if (cached) return cached;
+
+    const prompt = buildSurveyAnalysisPrompt(surveyData);
+    const { text, tokensUsed } = await this.callClaude(prompt);
+    const content = this.parseJson(text);
+
+    const insight = this.insightRepo.create({
+      tenantId,
+      type: InsightType.SURVEY_ANALYSIS,
+      userId: null,
+      cycleId: surveyId, // Reuse cycleId to store surveyId
+      content,
+      model: MODEL,
+      tokensUsed,
+      generatedBy,
+    });
+
+    return this.insightRepo.save(insight);
   }
 }

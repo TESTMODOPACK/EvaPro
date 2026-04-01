@@ -26,6 +26,7 @@ import { DeiModule } from './modules/dei/dei.module';
 import { SystemModule } from './modules/system/system.module';
 import { PostulantsModule } from './modules/postulants/postulants.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
+import { SurveysModule } from './modules/surveys/surveys.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -56,6 +57,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     SystemModule,
     PostulantsModule,
     SignaturesModule,
+    SurveysModule,
   ],
   controllers: [AppController],
   providers: [

@@ -757,6 +757,38 @@ export const api = {
       request<any>("/recognition/leaderboard-optin/toggle", { method: "POST", body: JSON.stringify({ optIn }) }, token),
   },
 
+  surveys: {
+    list: (token: string) => request<any[]>("/surveys", {}, token),
+    findById: (token: string, id: string) => request<any>(`/surveys/${id}`, {}, token),
+    create: (token: string, dto: any) =>
+      request<any>("/surveys", { method: "POST", body: JSON.stringify(dto) }, token),
+    update: (token: string, id: string, dto: any) =>
+      request<any>(`/surveys/${id}`, { method: "PATCH", body: JSON.stringify(dto) }, token),
+    delete: (token: string, id: string) =>
+      request<void>(`/surveys/${id}`, { method: "DELETE" }, token),
+    launch: (token: string, id: string) =>
+      request<any>(`/surveys/${id}/launch`, { method: "POST" }, token),
+    close: (token: string, id: string) =>
+      request<any>(`/surveys/${id}/close`, { method: "POST" }, token),
+    respond: (token: string, id: string, answers: any[]) =>
+      request<any>(`/surveys/${id}/respond`, { method: "POST", body: JSON.stringify({ answers }) }, token),
+    getMyPending: (token: string) => request<any[]>("/surveys/pending", {}, token),
+    getResults: (token: string, id: string) => request<any>(`/surveys/${id}/results`, {}, token),
+    getResultsByDept: (token: string, id: string) =>
+      request<any[]>(`/surveys/${id}/results/department`, {}, token),
+    getENPS: (token: string, id: string) => request<any>(`/surveys/${id}/results/enps`, {}, token),
+    getTrends: (token: string) => request<any[]>("/surveys/trends", {}, token),
+    generateAiAnalysis: (token: string, id: string) =>
+      request<any>(`/surveys/${id}/ai-analysis`, { method: "POST" }, token),
+    getAiAnalysis: (token: string, id: string) =>
+      request<any>(`/surveys/${id}/ai-analysis`, {}, token),
+    createInitiatives: (token: string, id: string, targetPlanId?: string) =>
+      request<any>(`/surveys/${id}/create-initiatives`, {
+        method: "POST",
+        body: JSON.stringify({ targetPlanId }),
+      }, token),
+  },
+
   signatures: {
     request: (token: string, documentType: string, documentId: string) =>
       request<any>("/signatures/request", { method: "POST", body: JSON.stringify({ documentType, documentId }) }, token),

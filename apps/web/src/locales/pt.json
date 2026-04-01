@@ -29,6 +29,7 @@
     "notifications": "Notificações",
     "people": "Pessoas e Diversidade",
     "settings": "Configurações",
+    "surveys": "Pesquisas de Clima",
     "requests": "Solicitações",
     "admin": "Administração",
     "systemPanel": "Painel do Sistema",
@@ -1040,5 +1041,22 @@
       "permAdmin": "Administrador: visualiza todas as métricas, configura limites, registra ações corretivas.",
       "permManager": "Gestor: consulta métricas demográficas e alertas de equidade da organização."
     }
+  },
+  "surveys": {
+    "title": "Pesquisas de Clima",
+    "create": "Nova Pesquisa",
+    "status": {
+      "draft": "Rascunho",
+      "active": "Ativa",
+      "closed": "Encerrada"
+    },
+    "anonymous": "Respostas anônimas",
+    "respond": "Responder Pesquisa",
+    "noSurveys": "Nenhuma pesquisa disponível"
+  },
+  "notificationType": {
+    "survey_invitation": "Convite para pesquisa",
+    "survey_reminder": "Lembrete de pesquisa",
+    "survey_closed": "Pesquisa encerrada"
   }
 }

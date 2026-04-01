@@ -320,7 +320,7 @@ export default function SolicitudesPage() {
         </div>
       ) : (
         <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {tickets.map((ticket: any) => (
+          {tickets.filter((ticket: any) => ticket.id !== selectedTicket?.id).map((ticket: any) => (
             <div key={ticket.id} className="card" onClick={() => { setSelectedTicket(ticket); setResponseText(''); setResponseAttachments([]); setUploadError(''); }}
               style={{ padding: '1rem 1.25rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'box-shadow 0.15s' }}>
               <div>

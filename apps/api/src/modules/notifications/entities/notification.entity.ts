@@ -29,6 +29,9 @@ export enum NotificationType {
   PDI_REQUIRED = 'pdi_required',
   SUBSCRIPTION_EXPIRING = 'subscription_expiring',
   SUBSCRIPTION_EXPIRING_URGENT = 'subscription_expiring_urgent',
+  SURVEY_INVITATION = 'survey_invitation',
+  SURVEY_REMINDER = 'survey_reminder',
+  SURVEY_CLOSED = 'survey_closed',
   GENERAL = 'general',
 }
 

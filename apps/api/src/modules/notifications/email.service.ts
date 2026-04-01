@@ -365,6 +365,35 @@ export class EmailService {
     );
   }
 
+  async sendSurveyInvitation(
+    email: string,
+    data: { firstName: string; surveyTitle: string; dueDate: string; isAnonymous: boolean },
+  ) {
+    const anonymousNote = data.isAnonymous
+      ? 'Tus respuestas serán completamente <strong>anónimas</strong>. No se registrará tu identidad.'
+      : 'Tus respuestas serán confidenciales y solo visibles para el equipo de RRHH.';
+
+    await this.send(
+      email,
+      `Nueva encuesta de clima: ${data.surveyTitle}`,
+      this.wrap({
+        preheader: `Se te ha asignado la encuesta "${data.surveyTitle}". Fecha límite: ${data.dueDate}.`,
+        body: `
+          ${this.heading('Encuesta de Clima Organizacional')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se te ha invitado a participar en la siguiente encuesta:`)}
+          ${this.infoBox([
+            { label: 'Encuesta', value: data.surveyTitle },
+            { label: 'Fecha límite', value: data.dueDate },
+          ])}
+          ${this.paragraph(anonymousNote)}
+          ${this.paragraph('Tu opinión es muy importante para mejorar el ambiente laboral. Por favor responde antes de la fecha límite.')}
+          ${this.cta('Responder Encuesta', `${process.env.FRONTEND_URL || 'https://app.ascendaperformance.com'}/dashboard/encuestas-clima`)}
+          ${this.smallText('Si tienes problemas para acceder, ingresa a la plataforma y busca la sección "Encuestas de Clima".')}
+        `,
+      }),
+    );
+  }
+
   // ─── HTML Builder Helpers ──────────────────────────────────────────────────
 
   private wrap({ body, preheader = '', accentColor = '#C9933A' }: {

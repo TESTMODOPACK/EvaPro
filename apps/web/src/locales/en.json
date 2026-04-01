@@ -29,6 +29,7 @@
     "notifications": "Notifications",
     "people": "People & Diversity",
     "settings": "Settings",
+    "surveys": "Climate Surveys",
     "requests": "Requests",
     "admin": "Administration",
     "systemPanel": "System Panel",
@@ -1040,5 +1041,22 @@
       "permAdmin": "Administrator: views all metrics, configures thresholds, registers corrective actions.",
       "permManager": "Manager: views demographic metrics and equity alerts for their organization."
     }
+  },
+  "surveys": {
+    "title": "Climate Surveys",
+    "create": "New Survey",
+    "status": {
+      "draft": "Draft",
+      "active": "Active",
+      "closed": "Closed"
+    },
+    "anonymous": "Anonymous responses",
+    "respond": "Respond Survey",
+    "noSurveys": "No surveys available"
+  },
+  "notificationType": {
+    "survey_invitation": "Survey invitation",
+    "survey_reminder": "Survey reminder",
+    "survey_closed": "Survey closed"
   }
 }

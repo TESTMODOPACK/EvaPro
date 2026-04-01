@@ -28,6 +28,9 @@ export const PlanFeature = {
   CALIBRATION: 'CALIBRATION',
   POSTULANTS: 'POSTULANTS',
 
+  // Engagement
+  ENGAGEMENT_SURVEYS: 'ENGAGEMENT_SURVEYS',
+
   // Enterprise
   AI_INSIGHTS: 'AI_INSIGHTS',
   PUBLIC_API: 'PUBLIC_API',
@@ -51,6 +54,7 @@ export const PLAN_FEATURES = {
     PlanFeature.FEEDBACK,
     PlanFeature.CHECKINS,
     PlanFeature.TEMPLATES_CUSTOM,
+    PlanFeature.ENGAGEMENT_SURVEYS,
   ],
   pro: [
     PlanFeature.EVAL_90_180,
@@ -66,6 +70,7 @@ export const PLAN_FEATURES = {
     PlanFeature.NINE_BOX,
     PlanFeature.CALIBRATION,
     PlanFeature.POSTULANTS,
+    PlanFeature.ENGAGEMENT_SURVEYS,
   ],
   enterprise: [
     PlanFeature.EVAL_90_180,
@@ -81,6 +86,7 @@ export const PLAN_FEATURES = {
     PlanFeature.NINE_BOX,
     PlanFeature.CALIBRATION,
     PlanFeature.POSTULANTS,
+    PlanFeature.ENGAGEMENT_SURVEYS,
     PlanFeature.AI_INSIGHTS,
     PlanFeature.PUBLIC_API,
   ],
