@@ -66,7 +66,7 @@ export class RecruitmentCandidate {
   user: User | null;
 
   // Common fields
-  @Column({ type: 'varchar', length: 500, name: 'cv_url', nullable: true })
+  @Column({ type: 'text', name: 'cv_url', nullable: true, comment: 'Base64 data URL del CV (se limpia al cerrar proceso)' })
   cvUrl: string | null;
 
   @Column({ type: 'jsonb', name: 'cv_analysis', nullable: true })

@@ -129,7 +129,20 @@ export class RecruitmentService {
     if (dto.endDate !== undefined) process.endDate = dto.endDate;
     if (dto.status !== undefined) process.status = dto.status;
 
-    return this.processRepo.save(process);
+    const saved = await this.processRepo.save(process);
+
+    // Clean up CV data when process is closed or completed (free DB space)
+    if (dto.status === 'closed' || dto.status === 'completed') {
+      await this.candidateRepo
+        .createQueryBuilder()
+        .update()
+        .set({ cvUrl: null })
+        .where('process_id = :processId AND cv_url IS NOT NULL', { processId: id })
+        .execute();
+      this.logger.log(`Cleaned CV data for closed process ${id}`);
+    }
+
+    return saved;
   }
 
   // ─── Candidates ───────────────────────────────────────────────────────

@@ -17,7 +17,6 @@ const STAGES = [
   { key: 'hired', label: 'Contratado', badge: 'badge-success' },
 ];
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
 export default function ProcesoDetailPage({ params }: { params: { id: string } }) {
   const token = useAuthStore((s) => s.token);
@@ -129,46 +128,39 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     setAddingCandidate(false);
   };
 
-  // ─── CV Upload ──────────────────────────────────────────────────────
+  // ─── CV Upload (base64 directo a BD, sin Cloudinary) ─────────────────
   const handleCvUpload = async (candidateId: string, e: any) => {
     const file = e.target.files?.[0];
     if (!file || !token) return;
 
-    // Validate file type
     const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     if (!validTypes.includes(file.type)) {
       toast('Solo se permiten archivos PDF o Word (.pdf, .doc, .docx)', 'error');
       e.target.value = '';
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      toast('El archivo excede el limite de 10MB', 'error');
+    if (file.size > 5 * 1024 * 1024) {
+      toast('El archivo excede el limite de 5MB', 'error');
       e.target.value = '';
       return;
     }
 
     setUploadingCv(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const uploadRes = await fetch(BASE_URL + '/uploads', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + token },
-        body: formData,
+      // Convert to base64 data URL
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Error al leer el archivo'));
+        reader.readAsDataURL(file);
       });
-      if (!uploadRes.ok) {
-        const errBody = await uploadRes.json().catch(() => ({}));
-        throw new Error(errBody.message || 'Error al subir archivo al servidor');
-      }
-      const uploadData = await uploadRes.json();
-      if (!uploadData.url) throw new Error('El servidor no retorno la URL del archivo');
 
-      await api.recruitment.candidates.uploadCv(token, candidateId, uploadData.url);
+      // Save base64 directly as cvUrl
+      await api.recruitment.candidates.uploadCv(token, candidateId, base64);
       toast('CV subido correctamente', 'success');
       fetchProcess();
     } catch (err: any) {
-      const msg = err.message || 'Error desconocido al subir CV';
-      toast(msg.includes('Cloudinary') ? 'El servicio de almacenamiento no esta configurado. Contacte al administrador.' : msg, 'error');
+      toast(err.message || 'Error al subir CV', 'error');
     } finally {
       e.target.value = '';
       setUploadingCv(false);
