@@ -711,7 +711,7 @@ export default function ReconocimientosPage() {
                       } catch {}
                       setItemSaving(false);
                     }}>
-                    {itemSaving ? t('common.saving') : t('reconocimientos.createItem')}
+                    {itemSaving ? t('common.saving') : t('reconocimientos.saveItem', 'Guardar Beneficio')}
                   </button>
                 </div>
               )}
