@@ -378,7 +378,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                   <div>
                     <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>Historial de Evaluaciones</div>
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      {p.evaluationHistory.slice(0, 6).map((ev: any, i: number) => (
+                      {(p.evaluationHistory || []).slice(0, 6).map((ev: any, i: number) => (
                         <div key={i} style={{ padding: '0.35rem 0.6rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem' }}>
                           <strong>{ev.cycleName}</strong>: {ev.score.toFixed(1)}/5
                         </div>

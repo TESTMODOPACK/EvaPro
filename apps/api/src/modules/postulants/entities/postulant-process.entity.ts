@@ -38,10 +38,10 @@ export class PostulantProcess {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
-  @Column({ type: 'varchar', length: 20, default: 'external', comment: 'external | internal' })
+  @Column({ type: 'varchar', length: 20, default: 'external', name: 'process_type', comment: 'external | internal' })
   processType: string;
 
-  @Column({ type: 'jsonb', default: () => "'[]'", comment: 'Array of requirement strings' })
+  @Column({ type: 'jsonb', default: () => "'[]'", name: 'requirements', comment: 'Array of requirement strings' })
   requirements: string[];
 
   @Column({ type: 'enum', enum: ProcessStatus, default: ProcessStatus.DRAFT })
