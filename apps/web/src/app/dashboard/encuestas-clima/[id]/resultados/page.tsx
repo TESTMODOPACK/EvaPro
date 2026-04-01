@@ -562,7 +562,7 @@ export default function ResultadosEncuestaPage() {
 
               {/* Category trends */}
               {(() => {
-                const allCategories = [...new Set(trends.flatMap((t: any) => t.categories.map((c: any) => c.category)))];
+                const allCategories = Array.from(new Set(trends.flatMap((t: any) => t.categories.map((c: any) => c.category))));
                 const catTrendData = trends.map((t: any) => {
                   const row: any = { name: t.title };
                   t.categories.forEach((c: any) => { row[c.category] = c.average; });
