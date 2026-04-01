@@ -181,8 +181,8 @@ export default function NuevoProcesoPage() {
           <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Tipo de Proceso *</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             {[
-              { key: 'external', icon: '\u{1F30E}', title: 'Contratacion Externa', desc: 'Candidatos fuera de la organizacion. CV, analisis IA y entrevistas.' },
-              { key: 'internal', icon: '\u{1F3E2}', title: 'Promocion Interna', desc: 'Colaboradores de la organizacion. Historial, comparativa y recomendacion IA.' },
+              { key: 'external', icon: 'E', title: 'Contratacion Externa', desc: 'Candidatos fuera de la organizacion. CV, analisis IA y entrevistas.' },
+              { key: 'internal', icon: 'I', title: 'Promocion Interna', desc: 'Colaboradores de la organizacion. Historial, comparativa y recomendacion IA.' },
             ].map((opt) => (
               <button key={opt.key} type="button" onClick={() => setProcessType(opt.key)}
                 style={{
@@ -190,7 +190,7 @@ export default function NuevoProcesoPage() {
                   border: processType === opt.key ? `2px solid ${opt.key === 'external' ? 'var(--accent)' : '#6366f1'}` : '2px solid var(--border)',
                   background: processType === opt.key ? (opt.key === 'external' ? 'rgba(201,147,58,0.06)' : 'rgba(99,102,241,0.06)') : 'transparent',
                 }}>
-                <div style={{ fontSize: '1.2rem', marginBottom: '0.3rem' }}>{opt.icon}</div>
+                <div style={{ fontSize: '1.2rem', marginBottom: '0.3rem' }} dangerouslySetInnerHTML={{ __html: opt.key === 'external' ? '&#127758;' : '&#127970;' }} />
                 <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{opt.title}</div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{opt.desc}</div>
               </button>
