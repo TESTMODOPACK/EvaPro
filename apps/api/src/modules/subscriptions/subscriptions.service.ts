@@ -57,6 +57,7 @@ export class SubscriptionsService {
       yearlyPrice: dto.yearlyPrice ?? null,
       currency: dto.currency || 'UF',
       features: dto.features || [],
+      maxAiCallsPerMonth: dto.maxAiCallsPerMonth ?? 0,
       isActive: true,
       displayOrder: dto.displayOrder ?? 0,
     });
@@ -84,6 +85,7 @@ export class SubscriptionsService {
     if (dto.yearlyPrice !== undefined) plan.yearlyPrice = dto.yearlyPrice;
     if (dto.currency !== undefined) plan.currency = dto.currency;
     if (dto.features !== undefined) plan.features = dto.features;
+    if (dto.maxAiCallsPerMonth !== undefined) plan.maxAiCallsPerMonth = dto.maxAiCallsPerMonth;
     if (dto.isActive !== undefined) plan.isActive = dto.isActive;
     if (dto.displayOrder !== undefined) plan.displayOrder = dto.displayOrder;
     return this.planRepo.save(plan);
