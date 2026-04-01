@@ -133,6 +133,20 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const handleCvUpload = async (candidateId: string, e: any) => {
     const file = e.target.files?.[0];
     if (!file || !token) return;
+
+    // Validate file type
+    const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!validTypes.includes(file.type)) {
+      toast('Solo se permiten archivos PDF o Word (.pdf, .doc, .docx)', 'error');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast('El archivo excede el limite de 10MB', 'error');
+      e.target.value = '';
+      return;
+    }
+
     setUploadingCv(true);
     try {
       const formData = new FormData();
@@ -144,17 +158,21 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       });
       if (!uploadRes.ok) {
         const errBody = await uploadRes.json().catch(() => ({}));
-        throw new Error(errBody.message || 'Error al subir archivo');
+        throw new Error(errBody.message || 'Error al subir archivo al servidor');
       }
-      const { url } = await uploadRes.json();
-      await api.recruitment.candidates.uploadCv(token, candidateId, url);
+      const uploadData = await uploadRes.json();
+      if (!uploadData.url) throw new Error('El servidor no retorno la URL del archivo');
+
+      await api.recruitment.candidates.uploadCv(token, candidateId, uploadData.url);
       toast('CV subido correctamente', 'success');
       fetchProcess();
     } catch (err: any) {
-      toast(err.message || 'Error al subir CV', 'error');
+      const msg = err.message || 'Error desconocido al subir CV';
+      toast(msg.includes('Cloudinary') ? 'El servicio de almacenamiento no esta configurado. Contacte al administrador.' : msg, 'error');
+    } finally {
+      e.target.value = '';
+      setUploadingCv(false);
     }
-    e.target.value = '';
-    setUploadingCv(false);
   };
 
   // ─── AI CV Analysis ─────────────────────────────────────────────────
