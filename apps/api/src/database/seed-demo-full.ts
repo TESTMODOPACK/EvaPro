@@ -46,6 +46,10 @@ import { DevelopmentAction } from '../modules/development/entities/development-a
 import { DevelopmentComment } from '../modules/development/entities/development-comment.entity';
 
 import { Notification, NotificationType } from '../modules/notifications/entities/notification.entity';
+import { EngagementSurvey } from '../modules/surveys/entities/engagement-survey.entity';
+import { SurveyQuestion } from '../modules/surveys/entities/survey-question.entity';
+import { SurveyResponse } from '../modules/surveys/entities/survey-response.entity';
+import { SurveyAssignment } from '../modules/surveys/entities/survey-assignment.entity';
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
 import { RoleCompetency } from '../modules/development/entities/role-competency.entity';
 import { PaymentHistory, BillingPeriod, PaymentStatus } from '../modules/subscriptions/entities/payment-history.entity';
@@ -80,6 +84,8 @@ const ds = new DataSource({
     SystemChangelog,
     // PDO: Org Development
     OrgDevelopmentPlan, OrgDevelopmentInitiative, OrgDevelopmentAction,
+    // Surveys
+    EngagementSurvey, SurveyQuestion, SurveyResponse, SurveyAssignment,
   ],
   synchronize: true, logging: false,
 });
@@ -992,11 +998,148 @@ async function seedDemoFull() {
     console.log('   OKRs: with key results, updates, and comments');
     console.log('   Feedback: 12+ peer feedback entries');
     console.log('   Check-ins: 12+ 1:1 meetings');
+    /* ── 12. Engagement Survey (Clima Laboral) ────────────────────────────── */
+    const surveyRepo = ds.getRepository(EngagementSurvey);
+    const surveyQRepo = ds.getRepository(SurveyQuestion);
+    const surveyRRepo = ds.getRepository(SurveyResponse);
+    const surveyARepo = ds.getRepository(SurveyAssignment);
+
+    const existingSurvey = await surveyRepo.findOne({ where: { tenantId: tid, title: 'Encuesta de Clima Q1 2026' } });
+    if (!existingSurvey) {
+      // Create closed survey with full data
+      const survey = await surveyRepo.save(surveyRepo.create({
+        tenantId: tid,
+        title: 'Encuesta de Clima Q1 2026',
+        description: 'Encuesta trimestral de clima laboral y satisfaccion organizacional',
+        status: 'closed',
+        isAnonymous: true,
+        targetAudience: 'all',
+        targetDepartments: [],
+        startDate: daysAgo(45),
+        endDate: daysAgo(15),
+        createdBy: admin.id,
+        settings: {},
+        responseCount: 0,
+      }));
+
+      // Create questions
+      const questionDefs = [
+        { category: 'Liderazgo', questionText: 'Mi lider directo me da retroalimentacion constructiva regularmente', questionType: 'likert_5', isRequired: true, sortOrder: 0 },
+        { category: 'Comunicacion', questionText: 'La comunicacion interna de la empresa es clara y oportuna', questionType: 'likert_5', isRequired: true, sortOrder: 1 },
+        { category: 'Bienestar', questionText: 'Siento que la empresa se preocupa por mi bienestar', questionType: 'likert_5', isRequired: true, sortOrder: 2 },
+        { category: 'Cultura', questionText: 'Me siento orgulloso de trabajar en esta empresa', questionType: 'likert_5', isRequired: true, sortOrder: 3 },
+        { category: 'Desarrollo', questionText: 'Tengo oportunidades reales de crecimiento profesional aqui', questionType: 'likert_5', isRequired: true, sortOrder: 4 },
+        { category: 'Gestion', questionText: 'Tengo los recursos necesarios para hacer bien mi trabajo', questionType: 'likert_5', isRequired: true, sortOrder: 5 },
+        { category: 'NPS', questionText: 'Del 0 al 10, que tan probable es que recomiendes esta empresa como lugar de trabajo?', questionType: 'nps', isRequired: true, sortOrder: 6 },
+        { category: 'General', questionText: 'Que mejorarias de tu experiencia en la empresa?', questionType: 'open_text', isRequired: false, sortOrder: 7 },
+      ];
+
+      const questions = [];
+      for (const qd of questionDefs) {
+        const q = await surveyQRepo.save(surveyQRepo.create({ surveyId: survey.id, ...qd }));
+        questions.push(q);
+      }
+
+      // Create assignments and responses for all employees
+      const surveyUsers = await userRepo.find({ where: { tenantId: tid, isActive: true } });
+      const openTextResponses = [
+        'Mejorar la comunicacion entre departamentos',
+        'Mas oportunidades de capacitacion tecnica',
+        'Flexibilidad en los horarios de trabajo',
+        'Mejor equipamiento y herramientas de trabajo',
+        'Mas actividades de integracion del equipo',
+        'Reconocimiento mas frecuente del trabajo bien hecho',
+        'Mejorar la infraestructura de la oficina',
+        'Mas claridad en los objetivos del area',
+        'Espacios de descanso y bienestar',
+        'Programas de desarrollo de carrera claros',
+        'Mejor balance vida-trabajo',
+        'Transparencia en decisiones organizacionales',
+      ];
+
+      let responseCount = 0;
+      for (const u of surveyUsers) {
+        if (u.role === 'super_admin') continue;
+        // 85% response rate
+        if (Math.random() > 0.85) continue;
+
+        // Create assignment
+        await surveyARepo.save(surveyARepo.create({
+          surveyId: survey.id, tenantId: tid, userId: u.id,
+          status: 'completed', completedAt: daysAgo(Math.floor(15 + Math.random() * 25)),
+        }));
+
+        // Generate answers
+        const answers: Array<{ questionId: string; value: number | string }> = [];
+        for (const q of questions) {
+          if (q.questionType === 'likert_5') {
+            // Scores between 2-5, weighted toward 3-4
+            answers.push({ questionId: q.id, value: Math.floor(2 + Math.random() * 3.5) });
+          } else if (q.questionType === 'nps') {
+            // NPS 3-10, weighted toward 6-9
+            answers.push({ questionId: q.id, value: Math.floor(3 + Math.random() * 7.5) });
+          } else if (q.questionType === 'open_text') {
+            if (Math.random() > 0.3) { // 70% respond to open text
+              answers.push({ questionId: q.id, value: openTextResponses[Math.floor(Math.random() * openTextResponses.length)] });
+            }
+          }
+        }
+
+        await surveyRRepo.save(surveyRRepo.create({
+          surveyId: survey.id, tenantId: tid,
+          respondentId: null, // anonymous
+          department: u.department || null,
+          answers,
+          isComplete: true,
+          submittedAt: daysAgo(Math.floor(15 + Math.random() * 25)),
+        }));
+        responseCount++;
+      }
+
+      // Update response count
+      await surveyRepo.update(survey.id, { responseCount });
+      console.log('✅ Climate survey created: ' + responseCount + ' responses from ' + surveyUsers.length + ' users');
+
+      // Also create an active survey (draft for testing)
+      const survey2 = await surveyRepo.save(surveyRepo.create({
+        tenantId: tid,
+        title: 'Encuesta de Clima Q2 2026',
+        description: 'Segunda encuesta trimestral del ano',
+        status: 'active',
+        isAnonymous: true,
+        targetAudience: 'all',
+        targetDepartments: [],
+        startDate: daysAgo(5),
+        endDate: daysFromNow(25),
+        createdBy: admin.id,
+        settings: {},
+        responseCount: 0,
+      }));
+
+      // Create same questions for survey 2
+      for (const qd of questionDefs) {
+        await surveyQRepo.save(surveyQRepo.create({ surveyId: survey2.id, ...qd }));
+      }
+
+      // Create pending assignments for all users
+      for (const u of surveyUsers) {
+        if (u.role === 'super_admin') continue;
+        await surveyARepo.save(surveyARepo.create({
+          surveyId: survey2.id, tenantId: tid, userId: u.id,
+          status: 'pending',
+        }));
+      }
+      console.log('✅ Active survey Q2 2026 created with pending assignments');
+    } else {
+      console.log('   Climate survey already exists, skipping');
+    }
+
     console.log('   Development Plans: 5+ with actions');
     console.log('   Talent: Nine Box assessments for all');
     console.log('   Calibration: 1 completed session');
     console.log('   Role Competencies: positions × competencies (for gap analysis)');
     console.log('   Notifications: 8 demo notifications');
+    console.log('   Climate Survey: 1 closed (with responses) + 1 active (pending)');
     console.log('   Subscription: Pro plan (advanced reports enabled)');
     console.log('─────────────────────────────────────────');
     console.log('🔑 Password for ALL users: EvaPro2026!');
