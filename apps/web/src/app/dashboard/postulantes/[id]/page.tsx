@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth.store';
+import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import { processStatusLabel, processStatusBadge, postulantEntryStatusLabel, postulantEntryStatusBadge } from '@/lib/statusMaps';
 
@@ -11,6 +12,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const token = useAuthStore((s) => s.token);
   const userId = useAuthStore((s) => s.user?.userId);
   const role = useAuthStore((s) => s.user?.role);
+  const toast = useToastStore((s) => s.toast);
   const isAdmin = role === 'tenant_admin';
 
   const [process, setProcess] = useState<any>(null);
