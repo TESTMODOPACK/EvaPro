@@ -184,19 +184,19 @@ export default function EncuestasClimaPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
             {t('surveys.title', 'Encuestas de Clima')}
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: '0.25rem 0 0' }}>
-            Mide el compromiso y satisfacción de tu equipo
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            Mide el compromiso y satisfaccion de tu equipo
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowGuide(!showGuide)}>
-            {showGuide ? 'Ocultar guía' : 'Ver guía'}
+          <button className="btn-ghost" style={{ fontSize: '0.85rem' }} onClick={() => setShowGuide(!showGuide)}>
+            {showGuide ? 'Ocultar guia' : 'Ver guia'}
           </button>
           {isAdmin && (
-            <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
+            <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={() => setShowCreate(true)}>
               + Nueva Encuesta
             </button>
           )}
@@ -206,14 +206,14 @@ export default function EncuestasClimaPage() {
       {/* Guide */}
       {showGuide && (
         <div className="card animate-fade-up" style={{ padding: '1.25rem', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-          <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }}>Guía de Encuestas de Clima</h3>
+          <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }}>Guia de Encuestas de Clima</h3>
           <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.8 }}>
             <li><strong>Crear:</strong> Define preguntas (Likert, NPS, texto abierto), audiencia y fechas</li>
-            <li><strong>Lanzar:</strong> Envía la encuesta a los colaboradores seleccionados</li>
-            <li><strong>Anónima:</strong> Las respuestas no registran identidad del respondente</li>
-            <li><strong>Resultados:</strong> Visualiza promedios, eNPS, distribución y tendencias</li>
-            <li><strong>IA:</strong> Genera un análisis ejecutivo con recomendaciones automáticas</li>
-            <li><strong>Desarrollo:</strong> Crea iniciativas organizacionales desde el análisis de la encuesta</li>
+            <li><strong>Lanzar:</strong> Envia la encuesta a los colaboradores seleccionados</li>
+            <li><strong>Anonima:</strong> Las respuestas no registran identidad del respondente</li>
+            <li><strong>Resultados:</strong> Visualiza promedios, eNPS, distribucion y tendencias</li>
+            <li><strong>IA:</strong> Genera un analisis ejecutivo con recomendaciones automaticas</li>
+            <li><strong>Desarrollo:</strong> Crea iniciativas organizacionales desde el analisis de la encuesta</li>
           </ul>
         </div>
       )}
@@ -229,11 +229,11 @@ export default function EncuestasClimaPage() {
                   <strong>{s.title}</strong>
                   {s.description && <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{s.description}</p>}
                   <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    <span>Fecha límite: {new Date(s.endDate).toLocaleDateString()}</span>
-                    {s.isAnonymous && <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>Anónima</span>}
+                    <span>Fecha limite: {new Date(s.endDate).toLocaleDateString()}</span>
+                    {s.isAnonymous && <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>Anonima</span>}
                   </div>
                 </div>
-                <Link href={`/dashboard/encuestas-clima/${s.id}/responder`} className="btn btn-primary btn-sm">
+                <Link href={`/dashboard/encuestas-clima/${s.id}/responder`} className="btn-primary" style={{ fontSize: '0.85rem', textDecoration: 'none' }}>
                   Responder
                 </Link>
               </div>
@@ -251,13 +251,13 @@ export default function EncuestasClimaPage() {
               No hay encuestas creadas. Crea la primera encuesta de clima.
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%' }}>
+            <div className="table-wrapper">
+              <table style={{ width: '100%' }}>
                 <thead>
                   <tr>
-                    <th>Título</th>
+                    <th>Titulo</th>
                     <th>Estado</th>
-                    <th>Anónima</th>
+                    <th>Anonima</th>
                     <th>Respuestas</th>
                     <th>Fecha Inicio</th>
                     <th>Fecha Fin</th>
@@ -273,7 +273,7 @@ export default function EncuestasClimaPage() {
                           {STATUS_MAP[s.status]?.label || s.status}
                         </span>
                       </td>
-                      <td>{s.isAnonymous ? 'Sí' : 'No'}</td>
+                      <td>{s.isAnonymous ? 'Si' : 'No'}</td>
                       <td>{s.responseCount || 0}</td>
                       <td>{new Date(s.startDate).toLocaleDateString()}</td>
                       <td>{new Date(s.endDate).toLocaleDateString()}</td>
@@ -281,15 +281,15 @@ export default function EncuestasClimaPage() {
                         <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                           {s.status === 'draft' && (
                             <>
-                              <button className="btn btn-success btn-sm" onClick={() => handleLaunch(s.id)}>Lanzar</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(s.id)}>Eliminar</button>
+                              <button onClick={() => handleLaunch(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(22,163,106,0.3)', background: 'rgba(22,163,106,0.08)', color: 'var(--success)', cursor: 'pointer' }}>Lanzar</button>
+                              <button onClick={() => setConfirmDelete(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: 'var(--danger)', cursor: 'pointer' }}>Eliminar</button>
                             </>
                           )}
                           {s.status === 'active' && (
-                            <button className="btn btn-warning btn-sm" onClick={() => handleClose(s.id)}>Cerrar</button>
+                            <button onClick={() => handleClose(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(234,179,8,0.08)', color: 'var(--warning)', cursor: 'pointer' }}>Cerrar</button>
                           )}
                           {(s.status === 'active' || s.status === 'closed') && (
-                            <Link href={`/dashboard/encuestas-clima/${s.id}/resultados`} className="btn btn-accent btn-sm">
+                            <Link href={`/dashboard/encuestas-clima/${s.id}/resultados`} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(201,147,58,0.3)', background: 'rgba(201,147,58,0.08)', color: 'var(--accent)', cursor: 'pointer', textDecoration: 'none' }}>
                               Resultados
                             </Link>
                           )}
@@ -306,13 +306,13 @@ export default function EncuestasClimaPage() {
 
       {/* Delete confirmation modal */}
       {confirmDelete && (
-        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
-            <h3 style={{ margin: '0 0 1rem' }}>¿Eliminar encuesta?</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Esta acción no se puede deshacer.</p>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmDelete(null)}>
+          <div className="card animate-fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, padding: '1.75rem' }}>
+            <h3 style={{ margin: '0 0 1rem' }}>Eliminar encuesta?</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Esta accion no se puede deshacer.</p>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(confirmDelete)}>Eliminar</button>
+              <button className="btn-ghost" style={{ fontSize: '0.85rem' }} onClick={() => setConfirmDelete(null)}>Cancelar</button>
+              <button onClick={() => handleDelete(confirmDelete)} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Eliminar</button>
             </div>
           </div>
         </div>
@@ -320,38 +320,38 @@ export default function EncuestasClimaPage() {
 
       {/* Create survey modal */}
       {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 800, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowCreate(false)}>
+          <div className="card animate-fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 800, maxHeight: '90vh', overflowY: 'auto', padding: '1.75rem' }}>
             <h2 style={{ margin: '0 0 1.25rem', fontSize: '1.25rem', fontWeight: 700 }}>Nueva Encuesta de Clima</h2>
 
             {/* Basic info */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
               <div>
-                <label className="form-label">Título *</label>
-                <input className="form-input" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Ej: Encuesta de Clima Q1 2026" />
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Titulo *</label>
+                <input className="input" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Ej: Encuesta de Clima Q1 2026" />
               </div>
               <div>
-                <label className="form-label">Descripción</label>
-                <textarea className="form-input" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} placeholder="Descripción opcional..." />
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Descripcion</label>
+                <textarea className="input" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} placeholder="Descripcion opcional..." />
               </div>
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <label className="form-label">Fecha Inicio</label>
-                  <input className="form-input" type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} />
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fecha Inicio</label>
+                  <input className="input" type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} />
                 </div>
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <label className="form-label">Fecha Fin</label>
-                  <input className="form-input" type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} />
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fecha Fin</label>
+                  <input className="input" type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} />
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
                   <input type="checkbox" checked={form.isAnonymous} onChange={(e) => setForm((f) => ({ ...f, isAnonymous: e.target.checked }))} />
-                  Respuestas anónimas
+                  Respuestas anonimas
                 </label>
                 <div>
-                  <label className="form-label" style={{ margin: 0 }}>Audiencia</label>
-                  <select className="form-input" value={form.targetAudience} onChange={(e) => setForm((f) => ({ ...f, targetAudience: e.target.value as any }))}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audiencia</label>
+                  <select className="input" value={form.targetAudience} onChange={(e) => setForm((f) => ({ ...f, targetAudience: e.target.value as any }))}>
                     <option value="all">Todos los colaboradores</option>
                     <option value="by_department">Por departamento</option>
                   </select>
@@ -359,7 +359,7 @@ export default function EncuestasClimaPage() {
               </div>
               {form.targetAudience === 'by_department' && (
                 <div>
-                  <label className="form-label">Departamentos</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Departamentos</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                     {departments.map((d) => (
                       <label key={d} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem' }}>
@@ -386,10 +386,10 @@ export default function EncuestasClimaPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Preguntas ({form.questions.length})</h3>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setForm((f) => ({ ...f, questions: [...TEMPLATE_QUESTIONS] }))}>
+                  <button className="btn-ghost" style={{ fontSize: '0.85rem' }} onClick={() => setForm((f) => ({ ...f, questions: [...TEMPLATE_QUESTIONS] }))}>
                     Usar plantilla
                   </button>
-                  <button className="btn btn-accent btn-sm" onClick={addQuestion}>
+                  <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={addQuestion}>
                     + Agregar
                   </button>
                 </div>
@@ -399,27 +399,27 @@ export default function EncuestasClimaPage() {
                 {form.questions.map((q, i) => (
                   <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 8, border: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <button className="btn btn-ghost" style={{ padding: '0.1rem 0.3rem', fontSize: '0.7rem' }} onClick={() => moveQuestion(i, -1)} disabled={i === 0}>↑</button>
-                      <button className="btn btn-ghost" style={{ padding: '0.1rem 0.3rem', fontSize: '0.7rem' }} onClick={() => moveQuestion(i, 1)} disabled={i === form.questions.length - 1}>↓</button>
+                      <button className="btn-ghost" style={{ padding: '0.1rem 0.3rem', fontSize: '0.7rem' }} onClick={() => moveQuestion(i, -1)} disabled={i === 0}>&#8593;</button>
+                      <button className="btn-ghost" style={{ padding: '0.1rem 0.3rem', fontSize: '0.7rem' }} onClick={() => moveQuestion(i, 1)} disabled={i === form.questions.length - 1}>&#8595;</button>
                     </div>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                       <input
-                        className="form-input"
+                        className="input"
                         style={{ fontSize: '0.85rem' }}
                         value={q.questionText}
                         onChange={(e) => updateQuestion(i, 'questionText', e.target.value)}
                         placeholder="Texto de la pregunta..."
                       />
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <select className="form-input" style={{ flex: 1, minWidth: 120, fontSize: '0.8rem' }} value={q.category} onChange={(e) => updateQuestion(i, 'category', e.target.value)}>
+                        <select className="input" style={{ flex: 1, minWidth: 120, fontSize: '0.8rem' }} value={q.category} onChange={(e) => updateQuestion(i, 'category', e.target.value)}>
                           {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                         </select>
-                        <select className="form-input" style={{ flex: 1, minWidth: 120, fontSize: '0.8rem' }} value={q.questionType} onChange={(e) => updateQuestion(i, 'questionType', e.target.value)}>
-                          {QUESTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        <select className="input" style={{ flex: 1, minWidth: 120, fontSize: '0.8rem' }} value={q.questionType} onChange={(e) => updateQuestion(i, 'questionType', e.target.value)}>
+                          {QUESTION_TYPES.map((tp) => <option key={tp.value} value={tp.value}>{tp.label}</option>)}
                         </select>
                       </div>
                     </div>
-                    <button className="btn btn-ghost" style={{ color: 'var(--danger)', padding: '0.25rem', fontSize: '0.8rem' }} onClick={() => removeQuestion(i)}>✕</button>
+                    <button className="btn-ghost" style={{ color: 'var(--danger)', padding: '0.25rem', fontSize: '0.8rem' }} onClick={() => removeQuestion(i)}>&#10005;</button>
                   </div>
                 ))}
               </div>
@@ -427,8 +427,8 @@ export default function EncuestasClimaPage() {
 
             {/* Actions */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-              <button className="btn btn-ghost" onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleCreate} disabled={creating || !form.title.trim()}>
+              <button className="btn-ghost" onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</button>
+              <button className="btn-primary" onClick={handleCreate} disabled={creating || !form.title.trim()}>
                 {creating ? 'Creando...' : 'Crear Encuesta'}
               </button>
             </div>

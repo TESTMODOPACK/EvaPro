@@ -192,7 +192,7 @@ export default function ResponderEncuestaPage() {
                 {/* Open text */}
                 {q.questionType === 'open_text' && (
                   <textarea
-                    className="form-input"
+                    className="input"
                     rows={3}
                     value={answers[q.id] || ''}
                     onChange={(e) => handleAnswer(q.id, e.target.value)}
@@ -227,10 +227,10 @@ export default function ResponderEncuestaPage() {
 
       {/* Submit */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 0' }}>
-        <button className="btn btn-ghost" onClick={() => router.push('/dashboard/encuestas-clima')}>
+        <button className="btn-ghost" onClick={() => router.push('/dashboard/encuestas-clima')}>
           Cancelar
         </button>
-        <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+        <button className="btn-primary" onClick={handleSubmit} disabled={submitting}>
           {submitting ? 'Enviando...' : 'Enviar Respuestas'}
         </button>
       </div>
