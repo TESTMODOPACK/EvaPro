@@ -484,9 +484,9 @@ Responde SOLO con un JSON válido (sin markdown, sin backticks) con esta estruct
     entryId: string,
     checks: Array<{ requirement: string; status: string; comment?: string }>,
   ): Promise<PostulantRequirementCheck[]> {
-    // Verify entry exists and evaluator is assigned
+    // Verify entry exists and belongs to this tenant
     const entry = await this.entryRepo.findOne({ where: { id: entryId }, relations: ['process'] });
-    if (!entry) throw new NotFoundException('Candidato no encontrado en este proceso');
+    if (!entry || entry.process?.tenantId !== tenantId) throw new NotFoundException('Candidato no encontrado en este proceso');
 
     const results: PostulantRequirementCheck[] = [];
     for (const check of checks) {
@@ -512,6 +512,10 @@ Responde SOLO con un JSON válido (sin markdown, sin backticks) con esta estruct
   }
 
   async getRequirementChecks(tenantId: string, entryId: string): Promise<PostulantRequirementCheck[]> {
+    // Verify entry belongs to this tenant
+    const entry = await this.entryRepo.findOne({ where: { id: entryId }, relations: ['process'] });
+    if (!entry || entry.process?.tenantId !== tenantId) throw new NotFoundException('Candidato no encontrado');
+
     return this.reqCheckRepo.find({
       where: { entryId },
       relations: ['evaluator'],
