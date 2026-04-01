@@ -193,6 +193,14 @@ export default function ReconocimientosPage() {
     }
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Leaderboard: team vs general view
+  const myUserId = useAuthStore((s) => s.user?.userId);
+  const userDept = (leaderboard || []).find((e: any) => e.userId === myUserId)?.department;
+  const teamLeaderboard = isManager && userDept
+    ? (leaderboard || []).filter((e: any) => e.department === userDept).map((e: any, i: number) => ({ ...e, rank: i + 1 }))
+    : null;
+  const leaderboardData = rankingView === 'team' && teamLeaderboard ? teamLeaderboard : (leaderboard || []);
+
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1000px' }}>
       {/* Header */}
@@ -312,33 +320,18 @@ export default function ReconocimientosPage() {
       )}
 
       {/* Leaderboard Tab */}
-      {tab === 'leaderboard' && (() => {
-        // Filter leaderboard for team view (manager only)
-        const myUserId = useAuthStore.getState().user?.userId;
-        const userDept = (leaderboard || []).find((e: any) => e.userId === myUserId)?.department;
-        const teamLeaderboard = isManager && userDept
-          ? (leaderboard || []).filter((e: any) => e.department === userDept).map((e: any, i: number) => ({ ...e, rank: i + 1 }))
-          : null;
-        const displayData = rankingView === 'team' && teamLeaderboard ? teamLeaderboard : (leaderboard || []);
-
-        return (
+      {tab === 'leaderboard' && (
         <div className="animate-fade-up">
-          {/* Manager: team/general toggle */}
           {isManager && (
             <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.75rem' }}>
-              {[
-                { val: 'team' as const, label: 'Mi Equipo' },
-                { val: 'general' as const, label: 'General' },
-              ].map((v) => (
-                <button key={v.val} onClick={() => setRankingView(v.val)}
-                  className={rankingView === v.val ? 'btn-primary' : 'btn-ghost'}
-                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}>
-                  {v.label}
-                </button>
-              ))}
+              <button onClick={() => setRankingView('team')}
+                className={rankingView === 'team' ? 'btn-primary' : 'btn-ghost'}
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}>Mi Equipo</button>
+              <button onClick={() => setRankingView('general')}
+                className={rankingView === 'general' ? 'btn-primary' : 'btn-ghost'}
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}>General</button>
             </div>
           )}
-          {/* Period filter */}
           <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem' }}>
             {[
               { val: 'week', label: t('reconocimientos.week') }, { val: 'month', label: t('reconocimientos.month') },
@@ -363,7 +356,7 @@ export default function ReconocimientosPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayData.map((entry: any) => (
+                  {leaderboardData.map((entry: any) => (
                     <tr key={entry.userId}>
                       <td style={{ fontWeight: 700, fontSize: '1rem' }}>
                         {entry.rank <= 3
@@ -380,7 +373,7 @@ export default function ReconocimientosPage() {
                       </td>
                     </tr>
                   ))}
-                  {displayData.length === 0 && (
+                  {leaderboardData.length === 0 && (
                     <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                       {t('reconocimientos.noLeaderboard')}
                     </td></tr>
@@ -390,8 +383,6 @@ export default function ReconocimientosPage() {
             </div>
           </div>
         </div>
-        );
-      })()
       )}
 
       {/* Challenges Tab */}
