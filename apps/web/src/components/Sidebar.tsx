@@ -165,6 +165,9 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       title: t('nav.mySpace'),
       items: [
         { href: '/dashboard', label: t('nav.dashboard'), icon: icons.dashboard },
+        ...(isAdminOrManager ? [
+          { href: '/dashboard/ejecutivo', label: t('nav.executiveDashboard', 'Dashboard Ejecutivo'), icon: '📈' },
+        ] : []),
         { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance'), icon: icons.myPerformance },
         { href: '/dashboard/notificaciones', label: t('nav.notifications'), icon: '🔔' },
       ],

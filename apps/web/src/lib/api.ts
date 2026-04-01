@@ -541,6 +541,8 @@ export const api = {
   },
 
   reports: {
+    executiveDashboard: (token: string, cycleId?: string) =>
+      request<any>(`/reports/executive-dashboard${cycleId ? `?cycleId=${cycleId}` : ''}`, {}, token),
     cycleSummary: (token: string, cycleId: string) =>
       request<CycleSummary>(`/reports/cycle/${cycleId}/summary`, {}, token),
     individual: (token: string, cycleId: string, userId: string) =>

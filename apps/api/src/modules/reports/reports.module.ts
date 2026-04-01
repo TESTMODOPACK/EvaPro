@@ -13,9 +13,15 @@ import { CustomKpi } from './entities/custom-kpi.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
+import { ExecutiveDashboardService } from './executive-dashboard.service';
 import { ReportsController } from './reports.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuditModule } from '../audit/audit.module';
+import { EngagementSurvey } from '../surveys/entities/engagement-survey.entity';
+import { SurveyResponse } from '../surveys/entities/survey-response.entity';
+import { SurveyQuestion } from '../surveys/entities/survey-question.entity';
+import { OrgDevelopmentPlan } from '../org-development/entities/org-development-plan.entity';
+import { OrgDevelopmentInitiative } from '../org-development/entities/org-development-initiative.entity';
 
 @Module({
   imports: [
@@ -33,10 +39,15 @@ import { AuditModule } from '../audit/audit.module';
       QuickFeedback,
       CustomKpi,
       Tenant,
+      EngagementSurvey,
+      SurveyResponse,
+      SurveyQuestion,
+      OrgDevelopmentPlan,
+      OrgDevelopmentInitiative,
     ]),
   ],
   controllers: [ReportsController],
-  providers: [ReportsService, KpiService],
+  providers: [ReportsService, KpiService, ExecutiveDashboardService],
   exports: [ReportsService, KpiService],
 })
 export class ReportsModule {}

@@ -19,6 +19,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
+import { ExecutiveDashboardService } from './executive-dashboard.service';
 import { AuditService } from '../audit/audit.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -32,6 +33,7 @@ export class ReportsController {
   constructor(
     private readonly reportsService: ReportsService,
     private readonly kpiService: KpiService,
+    private readonly executiveDashboardService: ExecutiveDashboardService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -40,6 +42,20 @@ export class ReportsController {
     this.auditService
       .log(req.user.tenantId, req.user.userId, 'report.viewed', 'report', undefined, { reportType, ...meta })
       .catch(() => {});
+  }
+
+  // ─── Executive Dashboard ─────────────────────────────────────────────
+
+  @Get('executive-dashboard')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  executiveDashboard(@Query('cycleId') cycleId: string, @Request() req: any) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    this.logAccess(req, 'executive_dashboard', { cycleId });
+    return this.executiveDashboardService.getExecutiveSummary(
+      req.user.tenantId,
+      cycleId || undefined,
+      managerId,
+    );
   }
 
   // ─── Custom KPIs ──────────────────────────────────────────────────────
