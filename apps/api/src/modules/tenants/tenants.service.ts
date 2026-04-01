@@ -470,6 +470,7 @@ export class TenantsService {
 
   async createTicket(tenantId: string, createdBy: string, dto: {
     category: string; subject: string; description: string; priority?: string;
+    attachments?: Array<{ url: string; name: string; size?: number }>;
   }) {
     const ticket = this.ticketRepo.create({
       tenantId,
@@ -479,6 +480,7 @@ export class TenantsService {
       description: dto.description,
       priority: dto.priority || 'normal',
       status: 'open',
+      attachments: dto.attachments || [],
     });
     const saved = await this.ticketRepo.save(ticket);
 
@@ -504,11 +506,14 @@ export class TenantsService {
     return saved;
   }
 
-  async respondTicket(ticketId: string, respondedBy: string, response: string, status?: string) {
+  async respondTicket(ticketId: string, respondedBy: string, response: string, status?: string, responseAttachments?: Array<{ url: string; name: string; size?: number }>) {
     const ticket = await this.ticketRepo.findOne({ where: { id: ticketId } });
     if (!ticket) throw new NotFoundException('Solicitud no encontrada');
     ticket.response = response;
     ticket.respondedBy = respondedBy;
+    if (responseAttachments?.length) {
+      ticket.responseAttachments = responseAttachments;
+    }
 
     // Notify the ticket creator about the response
     this.notificationsService.create({

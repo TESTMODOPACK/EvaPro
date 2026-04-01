@@ -217,8 +217,8 @@ export const api = {
     createTicket: (token: string, data: any) =>
       request<any>("/tenants/me/tickets", { method: "POST", body: JSON.stringify(data) }, token),
     listAllTickets: (token: string) => request<any[]>("/tenants/tickets/all", {}, token),
-    respondTicket: (token: string, ticketId: string, response: string, status?: string) =>
-      request<any>(`/tenants/tickets/${ticketId}/respond`, { method: "PATCH", body: JSON.stringify({ response, status }) }, token),
+    respondTicket: (token: string, ticketId: string, response: string, status?: string, responseAttachments?: any[]) =>
+      request<any>(`/tenants/tickets/${ticketId}/respond`, { method: "PATCH", body: JSON.stringify({ response, status, responseAttachments }) }, token),
   },
 
   auditLogs: {

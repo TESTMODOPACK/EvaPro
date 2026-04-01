@@ -24,6 +24,8 @@ export default function SolicitudesPage() {
   const role = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = role === 'super_admin';
 
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -32,6 +34,39 @@ export default function SolicitudesPage() {
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [responseText, setResponseText] = useState('');
   const [responding, setResponding] = useState(false);
+  const [attachments, setAttachments] = useState<Array<{ url: string; name: string; size?: number }>>([]);
+  const [responseAttachments, setResponseAttachments] = useState<Array<{ url: string; name: string; size?: number }>>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'ticket' | 'response') => {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${BASE_URL}/uploads`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Error al subir archivo');
+      const data = await res.json();
+      const attachment = { url: data.url, name: data.originalName || file.name, size: file.size };
+      if (target === 'ticket') {
+        setAttachments(prev => [...prev, attachment]);
+      } else {
+        setResponseAttachments(prev => [...prev, attachment]);
+      }
+      setUploadError('');
+    } catch (err: any) {
+      setUploadError(err.message || 'Error al subir el archivo');
+      setTimeout(() => setUploadError(''), 5000);
+    }
+    e.target.value = '';
+    setUploading(false);
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -44,9 +79,10 @@ export default function SolicitudesPage() {
     if (!token || !form.subject.trim() || !form.description.trim()) return;
     setSaving(true);
     try {
-      const created = await api.tenants.createTicket(token, form);
+      const created = await api.tenants.createTicket(token, { ...form, attachments: attachments.length > 0 ? attachments : undefined });
       setTickets(prev => [created, ...prev]);
       setForm({ category: 'consulta_general', subject: '', description: '', priority: 'normal' });
+      setAttachments([]);
       setShowCreate(false);
     } catch {}
     setSaving(false);
@@ -56,10 +92,11 @@ export default function SolicitudesPage() {
     if (!token || !selectedTicket || !responseText.trim()) return;
     setResponding(true);
     try {
-      const updated = await api.tenants.respondTicket(token, selectedTicket.id, responseText, 'responded');
+      const updated = await api.tenants.respondTicket(token, selectedTicket.id, responseText, 'responded', responseAttachments.length > 0 ? responseAttachments : undefined);
       setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
       setSelectedTicket(updated);
       setResponseText('');
+      setResponseAttachments([]);
     } catch {}
     setResponding(false);
   };
@@ -124,6 +161,30 @@ export default function SolicitudesPage() {
             <textarea className="input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
               placeholder={t('solicitudes.descriptionPlaceholder')} rows={4} style={{ resize: 'vertical' }} />
           </div>
+          {/* Attachments */}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <label style={{
+                padding: '0.35rem 0.85rem', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem',
+                border: '1px dashed var(--border)', cursor: 'pointer', color: 'var(--text-secondary)',
+              }}>
+                {uploading ? 'Subiendo...' : '📎 Adjuntar archivo'}
+                <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={e => handleFileUpload(e, 'ticket')} style={{ display: 'none' }} />
+              </label>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>PDF, Word, Excel, imágenes</span>
+            </div>
+            {attachments.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {attachments.map((a, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', padding: '0.3rem 0.6rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)' }}>
+                    <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', flex: 1 }}>{a.name}</a>
+                    <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                      style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.9rem' }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <button className="btn-primary" disabled={saving || !form.subject.trim() || !form.description.trim()} onClick={handleCreate}>
             {saving ? t('common.saving') : t('solicitudes.send')}
           </button>
@@ -155,15 +216,37 @@ export default function SolicitudesPage() {
           <p style={{ fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.6, marginBottom: '1rem', whiteSpace: 'pre-wrap' }}>
             {selectedTicket.description}
           </p>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
             {t('solicitudes.createdBy')}: {selectedTicket.creator?.firstName} {selectedTicket.creator?.lastName} · {new Date(selectedTicket.createdAt).toLocaleDateString('es-CL')}
           </div>
+
+          {/* Ticket attachments */}
+          {selectedTicket.attachments?.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
+              {selectedTicket.attachments.map((a: any, i: number) => (
+                <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.6rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none' }}>
+                  {'📎'} {a.name}
+                </a>
+              ))}
+            </div>
+          )}
 
           {/* Response */}
           {selectedTicket.response && (
             <div style={{ padding: '1rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', borderLeft: '3px solid var(--success)' }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--success)', marginBottom: '0.3rem' }}>{t('solicitudes.responseLabel')}</div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: 0, whiteSpace: 'pre-wrap' }}>{selectedTicket.response}</p>
+              {selectedTicket.responseAttachments?.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+                  {selectedTicket.responseAttachments.map((a: any, i: number) => (
+                    <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.6rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', color: 'var(--success)', textDecoration: 'none' }}>
+                      {'📎'} {a.name}
+                    </a>
+                  ))}
+                </div>
+              )}
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                 {selectedTicket.respondedAt && new Date(selectedTicket.respondedAt).toLocaleDateString('es-CL')}
               </div>
@@ -175,15 +258,36 @@ export default function SolicitudesPage() {
             <div>
               <textarea className="input" value={responseText} onChange={e => setResponseText(e.target.value)}
                 placeholder={t('solicitudes.responsePlaceholder')} rows={3} style={{ resize: 'vertical', marginBottom: '0.5rem' }} />
+              {/* Response attachments */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <label style={{
+                  padding: '0.3rem 0.7rem', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem',
+                  border: '1px dashed var(--border)', cursor: 'pointer', color: 'var(--text-secondary)',
+                }}>
+                  {uploading ? 'Subiendo...' : '📎 Adjuntar'}
+                  <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={e => handleFileUpload(e, 'response')} style={{ display: 'none' }} />
+                </label>
+                {responseAttachments.map((a, i) => (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.72rem', color: 'var(--accent)' }}>
+                    {a.name}
+                    <button type="button" onClick={() => setResponseAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                      style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.8rem' }}>×</button>
+                  </span>
+                ))}
+              </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button className="btn-primary" disabled={responding || !responseText.trim()} onClick={handleRespond}>
                   {responding ? t('common.saving') : t('solicitudes.respond')}
                 </button>
                 <button className="btn-ghost" onClick={async () => {
                   if (!token) return;
-                  await api.tenants.respondTicket(token, selectedTicket.id, selectedTicket.response || '', 'closed');
-                  setTickets(prev => prev.map(t => t.id === selectedTicket.id ? { ...t, status: 'closed' } : t));
-                  setSelectedTicket({ ...selectedTicket, status: 'closed' });
+                  try {
+                    // Use status-only update if no response was given, otherwise close with existing response
+                    const closeResponse = selectedTicket.response || 'Solicitud cerrada sin respuesta adicional.';
+                    await api.tenants.respondTicket(token, selectedTicket.id, closeResponse, 'closed');
+                    setTickets(prev => prev.map(t => t.id === selectedTicket.id ? { ...t, status: 'closed' } : t));
+                    setSelectedTicket({ ...selectedTicket, status: 'closed' });
+                  } catch {}
                 }}>
                   {t('solicitudes.closeTicket')}
                 </button>
@@ -204,7 +308,7 @@ export default function SolicitudesPage() {
       ) : (
         <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {tickets.map((ticket: any) => (
-            <div key={ticket.id} className="card" onClick={() => setSelectedTicket(ticket)}
+            <div key={ticket.id} className="card" onClick={() => { setSelectedTicket(ticket); setResponseText(''); setResponseAttachments([]); setUploadError(''); }}
               style={{ padding: '1rem 1.25rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'box-shadow 0.15s' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>

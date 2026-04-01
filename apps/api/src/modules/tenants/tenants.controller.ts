@@ -131,10 +131,10 @@ export class TenantsController {
   @Roles('super_admin')
   respondTicket(
     @Param('ticketId', ParseUUIDPipe) ticketId: string,
-    @Body() dto: { response: string; status?: string },
+    @Body() dto: { response: string; status?: string; responseAttachments?: Array<{ url: string; name: string; size?: number }> },
     @Request() req: any,
   ) {
-    return this.tenantsService.respondTicket(ticketId, req.user.userId, dto.response, dto.status);
+    return this.tenantsService.respondTicket(ticketId, req.user.userId, dto.response, dto.status, dto.responseAttachments);
   }
 
   /** Super admin: update ticket status */
