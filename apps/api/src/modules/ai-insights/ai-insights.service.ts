@@ -218,12 +218,33 @@ export class AiInsightsService {
 
   private parseJson(text: string): any {
     // Remove markdown fences if present
-    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    let cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+    // Try direct parse first
     try {
       return JSON.parse(cleaned);
-    } catch {
-      this.logger.error(`Failed to parse AI response: ${cleaned.slice(0, 200)}`);
-      throw new BadRequestException('La IA generó una respuesta con formato inválido. Intente nuevamente.');
+    } catch (_e) {
+      // Fallback: extract JSON from text (find first { to last })
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        const extracted = cleaned.substring(firstBrace, lastBrace + 1);
+        try {
+          return JSON.parse(extracted);
+        } catch (_e2) {
+          // Try fixing common issues: trailing commas, single quotes
+          const fixed = extracted
+            .replace(/,\s*}/g, '}')
+            .replace(/,\s*]/g, ']');
+          try {
+            return JSON.parse(fixed);
+          } catch (_e3) {
+            // Last resort
+          }
+        }
+      }
+      this.logger.error('Failed to parse AI response: ' + cleaned.slice(0, 300));
+      throw new BadRequestException('La IA no pudo generar un informe estructurado. Intente nuevamente.');
     }
   }
 
