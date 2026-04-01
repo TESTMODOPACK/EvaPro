@@ -14,6 +14,7 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ReactNode;
+  children?: NavItem[];
 }
 
 interface NavSection {
@@ -173,88 +174,96 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
     setCollapsedSections((prev) => ({ ...prev, [title]: !prev[title] }));
   }, []);
 
+  // Submenu expansion
+  const [expandedSubmenus, setExpandedSubmenus] = useState<Record<string, boolean>>({});
+  const toggleSubmenu = useCallback((key: string) => {
+    setExpandedSubmenus((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
   const tenantNavSections: NavSection[] = [
     // ─── Mi Espacio (todos los roles) ───────────────────────────
     {
-      title: t('nav.mySpace'),
+      title: t('nav.mySpace', 'Mi Espacio'),
       items: [
-        { href: '/dashboard', label: t('nav.dashboard'), icon: icons.dashboard },
+        { href: '/dashboard', label: t('nav.dashboard', 'Dashboard'), icon: icons.dashboard },
         ...(isAdminOrManager ? [
-          { href: '/dashboard/ejecutivo', label: t('nav.executiveDashboard', 'Dashboard Ejecutivo'), icon: '📈' },
+          { href: '/dashboard/ejecutivo', label: t('nav.executiveDashboard', 'Dashboard Ejecutivo'), icon: icons.analytics },
         ] : []),
-        { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance'), icon: icons.myPerformance },
-        { href: '/dashboard/notificaciones', label: t('nav.notifications'), icon: '🔔' },
+        { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance', 'Mi Desempeño'), icon: icons.myPerformance },
+        { href: '/dashboard/notificaciones', label: t('nav.notifications', 'Notificaciones'), icon: icons.log },
       ],
     },
-    // ─── Desempeño (evaluaciones, reportes, analytics) ──────────
+    // ─── Evaluación de Desempeño ────────────────────────────────
     {
-      title: t('nav.evaluation'),
+      title: t('nav.evaluation', 'Evaluación'),
       items: [
-        { href: '/dashboard/evaluaciones', label: t('nav.evalCycles'), icon: icons.evaluations },
+        { href: '/dashboard/evaluaciones', label: t('nav.evalCycles', 'Ciclos de Evaluación'), icon: icons.evaluations },
         ...(isAdminOrManager ? [
-          { href: '/dashboard/calibracion', label: t('nav.calibration'), icon: icons.calibration },
-          { href: '/dashboard/reportes', label: t('nav.reports'), icon: icons.reports },
-          { href: '/dashboard/informes', label: t('nav.informes'), icon: icons.reports },
-          { href: '/dashboard/analytics', label: t('nav.analytics'), icon: icons.analytics },
-          { href: '/dashboard/insights', label: t('nav.aiInsights'), icon: '🤖' },
+          { href: '/dashboard/calibracion', label: t('nav.calibration', 'Calibración'), icon: icons.calibration },
+          {
+            href: '#reportes', label: t('nav.reportsGroup', 'Reportes y Análisis'), icon: icons.reports,
+            children: [
+              { href: '/dashboard/reportes', label: t('nav.reports', 'Reportes por Colaborador'), icon: icons.reports },
+              { href: '/dashboard/informes', label: t('nav.informes', 'Informes por Colaborador'), icon: icons.reports },
+              { href: '/dashboard/analytics', label: t('nav.analytics', 'Análisis del Ciclo'), icon: icons.analytics },
+              { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },
+            ],
+          },
         ] : []),
       ],
     },
-    // ─── Gestión de Talento ─────────────────────────────────────
+    // ─── Desarrollo y Talento ───────────────────────────────────
     {
-      title: t('nav.talentDev'),
+      title: t('nav.talentDev', 'Desarrollo y Talento'),
       items: [
         ...(isAdminOrManager ? [
-          { href: '/dashboard/talento', label: t('nav.talentMap'), icon: icons.talent },
+          { href: '/dashboard/talento', label: t('nav.talentMap', 'Mapa de Talento'), icon: icons.talent },
         ] : []),
-        { href: '/dashboard/desarrollo', label: t('nav.devPlans'), icon: icons.development },
-        ...(isAdminOrManager ? [
-          { href: '/dashboard/desarrollo-organizacional', label: t('nav.orgDev'), icon: icons.orgDevelopment },
-          { href: '/dashboard/postulantes', label: t('nav.applicants', 'Seleccion de Personal'), icon: icons.recruitment },
-        ] : []),
-      ],
-    },
-    // ─── Gestión Continua (OKRs, feedback, reconocimiento) ─────
-    {
-      title: t('nav.continuous'),
-      items: [
-        { href: '/dashboard/objetivos', label: t('nav.objectives'), icon: icons.objectives },
-        { href: '/dashboard/feedback', label: t('nav.feedback'), icon: icons.feedback },
-        { href: '/dashboard/reconocimientos', label: t('nav.recognitions'), icon: '⭐' },
-        { href: '/dashboard/encuestas-clima', label: t('nav.surveys', 'Encuestas de Clima'), icon: '📊' },
-      ],
-    },
-    // ─── Personas y Diversidad (admin/manager) ─────────────────
-    ...(isAdminOrManager ? [{
-      title: t('nav.people'),
-      items: [
-        { href: '/dashboard/dei', label: t('nav.dei'), icon: '🌍' },
+        { href: '/dashboard/desarrollo', label: t('nav.devPlans', 'Planes de Desarrollo'), icon: icons.development },
         ...(isAdmin ? [
-          { href: '/dashboard/usuarios', label: t('nav.users'), icon: icons.users },
+          { href: '/dashboard/competencias', label: t('nav.competencies', 'Competencias'), icon: icons.competencies },
         ] : []),
+        ...(isAdminOrManager ? [
+          { href: '/dashboard/desarrollo-organizacional', label: t('nav.orgDev', 'Desarrollo Organizacional'), icon: icons.orgDevelopment },
+        ] : []),
+      ],
+    },
+    // ─── Gestión Continua ───────────────────────────────────────
+    {
+      title: t('nav.continuous', 'Gestión Continua'),
+      items: [
+        { href: '/dashboard/objetivos', label: t('nav.objectives', 'Objetivos / OKRs'), icon: icons.objectives },
+        { href: '/dashboard/feedback', label: t('nav.feedback', 'Feedback'), icon: icons.feedback },
+        { href: '/dashboard/reconocimientos', label: t('nav.recognitions', 'Reconocimientos'), icon: icons.competencies },
+        { href: '/dashboard/encuestas-clima', label: t('nav.surveys', 'Encuestas de Clima'), icon: icons.calibration },
+      ],
+    },
+    // ─── Selección de Personal ──────────────────────────────────
+    ...(isAdminOrManager ? [{
+      title: t('nav.recruitment', 'Selección de Personal'),
+      items: [
+        { href: '/dashboard/postulantes', label: t('nav.applicants', 'Procesos de Selección'), icon: icons.recruitment },
       ],
     }] : []),
-    // ─── Configuración (admin) ─────────────────────────────────
-    ...(isAdmin ? [{
-      title: t('nav.config'),
+    // ─── Personas y Configuración ───────────────────────────────
+    {
+      title: t('nav.config', 'Configuración'),
       items: [
-        { href: '/dashboard/plantillas', label: t('nav.templates'), icon: icons.templates },
-        { href: '/dashboard/competencias', label: t('nav.competencies'), icon: icons.competencies },
-        { href: '/dashboard/mantenedores', label: t('nav.customData'), icon: icons.settings },
-        { href: '/dashboard/mi-suscripcion', label: t('nav.subscription'), icon: icons.subscription },
-        { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: '📋' },
-        { href: '/dashboard/ajustes', label: t('nav.settings'), icon: icons.settings },
+        ...(isAdmin ? [
+          { href: '/dashboard/usuarios', label: t('nav.users', 'Usuarios'), icon: icons.users },
+        ] : []),
+        ...(isAdminOrManager ? [
+          { href: '/dashboard/dei', label: t('nav.dei', 'Diversidad e Inclusión'), icon: icons.orgDevelopment },
+        ] : []),
+        ...(isAdmin ? [
+          { href: '/dashboard/plantillas', label: t('nav.templates', 'Plantillas'), icon: icons.templates },
+          { href: '/dashboard/mantenedores', label: t('nav.customData', 'Mantenedores'), icon: icons.settings },
+          { href: '/dashboard/solicitudes', label: t('nav.requests', 'Solicitudes'), icon: icons.log },
+        ] : []),
+        { href: '/dashboard/mi-suscripcion', label: t('nav.subscription', 'Mi Suscripción'), icon: icons.subscription },
+        { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },
       ],
-    }] : [
-      // Non-admin: solo ajustes y suscripción
-      {
-        title: t('nav.config'),
-        items: [
-          { href: '/dashboard/ajustes', label: t('nav.settings'), icon: icons.settings },
-          { href: '/dashboard/mi-suscripcion', label: t('nav.subscription'), icon: icons.subscription },
-        ],
-      },
-    ]),
+    },
   ];
 
   const superAdminSections: NavSection[] = [
@@ -344,7 +353,8 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
 
           const isCollapsed = sIdx > 0 && collapsedSections[section.title];
           const hasActiveItem = visibleItems.some((item) =>
-            currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href)),
+            currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href))
+            || item.children?.some((ch) => currentPath === ch.href || currentPath.startsWith(ch.href)),
           );
 
           return (
@@ -365,6 +375,60 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
                 )}
               </div>
               {(!isCollapsed || hasActiveItem) && visibleItems.map((item) => {
+                // Check if any child is active (for auto-expanding submenus)
+                const childActive = item.children?.some((ch) =>
+                  currentPath === ch.href || (ch.href !== '/dashboard' && currentPath.startsWith(ch.href))
+                );
+                const isSubmenuOpen = expandedSubmenus[item.href] || childActive;
+
+                // Item with children = submenu
+                if (item.children && item.children.length > 0) {
+                  return (
+                    <div key={item.href}>
+                      <div
+                        onClick={() => toggleSubmenu(item.href)}
+                        className="sidebar-link"
+                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {item.icon}
+                          </span>
+                          {item.label}
+                        </span>
+                        <span style={{ fontSize: '0.55rem', transition: 'transform 0.2s', transform: isSubmenuOpen ? 'rotate(90deg)' : 'rotate(0deg)', opacity: 0.6 }}>
+                          &#9654;
+                        </span>
+                      </div>
+                      {isSubmenuOpen && item.children.map((child) => {
+                        const childIsActive = currentPath === child.href || (child.href !== '/dashboard' && currentPath.startsWith(child.href));
+                        const childLocked = !canAccessRoute(child.href);
+                        const childFeature = getRouteFeature(child.href);
+                        const childMinPlan = childFeature ? getMinPlan(childFeature) : '';
+
+                        if (childLocked) {
+                          return (
+                            <div key={child.href} title={'Disponible en plan ' + childMinPlan}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.75rem 0.35rem 2.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', opacity: 0.5 }}>
+                              <span style={{ fontSize: '0.65rem' }}>&#128274;</span>
+                              <span style={{ flex: 1 }}>{child.label}</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <Link key={child.href} href={child.href}
+                            className={'sidebar-link' + (childIsActive ? ' active' : '')}
+                            style={{ paddingLeft: '2.25rem', fontSize: '0.78rem' }}>
+                            {child.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+
+                // Regular item (no children)
                 const isActive = currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href));
                 const isLocked = !canAccessRoute(item.href);
                 const routeFeature = getRouteFeature(item.href);
@@ -372,33 +436,17 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
 
                 if (isLocked) {
                   return (
-                    <div
-                      key={item.href}
-                      title={`Disponible en plan ${minPlan}`}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.82rem', color: 'var(--text-muted)',
-                        opacity: 0.5, cursor: 'default', userSelect: 'none',
-                      }}
-                    >
-                      <span style={{ width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.75rem' }}>
-                        &#128274;
-                      </span>
+                    <div key={item.href} title={'Disponible en plan ' + minPlan}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', color: 'var(--text-muted)', opacity: 0.5, cursor: 'default', userSelect: 'none' }}>
+                      <span style={{ width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.75rem' }}>&#128274;</span>
                       <span style={{ flex: 1 }}>{item.label}</span>
-                      <span style={{ fontSize: '0.6rem', background: 'var(--bg-surface)', padding: '0.1rem 0.35rem', borderRadius: 10, fontWeight: 600 }}>
-                        {minPlan}
-                      </span>
+                      <span style={{ fontSize: '0.6rem', background: 'var(--bg-surface)', padding: '0.1rem 0.35rem', borderRadius: 10, fontWeight: 600 }}>{minPlan}</span>
                     </div>
                   );
                 }
 
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`sidebar-link${isActive ? ' active' : ''}`}
-                  >
+                  <Link key={item.href} href={item.href} className={'sidebar-link' + (isActive ? ' active' : '')}>
                     <span style={{ width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: typeof item.icon === 'string' ? '1rem' : undefined }}>
                       {item.icon}
                     </span>
