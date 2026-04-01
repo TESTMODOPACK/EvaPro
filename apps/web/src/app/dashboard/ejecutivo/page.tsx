@@ -147,8 +147,8 @@ export default function DashboardEjecutivoPage() {
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <KPICard label="Colaboradores" value={summary?.headcount?.active ?? '--'} color="#6366f1"
           tooltip="Total de colaboradores activos en la organizaci\u00f3n" />
-        <KPICard label="eNPS" value={summary?.enps ? `${summary.enps.score > 0 ? '+' : ''}${summary.enps.score}` : '--'} color="#10b981" subtitle={summary?.enps?.surveyName}
-          tooltip="Employee Net Promoter Score: Mide la probabilidad de que los colaboradores recomienden la organizaci\u00f3n como lugar de trabajo. Se calcula como % Promotores (9-10) menos % Detractores (0-6). Rango: -100 a +100. Sobre +30 es excelente." />
+        <KPICard label="Clima Laboral" value={summary?.enps ? `${summary.enps.score > 0 ? '+' : ''}${summary.enps.score}` : '--'} color="#10b981" subtitle={summary?.enps?.surveyName}
+          tooltip="Indice de Clima Laboral (eNPS): Mide qu\u00e9 tan probable es que los colaboradores recomienden la organizaci\u00f3n como lugar de trabajo. Promotores (9-10) menos Detractores (0-6). Rango: -100 a +100. Sobre +30 es excelente, sobre 0 es positivo." />
         <KPICard label="Desempe\u00f1o Prom." value={summary?.performance?.avgScore ? `${summary.performance.avgScore}/10` : '--'} color="#C9933A" subtitle={summary?.performance?.cycleName}
           tooltip="Promedio general de las evaluaciones de desempe\u00f1o del ciclo seleccionado. Escala de 0 a 10, donde 10 es el m\u00e1ximo. Se calcula como el promedio de todas las respuestas de evaluaci\u00f3n convertidas a escala 10." />
         <KPICard label="Objetivos %" value={summary?.objectives?.completionPct != null ? `${summary.objectives.completionPct}%` : '--'} color="#8b5cf6" subtitle={`${summary?.objectives?.completed || 0}/${summary?.objectives?.total || 0}`}
