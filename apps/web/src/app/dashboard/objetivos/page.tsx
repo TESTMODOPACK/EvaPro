@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -738,7 +739,7 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
 
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 
-export default function ObjetivosPage() {
+function ObjetivosPageContent() {
   const { t } = useTranslation();
   const userRole = useAuthStore((s) => s.user?.role) || '';
   const userId = useAuthStore((s) => s.user?.userId) || '';
@@ -1804,5 +1805,13 @@ export default function ObjetivosPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function ObjetivosPage() {
+  return (
+    <PlanGate feature="OKR">
+      <ObjetivosPageContent />
+    </PlanGate>
   );
 }

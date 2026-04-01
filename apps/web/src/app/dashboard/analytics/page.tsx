@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -402,7 +403,7 @@ const selectStyle: React.CSSProperties = {
   minWidth: '250px',
 };
 
-export default function AnalyticsPage() {
+function AnalyticsPageContent() {
   const { t } = useTranslation();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
@@ -652,5 +653,13 @@ export default function AnalyticsPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function AnalyticsPage() {
+  return (
+    <PlanGate feature="ADVANCED_REPORTS">
+      <AnalyticsPageContent />
+    </PlanGate>
   );
 }

@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -491,7 +492,7 @@ function FlightRiskSection() {
 
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
-export default function InsightsPage() {
+function InsightsPageContent() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const role = user?.role || '';
@@ -855,5 +856,13 @@ function RetentionSection() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function InsightsPage() {
+  return (
+    <PlanGate feature="AI_INSIGHTS">
+      <InsightsPageContent />
+    </PlanGate>
   );
 }

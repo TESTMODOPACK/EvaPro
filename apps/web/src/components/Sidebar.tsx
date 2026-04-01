@@ -7,6 +7,8 @@ import { useAuthStore } from '@/store/auth.store';
 import { canAccessPage } from '@/lib/roles';
 import { formatRut } from '@/lib/rut';
 import { useMySubscription } from '@/hooks/useSubscription';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
+import { FEATURE_MIN_PLAN, ROUTE_FEATURE_MAP } from '@/lib/feature-routes';
 
 interface NavItem {
   href: string;
@@ -152,6 +154,7 @@ const sectionLabelStyle: React.CSSProperties = {
 export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath: string; isOpen?: boolean; onToggle?: () => void }) {
   const { user } = useAuthStore();
   const { data: sub, isError: orgError, refetch: refetchSub } = useMySubscription();
+  const { canAccessRoute, getMinPlan, getRouteFeature } = useFeatureAccess();
   const orgInfo = sub?.tenant ? { name: sub.tenant.name, rut: sub.tenant.rut || null } : null;
   const { t } = useTranslation();
 
@@ -335,6 +338,33 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
               </div>
               {visibleItems.map((item) => {
                 const isActive = currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href));
+                const isLocked = !canAccessRoute(item.href);
+                const routeFeature = getRouteFeature(item.href);
+                const minPlan = routeFeature ? getMinPlan(routeFeature) : '';
+
+                if (isLocked) {
+                  return (
+                    <div
+                      key={item.href}
+                      title={`Disponible en plan ${minPlan}`}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.82rem', color: 'var(--text-muted)',
+                        opacity: 0.5, cursor: 'default', userSelect: 'none',
+                      }}
+                    >
+                      <span style={{ width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.75rem' }}>
+                        &#128274;
+                      </span>
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      <span style={{ fontSize: '0.6rem', background: 'var(--bg-surface)', padding: '0.1rem 0.35rem', borderRadius: 10, fontWeight: 600 }}>
+                        {minPlan}
+                      </span>
+                    </div>
+                  );
+                }
+
                 return (
                   <Link
                     key={item.href}

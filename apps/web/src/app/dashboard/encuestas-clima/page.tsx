@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth.store';
@@ -34,7 +35,7 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   closed: { label: 'Cerrada', badge: 'badge-warning' },
 };
 
-export default function EncuestasClimaPage() {
+function EncuestasClimaPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -502,5 +503,13 @@ export default function EncuestasClimaPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function EncuestasClimaPage() {
+  return (
+    <PlanGate feature="ENGAGEMENT_SURVEYS">
+      <EncuestasClimaPageContent />
+    </PlanGate>
   );
 }

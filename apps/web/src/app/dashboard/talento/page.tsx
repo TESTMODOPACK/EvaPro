@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -807,7 +808,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
 /*  Main Page                                                                 */
 /* ========================================================================== */
 
-export default function TalentoPage() {
+function TalentoPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [tab, setTab] = useState<ActiveTab>('ninebox');
@@ -1026,5 +1027,13 @@ export default function TalentoPage() {
       )}
     </div>
     </div>
+  );
+}
+
+export default function TalentoPage() {
+  return (
+    <PlanGate feature="NINE_BOX">
+      <TalentoPageContent />
+    </PlanGate>
   );
 }

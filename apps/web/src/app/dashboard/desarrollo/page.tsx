@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -91,7 +92,7 @@ interface PlanForm {
 
 const emptyPlanForm: PlanForm = { userId: '', title: '', description: '', priority: 'media', startDate: '', targetDate: '' };
 
-export default function DesarrolloPage() {
+function DesarrolloPageContent() {
   const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const toast = useToastStore();
@@ -1113,5 +1114,13 @@ export default function DesarrolloPage() {
       />
     )}
     </div>
+  );
+}
+
+export default function DesarrolloPage() {
+  return (
+    <PlanGate feature="PDI">
+      <DesarrolloPageContent />
+    </PlanGate>
   );
 }

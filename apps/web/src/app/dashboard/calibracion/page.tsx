@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -21,7 +22,7 @@ function formatDate(d: string, loc: string) {
   return new Date(d).toLocaleDateString(loc === 'pt' ? 'pt-BR' : loc === 'en' ? 'en-US' : 'es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function CalibracionPage() {
+function CalibracionPageContent() {
   const { t } = useTranslation();
   const { locale } = useLocaleStore();
   const token = useAuthStore((s) => s.token);
@@ -442,5 +443,13 @@ export default function CalibracionPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function CalibracionPage() {
+  return (
+    <PlanGate feature="CALIBRATION">
+      <CalibracionPageContent />
+    </PlanGate>
   );
 }

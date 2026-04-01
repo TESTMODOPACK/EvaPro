@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -622,7 +623,7 @@ function LocationsTab() {
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 
-export default function FeedbackPage() {
+function FeedbackPageContent() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ActiveTab>('checkins');
   const [showGuide, setShowGuide] = useState(false);
@@ -775,5 +776,13 @@ export default function FeedbackPage() {
         {activeTab === 'locations' && <LocationsTab />}
       </div>
     </div>
+  );
+}
+
+export default function FeedbackPage() {
+  return (
+    <PlanGate feature="FEEDBACK">
+      <FeedbackPageContent />
+    </PlanGate>
   );
 }
