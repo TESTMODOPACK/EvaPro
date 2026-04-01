@@ -145,12 +145,18 @@ export default function DashboardEjecutivoPage() {
 
       {/* ─── KPI Cards ─── */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-        <KPICard label="Colaboradores" value={summary?.headcount?.active ?? '--'} color="#6366f1" />
-        <KPICard label="eNPS" value={summary?.enps ? `${summary.enps.score > 0 ? '+' : ''}${summary.enps.score}` : '--'} color="#10b981" subtitle={summary?.enps?.surveyName} />
-        <KPICard label="Desempeno Prom." value={summary?.performance?.avgScore ? `${summary.performance.avgScore}/5` : '--'} color="#C9933A" subtitle={summary?.performance?.cycleName} />
-        <KPICard label="Objetivos %" value={summary?.objectives?.completionPct != null ? `${summary.objectives.completionPct}%` : '--'} color="#8b5cf6" subtitle={`${summary?.objectives?.completed || 0}/${summary?.objectives?.total || 0}`} />
-        <KPICard label="Eval. Completitud" value={summary?.performance?.completionRate != null ? `${summary.performance.completionRate}%` : '--'} color="#0891b2" subtitle={`${summary?.performance?.completedAssignments || 0}/${summary?.performance?.totalAssignments || 0}`} />
-        <KPICard label="Iniciativas Activas" value={summary?.orgDevelopment?.inProgressInitiatives ?? '--'} color="#f59e0b" subtitle={`${summary?.orgDevelopment?.totalInitiatives || 0} total`} />
+        <KPICard label="Colaboradores" value={summary?.headcount?.active ?? '--'} color="#6366f1"
+          tooltip="Total de colaboradores activos en la organizaci\u00f3n" />
+        <KPICard label="eNPS" value={summary?.enps ? `${summary.enps.score > 0 ? '+' : ''}${summary.enps.score}` : '--'} color="#10b981" subtitle={summary?.enps?.surveyName}
+          tooltip="Employee Net Promoter Score: Mide la probabilidad de que los colaboradores recomienden la organizaci\u00f3n como lugar de trabajo. Se calcula como % Promotores (9-10) menos % Detractores (0-6). Rango: -100 a +100. Sobre +30 es excelente." />
+        <KPICard label="Desempe\u00f1o Prom." value={summary?.performance?.avgScore ? `${summary.performance.avgScore}/5` : '--'} color="#C9933A" subtitle={summary?.performance?.cycleName}
+          tooltip="Promedio general de las evaluaciones de desempe\u00f1o del ciclo seleccionado. Escala de 1 a 5, donde 5 es el m\u00e1ximo." />
+        <KPICard label="Objetivos %" value={summary?.objectives?.completionPct != null ? `${summary.objectives.completionPct}%` : '--'} color="#8b5cf6" subtitle={`${summary?.objectives?.completed || 0}/${summary?.objectives?.total || 0}`}
+          tooltip="Porcentaje de objetivos (OKRs) completados respecto al total definido en la organizaci\u00f3n." />
+        <KPICard label="Eval. Completitud" value={summary?.performance?.completionRate != null ? `${summary.performance.completionRate}%` : '--'} color="#0891b2" subtitle={`${summary?.performance?.completedAssignments || 0}/${summary?.performance?.totalAssignments || 0}`}
+          tooltip="Porcentaje de evaluaciones de desempe\u00f1o completadas vs asignadas en el ciclo seleccionado." />
+        <KPICard label="Iniciativas Activas" value={summary?.orgDevelopment?.inProgressInitiatives ?? '--'} color="#f59e0b" subtitle={`${summary?.orgDevelopment?.totalInitiatives || 0} total`}
+          tooltip="Cantidad de iniciativas de desarrollo organizacional actualmente en progreso." />
       </div>
 
       {/* ─── Section: Performance & Evaluations ─── */}
@@ -354,9 +360,9 @@ export default function DashboardEjecutivoPage() {
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-function KPICard({ label, value, color, subtitle }: { label: string; value: string | number; color: string; subtitle?: string }) {
+function KPICard({ label, value, color, subtitle, tooltip }: { label: string; value: string | number; color: string; subtitle?: string; tooltip?: string }) {
   return (
-    <div className="card" style={{ padding: '1.25rem', position: 'relative', overflow: 'hidden' }}>
+    <div className="card" title={tooltip} style={{ padding: '1.25rem', position: 'relative', overflow: 'hidden', cursor: tooltip ? 'help' : undefined }}>
       <div style={{
         position: 'absolute', top: -20, right: -20,
         width: 70, height: 70, borderRadius: '50%',
