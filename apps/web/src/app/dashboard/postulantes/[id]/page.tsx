@@ -329,8 +329,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       onChange={(e) => setExtForm((f) => ({ ...f, linkedIn: e.target.value }))} />
                     <input className="input" placeholder="Disponibilidad" value={extForm.availability}
                       onChange={(e) => setExtForm((f) => ({ ...f, availability: e.target.value }))} />
-                    <input className="input" placeholder="Pretensión de renta" value={extForm.salaryExpectation}
-                      onChange={(e) => setExtForm((f) => ({ ...f, salaryExpectation: e.target.value }))} />
+                    <input className="input" placeholder="Pretensión de renta ($)" value={extForm.salaryExpectation}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, '');
+                        const formatted = raw ? Number(raw).toLocaleString('es-CL') : '';
+                        setExtForm((f) => ({ ...f, salaryExpectation: formatted }));
+                      }} />
                   </div>
                   <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={handleAddExternal} disabled={addingCandidate}>
                     {addingCandidate ? 'Agregando...' : 'Agregar Candidato'}
