@@ -61,7 +61,7 @@ export default function EncuestasClimaPage() {
     questions: [...TEMPLATE_QUESTIONS] as any[],
   });
 
-  const departments = useDepartments();
+  const { departments } = useDepartments();
 
   const loadData = async () => {
     if (!token) return;
