@@ -24,7 +24,7 @@ import { AiInsightsModule } from './modules/ai-insights/ai-insights.module';
 import { RecognitionModule } from './modules/recognition/recognition.module';
 import { DeiModule } from './modules/dei/dei.module';
 import { SystemModule } from './modules/system/system.module';
-// PostulantsModule removed — will be rebuilt from scratch
+import { RecruitmentModule } from './modules/recruitment/recruitment.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
@@ -55,7 +55,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     RecognitionModule,
     DeiModule,
     SystemModule,
-    // PostulantsModule — removed, will be rebuilt
+    RecruitmentModule,
     SignaturesModule,
     SurveysModule,
   ],

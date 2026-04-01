@@ -1113,4 +1113,123 @@ export class AiInsightsService {
 
     return this.insightRepo.save(insight);
   }
+
+  // ─── Recruitment AI ─────────────────────────────────────────────────
+
+  async analyzeCvForRecruitment(
+    tenantId: string,
+    candidateId: string,
+    generatedBy: string,
+    cvUrl: string,
+    context: string,
+  ): Promise<any> {
+    // Check rate limits (monthly plan limit + weekly role limit)
+    await this.checkRateLimit(tenantId);
+    await this.checkWeeklyRoleLimit(tenantId, generatedBy);
+
+    const prompt = `Eres un experto en reclutamiento y seleccion de personal. Analiza el CV del candidato en el contexto del cargo al que postula.
+
+Contexto del cargo:
+${context}
+
+URL del CV: ${cvUrl}
+
+Genera un informe en formato JSON con esta estructura exacta:
+{
+  "resumenEjecutivo": "Resumen de 3-5 lineas sobre el candidato",
+  "experienciaRelevante": "Descripcion de experiencia laboral relevante para el cargo",
+  "habilidadesTecnicas": ["habilidad1", "habilidad2", ...],
+  "habilidadesBlandas": ["habilidad1", "habilidad2", ...],
+  "formacionAcademica": "Nivel educativo y estudios relevantes",
+  "matchPercentage": 75,
+  "matchJustification": "Justificacion del porcentaje de coincidencia",
+  "alertas": ["alerta1", "alerta2"],
+  "recomendacion": "Recomendacion general sobre el candidato"
+}
+
+Responde SOLO con el JSON, sin texto adicional.`;
+
+    const { text, tokensUsed } = await this.callClaude(prompt);
+
+    let content: any;
+    try {
+      content = JSON.parse(text);
+    } catch (_e) {
+      content = { resumenEjecutivo: text, matchPercentage: 0 };
+    }
+
+    const insight = this.insightRepo.create({
+      tenantId,
+      type: InsightType.CV_ANALYSIS,
+      cycleId: candidateId, // Reuse cycleId to store candidateId
+      userId: null,
+      content,
+      model: 'claude-haiku-4-5',
+      tokensUsed,
+      generatedBy,
+    });
+    await this.insightRepo.save(insight);
+
+    return { content, tokensUsed };
+  }
+
+  async generateRecruitmentRecommendation(
+    tenantId: string,
+    processId: string,
+    generatedBy: string,
+    comparativeData: any,
+  ): Promise<any> {
+    await this.checkRateLimit(tenantId);
+    await this.checkWeeklyRoleLimit(tenantId, generatedBy);
+
+    const candidateSummaries = (comparativeData.rows || []).map((r: any) => {
+      const c = r.candidate;
+      const name = c.candidateType === 'internal'
+        ? `${c.user?.firstName || c.firstName} ${c.user?.lastName || c.lastName} (interno)`
+        : `${c.firstName} ${c.lastName} (externo)`;
+      return `- ${name}: Puntaje final ${c.finalScore ?? 'N/A'}, Entrevistas ${r.interviewAvg ?? 'N/A'}, Historial ${r.internalProfile?.avgScore ?? 'N/A'}`;
+    }).join('\n');
+
+    const requirements = (comparativeData.requirements || []).map((r: any) => `[${r.category}] ${r.text}`).join('\n');
+
+    const prompt = `Eres un experto en reclutamiento. Basandote en la comparativa de candidatos para el cargo "${comparativeData.process?.position}", genera una recomendacion.
+
+Requisitos del cargo:
+${requirements}
+
+Candidatos:
+${candidateSummaries}
+
+Genera un JSON con:
+{
+  "recomendacion": "Recomendacion detallada de quien es el mejor candidato y por que",
+  "ranking": [{"nombre": "...", "razon": "..."}],
+  "observaciones": "Observaciones generales del proceso"
+}
+
+Responde SOLO con el JSON.`;
+
+    const { text, tokensUsed } = await this.callClaude(prompt);
+
+    let content: any;
+    try {
+      content = JSON.parse(text);
+    } catch (_e) {
+      content = { recomendacion: text };
+    }
+
+    const insight = this.insightRepo.create({
+      tenantId,
+      type: InsightType.RECRUITMENT_RECOMMENDATION,
+      cycleId: processId,
+      userId: null,
+      content,
+      model: 'claude-haiku-4-5',
+      tokensUsed,
+      generatedBy,
+    });
+    await this.insightRepo.save(insight);
+
+    return { content, tokensUsed };
+  }
 }
