@@ -77,8 +77,19 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     setTab('comparativa');
   };
 
+  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const validatePhone = (phone: string) => !phone || /^[+\d\s()-]{7,20}$/.test(phone);
+
   const handleAddNewCandidate = async () => {
-    if (!token || !newPostulant.firstName || !newPostulant.email) return;
+    if (!token || !newPostulant.firstName.trim() || !newPostulant.lastName.trim()) return;
+    if (!validateEmail(newPostulant.email)) {
+      toast('Ingrese un email valido', 'error');
+      return;
+    }
+    if (newPostulant.phone && !validatePhone(newPostulant.phone)) {
+      toast('Ingrese un telefono valido (min 7 caracteres, solo numeros, +, -, espacios)', 'error');
+      return;
+    }
     setAddingCandidate(true);
     try {
       const postulant = await api.postulants.create(token, newPostulant);
@@ -86,7 +97,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       setShowAddModal(false);
       setNewPostulant({ firstName: '', lastName: '', email: '', phone: '', type: 'external' });
       await fetchProcess();
-    } catch { /* error */ }
+    } catch (e: any) {
+      toast(e.message || 'Error al agregar candidato', 'error');
+    }
     setAddingCandidate(false);
   };
 
@@ -184,23 +197,28 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
-        {['candidatos', 'scorecard', 'comparativa', 'configuracion'].map((t) => (
+        {[
+          { key: 'candidatos', label: 'Candidatos' },
+          { key: 'scorecard', label: 'Evaluacion' },
+          { key: 'comparativa', label: 'Comparativa' },
+          { key: 'configuracion', label: 'Configuracion' },
+        ].map((t) => (
           <button
-            key={t}
+            key={t.key}
             onClick={() => {
-              if (t === 'comparativa') loadComparative();
-              else setTab(t);
+              if (t.key === 'comparativa') loadComparative();
+              else setTab(t.key);
             }}
             style={{
               padding: '0.5rem 1rem', fontSize: '0.82rem',
-              fontWeight: tab === t ? 700 : 500,
-              color: tab === t ? 'var(--accent)' : 'var(--text-muted)',
+              fontWeight: tab === t.key ? 700 : 500,
+              color: tab === t.key ? 'var(--accent)' : 'var(--text-muted)',
               background: 'none', border: 'none',
-              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
-              cursor: 'pointer', marginBottom: '-1px', textTransform: 'capitalize',
+              borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
+              cursor: 'pointer', marginBottom: '-1px',
             }}
           >
-            {t === 'configuracion' ? 'Configuración' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t.label}
           </button>
         ))}
       </div>
@@ -253,7 +271,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                     )}
                     <button className="btn-primary" onClick={() => loadScorecard(entry.id)}
                       style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}>
-                      Scorecard
+                      Evaluar
                     </button>
                     {entry.postulant?.type === 'external' && isAdmin && (
                       <button className="btn-ghost" onClick={() => { setSelectedPostulantForCv(entry.postulant); setShowCvPanel(true); }}
@@ -279,12 +297,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         </div>
       )}
 
-      {/* ─── Tab: Scorecard ───────────────────────────────────────────── */}
+      {/* ─── Tab: Tarjeta de Evaluacion ─────────────────────────────── */}
       {tab === 'scorecard' && scorecard && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>
-              Scorecard: {scorecard.entry?.postulant?.firstName} {scorecard.entry?.postulant?.lastName}
+              Tarjeta de Evaluacion: {scorecard.entry?.postulant?.firstName} {scorecard.entry?.postulant?.lastName}
             </h2>
             {scorecard.talentData && (
               <div className="card" style={{ padding: '0.5rem 1rem', display: 'flex', gap: '1rem', fontSize: '0.82rem' }}>
@@ -297,8 +315,14 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           </div>
 
           {/* Competency scores table */}
+          {competencies.length === 0 ? (
+            <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+              <p style={{ color: 'var(--warning)', fontWeight: 600, marginBottom: '0.5rem' }}>No hay competencias configuradas para el cargo &quot;{process.position}&quot;</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Configure las competencias en Desarrollo &rarr; Competencias por Cargo para poder evaluar candidatos.</p>
+            </div>
+          ) : (
           <div className="card" style={{ overflow: 'auto' }}>
-            <table className="table" style={{ width: '100%' }}>
+            <table style={{ width: '100%' }}>
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left' }}>Competencia</th>
@@ -366,10 +390,11 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' }}>
             <button className="btn-primary" onClick={handleSubmitAssessment} disabled={savingAssessment}
               style={{ opacity: savingAssessment ? 0.6 : 1 }}>
-              {savingAssessment ? 'Guardando...' : 'Guardar Evaluación'}
+              {savingAssessment ? 'Guardando...' : 'Guardar Evaluacion'}
             </button>
             {assessmentSaved && <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: '0.85rem' }}>&#10003; Guardado</span>}
           </div>
+          )}
         </div>
       )}
       {tab === 'scorecard' && !scorecard && (
@@ -582,7 +607,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               <span style={{ fontWeight: 400, fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>({competencies.length})</span>
             </h2>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-              Las competencias se determinan automáticamente según el cargo del proceso. Se usan en el Scorecard de cada candidato.
+              Las competencias se determinan automáticamente según el cargo del proceso. Se usan en la Evaluacion de cada candidato.
             </p>
             {competencies.length === 0 ? (
               <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.07)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.2)', fontSize: '0.85rem', color: 'var(--warning)' }}>
@@ -641,9 +666,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 Nuevo candidato externo
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                <input className="input" placeholder="Nombre *" value={newPostulant.firstName}
+                <input className="input" placeholder="Nombres *" value={newPostulant.firstName}
                   onChange={(e) => setNewPostulant((p) => ({ ...p, firstName: e.target.value }))} />
-                <input className="input" placeholder="Apellido" value={newPostulant.lastName}
+                <input className="input" placeholder="Apellidos *" value={newPostulant.lastName}
                   onChange={(e) => setNewPostulant((p) => ({ ...p, lastName: e.target.value }))} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
@@ -653,8 +678,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                   onChange={(e) => setNewPostulant((p) => ({ ...p, phone: e.target.value }))} />
               </div>
               <button className="btn-primary" onClick={handleAddNewCandidate}
-                disabled={!newPostulant.firstName || !newPostulant.email || addingCandidate}
-                style={{ fontSize: '0.85rem', opacity: !newPostulant.firstName || !newPostulant.email ? 0.5 : 1 }}>
+                disabled={!newPostulant.firstName.trim() || !newPostulant.lastName.trim() || !newPostulant.email.trim() || addingCandidate}
+                style={{ fontSize: '0.85rem', opacity: !newPostulant.firstName.trim() || !newPostulant.lastName.trim() || !newPostulant.email.trim() ? 0.5 : 1 }}>
                 {addingCandidate ? 'Agregando...' : 'Crear y Agregar'}
               </button>
             </div>
@@ -699,7 +724,10 @@ function CvAnalysisPanel({ postulant, token, onClose, onUpdate }: {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      if (!uploadRes.ok) throw new Error('Error al subir archivo');
+      if (!uploadRes.ok) {
+        const errBody = await uploadRes.json().catch(() => ({}));
+        throw new Error(errBody.message || 'Error al subir archivo');
+      }
       const { url } = await uploadRes.json();
 
       // Save CV URL

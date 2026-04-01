@@ -34,19 +34,21 @@ export default function NuevoProcesoPage() {
   }, [token]);
 
   // Auto-suggest department managers when department changes
+  // Normalize for case-insensitive, accent-insensitive comparison
+  const normStr = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const eligibleEvaluators = users.filter((u: any) => ['tenant_admin', 'manager'].includes(u.role));
   const deptEvaluators = department
-    ? eligibleEvaluators.filter((u: any) => u.department === department)
+    ? eligibleEvaluators.filter((u: any) => normStr(u.department) === normStr(department))
     : [];
   const otherEvaluators = department
-    ? eligibleEvaluators.filter((u: any) => u.department !== department)
+    ? eligibleEvaluators.filter((u: any) => normStr(u.department) !== normStr(department))
     : eligibleEvaluators;
 
   useEffect(() => {
     if (!department) return;
     // Auto-select managers from the selected department
     const deptManagerIds = eligibleEvaluators
-      .filter((u: any) => u.department === department)
+      .filter((u: any) => normStr(u.department) === normStr(department))
       .map((u: any) => u.id);
     if (deptManagerIds.length > 0) {
       setEvaluatorIds((prev) => {
