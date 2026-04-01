@@ -112,35 +112,55 @@ export class AiInsightsService {
     return { deleted: result.affected || 0 };
   }
 
-  /** Get the monthly AI call limit from the tenant's subscription plan */
-  private async getPlanAiLimit(tenantId: string): Promise<number> {
+  /** Get subscription info with plan limit */
+  private async getSubscriptionAiInfo(tenantId: string): Promise<{ limit: number; periodStart: Date; periodEnd: Date }> {
     const sub = await this.subscriptionsService.findByTenantId(tenantId);
-    if (!sub?.plan) return 0;
-    return sub.plan.maxAiCallsPerMonth ?? 0;
+    if (!sub?.plan) return { limit: 0, periodStart: new Date(), periodEnd: new Date() };
+
+    const limit = sub.plan.maxAiCallsPerMonth ?? 0;
+
+    // Calculate current billing period based on subscription startDate
+    // The monthly cycle starts on the same day-of-month as the subscription start
+    const now = new Date();
+    const startDay = new Date(sub.startDate).getDate(); // day of month the sub started
+
+    let periodStart: Date;
+    let periodEnd: Date;
+
+    // If we haven't reached the start day this month, the period began last month
+    if (now.getDate() >= startDay) {
+      periodStart = new Date(now.getFullYear(), now.getMonth(), startDay);
+      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, startDay);
+    } else {
+      periodStart = new Date(now.getFullYear(), now.getMonth() - 1, startDay);
+      periodEnd = new Date(now.getFullYear(), now.getMonth(), startDay);
+    }
+
+    return { limit, periodStart, periodEnd };
   }
 
-  /** Count AI calls for the current calendar month */
-  private async getMonthlyCallCount(tenantId: string): Promise<number> {
-    const now = new Date();
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    return this.insightRepo.count({
-      where: { tenantId, createdAt: MoreThan(firstOfMonth) },
+  /** Count AI calls for the current billing period */
+  private async getMonthlyCallCount(tenantId: string): Promise<{ used: number; periodStart: Date; periodEnd: Date; limit: number }> {
+    const { limit, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
+    const used = await this.insightRepo.count({
+      where: { tenantId, createdAt: MoreThan(periodStart) },
     });
+    return { used, periodStart, periodEnd, limit };
   }
 
   /** Check plan-based monthly rate limit */
   private async checkRateLimit(tenantId: string): Promise<void> {
-    const monthlyLimit = await this.getPlanAiLimit(tenantId);
-    if (monthlyLimit <= 0) {
+    const { limit, used, periodEnd } = await this.getMonthlyCallCount(tenantId);
+    if (limit <= 0) {
       throw new BadRequestException(
         'Su plan no incluye informes de IA. Actualice a un plan superior para acceder a esta funcionalidad.',
       );
     }
 
-    const monthlyUsed = await this.getMonthlyCallCount(tenantId);
-    if (monthlyUsed >= monthlyLimit) {
+    if (used >= limit) {
+      const renewDate = periodEnd.toLocaleDateString('es-CL', { day: 'numeric', month: 'long' });
       throw new BadRequestException(
-        `Se alcanzo el limite mensual de ${monthlyLimit} informes de IA para su organizacion. El limite se renueva el 1ro del proximo mes.`,
+        `Se alcanzo el limite mensual de ${limit} informes de IA para su organizacion. El limite se renueva el ${renewDate}.`,
       );
     }
   }
@@ -887,9 +907,8 @@ export class AiInsightsService {
     const weeklyLimit = isAdmin ? 100 : 50;
     const weeklyRemaining = Math.max(0, weeklyLimit - weeklyUsed);
 
-    // Monthly plan-based limits
-    const monthlyLimit = await this.getPlanAiLimit(tenantId);
-    const monthlyUsed = await this.getMonthlyCallCount(tenantId);
+    // Monthly plan-based limits (aligned to billing cycle)
+    const { used: monthlyUsed, limit: monthlyLimit, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
     const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
     const nearLimit = monthlyLimit > 0 && monthlyRemaining <= Math.ceil(monthlyLimit * 0.1);
 
@@ -897,6 +916,8 @@ export class AiInsightsService {
       monthlyUsed,
       monthlyLimit,
       monthlyRemaining,
+      periodStart,
+      periodEnd,
       weeklyUsed,
       weeklyLimit,
       weeklyRemaining,
@@ -904,22 +925,19 @@ export class AiInsightsService {
       message: monthlyLimit <= 0
         ? 'Su plan no incluye informes de IA.'
         : nearLimit
-          ? `Atencion: quedan ${monthlyRemaining} de ${monthlyLimit} informes de IA este mes.`
+          ? `Atencion: quedan ${monthlyRemaining} de ${monthlyLimit} informes de IA en este periodo.`
           : null,
     };
   }
 
   /** Get tenant-level AI usage for subscription page */
   async getTenantUsage(tenantId: string) {
-    const monthlyLimit = await this.getPlanAiLimit(tenantId);
-    const monthlyUsed = await this.getMonthlyCallCount(tenantId);
+    const { used: monthlyUsed, limit: monthlyLimit, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
     const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
 
-    // Last 5 generations
-    const now = new Date();
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Last generations in current period
     const lastGenerations = await this.insightRepo.find({
-      where: { tenantId, createdAt: MoreThan(firstOfMonth) },
+      where: { tenantId, createdAt: MoreThan(periodStart) },
       select: ['id', 'type', 'createdAt', 'generatedBy', 'tokensUsed'],
       order: { createdAt: 'DESC' },
       take: 10,
@@ -936,6 +954,8 @@ export class AiInsightsService {
       monthlyUsed,
       monthlyLimit,
       monthlyRemaining,
+      periodStart,
+      periodEnd,
       hasAiAccess: monthlyLimit > 0,
       lastGenerations: lastGenerations.map((g) => ({
         id: g.id,

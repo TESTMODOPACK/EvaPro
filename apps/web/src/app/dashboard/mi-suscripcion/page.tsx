@@ -404,7 +404,7 @@ export default function MiSuscripcionPage() {
                   }} />
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  {aiUsage.monthlyRemaining} informes restantes. El limite se renueva el 1ro de cada mes.
+                  {aiUsage.monthlyRemaining} informes restantes. Periodo: {aiUsage.periodStart ? new Date(aiUsage.periodStart).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '--'} al {aiUsage.periodEnd ? new Date(aiUsage.periodEnd).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '--'}.
                 </div>
                 {aiUsage.lastGenerations?.length > 0 && (
                   <div style={{ marginTop: '1rem' }}>
