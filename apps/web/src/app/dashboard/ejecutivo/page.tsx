@@ -128,14 +128,17 @@ export default function DashboardEjecutivoPage() {
         <div>
           <select
             className="input"
-            style={{ fontSize: '0.82rem', minWidth: 220 }}
+            style={{ fontSize: '0.82rem', minWidth: 260 }}
             value={selectedCycleId}
             onChange={(e) => setSelectedCycleId(e.target.value)}
           >
-            <option value="">Ultimo ciclo</option>
-            {(cycles || []).map((c: any) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
+            <option value="">-- Seleccionar ciclo --</option>
+            {(cycles || []).map((c: any) => {
+              const statusLabel: Record<string, string> = { draft: 'Borrador', active: 'Activo', paused: 'Pausado', closed: 'Cerrado', cancelled: 'Cancelado' };
+              return (
+                <option key={c.id} value={c.id}>{c.name} [{statusLabel[c.status] || c.status}]</option>
+              );
+            })}
           </select>
         </div>
       </div>
@@ -152,6 +155,12 @@ export default function DashboardEjecutivoPage() {
 
       {/* ─── Section: Performance & Evaluations ─── */}
       <SectionTitle icon="var(--accent)" text="Desempeno y Evaluaciones" />
+      {!selectedCycleId && (
+        <div className="card" style={{ padding: '1.5rem', marginBottom: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          Seleccione un ciclo de evaluacion en el selector superior para ver los datos de desempeno
+        </div>
+      )}
+      {selectedCycleId && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div className="card" style={{ padding: '1.25rem' }}>
           <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Distribucion de Puntajes</h4>
@@ -183,6 +192,7 @@ export default function DashboardEjecutivoPage() {
           ) : <EmptyChart />}
         </div>
       </div>
+      )}
 
       {/* ─── Section: Climate & Engagement ─── */}
       <SectionTitle icon="#10b981" text="Clima y Engagement" />

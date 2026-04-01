@@ -151,19 +151,12 @@ export class ExecutiveDashboardService {
     cycleId?: string,
     managerId?: string,
   ): Promise<any> {
-    // Resolve cycle
-    let cycle: EvaluationCycle | null = null;
-    if (cycleId) {
-      cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
-    }
-    if (!cycle) {
-      // Get the latest non-draft cycle
-      cycle = await this.cycleRepo.findOne({
-        where: { tenantId },
-        order: { createdAt: 'DESC' },
-      });
+    // Only load performance if a cycleId is explicitly provided
+    if (!cycleId) {
+      return { avgScore: 0, completionRate: 0, totalAssignments: 0, completedAssignments: 0, cycleName: null, cycleId: null };
     }
 
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
     if (!cycle) {
       return { avgScore: 0, completionRate: 0, totalAssignments: 0, completedAssignments: 0, cycleName: null, cycleId: null };
     }
