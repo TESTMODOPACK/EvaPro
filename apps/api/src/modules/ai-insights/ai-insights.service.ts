@@ -1172,22 +1172,24 @@ Genera un informe en formato JSON con esta estructura exacta:
 
 Responde SOLO con el JSON, sin texto adicional.`;
 
-    const { text, tokensUsed } = await this.callClaude(prompt);
+    const { text, tokensUsed } = await this.callClaude(prompt, 3000);
+    this.logger.log('CV AI response length: ' + text.length + ' chars');
 
     let content: any;
     try {
-      content = JSON.parse(text);
+      content = this.parseJson(text);
     } catch (_e) {
-      content = { resumenEjecutivo: text, matchPercentage: 0 };
+      // If parse fails completely, store structured fallback
+      content = { resumenEjecutivo: text.slice(0, 500), matchPercentage: 0, error: true };
     }
 
     const insight = this.insightRepo.create({
       tenantId,
       type: InsightType.CV_ANALYSIS,
-      cycleId: candidateId, // Reuse cycleId to store candidateId
+      cycleId: candidateId,
       userId: null,
       content,
-      model: 'claude-haiku-4-5',
+      model: MODEL,
       tokensUsed,
       generatedBy,
     });
@@ -1232,13 +1234,13 @@ Genera un JSON con:
 
 Responde SOLO con el JSON.`;
 
-    const { text, tokensUsed } = await this.callClaude(prompt);
+    const { text, tokensUsed } = await this.callClaude(prompt, 3000);
 
     let content: any;
     try {
-      content = JSON.parse(text);
+      content = this.parseJson(text);
     } catch (_e) {
-      content = { recomendacion: text };
+      content = { recomendacion: text.slice(0, 500) };
     }
 
     const insight = this.insightRepo.create({

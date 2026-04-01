@@ -598,22 +598,77 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               )}
 
               {/* CV Analysis */}
-              {scorecard.candidate?.cvAnalysis && (
-                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--accent)' }}>Informe IA del CV</h3>
-                  {scorecard.candidate.cvAnalysis.resumenEjecutivo && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '0.75rem' }}>{scorecard.candidate.cvAnalysis.resumenEjecutivo}</p>
-                  )}
-                  {scorecard.candidate.cvAnalysis.matchPercentage != null && (
-                    <div style={{ display: 'inline-block', padding: '0.3rem 0.8rem', borderRadius: 20, fontWeight: 700, fontSize: '0.85rem',
-                      background: scorecard.candidate.cvAnalysis.matchPercentage >= 70 ? 'rgba(16,185,129,0.1)' : scorecard.candidate.cvAnalysis.matchPercentage >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
-                      color: scorecard.candidate.cvAnalysis.matchPercentage >= 70 ? 'var(--success)' : scorecard.candidate.cvAnalysis.matchPercentage >= 40 ? 'var(--warning)' : 'var(--danger)',
-                    }}>
-                      Coincidencia: {scorecard.candidate.cvAnalysis.matchPercentage}%
-                    </div>
-                  )}
-                </div>
-              )}
+              {scorecard.candidate?.cvAnalysis && (() => {
+                // Parse if stored as string
+                let analysis = scorecard.candidate.cvAnalysis;
+                if (typeof analysis === 'string') {
+                  try { analysis = JSON.parse(analysis); } catch (_e) { analysis = null; }
+                }
+                if (!analysis) return null;
+                return (
+                  <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--accent)' }}>Informe IA del CV</h3>
+                    {analysis.resumenEjecutivo && (
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '0.75rem' }}>{analysis.resumenEjecutivo}</p>
+                    )}
+                    {analysis.experienciaRelevante && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Experiencia Relevante</div>
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>{analysis.experienciaRelevante}</p>
+                      </div>
+                    )}
+                    {analysis.habilidadesTecnicas?.length > 0 && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Habilidades T&eacute;cnicas</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                          {analysis.habilidadesTecnicas.map((h: string, i: number) => (
+                            <span key={i} style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', background: 'rgba(201,147,58,0.08)', borderRadius: 10, color: 'var(--accent)' }}>{h}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {analysis.habilidadesBlandas?.length > 0 && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Habilidades Blandas</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                          {analysis.habilidadesBlandas.map((h: string, i: number) => (
+                            <span key={i} style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', background: 'rgba(99,102,241,0.08)', borderRadius: 10, color: '#6366f1' }}>{h}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {analysis.formacionAcademica && (
+                      <div style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        <strong>Formaci&oacute;n:</strong> {analysis.formacionAcademica}
+                      </div>
+                    )}
+                    {analysis.alertas?.length > 0 && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--danger)', marginBottom: '0.3rem' }}>Alertas</div>
+                        {analysis.alertas.map((a: string, i: number) => (
+                          <div key={i} style={{ fontSize: '0.82rem', color: 'var(--danger)', padding: '0.25rem 0', lineHeight: 1.4 }}>&#9888; {a}</div>
+                        ))}
+                      </div>
+                    )}
+                    {analysis.recomendacion && (
+                      <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '0.75rem' }}>
+                        <strong>Recomendaci&oacute;n:</strong> {analysis.recomendacion}
+                      </div>
+                    )}
+                    {analysis.matchPercentage != null && (
+                      <div style={{ display: 'inline-block', padding: '0.3rem 0.8rem', borderRadius: 20, fontWeight: 700, fontSize: '0.85rem',
+                        background: analysis.matchPercentage >= 70 ? 'rgba(16,185,129,0.1)' : analysis.matchPercentage >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                        color: analysis.matchPercentage >= 70 ? 'var(--success)' : analysis.matchPercentage >= 40 ? 'var(--warning)' : 'var(--danger)',
+                      }}>
+                        Coincidencia: {analysis.matchPercentage}%
+                        {analysis.matchJustification && (
+                          <span style={{ fontWeight: 400, fontSize: '0.78rem', marginLeft: '0.5rem' }}>— {analysis.matchJustification}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
