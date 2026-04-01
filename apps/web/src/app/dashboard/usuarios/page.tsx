@@ -321,7 +321,12 @@ export default function UsuariosPage() {
     const fnIdx = mappedHeader.indexOf('first_name');
     const lnIdx = mappedHeader.indexOf('last_name');
     const roleIdx = mappedHeader.indexOf('role');
+    const deptIdx = mappedHeader.indexOf('department');
     const dateIdx = mappedHeader.indexOf('hire_date');
+
+    // Prepare department validation (case-insensitive, accent-insensitive)
+    const normStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const validDeptSet = new Set((configuredDepartments || []).map(normStr));
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const dateRegex = /^\d{2}-\d{2}-\d{4}$/;
@@ -365,6 +370,13 @@ export default function UsuariosPage() {
         } else {
           // Map to backend code
           cols[roleIdx] = ROLE_MAP[rawRole] || rawRole;
+        }
+      }
+
+      // Validate department against configured list
+      if (deptIdx >= 0 && cols[deptIdx]) {
+        if (!validDeptSet.has(normStr(cols[deptIdx]))) {
+          errors.push(`Fila ${rowNum}: Departamento no valido: "${cols[deptIdx]}". Valores permitidos: ${(configuredDepartments || []).join(', ')}.`);
         }
       }
 

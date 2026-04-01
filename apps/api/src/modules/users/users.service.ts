@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { UserNote } from './entities/user-note.entity';
 import { BulkImport, ImportStatus } from './entities/bulk-import.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuditService } from '../audit/audit.service';
@@ -27,10 +28,33 @@ export class UsersService {
     private readonly noteRepo: Repository<UserNote>,
     @InjectRepository(BulkImport)
     private readonly bulkImportRepo: Repository<BulkImport>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  private static readonly DEFAULT_DEPARTMENTS = [
+    'Tecnología', 'Recursos Humanos', 'Ventas', 'Marketing',
+    'Operaciones', 'Finanzas', 'Legal', 'Administración',
+  ];
+
+  private async getConfiguredDepartments(tenantId: string): Promise<string[]> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    return tenant?.settings?.departments ?? UsersService.DEFAULT_DEPARTMENTS;
+  }
+
+  private validateDepartment(department: string | undefined, configuredDepts: string[]): void {
+    if (!department) return; // null/undefined is OK
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const match = configuredDepts.some((d) => norm(d) === norm(department));
+    if (!match) {
+      throw new BadRequestException(
+        `El departamento "${department}" no está configurado. Departamentos válidos: ${configuredDepts.join(', ')}`,
+      );
+    }
+  }
 
   // ─── Auth helper ──────────────────────────────────────────────────────────
 
@@ -139,6 +163,12 @@ export class UsersService {
       if (manager.role !== 'manager' && manager.role !== 'tenant_admin') {
         throw new BadRequestException('El usuario seleccionado como manager debe tener rol de manager o administrador');
       }
+    }
+
+    // Validate department against configured list
+    if (dto.department) {
+      const configuredDepts = await this.getConfiguredDepartments(tenantId);
+      this.validateDepartment(dto.department, configuredDepts);
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -275,6 +305,11 @@ export class UsersService {
       return this.bulkImportRepo.save(saved);
     }
 
+    // Load configured departments once for validation
+    const configuredDepts = await this.getConfiguredDepartments(tenantId);
+    const normDept = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const validDeptSet = new Set(configuredDepts.map(normDept));
+
     for (let i = 0; i < dataLines.length; i++) {
       const cols = dataLines[i].split(',').map((c) => c.trim());
       const rowNum = i + 2; // 1-indexed, skip header
@@ -309,6 +344,13 @@ export class UsersService {
           continue;
         }
 
+        // Validate department
+        const department = departmentIdx >= 0 ? cols[departmentIdx] : undefined;
+        if (department && !validDeptSet.has(normDept(department))) {
+          errors.push({ row: rowNum, message: `Departamento no válido: "${department}". Valores permitidos: ${configuredDepts.join(', ')}` });
+          continue;
+        }
+
         // Resolve manager
         let managerId: string | undefined;
         if (managerEmailIdx >= 0 && cols[managerEmailIdx]) {
@@ -330,7 +372,7 @@ export class UsersService {
             passwordHash,
             role,
             managerId,
-            department: departmentIdx >= 0 ? cols[departmentIdx] : undefined,
+            department: department || undefined,
             position: positionIdx >= 0 ? cols[positionIdx] : undefined,
             hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
             isActive: true,
