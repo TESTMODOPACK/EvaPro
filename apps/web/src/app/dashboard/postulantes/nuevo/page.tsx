@@ -16,6 +16,7 @@ export default function NuevoProcesoPage() {
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
 
+  const [processType, setProcessType] = useState<'external' | 'internal' | ''>('');
   const [title, setTitle] = useState('');
   const [position, setPosition] = useState('');
   const [department, setDepartment] = useState('');
@@ -60,20 +61,15 @@ export default function NuevoProcesoPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !title || !position) return;
+    if (!token || !title || !position || !processType) return;
     setSaving(true);
     setError(null);
     try {
-      // Build description with requirements
-      const reqText = selectedRequirements.length > 0
-        ? `\n\nRequisitos del cargo:\n${selectedRequirements.map((r) => `• ${r}`).join('\n')}`
-        : '';
-      const fullDescription = (description || '') + reqText;
-
       const result = await api.postulants.processes.create(token, {
-        title, position,
+        title, position, processType,
         department: department || undefined,
-        description: fullDescription.trim() || undefined,
+        description: description.trim() || undefined,
+        requirements: selectedRequirements,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         evaluatorIds: evaluatorIds.length ? evaluatorIds : undefined,
@@ -101,16 +97,55 @@ export default function NuevoProcesoPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '800px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-          Nuevo Proceso de Evaluación
+          Nuevo Proceso de Seleccion
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Define el cargo, evaluadores y criterios para el proceso
+          Define el tipo de proceso, cargo, evaluadores y criterios
         </p>
       </div>
 
       <form onSubmit={handleSubmit}>
+        {/* Step 1: Process Type Selector */}
         <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Información del Proceso</h2>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Tipo de Proceso *</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <button
+              type="button"
+              onClick={() => setProcessType('external')}
+              style={{
+                padding: '1.25rem', borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
+                border: processType === 'external' ? '2px solid var(--accent)' : '2px solid var(--border)',
+                background: processType === 'external' ? 'rgba(201,147,58,0.06)' : 'transparent',
+              }}
+            >
+              <div style={{ fontSize: '1.2rem', marginBottom: '0.3rem' }}>&#127758;</div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Contratacion Externa</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                Buscar talento fuera de la organizacion. Incluye subida de CV y analisis con IA.
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setProcessType('internal')}
+              style={{
+                padding: '1.25rem', borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
+                border: processType === 'internal' ? '2px solid #6366f1' : '2px solid var(--border)',
+                background: processType === 'internal' ? 'rgba(99,102,241,0.06)' : 'transparent',
+              }}
+            >
+              <div style={{ fontSize: '1.2rem', marginBottom: '0.3rem' }}>&#127970;</div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Promocion / Movimiento Interno</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                Evaluar candidatos dentro de la organizacion. Incluye historial de evaluaciones y datos de talento.
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Step 2: Process Details (only after type is selected) */}
+        {processType && (
+        <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Informacion del Proceso</h2>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div>
@@ -326,8 +361,8 @@ export default function NuevoProcesoPage() {
         )}
 
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <button type="submit" className="btn-primary" disabled={saving || !title || !position}
-            style={{ opacity: saving || !title || !position ? 0.5 : 1 }}>
+          <button type="submit" className="btn-primary" disabled={saving || !title || !position || !processType}
+            style={{ opacity: saving || !title || !position || !processType ? 0.5 : 1 }}>
             {saving ? 'Creando...' : 'Crear Proceso'}
           </button>
           <button type="button" onClick={() => router.back()}
@@ -335,6 +370,7 @@ export default function NuevoProcesoPage() {
             Cancelar
           </button>
         </div>
+        )}
       </form>
     </div>
   );

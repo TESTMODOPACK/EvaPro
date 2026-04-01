@@ -7,9 +7,13 @@ import { PostulantProcess, ProcessStatus } from './entities/postulant-process.en
 import { PostulantProcessEntry, PostulantEntryStatus } from './entities/postulant-process-entry.entity';
 import { PostulantProcessEvaluator } from './entities/postulant-process-evaluator.entity';
 import { PostulantAssessment } from './entities/postulant-assessment.entity';
+import { PostulantRequirementCheck } from './entities/postulant-requirement-check.entity';
 import { User } from '../users/entities/user.entity';
 import { RoleCompetency } from '../development/entities/role-competency.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
+import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
+import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
+import { Objective } from '../objectives/entities/objective.entity';
 
 const CV_ANALYSIS_MODEL = 'claude-haiku-4-5';
 
@@ -24,9 +28,13 @@ export class PostulantsService {
     @InjectRepository(PostulantProcessEntry) private readonly entryRepo: Repository<PostulantProcessEntry>,
     @InjectRepository(PostulantProcessEvaluator) private readonly evaluatorRepo: Repository<PostulantProcessEvaluator>,
     @InjectRepository(PostulantAssessment) private readonly assessmentRepo: Repository<PostulantAssessment>,
+    @InjectRepository(PostulantRequirementCheck) private readonly reqCheckRepo: Repository<PostulantRequirementCheck>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(RoleCompetency) private readonly roleCompRepo: Repository<RoleCompetency>,
     @InjectRepository(TalentAssessment) private readonly talentRepo: Repository<TalentAssessment>,
+    @InjectRepository(EvaluationAssignment) private readonly evalAssignmentRepo: Repository<EvaluationAssignment>,
+    @InjectRepository(EvaluationResponse) private readonly evalResponseRepo: Repository<EvaluationResponse>,
+    @InjectRepository(Objective) private readonly objectiveRepo: Repository<Objective>,
   ) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
@@ -85,12 +93,15 @@ export class PostulantsService {
   // ─── Processes CRUD ─────────────────────────────────────────────────
 
   async createProcess(tenantId: string, creatorId: string, dto: any): Promise<PostulantProcess> {
+    const processType = dto.processType || 'external';
     const process = this.processRepo.create({
       tenantId,
       title: dto.title,
       position: dto.position,
       department: dto.department || null,
       description: dto.description || null,
+      processType,
+      requirements: Array.isArray(dto.requirements) ? dto.requirements : [],
       startDate: dto.startDate || null,
       endDate: dto.endDate || null,
       createdBy: creatorId,
@@ -463,5 +474,131 @@ Responde SOLO con un JSON válido (sin markdown, sin backticks) con esta estruct
       this.logger.error(`CV Analysis AI error: ${error.message}`);
       throw new BadRequestException(`Error al analizar el CV: ${error.message || 'Error desconocido'}`);
     }
+  }
+
+  // ─── Requirement Checks ──────────────────────────────────────────────
+
+  async saveRequirementChecks(
+    tenantId: string,
+    evaluatorId: string,
+    entryId: string,
+    checks: Array<{ requirement: string; status: string; comment?: string }>,
+  ): Promise<PostulantRequirementCheck[]> {
+    // Verify entry exists and evaluator is assigned
+    const entry = await this.entryRepo.findOne({ where: { id: entryId }, relations: ['process'] });
+    if (!entry) throw new NotFoundException('Candidato no encontrado en este proceso');
+
+    const results: PostulantRequirementCheck[] = [];
+    for (const check of checks) {
+      let existing = await this.reqCheckRepo.findOne({
+        where: { entryId, evaluatorId, requirement: check.requirement },
+      });
+      if (existing) {
+        existing.status = check.status;
+        existing.comment = check.comment || null;
+        results.push(await this.reqCheckRepo.save(existing));
+      } else {
+        const newCheck = this.reqCheckRepo.create({
+          entryId,
+          evaluatorId,
+          requirement: check.requirement,
+          status: check.status,
+          comment: check.comment || null,
+        });
+        results.push(await this.reqCheckRepo.save(newCheck));
+      }
+    }
+    return results;
+  }
+
+  async getRequirementChecks(tenantId: string, entryId: string): Promise<PostulantRequirementCheck[]> {
+    return this.reqCheckRepo.find({
+      where: { entryId },
+      relations: ['evaluator'],
+      order: { requirement: 'ASC', createdAt: 'ASC' },
+    });
+  }
+
+  // ─── Internal Candidate Profile ──────────────────────────────────────
+
+  async getInternalCandidateProfile(tenantId: string, userId: string): Promise<any> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId, tenantId },
+      select: ['id', 'firstName', 'lastName', 'email', 'department', 'position', 'role', 'createdAt'],
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // Get evaluation history
+    const assignments = await this.evalAssignmentRepo.find({
+      where: { evaluateeId: userId },
+      relations: ['cycle'],
+      order: { createdAt: 'DESC' },
+    });
+
+    const evaluationHistory: any[] = [];
+    for (const a of assignments) {
+      const response = await this.evalResponseRepo.findOne({
+        where: { assignmentId: a.id },
+        select: ['overallScore', 'submittedAt'],
+      });
+      if (response?.overallScore) {
+        evaluationHistory.push({
+          cycleName: a.cycle?.name || 'Sin nombre',
+          cycleType: (a.cycle as any)?.type || '--',
+          score: Number(response.overallScore),
+          date: response.submittedAt,
+          relationType: a.relationType,
+        });
+      }
+    }
+
+    // Get talent assessment
+    const talentData = await this.talentRepo.findOne({
+      where: { userId, tenantId },
+      order: { createdAt: 'DESC' },
+    });
+
+    // Get objectives summary
+    const objectives = await this.objectiveRepo.find({
+      where: { userId, tenantId },
+      select: ['id', 'title', 'status', 'progress'],
+    });
+    const objCompleted = objectives.filter((o) => o.status === 'completed').length;
+    const objActive = objectives.filter((o) => o.status === 'active').length;
+
+    // Calculate tenure
+    const tenureMonths = user.createdAt
+      ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (30 * 24 * 60 * 60 * 1000))
+      : 0;
+
+    // Calculate avg evaluation score
+    const scores = evaluationHistory.map((e) => e.score).filter((s) => s > 0);
+    const avgScore = scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : null;
+
+    return {
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        department: user.department,
+        position: user.position,
+        role: user.role,
+        tenureMonths,
+      },
+      evaluationHistory,
+      avgScore,
+      talentData: talentData ? {
+        performanceScore: talentData.performanceScore,
+        potentialScore: talentData.potentialScore,
+        nineBoxPosition: talentData.nineBoxPosition,
+        talentPool: talentData.talentPool,
+      } : null,
+      objectives: {
+        total: objectives.length,
+        completed: objCompleted,
+        active: objActive,
+      },
+    };
   }
 }

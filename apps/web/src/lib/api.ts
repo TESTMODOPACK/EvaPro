@@ -336,6 +336,12 @@ export const api = {
       request<any>(`/postulants/${postulantId}/analyze-cv`, { method: "POST" }, token),
     getCvAnalysis: (token: string, postulantId: string) =>
       request<any>(`/postulants/${postulantId}/cv-analysis`, {}, token),
+    saveRequirementChecks: (token: string, entryId: string, checks: Array<{ requirement: string; status: string; comment?: string }>) =>
+      request<any>(`/postulants/entries/${entryId}/requirements`, { method: "POST", body: JSON.stringify({ checks }) }, token),
+    getRequirementChecks: (token: string, entryId: string) =>
+      request<any[]>(`/postulants/entries/${entryId}/requirements`, {}, token),
+    getInternalProfile: (token: string, processId: string, userId: string) =>
+      request<any>(`/postulants/processes/${processId}/internal-profile/${userId}`, {}, token),
   },
 
   users: {

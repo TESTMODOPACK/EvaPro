@@ -98,6 +98,36 @@ export class PostulantsController {
     return this.service.getComparative(req.user.tenantId, id);
   }
 
+  // ─── Requirement Checks ────────────────────────────────────────────
+
+  @Post('entries/:entryId/requirements')
+  saveRequirementChecks(
+    @Request() req: any,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: { checks: Array<{ requirement: string; status: string; comment?: string }> },
+  ) {
+    return this.service.saveRequirementChecks(req.user.tenantId, req.user.userId, entryId, dto.checks);
+  }
+
+  @Get('entries/:entryId/requirements')
+  getRequirementChecks(
+    @Request() req: any,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+  ) {
+    return this.service.getRequirementChecks(req.user.tenantId, entryId);
+  }
+
+  // ─── Internal Candidate Profile ──────────────────────────────────
+
+  @Get('processes/:id/internal-profile/:userId')
+  getInternalProfile(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) processId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ) {
+    return this.service.getInternalCandidateProfile(req.user.tenantId, userId);
+  }
+
   // ─── CV Upload & AI Analysis ──────────────────────────────────────
 
   @Patch(':id/cv')

@@ -189,6 +189,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           <span className={`badge ${processStatusBadge[process.status]}`}>
             {processStatusLabel[process.status]}
           </span>
+          <span className="badge" style={{ fontSize: '0.65rem', background: process.processType === 'internal' ? 'rgba(99,102,241,0.1)' : 'rgba(201,147,58,0.1)', color: process.processType === 'internal' ? '#6366f1' : 'var(--accent)', border: `1px solid ${process.processType === 'internal' ? 'rgba(99,102,241,0.3)' : 'rgba(201,147,58,0.3)'}` }}>
+            {process.processType === 'internal' ? 'Proceso Interno' : 'Proceso Externo'}
+          </span>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           {process.position}{process.department ? ` — ${process.department}` : ''} &middot; {evaluators.length} evaluadores &middot; {entries.length} candidatos
@@ -394,6 +397,16 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             </button>
             {assessmentSaved && <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: '0.85rem' }}>&#10003; Guardado</span>}
           </div>
+          )}
+
+          {/* Requirements Check Section */}
+          {(process.requirements || []).length > 0 && (
+            <RequirementsCheckSection
+              requirements={process.requirements}
+              entryId={selectedEntry!}
+              token={token!}
+              processId={process.id}
+            />
           )}
         </div>
       )}
@@ -883,6 +896,110 @@ function CvAnalysisPanel({ postulant, token, onClose, onUpdate }: {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Requirements Check Sub-component ─────────────────────────────────────
+
+function RequirementsCheckSection({ requirements, entryId, token, processId }: {
+  requirements: string[];
+  entryId: string;
+  token: string;
+  processId: string;
+}) {
+  const [checks, setChecks] = useState<Record<string, { status: string; comment: string }>>({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!token || !entryId) return;
+    api.postulants.getRequirementChecks(token, entryId).then((data) => {
+      const map: Record<string, { status: string; comment: string }> = {};
+      for (const r of requirements) {
+        const existing = (data || []).find((c: any) => c.requirement === r);
+        map[r] = existing ? { status: existing.status, comment: existing.comment || '' } : { status: 'pendiente', comment: '' };
+      }
+      setChecks(map);
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+  }, [token, entryId]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const checksList = Object.entries(checks).map(([requirement, val]) => ({
+        requirement, status: val.status, comment: val.comment || undefined,
+      }));
+      await api.postulants.saveRequirementChecks(token, entryId, checksList);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {}
+    setSaving(false);
+  };
+
+  if (!loaded) return null;
+
+  const statusColors: Record<string, string> = {
+    cumple: 'var(--success)',
+    parcial: 'var(--warning)',
+    no_cumple: 'var(--danger)',
+    pendiente: 'var(--text-muted)',
+  };
+
+  return (
+    <div style={{ marginTop: '1.5rem' }}>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>Cumplimiento de Requisitos</h3>
+      <div className="card" style={{ overflow: 'auto' }}>
+        <table style={{ width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left' }}>Requisito</th>
+              <th style={{ width: 150 }}>Estado</th>
+              <th>Comentario</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requirements.map((req) => {
+              const check = checks[req] || { status: 'pendiente', comment: '' };
+              return (
+                <tr key={req}>
+                  <td style={{ fontSize: '0.85rem' }}>{req}</td>
+                  <td>
+                    <select
+                      className="input"
+                      value={check.status}
+                      onChange={(e) => setChecks((prev) => ({ ...prev, [req]: { ...prev[req], status: e.target.value } }))}
+                      style={{ fontSize: '0.82rem', color: statusColors[check.status] || 'inherit', fontWeight: 600 }}
+                    >
+                      <option value="pendiente">Pendiente</option>
+                      <option value="cumple">Cumple</option>
+                      <option value="parcial">Parcial</option>
+                      <option value="no_cumple">No Cumple</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="input" type="text"
+                      value={check.comment}
+                      onChange={(e) => setChecks((prev) => ({ ...prev, [req]: { ...prev[req], comment: e.target.value } }))}
+                      placeholder="Comentario..."
+                      style={{ fontSize: '0.82rem', minWidth: 150 }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.75rem' }}>
+        <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ fontSize: '0.82rem' }}>
+          {saving ? 'Guardando...' : 'Guardar Requisitos'}
+        </button>
+        {saved && <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: '0.85rem' }}>&#10003; Guardado</span>}
+      </div>
     </div>
   );
 }
