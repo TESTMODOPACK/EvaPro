@@ -166,7 +166,7 @@ export class ObjectivesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('super_admin', 'tenant_admin')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,

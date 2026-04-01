@@ -6,7 +6,7 @@ import { DeiService } from './dei.service';
 
 @Controller('dei')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('super_admin', 'tenant_admin')
+@Roles('super_admin', 'tenant_admin', 'manager')
 export class DeiController {
   constructor(private readonly deiService: DeiService) {}
 

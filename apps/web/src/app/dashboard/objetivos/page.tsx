@@ -765,7 +765,7 @@ function ObjetivosPageContent() {
   const isManager = userRole === 'manager';
   const isEmployee = userRole === 'employee';
   const canCreate = true; // all roles can create
-  const canDelete = isAdmin || isManager;
+  const canDelete = isAdmin; // Solo admin puede eliminar objetivos
   const canApprove = isAdmin || isManager;
   const showAssignedTo = isAdmin || isManager;
 
@@ -1198,8 +1198,8 @@ function ObjetivosPageContent() {
               onChange={(e) => setSearchFilter(e.target.value)}
               style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', width: '220px' }}
             />
-            {/* Department filter */}
-            {deptOptions.length > 0 && (
+            {/* Department filter (solo admin, managers ven solo su equipo) */}
+            {isAdmin && deptOptions.length > 0 && (
               <select
                 className="input"
                 value={deptFilter}
