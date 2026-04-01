@@ -147,13 +147,13 @@ async function seedDemoFull() {
     /* ── 2. Create additional employees ──────────────────────────────────── */
     const newEmployees = [
       { email: 'maria.gonzalez@evapro.demo', firstName: 'Maria', lastName: 'Gonzalez', department: 'Ventas', position: 'Ejecutiva de Ventas' },
-      { email: 'pedro.silva@evapro.demo', firstName: 'Pedro', lastName: 'Silva', department: 'Producto', position: 'Frontend Developer' },
+      { email: 'pedro.silva@evapro.demo', firstName: 'Pedro', lastName: 'Silva', department: 'Tecnología', position: 'Desarrollador Frontend' },
       { email: 'camila.herrera@evapro.demo', firstName: 'Camila', lastName: 'Herrera', department: 'Marketing', position: 'Content Manager' },
-      { email: 'diego.morales@evapro.demo', firstName: 'Diego', lastName: 'Morales', department: 'Producto', position: 'Backend Developer' },
-      { email: 'valentina.rojas@evapro.demo', firstName: 'Valentina', lastName: 'Rojas', department: 'Diseno', position: 'UI Designer' },
+      { email: 'diego.morales@evapro.demo', firstName: 'Diego', lastName: 'Morales', department: 'Operaciones', position: 'Analista de Operaciones' },
+      { email: 'valentina.rojas@evapro.demo', firstName: 'Valentina', lastName: 'Rojas', department: 'Marketing', position: 'Disenadora UI' },
       { email: 'andres.castro@evapro.demo', firstName: 'Andres', lastName: 'Castro', department: 'Ventas', position: 'Account Manager' },
-      { email: 'isabel.mendez@evapro.demo', firstName: 'Isabel', lastName: 'Mendez', department: 'QA', position: 'QA Lead' },
-      { email: 'felipe.vargas@evapro.demo', firstName: 'Felipe', lastName: 'Vargas', department: 'DevOps', position: 'SRE Engineer' },
+      { email: 'isabel.mendez@evapro.demo', firstName: 'Isabel', lastName: 'Mendez', department: 'Finanzas', position: 'Analista Financiero' },
+      { email: 'felipe.vargas@evapro.demo', firstName: 'Felipe', lastName: 'Vargas', department: 'Tecnología', position: 'Ingeniero de Infraestructura' },
     ];
 
     const pwHash = await bcrypt.hash('EvaPro2026!', 10);
@@ -644,7 +644,7 @@ async function seedDemoFull() {
         const session = await calSessionRepo.save(calSessionRepo.create({
           tenantId: tid, cycleId: closedCycle.id,
           name: 'Calibracion Semestral 2025 - Equipo Producto',
-          status: 'completed', department: 'Producto',
+          status: 'completed', department: 'Tecnología',
           moderatorId: admin.id, minQuorum: 2,
           expectedDistribution: { low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 },
           notes: 'Sesion de calibracion completada con consenso del equipo de liderazgo.',

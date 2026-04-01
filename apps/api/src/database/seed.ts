@@ -406,7 +406,7 @@ async function seed() {
       superAdmin = userRepo.create({
         email: 'superadmin@evapro.demo', passwordHash: pwHash,
         firstName: 'Super', lastName: 'Admin',
-        role: 'super_admin', department: 'Tecnologia', position: 'Super Administrador',
+        role: 'super_admin', department: 'Tecnología', position: 'Super Administrador',
         isActive: true, tenantId: tenant.id,
       });
       superAdmin = await userRepo.save(superAdmin);
@@ -438,7 +438,7 @@ async function seed() {
       manager = userRepo.create({
         email: 'carlos.lopez@evapro.demo', passwordHash: pwHash,
         firstName: 'Carlos', lastName: 'Lopez',
-        role: 'manager', department: 'Producto', position: 'Product Manager',
+        role: 'manager', department: 'Tecnología', position: 'Product Manager',
         isActive: true, tenantId: tenant.id,
       });
       manager = await userRepo.save(manager);
@@ -447,9 +447,9 @@ async function seed() {
 
     /* ── Employees ───────────────────────────────────────────────────────── */
     const employeeDefs = [
-      { email: 'ana.martinez@evapro.demo', firstName: 'Ana', lastName: 'Martinez', department: 'Diseno', position: 'UX Designer' },
-      { email: 'luis.rodriguez@evapro.demo', firstName: 'Luis', lastName: 'Rodriguez', department: 'DevOps', position: 'DevOps Engineer' },
-      { email: 'sandra.torres@evapro.demo', firstName: 'Sandra', lastName: 'Torres', department: 'QA', position: 'QA Analyst' },
+      { email: 'ana.martinez@evapro.demo', firstName: 'Ana', lastName: 'Martinez', department: 'Marketing', position: 'Disenadora UX' },
+      { email: 'luis.rodriguez@evapro.demo', firstName: 'Luis', lastName: 'Rodriguez', department: 'Tecnología', position: 'Ingeniero DevOps' },
+      { email: 'sandra.torres@evapro.demo', firstName: 'Sandra', lastName: 'Torres', department: 'Tecnología', position: 'Analista QA' },
     ];
 
     const empUsers: User[] = [];
@@ -467,12 +467,12 @@ async function seed() {
 
     // Ensure ASCII-safe names (fix any old encoding issues)
     const nameFixMap: Record<string, { firstName: string; lastName: string; department: string; position: string }> = {
-      'carlos.lopez@evapro.demo': { firstName: 'Carlos', lastName: 'Lopez', department: 'Producto', position: 'Product Manager' },
-      'ana.martinez@evapro.demo': { firstName: 'Ana', lastName: 'Martinez', department: 'Diseno', position: 'UX Designer' },
-      'luis.rodriguez@evapro.demo': { firstName: 'Luis', lastName: 'Rodriguez', department: 'DevOps', position: 'DevOps Engineer' },
-      'sandra.torres@evapro.demo': { firstName: 'Sandra', lastName: 'Torres', department: 'QA', position: 'QA Analyst' },
+      'carlos.lopez@evapro.demo': { firstName: 'Carlos', lastName: 'Lopez', department: 'Tecnología', position: 'Gerente de Tecnología' },
+      'ana.martinez@evapro.demo': { firstName: 'Ana', lastName: 'Martinez', department: 'Marketing', position: 'Disenadora UX' },
+      'luis.rodriguez@evapro.demo': { firstName: 'Luis', lastName: 'Rodriguez', department: 'Tecnología', position: 'Ingeniero DevOps' },
+      'sandra.torres@evapro.demo': { firstName: 'Sandra', lastName: 'Torres', department: 'Tecnología', position: 'Analista QA' },
       'admin@evapro.demo': { firstName: 'Admin', lastName: 'EvaPro', department: 'Recursos Humanos', position: 'Encargado del Sistema' },
-      'superadmin@evapro.demo': { firstName: 'Super', lastName: 'Admin', department: 'Sistemas', position: 'Super Administrador' },
+      'superadmin@evapro.demo': { firstName: 'Super', lastName: 'Admin', department: 'Tecnología', position: 'Super Administrador' },
     };
     for (const [email, fix] of Object.entries(nameFixMap)) {
       const user = await userRepo.findOne({ where: { email, tenantId: tenant.id } });
