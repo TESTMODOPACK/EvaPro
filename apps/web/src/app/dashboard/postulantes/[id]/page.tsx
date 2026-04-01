@@ -53,7 +53,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     try {
       const data = await api.postulants.processes.get(token, params.id);
       setProcess(data);
-    } catch { setProcess(null); }
+    } catch (_) { setProcess(null); }
     setLoading(false);
   }
 
@@ -128,7 +128,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       setShowAddModal(false);
       setSelectedExistingId('');
       await fetchProcess();
-    } catch { /* error */ }
+    } catch (_) { /* error */ }
     setAddingCandidate(false);
   };
 
@@ -149,7 +149,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       setAssessmentSaved(true);
       setTimeout(() => setAssessmentSaved(false), 3000);
       await loadScorecard(selectedEntry);
-    } catch { /* error */ }
+    } catch (_) { /* error */ }
     setSavingAssessment(false);
   };
 
@@ -193,7 +193,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       setConfigEditing(false);
       setTimeout(() => setConfigSaved(false), 3000);
       await fetchProcess();
-    } catch { /* ignore */ }
+    } catch (_) { /* ignore */ }
     setConfigSaving(false);
   };
 
@@ -1052,7 +1052,7 @@ function RequirementsCheckSection({ requirements, entryId, token, processId }: {
       await api.postulants.saveRequirementChecks(token, entryId, checksList);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch {}
+    } catch (_) {}
     setSaving(false);
   };
 
