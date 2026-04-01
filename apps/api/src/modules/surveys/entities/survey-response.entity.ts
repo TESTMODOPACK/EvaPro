@@ -22,7 +22,7 @@ export class SurveyResponse {
   @Column({ type: 'uuid', name: 'survey_id' })
   surveyId: string;
 
-  @ManyToOne(() => EngagementSurvey)
+  @ManyToOne(() => EngagementSurvey, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'survey_id' })
   survey: EngagementSurvey;
 

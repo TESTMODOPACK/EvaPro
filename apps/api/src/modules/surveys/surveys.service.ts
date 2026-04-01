@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, IsNull } from 'typeorm';
 import { EngagementSurvey } from './entities/engagement-survey.entity';
 import { SurveyQuestion } from './entities/survey-question.entity';
 import { SurveyResponse } from './entities/survey-response.entity';
@@ -48,13 +48,14 @@ export class SurveysService {
 
   private async checkFeature(tenantId: string, feature: string = PlanFeature.ENGAGEMENT_SURVEYS): Promise<void> {
     const sub = await this.subscriptionsService.findByTenantId(tenantId);
-    if (sub?.plan) {
-      const features: string[] = sub.plan.features || [];
-      if (!features.includes(feature)) {
-        throw new ForbiddenException(
-          `Su plan "${sub.plan.name}" no incluye esta funcionalidad. Actualice a un plan superior.`,
-        );
-      }
+    if (!sub || !sub.plan) {
+      throw new ForbiddenException('No se encontró una suscripción activa para este tenant.');
+    }
+    const features: string[] = sub.plan.features || [];
+    if (!features.includes(feature)) {
+      throw new ForbiddenException(
+        `Su plan "${sub.plan.name}" no incluye esta funcionalidad. Actualice a un plan superior.`,
+      );
     }
   }
 
@@ -88,6 +89,12 @@ export class SurveysService {
       throw new BadRequestException('La encuesta debe tener al menos una pregunta.');
     }
 
+    const startDate = new Date(dto.startDate);
+    const endDate = new Date(dto.endDate);
+    if (endDate <= startDate) {
+      throw new BadRequestException('La fecha de fin debe ser posterior a la fecha de inicio.');
+    }
+
     const survey = this.surveyRepo.create({
       tenantId,
       title: dto.title,
@@ -95,8 +102,8 @@ export class SurveysService {
       isAnonymous: dto.isAnonymous ?? true,
       targetAudience: dto.targetAudience ?? 'all',
       targetDepartments: dto.targetDepartments ?? [],
-      startDate: new Date(dto.startDate),
-      endDate: new Date(dto.endDate),
+      startDate,
+      endDate,
       createdBy: userId,
       settings: dto.settings ?? {},
       status: 'draft',
@@ -285,16 +292,25 @@ export class SurveysService {
     // Get user department snapshot
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId }, select: ['id', 'department'] });
 
-    // Check if already responded
-    const existing = await this.responseRepo.findOne({
-      where: { surveyId, tenantId, respondentId: survey.isAnonymous ? undefined : userId },
-    });
+    // Check if already responded (for non-anonymous surveys)
+    let existing: SurveyResponse | null = null;
+    if (!survey.isAnonymous) {
+      existing = await this.responseRepo.findOne({
+        where: { surveyId, tenantId, respondentId: userId },
+      });
+      if (existing && existing.isComplete) {
+        throw new BadRequestException('Ya has respondido esta encuesta.');
+      }
+    }
 
-    if (!survey.isAnonymous && existing && existing.isComplete) {
+    // For anonymous surveys, check via assignment to prevent double submissions
+    const assignment = await this.assignmentRepo.findOne({ where: { surveyId, userId, tenantId } });
+    if (survey.isAnonymous && assignment?.status === 'completed') {
       throw new BadRequestException('Ya has respondido esta encuesta.');
     }
 
     // Create or update response
+    const isNewResponse = !existing;
     const response = existing || this.responseRepo.create({
       surveyId,
       tenantId,
@@ -309,15 +325,16 @@ export class SurveysService {
     const saved = await this.responseRepo.save(response);
 
     // Update assignment
-    const assignment = await this.assignmentRepo.findOne({ where: { surveyId, userId, tenantId } });
-    if (assignment) {
+    if (assignment && assignment.status !== 'completed') {
       assignment.status = 'completed';
       assignment.completedAt = new Date();
       await this.assignmentRepo.save(assignment);
     }
 
-    // Update response count
-    await this.surveyRepo.increment({ id: surveyId }, 'responseCount', 1);
+    // Update response count only for new responses
+    if (isNewResponse) {
+      await this.surveyRepo.increment({ id: surveyId, tenantId }, 'responseCount', 1);
+    }
 
     return saved;
   }
@@ -466,18 +483,25 @@ export class SurveysService {
     let passives = 0;
     let detractors = 0;
 
+    // Count per respondent (not per answer) to avoid double counting
+    // when there are multiple NPS questions
     for (const r of responses) {
+      const npsScores: number[] = [];
       for (const ans of r.answers) {
         const question = npsQuestions.find((q) => q.id === ans.questionId);
         if (!question) continue;
 
         const score = typeof ans.value === 'number' ? ans.value : parseInt(ans.value as string);
-        if (isNaN(score)) continue;
-
-        if (score >= 9) promoters++;
-        else if (score >= 7) passives++;
-        else detractors++;
+        if (!isNaN(score)) npsScores.push(score);
       }
+
+      if (npsScores.length === 0) continue;
+
+      // Use average NPS score per respondent if multiple NPS questions exist
+      const avgScore = npsScores.reduce((a, b) => a + b, 0) / npsScores.length;
+      if (avgScore >= 9) promoters++;
+      else if (avgScore >= 7) passives++;
+      else detractors++;
     }
 
     const total = promoters + passives + detractors;
