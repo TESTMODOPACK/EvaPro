@@ -71,16 +71,21 @@ export class RecruitmentService {
   }
 
   async listProcesses(tenantId: string, status?: string): Promise<any[]> {
-    const qb = this.processRepo.createQueryBuilder('p')
-      .leftJoin('recruitment_candidates', 'c', 'c.process_id = p.id')
-      .select(['p.*', 'COUNT(c.id) as candidate_count'])
-      .where('p.tenant_id = :tenantId', { tenantId })
-      .groupBy('p.id')
-      .orderBy('p.created_at', 'DESC');
+    const where: any = { tenantId };
+    if (status) where.status = status;
 
-    if (status) qb.andWhere('p.status = :status', { status });
+    const processes = await this.processRepo.find({
+      where,
+      relations: ['creator'],
+      order: { createdAt: 'DESC' },
+    });
 
-    return qb.getRawMany();
+    const result = [];
+    for (const p of processes) {
+      const candidateCount = await this.candidateRepo.count({ where: { processId: p.id } });
+      result.push({ ...p, candidateCount });
+    }
+    return result;
   }
 
   async getProcess(tenantId: string, id: string): Promise<any> {
@@ -132,7 +137,7 @@ export class RecruitmentService {
   async addExternalCandidate(tenantId: string, processId: string, dto: any): Promise<RecruitmentCandidate> {
     const process = await this.processRepo.findOne({ where: { id: processId, tenantId } });
     if (!process) throw new NotFoundException('Proceso no encontrado');
-    if (process.processType !== 'external') throw new BadRequestException('Este proceso es solo para candidatos internos');
+    if (process.processType !== 'external') throw new BadRequestException('Este proceso es solo para candidatos externos');
 
     if (!dto.firstName?.trim() || !dto.lastName?.trim()) throw new BadRequestException('Nombres y apellidos son requeridos');
     if (!dto.email?.trim()) throw new BadRequestException('Email es requerido');
@@ -157,7 +162,7 @@ export class RecruitmentService {
   async addInternalCandidate(tenantId: string, processId: string, userId: string): Promise<RecruitmentCandidate> {
     const process = await this.processRepo.findOne({ where: { id: processId, tenantId } });
     if (!process) throw new NotFoundException('Proceso no encontrado');
-    if (process.processType !== 'internal') throw new BadRequestException('Este proceso es solo para candidatos externos');
+    if (process.processType !== 'internal') throw new BadRequestException('Este proceso es solo para candidatos internos');
 
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Colaborador no encontrado');
@@ -351,6 +356,10 @@ export class RecruitmentService {
   }
 
   async getInterviews(tenantId: string, candidateId: string): Promise<RecruitmentInterview[]> {
+    // Verify candidate belongs to tenant
+    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    if (!candidate) throw new NotFoundException('Candidato no encontrado');
+
     return this.interviewRepo.find({
       where: { candidateId },
       relations: ['evaluator'],

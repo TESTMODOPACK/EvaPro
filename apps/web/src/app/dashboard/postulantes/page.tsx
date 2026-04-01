@@ -146,7 +146,7 @@ function PostulantesPageContent() {
       ) : (
         <div className="animate-fade-up-delay-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
           {processes.map((p: any) => {
-            const typeInfo = TYPE_LABELS[p.process_type || p.processType] || TYPE_LABELS.external;
+            const typeInfo = TYPE_LABELS[p.processType] || TYPE_LABELS.external;
             const statusInfo = STATUS_MAP[p.status] || STATUS_MAP.draft;
             return (
               <Link key={p.id} href={`/dashboard/postulantes/${p.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -161,8 +161,8 @@ function PostulantesPageContent() {
                     {p.department && <span>{p.department}</span>}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {p.candidate_count || 0} candidatos
-                    {p.start_date && ` | Inicio: ${new Date(p.start_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`}
+                    {p.candidateCount || 0} candidatos
+                    {p.startDate && ` | Inicio: ${new Date(p.startDate).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`}
                   </div>
                 </div>
               </Link>

@@ -398,7 +398,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       )}
                       {isAdmin && (
                         <select className="input" value={c.stage} onChange={(e) => {
-                          api.recruitment.candidates.updateStage(token!, c.id, e.target.value).then(() => fetchProcess());
+                          if (token) api.recruitment.candidates.updateStage(token, c.id, e.target.value).then(() => fetchProcess());
                         }} style={{ fontSize: '0.78rem', width: 'auto', padding: '0.25rem 0.4rem' }}>
                           {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                         </select>
@@ -698,7 +698,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>Estado del Proceso</h3>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 {['draft', 'active', 'completed', 'closed'].map((s) => (
-                  <button key={s} onClick={() => api.recruitment.processes.update(token!, params.id, { status: s }).then(() => fetchProcess())}
+                  <button key={s} onClick={() => { if (token) api.recruitment.processes.update(token, params.id, { status: s }).then(() => fetchProcess()); }}
                     style={{
                       padding: '0.4rem 0.85rem', fontSize: '0.82rem', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
                       border: process.status === s ? '2px solid var(--accent)' : '1px solid var(--border)',
