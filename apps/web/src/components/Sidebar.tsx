@@ -199,7 +199,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/desarrollo', label: t('nav.devPlans'), icon: icons.development },
         ...(isAdminOrManager ? [
           { href: '/dashboard/desarrollo-organizacional', label: t('nav.orgDev'), icon: icons.orgDevelopment },
-          // postulantes — removed, will be rebuilt
+          { href: '/dashboard/postulantes', label: t('nav.applicants', 'Seleccion de Personal'), icon: '&#128101;' },
         ] : []),
       ],
     },

@@ -303,7 +303,46 @@ export const api = {
     },
   },
 
-  // postulants — removed, will be rebuilt from scratch
+  recruitment: {
+    processes: {
+      list: (token: string, status?: string) =>
+        request<any[]>(`/recruitment/processes${status ? `?status=${status}` : ''}`, {}, token),
+      create: (token: string, data: any) =>
+        request<any>("/recruitment/processes", { method: "POST", body: JSON.stringify(data) }, token),
+      get: (token: string, id: string) =>
+        request<any>(`/recruitment/processes/${id}`, {}, token),
+      update: (token: string, id: string, data: any) =>
+        request<any>(`/recruitment/processes/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      comparative: (token: string, id: string) =>
+        request<any>(`/recruitment/processes/${id}/comparative`, {}, token),
+      aiRecommendation: (token: string, id: string) =>
+        request<any>(`/recruitment/processes/${id}/ai-recommendation`, { method: "POST" }, token),
+    },
+    candidates: {
+      add: (token: string, processId: string, data: any) =>
+        request<any>(`/recruitment/processes/${processId}/candidates`, { method: "POST", body: JSON.stringify(data) }, token),
+      updateStage: (token: string, id: string, stage: string) =>
+        request<any>(`/recruitment/candidates/${id}/stage`, { method: "PATCH", body: JSON.stringify({ stage }) }, token),
+      profile: (token: string, id: string) =>
+        request<any>(`/recruitment/candidates/${id}/profile`, {}, token),
+      uploadCv: (token: string, id: string, cvUrl: string) =>
+        request<any>(`/recruitment/candidates/${id}/cv`, { method: "PATCH", body: JSON.stringify({ cvUrl }) }, token),
+      analyzeCv: (token: string, id: string) =>
+        request<any>(`/recruitment/candidates/${id}/analyze-cv`, { method: "POST" }, token),
+      getCvAnalysis: (token: string, id: string) =>
+        request<any>(`/recruitment/candidates/${id}/cv-analysis`, {}, token),
+      addNotes: (token: string, id: string, notes: string) =>
+        request<any>(`/recruitment/candidates/${id}/notes`, { method: "PATCH", body: JSON.stringify({ notes }) }, token),
+      submitInterview: (token: string, id: string, data: any) =>
+        request<any>(`/recruitment/candidates/${id}/interview`, { method: "POST", body: JSON.stringify(data) }, token),
+      getInterviews: (token: string, id: string) =>
+        request<any[]>(`/recruitment/candidates/${id}/interviews`, {}, token),
+      scorecard: (token: string, id: string) =>
+        request<any>(`/recruitment/candidates/${id}/scorecard`, {}, token),
+      adjustScore: (token: string, id: string, adjustment: number, justification: string) =>
+        request<any>(`/recruitment/candidates/${id}/adjust-score`, { method: "PATCH", body: JSON.stringify({ adjustment, justification }) }, token),
+    },
+  },
 
   users: {
     list: (token: string, page = 1, limit = 10, filters?: { search?: string; department?: string; role?: string; status?: string }) => {
