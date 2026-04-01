@@ -123,7 +123,7 @@ export default function ResultadosEncuestaPage() {
     { key: 'overview', label: 'Resumen' },
     ...(isAdmin ? [{ key: 'department', label: 'Por Departamento' }] : []),
     { key: 'responses', label: 'Resp. Abiertas' },
-    ...(isAdmin ? [{ key: 'ai', label: 'Analisis IA' }] : []),
+    ...(isAdmin ? [{ key: 'ai', label: 'Análisis IA' }] : []),
     ...(isAdmin ? [{ key: 'trends', label: 'Tendencias' }] : []),
   ];
 
@@ -205,7 +205,7 @@ export default function ResultadosEncuestaPage() {
           {/* Radar Chart */}
           {radarData.length > 0 && (
             <div className="card" style={{ padding: '1.25rem' }}>
-              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Promedio por Categoria</h3>
+              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Promedio por Categoría</h3>
               <ResponsiveContainer width="100%" height={350}>
                 <RadarChart data={radarData}>
                   <PolarGrid />
@@ -236,7 +236,7 @@ export default function ResultadosEncuestaPage() {
           {/* eNPS Pie */}
           {enps && enps.total > 0 && (
             <div className="card" style={{ padding: '1.25rem' }}>
-              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Distribucion eNPS</h3>
+              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Distribución eNPS</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
                 <ResponsiveContainer width={200} height={200}>
                   <PieChart>
@@ -269,7 +269,7 @@ export default function ResultadosEncuestaPage() {
           {/* Likert Distribution */}
           {(results.likertDistribution || []).length > 0 && (
             <div className="card" style={{ padding: '1.25rem' }}>
-              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Distribucion de Respuestas</h3>
+              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Distribución de Respuestas</h3>
               {results.likertDistribution.map((q: any) => (
                 <div key={q.questionId} style={{ marginBottom: '0.75rem' }}>
                   <p style={{ fontSize: '0.85rem', margin: '0 0 0.25rem', fontWeight: 500 }}>{q.questionText}</p>
@@ -377,12 +377,12 @@ export default function ResultadosEncuestaPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {!aiAnalysis ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-              <h3 style={{ margin: '0 0 0.5rem' }}>Analisis con Inteligencia Artificial</h3>
+              <h3 style={{ margin: '0 0 0.5rem' }}>Análisis con Inteligencia Artificial</h3>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                Genera un informe ejecutivo completo con fortalezas, areas criticas, analisis de sentimiento y recomendaciones accionables.
+                Genera un informe ejecutivo completo con fortalezas, áreas críticas, análisis de sentimiento y recomendaciones accionables.
               </p>
               <button className="btn-primary" onClick={handleGenerateAi} disabled={generatingAi || results.totalResponses === 0}>
-                {generatingAi ? 'Generando analisis...' : 'Generar Analisis con IA'}
+                {generatingAi ? 'Generando análisis...' : 'Generar Análisis con IA'}
               </button>
               {results.totalResponses === 0 && (
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
@@ -437,7 +437,7 @@ export default function ResultadosEncuestaPage() {
 
                 {/* Critical Areas */}
                 <div className="card" style={{ padding: '1.25rem' }}>
-                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 600, color: '#ef4444' }}>Areas Criticas</h3>
+                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 600, color: '#ef4444' }}>Áreas Críticas</h3>
                   {(aiAnalysis.content?.criticalAreas || []).map((a: any, i: number) => (
                     <div key={i} style={{ marginBottom: '0.75rem', padding: '0.5rem', background: 'rgba(239,68,68,0.05)', borderRadius: 6 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.9rem' }}>
@@ -458,7 +458,7 @@ export default function ResultadosEncuestaPage() {
               {/* Sentiment Analysis */}
               {aiAnalysis.content?.sentimentAnalysis && (
                 <div className="card" style={{ padding: '1.25rem' }}>
-                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 600 }}>Analisis de Sentimiento</h3>
+                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 600 }}>Análisis de Sentimiento</h3>
                   <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}>&#128522;</div>
@@ -536,7 +536,7 @@ export default function ResultadosEncuestaPage() {
 
               {/* Regenerate */}
               <button className="btn-ghost" style={{ fontSize: '0.85rem' }} onClick={handleGenerateAi} disabled={generatingAi}>
-                {generatingAi ? 'Regenerando...' : 'Regenerar analisis'}
+                {generatingAi ? 'Regenerando...' : 'Regenerar análisis'}
               </button>
             </div>
           )}
@@ -546,7 +546,7 @@ export default function ResultadosEncuestaPage() {
       {/* ─── Trends Tab ─── */}
       {activeTab === 'trends' && isAdmin && (
         <div className="card" style={{ padding: '1.25rem' }}>
-          <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Tendencias Historicas</h3>
+          <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Tendencias Históricas</h3>
           {trends.length < 2 ? (
             <p style={{ color: 'var(--text-muted)' }}>Se necesitan al menos 2 encuestas cerradas para ver tendencias.</p>
           ) : (
@@ -572,7 +572,7 @@ export default function ResultadosEncuestaPage() {
                 });
                 return allCategories.length > 0 ? (
                   <div style={{ marginTop: '1.5rem' }}>
-                    <h4 style={{ fontSize: '0.95rem', fontWeight: 600, margin: '0 0 0.75rem' }}>Tendencia por Categoria</h4>
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: 600, margin: '0 0 0.75rem' }}>Tendencia por Categoría</h4>
                     <ResponsiveContainer width="100%" height={350}>
                       <LineChart data={catTrendData}>
                         <CartesianGrid strokeDasharray="3 3" />

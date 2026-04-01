@@ -26,7 +26,7 @@ const QUESTION_TYPES = [
   { value: 'likert_5', label: 'Escala 1-5' },
   { value: 'nps', label: 'NPS (0-10)' },
   { value: 'open_text', label: 'Texto Abierto' },
-  { value: 'multiple_choice', label: 'Opcion Multiple' },
+  { value: 'multiple_choice', label: 'Opción Múltiple' },
 ];
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
@@ -195,12 +195,12 @@ function EncuestasClimaPageContent() {
             {t('surveys.title', 'Encuestas de Clima')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Mide el compromiso y satisfaccion de tu equipo
+            Mide el compromiso y satisfacción de tu equipo
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setShowGuide(!showGuide)}>
-            {showGuide ? 'Ocultar guia' : 'Como funciona'}
+            {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
           </button>
           {isAdmin && (
             <button className="btn-primary" onClick={() => { setShowCreate(!showCreate); if (showCreate) resetForm(); }}>
@@ -217,15 +217,15 @@ function EncuestasClimaPageContent() {
       {showGuide && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-            Guia de Encuestas de Clima
+            Guía de Encuestas de Clima
           </h3>
 
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-              Que es una encuesta de clima?
+              Qué es una encuesta de clima?
             </div>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-              Una encuesta de clima mide el compromiso, satisfaccion y bienestar de los colaboradores. Los resultados permiten identificar fortalezas y areas de mejora en la organizacion.
+              Una encuesta de clima mide el compromiso, satisfacción y bienestar de los colaboradores. Los resultados permiten identificar fortalezas y áreas de mejora en la organización.
             </p>
           </div>
 
@@ -242,7 +242,7 @@ function EncuestasClimaPageContent() {
                 <strong>Texto Abierto:</strong> Respuesta libre para capturar feedback cualitativo
               </div>
               <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Opcion Multiple:</strong> Seleccion de una o varias opciones predefinidas
+                <strong>Opción Múltiple:</strong> Selección de una o varias opciones predefinidas
               </div>
             </div>
           </div>
@@ -250,12 +250,12 @@ function EncuestasClimaPageContent() {
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Flujo</div>
             <ol style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
-              <li>Crear encuesta (borrador) con preguntas y configuracion</li>
+              <li>Crear encuesta (borrador) con preguntas y configuración</li>
               <li>Lanzar encuesta (se notifica a los colaboradores)</li>
-              <li>Colaboradores responden (anonimamente si esta configurado)</li>
+              <li>Colaboradores responden (anónimamente si está configurado)</li>
               <li>Cerrar encuesta y ver resultados</li>
-              <li>Generar analisis con IA (plan Enterprise)</li>
-              <li>Crear iniciativas de desarrollo desde el analisis</li>
+              <li>Generar análisis con IA (plan Enterprise)</li>
+              <li>Crear iniciativas de desarrollo desde el análisis</li>
             </ol>
           </div>
 
@@ -263,7 +263,7 @@ function EncuestasClimaPageContent() {
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Permisos</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Administrador:</strong> Crea, lanza, cierra encuestas. Ve resultados completos y genera analisis IA
+                <strong>Administrador:</strong> Crea, lanza, cierra encuestas. Ve resultados completos y genera análisis IA
               </div>
               <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                 <strong>Encargado:</strong> Ve resultados de su departamento
@@ -284,12 +284,12 @@ function EncuestasClimaPageContent() {
           {/* Basic info */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Titulo *</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Título *</label>
               <input className="input" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Ej: Encuesta de Clima Q1 2026" />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Descripcion</label>
-              <textarea className="input" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} placeholder="Descripcion opcional..." style={{ resize: 'vertical' }} />
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Descripción</label>
+              <textarea className="input" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} placeholder="Descripción opcional..." style={{ resize: 'vertical' }} />
             </div>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 200 }}>
@@ -405,7 +405,7 @@ function EncuestasClimaPageContent() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
                     <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{s.title}</span>
-                    {s.isAnonymous && <span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>Anonima</span>}
+                    {s.isAnonymous && <span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>Anónima</span>}
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     {s.description && (
@@ -460,7 +460,7 @@ function EncuestasClimaPageContent() {
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      <span>{s.isAnonymous ? 'Anonima' : 'Identificada'}</span>
+                      <span>{s.isAnonymous ? 'Anónima' : 'Identificada'}</span>
                       <span>{s.responseCount || 0} respuestas</span>
                       <span>{new Date(s.startDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} - {new Date(s.endDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                     </div>
@@ -493,8 +493,8 @@ function EncuestasClimaPageContent() {
       {confirmDelete && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmDelete(null)}>
           <div className="card animate-fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, padding: '1.75rem' }}>
-            <h3 style={{ margin: '0 0 1rem' }}>Eliminar encuesta?</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Esta accion no se puede deshacer.</p>
+            <h3 style={{ margin: '0 0 1rem' }}>¿Eliminar encuesta?</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Esta acción no se puede deshacer.</p>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
               <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setConfirmDelete(null)}>Cancelar</button>
               <button onClick={() => handleDelete(confirmDelete)} style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Eliminar</button>
