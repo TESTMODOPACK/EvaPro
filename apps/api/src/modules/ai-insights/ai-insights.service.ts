@@ -19,7 +19,7 @@ import { buildSuggestionsPrompt } from './prompts/suggestions.prompt';
 import { buildSurveyAnalysisPrompt } from './prompts/survey-analysis.prompt';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
-const MODEL = 'claude-haiku-4-5';
+const MODEL = 'claude-haiku-4-5-20251001';
 const CACHE_DAYS = 7;
 
 /** Sanitize user-provided strings before interpolating into prompts */
@@ -185,13 +185,13 @@ export class AiInsightsService {
     }
   }
 
-  private async callClaude(prompt: string): Promise<{ text: string; tokensUsed: number }> {
+  private async callClaude(prompt: string, maxTokens = 2000): Promise<{ text: string; tokensUsed: number }> {
     const client = this.ensureClient();
 
     try {
       const response = await client.messages.create({
         model: MODEL,
-        max_tokens: 2000,
+        max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
       });
 
@@ -243,7 +243,8 @@ export class AiInsightsService {
           }
         }
       }
-      this.logger.error('Failed to parse AI response: ' + cleaned.slice(0, 300));
+      this.logger.error('Failed to parse AI response (first 500 chars): ' + cleaned.slice(0, 500));
+      this.logger.error('Response length: ' + cleaned.length + ', starts with: ' + JSON.stringify(cleaned.slice(0, 50)));
       throw new BadRequestException('La IA no pudo generar un informe estructurado. Intente nuevamente.');
     }
   }
@@ -1118,7 +1119,8 @@ export class AiInsightsService {
     if (cached) return cached;
 
     const prompt = buildSurveyAnalysisPrompt(surveyData);
-    const { text, tokensUsed } = await this.callClaude(prompt);
+    const { text, tokensUsed } = await this.callClaude(prompt, 4000);
+    this.logger.log('Survey AI response length: ' + text.length + ' chars, tokens: ' + tokensUsed);
     const content = this.parseJson(text);
 
     const insight = this.insightRepo.create({
