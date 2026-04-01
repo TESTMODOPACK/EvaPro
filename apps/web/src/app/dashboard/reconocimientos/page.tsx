@@ -153,6 +153,7 @@ export default function ReconocimientosPage() {
   const [badgeSaving, setBadgeSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [period, setPeriod] = useState<string>('month');
+  const [rankingView, setRankingView] = useState<'team' | 'general'>(isManager ? 'team' : 'general');
   // Challenge admin
   const [showCreateChallenge, setShowCreateChallenge] = useState(false);
   const [challengeForm, setChallengeForm] = useState({ name: '', description: '', criteriaType: 'recognitions_received', criteriaThreshold: 10, pointsReward: 50, startDate: '', endDate: '' });
@@ -311,8 +312,33 @@ export default function ReconocimientosPage() {
       )}
 
       {/* Leaderboard Tab */}
-      {tab === 'leaderboard' && (
+      {tab === 'leaderboard' && (() => {
+        // Filter leaderboard for team view (manager only)
+        const myUserId = useAuthStore.getState().user?.userId;
+        const userDept = (leaderboard || []).find((e: any) => e.userId === myUserId)?.department;
+        const teamLeaderboard = isManager && userDept
+          ? (leaderboard || []).filter((e: any) => e.department === userDept).map((e: any, i: number) => ({ ...e, rank: i + 1 }))
+          : null;
+        const displayData = rankingView === 'team' && teamLeaderboard ? teamLeaderboard : (leaderboard || []);
+
+        return (
         <div className="animate-fade-up">
+          {/* Manager: team/general toggle */}
+          {isManager && (
+            <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.75rem' }}>
+              {[
+                { val: 'team' as const, label: 'Mi Equipo' },
+                { val: 'general' as const, label: 'General' },
+              ].map((v) => (
+                <button key={v.val} onClick={() => setRankingView(v.val)}
+                  className={rankingView === v.val ? 'btn-primary' : 'btn-ghost'}
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Period filter */}
           <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem' }}>
             {[
               { val: 'week', label: t('reconocimientos.week') }, { val: 'month', label: t('reconocimientos.month') },
@@ -337,10 +363,12 @@ export default function ReconocimientosPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(leaderboard || []).map((entry: any) => (
+                  {displayData.map((entry: any) => (
                     <tr key={entry.userId}>
                       <td style={{ fontWeight: 700, fontSize: '1rem' }}>
-                        {entry.rank <= 3 ? ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'][entry.rank - 1] : entry.rank}
+                        {entry.rank <= 3
+                          ? <span dangerouslySetInnerHTML={{ __html: ['&#129351;', '&#129352;', '&#129353;'][entry.rank - 1] }} />
+                          : entry.rank}
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{entry.userName}</div>
@@ -352,7 +380,7 @@ export default function ReconocimientosPage() {
                       </td>
                     </tr>
                   ))}
-                  {(!leaderboard || leaderboard.length === 0) && (
+                  {displayData.length === 0 && (
                     <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                       {t('reconocimientos.noLeaderboard')}
                     </td></tr>
@@ -362,6 +390,8 @@ export default function ReconocimientosPage() {
             </div>
           </div>
         </div>
+        );
+      })()
       )}
 
       {/* Challenges Tab */}
