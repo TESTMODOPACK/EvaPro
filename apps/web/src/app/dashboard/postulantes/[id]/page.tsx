@@ -9,7 +9,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 
 const STAGES = [
   { key: 'registered', label: 'Registrado', badge: 'badge-ghost' },
-  { key: 'cv_review', label: 'CV en revision', badge: 'badge-accent' },
+  { key: 'cv_review', label: 'CV en revisión', badge: 'badge-accent' },
   { key: 'interviewing', label: 'En entrevista', badge: 'badge-warning' },
   { key: 'scored', label: 'Puntuado', badge: 'badge-info' },
   { key: 'approved', label: 'Aprobado', badge: 'badge-success' },
@@ -81,9 +81,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     if (!extForm.firstName.trim() || extForm.firstName.trim().length < 2) errors.firstName = 'Nombres requerido (min 2 caracteres)';
     if (extForm.firstName.trim() && !/^[a-zA-ZaeiouAEIOUnoN\s]+$/.test(extForm.firstName.trim())) errors.firstName = 'Solo letras y espacios';
     if (!extForm.lastName.trim() || extForm.lastName.trim().length < 2) errors.lastName = 'Apellidos requerido (min 2 caracteres)';
-    if (!extForm.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(extForm.email)) errors.email = 'Email valido requerido';
-    if (!extForm.phone.trim()) errors.phone = 'Telefono requerido';
-    else if (!/^\+?[\d\s()-]{7,20}$/.test(extForm.phone.trim())) errors.phone = 'Telefono no valido';
+    if (!extForm.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(extForm.email)) errors.email = 'Email válido requerido';
+    if (!extForm.phone.trim()) errors.phone = 'Teléfono requerido';
+    else if (!/^\+?[\d\s()-]{7,20}$/.test(extForm.phone.trim())) errors.phone = 'Teléfono no valido';
     setExtErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -203,7 +203,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         comments: interviewForm.comments,
         globalScore: interviewForm.globalScore ? Number(interviewForm.globalScore) : null,
       });
-      toast('Evaluacion guardada', 'success');
+      toast('Evaluación guardada', 'success');
       fetchProcess();
     } catch (e: any) {
       toast(e.message || 'Error al guardar evaluacion', 'error');
@@ -219,7 +219,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       setScorecard(data);
       setTab('scorecard');
     } catch (e: any) {
-      toast(e.message || 'Error al cargar puntuacion', 'error');
+      toast(e.message || 'Error al cargar puntuación', 'error');
     }
   };
 
@@ -238,10 +238,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   // ─── Tabs config ────────────────────────────────────────────────────
   const tabs = [
     { key: 'candidatos', label: 'Candidatos' },
-    { key: 'evaluacion', label: 'Evaluacion' },
-    { key: 'scorecard', label: 'Puntuacion' },
+    { key: 'evaluacion', label: 'Evaluación' },
+    { key: 'scorecard', label: 'Puntuación' },
     ...(isInternal ? [{ key: 'comparativa', label: 'Comparativa' }] : []),
-    { key: 'configuracion', label: 'Configuracion' },
+    { key: 'configuracion', label: 'Configuración' },
   ];
 
   return (
@@ -318,7 +318,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       {extErrors.email && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{extErrors.email}</div>}
                     </div>
                     <div>
-                      <input className="input" placeholder="Telefono *" value={extForm.phone}
+                      <input className="input" placeholder="Teléfono *" value={extForm.phone}
                         onChange={(e) => setExtForm((f) => ({ ...f, phone: e.target.value }))}
                         onBlur={validateExtForm} />
                       {extErrors.phone && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{extErrors.phone}</div>}
@@ -329,7 +329,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       onChange={(e) => setExtForm((f) => ({ ...f, linkedIn: e.target.value }))} />
                     <input className="input" placeholder="Disponibilidad" value={extForm.availability}
                       onChange={(e) => setExtForm((f) => ({ ...f, availability: e.target.value }))} />
-                    <input className="input" placeholder="Pretension de renta" value={extForm.salaryExpectation}
+                    <input className="input" placeholder="Pretensión de renta" value={extForm.salaryExpectation}
                       onChange={(e) => setExtForm((f) => ({ ...f, salaryExpectation: e.target.value }))} />
                   </div>
                   <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={handleAddExternal} disabled={addingCandidate}>
@@ -432,17 +432,17 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         </div>
       )}
 
-      {/* ─── Tab: Evaluacion (entrevista) ──────────────────────────── */}
+      {/* ─── Tab: Evaluación (entrevista) ──────────────────────────── */}
       {tab === 'evaluacion' && (
         <div>
           {!selectedCandidate ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              Selecciona un candidato desde la pestana Candidatos para evaluar
+              Selecciona un candidato desde la pestaña Candidatos para evaluar
             </div>
           ) : (
             <div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
-                Evaluacion: {selectedCandidate.firstName || selectedCandidate.user?.firstName} {selectedCandidate.lastName || selectedCandidate.user?.lastName}
+                Evaluación: {selectedCandidate.firstName || selectedCandidate.user?.firstName} {selectedCandidate.lastName || selectedCandidate.user?.lastName}
               </h2>
 
               {/* Requirement checks */}
@@ -515,7 +515,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               </div>
 
               <button className="btn-primary" onClick={handleSaveInterview} disabled={savingInterview}>
-                {savingInterview ? 'Guardando...' : 'Guardar Evaluacion'}
+                {savingInterview ? 'Guardando...' : 'Guardar Evaluación'}
               </button>
             </div>
           )}
@@ -532,7 +532,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           ) : (
             <div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
-                Tarjeta de Puntuacion: {scorecard.candidate?.firstName || scorecard.candidate?.user?.firstName} {scorecard.candidate?.lastName || scorecard.candidate?.user?.lastName}
+                Tarjeta de Puntuación: {scorecard.candidate?.firstName || scorecard.candidate?.user?.firstName} {scorecard.candidate?.lastName || scorecard.candidate?.user?.lastName}
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 {scorecard.scores?.cvMatchPct != null && (
@@ -570,7 +570,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               {/* Interviews detail */}
               {scorecard.interviews?.length > 0 && (
                 <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Evaluaciones de Entrevista</h3>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Evaluaciónes de Entrevista</h3>
                   {scorecard.interviews.map((i: any) => (
                     <div key={i.id} style={{ padding: '0.75rem', marginBottom: '0.5rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
@@ -651,11 +651,11 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         </div>
       )}
 
-      {/* ─── Tab: Configuracion ────────────────────────────────────── */}
+      {/* ─── Tab: Configuración ────────────────────────────────────── */}
       {tab === 'configuracion' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Informacion del Proceso</h3>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Información del Proceso</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.85rem' }}>
               <div><span style={{ color: 'var(--text-muted)' }}>Titulo:</span> <strong>{process.title}</strong></div>
               <div><span style={{ color: 'var(--text-muted)' }}>Cargo:</span> <strong>{process.position}</strong></div>

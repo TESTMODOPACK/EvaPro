@@ -49,15 +49,15 @@ function PostulantesPageContent() {
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-            Seleccion de Personal
+            Selección de Personal
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Gestiona procesos de reclutamiento externo y promocion interna
+            Gestiona procesos de reclutamiento externo y promoción interna
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setShowGuide(!showGuide)}>
-            {showGuide ? 'Ocultar guia' : 'Como funciona'}
+            {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
           </button>
           {isAdmin && (
             <Link href="/dashboard/postulantes/nuevo" style={{ textDecoration: 'none' }}>
@@ -76,28 +76,28 @@ function PostulantesPageContent() {
       {showGuide && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-            Guia de Seleccion de Personal
+            Guía de Selección de Personal
           </h3>
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Tipos de proceso</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Contratacion Externa:</strong> Candidatos fuera de la organizacion. Incluye registro de datos, carga de CV, analisis con IA, entrevistas con evaluadores y tarjeta de puntuacion.
+                <strong>Contratación Externa:</strong> Candidatos fuera de la organización. Incluye registro de datos, carga de CV, análisis con IA, entrevistas con evaluadores y tarjeta de puntuación.
               </div>
               <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Promocion Interna:</strong> Colaboradores de la organizacion. Se vinculan al empleado existente con historial de evaluaciones, talento y objetivos. Incluye cuadro comparativo con recomendacion de IA.
+                <strong>Promoción Interna:</strong> Colaboradores de la organización. Se vinculan al empleado existente con historial de evaluaciones, talento y objetivos. Incluye cuadro comparativo con recomendación de IA.
               </div>
             </div>
           </div>
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Flujo del proceso</div>
             <ol style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
-              <li>Crear proceso seleccionando tipo (externo/interno), cargo, requisitos y evaluadores</li>
+              <li>Crear proceso selecciónando tipo (externo/interno), cargo, requisitos y evaluadores</li>
               <li>Agregar candidatos al proceso</li>
-              <li>Cargar CV y generar analisis con IA (consume limite mensual del plan)</li>
+              <li>Cargar CV y generar análisis con IA (consume límite mensual del plan)</li>
               <li>Evaluadores registran entrevistas con cumplimiento de requisitos</li>
-              <li>Revisar tarjeta de puntuacion consolidada</li>
-              <li>Para internos: usar cuadro comparativo con recomendacion de IA</li>
+              <li>Revisar tarjeta de puntuación consolidada</li>
+              <li>Para internos: usar cuadro comparativo con recomendación de IA</li>
             </ol>
           </div>
         </div>
@@ -140,7 +140,7 @@ function PostulantesPageContent() {
               <polyline points="14 2 14 8 20 8" />
             </svg>
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>No hay procesos de seleccion</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>No hay procesos de selección</p>
           {isAdmin && <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>Crea tu primer proceso para comenzar</p>}
         </div>
       ) : (

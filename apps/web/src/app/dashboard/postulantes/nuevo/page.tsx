@@ -12,43 +12,43 @@ const REQUIREMENT_CATEGORIES = [
     key: 'experiencia',
     label: 'Experiencia',
     defaults: [
-      '3+ anos de experiencia en el area',
+      '3+ años de experiencia en el área',
       'Experiencia liderando equipos',
       'Experiencia en la industria',
-      'Experiencia en gestion de proyectos',
+      'Experiencia en gestión de proyectos',
     ],
   },
   {
     key: 'conocimiento_tecnico',
-    label: 'Conocimiento Tecnico',
+    label: 'Conocimiento Técnico',
     defaults: [
-      'Dominio de herramientas offimaticas avanzadas',
+      'Dominio de herramientas ofimáticas avanzadas',
       'Manejo de sistemas ERP',
-      'Conocimiento de metodologias agiles',
-      'Manejo de herramientas de analisis de datos',
+      'Conocimiento de metodologías ágiles',
+      'Manejo de herramientas de análisis de datos',
     ],
   },
   {
     key: 'habilidades_blandas',
     label: 'Habilidades Blandas',
-    defaults: [], // Se cargan desde competencias de la organizacion
+    defaults: [], // Se cargan desde competencias de la organización
   },
   {
     key: 'formacion',
-    label: 'Formacion',
+    label: 'Formación',
     defaults: [
-      'Titulo profesional universitario',
+      'Título profesional universitario',
       'Postgrado o MBA',
-      'Certificaciones relevantes del area',
+      'Certificaciones relevantes del área',
     ],
   },
   {
     key: 'idiomas',
     label: 'Idiomas',
     defaults: [
-      'Ingles intermedio',
-      'Ingles avanzado',
-      'Portugues basico',
+      'Inglés intermedio',
+      'Inglés avanzado',
+      'Portugués básico',
     ],
   },
 ];
@@ -163,7 +163,7 @@ export default function NuevoProcesoPage() {
   // Build requirement options with org competencies
   const reqCategories = REQUIREMENT_CATEGORIES.map((cat) => {
     if (cat.key === 'habilidades_blandas') {
-      return { ...cat, defaults: competencies.length > 0 ? competencies : ['Trabajo en equipo', 'Comunicacion efectiva', 'Liderazgo', 'Resolucion de problemas', 'Orientacion a resultados'] };
+      return { ...cat, defaults: competencies.length > 0 ? competencies : ['Trabajo en equipo', 'Comunicación efectiva', 'Liderazgo', 'Resolución de problemas', 'Orientación a resultados'] };
     }
     return cat;
   });
@@ -171,7 +171,7 @@ export default function NuevoProcesoPage() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Nuevo Proceso de Seleccion</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Nuevo Proceso de Selección</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Define el tipo, cargo, requisitos y evaluadores</p>
       </div>
 
@@ -181,8 +181,8 @@ export default function NuevoProcesoPage() {
           <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Tipo de Proceso *</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             {[
-              { key: 'external', icon: 'E', title: 'Contratacion Externa', desc: 'Candidatos fuera de la organizacion. CV, analisis IA y entrevistas.' },
-              { key: 'internal', icon: 'I', title: 'Promocion Interna', desc: 'Colaboradores de la organizacion. Historial, comparativa y recomendacion IA.' },
+              { key: 'external', icon: 'E', title: 'Contratación Externa', desc: 'Candidatos fuera de la organización. CV, análisis IA y entrevistas.' },
+              { key: 'internal', icon: 'I', title: 'Promoción Interna', desc: 'Colaboradores de la organización. Historial, comparativa y recomendación IA.' },
             ].map((opt) => (
               <button key={opt.key} type="button" onClick={() => setProcessType(opt.key)}
                 style={{
@@ -202,10 +202,10 @@ export default function NuevoProcesoPage() {
           <>
             {/* Step 2: Basic info */}
             <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Informacion del Proceso</h2>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Información del Proceso</h2>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
-                  <label style={labelStyle}>Titulo del proceso *</label>
+                  <label style={labelStyle}>Título del proceso *</label>
                   <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Analista de Datos Q2 2026" required />
                 </div>
                 <div>
@@ -231,7 +231,7 @@ export default function NuevoProcesoPage() {
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>Descripcion</label>
+                <label style={labelStyle}>Descripción</label>
                 <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Contexto del cargo..." rows={3} style={{ resize: 'vertical' as const }} />
               </div>
             </div>
@@ -240,7 +240,7 @@ export default function NuevoProcesoPage() {
             <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Requisitos del Cargo</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-                Selecciona los requisitos agrupados por categoria. Puedes agregar personalizados.
+                Selecciona los requisitos agrupados por categoría. Puedes agregar personalizados.
               </p>
               {reqCategories.map((cat) => (
                 <div key={cat.key} style={{ marginBottom: '1rem' }}>
@@ -273,7 +273,7 @@ export default function NuevoProcesoPage() {
               ))}
               {requirements.length > 0 && (
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  {requirements.length} requisito{requirements.length !== 1 ? 's' : ''} seleccionado{requirements.length !== 1 ? 's' : ''}
+                  {requirements.length} requisito{requirements.length !== 1 ? 's' : ''} selecciónado{requirements.length !== 1 ? 's' : ''}
                 </div>
               )}
             </div>
@@ -282,7 +282,7 @@ export default function NuevoProcesoPage() {
             <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Evaluadores</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-                {department ? `Managers de "${department}" se sugieren automaticamente.` : 'Selecciona quienes evaluaran candidatos.'}
+                {department ? `Managers de "${department}" se sugieren automáticamente.` : 'Selecciona quiénes evaluarán candidatos.'}
               </p>
               {department && deptEvaluators.length > 0 && (
                 <div style={{ marginBottom: '1rem' }}>
@@ -326,7 +326,7 @@ export default function NuevoProcesoPage() {
               )}
               {evaluatorIds.length > 0 && (
                 <div style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  {evaluatorIds.length} evaluador(es) seleccionado(s)
+                  {evaluatorIds.length} evaluador(es) selecciónado(s)
                 </div>
               )}
             </div>
@@ -334,7 +334,7 @@ export default function NuevoProcesoPage() {
             {/* Step 5: Internal config (only for internal processes) */}
             {processType === 'internal' && (
               <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-                <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Configuracion Proceso Interno</h2>
+                <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Configuración Proceso Interno</h2>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', marginBottom: '1rem' }}>
                   <input type="checkbox" checked={requireCvForInternal} onChange={(e) => setRequireCvForInternal(e.target.checked)} />
                   Solicitar CV a los postulantes internos

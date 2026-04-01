@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
@@ -166,6 +166,12 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
   const isAdmin = user?.role === 'tenant_admin';
   const isManager = user?.role === 'manager';
   const isAdminOrManager = isAdmin || isManager;
+
+  // Collapsible sections — first section ("Mi Espacio") always open
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const toggleSection = useCallback((title: string) => {
+    setCollapsedSections((prev) => ({ ...prev, [title]: !prev[title] }));
+  }, []);
 
   const tenantNavSections: NavSection[] = [
     // ─── Mi Espacio (todos los roles) ───────────────────────────
@@ -336,12 +342,29 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
           );
           if (visibleItems.length === 0) return null;
 
+          const isCollapsed = sIdx > 0 && collapsedSections[section.title];
+          const hasActiveItem = visibleItems.some((item) =>
+            currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href)),
+          );
+
           return (
-            <div key={section.title}>
-              <div style={{ ...sectionLabelStyle, ...(sIdx === 0 ? { marginTop: '0.5rem' } : {}) }}>
-                {section.title}
+            <div key={section.title} style={{ marginBottom: '0.15rem' }}>
+              <div
+                onClick={sIdx > 0 ? () => toggleSection(section.title) : undefined}
+                style={{
+                  ...sectionLabelStyle,
+                  ...(sIdx === 0 ? { marginTop: '0.5rem' } : {}),
+                  ...(sIdx > 0 ? { cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0.5rem', borderRadius: 'var(--radius-sm)' } : {}),
+                }}
+              >
+                <span>{section.title}</span>
+                {sIdx > 0 && (
+                  <span style={{ fontSize: '0.6rem', transition: 'transform 0.2s', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
+                    &#9660;
+                  </span>
+                )}
               </div>
-              {visibleItems.map((item) => {
+              {(!isCollapsed || hasActiveItem) && visibleItems.map((item) => {
                 const isActive = currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href));
                 const isLocked = !canAccessRoute(item.href);
                 const routeFeature = getRouteFeature(item.href);
