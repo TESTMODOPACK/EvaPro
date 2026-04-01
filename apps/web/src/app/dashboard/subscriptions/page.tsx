@@ -31,20 +31,22 @@ const planStatusBadge: Record<string, string> = {
 // ─── Empty forms ────────────────────────────────────────────────────────────
 
 const FEATURE_OPTIONS = [
-  { key: 'EVAL_90_180', label: 'Evaluaciones 90\u00b0/180\u00b0' },
-  { key: 'EVAL_270', label: 'Evaluaciones 270\u00b0' },
-  { key: 'EVAL_360', label: 'Evaluaciones 360\u00b0' },
-  { key: 'BASIC_REPORTS', label: 'Reportes b\u00e1sicos' },
+  { key: 'EVAL_90_180', label: 'Evaluaciones 90/180' },
+  { key: 'EVAL_270', label: 'Evaluaciones 270' },
+  { key: 'EVAL_360', label: 'Evaluaciones 360' },
+  { key: 'BASIC_REPORTS', label: 'Reportes basicos' },
   { key: 'ADVANCED_REPORTS', label: 'Reportes avanzados' },
   { key: 'OKR', label: 'OKRs / Objetivos' },
   { key: 'FEEDBACK', label: 'Feedback continuo' },
   { key: 'CHECKINS', label: 'Check-ins 1:1' },
   { key: 'TEMPLATES_CUSTOM', label: 'Plantillas personalizadas' },
   { key: 'PDI', label: 'Planes de desarrollo' },
-  { key: 'NINE_BOX', label: 'Nine Box' },
-  { key: 'CALIBRATION', label: 'Calibraci\u00f3n' },
-  { key: 'AI_INSIGHTS', label: 'IA / Insights' },
-  { key: 'PUBLIC_API', label: 'API p\u00fablica' },
+  { key: 'NINE_BOX', label: 'Matriz Nine Box / Talento' },
+  { key: 'CALIBRATION', label: 'Calibracion' },
+  { key: 'POSTULANTS', label: 'Evaluacion de Postulantes' },
+  { key: 'ENGAGEMENT_SURVEYS', label: 'Encuestas de Clima' },
+  { key: 'AI_INSIGHTS', label: 'Analisis con IA' },
+  { key: 'PUBLIC_API', label: 'API publica' },
 ];
 
 const CURRENCY_OPTIONS = ['UF', 'CLP', 'USD'];
@@ -582,7 +584,7 @@ export default function SubscriptionsPage() {
                   <input style={inputStyle} value={planForm.description} onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })} placeholder="Descripcion del plan..." />
                 </div>
                 <div style={{ gridColumn: 'span 3' }}>
-                  <label style={labelStyle}>Features incluidas</label>
+                  <label style={labelStyle}>Funcionalidades incluidas</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginTop: '0.35rem' }}>
                     {FEATURE_OPTIONS.map((fo) => {
                       const checked = Array.isArray(planForm.features) && planForm.features.includes(fo.key);
