@@ -144,6 +144,12 @@ export class AiInsightsController {
 
   // ─── Usage Quota ──────────────────────────────────────────────────────
 
+  @Get('tenant-usage')
+  @Roles('super_admin', 'tenant_admin')
+  getTenantUsage(@Request() req: any) {
+    return this.aiService.getTenantUsage(req.user.tenantId);
+  }
+
   @Get('usage')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getUsage(@Request() req: any) {

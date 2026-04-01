@@ -650,6 +650,7 @@ export const api = {
     getFlightRisk: (token: string) =>
       request<any>(`/ai/flight-risk`, {}, token),
     getUsage: (token: string) => request<any>('/ai/usage', {}, token),
+    getTenantUsage: (token: string) => request<any>('/ai/tenant-usage', {}, token),
     exportSummaryPdf: (token: string, cycleId: string, userId: string) =>
       `${BASE_URL}/ai/summary-pdf/${userId}/${cycleId}`,
     getPerformancePrediction: (token: string, userId: string) =>

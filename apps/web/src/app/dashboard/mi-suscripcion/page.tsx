@@ -99,6 +99,9 @@ export default function MiSuscripcionPage() {
   // Past requests
   const [myRequests, setMyRequests] = useState<any[]>([]);
 
+  // AI usage
+  const [aiUsage, setAiUsage] = useState<any>(null);
+
   function showToast(msg: string) {
     setAutoRenewToast(msg);
     setTimeout(() => setAutoRenewToast(''), 3000);
@@ -114,14 +117,16 @@ export default function MiSuscripcionPage() {
       api.subscriptions.getProration(token).catch(() => null),
       api.subscriptions.plans.list(token).catch(() => []),
       api.subscriptions.myRequests(token).catch(() => []),
+      api.ai.getTenantUsage(token).catch(() => null),
     ])
-      .then(([s, count, pays, prot, plns, reqs]) => {
+      .then(([s, count, pays, prot, plns, reqs, aiUse]) => {
         setSub(s);
         setUserCount(count as number);
         setPayments(pays as any[]);
         setProration(prot as any);
         setPlans((plns as any[]).filter((p: any) => p.isActive));
         setMyRequests(reqs as any[]);
+        setAiUsage(aiUse);
       })
       .finally(() => setLoading(false));
   }
@@ -365,6 +370,60 @@ export default function MiSuscripcionPage() {
               <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: '0.75rem', fontWeight: 500 }}>
                 Estás cerca del límite de usuarios de tu plan.
               </p>
+            )}
+          </div>
+
+          {/* AI Usage card */}
+          <div className="card animate-fade-up-delay-2" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Uso de Inteligencia Artificial</h2>
+            {!aiUsage || !aiUsage.hasAiAccess ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                <span style={{ fontSize: '1.5rem' }}>&#128274;</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>No incluido en su plan</div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Los informes de IA estan disponibles en planes superiores.</div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    {aiUsage.monthlyUsed} de {aiUsage.monthlyLimit} informes IA este mes
+                  </span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: aiUsage.monthlyRemaining <= 0 ? 'var(--danger)' : aiUsage.monthlyRemaining <= Math.ceil(aiUsage.monthlyLimit * 0.1) ? 'var(--warning)' : 'var(--success)' }}>
+                    {aiUsage.monthlyLimit > 0 ? Math.round((aiUsage.monthlyUsed / aiUsage.monthlyLimit) * 100) : 0}%
+                  </span>
+                </div>
+                <div style={{ height: '12px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${Math.min(aiUsage.monthlyLimit > 0 ? (aiUsage.monthlyUsed / aiUsage.monthlyLimit) * 100 : 0, 100)}%`,
+                    background: aiUsage.monthlyRemaining <= 0 ? 'var(--danger)' : aiUsage.monthlyRemaining <= Math.ceil(aiUsage.monthlyLimit * 0.1) ? 'var(--warning)' : 'var(--success)',
+                    borderRadius: '999px',
+                    transition: 'width 0.6s ease',
+                  }} />
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                  {aiUsage.monthlyRemaining} informes restantes. El limite se renueva el 1ro de cada mes.
+                </div>
+                {aiUsage.lastGenerations?.length > 0 && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Ultimas generaciones
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {aiUsage.lastGenerations.slice(0, 5).map((g: any) => (
+                        <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>{g.type}</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                            {new Date(g.date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

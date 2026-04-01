@@ -17,10 +17,10 @@ import { buildSummaryPrompt } from './prompts/summary.prompt';
 import { buildBiasPrompt } from './prompts/bias.prompt';
 import { buildSuggestionsPrompt } from './prompts/suggestions.prompt';
 import { buildSurveyAnalysisPrompt } from './prompts/survey-analysis.prompt';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 const MODEL = 'claude-haiku-4-5';
 const CACHE_DAYS = 7;
-const MAX_CALLS_PER_TENANT_PER_DAY = 50;
 
 /** Sanitize user-provided strings before interpolating into prompts */
 function sanitizeForPrompt(input: string): string {
@@ -56,6 +56,7 @@ export class AiInsightsService {
     @InjectRepository(TalentAssessment)
     private readonly talentRepo: Repository<TalentAssessment>,
     private readonly reportsService: ReportsService,
+    private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
   ) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -111,27 +112,40 @@ export class AiInsightsService {
     return { deleted: result.affected || 0 };
   }
 
-  /** Check rate limit: max N calls per tenant per day (safety net) */
-  private async checkRateLimit(tenantId: string): Promise<void> {
-    const dayAgo = new Date();
-    dayAgo.setDate(dayAgo.getDate() - 1);
+  /** Get the monthly AI call limit from the tenant's subscription plan */
+  private async getPlanAiLimit(tenantId: string): Promise<number> {
+    const sub = await this.subscriptionsService.findByTenantId(tenantId);
+    if (!sub?.plan) return 0;
+    return sub.plan.maxAiCallsPerMonth ?? 0;
+  }
 
-    const recentCount = await this.insightRepo.count({
-      where: { tenantId, createdAt: MoreThan(dayAgo) },
+  /** Count AI calls for the current calendar month */
+  private async getMonthlyCallCount(tenantId: string): Promise<number> {
+    const now = new Date();
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return this.insightRepo.count({
+      where: { tenantId, createdAt: MoreThan(firstOfMonth) },
     });
+  }
 
-    if (recentCount >= MAX_CALLS_PER_TENANT_PER_DAY) {
+  /** Check plan-based monthly rate limit */
+  private async checkRateLimit(tenantId: string): Promise<void> {
+    const monthlyLimit = await this.getPlanAiLimit(tenantId);
+    if (monthlyLimit <= 0) {
       throw new BadRequestException(
-        `Se alcanzó el límite diario de ${MAX_CALLS_PER_TENANT_PER_DAY} análisis de IA por organización. Intente mañana.`,
+        'Su plan no incluye informes de IA. Actualice a un plan superior para acceder a esta funcionalidad.',
+      );
+    }
+
+    const monthlyUsed = await this.getMonthlyCallCount(tenantId);
+    if (monthlyUsed >= monthlyLimit) {
+      throw new BadRequestException(
+        `Se alcanzo el limite mensual de ${monthlyLimit} informes de IA para su organizacion. El limite se renueva el 1ro del proximo mes.`,
       );
     }
   }
 
-  /**
-   * Check weekly limit per role:
-   * - manager: 50 AI generations per week
-   * - tenant_admin: 100 AI generations per week
-   */
+  /** Check weekly limit per role (secondary limit within monthly budget) */
   private async checkWeeklyRoleLimit(tenantId: string, generatedBy: string): Promise<void> {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
@@ -140,14 +154,13 @@ export class AiInsightsService {
       where: { tenantId, generatedBy, createdAt: MoreThan(weekAgo) },
     });
 
-    // Determine the user's role to apply the right limit
     const user = await this.userRepo.findOne({ where: { id: generatedBy }, select: ['id', 'role'] });
     const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
     const weeklyLimit = isAdmin ? 100 : 50;
 
     if (weeklyCount >= weeklyLimit) {
       throw new BadRequestException(
-        `Has alcanzado el límite semanal de ${weeklyLimit} informes de IA. El límite se renueva cada 7 días.`,
+        `Has alcanzado el limite semanal de ${weeklyLimit} informes de IA. El limite se renueva cada 7 dias.`,
       );
     }
   }
@@ -872,17 +885,64 @@ export class AiInsightsService {
     const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'role'] });
     const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
     const weeklyLimit = isAdmin ? 100 : 50;
-    const remaining = Math.max(0, weeklyLimit - weeklyUsed);
-    const nearLimit = remaining <= Math.ceil(weeklyLimit * 0.1); // Alert when 10% or less remaining
+    const weeklyRemaining = Math.max(0, weeklyLimit - weeklyUsed);
+
+    // Monthly plan-based limits
+    const monthlyLimit = await this.getPlanAiLimit(tenantId);
+    const monthlyUsed = await this.getMonthlyCallCount(tenantId);
+    const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
+    const nearLimit = monthlyLimit > 0 && monthlyRemaining <= Math.ceil(monthlyLimit * 0.1);
 
     return {
+      monthlyUsed,
+      monthlyLimit,
+      monthlyRemaining,
       weeklyUsed,
       weeklyLimit,
-      remaining,
+      weeklyRemaining,
       nearLimit,
-      message: nearLimit
-        ? `Atención: te quedan ${remaining} de ${weeklyLimit} informes de IA esta semana.`
-        : null,
+      message: monthlyLimit <= 0
+        ? 'Su plan no incluye informes de IA.'
+        : nearLimit
+          ? `Atencion: quedan ${monthlyRemaining} de ${monthlyLimit} informes de IA este mes.`
+          : null,
+    };
+  }
+
+  /** Get tenant-level AI usage for subscription page */
+  async getTenantUsage(tenantId: string) {
+    const monthlyLimit = await this.getPlanAiLimit(tenantId);
+    const monthlyUsed = await this.getMonthlyCallCount(tenantId);
+    const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
+
+    // Last 5 generations
+    const now = new Date();
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastGenerations = await this.insightRepo.find({
+      where: { tenantId, createdAt: MoreThan(firstOfMonth) },
+      select: ['id', 'type', 'createdAt', 'generatedBy', 'tokensUsed'],
+      order: { createdAt: 'DESC' },
+      take: 10,
+    });
+
+    const typeLabels: Record<string, string> = {
+      summary: 'Resumen de desempeno',
+      bias: 'Deteccion de sesgo',
+      suggestions: 'Sugerencias de desarrollo',
+      survey_analysis: 'Analisis de encuesta',
+    };
+
+    return {
+      monthlyUsed,
+      monthlyLimit,
+      monthlyRemaining,
+      hasAiAccess: monthlyLimit > 0,
+      lastGenerations: lastGenerations.map((g) => ({
+        id: g.id,
+        type: typeLabels[g.type] || g.type,
+        date: g.createdAt,
+        tokensUsed: g.tokensUsed,
+      })),
     };
   }
 

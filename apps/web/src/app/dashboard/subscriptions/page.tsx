@@ -62,6 +62,7 @@ const emptyPlanForm = {
   yearlyPrice: '',
   currency: 'UF',
   features: [] as string[],
+  maxAiCallsPerMonth: 0,
   displayOrder: 0,
 };
 
@@ -199,6 +200,7 @@ export default function SubscriptionsPage() {
         yearlyPrice: planForm.yearlyPrice ? Number(planForm.yearlyPrice) : undefined,
         currency: (planForm as any).currency || 'UF',
         features: planForm.features,
+        maxAiCallsPerMonth: (planForm as any).maxAiCallsPerMonth || 0,
         displayOrder: plans.length > 0 ? Math.max(...plans.map((p: any) => p.displayOrder ?? 0)) + 1 : 0,
       });
       setSuccess('Plan creado correctamente');
@@ -228,6 +230,7 @@ export default function SubscriptionsPage() {
         yearlyPrice: planForm.yearlyPrice ? Number(planForm.yearlyPrice) : undefined,
         currency: (planForm as any).currency || 'UF',
         features: planForm.features,
+        maxAiCallsPerMonth: (planForm as any).maxAiCallsPerMonth || 0,
         displayOrder: Number(planForm.displayOrder),
       });
       setSuccess('Plan actualizado');
@@ -266,6 +269,7 @@ export default function SubscriptionsPage() {
       yearlyPrice: plan.yearlyPrice != null ? String(plan.yearlyPrice) : '',
       currency: plan.currency || 'UF',
       features: Array.isArray(plan.features) ? plan.features : [],
+      maxAiCallsPerMonth: plan.maxAiCallsPerMonth ?? 0,
       displayOrder: plan.displayOrder ?? 0,
     } as any);
     setEditingPlanId(plan.id);
@@ -609,6 +613,18 @@ export default function SubscriptionsPage() {
                     })}
                   </div>
                 </div>
+                {Array.isArray(planForm.features) && planForm.features.includes('AI_INSIGHTS') && (
+                  <div>
+                    <label style={labelStyle}>Limite mensual de informes IA</label>
+                    <input style={inputStyle} type="number" min={0}
+                      value={(planForm as any).maxAiCallsPerMonth || 0}
+                      onChange={(e) => setPlanForm({ ...planForm, maxAiCallsPerMonth: Number(e.target.value) } as any)}
+                      placeholder="0 = sin acceso, ej: 100" />
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem', display: 'block' }}>
+                      Numero maximo de informes IA que la organizacion puede generar por mes. 0 = sin acceso.
+                    </span>
+                  </div>
+                )}
               </div>
               {/* Error inline dentro del formulario de planes */}
               {error && (

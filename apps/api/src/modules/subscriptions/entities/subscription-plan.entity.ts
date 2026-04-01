@@ -43,6 +43,9 @@ export class SubscriptionPlan {
   @Column({ type: 'jsonb', default: [] })
   features: string[];
 
+  @Column({ type: 'int', name: 'max_ai_calls_per_month', default: 0, comment: '0 = sin acceso AI, null = ilimitado' })
+  maxAiCallsPerMonth: number;
+
   @Column({ type: 'boolean', name: 'is_active', default: true })
   isActive: boolean;
 
