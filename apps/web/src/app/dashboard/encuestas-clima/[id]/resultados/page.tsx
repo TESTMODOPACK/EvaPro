@@ -128,24 +128,27 @@ export default function ResultadosEncuestaPage() {
   ];
 
   return (
-    <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <button className="btn-ghost" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }} onClick={() => router.push('/dashboard/encuestas-clima')}>
-            &#8592; Volver
+      <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => router.push('/dashboard/encuestas-clima')}>
+            &#8592; Encuestas
           </button>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800 }}>
             Resultados: {results.survey?.title}
           </h1>
-          <span className={`badge ${results.survey?.status === 'closed' ? 'badge-warning' : 'badge-success'}`}>
+          <span className={`badge ${results.survey?.status === 'closed' ? 'badge-warning' : 'badge-success'}`} style={{ fontSize: '0.65rem' }}>
             {results.survey?.status === 'closed' ? 'Cerrada' : 'Activa'}
           </span>
         </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+          {results.totalResponses} respuestas de {results.totalAssigned} asignados ({results.responseRate}% tasa de respuesta)
+        </p>
       </div>
 
       {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+      <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Tasa de Respuesta</div>
           <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--accent)' }}>{results.responseRate}%</div>
@@ -176,7 +179,7 @@ export default function ResultadosEncuestaPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.25rem', borderBottom: '2px solid var(--border)', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
         {TABS.map((tab) => (
           <button
             key={tab.key}
