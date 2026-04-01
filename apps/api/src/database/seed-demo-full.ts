@@ -170,6 +170,27 @@ async function seedDemoFull() {
       allNewUsers.push(u);
     }
 
+    // Fix departments & positions for existing users (idempotent update)
+    const deptFixMap: Record<string, { department: string; position: string }> = {
+      'maria.gonzalez@evapro.demo': { department: 'Ventas', position: 'Ejecutiva de Ventas' },
+      'pedro.silva@evapro.demo': { department: 'Tecnología', position: 'Desarrollador Frontend' },
+      'camila.herrera@evapro.demo': { department: 'Marketing', position: 'Content Manager' },
+      'diego.morales@evapro.demo': { department: 'Operaciones', position: 'Analista de Operaciones' },
+      'valentina.rojas@evapro.demo': { department: 'Marketing', position: 'Diseñadora UI' },
+      'andres.castro@evapro.demo': { department: 'Ventas', position: 'Account Manager' },
+      'isabel.mendez@evapro.demo': { department: 'Finanzas', position: 'Analista Financiero' },
+      'felipe.vargas@evapro.demo': { department: 'Tecnología', position: 'Ingeniero de Infraestructura' },
+    };
+    for (const [email, fix] of Object.entries(deptFixMap)) {
+      const u = await userRepo.findOne({ where: { email, tenantId: tid } });
+      if (u && (u.department !== fix.department || u.position !== fix.position)) {
+        u.department = fix.department;
+        u.position = fix.position;
+        await userRepo.save(u);
+        console.log(`🔧 Fixed department/position: ${email} → ${fix.department} / ${fix.position}`);
+      }
+    }
+
     // Add demographic data to all users (idempotent: only if gender is null)
     const demoGraphics = [
       { email: 'maria.gonzalez@evapro.demo', gender: 'femenino', birthDate: '1992-03-15', nationality: 'Chilena', seniorityLevel: 'mid', contractType: 'indefinido', workLocation: 'hibrido' },
