@@ -765,7 +765,7 @@ function ObjetivosPageContent() {
   const isManager = userRole === 'manager';
   const isEmployee = userRole === 'employee';
   const canCreate = true; // all roles can create
-  const canDelete = isAdmin; // Solo admin puede eliminar objetivos
+  const canCancel = isAdmin || isManager; // Admin y manager pueden cancelar objetivos
   const canApprove = isAdmin || isManager;
   const showAssignedTo = isAdmin || isManager;
 
@@ -1685,17 +1685,17 @@ function ObjetivosPageContent() {
                       </button>
                     </>
                   )}
-                  {canDelete && (
+                  {canCancel && obj.status !== 'abandoned' && obj.status !== 'completed' && (
                     <button
                       className="btn-ghost"
-                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--danger)' }}
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--warning)' }}
                       onClick={() => setConfirmState({
-                        message: 'Eliminar este objetivo?',
+                        message: '¿Cancelar este objetivo? El objetivo quedará en estado "Cancelado" y no se eliminará.',
                         danger: true,
-                        onConfirm: () => { setConfirmState(null); deleteObjective.mutate(obj.id); },
+                        onConfirm: () => { setConfirmState(null); updateObjective.mutate({ id: obj.id, data: { status: 'abandoned' } }); },
                       })}
                     >
-                      Eliminar
+                      Cancelar objetivo
                     </button>
                   )}
                 </div>
