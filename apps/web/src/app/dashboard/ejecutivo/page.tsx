@@ -67,7 +67,7 @@ export default function DashboardEjecutivoPage() {
       setAtRiskObjectives(atRisk || []);
       setRecognitionStats(recStats);
     }).finally(() => setChartsLoading(false));
-  }, [token, summary?.performance?.cycleId, summary?.enps?.surveyId]);
+  }, [token, selectedCycleId, summary?.performance?.cycleId, summary?.enps?.surveyId]);
 
   // Derive org initiatives data from plans
   const orgInitiatives = orgPlans.flatMap((p: any) => p.initiatives || []);
@@ -93,7 +93,7 @@ export default function DashboardEjecutivoPage() {
   const enpsTrendData = surveyTrends
     .filter((s: any) => s.overallAverage > 0)
     .map((s: any) => ({
-      name: s.title?.length > 20 ? s.title.substring(0, 20) + '...' : s.title,
+      name: s.title ? (s.title.length > 20 ? s.title.substring(0, 20) + '...' : s.title) : 'Sin titulo',
       promedio: s.overallAverage,
       respuestas: s.responseRate,
     }));

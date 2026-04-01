@@ -44,12 +44,13 @@ export class ExecutiveDashboardService {
     cycleId?: string,
     managerId?: string,
   ): Promise<any> {
+    // Each section fails gracefully with defaults
     const [headcount, enps, performance, objectives, orgDevelopment] = await Promise.all([
-      this.getHeadcount(tenantId, managerId),
-      this.getLatestENPS(tenantId),
-      this.getPerformanceSummary(tenantId, cycleId, managerId),
-      this.getObjectivesSummary(tenantId, managerId),
-      this.getOrgDevelopmentSummary(tenantId),
+      this.getHeadcount(tenantId, managerId).catch((e) => { this.logger.error(`Headcount error: ${e.message}`); return { total: 0, active: 0, byDepartment: [] }; }),
+      this.getLatestENPS(tenantId).catch((e) => { this.logger.error(`eNPS error: ${e.message}`); return null; }),
+      this.getPerformanceSummary(tenantId, cycleId, managerId).catch((e) => { this.logger.error(`Performance error: ${e.message}`); return { avgScore: 0, completionRate: 0, totalAssignments: 0, completedAssignments: 0, cycleName: null, cycleId: null }; }),
+      this.getObjectivesSummary(tenantId, managerId).catch((e) => { this.logger.error(`Objectives error: ${e.message}`); return { total: 0, completed: 0, inProgress: 0, draft: 0, pendingApproval: 0, abandoned: 0, completionPct: 0 }; }),
+      this.getOrgDevelopmentSummary(tenantId).catch((e) => { this.logger.error(`OrgDev error: ${e.message}`); return { totalPlans: 0, activePlans: 0, totalInitiatives: 0, completedInitiatives: 0, inProgressInitiatives: 0, pendingInitiatives: 0 }; }),
     ]);
 
     return {
@@ -167,10 +168,9 @@ export class ExecutiveDashboardService {
       return { avgScore: 0, completionRate: 0, totalAssignments: 0, completedAssignments: 0, cycleName: null, cycleId: null };
     }
 
-    // Build assignment query
+    // Build assignment query, scoped to manager's direct reports if applicable
     const assignmentWhere: any = { cycleId: cycle.id };
     if (managerId) {
-      // Scope to direct reports: evaluatees managed by this manager
       const directReports = await this.userRepo.find({
         where: { tenantId, managerId, isActive: true },
         select: ['id'],
@@ -179,7 +179,7 @@ export class ExecutiveDashboardService {
       if (reportIds.length === 0) {
         return { avgScore: 0, completionRate: 0, totalAssignments: 0, completedAssignments: 0, cycleName: cycle.name, cycleId: cycle.id };
       }
-      // We can't use In() in the main query easily, so query all and filter
+      assignmentWhere.evaluateeId = In(reportIds);
     }
 
     const totalAssignments = await this.assignmentRepo.count({ where: assignmentWhere });
@@ -188,13 +188,19 @@ export class ExecutiveDashboardService {
     });
 
     // Average score from responses
-    const scoreResult = await this.responseRepo
+    const qb = this.responseRepo
       .createQueryBuilder('r')
       .select('AVG(r.overallScore)', 'avg')
       .innerJoin('r.assignment', 'a')
       .where('a.cycleId = :cycleId', { cycleId: cycle.id })
-      .andWhere('r.overallScore IS NOT NULL')
-      .getRawOne();
+      .andWhere('r.overallScore IS NOT NULL');
+
+    if (managerId && assignmentWhere.evaluateeId) {
+      const reportIds = assignmentWhere.evaluateeId.value;
+      qb.andWhere('a.evaluateeId IN (:...reportIds)', { reportIds });
+    }
+
+    const scoreResult = await qb.getRawOne();
 
     const avgScore = scoreResult?.avg ? Number(Number(scoreResult.avg).toFixed(2)) : 0;
     const completionRate = totalAssignments > 0 ? Number(((completedAssignments / totalAssignments) * 100).toFixed(1)) : 0;
@@ -221,13 +227,14 @@ export class ExecutiveDashboardService {
       });
       // If manager, only count objectives of their team
       if (directReports.length > 0) {
+        const reportIds = directReports.map((u) => u.id);
         const objectives = await this.objectiveRepo.find({
-          where: directReports.map((u) => ({ tenantId, userId: u.id })),
+          where: { tenantId, userId: In(reportIds) },
           select: ['id', 'status'],
         });
         return this.computeObjectiveStats(objectives);
       }
-      return { total: 0, completed: 0, inProgress: 0, atRisk: 0, completionPct: 0 };
+      return { total: 0, completed: 0, inProgress: 0, draft: 0, pendingApproval: 0, abandoned: 0, completionPct: 0 };
     }
 
     const objectives = await this.objectiveRepo.find({ where, select: ['id', 'status'] });
