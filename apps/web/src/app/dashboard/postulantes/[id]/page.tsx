@@ -36,6 +36,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [savingAssessment, setSavingAssessment] = useState(false);
   const [assessmentSaved, setAssessmentSaved] = useState(false);
 
+  // Internal profile
+  const [internalProfiles, setInternalProfiles] = useState<Record<string, any>>({});
+
   // Config tab edit form
   const [configEditing, setConfigEditing] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
@@ -53,6 +56,18 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   }
 
   useEffect(() => { fetchProcess(); }, [token, params.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load internal profiles when process is loaded and is internal type
+  useEffect(() => {
+    if (!token || !process || process.processType !== 'internal') return;
+    const internalEntries = (process.entries || []).filter((e: any) => e.postulant?.type === 'internal' && e.postulant?.userId);
+    for (const entry of internalEntries) {
+      if (internalProfiles[entry.postulant.userId]) continue;
+      api.postulants.getInternalProfile(token, params.id, entry.postulant.userId)
+        .then((profile) => setInternalProfiles((prev) => ({ ...prev, [entry.postulant.userId]: profile })))
+        .catch(() => {});
+    }
+  }, [token, process?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadScorecard = async (entryId: string) => {
     if (!token) return;
@@ -243,7 +258,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {entries.map((entry: any) => (
                 <div key={entry.id} className="card" style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600 }}>
                       {entry.postulant?.firstName} {entry.postulant?.lastName}
                       {entry.postulant?.type === 'internal' && (
@@ -251,6 +266,19 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       )}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{entry.postulant?.email}</div>
+                    {/* Internal candidate inline data */}
+                    {entry.postulant?.type === 'internal' && entry.postulant?.userId && internalProfiles[entry.postulant.userId] && (() => {
+                      const p = internalProfiles[entry.postulant.userId];
+                      return (
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.35rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {p.avgScore && <span>Prom. Eval: <strong style={{ color: '#6366f1' }}>{p.avgScore}/5</strong></span>}
+                          {p.talentData?.nineBoxPosition && <span>9-Box: <strong style={{ color: '#6366f1' }}>{p.talentData.nineBoxPosition}</strong></span>}
+                          {p.user?.department && <span>Depto: <strong>{p.user.department}</strong></span>}
+                          {p.user?.tenureMonths != null && <span>Antiguedad: <strong>{p.user.tenureMonths >= 12 ? `${Math.floor(p.user.tenureMonths / 12)}a ${p.user.tenureMonths % 12}m` : `${p.user.tenureMonths}m`}</strong></span>}
+                          {p.objectives && <span>Obj: <strong style={{ color: 'var(--success)' }}>{p.objectives.completed}/{p.objectives.total}</strong></span>}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     {entry.finalScore != null && (
@@ -316,6 +344,51 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               </div>
             )}
           </div>
+
+          {/* Internal candidate historical profile */}
+          {scorecard.entry?.postulant?.type === 'internal' && scorecard.entry?.postulant?.userId && internalProfiles[scorecard.entry.postulant.userId] && (() => {
+            const p = internalProfiles[scorecard.entry.postulant.userId];
+            return (
+              <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid #6366f1' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#6366f1', margin: '0 0 0.75rem' }}>Perfil Interno del Candidato</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cargo Actual</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.user?.position || '—'}</div>
+                  </div>
+                  <div style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Departamento</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.user?.department || '—'}</div>
+                  </div>
+                  <div style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Antiguedad</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.user?.tenureMonths >= 12 ? `${Math.floor(p.user.tenureMonths / 12)} anos ${p.user.tenureMonths % 12} meses` : `${p.user?.tenureMonths || 0} meses`}</div>
+                  </div>
+                  <div style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Prom. Evaluaciones</div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', color: '#6366f1' }}>{p.avgScore ? `${p.avgScore}/5` : '—'}</div>
+                  </div>
+                  <div style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Objetivos</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.objectives?.completed || 0}/{p.objectives?.total || 0} completados</div>
+                  </div>
+                </div>
+                {/* Evaluation history */}
+                {p.evaluationHistory?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>Historial de Evaluaciones</div>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      {p.evaluationHistory.slice(0, 6).map((ev: any, i: number) => (
+                        <div key={i} style={{ padding: '0.35rem 0.6rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem' }}>
+                          <strong>{ev.cycleName}</strong>: {ev.score.toFixed(1)}/5
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Competency scores table */}
           {competencies.length === 0 ? (
@@ -465,6 +538,48 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                     </tr>
                   );
                 })}
+                {/* Internal data rows (only for internal processes) */}
+                {process.processType === 'internal' && (
+                  <>
+                    <tr style={{ borderTop: '1px solid var(--border)', background: 'rgba(99,102,241,0.03)' }}>
+                      <td style={{ fontSize: '0.82rem', color: '#6366f1', fontWeight: 600 }}>Prom. Evaluaciones</td>
+                      <td></td>
+                      {comparative.candidates?.map((c: any) => {
+                        const profile = c.entry.postulant?.userId ? internalProfiles[c.entry.postulant.userId] : null;
+                        return (
+                          <td key={c.entry.id} style={{ textAlign: 'center', fontWeight: 600, color: '#6366f1' }}>
+                            {profile?.avgScore ? `${profile.avgScore}/5` : '—'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    <tr style={{ background: 'rgba(99,102,241,0.03)' }}>
+                      <td style={{ fontSize: '0.82rem', color: '#6366f1', fontWeight: 600 }}>Antiguedad</td>
+                      <td></td>
+                      {comparative.candidates?.map((c: any) => {
+                        const profile = c.entry.postulant?.userId ? internalProfiles[c.entry.postulant.userId] : null;
+                        const m = profile?.user?.tenureMonths;
+                        return (
+                          <td key={c.entry.id} style={{ textAlign: 'center', fontSize: '0.82rem' }}>
+                            {m != null ? (m >= 12 ? `${Math.floor(m / 12)}a ${m % 12}m` : `${m}m`) : '—'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    <tr style={{ background: 'rgba(99,102,241,0.03)' }}>
+                      <td style={{ fontSize: '0.82rem', color: '#6366f1', fontWeight: 600 }}>Objetivos Completados</td>
+                      <td></td>
+                      {comparative.candidates?.map((c: any) => {
+                        const profile = c.entry.postulant?.userId ? internalProfiles[c.entry.postulant.userId] : null;
+                        return (
+                          <td key={c.entry.id} style={{ textAlign: 'center', fontSize: '0.82rem' }}>
+                            {profile?.objectives ? `${profile.objectives.completed}/${profile.objectives.total}` : '—'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </>
+                )}
                 {/* Final score row */}
                 <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
                   <td>Puntaje Final</td>
