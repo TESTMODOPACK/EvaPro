@@ -122,7 +122,7 @@ export default function DashboardEjecutivoPage() {
             {t('executiveDashboard.title', 'Dashboard Ejecutivo')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {t('executiveDashboard.subtitle', 'Vista estrategica de la organizacion')}
+            {t('executiveDashboard.subtitle', 'Vista estratégica de la organización')}
           </p>
         </div>
         <div>
@@ -146,30 +146,30 @@ export default function DashboardEjecutivoPage() {
       {/* ─── KPI Cards ─── */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <KPICard label="Colaboradores" value={summary?.headcount?.active ?? '--'} color="#6366f1"
-          tooltip="Total de colaboradores activos en la organizaci\u00f3n" />
+          tooltip="Total de colaboradores activos en la organización" />
         <KPICard label="Clima Laboral" value={summary?.enps ? `${summary.enps.score > 0 ? '+' : ''}${summary.enps.score}` : '--'} color="#10b981" subtitle={summary?.enps?.surveyName}
-          tooltip="Indice de Clima Laboral (eNPS): Mide qu\u00e9 tan probable es que los colaboradores recomienden la organizaci\u00f3n como lugar de trabajo. Promotores (9-10) menos Detractores (0-6). Rango: -100 a +100. Sobre +30 es excelente, sobre 0 es positivo." />
-        <KPICard label="Desempe\u00f1o Prom." value={summary?.performance?.avgScore ? `${summary.performance.avgScore}/10` : '--'} color="#C9933A" subtitle={summary?.performance?.cycleName}
-          tooltip="Promedio general de las evaluaciones de desempe\u00f1o del ciclo seleccionado. Escala de 0 a 10, donde 10 es el m\u00e1ximo. Se calcula como el promedio de todas las respuestas de evaluaci\u00f3n convertidas a escala 10." />
+          tooltip="Indice de Clima Laboral (eNPS): Mide qué tan probable es que los colaboradores recomienden la organización como lugar de trabajo. Promotores (9-10) menos Detractores (0-6). Rango: -100 a +100. Sobre +30 es excelente, sobre 0 es positivo." />
+        <KPICard label="Desempeño Prom." value={summary?.performance?.avgScore ? `${summary.performance.avgScore}/10` : '--'} color="#C9933A" subtitle={summary?.performance?.cycleName}
+          tooltip="Promedio general de las evaluaciones de desempeño del ciclo seleccionado. Escala de 0 a 10, donde 10 es el máximo. Se calcula como el promedio de todas las respuestas de evaluación convertidas a escala 10." />
         <KPICard label="Objetivos %" value={summary?.objectives?.completionPct != null ? `${summary.objectives.completionPct}%` : '--'} color="#8b5cf6" subtitle={`${summary?.objectives?.completed || 0}/${summary?.objectives?.total || 0}`}
-          tooltip="Porcentaje de objetivos (OKRs) completados respecto al total definido en la organizaci\u00f3n." />
+          tooltip="Porcentaje de objetivos (OKRs) completados respecto al total definido en la organización." />
         <KPICard label="Eval. Completitud" value={summary?.performance?.completionRate != null ? `${summary.performance.completionRate}%` : '--'} color="#0891b2" subtitle={`${summary?.performance?.completedAssignments || 0}/${summary?.performance?.totalAssignments || 0}`}
-          tooltip="Porcentaje de evaluaciones de desempe\u00f1o completadas vs asignadas en el ciclo seleccionado." />
+          tooltip="Porcentaje de evaluaciones de desempeño completadas vs asignadas en el ciclo seleccionado." />
         <KPICard label="Iniciativas Activas" value={summary?.orgDevelopment?.inProgressInitiatives ?? '--'} color="#f59e0b" subtitle={`${summary?.orgDevelopment?.totalInitiatives || 0} total`}
           tooltip="Cantidad de iniciativas de desarrollo organizacional actualmente en progreso." />
       </div>
 
       {/* ─── Section: Performance & Evaluations ─── */}
-      <SectionTitle icon="var(--accent)" text="Desempeno y Evaluaciones" />
+      <SectionTitle icon="var(--accent)" text="Desempeño y Evaluaciones" />
       {!selectedCycleId && (
         <div className="card" style={{ padding: '1.5rem', marginBottom: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Seleccione un ciclo de evaluacion en el selector superior para ver los datos de desempeno
+          Seleccione un ciclo de evaluación en el selector superior para ver los datos de desempeño
         </div>
       )}
       {selectedCycleId && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Distribucion de Puntajes</h4>
+          <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Distribución de Puntajes</h4>
           {analytics?.scoreDistribution?.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={analytics.scoreDistribution}>
@@ -220,7 +220,7 @@ export default function DashboardEjecutivoPage() {
         </div>
 
         <div className="card" style={{ padding: '1.25rem' }}>
-          <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Engagement por Categoria</h4>
+          <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Engagement por Categoría</h4>
           {radarData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <RadarChart data={radarData}>
@@ -285,7 +285,7 @@ export default function DashboardEjecutivoPage() {
       <SectionTitle icon="#8b5cf6" text="Objetivos" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Distribucion por Estado</h4>
+          <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Distribución por Estado</h4>
           {objectiveStatusData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -328,7 +328,7 @@ export default function DashboardEjecutivoPage() {
       <SectionTitle icon="#6366f1" text="Personas y Talento" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Distribucion por Departamento</h4>
+          <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700 }}>Distribución por Departamento</h4>
           {summary?.headcount?.byDepartment?.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={summary.headcount.byDepartment}>
