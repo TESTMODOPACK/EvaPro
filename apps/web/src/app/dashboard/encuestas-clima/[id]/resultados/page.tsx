@@ -122,7 +122,7 @@ export default function ResultadosEncuestaPage() {
   const TABS = [
     { key: 'overview', label: 'Resumen' },
     ...(isAdmin ? [{ key: 'department', label: 'Por Departamento' }] : []),
-    { key: 'responses', label: 'Resp. Abiertas' },
+    { key: 'responses', label: 'Comentarios' },
     ...(isAdmin ? [{ key: 'ai', label: 'Análisis IA' }] : []),
     ...(isAdmin ? [{ key: 'trends', label: 'Tendencias' }] : []),
   ];
@@ -354,25 +354,9 @@ export default function ResultadosEncuestaPage() {
         </div>
       )}
 
-      {/* ─── Open Responses Tab ─── */}
+      {/* ─── Comentarios Tab ─── */}
       {activeTab === 'responses' && (
-        <div className="card" style={{ padding: '1.25rem' }}>
-          <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Respuestas Abiertas</h3>
-          {(results.openResponses || []).length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>No hay respuestas abiertas.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {results.openResponses.map((r: any, i: number) => (
-                <div key={i} style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                  <span className="badge badge-ghost" style={{ fontSize: '0.7rem', marginBottom: '0.25rem' }}>{r.category}</span>
-                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.9rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>
-                    &ldquo;{r.text}&rdquo;
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <CommentsTab openResponses={results.openResponses || []} />
       )}
 
       {/* ─── AI Analysis Tab ─── */}
@@ -628,6 +612,69 @@ export default function ResultadosEncuestaPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CommentsTab({ openResponses }: { openResponses: any[] }) {
+  // Group by question, deduplicate and count repetitions
+  const grouped: Record<string, { question: string; category: string; responses: Array<{ text: string; count: number }> }> = {};
+  for (const r of openResponses) {
+    const key = r.questionId || r.category;
+    if (!grouped[key]) grouped[key] = { question: r.questionText || r.category, category: r.category, responses: [] };
+    const existing = grouped[key].responses.find((x: any) => x.text === r.text);
+    if (existing) { existing.count++; } else { grouped[key].responses.push({ text: r.text, count: 1 }); }
+  }
+  for (const g of Object.values(grouped)) {
+    g.responses.sort((a, b) => b.count - a.count);
+  }
+  const groups = Object.values(grouped);
+  const totalComments = openResponses.length;
+  const uniqueComments = groups.reduce((sum, g) => sum + g.responses.length, 0);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Comentarios de Colaboradores</h3>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+          {totalComments} comentarios ({uniqueComments} temas distintos)
+        </span>
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          No hay comentarios en esta encuesta.
+        </div>
+      ) : groups.map((g, gIdx) => (
+        <div key={gIdx} className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>{g.category}</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{g.question}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {g.responses.map((resp, rIdx) => (
+              <div key={rIdx} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                padding: '0.6rem 0.85rem', background: 'var(--bg-surface)',
+                borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+              }}>
+                <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', fontStyle: 'italic', flex: 1, lineHeight: 1.5 }}>
+                  &ldquo;{resp.text}&rdquo;
+                </p>
+                {resp.count > 1 && (
+                  <span style={{
+                    fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)',
+                    background: 'rgba(201,147,58,0.1)', padding: '0.15rem 0.5rem',
+                    borderRadius: 10, whiteSpace: 'nowrap',
+                  }}>
+                    {resp.count}x
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
