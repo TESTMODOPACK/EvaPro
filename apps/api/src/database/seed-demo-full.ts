@@ -146,14 +146,61 @@ async function seedDemoFull() {
 
     /* ── 2. Create additional employees ──────────────────────────────────── */
     const newEmployees = [
-      { email: 'maria.gonzalez@evapro.demo', firstName: 'Maria', lastName: 'Gonzalez', department: 'Ventas', position: 'Ejecutiva de Ventas' },
+      // Tecnologia (10)
       { email: 'pedro.silva@evapro.demo', firstName: 'Pedro', lastName: 'Silva', department: 'Tecnología', position: 'Desarrollador Frontend' },
-      { email: 'camila.herrera@evapro.demo', firstName: 'Camila', lastName: 'Herrera', department: 'Marketing', position: 'Content Manager' },
-      { email: 'diego.morales@evapro.demo', firstName: 'Diego', lastName: 'Morales', department: 'Operaciones', position: 'Analista de Operaciones' },
-      { email: 'valentina.rojas@evapro.demo', firstName: 'Valentina', lastName: 'Rojas', department: 'Marketing', position: 'Disenadora UI' },
-      { email: 'andres.castro@evapro.demo', firstName: 'Andres', lastName: 'Castro', department: 'Ventas', position: 'Account Manager' },
-      { email: 'isabel.mendez@evapro.demo', firstName: 'Isabel', lastName: 'Mendez', department: 'Finanzas', position: 'Analista Financiero' },
       { email: 'felipe.vargas@evapro.demo', firstName: 'Felipe', lastName: 'Vargas', department: 'Tecnología', position: 'Ingeniero de Infraestructura' },
+      { email: 'gabriel.nunez@evapro.demo', firstName: 'Gabriel', lastName: 'Nunez', department: 'Tecnología', position: 'Desarrollador Backend' },
+      { email: 'natalia.pena@evapro.demo', firstName: 'Natalia', lastName: 'Pena', department: 'Tecnología', position: 'Analista de Datos' },
+      { email: 'tomas.reyes@evapro.demo', firstName: 'Tomas', lastName: 'Reyes', department: 'Tecnología', position: 'Ingeniero QA' },
+      { email: 'daniela.fuentes@evapro.demo', firstName: 'Daniela', lastName: 'Fuentes', department: 'Tecnología', position: 'Scrum Master' },
+      { email: 'matias.soto@evapro.demo', firstName: 'Matias', lastName: 'Soto', department: 'Tecnología', position: 'Arquitecto de Software' },
+      { email: 'paula.vera@evapro.demo', firstName: 'Paula', lastName: 'Vera', department: 'Tecnología', position: 'Desarrolladora Mobile' },
+      { email: 'nicolas.bravo@evapro.demo', firstName: 'Nicolas', lastName: 'Bravo', department: 'Tecnología', position: 'DevOps Engineer' },
+      { email: 'catalina.mora@evapro.demo', firstName: 'Catalina', lastName: 'Mora', department: 'Tecnología', position: 'Product Owner' },
+      // Ventas (7)
+      { email: 'maria.gonzalez@evapro.demo', firstName: 'Maria', lastName: 'Gonzalez', department: 'Ventas', position: 'Ejecutiva de Ventas' },
+      { email: 'andres.castro@evapro.demo', firstName: 'Andres', lastName: 'Castro', department: 'Ventas', position: 'Account Manager' },
+      { email: 'javiera.lagos@evapro.demo', firstName: 'Javiera', lastName: 'Lagos', department: 'Ventas', position: 'Ejecutiva Comercial' },
+      { email: 'sebastian.diaz@evapro.demo', firstName: 'Sebastian', lastName: 'Diaz', department: 'Ventas', position: 'Key Account Manager' },
+      { email: 'francisca.rivas@evapro.demo', firstName: 'Francisca', lastName: 'Rivas', department: 'Ventas', position: 'Analista de Ventas' },
+      { email: 'rodrigo.pinto@evapro.demo', firstName: 'Rodrigo', lastName: 'Pinto', department: 'Ventas', position: 'Ejecutivo de Cuentas' },
+      { email: 'lorena.campos@evapro.demo', firstName: 'Lorena', lastName: 'Campos', department: 'Ventas', position: 'Coordinadora Comercial' },
+      // Marketing (6)
+      { email: 'camila.herrera@evapro.demo', firstName: 'Camila', lastName: 'Herrera', department: 'Marketing', position: 'Content Manager' },
+      { email: 'valentina.rojas@evapro.demo', firstName: 'Valentina', lastName: 'Rojas', department: 'Marketing', position: 'Disenadora UI' },
+      { email: 'ignacio.tapia@evapro.demo', firstName: 'Ignacio', lastName: 'Tapia', department: 'Marketing', position: 'Community Manager' },
+      { email: 'fernanda.silva@evapro.demo', firstName: 'Fernanda', lastName: 'Silva', department: 'Marketing', position: 'Analista de Marketing Digital' },
+      { email: 'martin.vidal@evapro.demo', firstName: 'Martin', lastName: 'Vidal', department: 'Marketing', position: 'Disenador Grafico' },
+      { email: 'constanza.araya@evapro.demo', firstName: 'Constanza', lastName: 'Araya', department: 'Marketing', position: 'Coordinadora de Eventos' },
+      // Operaciones (6)
+      { email: 'diego.morales@evapro.demo', firstName: 'Diego', lastName: 'Morales', department: 'Operaciones', position: 'Analista de Operaciones' },
+      { email: 'carla.munoz@evapro.demo', firstName: 'Carla', lastName: 'Munoz', department: 'Operaciones', position: 'Coordinadora de Logistica' },
+      { email: 'alejandro.parra@evapro.demo', firstName: 'Alejandro', lastName: 'Parra', department: 'Operaciones', position: 'Jefe de Bodega' },
+      { email: 'patricia.cortes@evapro.demo', firstName: 'Patricia', lastName: 'Cortes', department: 'Operaciones', position: 'Analista de Procesos' },
+      { email: 'victor.espinoza@evapro.demo', firstName: 'Victor', lastName: 'Espinoza', department: 'Operaciones', position: 'Supervisor de Produccion' },
+      { email: 'andrea.maldonado@evapro.demo', firstName: 'Andrea', lastName: 'Maldonado', department: 'Operaciones', position: 'Planificadora de Demanda' },
+      // Finanzas (5)
+      { email: 'isabel.mendez@evapro.demo', firstName: 'Isabel', lastName: 'Mendez', department: 'Finanzas', position: 'Analista Financiero' },
+      { email: 'roberto.torres@evapro.demo', firstName: 'Roberto', lastName: 'Torres', department: 'Finanzas', position: 'Contador General' },
+      { email: 'claudia.navarro@evapro.demo', firstName: 'Claudia', lastName: 'Navarro', department: 'Finanzas', position: 'Tesorera' },
+      { email: 'jorge.figueroa@evapro.demo', firstName: 'Jorge', lastName: 'Figueroa', department: 'Finanzas', position: 'Controller Financiero' },
+      { email: 'marcela.gutierrez@evapro.demo', firstName: 'Marcela', lastName: 'Gutierrez', department: 'Finanzas', position: 'Analista de Costos' },
+      // Recursos Humanos (5)
+      { email: 'carolina.sepulveda@evapro.demo', firstName: 'Carolina', lastName: 'Sepulveda', department: 'Recursos Humanos', position: 'Especialista en Seleccion' },
+      { email: 'jose.contreras@evapro.demo', firstName: 'Jose', lastName: 'Contreras', department: 'Recursos Humanos', position: 'Analista de Compensaciones' },
+      { email: 'veronica.leon@evapro.demo', firstName: 'Veronica', lastName: 'Leon', department: 'Recursos Humanos', position: 'Coordinadora de Capacitacion' },
+      { email: 'raul.aguilar@evapro.demo', firstName: 'Raul', lastName: 'Aguilar', department: 'Recursos Humanos', position: 'Analista de Bienestar' },
+      { email: 'monica.valenzuela@evapro.demo', firstName: 'Monica', lastName: 'Valenzuela', department: 'Recursos Humanos', position: 'Asistente de RRHH' },
+      // Legal (4)
+      { email: 'ricardo.morales.o@evapro.demo', firstName: 'Ricardo', lastName: 'Morales Olate', department: 'Legal', position: 'Abogado Corporativo' },
+      { email: 'paola.henriquez@evapro.demo', firstName: 'Paola', lastName: 'Henriquez', department: 'Legal', position: 'Asistente Legal' },
+      { email: 'eduardo.sandoval@evapro.demo', firstName: 'Eduardo', lastName: 'Sandoval', department: 'Legal', position: 'Abogado Laboral' },
+      { email: 'sofia.duran@evapro.demo', firstName: 'Sofia', lastName: 'Duran', department: 'Legal', position: 'Analista de Cumplimiento' },
+      // Administracion (4)
+      { email: 'miguel.flores@evapro.demo', firstName: 'Miguel', lastName: 'Flores', department: 'Administración', position: 'Jefe de Administracion' },
+      { email: 'carmen.rivera@evapro.demo', firstName: 'Carmen', lastName: 'Rivera', department: 'Administración', position: 'Recepcionista' },
+      { email: 'hector.bustos@evapro.demo', firstName: 'Hector', lastName: 'Bustos', department: 'Administración', position: 'Encargado de Compras' },
+      { email: 'rosa.ortiz@evapro.demo', firstName: 'Rosa', lastName: 'Ortiz', department: 'Administración', position: 'Asistente Administrativa' },
     ];
 
     const pwHash = await bcrypt.hash('EvaPro2026!', 10);
@@ -170,57 +217,41 @@ async function seedDemoFull() {
       allNewUsers.push(u);
     }
 
-    // Fix departments & positions for existing users (idempotent update)
-    const deptFixMap: Record<string, { department: string; position: string }> = {
-      'maria.gonzalez@evapro.demo': { department: 'Ventas', position: 'Ejecutiva de Ventas' },
-      'pedro.silva@evapro.demo': { department: 'Tecnología', position: 'Desarrollador Frontend' },
-      'camila.herrera@evapro.demo': { department: 'Marketing', position: 'Content Manager' },
-      'diego.morales@evapro.demo': { department: 'Operaciones', position: 'Analista de Operaciones' },
-      'valentina.rojas@evapro.demo': { department: 'Marketing', position: 'Diseñadora UI' },
-      'andres.castro@evapro.demo': { department: 'Ventas', position: 'Account Manager' },
-      'isabel.mendez@evapro.demo': { department: 'Finanzas', position: 'Analista Financiero' },
-      'felipe.vargas@evapro.demo': { department: 'Tecnología', position: 'Ingeniero de Infraestructura' },
-    };
-    for (const [email, fix] of Object.entries(deptFixMap)) {
-      const u = await userRepo.findOne({ where: { email, tenantId: tid } });
-      if (u && (u.department !== fix.department || u.position !== fix.position)) {
-        u.department = fix.department;
-        u.position = fix.position;
+    // Fix departments & positions for ALL users (idempotent update)
+    for (const emp of newEmployees) {
+      const u = await userRepo.findOne({ where: { email: emp.email, tenantId: tid } });
+      if (u && (u.department !== emp.department || u.position !== emp.position)) {
+        u.department = emp.department;
+        u.position = emp.position;
         await userRepo.save(u);
-        console.log(`🔧 Fixed department/position: ${email} → ${fix.department} / ${fix.position}`);
       }
     }
 
-    // Add demographic data to all users (idempotent: only if gender is null)
-    const demoGraphics = [
-      // Seed-demo-full employees
-      { email: 'maria.gonzalez@evapro.demo', gender: 'femenino', birthDate: '1992-03-15', nationality: 'Chilena', seniorityLevel: 'mid', contractType: 'indefinido', workLocation: 'hibrido' },
-      { email: 'pedro.silva@evapro.demo', gender: 'masculino', birthDate: '1995-08-22', nationality: 'Chilena', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'remoto' },
-      { email: 'camila.herrera@evapro.demo', gender: 'femenino', birthDate: '1988-11-05', nationality: 'Colombiana', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'oficina' },
-      { email: 'diego.morales@evapro.demo', gender: 'masculino', birthDate: '1990-06-18', nationality: 'Chilena', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'remoto' },
-      { email: 'valentina.rojas@evapro.demo', gender: 'femenino', birthDate: '1997-01-30', nationality: 'Chilena', seniorityLevel: 'mid', contractType: 'indefinido', workLocation: 'hibrido' },
-      { email: 'andres.castro@evapro.demo', gender: 'masculino', birthDate: '1985-09-12', nationality: 'Peruana', seniorityLevel: 'lead', contractType: 'indefinido', workLocation: 'oficina' },
-      { email: 'isabel.mendez@evapro.demo', gender: 'femenino', birthDate: '1993-04-25', nationality: 'Chilena', seniorityLevel: 'lead', contractType: 'indefinido', workLocation: 'hibrido' },
-      { email: 'felipe.vargas@evapro.demo', gender: 'masculino', birthDate: '1991-12-08', nationality: 'Argentina', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'remoto' },
-      // Seed-base employees
-      { email: 'ana.martinez@evapro.demo', gender: 'femenino', birthDate: '1994-07-10', nationality: 'Chilena', seniorityLevel: 'mid', contractType: 'indefinido', workLocation: 'hibrido' },
-      { email: 'luis.rodriguez@evapro.demo', gender: 'masculino', birthDate: '1989-02-28', nationality: 'Chilena', seniorityLevel: 'senior', contractType: 'indefinido', workLocation: 'remoto' },
-      { email: 'sandra.torres@evapro.demo', gender: 'femenino', birthDate: '1996-09-03', nationality: 'Chilena', seniorityLevel: 'mid', contractType: 'plazo_fijo', workLocation: 'oficina' },
-      // Manager + Admins
-      { email: 'carlos.lopez@evapro.demo', gender: 'masculino', birthDate: '1983-07-20', nationality: 'Chilena', seniorityLevel: 'director', contractType: 'indefinido', workLocation: 'oficina' },
-      { email: 'admin@evapro.demo', gender: 'femenino', birthDate: '1986-02-14', nationality: 'Chilena', seniorityLevel: 'executive', contractType: 'indefinido', workLocation: 'oficina' },
-      { email: 'superadmin@evapro.demo', gender: 'masculino', birthDate: '1980-05-10', nationality: 'Chilena', seniorityLevel: 'executive', contractType: 'indefinido', workLocation: 'oficina' },
-    ];
-    for (const dg of demoGraphics) {
-      const u = await userRepo.findOne({ where: { email: dg.email, tenantId: tid } });
-      if (u) {
-        await userRepo.update(u.id, {
-          gender: dg.gender, birthDate: dg.birthDate as any, nationality: dg.nationality,
-          seniorityLevel: dg.seniorityLevel, contractType: dg.contractType, workLocation: dg.workLocation,
-        });
-      }
+    // Apply demographic data to ALL users
+    const genders = ['masculino', 'femenino'];
+    const nationalities = ['Chilena', 'Chilena', 'Chilena', 'Colombiana', 'Peruana', 'Argentina', 'Mexicana', 'Venezolana'];
+    const seniorities = ['junior', 'mid', 'mid', 'senior', 'senior', 'lead'];
+    const contracts = ['indefinido', 'indefinido', 'indefinido', 'indefinido', 'plazo_fijo'];
+    const locations = ['oficina', 'oficina', 'remoto', 'remoto', 'hibrido', 'hibrido'];
+
+    const allUsers = await userRepo.find({ where: { tenantId: tid, isActive: true } });
+    let demoUpdated = 0;
+    for (const u of allUsers) {
+      const idx = allUsers.indexOf(u);
+      const yearBase = 1980 + Math.floor(Math.random() * 18); // 1980-1997
+      const month = String(1 + Math.floor(Math.random() * 12)).padStart(2, '0');
+      const day = String(1 + Math.floor(Math.random() * 28)).padStart(2, '0');
+      await userRepo.update(u.id, {
+        gender: u.gender || genders[idx % 2],
+        birthDate: u.birthDate || `${yearBase}-${month}-${day}` as any,
+        nationality: u.nationality || nationalities[idx % nationalities.length],
+        seniorityLevel: u.seniorityLevel || (u.role === 'manager' ? 'director' : u.role === 'tenant_admin' ? 'executive' : seniorities[idx % seniorities.length]),
+        contractType: u.contractType || contracts[idx % contracts.length],
+        workLocation: u.workLocation || locations[idx % locations.length],
+      });
+      demoUpdated++;
     }
-    console.log('✅ Demographic data applied to ALL users (14 total)');
+    console.log('✅ Demographic data applied to ' + demoUpdated + ' users');
 
     // Collect all employees
     const existingEmps = await userRepo.find({ where: { tenantId: tid, role: 'employee', isActive: true } });
