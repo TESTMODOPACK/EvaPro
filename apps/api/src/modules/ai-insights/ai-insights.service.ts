@@ -117,7 +117,10 @@ export class AiInsightsService {
     const sub = await this.subscriptionsService.findByTenantId(tenantId);
     if (!sub?.plan) return { limit: 0, periodStart: new Date(), periodEnd: new Date() };
 
-    const limit = sub.plan.maxAiCallsPerMonth ?? 0;
+    // If plan includes AI_INSIGHTS but maxAiCallsPerMonth is 0/null, use default 100
+    const hasAiFeature = (sub.plan.features || []).includes('AI_INSIGHTS');
+    let limit = sub.plan.maxAiCallsPerMonth ?? 0;
+    if (hasAiFeature && limit <= 0) limit = 100;
 
     // Calculate current billing period based on subscription startDate
     // The monthly cycle starts on the same day-of-month as the subscription start
