@@ -95,7 +95,7 @@ export default function MiDesempenoPage() {
         setFeedbackReceived(Array.isArray(fb) ? fb : []);
         setDevPlans(Array.isArray(dp) ? dp : (dp as any)?.data ? (dp as any).data : []);
         setObjectives(Array.isArray(obj) ? obj : (obj as any)?.data ? (obj as any).data : []);
-        setMyPoints(pts?.total || pts?.points || 0);
+        setMyPoints(pts?.total ?? pts?.points ?? 0);
         setMyBadges(Array.isArray(badges) ? badges : []);
         // Filter wall to only show recognitions received by current user
         const wallData = wall?.data || (Array.isArray(wall) ? wall : []);
@@ -485,7 +485,7 @@ export default function MiDesempenoPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {devPlans.map((dp: any, i: number) => {
                   const actions = dp.actions || [];
-                  const completedActions = actions.filter((a: any) => a.status === 'completed').length;
+                  const completedActions = actions.filter((a: any) => a.status === 'completed' || a.status === 'completada').length;
                   const totalActions = actions.length;
                   const progress = totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0;
                   const statusColors: Record<string, string> = { borrador: 'var(--text-muted)', activo: 'var(--accent)', en_revision: '#f59e0b', completado: 'var(--success)', cancelado: 'var(--danger)' };
@@ -742,7 +742,7 @@ export default function MiDesempenoPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span style={{ fontSize: '1.1rem' }}>{'\u2B50'}</span>
                           <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{fromName}</span>
-                          {r.points && (
+                          {r.points > 0 && (
                             <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#c9933a', background: 'rgba(201,147,58,0.1)', padding: '0.15rem 0.4rem', borderRadius: '999px' }}>
                               +{r.points} pts
                             </span>
