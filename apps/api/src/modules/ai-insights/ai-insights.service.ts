@@ -145,11 +145,24 @@ export class AiInsightsService {
   /** Count AI calls for the current billing period */
   private async getMonthlyCallCount(tenantId: string): Promise<{ used: number; periodStart: Date; periodEnd: Date; limit: number }> {
     const { limit, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
+
+    // Count insights created after periodStart
     const used = await this.insightRepo.count({
       where: { tenantId, createdAt: MoreThan(periodStart) },
     });
-    this.logger.debug(`AI usage: tenant=${tenantId.slice(0,8)}, period=${periodStart.toISOString()}-${periodEnd.toISOString()}, used=${used}, limit=${limit}`);
-    return { used, periodStart, periodEnd, limit };
+
+    // Also count this month as sanity check
+    const now = new Date();
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthlyCount = await this.insightRepo.count({
+      where: { tenantId, createdAt: MoreThan(firstOfMonth) },
+    });
+
+    // Use the higher count to avoid underreporting
+    const effectiveUsed = Math.max(used, monthlyCount);
+
+    this.logger.log(`AI usage: tenant=${tenantId.slice(0,8)}, periodUsed=${used}, monthlyCount=${monthlyCount}, effective=${effectiveUsed}, limit=${limit}, period=${periodStart.toISOString().slice(0,10)} to ${periodEnd.toISOString().slice(0,10)}`);
+    return { used: effectiveUsed, periodStart, periodEnd, limit };
   }
 
   /** Check plan-based monthly rate limit */
