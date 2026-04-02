@@ -1150,12 +1150,37 @@ export class AiInsightsService {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
+    // Extract text from CV (base64 PDF/DOCX)
+    let cvText = '';
+    try {
+      if (cvUrl.startsWith('data:')) {
+        const base64Data = cvUrl.split(',')[1];
+        if (base64Data) {
+          const buffer = Buffer.from(base64Data, 'base64');
+          const pdfParse = require('pdf-parse');
+          const pdfData = await pdfParse(buffer);
+          cvText = pdfData.text || '';
+          this.logger.log('Extracted ' + cvText.length + ' chars from PDF');
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn('Could not extract text from CV: ' + err.message);
+      cvText = '[No se pudo extraer texto del documento]';
+    }
+
+    if (!cvText || cvText.length < 20) {
+      cvText = '[El documento no contiene texto extraible. Puede ser un PDF escaneado como imagen.]';
+    }
+
+    // Limit CV text to avoid token overflow
+    const cvContent = cvText.length > 5000 ? cvText.substring(0, 5000) + '\n...[texto truncado]' : cvText;
+
     const prompt = `Eres un experto en reclutamiento y seleccion de personal. Tu tarea es analizar el CV de un candidato y cruzarlo con los requisitos del cargo para determinar el nivel de coincidencia.
 
 ${context}
 
-CONTENIDO DEL CV (base64 data URL):
-${cvUrl.length > 200 ? cvUrl.substring(0, 200) + '... [documento completo proporcionado]' : cvUrl}
+CONTENIDO DEL CV DEL CANDIDATO:
+${cvContent}
 
 INSTRUCCIONES:
 1. Analiza la informacion del CV del candidato
