@@ -1150,21 +1150,53 @@ export class AiInsightsService {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
-    // Extract text from CV (base64 PDF)
+    // Extract text from CV (base64 PDF or Word)
     let cvText = '';
     try {
       if (cvUrl.startsWith('data:')) {
+        const mimeMatch = cvUrl.match(/^data:([^;]+);/);
+        const mimeType = mimeMatch ? mimeMatch[1] : '';
         const base64Data = cvUrl.split(',')[1];
+
         if (base64Data) {
           const buffer = Buffer.from(base64Data, 'base64');
-          const pdfParse = require('pdf-parse');
-          const pdfData = await pdfParse(buffer);
-          cvText = (pdfData.text || '').trim();
-          this.logger.log('PDF parsed: ' + cvText.length + ' chars, ' + pdfData.numpages + ' pages');
+
+          if (mimeType === 'application/pdf') {
+            // PDF: use pdf-parse
+            const pdfParse = require('pdf-parse');
+            const pdfData = await pdfParse(buffer);
+            cvText = (pdfData.text || '').trim();
+            this.logger.log('PDF parsed: ' + cvText.length + ' chars, ' + pdfData.numpages + ' pages');
+          } else if (
+            mimeType === 'application/msword' ||
+            mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          ) {
+            // Word (.doc / .docx): use mammoth
+            const mammoth = require('mammoth');
+            const result = await mammoth.extractRawText({ buffer });
+            cvText = (result.value || '').trim();
+            this.logger.log('Word parsed: ' + cvText.length + ' chars');
+          } else {
+            // Unknown type — try pdf-parse first, then mammoth
+            this.logger.warn('Unknown CV mime type: ' + mimeType + ', trying both parsers');
+            try {
+              const pdfParse = require('pdf-parse');
+              const pdfData = await pdfParse(buffer);
+              cvText = (pdfData.text || '').trim();
+            } catch (_e) {
+              try {
+                const mammoth = require('mammoth');
+                const result = await mammoth.extractRawText({ buffer });
+                cvText = (result.value || '').trim();
+              } catch (_e2) {
+                cvText = '';
+              }
+            }
+          }
         }
       }
     } catch (err: any) {
-      this.logger.error('PDF parse error: ' + err.message);
+      this.logger.error('CV parse error: ' + err.message);
       cvText = '';
     }
 
