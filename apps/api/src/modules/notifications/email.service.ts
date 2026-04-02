@@ -77,6 +77,27 @@ export class EmailService {
     }
   }
 
+  /** Send email with file attachments (e.g., .ics calendar files) */
+  async sendWithAttachments(
+    to: string | string[],
+    subject: string,
+    html: string,
+    attachments: Array<{ filename: string; content: string; contentType: string }>,
+  ): Promise<void> {
+    const recipients = Array.isArray(to) ? to : [to];
+
+    if (!this.resend) {
+      this.logger.log(`[EMAIL PREVIEW+ATTACHMENT]\nTo: ${recipients.join(', ')}\nSubject: ${subject}\nAttachments: ${attachments.map(a => a.filename).join(', ')}\n---`);
+      return;
+    }
+
+    try {
+      await this.resend.emails.send({ from: this.from, to: recipients, subject, html, attachments });
+    } catch (err: any) {
+      this.logger.error(`Failed to send email to ${recipients.join(', ')}: ${err?.message}`);
+    }
+  }
+
   // ─── Template: Cycle Launched ─────────────────────────────────────────────
 
   async sendCycleLaunched(
@@ -214,6 +235,26 @@ export class EmailService {
         `,
       }),
     );
+  }
+
+  /** Build the check-in HTML without sending — used by FeedbackService to attach .ics */
+  async buildCheckinScheduledHtml(
+    data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string; tenantId?: string },
+  ): Promise<string> {
+    return this.wrapWithBranding(data.tenantId, {
+      preheader: `Tienes un check-in programado para el ${data.scheduledAt}.`,
+      body: `
+        ${this.heading('Check-in 1:1 agendado 📅')}
+        ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se ha agendado una reunión 1:1 contigo.`)}
+        ${this.infoBox([
+          { label: 'Con', value: data.managerName },
+          { label: 'Fecha y hora', value: data.scheduledAt },
+          ...(data.topic ? [{ label: 'Tema', value: data.topic }] : []),
+        ])}
+        ${this.paragraph('Puedes aceptar o rechazar esta cita desde la plataforma.')}
+        ${this.cta('Ver detalles', `${this.appUrl}/dashboard/feedback`)}
+      `,
+    });
   }
 
   // ─── Template: OKR At Risk ────────────────────────────────────────────────
@@ -418,6 +459,67 @@ export class EmailService {
           ${this.paragraph('Tu opinión es muy importante para mejorar el ambiente laboral. Por favor responde antes de la fecha límite.')}
           ${this.cta('Responder Encuesta', `${process.env.FRONTEND_URL || 'https://app.ascendaperformance.com'}/dashboard/encuestas-clima`)}
           ${this.smallText('Si tienes problemas para acceder, ingresa a la plataforma y busca la sección "Encuestas de Clima".')}
+        `,
+      }),
+    );
+  }
+
+  // ─── Template: Check-in Rejected ──────────────────────────────────────────
+
+  async sendCheckinRejected(
+    email: string,
+    data: {
+      managerName: string;
+      employeeName: string;
+      topic: string;
+      scheduledDate: string;
+      scheduledTime?: string;
+      reason: string;
+      tenantId?: string;
+    },
+  ) {
+    const timeLabel = data.scheduledTime ? ` a las ${data.scheduledTime}` : '';
+    await this.send(
+      email,
+      `Check-in rechazado: ${data.topic}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `${data.employeeName} ha rechazado el check-in "${data.topic}".`,
+        accentColor: '#f59e0b',
+        body: `
+          ${this.heading('Check-in rechazado')}
+          ${this.paragraph(`Hola <strong>${data.managerName}</strong>, <strong>${data.employeeName}</strong> ha rechazado el check-in programado.`)}
+          ${this.infoBox([
+            { label: 'Tema', value: data.topic },
+            { label: 'Fecha', value: `${data.scheduledDate}${timeLabel}` },
+            { label: 'Motivo del rechazo', value: data.reason },
+          ])}
+          ${this.paragraph('Puedes reprogramar el check-in o contactar al colaborador para coordinar una nueva fecha.')}
+          ${this.cta('Ver check-ins', `${this.appUrl}/dashboard/checkins`)}
+        `,
+      }),
+    );
+  }
+
+  // ─── Template: Password Reset ────────────────────────────────────────────
+
+  async sendPasswordReset(
+    email: string,
+    data: { firstName: string; code: string; expiryMinutes: number; tenantId?: string },
+  ) {
+    await this.send(
+      email,
+      'Código de recuperación — Ascenda Performance',
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Tu código de recuperación es ${data.code}. Expira en ${data.expiryMinutes} minutos.`,
+        body: `
+          ${this.heading('Recuperar contraseña 🔑')}
+          ${this.paragraph(`Hola <strong>${data.firstName || ''}</strong>, recibimos una solicitud para restablecer tu contraseña. Usa el siguiente código:`)}
+          <div style="background:#f1f5f9;border-radius:10px;padding:1.5rem;text-align:center;margin:1.5rem 0;">
+            <span style="font-size:2.2rem;font-weight:800;letter-spacing:0.3em;color:#1e293b;">${data.code}</span>
+          </div>
+          ${this.alertBox(`Este código expira en <strong>${data.expiryMinutes} minutos</strong>. Si no solicitaste este cambio, puedes ignorar este correo.`, 'info')}
+          ${this.divider()}
+          ${this.smallText('Por seguridad, nunca compartas este código con nadie.')}
         `,
       }),
     );

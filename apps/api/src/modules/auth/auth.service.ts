@@ -3,12 +3,12 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../notifications/email.service';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +21,7 @@ export class AuthService {
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly auditService: AuditService,
+    private readonly emailService: EmailService,
   ) {}
 
   async validateUser(email: string, pass: string, tenantId?: string): Promise<any> {
@@ -101,8 +102,13 @@ export class AuthService {
     user.resetCodeExpires = expires;
     await this.userRepo.save(user);
 
-    // Send email
-    await this.sendResetEmail(user.email, code, user.firstName);
+    // Send branded email via EmailService (Resend)
+    await this.emailService.sendPasswordReset(user.email, {
+      firstName: user.firstName,
+      code,
+      expiryMinutes: 15,
+      tenantId: user.tenantId || undefined,
+    });
   }
 
   async resetPassword(email: string, code: string, newPassword: string, tenantSlug?: string): Promise<void> {
@@ -126,42 +132,4 @@ export class AuthService {
     await this.userRepo.save(user);
   }
 
-  private async sendResetEmail(to: string, code: string, firstName: string): Promise<void> {
-    const smtpHost = process.env.SMTP_HOST;
-    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPass = process.env.SMTP_PASS;
-    const smtpFrom = process.env.SMTP_FROM || 'noreply@evapro.app';
-
-    if (!smtpHost || !smtpUser || !smtpPass) {
-      console.warn('[EvaPro] SMTP not configured — reset code sent for', to);
-      return;
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
-
-    await transporter.sendMail({
-      from: `"EvaPro" <${smtpFrom}>`,
-      to,
-      subject: 'Código de recuperación — EvaPro',
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem;">
-          <h2 style="color: #6366f1; margin-bottom: 0.5rem;">EvaPro</h2>
-          <p>Hola ${firstName || ''},</p>
-          <p>Tu código de recuperación de contraseña es:</p>
-          <div style="background: #f1f5f9; border-radius: 8px; padding: 1.5rem; text-align: center; margin: 1.5rem 0;">
-            <span style="font-size: 2rem; font-weight: 800; letter-spacing: 0.3em; color: #1e293b;">${code}</span>
-          </div>
-          <p style="color: #64748b; font-size: 0.85rem;">Este código expira en <strong>15 minutos</strong>. Si no solicitaste este cambio, ignora este correo.</p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 2rem 0;" />
-          <p style="color: #94a3b8; font-size: 0.75rem;">© ${new Date().getFullYear()} EvaPro · Evaluación de Desempeño</p>
-        </div>
-      `,
-    });
-  }
 }

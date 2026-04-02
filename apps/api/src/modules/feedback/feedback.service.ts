@@ -9,13 +9,11 @@ import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
 import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
-import { Resend } from 'resend';
+import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class FeedbackService {
-  private resend: Resend | null = null;
-
   constructor(
     @InjectRepository(CheckIn)
     private readonly checkInRepo: Repository<CheckIn>,
@@ -26,11 +24,9 @@ export class FeedbackService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
-  ) {
-    if (process.env.RESEND_API_KEY) {
-      this.resend = new Resend(process.env.RESEND_API_KEY);
-    }
-  }
+    private readonly emailService: EmailService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // ─── Check-ins ────────────────────────────────────────────────────────────
 
@@ -83,6 +79,12 @@ export class FeedbackService {
       metadata: { checkInId: (saved as CheckIn).id },
     }).catch(() => {}); // non-blocking
 
+    const employee = await this.userRepo.findOne({ where: { id: dto.employeeId }, select: ['id', 'firstName', 'lastName'] });
+    const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : dto.employeeId;
+    this.auditService.log(tenantId, managerId, 'checkin.created', 'checkin', (saved as CheckIn).id, {
+      managerName, employeeName, topic: dto.topic, scheduledDate: dto.scheduledDate,
+    }).catch(() => {});
+
     return saved as CheckIn;
   }
 
@@ -130,7 +132,11 @@ export class FeedbackService {
     }
     ci.status = CheckInStatus.COMPLETED;
     ci.completedAt = new Date();
-    return this.checkInRepo.save(ci);
+    const saved = await this.checkInRepo.save(ci);
+    this.auditService.log(tenantId, userId || null, 'checkin.completed', 'checkin', ci.id, {
+      topic: ci.topic, managerId: ci.managerId, employeeId: ci.employeeId,
+    }).catch(() => {});
+    return saved;
   }
 
   async findCheckIns(tenantId: string, userId: string, role: string): Promise<CheckIn[]> {
@@ -163,6 +169,10 @@ export class FeedbackService {
     ci.rejectedBy = userId;
     const saved = await this.checkInRepo.save(ci);
 
+    this.auditService.log(tenantId, userId, 'checkin.rejected', 'checkin', ci.id, {
+      topic: ci.topic, rejectedBy: userId, reason: dto.reason,
+    }).catch(() => {});
+
     // Create in-app notification for manager
     const employeeName = ci.employee ? `${ci.employee.firstName} ${ci.employee.lastName}` : 'El colaborador';
     await this.notificationsService.create({
@@ -174,18 +184,17 @@ export class FeedbackService {
       metadata: { checkInId: ci.id },
     }).catch(() => {});
 
-    // Send rejection email to manager if Resend configured
-    if (this.resend && ci.manager?.email) {
-      try {
-        await this.resend.emails.send({
-          from: process.env.RESEND_FROM_EMAIL || 'EvaPro <onboarding@resend.dev>',
-          to: ci.manager.email,
-          subject: `Check-in rechazado: ${ci.topic}`,
-          html: `<p><strong>${ci.employee.firstName} ${ci.employee.lastName}</strong> ha rechazado el check-in programado para el ${new Date(ci.scheduledDate).toLocaleDateString('es-CL')}${ci.scheduledTime ? ' a las ' + ci.scheduledTime : ''}.</p><p><strong>Motivo:</strong> ${dto.reason}</p><p style="color:#64748b;font-size:12px;">— EvaPro</p>`,
-        });
-      } catch (e) {
-        console.error('[Resend] Error sending rejection email:', e);
-      }
+    // Send rejection email to manager via EmailService (branded template)
+    if (ci.manager?.email) {
+      this.emailService.sendCheckinRejected(ci.manager.email, {
+        managerName: `${ci.manager.firstName} ${ci.manager.lastName}`,
+        employeeName: `${ci.employee.firstName} ${ci.employee.lastName}`,
+        topic: ci.topic,
+        scheduledDate: new Date(ci.scheduledDate).toLocaleDateString('es-CL'),
+        scheduledTime: ci.scheduledTime || undefined,
+        reason: dto.reason,
+        tenantId,
+      }).catch(() => {});
     }
 
     return saved;
@@ -196,7 +205,7 @@ export class FeedbackService {
   private async sendCheckInInvitation(checkIn: CheckIn, tenantId: string): Promise<void> {
     const employee = await this.userRepo.findOne({ where: { id: checkIn.employeeId } });
     const manager = await this.userRepo.findOne({ where: { id: checkIn.managerId } });
-    if (!employee || !manager) return;
+    if (!employee?.email || !manager) return;
 
     let locationName = '';
     if (checkIn.locationId) {
@@ -209,13 +218,11 @@ export class FeedbackService {
     const dateStr = schedDate.toISOString().split('T')[0].replace(/-/g, '');
     const timeStr = checkIn.scheduledTime ? checkIn.scheduledTime.replace(':', '') + '00' : '090000';
 
-    // Handle end time with midnight overflow (e.g., 23:30 → next day 00:30)
     const startH = checkIn.scheduledTime ? parseInt(checkIn.scheduledTime.split(':')[0]) : 9;
     const startM = checkIn.scheduledTime ? checkIn.scheduledTime.split(':')[1] : '00';
     const endH = (startH + 1) % 24;
     let endDateStr = dateStr;
     if (endH < startH) {
-      // Rolled over midnight — advance date by 1 day
       const nextDay = new Date(schedDate);
       nextDay.setDate(nextDay.getDate() + 1);
       endDateStr = nextDay.toISOString().split('T')[0].replace(/-/g, '');
@@ -241,33 +248,30 @@ export class FeedbackService {
       'END:VCALENDAR',
     ].filter(Boolean).join('\r\n');
 
-    if (!this.resend || !employee.email) return;
-
     try {
-      await this.resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'EvaPro <onboarding@resend.dev>',
-        to: employee.email,
-        subject: `Nueva reuni\u00f3n 1:1: ${checkIn.topic}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:500px;">
-            <h2 style="color:#6366f1;">Reuni\u00f3n 1:1 Programada</h2>
-            <p><strong>Tema:</strong> ${checkIn.topic}</p>
-            <p><strong>Fecha:</strong> ${new Date(checkIn.scheduledDate).toLocaleDateString('es-CL')}</p>
-            <p><strong>Hora:</strong> ${checkIn.scheduledTime || 'Por confirmar'}</p>
-            ${locationName ? `<p><strong>Lugar:</strong> ${locationName}</p>` : ''}
-            <p><strong>Encargado:</strong> ${manager.firstName} ${manager.lastName}</p>
-            <hr style="border:none;border-top:1px solid #e2e8f0;margin:1rem 0;">
-            <p style="color:#64748b;font-size:12px;">Puedes aceptar o rechazar esta cita desde EvaPro.</p>
-          </div>`,
-        attachments: [{
+      // Use branded EmailService template (sendCheckinScheduled) with .ics attachment
+      const html = await this.emailService.buildCheckinScheduledHtml({
+        firstName: employee.firstName,
+        managerName: `${manager.firstName} ${manager.lastName}`,
+        scheduledAt: `${new Date(checkIn.scheduledDate).toLocaleDateString('es-CL')}${checkIn.scheduledTime ? ' ' + checkIn.scheduledTime : ''}`,
+        topic: checkIn.topic,
+        checkinId: checkIn.id,
+        tenantId,
+      });
+
+      await this.emailService.sendWithAttachments(
+        employee.email,
+        `Nueva reunión 1:1: ${checkIn.topic}`,
+        html,
+        [{
           filename: 'checkin.ics',
           content: Buffer.from(icsContent).toString('base64'),
           contentType: 'text/calendar',
         }],
-      });
+      );
       await this.checkInRepo.update(checkIn.id, { emailSent: true });
     } catch (e) {
-      console.error('[Resend] Error sending check-in invitation:', e);
+      console.error('[EmailService] Error sending check-in invitation:', e);
     }
   }
 
@@ -356,6 +360,10 @@ export class FeedbackService {
       competencyId: dto.competencyId || null,
     });
     const saved = await this.quickFeedbackRepo.save(qf);
+
+    this.auditService.log(tenantId, fromUserId, 'feedback.sent', 'feedback', saved.id, {
+      toUserId: dto.toUserId, sentiment: dto.sentiment, category: dto.category, isAnonymous: dto.isAnonymous,
+    }).catch(() => {});
 
     // Create in-app notification for recipient
     const sender = await this.userRepo.findOne({ where: { id: fromUserId }, select: ['id', 'firstName', 'lastName'] });
