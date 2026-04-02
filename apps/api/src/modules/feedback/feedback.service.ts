@@ -258,6 +258,7 @@ export class FeedbackService {
         checkinId: checkIn.id,
         tenantId,
       });
+      if (!html) return; // Emails disabled for this tenant
 
       await this.emailService.sendWithAttachments(
         employee.email,

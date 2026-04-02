@@ -52,6 +52,26 @@ export class EmailService {
     }
   }
 
+  /**
+   * Check if email notifications are enabled for a tenant + category.
+   * Categories: 'evaluations', 'feedback', 'objectives', 'recognitions'
+   * Returns true if no tenantId (system emails always sent) or if enabled.
+   */
+  async isEmailEnabled(tenantId?: string, category?: string): Promise<boolean> {
+    if (!tenantId || !this.tenantRepo) return true;
+    try {
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+      const settings = tenant?.settings || {};
+      // Master toggle
+      if (settings.emailNotifications === false) return false;
+      // Category-level toggle
+      if (category && settings.notificationTypes && settings.notificationTypes[category] === false) return false;
+      return true;
+    } catch {
+      return true; // Default to sending on error
+    }
+  }
+
   /** Wraps body with org branding (logo + name) fetched from tenant */
   private async wrapWithBranding(tenantId: string | undefined, opts: {
     body: string; preheader?: string; accentColor?: string;
@@ -104,6 +124,7 @@ export class EmailService {
     email: string,
     data: { firstName: string; cycleName: string; cycleType: string; dueDate: string; cycleId: string; tenantId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations'))) return;
     const typeLabel: Record<string, string> = {
       '90': 'Evaluación 90°', '180': 'Evaluación 180°',
       '270': 'Evaluación 270°', '360': 'Evaluación 360°',
@@ -137,6 +158,7 @@ export class EmailService {
     email: string,
     data: { firstName: string; cycleName: string; pendingCount: number; daysLeft: number; cycleId: string; tenantId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations'))) return;
     const urgency = data.daysLeft <= 1 ? '🚨 Urgente' : data.daysLeft <= 3 ? '⚠️ Pronto vence' : '🔔 Recordatorio';
 
     await this.send(
@@ -166,6 +188,7 @@ export class EmailService {
     email: string,
     data: { firstName: string; cycleName: string; cycleId: string; tenantId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations'))) return;
     await this.send(
       email,
       `Resultados disponibles: ${data.cycleName}`,
@@ -218,6 +241,7 @@ export class EmailService {
     email: string,
     data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string; tenantId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
     await this.send(
       email,
       `Check-in 1:1 agendado con ${data.managerName}`,
@@ -237,10 +261,11 @@ export class EmailService {
     );
   }
 
-  /** Build the check-in HTML without sending — used by FeedbackService to attach .ics */
+  /** Build the check-in HTML without sending — used by FeedbackService to attach .ics. Returns null if emails disabled. */
   async buildCheckinScheduledHtml(
     data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string; tenantId?: string },
-  ): Promise<string> {
+  ): Promise<string | null> {
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return null;
     return this.wrapWithBranding(data.tenantId, {
       preheader: `Tienes un check-in programado para el ${data.scheduledAt}.`,
       body: `
@@ -263,6 +288,7 @@ export class EmailService {
     email: string,
     data: { firstName: string; objectives: Array<{ title: string; progress: number; daysLeft: number }>; tenantId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'objectives'))) return;
     const list = data.objectives
       .map((o) => `<li style="margin-bottom:0.5rem;"><strong>${o.title}</strong> — ${o.progress}% completado, vence en ${o.daysLeft} días</li>`)
       .join('');
@@ -384,6 +410,7 @@ export class EmailService {
     email: string,
     data: { firstName: string; fromName: string; message: string; valueName?: string; points: number; tenantId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'recognitions'))) return;
     const msgPreview = data.message.length > 120 ? data.message.substring(0, 120) + '...' : data.message;
     await this.send(
       email,
@@ -477,6 +504,7 @@ export class EmailService {
       tenantId?: string;
     },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
     const sentimentLabel = data.sentiment === 'positive' ? 'positivo' : data.sentiment === 'constructive' ? 'constructivo' : '';
     const sentimentIcon = data.sentiment === 'positive' ? '⭐' : data.sentiment === 'constructive' ? '💡' : '💬';
 
@@ -513,6 +541,7 @@ export class EmailService {
       tenantId?: string;
     },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
     const timeLabel = data.scheduledTime ? ` a las ${data.scheduledTime}` : '';
     await this.send(
       email,
