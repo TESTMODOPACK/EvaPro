@@ -410,42 +410,73 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 const name = c.candidateType === 'internal' && c.user
                   ? c.user.firstName + ' ' + c.user.lastName
                   : (c.firstName || '') + ' ' + (c.lastName || '');
+                const isEvaluator = evaluators.some((ev: any) => ev.evaluatorId === userId);
+                const cvStatus = c.cvAnalysis ? 'analyzed' : c.cvUrl ? 'uploaded' : 'none';
+                const matchPct = typeof c.cvAnalysis === 'object' && c.cvAnalysis?.matchPercentage != null ? c.cvAnalysis.matchPercentage : null;
+
                 return (
-                  <div key={c.id} className="card" style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600 }}>
-                        {name}
-                        {c.candidateType === 'internal' && (
-                          <span style={{ fontSize: '0.72rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.15rem 0.4rem', borderRadius: 4, marginLeft: '0.5rem', fontWeight: 700 }}>INTERNO</span>
-                        )}
+                  <div key={c.id} className="card" style={{ padding: '1.25rem' }}>
+                    {/* Row 1: Info + Stage badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{name}</span>
+                          {c.candidateType === 'internal' && (
+                            <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.15rem 0.4rem', borderRadius: 4, fontWeight: 700 }}>INTERNO</span>
+                          )}
+                          <span className={stageInfo.badge} style={{ fontSize: '0.65rem' }}>{stageInfo.label}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {c.email && <span>{c.email}</span>}
+                          {c.phone && <span>{c.phone}</span>}
+                          {c.availability && <span>Disponibilidad: {c.availability}</span>}
+                          {c.salaryExpectation && <span>Renta: ${c.salaryExpectation}</span>}
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        {c.email}{c.phone ? ' | ' + c.phone : ''}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       {c.finalScore != null && (
-                        <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{Number(c.finalScore).toFixed(1)}</div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Puntaje</div>
+                        <div style={{ textAlign: 'center', padding: '0.25rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                          <div style={{ fontWeight: 800, fontSize: '1.2rem', color: Number(c.finalScore) >= 7 ? 'var(--success)' : Number(c.finalScore) >= 4 ? 'var(--warning)' : 'var(--danger)' }}>{Number(c.finalScore).toFixed(1)}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Puntaje</div>
                         </div>
                       )}
-                      {isAdmin && (
-                        <select className="input" value={c.stage} onChange={(e) => {
-                          if (token) api.recruitment.candidates.updateStage(token, c.id, e.target.value).then(() => fetchProcess());
-                        }} style={{ fontSize: '0.78rem', width: 'auto', padding: '0.25rem 0.4rem' }}>
-                          {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                        </select>
-                      )}
-                      {evaluators.some((ev: any) => ev.evaluatorId === userId) ? (
-                        <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
-                          onClick={() => openInterview(c)}>Evaluar</button>
-                      ) : (
+                    </div>
+
+                    {/* Row 2: CV status + Action buttons */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      {/* CV status indicator */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {(c.candidateType === 'external' || process.requireCvForInternal) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem',
+                            color: cvStatus === 'analyzed' ? 'var(--success)' : cvStatus === 'uploaded' ? 'var(--accent)' : 'var(--text-muted)' }}>
+                            <span style={{ fontSize: '0.85rem' }}>{cvStatus === 'analyzed' ? '\u2705' : cvStatus === 'uploaded' ? '\uD83D\uDCC4' : '\u2014'}</span>
+                            <span style={{ fontWeight: 600 }}>
+                              {cvStatus === 'analyzed' ? 'CV Analizado' : cvStatus === 'uploaded' ? 'CV Cargado' : 'Sin CV'}
+                            </span>
+                            {matchPct != null && (
+                              <span style={{ padding: '0.1rem 0.4rem', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700,
+                                background: matchPct >= 70 ? 'rgba(16,185,129,0.1)' : matchPct >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                                color: matchPct >= 70 ? 'var(--success)' : matchPct >= 40 ? 'var(--warning)' : 'var(--danger)',
+                              }}>{matchPct}% match</span>
+                            )}
+                          </div>
+                        )}
+                        {isAdmin && (
+                          <select className="input" value={c.stage} onChange={(e) => {
+                            if (token) api.recruitment.candidates.updateStage(token, c.id, e.target.value).then(() => fetchProcess());
+                          }} style={{ fontSize: '0.75rem', width: 'auto', padding: '0.2rem 0.4rem', marginLeft: '0.5rem' }}>
+                            {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                          </select>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        {isEvaluator && (
+                          <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
+                            onClick={() => openInterview(c)}>Evaluar</button>
+                        )}
                         <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
-                          onClick={() => loadScorecard(c.id)}>Consultar</button>
-                      )}
-                      <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
-                        onClick={() => loadScorecard(c.id)}>Puntaje</button>
+                          onClick={() => loadScorecard(c.id)}>Ver Puntaje</button>
                       {/* CV toggle button */}
                       {(c.candidateType === 'external' || process.requireCvForInternal) && (
                         <button
