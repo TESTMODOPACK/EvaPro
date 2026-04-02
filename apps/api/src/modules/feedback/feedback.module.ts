@@ -8,6 +8,7 @@ import { FeedbackService } from './feedback.service';
 import { FeedbackController } from './feedback.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
