@@ -33,11 +33,12 @@ export class DevelopmentService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(TalentAssessment)
     private readonly assessmentRepo: Repository<TalentAssessment>,
+    private readonly auditService: AuditService,
   ) {}
 
   // ─── Competencies ──────────────────────────────────────────────────────
 
-  async createCompetency(tenantId: string, dto: Partial<Competency>) {
+  async createCompetency(tenantId: string, dto: Partial<Competency>, userId?: string) {
     if (dto.name) {
       const existing = await this.competencyRepo.findOne({
         where: { tenantId, name: dto.name, isActive: true },
@@ -50,7 +51,11 @@ export class DevelopmentService {
       ...dto,
       tenantId,
     });
-    return this.competencyRepo.save(competency);
+    const saved = await this.competencyRepo.save(competency);
+    this.auditService.log(tenantId, userId || null, 'competency.created', 'competency', saved.id, {
+      name: dto.name, category: dto.category,
+    }).catch(() => {});
+    return saved;
   }
 
   async findAllCompetencies(tenantId: string, includeAll = false) {
@@ -112,7 +117,11 @@ export class DevelopmentService {
     comp.reviewedBy = reviewerId;
     comp.reviewNote = note || null;
     comp.reviewedAt = new Date();
-    return this.competencyRepo.save(comp);
+    const saved = await this.competencyRepo.save(comp);
+    this.auditService.log(tenantId, reviewerId, 'competency.approved', 'competency', comp.id, {
+      name: comp.name, approvedBy: reviewerId,
+    }).catch(() => {});
+    return saved;
   }
 
   /** Admin rejects a proposed competency */
@@ -129,7 +138,11 @@ export class DevelopmentService {
     comp.reviewedBy = reviewerId;
     comp.reviewNote = note.trim();
     comp.reviewedAt = new Date();
-    return this.competencyRepo.save(comp);
+    const saved = await this.competencyRepo.save(comp);
+    this.auditService.log(tenantId, reviewerId, 'competency.rejected', 'competency', comp.id, {
+      name: comp.name, rejectedBy: reviewerId, reason: note.trim(),
+    }).catch(() => {});
+    return saved;
   }
 
   /** List competencies pending approval */
@@ -225,7 +238,11 @@ export class DevelopmentService {
       status: isEmployeeSelfCreation ? 'pendiente_aprobacion' : 'borrador',
       progress: 0,
     });
-    return this.planRepo.save(plan);
+    const saved = await this.planRepo.save(plan);
+    this.auditService.log(tenantId, createdBy, 'pdi.created', 'development_plan', saved.id, {
+      planTitle: dto.title, employeeId: dto.userId, createdBy,
+    }).catch(() => {});
+    return saved;
   }
 
   async approvePlan(tenantId: string, planId: string, approverId: string) {
@@ -298,7 +315,7 @@ export class DevelopmentService {
     return this.planRepo.save(plan);
   }
 
-  async activatePlan(tenantId: string, id: string) {
+  async activatePlan(tenantId: string, id: string, userId?: string) {
     const plan = await this.planRepo.findOne({
       where: { id, tenantId },
       relations: ['actions'],
@@ -338,10 +355,14 @@ export class DevelopmentService {
     }
 
     plan.status = 'activo';
-    return this.planRepo.save(plan);
+    const saved = await this.planRepo.save(plan);
+    this.auditService.log(tenantId, userId || null, 'pdi.status_changed', 'development_plan', plan.id, {
+      planTitle: plan.title, previousStatus: 'borrador', newStatus: 'activo',
+    }).catch(() => {});
+    return saved;
   }
 
-  async completePlan(tenantId: string, id: string) {
+  async completePlan(tenantId: string, id: string, userId?: string) {
     const plan = await this.planRepo.findOne({
       where: { id, tenantId },
       relations: ['actions'],
@@ -352,7 +373,11 @@ export class DevelopmentService {
     }
     plan.status = 'completado';
     plan.completedAt = new Date();
-    return this.planRepo.save(plan);
+    const saved = await this.planRepo.save(plan);
+    this.auditService.log(tenantId, userId || null, 'pdi.status_changed', 'development_plan', plan.id, {
+      planTitle: plan.title, previousStatus: 'activo', newStatus: 'completado',
+    }).catch(() => {});
+    return saved;
   }
 
   // ─── Actions ───────────────────────────────────────────────────────────

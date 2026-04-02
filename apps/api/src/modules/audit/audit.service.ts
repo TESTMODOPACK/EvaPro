@@ -133,13 +133,14 @@ export class AuditService {
     return { data: result, total, page, limit };
   }
 
-  async exportTenantCsv(tenantId: string, dateFrom?: string, dateTo?: string): Promise<string> {
-    const { data } = await this.findByTenant(tenantId, { page: 1, limit: 10000, dateFrom, dateTo });
+  async exportTenantCsv(tenantId: string, filters: { dateFrom?: string; dateTo?: string; action?: string; entityType?: string; evidenceOnly?: boolean; searchText?: string } = {}): Promise<string> {
+    const { data } = await this.findByTenant(tenantId, { page: 1, limit: 10000, ...filters });
     const header = 'Fecha,Usuario,Email,Accion,Tipo Entidad,ID Entidad,Detalle,IP,Evidencia Legal';
+    const escCsv = (v: string) => v.replace(/"/g, '""');
     const rows = data.map((d: any) => {
       const date = new Date(d.createdAt).toLocaleString('es-CL');
-      const meta = d.metadata ? JSON.stringify(d.metadata).replace(/"/g, "'") : '';
-      return '"' + [date, d.userName, d.userEmail || '', d.action, d.entityType || '', d.entityId || '', meta, d.ipAddress || '', d.isEvidence ? 'Si' : 'No'].join('","') + '"';
+      const meta = d.metadata ? JSON.stringify(d.metadata) : '';
+      return '"' + [date, escCsv(d.userName || ''), escCsv(d.userEmail || ''), escCsv(d.action || ''), escCsv(d.entityType || ''), d.entityId || '', escCsv(meta), d.ipAddress || '', d.isEvidence ? 'Si' : 'No'].join('","') + '"';
     });
     return header + '\n' + rows.join('\n');
   }

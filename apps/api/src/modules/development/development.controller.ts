@@ -37,7 +37,7 @@ export class DevelopmentController {
   @Post('competencies')
   @Roles('super_admin', 'tenant_admin')
   createCompetency(@Request() req: any, @Body() dto: any) {
-    return this.developmentService.createCompetency(req.user.tenantId, dto);
+    return this.developmentService.createCompetency(req.user.tenantId, dto, req.user.id);
   }
 
   @Patch('competencies/:id')
@@ -173,7 +173,7 @@ export class DevelopmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.developmentService.activatePlan(req.user.tenantId, id);
+    return this.developmentService.activatePlan(req.user.tenantId, id, req.user.id);
   }
 
   @Post('plans/:id/complete')
@@ -184,7 +184,7 @@ export class DevelopmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.developmentService.completePlan(req.user.tenantId, id);
+    return this.developmentService.completePlan(req.user.tenantId, id, req.user.id);
   }
 
   // ─── Actions ───────────────────────────────────────────────────────────

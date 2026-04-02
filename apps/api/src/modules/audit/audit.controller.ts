@@ -60,8 +60,16 @@ export class AuditController {
     @Res() res: Response,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    @Query('action') action?: string,
+    @Query('entityType') entityType?: string,
+    @Query('evidenceOnly') evidenceOnly?: string,
+    @Query('searchText') searchText?: string,
   ) {
-    const csv = await this.auditService.exportTenantCsv(req.user.tenantId, dateFrom, dateTo);
+    const csv = await this.auditService.exportTenantCsv(req.user.tenantId, {
+      dateFrom, dateTo, action, entityType,
+      evidenceOnly: evidenceOnly === 'true',
+      searchText,
+    });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename=auditoria_' + new Date().toISOString().slice(0, 10) + '.csv');
     res.send('\uFEFF' + csv); // BOM for Excel UTF-8

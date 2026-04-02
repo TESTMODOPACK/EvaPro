@@ -66,6 +66,7 @@ export class TalentService {
     private readonly responseRepo: Repository<EvaluationResponse>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   // ─── Nine Box Calculation ──────────────────────────────────────────────
@@ -188,7 +189,15 @@ export class TalentService {
     assessment.nineBoxPosition = nineBox.position;
     assessment.talentPool = nineBox.pool;
 
-    return this.assessmentRepo.save(assessment);
+    const saved = await this.assessmentRepo.save(assessment);
+    this.auditService.log(assessment.tenantId, assessedBy, 'talent.assessed', 'talent_assessment', assessment.id, {
+      userName: assessment.user ? assessment.user.firstName + ' ' + assessment.user.lastName : assessment.userId,
+      performanceScore: assessment.performanceScore,
+      potentialScore: assessment.potentialScore,
+      nineBoxPosition: nineBox.pool,
+      assessedBy,
+    }).catch(() => {});
+    return saved;
   }
 
   async getNineBoxSummary(tenantId: string, cycleId: string, managerId?: string): Promise<any> {
@@ -389,7 +398,14 @@ export class TalentService {
     entry.status = 'discussed';
     entry.discussedBy = discussedBy;
 
-    return this.entryRepo.save(entry);
+    const saved = await this.entryRepo.save(entry);
+    // Get tenantId from session for audit
+    const session = await this.sessionRepo.findOne({ where: { id: entry.sessionId }, select: ['id', 'tenantId'] });
+    this.auditService.log(session?.tenantId || null, discussedBy, 'calibration.entry_adjusted', 'calibration_entry', entry.id, {
+      originalScore: entry.originalScore, adjustedScore: entry.adjustedScore,
+      rationale: dto.rationale, discussedBy,
+    }).catch(() => {});
+    return saved;
   }
 
   async approveCalibrationChange(entryId: string, approvedBy: string, approved: boolean): Promise<CalibrationEntry> {

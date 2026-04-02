@@ -69,6 +69,7 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/encuestas-clima': ['tenant_admin', 'manager', 'employee'],
   '/dashboard/ejecutivo':    ['tenant_admin', 'manager'],
   '/dashboard/solicitudes':  ['super_admin', 'tenant_admin'],
+  '/dashboard/auditoria':    ['tenant_admin'],
 };
 
 // ─── i18n-aware hooks ─────────────────────────────────────────────────────────

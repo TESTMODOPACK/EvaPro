@@ -259,6 +259,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
           { href: '/dashboard/plantillas', label: t('nav.templates', 'Plantillas'), icon: icons.templates },
           { href: '/dashboard/mantenedores', label: t('nav.customData', 'Mantenedores'), icon: icons.settings },
           { href: '/dashboard/solicitudes', label: t('nav.requests', 'Solicitudes'), icon: icons.log },
+          { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoria'), icon: icons.log },
         ] : []),
         { href: '/dashboard/mi-suscripcion', label: t('nav.subscription', 'Mi Suscripción'), icon: icons.subscription },
         { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },

@@ -230,6 +230,34 @@ export const api = {
       if (tenantId) url += `&tenantId=${tenantId}`;
       return request<any>(url, {}, token);
     },
+    tenant: (token: string, filters: { page?: number; limit?: number; dateFrom?: string; dateTo?: string; action?: string; entityType?: string; evidenceOnly?: boolean; searchText?: string } = {}) => {
+      const params = new URLSearchParams();
+      if (filters.page) params.set('page', String(filters.page));
+      if (filters.limit) params.set('limit', String(filters.limit));
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) params.set('dateTo', filters.dateTo);
+      if (filters.action) params.set('action', filters.action);
+      if (filters.entityType) params.set('entityType', filters.entityType);
+      if (filters.evidenceOnly) params.set('evidenceOnly', 'true');
+      if (filters.searchText) params.set('searchText', filters.searchText);
+      return request<any>(`/audit-logs/tenant?${params.toString()}`, {}, token);
+    },
+    exportCsv: (token: string, filters: { dateFrom?: string; dateTo?: string; entityType?: string; action?: string; evidenceOnly?: boolean; searchText?: string } = {}) => {
+      const params = new URLSearchParams();
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) params.set('dateTo', filters.dateTo);
+      if (filters.entityType) params.set('entityType', filters.entityType);
+      if (filters.action) params.set('action', filters.action);
+      if (filters.evidenceOnly) params.set('evidenceOnly', 'true');
+      if (filters.searchText) params.set('searchText', filters.searchText);
+      const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+      return fetch(`${BASE}/audit-logs/tenant/export?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => {
+        if (!r.ok) throw new Error('Error al exportar CSV (' + r.status + ')');
+        return r.blob();
+      });
+    },
   },
 
   subscriptions: {
