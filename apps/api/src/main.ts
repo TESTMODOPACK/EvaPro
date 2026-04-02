@@ -3,7 +3,15 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // Disable default body parser to set custom limit
+    bodyParser: false,
+  });
+
+  // Increase body size limit for base64 file uploads (CVs, attachments stored in DB)
+  const express = require('express');
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // CORS – reflect the request origin so credentials work with any frontend URL
   const frontendUrl = process.env.FRONTEND_URL;
