@@ -17,6 +17,19 @@ const STAGES = [
   { key: 'hired', label: 'Contratado', badge: 'badge-success' },
 ];
 
+const PROCESS_STATUS_LABELS: Record<string, string> = {
+  draft: 'Borrador', active: 'Activo', completed: 'Completado', closed: 'Cerrado',
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  experiencia: 'Experiencia',
+  conocimiento_tecnico: 'Conocimiento Técnico',
+  habilidades_blandas: 'Habilidades Blandas',
+  formacion: 'Formación',
+  idiomas: 'Idiomas',
+  General: 'General',
+};
+
 
 export default function ProcesoDetailPage({ params }: { params: { id: string } }) {
   const token = useAuthStore((s) => s.token);
@@ -417,8 +430,13 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                         </select>
                       )}
-                      <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
-                        onClick={() => openInterview(c)}>Evaluar</button>
+                      {evaluators.some((ev: any) => ev.evaluatorId === userId) ? (
+                        <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
+                          onClick={() => openInterview(c)}>Evaluar</button>
+                      ) : (
+                        <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
+                          onClick={() => loadScorecard(c.id)}>Consultar</button>
+                      )}
                       <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
                         onClick={() => loadScorecard(c.id)}>Puntaje</button>
                       {/* CV buttons */}
@@ -475,7 +493,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       {interviewForm.reqChecks.map((rc: any, i: number) => (
                         <tr key={i}>
                           <td style={{ fontSize: '0.85rem' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 600 }}>[{rc.category}]</span> {rc.text}
+                            <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 600 }}>{CATEGORY_LABELS[rc.category] || rc.category}</span>
+                            <br />{rc.text}
                           </td>
                           <td>
                             <select className="input" value={rc.status}
@@ -484,12 +503,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                                 checks[i] = { ...checks[i], status: e.target.value };
                                 return { ...f, reqChecks: checks };
                               })}
-                              style={{ fontSize: '0.78rem', fontWeight: 600,
+                              style={{ fontSize: '0.82rem', fontWeight: 600, minWidth: 140,
                                 color: rc.status === 'cumple' ? 'var(--success)' : rc.status === 'no_cumple' ? 'var(--danger)' : rc.status === 'parcial' ? 'var(--warning)' : 'var(--text-muted)',
                               }}>
                               <option value="pendiente">Pendiente</option>
                               <option value="cumple">Cumple</option>
-                              <option value="parcial">Parcial</option>
+                              <option value="parcial">Cumple parcialmente</option>
                               <option value="no_cumple">No cumple</option>
                             </select>
                           </td>
@@ -509,15 +528,33 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 </div>
               )}
 
-              {/* Score + comments */}
+              {/* Score (auto-calculated) + comments */}
+              {(() => {
+                const checks = interviewForm.reqChecks || [];
+                const answered = checks.filter((c: any) => c.status !== 'pendiente');
+                const scoreMap: Record<string, number> = { cumple: 10, parcial: 5, no_cumple: 0 };
+                const autoScore = answered.length > 0
+                  ? Number((answered.reduce((sum: number, c: any) => sum + (scoreMap[c.status] || 0), 0) / answered.length).toFixed(1))
+                  : 0;
+                const pct = answered.length > 0
+                  ? Math.round((answered.filter((c: any) => c.status === 'cumple').length / answered.length) * 100)
+                  : 0;
+                // Auto-update globalScore
+                if (String(autoScore) !== interviewForm.globalScore && answered.length > 0) {
+                  setTimeout(() => setInterviewForm((f) => ({ ...f, globalScore: String(autoScore) })), 0);
+                }
+                return null;
+              })()}
               <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '1rem' }}>
                   <div>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Puntaje (1-10)</label>
-                    <input className="input" type="number" min={1} max={10} step={0.5}
-                      value={interviewForm.globalScore}
-                      onChange={(e) => setInterviewForm((f) => ({ ...f, globalScore: e.target.value }))}
-                      style={{ textAlign: 'center', fontSize: '1.1rem', fontWeight: 700 }} />
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Puntaje (auto)</label>
+                    <div style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)', padding: '0.3rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                      {interviewForm.globalScore || '--'}/10
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.25rem' }}>
+                      Calculado desde requisitos
+                    </div>
                   </div>
                   <div>
                     <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Comentarios generales</label>
@@ -742,7 +779,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                 {requirements.map((r: any, i: number) => (
                   <span key={i} style={{ padding: '0.3rem 0.7rem', borderRadius: 20, fontSize: '0.78rem', background: 'rgba(201,147,58,0.08)', border: '1px solid rgba(201,147,58,0.2)', color: 'var(--accent)', fontWeight: 500 }}>
-                    [{r.category}] {r.text}
+                    {CATEGORY_LABELS[r.category] || r.category}: {r.text}
                   </span>
                 ))}
               </div>
@@ -775,7 +812,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       fontWeight: process.status === s ? 700 : 400,
                       color: process.status === s ? 'var(--accent)' : 'var(--text-secondary)',
                     }}>
-                    {STAGES.find((st) => st.key === s)?.label || s}
+                    {PROCESS_STATUS_LABELS[s] || s}
                   </button>
                 ))}
               </div>
