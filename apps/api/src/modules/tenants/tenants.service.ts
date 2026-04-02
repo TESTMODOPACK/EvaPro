@@ -332,9 +332,71 @@ export class TenantsService {
       }
     }
 
+    // Logo URL validation (must be a valid URL or empty)
+    if (dto.logoUrl !== undefined) {
+      if (dto.logoUrl === null || dto.logoUrl === '') {
+        currentSettings.logoUrl = null;
+      } else if (typeof dto.logoUrl === 'string' && dto.logoUrl.length <= 2048 && /^https?:\/\/.+/.test(dto.logoUrl.trim())) {
+        currentSettings.logoUrl = dto.logoUrl.trim();
+      }
+    }
+
+    // Primary brand color (hex color)
+    if (dto.primaryColor !== undefined) {
+      if (dto.primaryColor === null || dto.primaryColor === '') {
+        currentSettings.primaryColor = null;
+      } else if (typeof dto.primaryColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(dto.primaryColor)) {
+        currentSettings.primaryColor = dto.primaryColor;
+      }
+    }
+
+    // Email notification preferences
+    if (dto.emailNotifications !== undefined) {
+      if (typeof dto.emailNotifications === 'boolean') {
+        currentSettings.emailNotifications = dto.emailNotifications;
+      }
+    }
+
+    // Notification types (object with boolean flags)
+    if (dto.notificationTypes !== undefined && typeof dto.notificationTypes === 'object' && dto.notificationTypes !== null) {
+      currentSettings.notificationTypes = {
+        ...(currentSettings.notificationTypes || {}),
+        ...dto.notificationTypes,
+      };
+    }
+
+    // Date format preference
+    if (dto.dateFormat !== undefined) {
+      const validFormats = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
+      if (dto.dateFormat === null || dto.dateFormat === '') {
+        currentSettings.dateFormat = null;
+      } else if (typeof dto.dateFormat === 'string' && validFormats.includes(dto.dateFormat)) {
+        currentSettings.dateFormat = dto.dateFormat;
+      }
+    }
+
+    // Default organization language
+    if (dto.defaultLanguage !== undefined) {
+      const validLangs = ['es', 'en', 'pt'];
+      if (dto.defaultLanguage === null || dto.defaultLanguage === '') {
+        currentSettings.defaultLanguage = null;
+      } else if (typeof dto.defaultLanguage === 'string' && validLangs.includes(dto.defaultLanguage)) {
+        currentSettings.defaultLanguage = dto.defaultLanguage;
+      }
+    }
+
     tenant.settings = currentSettings;
     await this.tenantRepository.save(tenant);
-    return { timezone: currentSettings.timezone, sessionTimeoutMinutes: currentSettings.sessionTimeoutMinutes };
+    return {
+      timezone: currentSettings.timezone,
+      sessionTimeoutMinutes: currentSettings.sessionTimeoutMinutes,
+      logoUrl: currentSettings.logoUrl,
+      primaryColor: currentSettings.primaryColor,
+      emailNotifications: currentSettings.emailNotifications,
+      notificationTypes: currentSettings.notificationTypes,
+      dateFormat: currentSettings.dateFormat,
+      defaultLanguage: currentSettings.defaultLanguage,
+    };
   }
 
   async getAllCustomSettings(tenantId: string): Promise<Record<string, string[]>> {
