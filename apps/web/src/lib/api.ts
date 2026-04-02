@@ -160,7 +160,9 @@ async function request<T>(
 
   if (!res.ok) {
     // If 401 Unauthorized, clear stale/demo auth and redirect to login
-    if (res.status === 401 && typeof window !== "undefined") {
+    // Skip redirect for auth endpoints (login, reset-password) so error messages show inline
+    const isAuthEndpoint = path.startsWith("/auth/");
+    if (res.status === 401 && typeof window !== "undefined" && !isAuthEndpoint) {
       localStorage.removeItem("evapro-auth");
       window.location.href = "/login";
       throw new Error("Sesión expirada");
