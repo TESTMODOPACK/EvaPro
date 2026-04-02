@@ -145,6 +145,7 @@ export class AiInsightsService {
     const used = await this.insightRepo.count({
       where: { tenantId, createdAt: MoreThan(periodStart) },
     });
+    this.logger.debug(`AI usage: tenant=${tenantId.slice(0,8)}, period=${periodStart.toISOString()}-${periodEnd.toISOString()}, used=${used}, limit=${limit}`);
     return { used, periodStart, periodEnd, limit };
   }
 
@@ -1263,6 +1264,7 @@ Responde SOLO con el JSON, sin texto adicional ni markdown.`;
       content = { resumenEjecutivo: text.slice(0, 500), matchPercentage: 0, error: true };
     }
 
+    this.logger.log(`Creating CV_ANALYSIS insight: tenant=${tenantId.slice(0,8)}, candidate=${candidateId.slice(0,8)}, tokens=${tokensUsed}`);
     const insight = this.insightRepo.create({
       tenantId,
       type: InsightType.CV_ANALYSIS,
