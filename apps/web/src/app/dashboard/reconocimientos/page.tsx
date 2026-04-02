@@ -201,6 +201,8 @@ export default function ReconocimientosPage() {
     : null;
   const leaderboardData = rankingView === 'team' && teamLeaderboard ? teamLeaderboard : (leaderboard || []);
 
+  const [showGuide, setShowGuide] = useState(false);
+
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1000px' }}>
       {/* Header */}
@@ -213,7 +215,65 @@ export default function ReconocimientosPage() {
             {t('reconocimientos.subtitle')}
           </p>
         </div>
+        <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setShowGuide(!showGuide)}>
+          {showGuide ? 'Ocultar guia' : 'Como funciona'}
+        </button>
       </div>
+
+      {/* Guide */}
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+            Como funciona el sistema de Reconocimientos
+          </h3>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Sistema de Puntos</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Al enviar un reconocimiento:</strong> Se descuentan 10 puntos de tu presupuesto mensual y recibes 2 puntos de bonus por reconocer a otros.
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Al recibir un reconocimiento:</strong> Recibes 10 puntos que se suman a tu balance total.
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Presupuesto mensual:</strong> Cada colaborador tiene 100 puntos por mes para dar reconocimientos (10 reconocimientos). Se renueva el 1ro de cada mes.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Reglas</div>
+            <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
+              <li>Maximo 5 reconocimientos por dia</li>
+              <li>Maximo 2 reconocimientos a la misma persona por dia</li>
+              <li>El valor corporativo es opcional y no otorga puntos adicionales, solo etiqueta el reconocimiento</li>
+              <li>Los puntos acumulados se pueden canjear en la Tienda de beneficios</li>
+            </ul>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Secciones</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Muro:</strong> Feed publico de reconocimientos. Puedes enviar nuevos reconocimientos y reaccionar a los de otros.
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Ranking:</strong> Tabla de posiciones por puntos acumulados. Los encargados de equipo pueden ver ranking de su equipo vs general.
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Desafios:</strong> Metas colectivas o individuales con recompensa de puntos al cumplir el objetivo.
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Insignias:</strong> Logros que se otorgan automaticamente al alcanzar hitos (ej: 10 reconocimientos recibidos).
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Tienda:</strong> Catalogo de beneficios canjeables con puntos acumulados (dias libres, gift cards, etc.).
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pending approvals banner */}
       {(isAdmin || isManager) && pendingApprovals.length > 0 && (
