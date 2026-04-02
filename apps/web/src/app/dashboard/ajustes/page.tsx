@@ -356,46 +356,7 @@ export default function AjustesPage() {
               </p>
             </div>
 
-            {/* Primary color */}
-            <div>
-              <label style={labelStyle}>Color principal</label>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <input
-                  type="color"
-                  value={primaryColor || '#c9933a'}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  style={{
-                    width: '40px', height: '36px', border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm, 6px)', cursor: 'pointer', padding: '2px',
-                    background: 'var(--bg-surface)',
-                  }}
-                />
-                <input
-                  className="input"
-                  type="text"
-                  placeholder="#c9933a"
-                  value={primaryColor}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === '' || /^#[0-9a-fA-F]{0,6}$/.test(val)) setPrimaryColor(val);
-                  }}
-                  maxLength={7}
-                  style={{ width: '110px', fontFamily: 'monospace' }}
-                />
-                {primaryColor && (
-                  <button
-                    type="button"
-                    onClick={() => setPrimaryColor('')}
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: 'var(--text-muted)', fontSize: '0.78rem',
-                    }}
-                  >
-                    Restablecer
-                  </button>
-                )}
-              </div>
-            </div>
+            {/* Primary color — hidden for now, backend support ready */}
 
             {/* Default language */}
             <div>
