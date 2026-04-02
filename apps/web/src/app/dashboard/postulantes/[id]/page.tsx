@@ -72,6 +72,11 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [analyzingCv, setAnalyzingCv] = useState(false);
   const [expandedCvPanel, setExpandedCvPanel] = useState<string | null>(null);
 
+  // Edit candidate
+  const [editingCandidate, setEditingCandidate] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ email: '', phone: '', linkedIn: '', availability: '', salaryExpectation: '', recruiterNotes: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const fetchProcess = async () => {
     if (!token) return;
     setLoading(true);
@@ -466,9 +471,23 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
                           onClick={() => loadScorecard(c.id)}>Tarjeta de Puntaje</button>
                         {showCv && (
-                          <button className="btn-ghost" onClick={() => setExpandedCvPanel(expandedCvPanel === c.id ? null : c.id)}
+                          <button className="btn-ghost" onClick={() => { setExpandedCvPanel(expandedCvPanel === c.id ? null : c.id); setEditingCandidate(null); }}
                             style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}>
                             {expandedCvPanel === c.id ? 'Cerrar CV' : (cvStatus === 'none' ? 'Subir CV' : 'Ver CV')}
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button className="btn-ghost" onClick={() => {
+                            if (editingCandidate === c.id) { setEditingCandidate(null); } else {
+                              setEditingCandidate(c.id); setExpandedCvPanel(null);
+                              setEditForm({
+                                email: c.email || '', phone: c.phone || '', linkedIn: c.linkedIn || '',
+                                availability: c.availability || '', salaryExpectation: c.salaryExpectation || '',
+                                recruiterNotes: c.recruiterNotes || '',
+                              });
+                            }
+                          }} style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}>
+                            {editingCandidate === c.id ? 'Cerrar' : 'Editar'}
                           </button>
                         )}
                       </div>
@@ -582,6 +601,58 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             })()}
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Edit candidate panel */}
+                    {editingCandidate === c.id && (
+                      <div style={{ marginTop: '0.75rem', padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.75rem' }}>Editar datos del candidato</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.75rem' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Email</label>
+                            <input className="input" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} style={{ fontSize: '0.85rem' }} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Telefono</label>
+                            <input className="input" value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} style={{ fontSize: '0.85rem' }} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>LinkedIn</label>
+                            <input className="input" value={editForm.linkedIn} onChange={(e) => setEditForm((f) => ({ ...f, linkedIn: e.target.value }))} placeholder="URL de perfil" style={{ fontSize: '0.85rem' }} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Disponibilidad</label>
+                            <input className="input" value={editForm.availability} onChange={(e) => setEditForm((f) => ({ ...f, availability: e.target.value }))} placeholder="Ej: Inmediata, 30 dias" style={{ fontSize: '0.85rem' }} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Pretension de renta</label>
+                            <input className="input" value={editForm.salaryExpectation}
+                              onChange={(e) => { const raw = e.target.value.replace(/\D/g, ''); setEditForm((f) => ({ ...f, salaryExpectation: raw ? Number(raw).toLocaleString('es-CL') : '' })); }}
+                              placeholder="$0" style={{ fontSize: '0.85rem' }} />
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Notas del reclutador</label>
+                          <textarea className="input" value={editForm.recruiterNotes} onChange={(e) => setEditForm((f) => ({ ...f, recruiterNotes: e.target.value }))}
+                            rows={3} placeholder="Observaciones, comentarios internos..." style={{ fontSize: '0.85rem', resize: 'vertical' as const }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button className="btn-primary" style={{ fontSize: '0.82rem' }} disabled={savingEdit} onClick={async () => {
+                            if (!token) return;
+                            setSavingEdit(true);
+                            try {
+                              await api.recruitment.candidates.update(token, c.id, editForm);
+                              toast('Datos actualizados', 'success');
+                              setEditingCandidate(null);
+                              fetchProcess();
+                            } catch (err: any) { toast(err.message || 'Error al guardar', 'error'); }
+                            setSavingEdit(false);
+                          }}>
+                            {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                          </button>
+                          <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setEditingCandidate(null)}>Cancelar</button>
+                        </div>
                       </div>
                     )}
                   </div>

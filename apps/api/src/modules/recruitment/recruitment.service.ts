@@ -194,6 +194,18 @@ export class RecruitmentService {
     return this.candidateRepo.save(candidate);
   }
 
+  async updateCandidate(tenantId: string, candidateId: string, dto: any): Promise<RecruitmentCandidate> {
+    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    if (dto.email !== undefined) candidate.email = dto.email;
+    if (dto.phone !== undefined) candidate.phone = dto.phone;
+    if (dto.linkedIn !== undefined) candidate.linkedIn = dto.linkedIn;
+    if (dto.availability !== undefined) candidate.availability = dto.availability;
+    if (dto.salaryExpectation !== undefined) candidate.salaryExpectation = dto.salaryExpectation;
+    if (dto.recruiterNotes !== undefined) candidate.recruiterNotes = dto.recruiterNotes;
+    return this.candidateRepo.save(candidate);
+  }
+
   async updateCandidateStage(tenantId: string, candidateId: string, stage: string): Promise<RecruitmentCandidate> {
     const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');

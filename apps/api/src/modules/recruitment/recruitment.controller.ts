@@ -56,6 +56,16 @@ export class RecruitmentController {
     return this.service.addExternalCandidate(req.user.tenantId, processId, dto);
   }
 
+  @Patch('candidates/:id')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  updateCandidate(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: any,
+  ) {
+    return this.service.updateCandidate(req.user.tenantId, id, dto);
+  }
+
   @Patch('candidates/:id/stage')
   @Roles('super_admin', 'tenant_admin')
   updateStage(

@@ -321,6 +321,8 @@ export const api = {
     candidates: {
       add: (token: string, processId: string, data: any) =>
         request<any>(`/recruitment/processes/${processId}/candidates`, { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: any) =>
+        request<any>(`/recruitment/candidates/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       updateStage: (token: string, id: string, stage: string) =>
         request<any>(`/recruitment/candidates/${id}/stage`, { method: "PATCH", body: JSON.stringify({ stage }) }, token),
       profile: (token: string, id: string) =>
