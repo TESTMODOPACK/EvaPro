@@ -45,63 +45,138 @@ function getActionBadge(action: string): { cls: string; label: string } {
   return { cls: 'badge-accent', label: action };
 }
 
+/* ─── Traduccion de acciones ──────────────────────────────────── */
+
+const ACTION_LABELS: Record<string, string> = {
+  // Sesion
+  'login': 'Inicio de sesion',
+  // Objetivos
+  'objective.created': 'Objetivo creado',
+  'objective.updated': 'Objetivo modificado',
+  'objective.submitted_for_approval': 'Objetivo enviado a aprobacion',
+  'objective.approved': 'Objetivo aprobado',
+  'objective.rejected': 'Objetivo rechazado',
+  'objective.cancelled': 'Objetivo cancelado',
+  'objective.progress_updated': 'Progreso actualizado',
+  // Evaluaciones / Ciclos
+  'cycle.created': 'Ciclo de evaluacion creado',
+  'cycle.launched': 'Ciclo de evaluacion lanzado',
+  'cycle.closed': 'Ciclo de evaluacion cerrado',
+  'cycle.paused': 'Ciclo de evaluacion pausado',
+  'cycle.resumed': 'Ciclo de evaluacion reanudado',
+  'cycle.stage_advanced': 'Etapa de ciclo avanzada',
+  'evaluation.submitted': 'Evaluacion enviada',
+  'evaluation.response_saved': 'Respuesta de evaluacion guardada',
+  // Check-ins
+  'checkin.created': 'Check-in programado',
+  'checkin.completed': 'Check-in completado',
+  'checkin.rejected': 'Check-in rechazado',
+  // Feedback
+  'feedback.sent': 'Feedback enviado',
+  // Competencias
+  'competency.created': 'Competencia creada',
+  'competency.approved': 'Competencia aprobada',
+  'competency.rejected': 'Competencia rechazada',
+  // Planes de desarrollo
+  'pdi.created': 'Plan de desarrollo creado',
+  'pdi.status_changed': 'Estado de plan cambiado',
+  // Talento
+  'talent.assessed': 'Evaluacion de talento',
+  'calibration.entry_adjusted': 'Calibracion ajustada',
+  // Usuarios
+  'user.created': 'Usuario creado',
+  'user.updated': 'Usuario modificado',
+  'user.deactivated': 'Usuario desactivado',
+  'user.role_changed': 'Rol de usuario cambiado',
+  'user.invited': 'Usuario invitado',
+  'user.invite_resent': 'Invitacion reenviada',
+  'users.bulk_imported': 'Importacion masiva de usuarios',
+  // Encuestas
+  'survey_created': 'Encuesta creada',
+  'survey.launched': 'Encuesta lanzada',
+  'survey.closed': 'Encuesta cerrada',
+  // Seleccion
+  'recruitment.process_created': 'Proceso de seleccion creado',
+  'candidate.stage_changed': 'Etapa de candidato cambiada',
+  'candidate.hired': 'Candidato contratado',
+  'candidate.rejected': 'Candidato rechazado',
+  // Firma digital
+  'document.signed': 'Documento firmado',
+  // Suscripciones
+  'subscription.created': 'Suscripcion creada',
+  'subscription.cancelled': 'Suscripcion cancelada',
+  'subscription.plan_changed': 'Plan de suscripcion cambiado',
+  'subscription.status_changed': 'Estado de suscripcion cambiado',
+  'payment.registered': 'Pago registrado',
+  'subscription_request.approved': 'Solicitud de suscripcion aprobada',
+  'subscription_request.rejected': 'Solicitud de suscripcion rechazada',
+  // Reportes
+  'report.viewed': 'Reporte consultado',
+};
+
 function formatAction(action: string): string {
-  const map: Record<string, string> = {
-    'objective.created': 'Objetivo creado',
-    'objective.updated': 'Objetivo modificado',
-    'objective.submitted_for_approval': 'Objetivo enviado a aprobacion',
-    'objective.approved': 'Objetivo aprobado',
-    'objective.rejected': 'Objetivo rechazado',
-    'objective.cancelled': 'Objetivo cancelado',
-    'objective.progress_updated': 'Progreso de objetivo actualizado',
-    'evaluation.submitted': 'Evaluacion enviada',
-    'evaluation.response_saved': 'Respuesta de evaluacion guardada',
-    'checkin.created': 'Check-in creado',
-    'checkin.completed': 'Check-in completado',
-    'checkin.rejected': 'Check-in rechazado',
-    'feedback.sent': 'Feedback enviado',
-    'competency.created': 'Competencia creada',
-    'competency.approved': 'Competencia aprobada',
-    'competency.rejected': 'Competencia rechazada',
-    'pdi.created': 'Plan de desarrollo creado',
-    'pdi.status_changed': 'Estado de PDI cambiado',
-    'talent.assessed': 'Talento evaluado',
-    'calibration.entry_adjusted': 'Calibracion ajustada',
-    'user.updated': 'Usuario modificado',
-    'user.deactivated': 'Usuario desactivado',
-    'user.role_changed': 'Rol de usuario cambiado',
-    'survey.launched': 'Encuesta lanzada',
-    'survey.closed': 'Encuesta cerrada',
-    'candidate.stage_changed': 'Etapa de candidato cambiada',
-    'candidate.hired': 'Candidato contratado',
-    'candidate.rejected': 'Candidato rechazado',
-    'document.signed': 'Documento firmado',
-  };
-  return map[action] || action;
+  return ACTION_LABELS[action] || action;
 }
 
+/* ─── Traduccion de entidades ─────────────────────────────────── */
+
+const ENTITY_LABELS: Record<string, string> = {
+  objective: 'Objetivo',
+  cycle: 'Ciclo de evaluacion',
+  cycle_stage: 'Etapa de ciclo',
+  evaluation: 'Evaluacion',
+  checkin: 'Check-in',
+  feedback: 'Feedback',
+  competency: 'Competencia',
+  development_plan: 'Plan de desarrollo',
+  talent_assessment: 'Evaluacion de talento',
+  calibration_entry: 'Calibracion',
+  user: 'Usuario',
+  User: 'Usuario',
+  bulk_import: 'Importacion masiva',
+  engagement_survey: 'Encuesta de clima',
+  recruitment_process: 'Proceso de seleccion',
+  report: 'Reporte',
+  subscription: 'Suscripcion',
+  subscription_request: 'Solicitud',
+  payment: 'Pago',
+  document: 'Documento',
+};
+
+function formatEntity(entityType: string): string {
+  return ENTITY_LABELS[entityType] || entityType;
+}
+
+/* ─── Filtros ─────────────────────────────────────────────────── */
+
 const ENTITY_TYPES = [
-  { value: '', label: 'Todos' },
+  { value: '', label: 'Todas las entidades' },
   { value: 'objective', label: 'Objetivos' },
-  { value: 'evaluation', label: 'Evaluaciones' },
+  { value: 'cycle', label: 'Ciclos de evaluacion' },
   { value: 'checkin', label: 'Check-ins' },
   { value: 'feedback', label: 'Feedback' },
   { value: 'competency', label: 'Competencias' },
-  { value: 'development_plan', label: 'Planes de Desarrollo' },
+  { value: 'development_plan', label: 'Planes de desarrollo' },
   { value: 'talent_assessment', label: 'Talento' },
+  { value: 'calibration_entry', label: 'Calibracion' },
   { value: 'user', label: 'Usuarios' },
-  { value: 'survey', label: 'Encuestas' },
-  { value: 'recruitment', label: 'Seleccion' },
+  { value: 'engagement_survey', label: 'Encuestas de clima' },
+  { value: 'recruitment_process', label: 'Seleccion' },
+  { value: 'subscription', label: 'Suscripciones' },
+  { value: 'report', label: 'Reportes' },
 ];
 
 const ACTION_TYPES = [
-  { value: '', label: 'Todas' },
+  { value: '', label: 'Todas las acciones' },
+  { value: 'login', label: 'Inicios de sesion' },
+  { value: 'created', label: 'Creaciones' },
   { value: 'approved', label: 'Aprobaciones' },
   { value: 'rejected', label: 'Rechazos' },
-  { value: 'created', label: 'Creaciones' },
-  { value: 'updated', label: 'Modificaciones' },
   { value: 'submitted', label: 'Envios' },
   { value: 'completed', label: 'Completados' },
+  { value: 'updated', label: 'Modificaciones' },
+  { value: 'launched', label: 'Lanzamientos' },
+  { value: 'viewed', label: 'Consultas' },
 ];
 
 function formatMetadata(metadata: any): string {
@@ -409,13 +484,13 @@ export default function AuditoriaPage() {
         <input type="date" style={{ ...inputSt, width: '145px' }} value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} title="Fecha desde" />
         <input type="date" style={{ ...inputSt, width: '145px' }} value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} title="Fecha hasta" />
 
-        <select style={{ ...selectSt, width: '155px' }} value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }}>
+        <select style={{ ...selectSt, width: '180px' }} value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }}>
           {ENTITY_TYPES.map((t) => (
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
 
-        <select style={{ ...selectSt, width: '150px' }} value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}>
+        <select style={{ ...selectSt, width: '180px' }} value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}>
           {ACTION_TYPES.map((t) => (
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
@@ -499,7 +574,7 @@ export default function AuditoriaPage() {
                             </span>
                           </td>
                           <td style={{ fontSize: '0.83rem', color: 'var(--text-secondary)' }}>
-                            {log.entityType || '-'}
+                            {formatEntity(log.entityType) || '-'}
                           </td>
                           <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {formatMetadata(log.metadata)}
