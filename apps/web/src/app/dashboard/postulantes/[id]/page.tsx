@@ -364,8 +364,15 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <input className="input" placeholder="LinkedIn (opcional)" value={extForm.linkedIn}
                       onChange={(e) => setExtForm((f) => ({ ...f, linkedIn: e.target.value }))} />
-                    <input className="input" placeholder="Disponibilidad" value={extForm.availability}
-                      onChange={(e) => setExtForm((f) => ({ ...f, availability: e.target.value }))} />
+                    <select className="input" value={extForm.availability} onChange={(e) => setExtForm((f) => ({ ...f, availability: e.target.value }))}>
+                      <option value="">Disponibilidad</option>
+                      <option value="Inmediata">Inmediata</option>
+                      <option value="15 dias">15 dias</option>
+                      <option value="30 dias">30 dias</option>
+                      <option value="60 dias">60 dias</option>
+                      <option value="90 dias">90 dias</option>
+                      <option value="A convenir">A convenir</option>
+                    </select>
                     <input className="input" placeholder="Pretensión de renta ($)" value={extForm.salaryExpectation}
                       onChange={(e) => {
                         const raw = e.target.value.replace(/\D/g, '');
@@ -448,7 +455,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           {c.email && <span>{c.email}</span>}
                           {c.phone && <span>{c.phone}</span>}
                           {c.availability && <span>Disp: {c.availability}</span>}
-                          {c.salaryExpectation && <span>Renta: ${c.salaryExpectation}</span>}
+                          {c.salaryExpectation && <span>Renta: ${(() => { const raw = String(c.salaryExpectation).replace(/\D/g, ''); return raw ? Number(raw).toLocaleString('es-CL') : c.salaryExpectation; })()}</span>}
                         </div>
                       </div>
                       {hasFinalScore && (
@@ -623,7 +630,15 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           </div>
                           <div>
                             <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Disponibilidad</label>
-                            <input className="input" value={editForm.availability} onChange={(e) => setEditForm((f) => ({ ...f, availability: e.target.value }))} placeholder="Ej: Inmediata, 30 dias" style={{ fontSize: '0.85rem' }} />
+                            <select className="input" value={editForm.availability} onChange={(e) => setEditForm((f) => ({ ...f, availability: e.target.value }))} style={{ fontSize: '0.85rem' }}>
+                              <option value="">Sin especificar</option>
+                              <option value="Inmediata">Inmediata</option>
+                              <option value="15 dias">15 dias</option>
+                              <option value="30 dias">30 dias</option>
+                              <option value="60 dias">60 dias</option>
+                              <option value="90 dias">90 dias</option>
+                              <option value="A convenir">A convenir</option>
+                            </select>
                           </div>
                           <div>
                             <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Pretension de renta</label>
