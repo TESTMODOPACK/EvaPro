@@ -406,98 +406,83 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           {candidates.length === 0 ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No hay candidatos en este proceso</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {candidates.map((c: any) => {
                 const stageInfo = STAGES.find((s) => s.key === c.stage) || STAGES[0];
                 const name = c.candidateType === 'internal' && c.user
                   ? c.user.firstName + ' ' + c.user.lastName
                   : (c.firstName || '') + ' ' + (c.lastName || '');
-                const isEvaluator = evaluators.some((ev: any) => ev.evaluatorId === userId);
                 const cvStatus = c.cvAnalysis ? 'analyzed' : c.cvUrl ? 'uploaded' : 'none';
-                const matchPct = typeof c.cvAnalysis === 'object' && c.cvAnalysis?.matchPercentage != null ? c.cvAnalysis.matchPercentage : null;
+                let matchPct: number | null = null;
+                if (c.cvAnalysis) {
+                  const analysis = typeof c.cvAnalysis === 'string' ? (() => { try { return JSON.parse(c.cvAnalysis); } catch (_e) { return null; } })() : c.cvAnalysis;
+                  matchPct = analysis?.matchPercentage ?? null;
+                }
+                const hasFinalScore = c.finalScore != null && Number(c.finalScore) > 0;
+                const showCv = c.candidateType === 'external' || process.requireCvForInternal;
 
                 return (
                   <div key={c.id} className="card" style={{ padding: '1.25rem' }}>
-                    {/* Row 1: Info + Stage badge */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{name}</span>
+                    {/* Header: Name + badges + score */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 700, fontSize: '1rem' }}>{name}</span>
                           {c.candidateType === 'internal' && (
-                            <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.15rem 0.4rem', borderRadius: 4, fontWeight: 700 }}>INTERNO</span>
+                            <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.15rem 0.5rem', borderRadius: 10, fontWeight: 700 }}>INTERNO</span>
                           )}
-                          <span className={stageInfo.badge} style={{ fontSize: '0.65rem' }}>{stageInfo.label}</span>
+                          <span className={stageInfo.badge} style={{ fontSize: '0.68rem' }}>{stageInfo.label}</span>
+                          {cvStatus === 'analyzed' && matchPct != null && (
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: 10,
+                              background: matchPct >= 70 ? 'rgba(16,185,129,0.1)' : matchPct >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                              color: matchPct >= 70 ? 'var(--success)' : matchPct >= 40 ? 'var(--warning)' : 'var(--danger)',
+                            }}>CV {matchPct}%</span>
+                          )}
                         </div>
-                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                           {c.email && <span>{c.email}</span>}
                           {c.phone && <span>{c.phone}</span>}
-                          {c.availability && <span>Disponibilidad: {c.availability}</span>}
+                          {c.availability && <span>Disp: {c.availability}</span>}
                           {c.salaryExpectation && <span>Renta: ${c.salaryExpectation}</span>}
                         </div>
                       </div>
-                      {c.finalScore != null && (
-                        <div style={{ textAlign: 'center', padding: '0.25rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
-                          <div style={{ fontWeight: 800, fontSize: '1.2rem', color: Number(c.finalScore) >= 7 ? 'var(--success)' : Number(c.finalScore) >= 4 ? 'var(--warning)' : 'var(--danger)' }}>{Number(c.finalScore).toFixed(1)}</div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Puntaje</div>
+                      {hasFinalScore && (
+                        <div style={{ textAlign: 'center', minWidth: 55, padding: '0.3rem 0.5rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', marginLeft: '0.75rem' }}>
+                          <div style={{ fontWeight: 800, fontSize: '1.3rem', lineHeight: 1, color: Number(c.finalScore) >= 7 ? 'var(--success)' : Number(c.finalScore) >= 4 ? 'var(--accent)' : 'var(--danger)' }}>
+                            {Number(c.finalScore).toFixed(1)}
+                          </div>
+                          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>de 10</div>
                         </div>
                       )}
                     </div>
 
-                    {/* Row 2: CV status + Action buttons */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      {/* CV status indicator */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {(c.candidateType === 'external' || process.requireCvForInternal) && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem',
-                            color: cvStatus === 'analyzed' ? 'var(--success)' : cvStatus === 'uploaded' ? 'var(--accent)' : 'var(--text-muted)' }}>
-                            <span style={{ fontSize: '0.85rem' }}>{cvStatus === 'analyzed' ? '\u2705' : cvStatus === 'uploaded' ? '\uD83D\uDCC4' : '\u2014'}</span>
-                            <span style={{ fontWeight: 600 }}>
-                              {cvStatus === 'analyzed' ? 'CV Analizado' : cvStatus === 'uploaded' ? 'CV Cargado' : 'Sin CV'}
-                            </span>
-                            {matchPct != null && (
-                              <span style={{ padding: '0.1rem 0.4rem', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700,
-                                background: matchPct >= 70 ? 'rgba(16,185,129,0.1)' : matchPct >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
-                                color: matchPct >= 70 ? 'var(--success)' : matchPct >= 40 ? 'var(--warning)' : 'var(--danger)',
-                              }}>{matchPct}% match</span>
-                            )}
-                          </div>
+                    {/* Actions row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                        {isEvaluatorOfProcess && (
+                          <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
+                            onClick={() => openInterview(c)}>Evaluar</button>
                         )}
-                        {isAdmin && (c.stage === 'scored' || c.stage === 'approved' || c.stage === 'rejected' || c.stage === 'hired') && (
-                          <select className="input" value={c.stage} onChange={(e) => {
-                            if (token) api.recruitment.candidates.updateStage(token, c.id, e.target.value).then(() => fetchProcess());
-                          }} style={{ fontSize: '0.75rem', width: 'auto', padding: '0.2rem 0.4rem', marginLeft: '0.5rem' }}>
-                            <option value="scored">Puntuado</option>
-                            <option value="approved">Aprobado</option>
-                            <option value="rejected">Rechazado</option>
-                            <option value="hired">Contratado</option>
-                          </select>
+                        <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
+                          onClick={() => loadScorecard(c.id)}>Tarjeta de Puntaje</button>
+                        {showCv && (
+                          <button className="btn-ghost" onClick={() => setExpandedCvPanel(expandedCvPanel === c.id ? null : c.id)}
+                            style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}>
+                            {expandedCvPanel === c.id ? 'Cerrar CV' : (cvStatus === 'none' ? 'Subir CV' : 'Ver CV')}
+                          </button>
                         )}
                       </div>
 
-                      {/* Action buttons */}
-                      <div style={{ display: 'flex', gap: '0.35rem' }}>
-                        {isEvaluator && (
-                          <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
-                            onClick={() => openInterview(c)}>Evaluar</button>
-                        )}
-                        <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
-                          onClick={() => loadScorecard(c.id)}>Ver Puntaje</button>
-                      {/* CV toggle button */}
-                      {(c.candidateType === 'external' || process.requireCvForInternal) && (
-                        <button
-                          onClick={() => setExpandedCvPanel(expandedCvPanel === c.id ? null : c.id)}
-                          style={{
-                            padding: '0.3rem 0.7rem', fontSize: '0.78rem', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                            border: c.cvAnalysis ? '1px solid rgba(16,185,129,0.3)' : c.cvUrl ? '1px solid rgba(201,147,58,0.3)' : '1px solid var(--border)',
-                            background: c.cvAnalysis ? 'rgba(16,185,129,0.08)' : c.cvUrl ? 'rgba(201,147,58,0.08)' : 'transparent',
-                            color: c.cvAnalysis ? 'var(--success)' : c.cvUrl ? 'var(--accent)' : 'var(--text-secondary)',
-                            fontWeight: 600,
-                          }}>
-                          {c.cvAnalysis ? 'CV Analizado' : c.cvUrl ? 'CV Cargado' : 'CV'}
-                          {c.cvAnalysis?.matchPercentage != null && (
-                            <span style={{ marginLeft: '0.3rem' }}>{c.cvAnalysis.matchPercentage}%</span>
-                          )}
-                        </button>
+                      {/* Stage selector (only for final decisions) */}
+                      {isAdmin && (c.stage === 'scored' || c.stage === 'approved' || c.stage === 'rejected' || c.stage === 'hired') && (
+                        <select className="input" value={c.stage} onChange={(e) => {
+                          if (token) api.recruitment.candidates.updateStage(token, c.id, e.target.value).then(() => fetchProcess());
+                        }} style={{ fontSize: '0.75rem', width: 'auto', padding: '0.2rem 0.4rem' }}>
+                          <option value="scored">Puntuado</option>
+                          <option value="approved">Aprobado</option>
+                          <option value="rejected">Rechazado</option>
+                          <option value="hired">Contratado</option>
+                        </select>
                       )}
                     </div>
 
