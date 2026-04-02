@@ -527,6 +527,97 @@ export class EmailService {
     );
   }
 
+  // ─── Template: Objective Assigned ─────────────────────────────────────────
+
+  async sendObjectiveAssigned(
+    email: string,
+    data: { firstName: string; objectiveTitle: string; objectiveType: string; targetDate?: string; assignedBy?: string; tenantId?: string },
+  ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'objectives'))) return;
+    const typeLabels: Record<string, string> = { OKR: 'OKR', KPI: 'KPI', SMART: 'SMART', individual: 'Individual' };
+    const typeLabel = typeLabels[data.objectiveType] || data.objectiveType;
+    const rows: Array<{ label: string; value: string }> = [
+      { label: 'Objetivo', value: data.objectiveTitle },
+      { label: 'Tipo', value: typeLabel },
+    ];
+    if (data.targetDate) rows.push({ label: 'Fecha meta', value: data.targetDate });
+    if (data.assignedBy) rows.push({ label: 'Asignado por', value: data.assignedBy });
+
+    await this.send(
+      email,
+      `Nuevo objetivo asignado: ${data.objectiveTitle}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Se te ha asignado el objetivo "${data.objectiveTitle}".`,
+        body: `
+          ${this.heading('Nuevo objetivo asignado 🎯')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se te ha asignado un nuevo objetivo:`)}
+          ${this.infoBox(rows)}
+          ${this.paragraph('Revisa los detalles y comienza a trabajar en tu objetivo. Recuerda actualizar tu progreso regularmente.')}
+          ${this.cta('Ver mis objetivos', `${this.appUrl}/dashboard/objetivos`)}
+        `,
+      }),
+    );
+  }
+
+  // ─── Template: PDI Assigned ─────────────────────────────────────────────
+
+  async sendPdiAssigned(
+    email: string,
+    data: { firstName: string; planTitle: string; createdByName?: string; tenantId?: string },
+  ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    const rows: Array<{ label: string; value: string }> = [
+      { label: 'Plan', value: data.planTitle },
+    ];
+    if (data.createdByName) rows.push({ label: 'Creado por', value: data.createdByName });
+
+    await this.send(
+      email,
+      `Plan de desarrollo asignado: ${data.planTitle}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Se te ha asignado el plan de desarrollo "${data.planTitle}".`,
+        body: `
+          ${this.heading('Plan de desarrollo asignado 📋')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se te ha creado un plan de desarrollo individual (PDI):`)}
+          ${this.infoBox(rows)}
+          ${this.paragraph('Revisa las acciones asignadas y comienza a trabajar en tu desarrollo profesional.')}
+          ${this.cta('Ver mi plan', `${this.appUrl}/dashboard/mi-desempeno`)}
+        `,
+      }),
+    );
+  }
+
+  // ─── Template: PDI Action Overdue ───────────────────────────────────────
+
+  async sendPdiActionOverdue(
+    email: string,
+    data: { firstName: string; actions: Array<{ description: string; dueDate: string; planTitle: string }>; tenantId?: string },
+  ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    const actionList = data.actions
+      .map((a) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:0.85rem;">${a.description.substring(0, 80)}</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:0.85rem;color:#ef4444;white-space:nowrap;">${a.dueDate}</td></tr>`)
+      .join('');
+
+    await this.send(
+      email,
+      `${data.actions.length} acción(es) de desarrollo vencida(s)`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Tienes ${data.actions.length} acción(es) de desarrollo vencida(s). Actualiza su estado.`,
+        accentColor: '#ef4444',
+        body: `
+          ${this.heading('Acciones de desarrollo vencidas ⚠️')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tienes <strong>${data.actions.length}</strong> acción(es) de tu plan de desarrollo que han superado su fecha límite:`)}
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin:1rem 0;">
+            <thead><tr style="background:#f8fafc;"><th style="padding:8px 10px;text-align:left;font-size:0.75rem;color:#64748b;text-transform:uppercase;">Acción</th><th style="padding:8px 10px;text-align:left;font-size:0.75rem;color:#64748b;text-transform:uppercase;">Vencimiento</th></tr></thead>
+            <tbody>${actionList}</tbody>
+          </table>
+          ${this.paragraph('Actualiza el estado de estas acciones o solicita una extensión a tu jefatura.')}
+          ${this.cta('Ver mi plan de desarrollo', `${this.appUrl}/dashboard/mi-desempeno`)}
+        `,
+      }),
+    );
+  }
+
   // ─── Template: Check-in Rejected ──────────────────────────────────────────
 
   async sendCheckinRejected(

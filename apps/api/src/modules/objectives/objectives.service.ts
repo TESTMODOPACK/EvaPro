@@ -10,6 +10,7 @@ import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation
 import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
 import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../notifications/email.service';
 
 @Injectable()
 export class ObjectivesService {
@@ -27,6 +28,7 @@ export class ObjectivesService {
     @InjectRepository(EvaluationCycle)
     private readonly cycleRepo: Repository<EvaluationCycle>,
     private readonly auditService: AuditService,
+    private readonly emailService: EmailService,
   ) {}
 
   // ─── Validation Helpers ──────────────────────────────────────────────────────
@@ -77,6 +79,19 @@ export class ObjectivesService {
     });
     const saved = await this.objectiveRepo.save(obj);
     this.auditService.log(tenantId, userId, 'objective.created', 'objective', saved.id, { title: dto.title, type: dto.type, assignedTo: userId }).catch(() => {});
+
+    // Send email to the objective owner
+    const owner = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
+    if (owner?.email) {
+      this.emailService.sendObjectiveAssigned(owner.email, {
+        firstName: owner.firstName,
+        objectiveTitle: dto.title,
+        objectiveType: dto.type || 'OKR',
+        targetDate: dto.targetDate ? new Date(dto.targetDate).toLocaleDateString('es-CL') : undefined,
+        tenantId,
+      }).catch(() => {});
+    }
+
     return saved;
   }
 

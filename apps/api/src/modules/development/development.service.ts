@@ -15,6 +15,7 @@ import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { RoleCompetency } from './entities/role-competency.entity';
 import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../notifications/email.service';
 
 @Injectable()
 export class DevelopmentService {
@@ -34,6 +35,7 @@ export class DevelopmentService {
     @InjectRepository(TalentAssessment)
     private readonly assessmentRepo: Repository<TalentAssessment>,
     private readonly auditService: AuditService,
+    private readonly emailService: EmailService,
   ) {}
 
   // ─── Competencies ──────────────────────────────────────────────────────
@@ -242,6 +244,22 @@ export class DevelopmentService {
     this.auditService.log(tenantId, createdBy, 'pdi.created', 'development_plan', saved.id, {
       planTitle: dto.title, employeeId: dto.userId, createdBy,
     }).catch(() => {});
+
+    // Send email to plan owner only when created by someone else (manager/admin)
+    const ownerId = dto.userId || createdBy;
+    if (ownerId !== createdBy) {
+      const owner = await this.userRepo.findOne({ where: { id: ownerId }, select: ['id', 'email', 'firstName'] });
+      if (owner?.email) {
+        const creator = await this.userRepo.findOne({ where: { id: createdBy }, select: ['id', 'firstName', 'lastName'] });
+        this.emailService.sendPdiAssigned(owner.email, {
+          firstName: owner.firstName,
+          planTitle: dto.title || saved.title || 'Plan de desarrollo',
+          createdByName: creator ? `${creator.firstName} ${creator.lastName}` : undefined,
+          tenantId,
+        }).catch(() => {});
+      }
+    }
+
     return saved;
   }
 

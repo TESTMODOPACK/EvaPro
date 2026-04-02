@@ -270,6 +270,28 @@ export class RemindersService {
       if (notifications.length > 0) {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} overdue PDI action reminders`);
+
+        // Send email grouped by user with overdue actions list
+        const userActions = new Map<string, { tenantId: string; actions: Array<{ description: string; dueDate: string; planTitle: string }> }>();
+        for (const a of overdueActions) {
+          if (!a.plan) continue;
+          const uid = a.plan.userId;
+          const item = {
+            description: a.description || a.title || 'Acción sin descripción',
+            dueDate: a.dueDate ? new Date(a.dueDate).toLocaleDateString('es-CL') : 'Sin fecha',
+            planTitle: a.plan.title || 'Plan de desarrollo',
+          };
+          const existing = userActions.get(uid);
+          if (existing) { existing.actions.push(item); }
+          else { userActions.set(uid, { tenantId: a.tenantId, actions: [item] }); }
+        }
+        for (const [userId, data] of userActions) {
+          const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
+          if (!user?.email) continue;
+          this.emailService.sendPdiActionOverdue(user.email, {
+            firstName: user.firstName, actions: data.actions, tenantId: data.tenantId,
+          }).catch(() => {});
+        }
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindOverduePDIActions: ${error}`);

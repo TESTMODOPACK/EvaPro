@@ -10,11 +10,13 @@ import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity
 import { ObjectivesService } from './objectives.service';
 import { ObjectivesController } from './objectives.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     AuditModule,
     SubscriptionsModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User, EvaluationCycle]),
   ],
   controllers: [ObjectivesController],
