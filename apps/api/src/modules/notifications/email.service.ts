@@ -618,6 +618,60 @@ export class EmailService {
     );
   }
 
+  // ─── Template: Objective Completed ────────────────────────────────────────
+
+  async sendObjectiveCompleted(
+    email: string,
+    data: { managerName: string; employeeName: string; objectiveTitle: string; objectiveType: string; tenantId?: string },
+  ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'objectives'))) return;
+    await this.send(
+      email,
+      `Objetivo completado: ${data.objectiveTitle}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `${data.employeeName} ha completado el objetivo "${data.objectiveTitle}".`,
+        body: `
+          ${this.heading('Objetivo completado ✅')}
+          ${this.paragraph(`Hola <strong>${data.managerName}</strong>, <strong>${data.employeeName}</strong> ha alcanzado el 100% de progreso en su objetivo:`)}
+          ${this.infoBox([
+            { label: 'Objetivo', value: data.objectiveTitle },
+            { label: 'Tipo', value: data.objectiveType },
+            { label: 'Estado', value: 'Completado' },
+          ])}
+          ${this.paragraph('Puedes revisar los detalles y las actualizaciones de progreso en la plataforma.')}
+          ${this.cta('Ver objetivos del equipo', `${this.appUrl}/dashboard/objetivos`)}
+        `,
+      }),
+    );
+  }
+
+  // ─── Template: Check-in Overdue (Manager Reminder) ──────────────────────
+
+  async sendCheckinOverdue(
+    email: string,
+    data: { firstName: string; daysSince: number | null; tenantId?: string },
+  ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    const daysMsg = data.daysSince
+      ? `Han pasado <strong>${data.daysSince} días</strong> desde tu último check-in.`
+      : 'No tienes check-ins registrados con tu equipo.';
+
+    await this.send(
+      email,
+      `Recordatorio: agenda un check-in con tu equipo`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: data.daysSince ? `Han pasado ${data.daysSince} días sin check-ins.` : 'Agenda un check-in con tu equipo.',
+        accentColor: '#f59e0b',
+        body: `
+          ${this.heading('Check-in pendiente 📅')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, ${daysMsg}`)}
+          ${this.alertBox('Las reuniones 1:1 regulares mejoran el rendimiento y la retención del equipo. Te recomendamos agendar al menos un check-in cada 2 semanas.', 'warning')}
+          ${this.cta('Agendar check-in', `${this.appUrl}/dashboard/feedback`)}
+        `,
+      }),
+    );
+  }
+
   // ─── Template: Check-in Rejected ──────────────────────────────────────────
 
   async sendCheckinRejected(

@@ -416,6 +416,9 @@ export class RemindersService {
         metadata?: Record<string, any>;
       }> = [];
 
+      // Track overdue managers for both in-app and email notifications
+      const overdueManagers: Array<{ manager: typeof managers[0]; daysSince: number | null }> = [];
+
       for (const manager of managers) {
         const lastCheckin = await this.checkinRepo.findOne({
           where: { tenantId: manager.tenantId, managerId: manager.id },
@@ -428,6 +431,7 @@ export class RemindersService {
             ? Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
             : null;
 
+          overdueManagers.push({ manager, daysSince });
           notifications.push({
             tenantId: manager.tenantId,
             userId: manager.id,
@@ -444,6 +448,14 @@ export class RemindersService {
       if (notifications.length > 0) {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} check-in reminders`);
+
+        // Send email to overdue managers (reuse data from above, no duplicate queries)
+        for (const { manager, daysSince } of overdueManagers) {
+          if (!manager.email) continue;
+          this.emailService.sendCheckinOverdue(manager.email, {
+            firstName: manager.firstName, daysSince, tenantId: manager.tenantId,
+          }).catch(() => {});
+        }
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindOverdueCheckins: ${error}`);

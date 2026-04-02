@@ -351,6 +351,24 @@ export class ObjectivesService {
     });
     const saved = await this.updateRepo.save(update);
     this.auditService.log(tenantId, userId, 'objective.progress_updated', 'objective', objectiveId, { title: obj.title, previousProgress: obj.progress, newProgress: dto.progressValue, notes: dto.notes }).catch(() => {});
+
+    // Notify manager when objective is completed
+    if (dto.progressValue >= 100) {
+      const employee = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'firstName', 'lastName', 'managerId'] });
+      if (employee?.managerId) {
+        const manager = await this.userRepo.findOne({ where: { id: employee.managerId }, select: ['id', 'email', 'firstName'] });
+        if (manager?.email) {
+          this.emailService.sendObjectiveCompleted(manager.email, {
+            managerName: manager.firstName,
+            employeeName: `${employee.firstName} ${employee.lastName}`,
+            objectiveTitle: obj.title,
+            objectiveType: obj.type || 'OKR',
+            tenantId,
+          }).catch(() => {});
+        }
+      }
+    }
+
     return saved;
   }
 
