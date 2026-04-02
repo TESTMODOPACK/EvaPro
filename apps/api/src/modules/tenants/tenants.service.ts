@@ -332,12 +332,19 @@ export class TenantsService {
       }
     }
 
-    // Logo URL validation (must be a valid URL or empty)
+    // Logo: accepts data URI (base64, max ~500KB) or HTTPS URL
     if (dto.logoUrl !== undefined) {
       if (dto.logoUrl === null || dto.logoUrl === '') {
         currentSettings.logoUrl = null;
-      } else if (typeof dto.logoUrl === 'string' && dto.logoUrl.length <= 2048 && /^https?:\/\/.+/.test(dto.logoUrl.trim())) {
-        currentSettings.logoUrl = dto.logoUrl.trim();
+      } else if (typeof dto.logoUrl === 'string') {
+        const isDataUri = /^data:image\/(png|jpe?g|svg\+xml|webp);base64,/.test(dto.logoUrl);
+        const isHttpUrl = /^https?:\/\/.+/.test(dto.logoUrl.trim());
+        if (isDataUri && dto.logoUrl.length <= 700_000) {
+          // ~500KB image after base64 encoding
+          currentSettings.logoUrl = dto.logoUrl;
+        } else if (isHttpUrl && dto.logoUrl.length <= 2048) {
+          currentSettings.logoUrl = dto.logoUrl.trim();
+        }
       }
     }
 

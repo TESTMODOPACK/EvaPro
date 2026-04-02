@@ -280,36 +280,79 @@ export default function AjustesPage() {
           <p style={sectionDescStyle}>Personaliza la apariencia de tu organizacion en la plataforma.</p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-            {/* Logo URL */}
+            {/* Logo upload */}
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>Logo de la empresa (URL)</label>
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                {logoUrl && (
-                  <div style={{
-                    width: '48px', height: '48px', borderRadius: 'var(--radius-sm, 6px)',
-                    border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'var(--bg-surface)',
-                  }}>
+              <label style={labelStyle}>Logo de la empresa</label>
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div style={{
+                  width: '72px', height: '72px', borderRadius: 'var(--radius-sm, 6px)',
+                  border: '2px dashed var(--border)', overflow: 'hidden', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'var(--bg-surface)', position: 'relative',
+                }}>
+                  {logoUrl ? (
                     <img
                       src={logoUrl}
                       alt="Logo"
                       style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
-                  </div>
-                )}
-                <input
-                  className="input"
-                  type="url"
-                  placeholder="https://mi-empresa.com/logo.png"
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  style={{ flex: 1 }}
-                />
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+                    </svg>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.45rem 1rem', fontSize: '0.82rem', fontWeight: 600,
+                    background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm, 6px)', cursor: 'pointer',
+                    color: 'var(--text-primary)', transition: 'all 0.15s',
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Subir imagen
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 500_000) {
+                          alert('El archivo es muy grande. Maximo 500KB.');
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const result = reader.result as string;
+                          setLogoUrl(result);
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setLogoUrl('')}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--danger)', fontSize: '0.78rem', fontWeight: 500,
+                        padding: 0, textAlign: 'left',
+                      }}
+                    >
+                      Eliminar logo
+                    </button>
+                  )}
+                </div>
               </div>
-              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                URL directa a la imagen del logo (PNG, SVG o JPG). Recomendado: 200x200px minimo.
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                PNG, JPG, SVG o WebP. Maximo 500KB. Se mostrara en los emails enviados a colaboradores.
               </p>
             </div>
 

@@ -12,6 +12,7 @@ import { DevelopmentAction } from '../development/entities/development-action.en
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { ReportsModule } from '../reports/reports.module';
 
@@ -26,6 +27,7 @@ import { ReportsModule } from '../reports/reports.module';
       DevelopmentPlan,
       CheckIn,
       User,
+      Tenant,
     ]),
     SubscriptionsModule,
     ReportsModule,

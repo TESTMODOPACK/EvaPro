@@ -1,4 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 /**
  * EmailService — Beautiful branded transactional emails for Ascenda Performance.
@@ -13,8 +16,25 @@ export class EmailService {
   private readonly from = process.env.EMAIL_FROM || 'Ascenda Performance <noreply@ascenda.cl>';
   private readonly appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaluacion-desempeno.netlify.app';
 
-  constructor() {
+  constructor(
+    @Optional() @InjectRepository(Tenant)
+    private readonly tenantRepo?: Repository<Tenant>,
+  ) {
     this.init();
+  }
+
+  /** Fetch org logo and name from tenant settings */
+  async getOrgBranding(tenantId?: string): Promise<{ logoUrl: string | null; orgName: string }> {
+    if (!tenantId || !this.tenantRepo) return { logoUrl: null, orgName: '' };
+    try {
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      return {
+        logoUrl: tenant?.settings?.logoUrl || null,
+        orgName: tenant?.name || '',
+      };
+    } catch {
+      return { logoUrl: null, orgName: '' };
+    }
   }
 
   private async init() {
@@ -30,6 +50,14 @@ export class EmailService {
     } catch {
       this.logger.warn('resend package not installed — emails will be logged to console');
     }
+  }
+
+  /** Wraps body with org branding (logo + name) fetched from tenant */
+  private async wrapWithBranding(tenantId: string | undefined, opts: {
+    body: string; preheader?: string; accentColor?: string;
+  }): Promise<string> {
+    const branding = await this.getOrgBranding(tenantId);
+    return this.wrap({ ...opts, orgLogoUrl: branding.logoUrl, orgName: branding.orgName });
   }
 
   // ─── Core send ────────────────────────────────────────────────────────────
@@ -53,7 +81,7 @@ export class EmailService {
 
   async sendCycleLaunched(
     email: string,
-    data: { firstName: string; cycleName: string; cycleType: string; dueDate: string; cycleId: string },
+    data: { firstName: string; cycleName: string; cycleType: string; dueDate: string; cycleId: string; tenantId?: string },
   ) {
     const typeLabel: Record<string, string> = {
       '90': 'Evaluación 90°', '180': 'Evaluación 180°',
@@ -64,7 +92,7 @@ export class EmailService {
     await this.send(
       email,
       `Nueva evaluación asignada: ${data.cycleName}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `Tienes una nueva ${label} pendiente. Fecha límite: ${data.dueDate}`,
         body: `
           ${this.heading(`Hola, ${data.firstName} 👋`)}
@@ -86,14 +114,14 @@ export class EmailService {
 
   async sendEvaluationReminder(
     email: string,
-    data: { firstName: string; cycleName: string; pendingCount: number; daysLeft: number; cycleId: string },
+    data: { firstName: string; cycleName: string; pendingCount: number; daysLeft: number; cycleId: string; tenantId?: string },
   ) {
     const urgency = data.daysLeft <= 1 ? '🚨 Urgente' : data.daysLeft <= 3 ? '⚠️ Pronto vence' : '🔔 Recordatorio';
 
     await this.send(
       email,
       `${urgency}: ${data.pendingCount} evaluación${data.pendingCount > 1 ? 'es' : ''} pendiente${data.pendingCount > 1 ? 's' : ''} en ${data.cycleName}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `Te ${data.daysLeft === 1 ? 'queda 1 día' : `quedan ${data.daysLeft} días`} para completar tus evaluaciones.`,
         accentColor: data.daysLeft <= 1 ? '#ef4444' : data.daysLeft <= 3 ? '#f59e0b' : '#C9933A',
         body: `
@@ -115,12 +143,12 @@ export class EmailService {
 
   async sendCycleClosed(
     email: string,
-    data: { firstName: string; cycleName: string; cycleId: string },
+    data: { firstName: string; cycleName: string; cycleId: string; tenantId?: string },
   ) {
     await this.send(
       email,
       `Resultados disponibles: ${data.cycleName}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `El ciclo ${data.cycleName} ha finalizado. Tus resultados están disponibles.`,
         body: `
           ${this.heading('Resultados de evaluación listos ✅')}
@@ -138,12 +166,12 @@ export class EmailService {
 
   async sendInvitation(
     email: string,
-    data: { firstName: string; orgName: string; tempPassword?: string; inviterName?: string },
+    data: { firstName: string; orgName: string; tempPassword?: string; inviterName?: string; tenantId?: string },
   ) {
     await this.send(
       email,
       `Te han invitado a Ascenda Performance — ${data.orgName}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `${data.inviterName || data.orgName} te ha invitado a la plataforma de evaluación de desempeño.`,
         body: `
           ${this.heading('¡Bienvenido/a a Ascenda Performance! 🎉')}
@@ -167,12 +195,12 @@ export class EmailService {
 
   async sendCheckinScheduled(
     email: string,
-    data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string },
+    data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string; tenantId?: string },
   ) {
     await this.send(
       email,
       `Check-in 1:1 agendado con ${data.managerName}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `Tienes un check-in programado para el ${data.scheduledAt}.`,
         body: `
           ${this.heading('Check-in 1:1 agendado 📅')}
@@ -192,7 +220,7 @@ export class EmailService {
 
   async sendOkrAtRisk(
     email: string,
-    data: { firstName: string; objectives: Array<{ title: string; progress: number; daysLeft: number }> },
+    data: { firstName: string; objectives: Array<{ title: string; progress: number; daysLeft: number }>; tenantId?: string },
   ) {
     const list = data.objectives
       .map((o) => `<li style="margin-bottom:0.5rem;"><strong>${o.title}</strong> — ${o.progress}% completado, vence en ${o.daysLeft} días</li>`)
@@ -201,7 +229,7 @@ export class EmailService {
     await this.send(
       email,
       `${data.objectives.length} objetivo${data.objectives.length > 1 ? 's' : ''} en riesgo de no cumplirse`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `Tienes objetivos que están en riesgo de no alcanzarse antes de su fecha límite.`,
         accentColor: '#f59e0b',
         body: `
@@ -221,12 +249,12 @@ export class EmailService {
 
   async sendSubscriptionExpiring(
     email: string,
-    data: { orgName: string; planName: string; daysLeft: number; expiresAt: string },
+    data: { orgName: string; planName: string; daysLeft: number; expiresAt: string; tenantId?: string },
   ) {
     await this.send(
       email,
       `⚠️ Tu suscripción vence en ${data.daysLeft} día${data.daysLeft > 1 ? 's' : ''}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `La suscripción ${data.planName} de ${data.orgName} vence el ${data.expiresAt}.`,
         accentColor: '#ef4444',
         body: `
@@ -252,6 +280,7 @@ export class EmailService {
       department: string | null;
       targetDate: string | null;
       responsibleName: string | null;
+      tenantId?: string;
     },
   ) {
     const deptLabel = data.department ?? 'Toda la empresa';
@@ -265,7 +294,7 @@ export class EmailService {
     await this.send(
       email,
       `Nueva iniciativa de desarrollo asignada: ${data.initiativeTitle}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `Has sido incluido/a en la iniciativa "${data.initiativeTitle}" del plan ${data.planTitle}.`,
         body: `
           ${this.heading(`Iniciativa de desarrollo asignada 🚀`)}
@@ -284,12 +313,12 @@ export class EmailService {
 
   async sendPendingReview(
     email: string,
-    data: { adminName: string; itemType: 'plantilla' | 'competencia'; itemName: string; proposedBy: string },
+    data: { adminName: string; itemType: 'plantilla' | 'competencia'; itemName: string; proposedBy: string; tenantId?: string },
   ) {
     await this.send(
       email,
       `Nueva ${data.itemType} pendiente de revisión: ${data.itemName}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `${data.proposedBy} ha propuesto una nueva ${data.itemType} que requiere tu aprobación.`,
         body: `
           ${this.heading(`Nueva ${data.itemType} para revisar 📋`)}
@@ -312,13 +341,13 @@ export class EmailService {
 
   async sendRecognitionReceived(
     email: string,
-    data: { firstName: string; fromName: string; message: string; valueName?: string; points: number },
+    data: { firstName: string; fromName: string; message: string; valueName?: string; points: number; tenantId?: string },
   ) {
     const msgPreview = data.message.length > 120 ? data.message.substring(0, 120) + '...' : data.message;
     await this.send(
       email,
       `${data.fromName} te ha reconocido`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `Has recibido un reconocimiento de ${data.fromName}. +${data.points} puntos.`,
         body: `
           ${this.heading(`Has recibido un reconocimiento ⭐`)}
@@ -340,12 +369,12 @@ export class EmailService {
 
   async sendSignatureOtp(
     email: string,
-    data: { firstName: string; documentType: string; documentName: string; code: string; expiryMinutes: number },
+    data: { firstName: string; documentType: string; documentName: string; code: string; expiryMinutes: number; tenantId?: string },
   ) {
     await this.send(
       email,
       `Código de firma digital — ${data.documentName}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `Tu código de firma es ${data.code}. Válido por ${data.expiryMinutes} minutos.`,
         body: `
           ${this.heading('Firma Digital Solicitada ✍️')}
@@ -367,7 +396,7 @@ export class EmailService {
 
   async sendSurveyInvitation(
     email: string,
-    data: { firstName: string; surveyTitle: string; dueDate: string; isAnonymous: boolean },
+    data: { firstName: string; surveyTitle: string; dueDate: string; isAnonymous: boolean; tenantId?: string },
   ) {
     const anonymousNote = data.isAnonymous
       ? 'Tus respuestas serán completamente <strong>anónimas</strong>. No se registrará tu identidad.'
@@ -376,7 +405,7 @@ export class EmailService {
     await this.send(
       email,
       `Nueva encuesta de clima: ${data.surveyTitle}`,
-      this.wrap({
+      await this.wrapWithBranding(data.tenantId, {
         preheader: `Se te ha asignado la encuesta "${data.surveyTitle}". Fecha límite: ${data.dueDate}.`,
         body: `
           ${this.heading('Encuesta de Clima Organizacional')}
@@ -396,11 +425,22 @@ export class EmailService {
 
   // ─── HTML Builder Helpers ──────────────────────────────────────────────────
 
-  private wrap({ body, preheader = '', accentColor = '#C9933A' }: {
+  private wrap({ body, preheader = '', accentColor = '#C9933A', orgLogoUrl, orgName }: {
     body: string;
     preheader?: string;
     accentColor?: string;
+    orgLogoUrl?: string | null;
+    orgName?: string;
   }): string {
+    // Build the org logo row: if an org logo is provided, show it above the Ascenda header
+    const orgLogoHtml = orgLogoUrl ? `
+        <tr>
+          <td style="background:linear-gradient(135deg,#0a0b0e 0%,#1a1208 100%);border-radius:16px 16px 0 0;padding:24px 36px 0;text-align:center;">
+            <img src="${orgLogoUrl}" alt="${orgName || 'Logo'}" width="120" height="auto" style="max-width:120px;max-height:60px;object-fit:contain;" />
+            ${orgName ? `<p style="margin:8px 0 0;font-size:0.85rem;color:rgba(255,255,255,0.7);font-weight:500;">${orgName}</p>` : ''}
+          </td>
+        </tr>` : '';
+
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -415,9 +455,11 @@ export class EmailService {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
 
+        <!-- Org Logo (if configured) -->${orgLogoHtml}
+
         <!-- Header -->
         <tr>
-          <td style="background:linear-gradient(135deg,#0a0b0e 0%,#1a1208 100%);border-radius:16px 16px 0 0;padding:28px 36px;text-align:center;">
+          <td style="background:linear-gradient(135deg,#0a0b0e 0%,#1a1208 100%);${orgLogoUrl ? 'padding:12px 36px 28px;' : 'border-radius:16px 16px 0 0;padding:28px 36px;'}text-align:center;">
             <div style="display:inline-flex;align-items:center;gap:10px;">
               <svg width="32" height="32" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <rect width="40" height="40" rx="10" fill="${accentColor}" fill-opacity="0.15"/>
