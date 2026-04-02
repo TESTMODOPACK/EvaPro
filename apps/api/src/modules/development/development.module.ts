@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Competency } from './entities/competency.entity';
 import { RoleCompetency } from './entities/role-competency.entity';
@@ -13,6 +14,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
+    AuditModule,
     SubscriptionsModule,
     TypeOrmModule.forFeature([Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment, User, TalentAssessment]),
   ],

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Objective } from './entities/objective.entity';
 import { ObjectiveUpdate } from './entities/objective-update.entity';
@@ -12,6 +13,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
+    AuditModule,
     SubscriptionsModule,
     TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User, EvaluationCycle]),
   ],

@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { Resend } from 'resend';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class FeedbackService {

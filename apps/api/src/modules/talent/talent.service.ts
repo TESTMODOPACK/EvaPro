@@ -9,6 +9,7 @@ import { CalibrationEntry } from './entities/calibration-entry.entity';
 import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { User } from '../users/entities/user.entity';
+import { AuditService } from '../audit/audit.service';
 
 // Nine Box mapping:
 //                 Potencial

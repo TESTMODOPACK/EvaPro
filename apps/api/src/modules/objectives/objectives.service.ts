@@ -9,6 +9,7 @@ import { User } from '../users/entities/user.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class ObjectivesService {
@@ -25,6 +26,7 @@ export class ObjectivesService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationCycle)
     private readonly cycleRepo: Repository<EvaluationCycle>,
+    private readonly auditService: AuditService,
   ) {}
 
   // ─── Validation Helpers ──────────────────────────────────────────────────────
@@ -73,7 +75,9 @@ export class ObjectivesService {
       status: ObjectiveStatus.DRAFT,
       progress: 0,
     });
-    return this.objectiveRepo.save(obj);
+    const saved = await this.objectiveRepo.save(obj);
+    this.auditService.log(tenantId, userId, 'objective.created', 'objective', saved.id, { title: dto.title, type: dto.type, assignedTo: userId }).catch(() => {});
+    return saved;
   }
 
   // ─── Queries by role ────────────────────────────────────────────────────────
@@ -261,31 +265,38 @@ export class ObjectivesService {
     }
 
     obj.status = ObjectiveStatus.PENDING_APPROVAL;
-    return this.objectiveRepo.save(obj);
+    const saved = await this.objectiveRepo.save(obj);
+    this.auditService.log(tenantId, obj.userId, 'objective.submitted_for_approval', 'objective', id, { title: obj.title }).catch(() => {});
+    return saved;
   }
 
-  async approve(tenantId: string, id: string): Promise<Objective> {
+  async approve(tenantId: string, id: string, approvedBy?: string): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Solo objetivos pendientes de aprobaci\u00f3n pueden ser aprobados');
+      throw new BadRequestException('Solo objetivos pendientes de aprobacion pueden ser aprobados');
     }
     obj.status = ObjectiveStatus.ACTIVE;
-    return this.objectiveRepo.save(obj);
+    const saved = await this.objectiveRepo.save(obj);
+    this.auditService.log(tenantId, approvedBy || obj.userId, 'objective.approved', 'objective', id, { title: obj.title, approvedBy }).catch(() => {});
+    return saved;
   }
 
-  async reject(tenantId: string, id: string): Promise<Objective> {
+  async reject(tenantId: string, id: string, rejectedBy?: string): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Solo objetivos pendientes de aprobaci\u00f3n pueden ser rechazados');
+      throw new BadRequestException('Solo objetivos pendientes de aprobacion pueden ser rechazados');
     }
     obj.status = ObjectiveStatus.DRAFT;
-    return this.objectiveRepo.save(obj);
+    const saved = await this.objectiveRepo.save(obj);
+    this.auditService.log(tenantId, rejectedBy || obj.userId, 'objective.rejected', 'objective', id, { title: obj.title, rejectedBy }).catch(() => {});
+    return saved;
   }
 
   async remove(tenantId: string, id: string): Promise<void> {
     const obj = await this.findById(tenantId, id);
     obj.status = ObjectiveStatus.ABANDONED;
     await this.objectiveRepo.save(obj);
+    this.auditService.log(tenantId, obj.userId, 'objective.cancelled', 'objective', id, { title: obj.title }).catch(() => {});
   }
 
   // ─── Progress ───────────────────────────────────────────────────────────────
@@ -323,7 +334,9 @@ export class ObjectivesService {
       notes: dto.notes,
       createdBy: userId,
     });
-    return this.updateRepo.save(update);
+    const saved = await this.updateRepo.save(update);
+    this.auditService.log(tenantId, userId, 'objective.progress_updated', 'objective', objectiveId, { title: obj.title, previousProgress: obj.progress, newProgress: dto.progressValue, notes: dto.notes }).catch(() => {});
+    return saved;
   }
 
   async getProgressHistory(tenantId: string, objectiveId: string): Promise<ObjectiveUpdate[]> {

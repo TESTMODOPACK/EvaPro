@@ -14,6 +14,7 @@ import { DevelopmentComment } from './entities/development-comment.entity';
 import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { RoleCompetency } from './entities/role-competency.entity';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class DevelopmentService {

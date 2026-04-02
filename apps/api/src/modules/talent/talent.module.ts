@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TalentAssessment } from './entities/talent-assessment.entity';
 import { CalibrationSession } from './entities/calibration-session.entity';
@@ -12,6 +13,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
+    AuditModule,
     SubscriptionsModule,
     TypeOrmModule.forFeature([
       TalentAssessment,

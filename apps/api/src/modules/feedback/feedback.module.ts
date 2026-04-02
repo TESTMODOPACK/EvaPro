@@ -11,6 +11,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
+    AuditModule,
     SubscriptionsModule,
     TypeOrmModule.forFeature([CheckIn, QuickFeedback, MeetingLocation, User]),
     forwardRef(() => NotificationsModule),
