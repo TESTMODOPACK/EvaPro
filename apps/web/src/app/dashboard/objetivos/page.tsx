@@ -801,6 +801,7 @@ function ObjetivosPageContent() {
   const [showForm, setShowForm] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [collapsedUsers, setCollapsedUsers] = useState<Record<string, boolean>>({});
   const [progressForm, setProgressForm] = useState<{ value: number; notes: string }>({ value: 50, notes: '' });
   const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '', userId: '', parentObjectiveId: '', weight: 0, cycleId: '' });
   const [formError, setFormError] = useState<string | null>(null);
@@ -1484,7 +1485,9 @@ function ObjetivosPageContent() {
               items = [];
               Object.entries(grouped).forEach(([uid, objs]) => {
                 items.push({ type: 'header', uid, user: objs[0]?.user, objs });
-                objs.forEach((obj) => items.push({ type: 'row', obj }));
+                if (!collapsedUsers[uid]) {
+                  objs.forEach((obj) => items.push({ type: 'row', obj }));
+                }
               });
             } else {
               items = (filtered as any[]).map((obj) => ({ type: 'row' as const, obj }));
@@ -1498,14 +1501,22 @@ function ObjetivosPageContent() {
                 const completedCount = item.objs.filter((o: any) => o.status === 'completed').length;
                 const avgProg = Math.round(item.objs.reduce((s: number, o: any) => s + (Number(o.progress) || 0), 0) / item.objs.length);
                 const pc = avgProg >= 75 ? 'var(--success)' : avgProg >= 40 ? 'var(--warning)' : 'var(--danger)';
+                const isUserCollapsed = collapsedUsers[item.uid || ''];
                 return (
-                  <div key={`hdr-${item.uid}`} style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    padding: '0.75rem 1rem',
-                    background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border)',
-                    marginTop: idx > 0 ? '0.75rem' : 0,
-                  }}>
+                  <div key={`hdr-${item.uid}`}
+                    onClick={() => setCollapsedUsers((prev) => ({ ...prev, [item.uid || '']: !prev[item.uid || ''] }))}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.75rem',
+                      padding: '0.75rem 1rem',
+                      background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border)',
+                      marginTop: idx > 0 ? '0.75rem' : 0,
+                      cursor: 'pointer', userSelect: 'none',
+                    }}>
+                    {/* Accordion arrow */}
+                    <span style={{ fontSize: '0.6rem', transition: 'transform 0.2s', transform: isUserCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}>
+                      &#9660;
+                    </span>
                     <div style={{
                       width: '34px', height: '34px', borderRadius: '50%',
                       background: 'var(--accent)', color: '#fff',
@@ -1515,13 +1526,15 @@ function ObjetivosPageContent() {
                       {(userName[0] || '?').toUpperCase()}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{userName}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                        {userName}
+                        <span style={{ fontWeight: 400, fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+                          ({item.objs.length} objetivo{item.objs.length !== 1 ? 's' : ''})
+                        </span>
+                      </div>
                       {dept && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{dept}</div>}
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', fontSize: '0.78rem', flexWrap: 'wrap' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>
-                        {item.objs.length} objetivo{item.objs.length !== 1 ? 's' : ''}
-                      </span>
                       <span style={{
                         color: completedCount === item.objs.length ? 'var(--success)' : 'var(--text-muted)',
                         fontWeight: completedCount === item.objs.length ? 700 : 400,
