@@ -1150,7 +1150,7 @@ export class AiInsightsService {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
-    // Extract text from CV (base64 PDF/DOCX)
+    // Extract text from CV (base64 PDF)
     let cvText = '';
     try {
       if (cvUrl.startsWith('data:')) {
@@ -1159,13 +1159,13 @@ export class AiInsightsService {
           const buffer = Buffer.from(base64Data, 'base64');
           const pdfParse = require('pdf-parse');
           const pdfData = await pdfParse(buffer);
-          cvText = pdfData.text || '';
-          this.logger.log('Extracted ' + cvText.length + ' chars from PDF');
+          cvText = (pdfData.text || '').trim();
+          this.logger.log('PDF parsed: ' + cvText.length + ' chars, ' + pdfData.numpages + ' pages');
         }
       }
     } catch (err: any) {
-      this.logger.warn('Could not extract text from CV: ' + err.message);
-      cvText = '[No se pudo extraer texto del documento]';
+      this.logger.error('PDF parse error: ' + err.message);
+      cvText = '';
     }
 
     if (!cvText || cvText.length < 20) {
