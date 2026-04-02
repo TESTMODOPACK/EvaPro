@@ -18,6 +18,7 @@ import { SaveResponseDto, SubmitResponseDto } from './dto/response.dto';
 import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignment.dto';
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { EmailService } from '../notifications/email.service';
 import { PlanFeature } from '../../common/constants/plan-features';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
@@ -46,6 +47,7 @@ export class EvaluationsService {
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly emailService: EmailService,
   ) {}
 
   // ─── Cycles ───────────────────────────────────────────────────────────────
@@ -686,6 +688,21 @@ export class EvaluationsService {
         totalEvaluated: cycle.totalEvaluated,
       });
 
+      // Send email to all unique evaluators notifying them of the new cycle
+      const uniqueEvaluatorIds = [...new Set(assignments.map(a => a.evaluatorId))];
+      const evaluators = await this.userRepo.find({
+        where: uniqueEvaluatorIds.map(eid => ({ id: eid })),
+        select: ['id', 'email', 'firstName'],
+      });
+      const dueDateStr = new Date(cycle.endDate).toLocaleDateString('es-CL');
+      for (const ev of evaluators) {
+        if (!ev.email) continue;
+        this.emailService.sendCycleLaunched(ev.email, {
+          firstName: ev.firstName, cycleName: cycle.name,
+          cycleType: cycle.type, dueDate: dueDateStr, cycleId: cycle.id, tenantId,
+        }).catch(() => {});
+      }
+
       return {
         cycle,
         assignmentsCreated: assignments.length,
@@ -717,6 +734,26 @@ export class EvaluationsService {
       .execute();
 
     await this.auditService.log(tenantId, userId, 'cycle.closed', 'cycle', id);
+
+    // Send email to all evaluatees notifying them that results are available
+    const completedAssignments = await this.assignmentRepo.find({
+      where: { cycleId: id, tenantId },
+      select: ['evaluateeId'],
+    });
+    const uniqueEvaluateeIds = [...new Set(completedAssignments.map(a => a.evaluateeId))];
+    if (uniqueEvaluateeIds.length > 0) {
+      const evaluatees = await this.userRepo.find({
+        where: uniqueEvaluateeIds.map(eid => ({ id: eid })),
+        select: ['id', 'email', 'firstName'],
+      });
+      for (const ev of evaluatees) {
+        if (!ev.email) continue;
+        this.emailService.sendCycleClosed(ev.email, {
+          firstName: ev.firstName, cycleName: cycle.name, cycleId: id, tenantId,
+        }).catch(() => {});
+      }
+    }
+
     return saved;
   }
 

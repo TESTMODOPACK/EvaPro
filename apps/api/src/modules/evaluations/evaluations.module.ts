@@ -11,6 +11,7 @@ import { EvaluationsService } from './evaluations.service';
 import { EvaluationsController } from './evaluations.controller';
 import { AuditModule } from '../audit/audit.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { Objective } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
 
@@ -29,6 +30,7 @@ import { KeyResult } from '../objectives/entities/key-result.entity';
     ]),
     AuditModule,
     SubscriptionsModule,
+    NotificationsModule,
   ],
   controllers: [EvaluationsController],
   providers: [EvaluationsService],

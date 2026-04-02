@@ -464,6 +464,41 @@ export class EmailService {
     );
   }
 
+  // ─── Template: Feedback Received ──────────────────────────────────────────
+
+  async sendFeedbackReceived(
+    email: string,
+    data: {
+      firstName: string;
+      senderName: string;
+      sentiment: string;
+      message: string;
+      competencyName?: string;
+      tenantId?: string;
+    },
+  ) {
+    const sentimentLabel = data.sentiment === 'positive' ? 'positivo' : data.sentiment === 'constructive' ? 'constructivo' : '';
+    const sentimentIcon = data.sentiment === 'positive' ? '⭐' : data.sentiment === 'constructive' ? '💡' : '💬';
+
+    await this.send(
+      email,
+      `${sentimentIcon} Nuevo feedback ${sentimentLabel} recibido`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `${data.senderName} te ha enviado feedback${sentimentLabel ? ' ' + sentimentLabel : ''}.`,
+        body: `
+          ${this.heading(`Feedback recibido ${sentimentIcon}`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, <strong>${data.senderName}</strong> te ha enviado feedback${sentimentLabel ? ' <strong>' + sentimentLabel + '</strong>' : ''}:`)}
+          <div style="background:#f8fafc;border-left:4px solid ${data.sentiment === 'positive' ? '#10b981' : data.sentiment === 'constructive' ? '#f59e0b' : '#94a3b8'};border-radius:0 8px 8px 0;padding:1rem 1.25rem;margin:1rem 0;">
+            <p style="margin:0;font-size:0.95rem;color:#374151;line-height:1.6;font-style:italic;">"${data.message}"</p>
+          </div>
+          ${data.competencyName ? this.infoBox([{ label: 'Competencia', value: data.competencyName }]) : ''}
+          ${this.paragraph('Revisa tu historial de feedback completo en la plataforma.')}
+          ${this.cta('Ver mi feedback', `${this.appUrl}/dashboard/mi-desempeno`)}
+        `,
+      }),
+    );
+  }
+
   // ─── Template: Check-in Rejected ──────────────────────────────────────────
 
   async sendCheckinRejected(

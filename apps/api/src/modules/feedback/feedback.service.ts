@@ -378,6 +378,18 @@ export class FeedbackService {
       metadata: { feedbackId: saved.id },
     }).catch(() => {});
 
+    // Send email to feedback recipient
+    const recipient = await this.userRepo.findOne({ where: { id: dto.toUserId }, select: ['id', 'email', 'firstName'] });
+    if (recipient?.email) {
+      this.emailService.sendFeedbackReceived(recipient.email, {
+        firstName: recipient.firstName,
+        senderName,
+        sentiment: dto.sentiment || 'neutral',
+        message: dto.message,
+        tenantId,
+      }).catch(() => {});
+    }
+
     return saved;
   }
 

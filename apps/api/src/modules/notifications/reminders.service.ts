@@ -100,6 +100,26 @@ export class RemindersService {
             await this.assignmentRepo.save(toUpdate);
           }
           this.logger.log(`[Cron] Created ${notifications.length} evaluation reminders for cycle ${cycle.name}`);
+
+          // Send email reminders — throttle to max 1 email/day per evaluator
+          // (cron runs every 6h, so only send when daysLeft <= 3 or reminderCount is low)
+          const daysLeft = Math.max(0, Math.ceil((new Date(cycle.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+          const shouldEmail = daysLeft <= 3; // Only email when cycle is about to close
+          if (shouldEmail) {
+            const evaluatorMap = new Map<string, { email: string; firstName: string; count: number }>();
+            for (const a of pendingAssignments) {
+              if (!a.evaluator?.email) continue;
+              const existing = evaluatorMap.get(a.evaluatorId);
+              if (existing) { existing.count++; }
+              else { evaluatorMap.set(a.evaluatorId, { email: a.evaluator.email, firstName: a.evaluator.firstName, count: 1 }); }
+            }
+            for (const [, ev] of evaluatorMap) {
+              this.emailService.sendEvaluationReminder(ev.email, {
+                firstName: ev.firstName, cycleName: cycle.name, pendingCount: ev.count,
+                daysLeft, cycleId: cycle.id, tenantId: cycle.tenantId,
+              }).catch(() => {});
+            }
+          }
         }
       }
     } catch (error) {
@@ -196,6 +216,24 @@ export class RemindersService {
       if (notifications.length > 0) {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} objective-at-risk reminders`);
+
+        // Send email alerts grouped by user
+        const userObjectives = new Map<string, { user: any; objectives: Array<{ title: string; progress: number; daysLeft: number }>; tenantId: string }>();
+        for (const obj of atRisk) {
+          const daysLeft = obj.targetDate ? Math.ceil((new Date(obj.targetDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+          if (daysLeft !== null && daysLeft > 30) continue;
+          const existing = userObjectives.get(obj.userId);
+          const item = { title: obj.title, progress: obj.progress, daysLeft: daysLeft ?? 0 };
+          if (existing) { existing.objectives.push(item); }
+          else { userObjectives.set(obj.userId, { user: obj.user, objectives: [item], tenantId: obj.tenantId }); }
+        }
+        for (const [userId, data] of userObjectives) {
+          const user = data.user || await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
+          if (!user?.email) continue;
+          this.emailService.sendOkrAtRisk(user.email, {
+            firstName: user.firstName, objectives: data.objectives, tenantId: data.tenantId,
+          }).catch(() => {});
+        }
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindObjectivesAtRisk: ${error}`);
@@ -306,6 +344,27 @@ export class RemindersService {
       if (notifications.length > 0) {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} upcoming check-in reminders`);
+
+        // Send email reminders to both participants
+        for (const ci of upcoming) {
+          const scheduledAt = `${new Date(ci.scheduledDate).toLocaleDateString('es-CL')}${ci.scheduledTime ? ' ' + ci.scheduledTime : ''}`;
+          // Email to employee
+          if (ci.employee?.email) {
+            const mgrName = ci.manager ? `${ci.manager.firstName} ${ci.manager.lastName}` : 'tu jefatura';
+            this.emailService.sendCheckinScheduled(ci.employee.email, {
+              firstName: ci.employee.firstName, managerName: mgrName,
+              scheduledAt, topic: ci.topic, checkinId: ci.id, tenantId: ci.tenantId,
+            }).catch(() => {});
+          }
+          // Email to manager
+          if (ci.manager?.email) {
+            const empName = ci.employee ? `${ci.employee.firstName} ${ci.employee.lastName}` : 'un colaborador';
+            this.emailService.sendCheckinScheduled(ci.manager.email, {
+              firstName: ci.manager.firstName, managerName: empName,
+              scheduledAt, topic: ci.topic, checkinId: ci.id, tenantId: ci.tenantId,
+            }).catch(() => {});
+          }
+        }
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindUpcomingCheckins: ${error}`);
