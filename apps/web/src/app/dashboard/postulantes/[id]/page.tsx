@@ -30,6 +30,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   General: 'General',
 };
 
+function categoryLabel(key: string): string {
+  // Clean brackets if present: [habilidades_blandas] -> habilidades_blandas
+  const cleaned = key.replace(/^\[|\]$/g, '').trim();
+  return CATEGORY_LABELS[cleaned] || cleaned.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 
 export default function ProcesoDetailPage({ params }: { params: { id: string } }) {
   const token = useAuthStore((s) => s.token);
@@ -594,7 +600,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       {interviewForm.reqChecks.map((rc: any, i: number) => (
                         <tr key={i}>
                           <td style={{ fontSize: '0.85rem' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 600 }}>{CATEGORY_LABELS[rc.category] || rc.category}</span>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 600 }}>{categoryLabel(rc.category)}</span>
                             <br />{rc.text}
                           </td>
                           <td>
@@ -880,7 +886,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                 {requirements.map((r: any, i: number) => (
                   <span key={i} style={{ padding: '0.3rem 0.7rem', borderRadius: 20, fontSize: '0.78rem', background: 'rgba(201,147,58,0.08)', border: '1px solid rgba(201,147,58,0.2)', color: 'var(--accent)', fontWeight: 500 }}>
-                    {CATEGORY_LABELS[r.category] || r.category}: {r.text}
+                    {categoryLabel(r.category)}: {r.text}
                   </span>
                 ))}
               </div>
