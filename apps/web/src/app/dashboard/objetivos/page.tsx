@@ -713,6 +713,8 @@ function TreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
 
 function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean }) {
   const { t } = useTranslation();
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
   if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
   if (!data || data.length === 0) {
     return (
@@ -722,16 +724,66 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
       </div>
     );
   }
+
+  // Group by user for better visualization
   const totalCount = (nodes: any[]): number => nodes.reduce((sum, n) => sum + 1 + totalCount(n.children || []), 0);
+  const total = totalCount(data);
+
+  const grouped: Record<string, { userName: string; position: string; nodes: any[] }> = {};
+  for (const node of data) {
+    const key = node.userName || 'Sin asignar';
+    if (!grouped[key]) grouped[key] = { userName: key, position: node.userPosition || '', nodes: [] };
+    grouped[key].nodes.push(node);
+  }
+  const groups = Object.values(grouped).sort((a, b) => a.userName.localeCompare(b.userName));
+
   return (
     <div className="animate-fade-up">
       <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-        {totalCount(data)} objetivo(s) · Raíces: {data.length} · Haz clic en ▼ para colapsar ramas
+        {total} objetivo(s) agrupados por {groups.length} colaborador(es). Haz clic en cada colaborador para expandir/colapsar.
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-        {data.map((root: any) => (
-          <TreeNode key={root.id} node={root} />
-        ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {groups.map((group) => {
+          const isCollapsed = collapsedGroups[group.userName];
+          const groupTotal = totalCount(group.nodes);
+          const avgProgress = Math.round(group.nodes.reduce((s, n) => s + (Number(n.progress) || 0), 0) / group.nodes.length);
+          const pc = avgProgress >= 75 ? 'var(--success)' : avgProgress >= 40 ? 'var(--warning)' : 'var(--danger)';
+          return (
+            <div key={group.userName}>
+              <div
+                onClick={() => setCollapsedGroups((prev) => ({ ...prev, [group.userName]: !prev[group.userName] }))}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '0.6rem 0.85rem', background: 'var(--bg-surface)',
+                  borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                  cursor: 'pointer', userSelect: 'none',
+                }}>
+                <span style={{ fontSize: '0.6rem', transition: 'transform 0.2s', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}>&#9660;</span>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}>
+                  {(group.userName[0] || '?').toUpperCase()}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{group.userName}</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>({groupTotal} objetivo{groupTotal !== 1 ? 's' : ''})</span>
+                  {group.position && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{group.position}</div>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem' }}>
+                  <div style={{ width: 50, height: 5, borderRadius: 4, background: 'var(--border)' }}>
+                    <div style={{ width: `${avgProgress}%`, height: '100%', borderRadius: 4, background: pc }} />
+                  </div>
+                  <span style={{ fontWeight: 700, color: pc }}>{avgProgress}%</span>
+                </div>
+              </div>
+              {!isCollapsed && (
+                <div style={{ marginLeft: '1rem', marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  {group.nodes.map((root: any) => (
+                    <TreeNode key={root.id} node={root} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
