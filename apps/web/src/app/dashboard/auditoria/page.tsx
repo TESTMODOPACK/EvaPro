@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 
@@ -45,138 +46,17 @@ function getActionBadge(action: string): { cls: string; label: string } {
   return { cls: 'badge-accent', label: action };
 }
 
-/* ─── Traduccion de acciones ──────────────────────────────────── */
+/* ─── Filter keys (values sent to API) ─────────────────────────── */
 
-const ACTION_LABELS: Record<string, string> = {
-  // Sesion
-  'login': 'Inicio de sesion',
-  // Objetivos
-  'objective.created': 'Objetivo creado',
-  'objective.updated': 'Objetivo modificado',
-  'objective.submitted_for_approval': 'Objetivo enviado a aprobacion',
-  'objective.approved': 'Objetivo aprobado',
-  'objective.rejected': 'Objetivo rechazado',
-  'objective.cancelled': 'Objetivo cancelado',
-  'objective.progress_updated': 'Progreso actualizado',
-  // Evaluaciones / Ciclos
-  'cycle.created': 'Ciclo de evaluacion creado',
-  'cycle.launched': 'Ciclo de evaluacion lanzado',
-  'cycle.closed': 'Ciclo de evaluacion cerrado',
-  'cycle.paused': 'Ciclo de evaluacion pausado',
-  'cycle.resumed': 'Ciclo de evaluacion reanudado',
-  'cycle.stage_advanced': 'Etapa de ciclo avanzada',
-  'evaluation.submitted': 'Evaluacion enviada',
-  'evaluation.response_saved': 'Respuesta de evaluacion guardada',
-  // Check-ins
-  'checkin.created': 'Check-in programado',
-  'checkin.completed': 'Check-in completado',
-  'checkin.rejected': 'Check-in rechazado',
-  // Feedback
-  'feedback.sent': 'Feedback enviado',
-  // Competencias
-  'competency.created': 'Competencia creada',
-  'competency.approved': 'Competencia aprobada',
-  'competency.rejected': 'Competencia rechazada',
-  // Planes de desarrollo
-  'pdi.created': 'Plan de desarrollo creado',
-  'pdi.status_changed': 'Estado de plan cambiado',
-  // Talento
-  'talent.assessed': 'Evaluacion de talento',
-  'calibration.entry_adjusted': 'Calibracion ajustada',
-  // Usuarios
-  'user.created': 'Usuario creado',
-  'user.updated': 'Usuario modificado',
-  'user.deactivated': 'Usuario desactivado',
-  'user.role_changed': 'Rol de usuario cambiado',
-  'user.invited': 'Usuario invitado',
-  'user.invite_resent': 'Invitacion reenviada',
-  'users.bulk_imported': 'Importacion masiva de usuarios',
-  // Encuestas
-  'survey_created': 'Encuesta creada',
-  'survey.launched': 'Encuesta lanzada',
-  'survey.closed': 'Encuesta cerrada',
-  // Seleccion
-  'recruitment.process_created': 'Proceso de seleccion creado',
-  'candidate.stage_changed': 'Etapa de candidato cambiada',
-  'candidate.hired': 'Candidato contratado',
-  'candidate.rejected': 'Candidato rechazado',
-  // Firma digital
-  'document.signed': 'Documento firmado',
-  // Suscripciones
-  'subscription.created': 'Suscripcion creada',
-  'subscription.cancelled': 'Suscripcion cancelada',
-  'subscription.plan_changed': 'Plan de suscripcion cambiado',
-  'subscription.status_changed': 'Estado de suscripcion cambiado',
-  'payment.registered': 'Pago registrado',
-  'subscription_request.approved': 'Solicitud de suscripcion aprobada',
-  'subscription_request.rejected': 'Solicitud de suscripcion rechazada',
-  // Reportes
-  'report.viewed': 'Reporte consultado',
-};
-
-function formatAction(action: string): string {
-  return ACTION_LABELS[action] || action;
-}
-
-/* ─── Traduccion de entidades ─────────────────────────────────── */
-
-const ENTITY_LABELS: Record<string, string> = {
-  objective: 'Objetivo',
-  cycle: 'Ciclo de evaluacion',
-  cycle_stage: 'Etapa de ciclo',
-  evaluation: 'Evaluacion',
-  checkin: 'Check-in',
-  feedback: 'Feedback',
-  competency: 'Competencia',
-  development_plan: 'Plan de desarrollo',
-  talent_assessment: 'Evaluacion de talento',
-  calibration_entry: 'Calibracion',
-  user: 'Usuario',
-  User: 'Usuario',
-  bulk_import: 'Importacion masiva',
-  engagement_survey: 'Encuesta de clima',
-  recruitment_process: 'Proceso de seleccion',
-  report: 'Reporte',
-  subscription: 'Suscripcion',
-  subscription_request: 'Solicitud',
-  payment: 'Pago',
-  document: 'Documento',
-};
-
-function formatEntity(entityType: string): string {
-  return ENTITY_LABELS[entityType] || entityType;
-}
-
-/* ─── Filtros ─────────────────────────────────────────────────── */
-
-const ENTITY_TYPES = [
-  { value: '', label: 'Todas las entidades' },
-  { value: 'objective', label: 'Objetivos' },
-  { value: 'cycle', label: 'Ciclos de evaluacion' },
-  { value: 'checkin', label: 'Check-ins' },
-  { value: 'feedback', label: 'Feedback' },
-  { value: 'competency', label: 'Competencias' },
-  { value: 'development_plan', label: 'Planes de desarrollo' },
-  { value: 'talent_assessment', label: 'Talento' },
-  { value: 'calibration_entry', label: 'Calibracion' },
-  { value: 'user', label: 'Usuarios' },
-  { value: 'engagement_survey', label: 'Encuestas de clima' },
-  { value: 'recruitment_process', label: 'Seleccion' },
-  { value: 'subscription', label: 'Suscripciones' },
-  { value: 'report', label: 'Reportes' },
+const ENTITY_TYPE_KEYS = [
+  '', 'objective', 'cycle', 'checkin', 'feedback', 'competency',
+  'development_plan', 'talent_assessment', 'calibration_entry',
+  'user', 'engagement_survey', 'recruitment_process', 'subscription', 'report',
 ];
 
-const ACTION_TYPES = [
-  { value: '', label: 'Todas las acciones' },
-  { value: 'login', label: 'Inicios de sesion' },
-  { value: 'created', label: 'Creaciones' },
-  { value: 'approved', label: 'Aprobaciones' },
-  { value: 'rejected', label: 'Rechazos' },
-  { value: 'submitted', label: 'Envios' },
-  { value: 'completed', label: 'Completados' },
-  { value: 'updated', label: 'Modificaciones' },
-  { value: 'launched', label: 'Lanzamientos' },
-  { value: 'viewed', label: 'Consultas' },
+const ACTION_TYPE_KEYS = [
+  '', 'login', 'created', 'approved', 'rejected', 'submitted',
+  'completed', 'updated', 'launched', 'viewed',
 ];
 
 function formatMetadata(metadata: any): string {
@@ -201,8 +81,8 @@ function formatMetadata(metadata: any): string {
 
 /* ─── Expandable detail panel ─────────────────────────────────── */
 
-function DetailPanel(props: { log: any }) {
-  const { log } = props;
+function DetailPanel(props: { log: any; t: any }) {
+  const { log, t } = props;
   let meta = log.metadata;
   if (typeof meta === 'string') {
     try { meta = JSON.parse(meta); } catch (_e) { meta = null; }
@@ -227,24 +107,24 @@ function DetailPanel(props: { log: any }) {
       <td colSpan={7} style={{ padding: 0 }}>
         <div style={detailStyle}>
           <div>
-            <div style={labelSt}>Fecha y hora exacta</div>
-            <div style={valSt}>{new Date(log.createdAt).toLocaleString('es-CL', { dateStyle: 'full', timeStyle: 'medium' })}</div>
+            <div style={labelSt}>{t('audit.exactDateTime')}</div>
+            <div style={valSt}>{new Date(log.createdAt).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'medium' })}</div>
           </div>
           <div>
-            <div style={labelSt}>IP de origen</div>
-            <div style={valSt}>{log.ipAddress || 'No registrada'}</div>
+            <div style={labelSt}>{t('audit.sourceIp')}</div>
+            <div style={valSt}>{log.ipAddress || t('audit.notRecorded')}</div>
           </div>
           <div>
-            <div style={labelSt}>Usuario</div>
-            <div style={valSt}>{log.userName || 'Sistema'} {log.userEmail ? '(' + log.userEmail + ')' : ''}</div>
+            <div style={labelSt}>{t('audit.user')}</div>
+            <div style={valSt}>{log.userName || t('audit.system')} {log.userEmail ? '(' + log.userEmail + ')' : ''}</div>
           </div>
           <div>
-            <div style={labelSt}>ID de Entidad</div>
+            <div style={labelSt}>{t('audit.entityId')}</div>
             <div style={{ ...valSt, fontFamily: 'monospace', fontSize: '0.78rem' }}>{log.entityId || '-'}</div>
           </div>
           {meta && (
             <div style={{ gridColumn: '1 / -1' }}>
-              <div style={labelSt}>Metadata completa</div>
+              <div style={labelSt}>{t('audit.fullMetadata')}</div>
               <pre style={{
                 background: 'var(--bg-primary)',
                 border: '1px solid var(--border)',
@@ -268,8 +148,9 @@ function DetailPanel(props: { log: any }) {
 
 /* ─── Guide panel ─────────────────────────────────────────────── */
 
-function GuidePanel(props: { open: boolean; onToggle: () => void }) {
+function GuidePanel(props: { open: boolean; onToggle: () => void; t: any }) {
   if (!props.open) return null;
+  const { t } = props;
 
   const sectionSt = { marginBottom: '1rem' } as const;
   const titleSt = { fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', marginBottom: '0.35rem' } as const;
@@ -278,53 +159,28 @@ function GuidePanel(props: { open: boolean; onToggle: () => void }) {
   return (
     <div className="card" style={{ padding: '1.25rem 1.5rem', marginBottom: '1.25rem', background: 'var(--bg-surface)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Guia del Registro de Auditoria</h3>
-        <button className="btn-ghost" style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }} onClick={props.onToggle}>Cerrar</button>
+        <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>{t('audit.guideTitle')}</h3>
+        <button className="btn-ghost" style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }} onClick={props.onToggle}>{t('audit.guideClose')}</button>
       </div>
-
       <div style={sectionSt}>
-        <div style={titleSt}>Que informacion se registra?</div>
-        <p style={textSt}>
-          El sistema registra automaticamente cada accion relevante: aprobaciones, rechazos, creaciones,
-          modificaciones, envios de evaluaciones, cambios de estado, feedback, contrataciones y mas.
-          Cada registro incluye quien realizo la accion, cuando, desde que IP, y los detalles del cambio.
-        </p>
+        <div style={titleSt}>{t('audit.guideWhatTitle')}</div>
+        <p style={textSt}>{t('audit.guideWhatText')}</p>
       </div>
-
       <div style={sectionSt}>
-        <div style={titleSt}>Que son las acciones con evidencia legal?</div>
-        <p style={textSt}>
-          Las acciones marcadas con el icono de escudo son aquellas con valor probatorio:
-          aprobaciones/rechazos de objetivos, evaluaciones enviadas, check-ins completados,
-          decisiones de talento, contrataciones/rechazos de candidatos, y cambios de rol.
-          Estas acciones no pueden ser modificadas ni eliminadas retroactivamente.
-        </p>
+        <div style={titleSt}>{t('audit.guideEvidenceTitle')}</div>
+        <p style={textSt}>{t('audit.guideEvidenceText')}</p>
       </div>
-
       <div style={sectionSt}>
-        <div style={titleSt}>Como exportar para uso legal?</div>
-        <p style={textSt}>
-          Use el boton &quot;Exportar CSV&quot; para descargar un archivo con todos los registros del rango
-          de fechas seleccionado. El archivo incluye todos los campos: fecha, usuario, email, accion,
-          entidad, detalle, IP y si es evidencia legal. El formato es compatible con Excel y herramientas de compliance.
-        </p>
+        <div style={titleSt}>{t('audit.guideExportTitle')}</div>
+        <p style={textSt}>{t('audit.guideExportText')}</p>
       </div>
-
       <div style={sectionSt}>
-        <div style={titleSt}>Retencion de datos</div>
-        <p style={textSt}>
-          Los registros de auditoria se mantienen indefinidamente mientras la suscripcion este activa.
-          No se eliminan al desactivar usuarios o completar ciclos de evaluacion.
-        </p>
+        <div style={titleSt}>{t('audit.guideRetentionTitle')}</div>
+        <p style={textSt}>{t('audit.guideRetentionText')}</p>
       </div>
-
       <div>
-        <div style={titleSt}>Auditoria laboral</div>
-        <p style={textSt}>
-          Si necesita un informe para una auditoria laboral o proceso legal, exporte el rango de fechas
-          relevante con el filtro &quot;Solo evidencia legal&quot; activado. El CSV resultante contiene toda
-          la trazabilidad necesaria: quien, que, cuando, desde donde y por que.
-        </p>
+        <div style={titleSt}>{t('audit.guideLaborTitle')}</div>
+        <p style={textSt}>{t('audit.guideLaborText')}</p>
       </div>
     </div>
   );
@@ -333,6 +189,7 @@ function GuidePanel(props: { open: boolean; onToggle: () => void }) {
 /* ─── Main page ───────────────────────────────────────────────── */
 
 export default function AuditoriaPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -407,7 +264,7 @@ export default function AuditoriaPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (_e) {
-      setError('Error al exportar CSV');
+      setError(t('audit.exportError'));
     } finally {
       setExporting(false);
     }
@@ -458,12 +315,12 @@ export default function AuditoriaPage() {
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Registro de Auditoria</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Historial de acciones y evidencia de su organizacion</p>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('audit.title')}</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('audit.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" style={{ padding: '0.45rem 0.9rem', fontSize: '0.83rem' }} onClick={() => setGuideOpen((v) => !v)}>
-            {guideOpen ? 'Cerrar guia' : 'Como funciona'}
+            {guideOpen ? t('audit.closeGuide') : t('audit.howItWorks')}
           </button>
           <button
             className="btn-primary"
@@ -471,13 +328,13 @@ export default function AuditoriaPage() {
             onClick={handleExport}
             disabled={exporting}
           >
-            {exporting ? 'Exportando...' : 'Exportar CSV'}
+            {exporting ? t('audit.exporting') : t('audit.exportCsv')}
           </button>
         </div>
       </div>
 
       {/* Guide */}
-      <GuidePanel open={guideOpen} onToggle={() => setGuideOpen(false)} />
+      <GuidePanel open={guideOpen} onToggle={() => setGuideOpen(false)} t={t} />
 
       {/* Filters */}
       <div className="animate-fade-up" style={{ marginBottom: '1.25rem', display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -485,35 +342,35 @@ export default function AuditoriaPage() {
         <input type="date" style={{ ...inputSt, width: '145px' }} value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} title="Fecha hasta" />
 
         <select style={{ ...selectSt, width: '180px' }} value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }}>
-          {ENTITY_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
+          {ENTITY_TYPE_KEYS.map((k) => (
+            <option key={k} value={k}>{k ? t('audit.filterEntities.' + k, k) : t('audit.allEntities')}</option>
           ))}
         </select>
 
         <select style={{ ...selectSt, width: '180px' }} value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}>
-          {ACTION_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
+          {ACTION_TYPE_KEYS.map((k) => (
+            <option key={k} value={k}>{k ? t('audit.filterActions.' + k, k) : t('audit.allActions')}</option>
           ))}
         </select>
 
         <input
           style={{ ...inputSt, width: '180px' }}
-          placeholder="Buscar por usuario..."
+          placeholder={t('audit.searchUser')}
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
         />
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}>
           <input type="checkbox" checked={evidenceOnly} onChange={(e) => { setEvidenceOnly(e.target.checked); setPage(1); }} />
-          Solo evidencia legal
+          {t('audit.evidenceOnly')}
         </label>
 
         {(dateFrom || dateTo || entityType || actionFilter || searchText || evidenceOnly) && (
-          <button className="btn-ghost" style={{ padding: '0.35rem 0.7rem', fontSize: '0.78rem' }} onClick={resetFilters}>Limpiar</button>
+          <button className="btn-ghost" style={{ padding: '0.35rem 0.7rem', fontSize: '0.78rem' }} onClick={resetFilters}>{t('audit.clearFilters')}</button>
         )}
 
         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {total} registros
+          {total} {t('audit.records')}
         </span>
       </div>
 
@@ -532,8 +389,8 @@ export default function AuditoriaPage() {
           {logs.length === 0 ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
               {(dateFrom || dateTo || entityType || actionFilter || searchText || evidenceOnly)
-                ? 'No se encontraron registros con los filtros seleccionados'
-                : 'Aun no hay registros de auditoria'}
+                ? t('audit.noResultsFiltered')
+                : t('audit.noResults')}
             </div>
           ) : (
             <div className="table-wrapper">
@@ -541,12 +398,12 @@ export default function AuditoriaPage() {
                 <thead>
                   <tr>
                     <th style={{ width: '28px' }}></th>
-                    <th>Fecha</th>
-                    <th>Usuario</th>
-                    <th>Accion</th>
-                    <th>Entidad</th>
-                    <th>Detalle</th>
-                    <th style={{ width: '36px', textAlign: 'center' }}>Ev.</th>
+                    <th>{t('audit.date')}</th>
+                    <th>{t('audit.user')}</th>
+                    <th>{t('audit.action')}</th>
+                    <th>{t('audit.entity')}</th>
+                    <th>{t('audit.detail')}</th>
+                    <th style={{ width: '36px', textAlign: 'center' }}>{t('audit.evidence')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -566,15 +423,15 @@ export default function AuditoriaPage() {
                             {new Date(log.createdAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
                           </td>
                           <td style={{ fontSize: '0.84rem' }}>
-                            {log.userName || 'Sistema'}
+                            {log.userName || t('audit.system')}
                           </td>
                           <td>
                             <span className={'badge ' + badge.cls} style={{ fontSize: '0.76rem' }}>
-                              {formatAction(log.action)}
+                              {String(t('audit.actions.' + log.action, log.action))}
                             </span>
                           </td>
                           <td style={{ fontSize: '0.83rem', color: 'var(--text-secondary)' }}>
-                            {formatEntity(log.entityType) || '-'}
+                            {log.entityType ? String(t('audit.entities.' + log.entityType, log.entityType)) : '-'}
                           </td>
                           <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {formatMetadata(log.metadata)}
@@ -583,7 +440,7 @@ export default function AuditoriaPage() {
                             {log.isEvidence ? shieldIcon : null}
                           </td>
                         </tr>
-                        {isExpanded && <DetailPanel log={log} />}
+                        {isExpanded && <DetailPanel log={log} t={t} />}
                       </Fragment>
                     );
                   })}
@@ -598,13 +455,13 @@ export default function AuditoriaPage() {
       {totalPages > 1 && (
         <div className="animate-fade-up-delay-2" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1.5rem' }}>
           <button className="btn-ghost" style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            Anterior
+            {t('audit.previous')}
           </button>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            Pagina {page} de {totalPages}
+            {t('audit.page')} {page} {t('audit.of')} {totalPages}
           </span>
           <button className="btn-ghost" style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }} disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-            Siguiente
+            {t('audit.next')}
           </button>
         </div>
       )}
