@@ -29,53 +29,66 @@ const CRITERIA_TYPES = [
 
 function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, emoji: string) => void }) {
   const [showReactions, setShowReactions] = useState(false);
-  const initials = `${item.fromUser.firstName[0]}${item.fromUser.lastName[0]}`;
+  const [expanded, setExpanded] = useState(false);
+  const initials = (item.fromUser?.firstName?.[0] || '') + (item.fromUser?.lastName?.[0] || '');
+  const msgShort = item.message.length > 100 ? item.message.substring(0, 100) + '...' : item.message;
+  const hasLongMsg = item.message.length > 100;
+  const timeAgo = (() => {
+    const diff = Date.now() - new Date(item.createdAt).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return mins + 'min';
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h';
+    const days = Math.floor(hrs / 24);
+    return days + 'd';
+  })();
+
   return (
-    <div className="card" style={{ padding: '1.25rem', marginBottom: '0.5rem' }}>
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: '50%', background: 'var(--accent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0,
-        }}>
-          {initials}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-            <strong>{item.fromUser.firstName} {item.fromUser.lastName}</strong>
-            <span style={{ color: 'var(--text-muted)', margin: '0 0.3rem' }}>→</span>
-            <strong>{item.toUser.firstName} {item.toUser.lastName}</strong>
-            {item.value && (
-              <span className="badge badge-accent" style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
-                {item.value.name}
-              </span>
-            )}
-          </div>
-          <p style={{ margin: '0.25rem 0 0.5rem', fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--text-primary)' }}>{item.message}</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              +{item.points} pts · {new Date(item.createdAt).toLocaleDateString('es-CL')}
+    <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+      <div style={{
+        width: 32, height: 32, borderRadius: '50%', background: 'var(--accent)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.7rem', flexShrink: 0,
+      }}>
+        {initials}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.15rem' }}>
+          <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{item.fromUser?.firstName}</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>reconoce a</span>
+          <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{item.toUser?.firstName} {item.toUser?.lastName}</span>
+          {item.value && (
+            <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: 10, background: 'rgba(201,147,58,0.1)', color: 'var(--accent)', fontWeight: 600 }}>
+              {item.value.name}
             </span>
-            {Object.entries(item.reactions || {}).map(([emoji, users]) => (
-              <button key={emoji} onClick={() => onReact(item.id, emoji)}
-                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '2px 8px', fontSize: '0.78rem', cursor: 'pointer' }}>
-                {emoji} {Array.isArray(users) ? users.length : String(users)}
-              </button>
-            ))}
-            <button onClick={() => setShowReactions(!showReactions)}
-              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 12, padding: '2px 8px', fontSize: '0.78rem', cursor: 'pointer', color: 'var(--text-muted)' }}>
-              +
-            </button>
-          </div>
-          {showReactions && (
-            <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.3rem' }}>
-              {REACTIONS.map((r) => (
-                <button key={r} onClick={() => { onReact(item.id, r); setShowReactions(false); }}
-                  style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '2px' }}>
-                  {r}
-                </button>
-              ))}
-            </div>
           )}
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{timeAgo}</span>
+        </div>
+        <p style={{ margin: 0, fontSize: '0.82rem', lineHeight: 1.45, color: 'var(--text-secondary)' }}>
+          {expanded ? item.message : msgShort}
+          {hasLongMsg && (
+            <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, marginLeft: '0.25rem' }}>
+              {expanded ? 'ver menos' : 'ver mas'}
+            </button>
+          )}
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 600 }}>+{item.points}pts</span>
+          {Object.entries(item.reactions || {}).map(([emoji, users]) => (
+            <button key={emoji} onClick={() => onReact(item.id, emoji)}
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '1px 6px', fontSize: '0.72rem', cursor: 'pointer', lineHeight: 1.3 }}>
+              {emoji}{Array.isArray(users) ? users.length : ''}
+            </button>
+          ))}
+          <button onClick={() => setShowReactions(!showReactions)}
+            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 10, padding: '1px 6px', fontSize: '0.72rem', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            +
+          </button>
+          {showReactions && REACTIONS.map((r) => (
+            <button key={r} onClick={() => { onReact(item.id, r); setShowReactions(false); }}
+              style={{ background: 'none', border: 'none', fontSize: '0.95rem', cursor: 'pointer', padding: '1px' }}>
+              {r}
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -353,16 +366,22 @@ export default function ReconocimientosPage() {
       {/* Wall Tab */}
       {tab === 'wall' && (
         <div className="animate-fade-up">
-          <NewRecognitionForm onSuccess={() => refetchWall()} t={t} />
-          {wall?.data?.length === 0 && (
+          <NewRecognitionForm onSuccess={() => {
+            refetchWall();
+            if (token) api.recognition.budget(token).then(setBudget).catch(() => {});
+          }} t={t} />
+          {wall?.data?.length === 0 ? (
             <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
               <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'✨'}</p>
               <p>{t('reconocimientos.emptyWall')}</p>
             </div>
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: '600px', overflowY: 'auto' }}>
+              {wall?.data?.map((item: any) => (
+                <RecognitionCard key={item.id} item={item} onReact={handleReact} />
+              ))}
+            </div>
           )}
-          {wall?.data?.map((item: any) => (
-            <RecognitionCard key={item.id} item={item} onReact={handleReact} />
-          ))}
           {wall?.meta && wall.meta.totalPages > 1 && (
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1rem', alignItems: 'center' }}>
               <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="btn-ghost" style={{ fontSize: '0.82rem' }}>
