@@ -93,6 +93,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const evaluators = process.evaluators || [];
   const requirements = process.requirements || [];
   const isInternal = process.processType === 'internal';
+  const isEvaluatorOfProcess = evaluators.some((ev: any) => ev.evaluatorId === userId);
+  const canManageCv = isAdmin || isEvaluatorOfProcess; // Admin + evaluadores pueden gestionar CV
 
   // ─── Validation helpers ─────────────────────────────────────────────
   const validateExtForm = () => {
@@ -460,11 +462,14 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             )}
                           </div>
                         )}
-                        {isAdmin && (
+                        {isAdmin && (c.stage === 'scored' || c.stage === 'approved' || c.stage === 'rejected' || c.stage === 'hired') && (
                           <select className="input" value={c.stage} onChange={(e) => {
                             if (token) api.recruitment.candidates.updateStage(token, c.id, e.target.value).then(() => fetchProcess());
                           }} style={{ fontSize: '0.75rem', width: 'auto', padding: '0.2rem 0.4rem', marginLeft: '0.5rem' }}>
-                            {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                            <option value="scored">Puntuado</option>
+                            <option value="approved">Aprobado</option>
+                            <option value="rejected">Rechazado</option>
+                            <option value="hired">Contratado</option>
                           </select>
                         )}
                       </div>
@@ -523,7 +528,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
                               Sube el CV del candidato en formato PDF o Word (max 5MB)
                             </p>
-                            {isAdmin && (
+                            {canManageCv && (
                               <label className="btn-primary" style={{ cursor: 'pointer', fontSize: '0.85rem' }}>
                                 {uploadingCv ? 'Subiendo...' : 'Seleccionar archivo'}
                                 <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
@@ -540,7 +545,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                               La IA analizará el CV y lo cruzará con los requisitos del cargo para calcular el porcentaje de coincidencia.
                             </p>
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                              {isAdmin && (
+                              {canManageCv && (
                                 <>
                                   <button className="btn-primary" onClick={() => handleAnalyzeCv(c.id)} disabled={analyzingCv} style={{ fontSize: '0.85rem' }}>
                                     {analyzingCv ? 'Analizando... (10-20 seg)' : 'Analizar CV con IA'}
@@ -558,7 +563,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                               <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>Resultado del Análisis</span>
-                              {isAdmin && (
+                              {canManageCv && (
                                 <div style={{ display: 'flex', gap: '0.35rem' }}>
                                   <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
                                     onClick={() => handleAnalyzeCv(c.id)} disabled={analyzingCv}>

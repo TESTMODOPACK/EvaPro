@@ -382,7 +382,13 @@ export class RecruitmentService {
     }
     const saved = await this.interviewRepo.save(interview);
 
-    // Recalculate candidate final score
+    // Auto-advance stage
+    if (candidate.stage === CandidateStage.REGISTERED || candidate.stage === CandidateStage.CV_REVIEW) {
+      candidate.stage = CandidateStage.INTERVIEWING;
+      await this.candidateRepo.save(candidate);
+    }
+
+    // Recalculate candidate final score + auto-advance to scored
     await this.recalculateScore(tenantId, candidateId);
     return saved;
   }
@@ -495,6 +501,12 @@ export class RecruitmentService {
     }
 
     candidate.finalScore = Number(Math.max(0, Math.min(10, finalScore)).toFixed(2));
+
+    // Auto-advance to 'scored' if there's a score and still in interviewing
+    if (candidate.finalScore > 0 && candidate.stage === CandidateStage.INTERVIEWING) {
+      candidate.stage = CandidateStage.SCORED;
+    }
+
     await this.candidateRepo.save(candidate);
   }
 
