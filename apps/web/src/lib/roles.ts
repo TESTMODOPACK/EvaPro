@@ -87,6 +87,9 @@ export function useAssignableRoles() {
 }
 
 export function canAccessPage(role: string, path: string): boolean {
+  // Anchor links (submenu parents like #reportes) are always accessible
+  if (path.startsWith('#')) return true;
+
   // Exact match
   const exact = SIDEBAR_ACCESS[path];
   if (exact) return exact.includes(role);

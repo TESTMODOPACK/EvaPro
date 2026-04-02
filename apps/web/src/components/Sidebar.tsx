@@ -190,9 +190,6 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
           { href: '/dashboard/ejecutivo', label: t('nav.executiveDashboard', 'Dashboard Ejecutivo'), icon: icons.analytics },
         ] : []),
         { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance', 'Mi Desempeño'), icon: icons.myPerformance },
-        ...(isAdminOrManager ? [
-          { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },
-        ] : []),
         { href: '/dashboard/notificaciones', label: t('nav.notifications', 'Notificaciones'), icon: icons.log },
       ],
     },
