@@ -109,11 +109,14 @@ export default function LoginPage() {
   };
 
   const features = [
-    "Evaluaciones 90, 180, 270 y 360 grados",
-    "OKRs y objetivos SMART con Key Results",
-    "Reportes avanzados con IA",
-    "Planes de desarrollo individual (PDI)",
-    "Feedback continuo y check-ins 1:1",
+    "Evaluaciones de desempeño 90°, 180°, 270° y 360°",
+    "Objetivos y OKRs con seguimiento de Key Results",
+    "Análisis e informes con Inteligencia Artificial",
+    "Encuestas de clima laboral y eNPS",
+    "Selección de personal con análisis de CV por IA",
+    "Planes de desarrollo individual (PDI) y organizacional",
+    "Reconocimientos, gamificación e insignias",
+    "Dashboard ejecutivo con indicadores estratégicos",
   ];
 
   return (
