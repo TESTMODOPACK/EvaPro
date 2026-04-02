@@ -160,9 +160,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     const file = e.target.files?.[0];
     if (!file || !token) return;
 
-    const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    if (!validTypes.includes(file.type)) {
-      toast('Solo se permiten archivos PDF o Word (.pdf, .doc, .docx)', 'error');
+    if (file.type !== 'application/pdf') {
+      toast('Solo se permiten archivos PDF. Si tienes un documento Word, conviértelo a PDF antes de subirlo.', 'error');
       e.target.value = '';
       return;
     }
@@ -537,12 +536,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         {!c.cvUrl ? (
                           <div style={{ textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
                             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                              Sube el CV del candidato en formato PDF o Word (max 5MB)
+                              Sube el CV del candidato en formato PDF (max 5MB)
                             </p>
                             {canManageCv && (
                               <label className="btn-primary" style={{ cursor: 'pointer', fontSize: '0.85rem' }}>
                                 {uploadingCv ? 'Subiendo...' : 'Seleccionar archivo'}
-                                <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
+                                <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
                               </label>
                             )}
                           </div>
@@ -563,7 +562,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                                   </button>
                                   <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.82rem' }}>
                                     Cambiar CV
-                                    <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
+                                    <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
                                   </label>
                                 </>
                               )}
@@ -582,7 +581,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                                   </button>
                                   <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
                                     Cambiar CV
-                                    <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
+                                    <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
                                   </label>
                                 </div>
                               )}
