@@ -394,15 +394,17 @@ export default function MiSuscripcionPage() {
                     {aiUsage.monthlyLimit > 0 ? Math.round((aiUsage.monthlyUsed / aiUsage.monthlyLimit) * 100) : 0}%
                   </span>
                 </div>
-                <div style={{ height: '12px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%',
-                    width: `${Math.min(aiUsage.monthlyLimit > 0 ? (aiUsage.monthlyUsed / aiUsage.monthlyLimit) * 100 : 0, 100)}%`,
-                    background: aiUsage.monthlyRemaining <= 0 ? 'var(--danger)' : aiUsage.monthlyRemaining <= Math.ceil(aiUsage.monthlyLimit * 0.1) ? 'var(--warning)' : 'var(--success)',
-                    borderRadius: '999px',
-                    transition: 'width 0.6s ease',
-                  }} />
-                </div>
+                {aiUsage.monthlyUsed > 0 && (
+                  <div style={{ height: '8px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${Math.max(Math.min(aiUsage.monthlyLimit > 0 ? (aiUsage.monthlyUsed / aiUsage.monthlyLimit) * 100 : 0, 100), 2)}%`,
+                      background: aiUsage.monthlyRemaining <= 0 ? 'var(--danger)' : aiUsage.monthlyRemaining <= Math.ceil(aiUsage.monthlyLimit * 0.1) ? 'var(--warning)' : 'var(--success)',
+                      borderRadius: '999px',
+                      transition: 'width 0.6s ease',
+                    }} />
+                  </div>
+                )}
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                   {aiUsage.monthlyRemaining} informes restantes. Periodo: {aiUsage.periodStart ? new Date(aiUsage.periodStart).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '--'} al {aiUsage.periodEnd ? new Date(aiUsage.periodEnd).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '--'}.
                 </div>
