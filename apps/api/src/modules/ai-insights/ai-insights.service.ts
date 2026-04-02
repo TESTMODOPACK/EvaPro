@@ -1154,22 +1154,35 @@ export class AiInsightsService {
     let cvText = '';
     try {
       if (cvUrl.startsWith('data:')) {
-        const mimeMatch = cvUrl.match(/^data:([^;]+);/);
+        const mimeMatch = cvUrl.match(/^data:([^;,]+)[;,]/);
         const mimeType = mimeMatch ? mimeMatch[1] : '';
         const base64Data = cvUrl.split(',')[1];
 
         if (base64Data) {
           const buffer = Buffer.from(base64Data, 'base64');
 
-          if (mimeType === 'application/pdf') {
+          // Detect by magic bytes if mime is empty or generic
+          let effectiveMime = mimeType;
+          if (!effectiveMime || effectiveMime === 'application/octet-stream') {
+            if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+              effectiveMime = 'application/pdf';
+            } else if (buffer[0] === 0x50 && buffer[1] === 0x4B) {
+              effectiveMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'; // .docx (ZIP)
+            } else if (buffer[0] === 0xD0 && buffer[1] === 0xCF) {
+              effectiveMime = 'application/msword'; // .doc (OLE2)
+            }
+          }
+          this.logger.log('CV mime: ' + mimeType + ' -> effective: ' + effectiveMime + ', buffer size: ' + buffer.length);
+
+          if (effectiveMime === 'application/pdf') {
             // PDF: use pdf-parse
             const pdfParse = require('pdf-parse');
             const pdfData = await pdfParse(buffer);
             cvText = (pdfData.text || '').trim();
             this.logger.log('PDF parsed: ' + cvText.length + ' chars, ' + pdfData.numpages + ' pages');
           } else if (
-            mimeType === 'application/msword' ||
-            mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            effectiveMime === 'application/msword' ||
+            effectiveMime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
           ) {
             // Word (.doc / .docx): use mammoth
             const mammoth = require('mammoth');
@@ -1178,7 +1191,7 @@ export class AiInsightsService {
             this.logger.log('Word parsed: ' + cvText.length + ' chars');
           } else {
             // Unknown type — try pdf-parse first, then mammoth
-            this.logger.warn('Unknown CV mime type: ' + mimeType + ', trying both parsers');
+            this.logger.warn('Unknown CV mime type: ' + effectiveMime + ', trying both parsers');
             try {
               const pdfParse = require('pdf-parse');
               const pdfData = await pdfParse(buffer);
