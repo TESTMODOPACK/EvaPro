@@ -510,7 +510,7 @@ export class EmailService {
       email,
       'Código de recuperación — Ascenda Performance',
       await this.wrapWithBranding(data.tenantId, {
-        preheader: `Tu código de recuperación es ${data.code}. Expira en ${data.expiryMinutes} minutos.`,
+        preheader: `Recibimos tu solicitud de recuperación de contraseña. El código expira en ${data.expiryMinutes} minutos.`,
         body: `
           ${this.heading('Recuperar contraseña 🔑')}
           ${this.paragraph(`Hola <strong>${data.firstName || ''}</strong>, recibimos una solicitud para restablecer tu contraseña. Usa el siguiente código:`)}

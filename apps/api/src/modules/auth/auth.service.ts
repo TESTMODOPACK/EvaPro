@@ -102,13 +102,17 @@ export class AuthService {
     user.resetCodeExpires = expires;
     await this.userRepo.save(user);
 
-    // Send branded email via EmailService (Resend)
-    await this.emailService.sendPasswordReset(user.email, {
-      firstName: user.firstName,
-      code,
-      expiryMinutes: 15,
-      tenantId: user.tenantId || undefined,
-    });
+    // Send branded email via EmailService (Resend) — fire-and-forget to avoid 500 on email failure
+    try {
+      await this.emailService.sendPasswordReset(user.email, {
+        firstName: user.firstName,
+        code,
+        expiryMinutes: 15,
+        tenantId: user.tenantId || undefined,
+      });
+    } catch {
+      // Email failure should not block password reset flow
+    }
   }
 
   async resetPassword(email: string, code: string, newPassword: string, tenantSlug?: string): Promise<void> {
