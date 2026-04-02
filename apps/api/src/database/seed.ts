@@ -285,6 +285,16 @@ async function seed() {
     console.log('🌱  Connecting to database for seeding...');
     await dataSource.initialize();
 
+    // Ensure PostgreSQL enum includes new AI insight types
+    try {
+      await dataSource.query(`ALTER TYPE ai_insights_type_enum ADD VALUE IF NOT EXISTS 'cv_analysis'`);
+      await dataSource.query(`ALTER TYPE ai_insights_type_enum ADD VALUE IF NOT EXISTS 'recruitment_recommendation'`);
+      console.log('✅ AI insight type enum updated');
+    } catch (e: any) {
+      // Ignore if already exists or enum name is different
+      console.log('   AI enum update skipped:', e.message?.slice(0, 80));
+    }
+
     const tenantRepo = dataSource.getRepository(Tenant);
     const userRepo = dataSource.getRepository(User);
     const templateRepo = dataSource.getRepository(FormTemplate);

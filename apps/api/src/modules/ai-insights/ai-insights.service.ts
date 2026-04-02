@@ -983,10 +983,12 @@ export class AiInsightsService {
     });
 
     const typeLabels: Record<string, string> = {
-      summary: 'Resumen de desempeno',
-      bias: 'Deteccion de sesgo',
+      summary: 'Resumen de desempeño',
+      bias: 'Detección de sesgo',
       suggestions: 'Sugerencias de desarrollo',
-      survey_analysis: 'Analisis de encuesta',
+      survey_analysis: 'Análisis de encuesta',
+      cv_analysis: 'Análisis de CV',
+      recruitment_recommendation: 'Recomendación de selección',
     };
 
     return {
