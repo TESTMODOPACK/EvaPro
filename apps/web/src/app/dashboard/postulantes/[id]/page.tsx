@@ -64,6 +64,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   // CV
   const [uploadingCv, setUploadingCv] = useState(false);
   const [analyzingCv, setAnalyzingCv] = useState(false);
+  const [expandedCvPanel, setExpandedCvPanel] = useState<string | null>(null);
 
   const fetchProcess = async () => {
     if (!token) return;
@@ -439,23 +440,123 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       )}
                       <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
                         onClick={() => loadScorecard(c.id)}>Puntaje</button>
-                      {/* CV buttons */}
-                      {(c.candidateType === 'external' || process.requireCvForInternal) && isAdmin && (
-                        <>
-                          {!c.cvUrl ? (
-                            <label style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                              {uploadingCv ? '...' : 'Subir CV'}
-                              <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
-                            </label>
-                          ) : (
-                            <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.7rem' }}
-                              onClick={() => handleAnalyzeCv(c.id)} disabled={analyzingCv}>
-                              {analyzingCv ? 'Analizando...' : (c.cvAnalysis ? 'Re-analizar' : 'Analizar CV')}
-                            </button>
+                      {/* CV toggle button */}
+                      {(c.candidateType === 'external' || process.requireCvForInternal) && (
+                        <button
+                          onClick={() => setExpandedCvPanel(expandedCvPanel === c.id ? null : c.id)}
+                          style={{
+                            padding: '0.3rem 0.7rem', fontSize: '0.78rem', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                            border: c.cvAnalysis ? '1px solid rgba(16,185,129,0.3)' : c.cvUrl ? '1px solid rgba(201,147,58,0.3)' : '1px solid var(--border)',
+                            background: c.cvAnalysis ? 'rgba(16,185,129,0.08)' : c.cvUrl ? 'rgba(201,147,58,0.08)' : 'transparent',
+                            color: c.cvAnalysis ? 'var(--success)' : c.cvUrl ? 'var(--accent)' : 'var(--text-secondary)',
+                            fontWeight: 600,
+                          }}>
+                          {c.cvAnalysis ? 'CV Analizado' : c.cvUrl ? 'CV Cargado' : 'CV'}
+                          {c.cvAnalysis?.matchPercentage != null && (
+                            <span style={{ marginLeft: '0.3rem' }}>{c.cvAnalysis.matchPercentage}%</span>
                           )}
-                        </>
+                        </button>
                       )}
                     </div>
+
+                    {/* CV Expandable Panel */}
+                    {expandedCvPanel === c.id && (
+                      <div style={{ marginTop: '0.75rem', padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                        {/* Step indicators */}
+                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, background: c.cvUrl ? 'var(--success)' : 'var(--border)', color: c.cvUrl ? '#fff' : 'var(--text-muted)' }}>1</span>
+                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvUrl ? 600 : 400, color: c.cvUrl ? 'var(--success)' : 'var(--text-muted)' }}>Cargar CV</span>
+                          </div>
+                          <div style={{ width: 30, height: 2, background: c.cvUrl ? 'var(--success)' : 'var(--border)' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, background: c.cvAnalysis ? 'var(--success)' : 'var(--border)', color: c.cvAnalysis ? '#fff' : 'var(--text-muted)' }}>2</span>
+                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvAnalysis ? 600 : 400, color: c.cvAnalysis ? 'var(--success)' : 'var(--text-muted)' }}>Analizar con IA</span>
+                          </div>
+                          <div style={{ width: 30, height: 2, background: c.cvAnalysis ? 'var(--success)' : 'var(--border)' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, background: c.cvAnalysis ? 'var(--success)' : 'var(--border)', color: c.cvAnalysis ? '#fff' : 'var(--text-muted)' }}>3</span>
+                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvAnalysis ? 600 : 400, color: c.cvAnalysis ? 'var(--success)' : 'var(--text-muted)' }}>Informe</span>
+                          </div>
+                        </div>
+
+                        {/* Step 1: Upload */}
+                        {!c.cvUrl ? (
+                          <div style={{ textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                              Sube el CV del candidato en formato PDF o Word (max 5MB)
+                            </p>
+                            {isAdmin && (
+                              <label className="btn-primary" style={{ cursor: 'pointer', fontSize: '0.85rem' }}>
+                                {uploadingCv ? 'Subiendo...' : 'Seleccionar archivo'}
+                                <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
+                              </label>
+                            )}
+                          </div>
+                        ) : !c.cvAnalysis ? (
+                          /* Step 2: Analyze */
+                          <div style={{ textAlign: 'center', padding: '1.5rem' }}>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', fontWeight: 600 }}>
+                              CV cargado correctamente
+                            </p>
+                            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                              La IA analizará el CV y lo cruzará con los requisitos del cargo para calcular el porcentaje de coincidencia.
+                            </p>
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                              {isAdmin && (
+                                <>
+                                  <button className="btn-primary" onClick={() => handleAnalyzeCv(c.id)} disabled={analyzingCv} style={{ fontSize: '0.85rem' }}>
+                                    {analyzingCv ? 'Analizando... (10-20 seg)' : 'Analizar CV con IA'}
+                                  </button>
+                                  <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.82rem' }}>
+                                    Cambiar CV
+                                    <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
+                                  </label>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          /* Step 3: Results summary */
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                              <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>Resultado del Análisis</span>
+                              {isAdmin && (
+                                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                                  <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                                    onClick={() => handleAnalyzeCv(c.id)} disabled={analyzingCv}>
+                                    {analyzingCv ? 'Analizando...' : 'Re-analizar'}
+                                  </button>
+                                  <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
+                                    Cambiar CV
+                                    <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+                            {(() => {
+                              let a = c.cvAnalysis;
+                              if (typeof a === 'string') { try { a = JSON.parse(a); } catch (_e) { a = null; } }
+                              if (!a) return <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos de análisis</p>;
+                              return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                  {a.resumenEjecutivo && <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>{a.resumenEjecutivo}</p>}
+                                  {a.matchPercentage != null && (
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <span style={{ padding: '0.3rem 0.8rem', borderRadius: 20, fontWeight: 700, fontSize: '0.9rem',
+                                        background: a.matchPercentage >= 70 ? 'rgba(16,185,129,0.1)' : a.matchPercentage >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                                        color: a.matchPercentage >= 70 ? 'var(--success)' : a.matchPercentage >= 40 ? 'var(--warning)' : 'var(--danger)',
+                                      }}>Coincidencia: {a.matchPercentage}%</span>
+                                    </div>
+                                  )}
+                                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>Ver informe completo en la Tarjeta de Puntuación</p>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

@@ -287,6 +287,10 @@ export class RecruitmentService {
     const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
     candidate.cvUrl = cvUrl;
+    // Auto-advance stage to cv_review when CV is uploaded
+    if (candidate.stage === CandidateStage.REGISTERED) {
+      candidate.stage = CandidateStage.CV_REVIEW;
+    }
     return this.candidateRepo.save(candidate);
   }
 
