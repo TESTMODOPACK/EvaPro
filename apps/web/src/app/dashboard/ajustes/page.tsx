@@ -18,6 +18,27 @@ const labelStyle: React.CSSProperties = {
 
 type SettingsTab = 'perfil' | 'organizacion' | 'notificaciones';
 
+function Toggle({ value, onChange, size = 'md' }: { value: boolean; onChange: () => void; size?: 'sm' | 'md' }) {
+  const w = size === 'sm' ? 38 : 44;
+  const h = size === 'sm' ? 22 : 24;
+  const dot = size === 'sm' ? 18 : 20;
+  return (
+    <button type="button" onClick={onChange} style={{
+      width: `${w}px`, height: `${h}px`, borderRadius: `${h / 2}px`, border: 'none', cursor: 'pointer',
+      background: value ? 'var(--accent)' : 'var(--border)',
+      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+    }}>
+      <span style={{
+        position: 'absolute', top: '2px',
+        left: value ? `${w - dot - 2}px` : '2px',
+        width: `${dot}px`, height: `${dot}px`, borderRadius: '50%',
+        background: '#fff', transition: 'left 0.2s',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+      }} />
+    </button>
+  );
+}
+
 export default function AjustesPage() {
   const { t } = useTranslation();
   const { data: user, isLoading } = useCurrentUser();
@@ -160,27 +181,6 @@ export default function AjustesPage() {
       { id: 'notificaciones' as SettingsTab, label: 'Notificaciones', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0', adminOnly: true },
     ] : []),
   ];
-
-  const Toggle = ({ value, onChange, size = 'md' }: { value: boolean; onChange: () => void; size?: 'sm' | 'md' }) => {
-    const w = size === 'sm' ? 38 : 44;
-    const h = size === 'sm' ? 22 : 24;
-    const dot = size === 'sm' ? 18 : 20;
-    return (
-      <button type="button" onClick={onChange} style={{
-        width: `${w}px`, height: `${h}px`, borderRadius: `${h / 2}px`, border: 'none', cursor: 'pointer',
-        background: value ? 'var(--accent)' : 'var(--border)',
-        position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-      }}>
-        <span style={{
-          position: 'absolute', top: '2px',
-          left: value ? `${w - dot - 2}px` : '2px',
-          width: `${dot}px`, height: `${dot}px`, borderRadius: '50%',
-          background: '#fff', transition: 'left 0.2s',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-        }} />
-      </button>
-    );
-  };
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>
