@@ -212,13 +212,13 @@ export class SubscriptionsService {
     // Prefer active/trial, fallback to most recent
     let sub = await this.subRepo.findOne({
       where: { tenantId, status: In(['active', 'trial']) },
-      relations: ['plan'],
+      relations: ['plan', 'tenant'],
       order: { createdAt: 'DESC' },
     });
     if (!sub) {
       sub = await this.subRepo.findOne({
         where: { tenantId },
-        relations: ['plan'],
+        relations: ['plan', 'tenant'],
         order: { createdAt: 'DESC' },
       });
     }
