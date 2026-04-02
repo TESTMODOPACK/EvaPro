@@ -245,9 +245,9 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/postulantes', label: t('nav.applicants', 'Procesos de Selección'), icon: icons.recruitment },
       ],
     }] : []),
-    // ─── Personas y Configuración ───────────────────────────────
-    {
-      title: t('nav.config', 'Configuración'),
+    // ─── Personas ───────────────────────────────────────────────
+    ...(isAdminOrManager ? [{
+      title: t('nav.people', 'Personas'),
       items: [
         ...(isAdmin ? [
           { href: '/dashboard/usuarios', label: t('nav.users', 'Usuarios'), icon: icons.users },
@@ -255,11 +255,23 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         ...(isAdminOrManager ? [
           { href: '/dashboard/dei', label: t('nav.dei', 'Diversidad e Inclusión'), icon: icons.orgDevelopment },
         ] : []),
+      ],
+    }] : []),
+    // ─── Operaciones ──────────────────────────────────────────────
+    ...(isAdmin ? [{
+      title: t('nav.operations', 'Operaciones'),
+      items: [
+        { href: '/dashboard/solicitudes', label: t('nav.approvals', 'Solicitudes Administrativas'), icon: icons.log },
+        { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.log },
+      ],
+    }] : []),
+    // ─── Configuración ────────────────────────────────────────────
+    {
+      title: t('nav.config', 'Configuración'),
+      items: [
         ...(isAdmin ? [
           { href: '/dashboard/plantillas', label: t('nav.templates', 'Plantillas'), icon: icons.templates },
           { href: '/dashboard/mantenedores', label: t('nav.customData', 'Mantenedores'), icon: icons.settings },
-          { href: '/dashboard/solicitudes', label: t('nav.requests', 'Solicitudes'), icon: icons.log },
-          { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoria'), icon: icons.log },
         ] : []),
         { href: '/dashboard/mi-suscripcion', label: t('nav.subscription', 'Mi Suscripción'), icon: icons.subscription },
         { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },
