@@ -155,10 +155,11 @@ export default function MiSuscripcionPage() {
     setReqLoading(true);
     setReqError('');
     try {
+      const [targetCode, targetPeriod] = (reqTargetPlan || '').split('|');
       await api.subscriptions.createRequest(token, {
         type: reqType,
-        targetPlan: reqType === 'plan_change' ? reqTargetPlan : undefined,
-        targetBillingPeriod: reqType === 'plan_change' ? reqBillingPeriod : undefined,
+        targetPlan: reqType === 'plan_change' ? targetCode : undefined,
+        targetBillingPeriod: reqType === 'plan_change' ? (targetPeriod || 'monthly') : undefined,
         notes: reqNotes || undefined,
       });
       setShowRequestForm(false);
@@ -505,37 +506,92 @@ export default function MiSuscripcionPage() {
                     <>
                       <div>
                         <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
-                          Plan deseado
+                          Plan deseado (incluye período de facturación)
                         </label>
                         <select
                           value={reqTargetPlan}
-                          onChange={(e) => setReqTargetPlan(e.target.value)}
+                          onChange={(e) => {
+                            setReqTargetPlan(e.target.value);
+                            // Extract billing period from the selected value
+                            const [, period] = (e.target.value || '').split('|');
+                            if (period) setReqBillingPeriod(period);
+                          }}
                           className="input"
                           style={{ width: '100%' }}
                           required
                         >
-                          <option value="">Seleccionar plan...</option>
-                          {plans.filter((p: any) => p.code !== plan.code).map((p: any) => (
-                            <option key={p.id} value={p.code}>{p.name}</option>
-                          ))}
+                          <option value="">Seleccionar plan y período...</option>
+                          {plans
+                            .filter((p: any) => p.isActive)
+                            .flatMap((p: any) => {
+                              const cur = p.currency || 'UF';
+                              const options: { value: string; label: string }[] = [];
+                              if (p.monthlyPrice > 0) options.push({ value: `${p.code}|monthly`, label: `${p.name} — Mensual (${Number(p.monthlyPrice).toFixed(1)} ${cur}/mes)` });
+                              if (p.quarterlyPrice > 0) options.push({ value: `${p.code}|quarterly`, label: `${p.name} — Trimestral (${Number(p.quarterlyPrice).toFixed(1)} ${cur}/trim)` });
+                              if (p.semiannualPrice > 0) options.push({ value: `${p.code}|semiannual`, label: `${p.name} — Semestral (${Number(p.semiannualPrice).toFixed(1)} ${cur}/sem)` });
+                              if (p.yearlyPrice > 0) options.push({ value: `${p.code}|annual`, label: `${p.name} — Anual (${Number(p.yearlyPrice).toFixed(1)} ${cur}/año)` });
+                              if (options.length === 0) options.push({ value: `${p.code}|monthly`, label: `${p.name} — Consultar precio` });
+                              return options;
+                            })
+                            .map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))
+                          }
                         </select>
                       </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
-                          Período de facturación
-                        </label>
-                        <select
-                          value={reqBillingPeriod}
-                          onChange={(e) => setReqBillingPeriod(e.target.value)}
-                          className="input"
-                          style={{ width: '100%' }}
-                        >
-                          <option value="monthly">Mensual</option>
-                          <option value="quarterly">Trimestral (-10%)</option>
-                          <option value="semiannual">Semestral (-15%)</option>
-                          <option value="annual">Anual (-20%)</option>
-                        </select>
-                      </div>
+
+                      {/* Comparison: selected plan vs current plan */}
+                      {reqTargetPlan && (() => {
+                        const [targetCode] = reqTargetPlan.split('|');
+                        const targetPlan = plans.find((p: any) => p.code === targetCode);
+                        if (!targetPlan) return null;
+                        const currentFeatures = new Set(plan.features || []);
+                        const targetFeatures = targetPlan.features || [];
+                        const newFeatures = targetFeatures.filter((f: string) => !currentFeatures.has(f));
+                        const removedFeatures = (plan.features || []).filter((f: string) => !targetFeatures.includes(f));
+                        const isUpgrade = targetFeatures.length > (plan.features || []).length;
+                        return (
+                          <div style={{ padding: '1rem', background: isUpgrade ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)', border: `1px solid ${isUpgrade ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`, borderRadius: 'var(--radius-sm, 6px)' }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: isUpgrade ? 'var(--success)' : 'var(--warning)' }}>
+                              {isUpgrade ? '▲ Upgrade' : '▼ Downgrade'}: {plan.name} → {targetPlan.name}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.78rem' }}>
+                              <div>
+                                <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Max empleados</div>
+                                <div>{plan.maxEmployees} → <strong>{targetPlan.maxEmployees}</strong></div>
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Informes IA/mes</div>
+                                <div>{plan.maxAiCallsPerMonth ?? 0} → <strong>{targetPlan.maxAiCallsPerMonth ?? 0}</strong></div>
+                              </div>
+                            </div>
+                            {newFeatures.length > 0 && (
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--success)', marginBottom: '0.2rem' }}>Funcionalidades que ganas:</div>
+                                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                                  {newFeatures.map((f: string) => (
+                                    <span key={f} style={{ padding: '0.15rem 0.5rem', background: 'rgba(16,185,129,0.1)', borderRadius: '999px', fontSize: '0.7rem', color: 'var(--success)', fontWeight: 600 }}>
+                                      + {featureLabels[f] || f}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {removedFeatures.length > 0 && (
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--danger)', marginBottom: '0.2rem' }}>Funcionalidades que pierdes:</div>
+                                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                                  {removedFeatures.map((f: string) => (
+                                    <span key={f} style={{ padding: '0.15rem 0.5rem', background: 'rgba(239,68,68,0.1)', borderRadius: '999px', fontSize: '0.7rem', color: 'var(--danger)', fontWeight: 600 }}>
+                                      - {featureLabels[f] || f}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
