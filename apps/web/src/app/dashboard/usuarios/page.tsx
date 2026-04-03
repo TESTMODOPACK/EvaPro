@@ -9,6 +9,7 @@ import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import { useDepartments } from '@/hooks/useDepartments';
+import { formatRutInput, validateRut, normalizeRut } from '@/lib/rut';
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -38,6 +39,7 @@ const emptyForm = {
   email: '',
   firstName: '',
   lastName: '',
+  rut: '',
   password: '',
   role: 'employee',
   department: '',
@@ -149,6 +151,10 @@ export default function UsuariosPage() {
 
   const handleCreate = async () => {
     if (!form.email || !form.firstName || !form.lastName || (!editingId && !form.password)) return;
+    if (form.rut && !validateRut(form.rut)) {
+      setErrorMsg('RUT invalido. Verifica el formato (ej: 12.345.678-9)');
+      return;
+    }
     setErrorMsg('');
 
     // Check limit before creating
@@ -157,12 +163,15 @@ export default function UsuariosPage() {
       return;
     }
 
+    const rutValue = form.rut ? normalizeRut(form.rut) : undefined;
+
     setCreating(true);
     try {
       if (editingId) {
         const data: any = {
           firstName: form.firstName,
           lastName: form.lastName,
+          rut: rutValue || undefined,
           role: form.role,
           department: form.department || undefined,
           position: form.position || undefined,
@@ -175,6 +184,7 @@ export default function UsuariosPage() {
           email: form.email,
           firstName: form.firstName,
           lastName: form.lastName,
+          rut: rutValue || undefined,
           password: form.password,
           role: form.role,
           department: form.department || null,
@@ -198,6 +208,7 @@ export default function UsuariosPage() {
       email: u.email,
       firstName: u.firstName || '',
       lastName: u.lastName || '',
+      rut: u.rut ? formatRutInput(u.rut) : '',
       password: '',
       role: u.role || 'employee',
       department: u.department || '',
@@ -253,9 +264,9 @@ export default function UsuariosPage() {
 
   // Download CSV template (Spanish column names mapped to backend English names)
   const downloadTemplate = () => {
-    const header = 'correo,nombre,apellido,contrasena,rol,departamento,cargo,fecha_ingreso,jefatura_directa';
-    const example1 = 'juan.perez@empresa.cl,Juan,Perez,Clave123!,colaborador,Tecnologia,Desarrollador,15-01-2024,maria.garcia@empresa.cl';
-    const example2 = 'maria.garcia@empresa.cl,Maria,Garcia,Clave123!,encargado_equipo,Ventas,Jefa de Ventas,01-06-2023,';
+    const header = 'correo,nombre,apellido,rut,contrasena,rol,departamento,cargo,fecha_ingreso,jefatura_directa';
+    const example1 = 'juan.perez@empresa.cl,Juan,Perez,12345678-9,Clave123!,colaborador,Tecnologia,Desarrollador,15-01-2024,maria.garcia@empresa.cl';
+    const example2 = 'maria.garcia@empresa.cl,Maria,Garcia,98765432-1,Clave123!,encargado_equipo,Ventas,Jefa de Ventas,01-06-2023,';
     const example3 = 'carlos.lopez@empresa.cl,Carlos,Lopez,,colaborador,RRHH,Analista,,maria.garcia@empresa.cl';
     const csv = [header, example1, example2, example3].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -271,6 +282,7 @@ export default function UsuariosPage() {
     correo: 'email', email: 'email',
     nombre: 'first_name', first_name: 'first_name',
     apellido: 'last_name', last_name: 'last_name',
+    rut: 'rut',
     contrasena: 'password', password: 'password',
     rol: 'role', role: 'role',
     departamento: 'department', department: 'department',
@@ -325,8 +337,8 @@ export default function UsuariosPage() {
     const dateIdx = mappedHeader.indexOf('hire_date');
 
     // Prepare department validation (case-insensitive, accent-insensitive)
-    const normStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const validDeptSet = new Set((configuredDepartments || []).map(normStr));
+    const deptMatch = (a: string, b: string) => (a || '').localeCompare(b || '', undefined, { sensitivity: 'base' }) === 0;
+    const validDepts = configuredDepartments || [];
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const dateRegex = /^\d{2}-\d{2}-\d{4}$/;
@@ -375,7 +387,7 @@ export default function UsuariosPage() {
 
       // Validate department against configured list
       if (deptIdx >= 0 && cols[deptIdx]) {
-        if (!validDeptSet.has(normStr(cols[deptIdx]))) {
+        if (!validDepts.some((d) => deptMatch(d, cols[deptIdx]))) {
           errors.push(`Fila ${rowNum}: Departamento no valido: "${cols[deptIdx]}". Valores permitidos: ${(configuredDepartments || []).join(', ')}.`);
         }
       }
@@ -597,21 +609,31 @@ export default function UsuariosPage() {
               />
             </div>
             <div>
-              <label style={labelStyle}>Nombre *</label>
+              <label style={labelStyle}>Nombres *</label>
               <input
                 style={inputStyle}
-                placeholder="Nombre"
+                placeholder="Nombres"
                 value={form.firstName}
                 onChange={(e) => updateField('firstName', e.target.value)}
               />
             </div>
             <div>
-              <label style={labelStyle}>Apellido *</label>
+              <label style={labelStyle}>Apellidos *</label>
               <input
                 style={inputStyle}
-                placeholder="Apellido"
+                placeholder="Apellidos"
                 value={form.lastName}
                 onChange={(e) => updateField('lastName', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>RUT</label>
+              <input
+                style={inputStyle}
+                placeholder="Ej: 12.345.678-9"
+                value={form.rut}
+                onChange={(e) => updateField('rut', formatRutInput(e.target.value))}
+                maxLength={12}
               />
             </div>
             <div>
@@ -782,8 +804,9 @@ export default function UsuariosPage() {
                 <tbody>
                   {[
                     ['correo', 'Si', 'Correo electrónico del usuario', 'juan@empresa.cl'],
-                    ['nombre', 'Si', 'Nombre del usuario', 'Juan'],
-                    ['apellido', 'Si', 'Apellido del usuario', 'Perez'],
+                    ['nombre', 'Si', 'Nombres del usuario', 'Juan'],
+                    ['apellido', 'Si', 'Apellidos del usuario', 'Perez'],
+                    ['rut', 'No', 'RUT del usuario (sin puntos ni guion)', '12345678-9'],
                     ['contrasena', 'No', 'Si se deja vacía, se asigna: EvaPro2026!', 'MiClave123!'],
                     ['rol', 'No', 'Ver tabla de roles abajo. Default: colaborador', 'colaborador'],
                     ['departamento', 'No', 'Área o departamento de trabajo', 'Tecnologia'],
@@ -870,8 +893,9 @@ export default function UsuariosPage() {
                     <thead>
                       <tr>
                         <th>Correo</th>
-                        <th>Nombre</th>
-                        <th>Apellido</th>
+                        <th>Nombres</th>
+                        <th>Apellidos</th>
+                        <th>RUT</th>
                         <th>Rol</th>
                         <th>Departamento</th>
                       </tr>
@@ -1048,6 +1072,7 @@ export default function UsuariosPage() {
                           <div>
                             <div style={{ fontWeight: 600, color: 'var(--accent)', fontSize: '0.875rem' }}>{fullName}</div>
                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{u.email}</div>
+                            {u.rut && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>RUT: {u.rut}</div>}
                           </div>
                         </div>
                       </td>

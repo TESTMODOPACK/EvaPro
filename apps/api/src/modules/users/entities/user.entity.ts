@@ -28,6 +28,9 @@ export class User {
   @Column({ type: 'varchar', length: 100, name: 'last_name' })
   lastName: string;
 
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  rut: string | null;
+
   @Column({ type: 'varchar', length: 50 })
   role: string; // 'super_admin' | 'tenant_admin' | 'manager' | 'employee' | 'external'
 

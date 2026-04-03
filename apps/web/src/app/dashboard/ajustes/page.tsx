@@ -148,7 +148,7 @@ export default function AjustesPage() {
     e.preventDefault();
     if (!user?.id) return;
     try {
-      await updateUser.mutateAsync({ id: user.id, data: { firstName, lastName, position } });
+      await updateUser.mutateAsync({ id: user.id, data: { position } });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {}
@@ -266,26 +266,33 @@ export default function AjustesPage() {
             <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
+                  <label style={labelStyle}>Nombres</label>
+                  <input className="input" type="text" value={firstName} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Apellidos</label>
+                  <input className="input" type="text" value={lastName} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                </div>
+                <div>
                   <label style={labelStyle}>{t('settings.profile.email')}</label>
                   <input className="input" type="email" value={user?.email || ''} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>RUT</label>
+                  <input className="input" type="text" value={(user as any)?.rut || 'No registrado'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed', fontFamily: 'monospace' }} />
                 </div>
                 <div>
                   <label style={labelStyle}>{t('settings.profile.role')}</label>
                   <input className="input" type="text" value={user?.role ? getRoleLabel(user.role) : ''} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>{t('settings.profile.firstName')}</label>
-                  <input className="input" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                </div>
-                <div>
-                  <label style={labelStyle}>{t('settings.profile.lastName')}</label>
-                  <input className="input" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                  <label style={labelStyle}>Cargo</label>
+                  <input className="input" type="text" placeholder="Tu cargo" value={position} onChange={(e) => setPosition(e.target.value)} />
                 </div>
               </div>
-              <div>
-                <label style={labelStyle}>{t('settings.profile.position')}</label>
-                <input className="input" type="text" placeholder={t('settings.profile.positionPlaceholder')} value={position} onChange={(e) => setPosition(e.target.value)} />
-              </div>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+                Los datos personales (nombres, apellidos, RUT) son gestionados por el administrador de tu organizacion.
+              </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <button type="submit" className="btn-primary" disabled={updateUser.isPending} style={{ opacity: updateUser.isPending ? 0.6 : 1 }}>
                   {updateUser.isPending ? t('common.saving') : t('common.save')}

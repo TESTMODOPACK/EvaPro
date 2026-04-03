@@ -17,7 +17,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { looksLikeRut, normalizeRut } from '../../common/utils/rut-validator';
+import { looksLikeRut, normalizeRut, validateRut } from '../../common/utils/rut-validator';
 
 @Injectable()
 export class UsersService {
@@ -179,6 +179,7 @@ export class UsersService {
       firstName: dto.firstName,
       lastName: dto.lastName,
       passwordHash,
+      rut: dto.rut || null,
       role: dto.role ?? 'employee',
       managerId: dto.managerId,
       department: dto.department,
@@ -202,8 +203,11 @@ export class UsersService {
     if (dto.password) {
       user.passwordHash = await bcrypt.hash(dto.password, 12);
     }
-    if (dto.firstName !== undefined) user.firstName = dto.firstName;
-    if (dto.lastName !== undefined) user.lastName = dto.lastName;
+    // Only admins can change name fields and RUT
+    const canEditIdentity = callerRole === 'super_admin' || callerRole === 'tenant_admin';
+    if (dto.firstName !== undefined && canEditIdentity) user.firstName = dto.firstName;
+    if (dto.lastName !== undefined && canEditIdentity) user.lastName = dto.lastName;
+    if (dto.rut !== undefined && canEditIdentity) user.rut = dto.rut || null;
     if (dto.email !== undefined) user.email = dto.email;
     // Only super_admin and tenant_admin can change roles
     if (dto.role !== undefined) {
@@ -298,6 +302,7 @@ export class UsersService {
     const positionIdx = header.indexOf('position');
     const managerEmailIdx = header.indexOf('manager_email');
     const hireDateIdx = header.indexOf('hire_date');
+    const rutIdx = header.indexOf('rut');
 
     if (emailIdx === -1 || firstNameIdx === -1 || lastNameIdx === -1) {
       saved.status = ImportStatus.FAILED;
@@ -360,6 +365,18 @@ export class UsersService {
           }
         }
 
+        // Validate and normalize RUT if provided
+        let parsedRut: string | null = null;
+        const rawRut = rutIdx >= 0 ? (cols[rutIdx] || '').trim() : '';
+        if (rawRut) {
+          const normalized = normalizeRut(rawRut);
+          if (!validateRut(normalized)) {
+            errors.push({ row: rowNum, message: `RUT inválido: ${rawRut}` });
+            continue;
+          }
+          parsedRut = normalized;
+        }
+
         const tempPassword = 'EvaPro2026!';
         const passwordHash = await bcrypt.hash(tempPassword, 10);
 
@@ -372,6 +389,7 @@ export class UsersService {
             passwordHash,
             role,
             managerId,
+            rut: parsedRut,
             department: department || undefined,
             position: positionIdx >= 0 ? cols[positionIdx] : undefined,
             hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
