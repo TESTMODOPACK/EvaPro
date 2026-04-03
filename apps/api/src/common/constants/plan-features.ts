@@ -5,7 +5,7 @@
  * Plan → Feature mapping:
  *   Starter : EVAL_90_180, BASIC_REPORTS
  *   Growth  : all Starter + EVAL_270, OKR, FEEDBACK, CHECKINS, TEMPLATES_CUSTOM
- *   Pro     : all Growth + EVAL_360, ADVANCED_REPORTS, PDI, NINE_BOX, CALIBRATION
+ *   Pro     : all Growth + EVAL_360, ADVANCED_REPORTS, PDI, NINE_BOX, CALIBRATION, AUDIT_LOG, DEI
  *   Enterprise: all Pro + AI_INSIGHTS, PUBLIC_API
  */
 export const PlanFeature = {
@@ -30,6 +30,10 @@ export const PlanFeature = {
 
   // Engagement
   ENGAGEMENT_SURVEYS: 'ENGAGEMENT_SURVEYS',
+
+  // Compliance & Analytics
+  AUDIT_LOG: 'AUDIT_LOG',
+  DEI: 'DEI',
 
   // Enterprise
   AI_INSIGHTS: 'AI_INSIGHTS',
@@ -71,6 +75,8 @@ export const PLAN_FEATURES = {
     PlanFeature.CALIBRATION,
     PlanFeature.POSTULANTS,
     PlanFeature.ENGAGEMENT_SURVEYS,
+    PlanFeature.AUDIT_LOG,
+    PlanFeature.DEI,
   ],
   enterprise: [
     PlanFeature.EVAL_90_180,
@@ -87,6 +93,8 @@ export const PLAN_FEATURES = {
     PlanFeature.CALIBRATION,
     PlanFeature.POSTULANTS,
     PlanFeature.ENGAGEMENT_SURVEYS,
+    PlanFeature.AUDIT_LOG,
+    PlanFeature.DEI,
     PlanFeature.AI_INSIGHTS,
     PlanFeature.PUBLIC_API,
   ],

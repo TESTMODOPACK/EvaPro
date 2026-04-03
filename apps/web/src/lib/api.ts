@@ -224,11 +224,15 @@ export const api = {
   },
 
   auditLogs: {
-    list: (token: string, page = 1, limit = 50, action?: string, tenantId?: string) => {
-      let url = `/audit-logs?page=${page}&limit=${limit}`;
-      if (action) url += `&action=${encodeURIComponent(action)}`;
-      if (tenantId) url += `&tenantId=${tenantId}`;
-      return request<any>(url, {}, token);
+    list: (token: string, page = 1, limit = 50, filters?: { action?: string; tenantId?: string; dateFrom?: string; dateTo?: string; entityType?: string; searchText?: string }) => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (filters?.action) params.set('action', filters.action);
+      if (filters?.tenantId) params.set('tenantId', filters.tenantId);
+      if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters?.dateTo) params.set('dateTo', filters.dateTo);
+      if (filters?.entityType) params.set('entityType', filters.entityType);
+      if (filters?.searchText) params.set('searchText', filters.searchText);
+      return request<any>(`/audit-logs?${params.toString()}`, {}, token);
     },
     tenant: (token: string, filters: { page?: number; limit?: number; dateFrom?: string; dateTo?: string; action?: string; entityType?: string; evidenceOnly?: boolean; searchText?: string } = {}) => {
       const params = new URLSearchParams();

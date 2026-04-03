@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, LessThan, In } from 'typeorm';
 import { AuditLog } from './entities/audit-log.entity';
+import { User } from '../users/entities/user.entity';
 
 const EVIDENCE_ACTIONS = [
   'objective.approved', 'objective.rejected',
@@ -20,6 +21,8 @@ export class AuditService {
   constructor(
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   async log(
@@ -46,24 +49,62 @@ export class AuditService {
   async findAll(
     page: number,
     limit: number,
-    action?: string,
-    tenantId?: string,
-  ): Promise<{ data: AuditLog[]; total: number; page: number; limit: number }> {
+    filters?: { action?: string; tenantId?: string; dateFrom?: string; dateTo?: string; entityType?: string; searchText?: string },
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const qb = this.auditRepo.createQueryBuilder('log');
 
-    if (action) {
-      qb.andWhere('log.action ILIKE :action', { action: `%${action}%` });
+    if (filters?.action) {
+      qb.andWhere('log.action ILIKE :action', { action: `%${filters.action}%` });
     }
-    if (tenantId) {
-      qb.andWhere('log.tenantId = :tenantId', { tenantId });
+    if (filters?.tenantId) {
+      qb.andWhere('log.tenantId = :tenantId', { tenantId: filters.tenantId });
+    }
+    if (filters?.dateFrom) {
+      qb.andWhere('log.createdAt >= :dateFrom', { dateFrom: filters.dateFrom });
+    }
+    if (filters?.dateTo) {
+      qb.andWhere('log.createdAt <= :dateTo', { dateTo: `${filters.dateTo}T23:59:59` });
+    }
+    if (filters?.entityType) {
+      qb.andWhere('log.entityType = :entityType', { entityType: filters.entityType });
     }
 
     qb.orderBy('log.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 
-    const [data, total] = await qb.getManyAndCount();
-    return { data, total, page, limit };
+    const [rawData, total] = await qb.getManyAndCount();
+
+    // Enrich with user info
+    const userIds = [...new Set(rawData.filter(l => l.userId).map(l => l.userId))];
+    const userMap = new Map<string, { firstName: string; lastName: string; email: string }>();
+    if (userIds.length > 0) {
+      const users = await this.userRepo.find({
+        where: userIds.map(id => ({ id })),
+        select: ['id', 'email', 'firstName', 'lastName'],
+      });
+      for (const u of users) userMap.set(u.id, u);
+    }
+
+    // Filter by searchText (user name/email) after enrichment
+    let data = rawData.map(log => {
+      const u = log.userId ? userMap.get(log.userId) : null;
+      return {
+        ...log,
+        userName: u ? `${u.firstName} ${u.lastName}` : null,
+        userEmail: u?.email || null,
+      };
+    });
+
+    if (filters?.searchText) {
+      const search = filters.searchText.toLowerCase();
+      data = data.filter(d =>
+        (d.userName && d.userName.toLowerCase().includes(search)) ||
+        (d.userEmail && d.userEmail.toLowerCase().includes(search))
+      );
+    }
+
+    return { data, total: filters?.searchText ? data.length : total, page, limit };
   }
 
   async findByTenant(

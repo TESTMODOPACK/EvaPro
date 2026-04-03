@@ -11,6 +11,8 @@ export const ROUTE_FEATURE_MAP: Record<string, string> = {
   '/dashboard/insights': 'AI_INSIGHTS',
   '/dashboard/encuestas-clima': 'ENGAGEMENT_SURVEYS',
   '/dashboard/analytics': 'ADVANCED_REPORTS',
+  '/dashboard/auditoria': 'AUDIT_LOG',
+  '/dashboard/dei': 'DEI',
 };
 
 /**
@@ -30,6 +32,8 @@ export const FEATURE_MIN_PLAN: Record<string, string> = {
   NINE_BOX: 'Pro',
   CALIBRATION: 'Pro',
   POSTULANTS: 'Pro',
+  AUDIT_LOG: 'Pro',
+  DEI: 'Pro',
   AI_INSIGHTS: 'Enterprise',
   PUBLIC_API: 'Enterprise',
 };
@@ -52,6 +56,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   CALIBRATION: 'Calibracion',
   POSTULANTS: 'Evaluacion de Postulantes',
   ENGAGEMENT_SURVEYS: 'Encuestas de Clima',
+  AUDIT_LOG: 'Registro de Auditoria',
+  DEI: 'Diversidad e Inclusion',
   AI_INSIGHTS: 'Informes IA',
   PUBLIC_API: 'API publica',
 };

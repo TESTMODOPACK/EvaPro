@@ -19,7 +19,7 @@ import { AuditService } from './audit.service';
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
-  // Super admin: all logs
+  // Super admin: all logs with advanced filters
   @Get()
   @Roles('super_admin')
   findAll(
@@ -27,8 +27,12 @@ export class AuditController {
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('action') action?: string,
     @Query('tenantId') tenantId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('entityType') entityType?: string,
+    @Query('searchText') searchText?: string,
   ) {
-    return this.auditService.findAll(page, limit, action, tenantId);
+    return this.auditService.findAll(page, limit, { action, tenantId, dateFrom, dateTo, entityType, searchText });
   }
 
   // Tenant admin: own organization logs with advanced filters
