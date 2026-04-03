@@ -34,7 +34,7 @@ const FEATURE_OPTIONS = [
   { key: 'EVAL_90_180', label: 'Evaluaciones 90/180' },
   { key: 'EVAL_270', label: 'Evaluaciones 270' },
   { key: 'EVAL_360', label: 'Evaluaciones 360' },
-  { key: 'BASIC_REPORTS', label: 'Reportes basicos' },
+  { key: 'BASIC_REPORTS', label: 'Reportes básicos' },
   { key: 'ADVANCED_REPORTS', label: 'Reportes avanzados' },
   { key: 'OKR', label: 'OKRs / Objetivos' },
   { key: 'FEEDBACK', label: 'Feedback continuo' },

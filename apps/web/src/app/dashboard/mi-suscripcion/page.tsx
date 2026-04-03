@@ -21,7 +21,7 @@ const featureLabels: Record<string, string> = {
   POSTULANTS: 'Evaluación de Postulantes',
   ENGAGEMENT_SURVEYS: 'Encuestas de Clima',
   AUDIT_LOG: 'Registro de Auditoria',
-  DEI: 'Diversidad e Inclusion',
+  DEI: 'Diversidad e Inclusión',
   AI_INSIGHTS: 'Análisis con IA',
   PUBLIC_API: 'API publica',
 };
