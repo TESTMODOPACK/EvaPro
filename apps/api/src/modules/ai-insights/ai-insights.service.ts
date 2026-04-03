@@ -123,46 +123,25 @@ export class AiInsightsService {
     if (hasAiFeature && limit <= 0) limit = 100;
 
     // Calculate current billing period based on subscription startDate
-    // The monthly cycle starts on the same day-of-month as the subscription start
+    // Use first day of current month as period start (simpler, no timezone issues)
     const now = new Date();
-    const startDay = new Date(sub.startDate).getDate(); // day of month the sub started
-
-    let periodStart: Date;
-    let periodEnd: Date;
-
-    // If we haven't reached the start day this month, the period began last month
-    if (now.getDate() >= startDay) {
-      periodStart = new Date(now.getFullYear(), now.getMonth(), startDay);
-      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, startDay);
-    } else {
-      periodStart = new Date(now.getFullYear(), now.getMonth() - 1, startDay);
-      periodEnd = new Date(now.getFullYear(), now.getMonth(), startDay);
-    }
+    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
     return { limit, periodStart, periodEnd };
   }
 
-  /** Count AI calls for the current billing period */
+  /** Count AI calls for the current billing period (calendar month in UTC) */
   private async getMonthlyCallCount(tenantId: string): Promise<{ used: number; periodStart: Date; periodEnd: Date; limit: number }> {
     const { limit, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
 
-    // Count insights created after periodStart
+    // Count insights created in current period (calendar month)
     const used = await this.insightRepo.count({
       where: { tenantId, createdAt: MoreThan(periodStart) },
     });
 
-    // Also count this month as sanity check
-    const now = new Date();
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthlyCount = await this.insightRepo.count({
-      where: { tenantId, createdAt: MoreThan(firstOfMonth) },
-    });
-
-    // Use the higher count to avoid underreporting
-    const effectiveUsed = Math.max(used, monthlyCount);
-
-    this.logger.log(`AI usage: tenant=${tenantId.slice(0,8)}, periodUsed=${used}, monthlyCount=${monthlyCount}, effective=${effectiveUsed}, limit=${limit}, period=${periodStart.toISOString().slice(0,10)} to ${periodEnd.toISOString().slice(0,10)}`);
-    return { used: effectiveUsed, periodStart, periodEnd, limit };
+    this.logger.log(`AI usage: tenant=${tenantId.slice(0,8)}, used=${used}, limit=${limit}, period=${periodStart.toISOString().slice(0,10)} to ${periodEnd.toISOString().slice(0,10)}`);
+    return { used, periodStart, periodEnd, limit };
   }
 
   /** Check plan-based monthly rate limit */
