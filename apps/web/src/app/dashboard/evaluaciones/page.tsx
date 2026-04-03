@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useCycles } from '@/hooks/useCycles';
 import { usePendingEvaluations, useMyCompletedEvaluations } from '@/hooks/useEvaluations';
@@ -182,7 +183,8 @@ function EmployeeEvaluationsView() {
 
 function AdminEvaluationsView() {
   const { t } = useTranslation();
-  const { data: cycles, isLoading, mutate } = useCycles() as any;
+  const queryClient = useQueryClient();
+  const { data: cycles, isLoading } = useCycles();
   const userRole = useAuthStore((s) => s.user?.role);
   const token = useAuthStore((s) => s.token)!;
   const isAdmin = userRole === 'tenant_admin';
@@ -192,6 +194,10 @@ function AdminEvaluationsView() {
     message: string; detail?: string; onConfirm: () => void;
   } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Filters
+  const [statusFilter, setStatusFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
 
   async function handleDeleteCycle(cycleId: string, cycleName: string) {
     setConfirmState({
@@ -203,7 +209,7 @@ function AdminEvaluationsView() {
         try {
           await api.cycles.remove(token, cycleId);
           toast.success(`Ciclo "${cycleName}" eliminado correctamente`);
-          if (mutate) mutate();
+          queryClient.invalidateQueries({ queryKey: ['cycles'] });
         } catch (e: any) {
           toast.error(e?.message || 'Error al eliminar el ciclo');
         } finally {
@@ -337,6 +343,37 @@ function AdminEvaluationsView() {
         </div>
       )}
 
+      {/* Filters */}
+      {cycles && cycles.length > 0 && (
+        <div className="animate-fade-up" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
+            value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Todos los estados</option>
+            <option value="draft">Borrador</option>
+            <option value="active">Activo</option>
+            <option value="paused">Pausado</option>
+            <option value="closed">Cerrado</option>
+          </select>
+          <select
+            style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
+            value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+            <option value="">Todos los años</option>
+            {Array.from(new Set((cycles || []).map((c: any) => c.startDate ? new Date(c.startDate).getFullYear().toString() : '').filter(Boolean))).sort().reverse().map((y: any) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            {(() => {
+              let f = cycles || [];
+              if (statusFilter) f = f.filter((c: any) => c.status === statusFilter);
+              if (yearFilter) f = f.filter((c: any) => c.startDate && new Date(c.startDate).getFullYear().toString() === yearFilter);
+              return `${f.length} de ${cycles.length} ciclos`;
+            })()}
+          </span>
+        </div>
+      )}
+
       {isLoading ? (
         <PageSkeleton cards={0} tableRows={4} />
       ) : !cycles || cycles.length === 0 ? (
@@ -361,7 +398,11 @@ function AdminEvaluationsView() {
           className="animate-fade-up-delay-1"
           style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}
         >
-          {cycles.map((cycle: any) => {
+          {(cycles as any[]).filter((c: any) => {
+            if (statusFilter && c.status !== statusFilter) return false;
+            if (yearFilter && c.startDate && new Date(c.startDate).getFullYear().toString() !== yearFilter) return false;
+            return true;
+          }).map((cycle: any) => {
             const startDate = cycle.startDate
               ? new Date(cycle.startDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
               : '\u2013';
