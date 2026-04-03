@@ -347,11 +347,11 @@ export default function TenantsPage() {
                   <input style={inputStyle} type="password" value={form.adminPassword} onChange={(e) => setForm({ ...form, adminPassword: e.target.value })} placeholder="********" />
                 </div>
                 <div>
-                  <label style={labelStyle}>Nombre</label>
+                  <label style={labelStyle}>Nombres</label>
                   <input style={inputStyle} value={form.adminFirstName} onChange={(e) => setForm({ ...form, adminFirstName: e.target.value })} placeholder="Juan" />
                 </div>
                 <div>
-                  <label style={labelStyle}>Apellido</label>
+                  <label style={labelStyle}>Apellidos</label>
                   <input style={inputStyle} value={form.adminLastName} onChange={(e) => setForm({ ...form, adminLastName: e.target.value })} placeholder="Perez" />
                 </div>
               </div>

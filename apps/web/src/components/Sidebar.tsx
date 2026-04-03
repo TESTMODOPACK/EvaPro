@@ -200,18 +200,19 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/evaluaciones', label: t('nav.evalCycles', 'Ciclos de Evaluación'), icon: icons.evaluations },
         ...(isAdminOrManager ? [
           { href: '/dashboard/calibracion', label: t('nav.calibration', 'Calibración'), icon: icons.calibration },
-          {
-            href: '#reportes', label: t('nav.reportsGroup', 'Reportes y Análisis'), icon: icons.reports,
-            children: [
-              { href: '/dashboard/reportes', label: t('nav.reports', 'Reportes por Colaborador'), icon: icons.reports },
-              { href: '/dashboard/informes', label: t('nav.informes', 'Informes por Colaborador'), icon: icons.reports },
-              { href: '/dashboard/analytics', label: t('nav.analytics', 'Análisis del Ciclo'), icon: icons.analytics },
-              { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },
-            ],
-          },
         ] : []),
       ],
     },
+    // ─── Reportes y Análisis ───────────────────────────────────
+    ...(isAdminOrManager ? [{
+      title: t('nav.reportsGroup', 'Reportes y Análisis'),
+      items: [
+        { href: '/dashboard/reportes', label: t('nav.reports', 'Reportes por Colaborador'), icon: icons.reports },
+        { href: '/dashboard/informes', label: t('nav.informes', 'Informes por Colaborador'), icon: icons.reports },
+        { href: '/dashboard/analytics', label: t('nav.analytics', 'Análisis del Ciclo'), icon: icons.analytics },
+        { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },
+      ],
+    }] : []),
     // ─── Desarrollo y Talento ───────────────────────────────────
     {
       title: t('nav.talentDev', 'Desarrollo y Talento'),

@@ -371,8 +371,8 @@ export default function UsuariosPage() {
       }
 
       // Validate name
-      if (!cols[fnIdx]) errors.push(`Fila ${rowNum}: Nombre vacio.`);
-      if (!cols[lnIdx]) errors.push(`Fila ${rowNum}: Apellido vacio.`);
+      if (!cols[fnIdx]) errors.push(`Fila ${rowNum}: Nombres vacío.`);
+      if (!cols[lnIdx]) errors.push(`Fila ${rowNum}: Apellidos vacío.`);
 
       // Validate role if provided
       if (roleIdx >= 0 && cols[roleIdx]) {
@@ -538,7 +538,7 @@ export default function UsuariosPage() {
           <input
             className="input"
             type="text"
-            placeholder="Nombre, apellido o email..."
+            placeholder="Nombres, apellidos o email..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{ fontSize: '0.85rem' }}

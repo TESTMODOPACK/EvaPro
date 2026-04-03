@@ -131,7 +131,7 @@ export default function AuditLogPage() {
             </label>
             <input
               style={{ ...inputStyle, width: '100%' }}
-              placeholder="Nombre o email"
+              placeholder="Nombres o email"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />

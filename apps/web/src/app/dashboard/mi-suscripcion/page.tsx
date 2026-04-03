@@ -20,6 +20,8 @@ const featureLabels: Record<string, string> = {
   CALIBRATION: 'Calibracion',
   POSTULANTS: 'Evaluacion de Postulantes',
   ENGAGEMENT_SURVEYS: 'Encuestas de Clima',
+  AUDIT_LOG: 'Registro de Auditoria',
+  DEI: 'Diversidad e Inclusion',
   AI_INSIGHTS: 'Analisis con IA',
   PUBLIC_API: 'API publica',
 };
