@@ -6,11 +6,14 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   Request,
+  Res,
   ParseUUIDPipe,
   UseGuards,
   ForbiddenException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -121,6 +124,34 @@ export class DevelopmentController {
       return this.developmentService.findPlansByManager(tenantId, userId);
     }
     return this.developmentService.findPlansByUser(tenantId, userId);
+  }
+
+  /** Export development plans in CSV, XLSX, or PDF format */
+  @Get('plans/export')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  async exportPlans(
+    @Request() req: any,
+    @Query('format') format: string,
+    @Res() res: Response,
+  ) {
+    const { tenantId, userId, role } = req.user;
+    const ext = format?.toLowerCase() || 'csv';
+
+    if (ext === 'xlsx') {
+      const buffer = await this.developmentService.exportPlansXlsx(tenantId, userId, role);
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename=planes-desarrollo.xlsx' });
+      return res.send(buffer);
+    }
+    if (ext === 'pdf') {
+      const buffer = await this.developmentService.exportPlansPdf(tenantId, userId, role);
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename=planes-desarrollo.pdf' });
+      return res.send(buffer);
+    }
+    const csv = await this.developmentService.exportPlansCsv(tenantId, userId, role);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=planes-desarrollo.csv' });
+    return res.send(csv);
   }
 
   @Get('plans/:id')

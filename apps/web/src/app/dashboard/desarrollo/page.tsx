@@ -109,6 +109,26 @@ function DesarrolloPageContent() {
     onConfirm: () => void;
   } | null>(null);
 
+  const [exporting, setExporting] = useState<string | null>(null);
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+  const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
+    if (!token) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${BASE_URL}/development/plans/export?format=${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `planes-desarrollo.${format}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {} finally { setExporting(null); }
+  };
+
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -393,7 +413,20 @@ function DesarrolloPageContent() {
             {t('desarrollo.subtitle')}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {(['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
+            <button key={fmt} type="button" disabled={!!exporting}
+              onClick={() => handleExport(fmt)}
+              style={{
+                padding: '0.35rem 0.65rem', fontSize: '0.72rem', fontWeight: 600,
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)',
+                background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)',
+                color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer',
+                opacity: exporting && exporting !== fmt ? 0.5 : 1,
+              }}>
+              {exporting === fmt ? '...' : fmt.toUpperCase()}
+            </button>
+          ))}
           <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
             {showGuide ? t('desarrollo.hideGuide') : t('desarrollo.showGuide')}
           </button>

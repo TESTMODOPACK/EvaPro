@@ -816,6 +816,25 @@ function TalentoPageContent() {
   const [loadingCycles, setLoadingCycles] = useState(true);
   const [selectedCycleId, setSelectedCycleId] = useState('');
   const [showGuide, setShowGuide] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+  const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
+    if (!token || !selectedCycleId) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${BASE_URL}/talent/cycle/${selectedCycleId}/export?format=${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `talento.${format}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {} finally { setExporting(null); }
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -830,11 +849,30 @@ function TalentoPageContent() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
     <div className="animate-fade-up">
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{t('talento.title')}</h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '.875rem', marginTop: '.25rem' }}>
-          {t('talento.subtitle')}
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+        <div>
+          <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{t('talento.title')}</h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '.875rem', marginTop: '.25rem' }}>
+            {t('talento.subtitle')}
+          </p>
+        </div>
+        {selectedCycleId && (
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            {(['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
+              <button key={fmt} type="button" disabled={!!exporting}
+                onClick={() => handleExport(fmt)}
+                style={{
+                  padding: '0.35rem 0.65rem', fontSize: '0.72rem', fontWeight: 600,
+                  border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)',
+                  background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)',
+                  color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer',
+                  opacity: exporting && exporting !== fmt ? 0.5 : 1,
+                }}>
+                {exporting === fmt ? '...' : fmt.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Guide toggle button */}

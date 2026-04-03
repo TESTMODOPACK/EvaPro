@@ -15,6 +15,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TalentService } from './talent.service';
+import { Response } from 'express';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
@@ -65,6 +66,33 @@ export class TalentController {
     const { role, userId } = req.user;
     const managerId = role === 'manager' ? userId : undefined;
     return this.talentService.getSegmentation(req.user.tenantId, cycleId, managerId);
+  }
+
+  /** Export talent assessments in CSV, XLSX, or PDF format */
+  @Get('cycle/:cycleId/export')
+  async exportTalent(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Query('format') format: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    const { tenantId, role, userId } = req.user;
+    const managerId = role === 'manager' ? userId : undefined;
+    const ext = format?.toLowerCase() || 'csv';
+
+    if (ext === 'xlsx') {
+      const buffer = await this.talentService.exportTalentXlsx(tenantId, cycleId, managerId);
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename=talento-${cycleId}.xlsx` });
+      return res.send(buffer);
+    }
+    if (ext === 'pdf') {
+      const buffer = await this.talentService.exportTalentPdf(tenantId, cycleId, managerId);
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename=talento-${cycleId}.pdf` });
+      return res.send(buffer);
+    }
+    const csv = await this.talentService.exportTalentCsv(tenantId, cycleId, managerId);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename=talento-${cycleId}.csv` });
+    return res.send(csv);
   }
 
   @Patch(':id')

@@ -633,4 +633,177 @@ export class DevelopmentService {
       suggestedCompetencies,
     };
   }
+
+  // ─── Export ────────────────────────────────────────────────────────────
+
+  private escapeCsv(val: any): string {
+    const str = String(val ?? '');
+    return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+  }
+
+  private async getExportPlans(tenantId: string, userId: string, role: string): Promise<any[]> {
+    if (role === 'tenant_admin' || role === 'super_admin') return this.findAllPlans(tenantId);
+    if (role === 'manager') return this.findPlansByManager(tenantId, userId);
+    return this.findPlansByUser(tenantId, userId);
+  }
+
+  private readonly pdiStatusLabels: Record<string, string> = {
+    borrador: 'Borrador', activo: 'Activo', pendiente_aprobacion: 'Pend. Aprobación',
+    aprobado: 'Aprobado', en_revision: 'En Revisión', completado: 'Completado', cancelado: 'Cancelado',
+  };
+
+  async exportPlansCsv(tenantId: string, userId: string, role: string): Promise<string> {
+    const plans = await this.getExportPlans(tenantId, userId, role);
+    const rows: string[] = [];
+    rows.push('Plan,Colaborador,Estado,Acciones Total,Acciones Completadas,Progreso %,Creado Por,Fecha Creación');
+    for (const p of plans) {
+      const userName = p.user ? `${p.user.firstName || ''} ${p.user.lastName || ''}`.trim() : '';
+      const creatorName = p.creator ? `${p.creator.firstName || ''} ${p.creator.lastName || ''}`.trim() : '';
+      const actions = p.actions || [];
+      const completed = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+      const progress = actions.length > 0 ? Math.round((completed / actions.length) * 100) : 0;
+      rows.push([
+        this.escapeCsv(p.title || 'Sin título'), this.escapeCsv(userName),
+        this.pdiStatusLabels[p.status] || p.status, actions.length, completed, progress,
+        this.escapeCsv(creatorName),
+        p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-CL') : '',
+      ].join(','));
+    }
+    return '\uFEFF' + rows.join('\n');
+  }
+
+  async exportPlansXlsx(tenantId: string, userId: string, role: string): Promise<Buffer> {
+    const plans = await this.getExportPlans(tenantId, userId, role);
+
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const accent = { argb: 'FFC9933A' };
+    const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+
+    // Sheet 1: Resumen
+    const ws1 = wb.addWorksheet('Resumen');
+    ws1.columns = [{ width: 25 }, { width: 15 }];
+    ws1.addRow(['Planes de Desarrollo (PDI)']).font = { bold: true, size: 14 };
+    ws1.addRow([]);
+    const total = plans.length;
+    const activos = plans.filter((p: any) => p.status === 'activo').length;
+    const completados = plans.filter((p: any) => p.status === 'completado').length;
+    ws1.addRow(['Total planes', total]);
+    ws1.addRow(['Activos', activos]);
+    ws1.addRow(['Completados', completados]);
+    ws1.addRow(['Fecha exportación', new Date().toLocaleDateString('es-CL')]);
+
+    // Sheet 2: Planes
+    const ws2 = wb.addWorksheet('Planes');
+    ws2.columns = [
+      { width: 30 }, { width: 22 }, { width: 16 }, { width: 10 },
+      { width: 12 }, { width: 12 }, { width: 22 }, { width: 14 },
+    ];
+    const h2 = ws2.addRow(['Plan', 'Colaborador', 'Estado', 'Acciones', 'Completadas', 'Progreso %', 'Creado Por', 'Fecha']);
+    h2.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    for (const p of plans) {
+      const userName = p.user ? `${p.user.firstName || ''} ${p.user.lastName || ''}`.trim() : '';
+      const creatorName = p.creator ? `${p.creator.firstName || ''} ${p.creator.lastName || ''}`.trim() : '';
+      const actions = p.actions || [];
+      const completed = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+      const progress = actions.length > 0 ? Math.round((completed / actions.length) * 100) : 0;
+      ws2.addRow([p.title || 'Sin título', userName, this.pdiStatusLabels[p.status] || p.status,
+        actions.length, completed, progress, creatorName,
+        p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-CL') : '']);
+    }
+
+    // Sheet 3: Acciones
+    const ws3 = wb.addWorksheet('Acciones');
+    ws3.columns = [{ width: 30 }, { width: 30 }, { width: 18 }, { width: 14 }, { width: 14 }, { width: 20 }];
+    const h3 = ws3.addRow(['Plan', 'Acción', 'Tipo', 'Estado', 'Vencimiento', 'Competencia']);
+    h3.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    for (const p of plans) {
+      for (const a of (p.actions || [])) {
+        ws3.addRow([
+          p.title || 'Sin título', a.title || a.description || '',
+          a.actionType || a.type || '', a.status || '',
+          a.dueDate ? new Date(a.dueDate).toLocaleDateString('es-CL') : '',
+          a.competency?.name || '',
+        ]);
+      }
+    }
+
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  async exportPlansPdf(tenantId: string, userId: string, role: string): Promise<Buffer> {
+    const plans = await this.getExportPlans(tenantId, userId, role);
+
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    // Header
+    doc.setFillColor(26, 18, 6);
+    doc.rect(0, 0, pageW, 30, 'F');
+    doc.setTextColor(245, 228, 168);
+    doc.setFontSize(16);
+    doc.text('Planes de Desarrollo (PDI)', margin, 16);
+    doc.setFontSize(9);
+    doc.setTextColor(201, 147, 58);
+    doc.text(`${plans.length} planes — ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+
+    let y = 38;
+
+    // KPIs
+    const activos = plans.filter((p: any) => p.status === 'activo').length;
+    const completados = plans.filter((p: any) => p.status === 'completado').length;
+    const kpis = [
+      { label: 'Total', value: `${plans.length}` },
+      { label: 'Activos', value: `${activos}` },
+      { label: 'Completados', value: `${completados}` },
+    ];
+    const kpiW = (pageW - 2 * margin - 2 * 4) / 3;
+    kpis.forEach((kpi, i) => {
+      const x = margin + i * (kpiW + 4);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, kpiW, 18, 2, 2, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(kpi.label, x + kpiW / 2, y + 7, { align: 'center' });
+      doc.setFontSize(12);
+      doc.setTextColor(26, 18, 6);
+      doc.text(kpi.value, x + kpiW / 2, y + 15, { align: 'center' });
+    });
+    y += 26;
+
+    // Table
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [['Plan', 'Colaborador', 'Estado', 'Acciones', 'Progreso', 'Creado Por']],
+      body: plans.map((p: any) => {
+        const userName = p.user ? `${p.user.firstName || ''} ${p.user.lastName || ''}`.trim() : '';
+        const creatorName = p.creator ? `${p.creator.firstName || ''} ${p.creator.lastName || ''}`.trim() : '';
+        const actions = p.actions || [];
+        const completed = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+        const progress = actions.length > 0 ? Math.round((completed / actions.length) * 100) : 0;
+        return [p.title || 'Sin título', userName, this.pdiStatusLabels[p.status] || p.status,
+          `${completed}/${actions.length}`, `${progress}%`, creatorName];
+      }),
+      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      bodyStyles: { fontSize: 7 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+    });
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Ascenda Performance`, margin, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
+  }
 }
