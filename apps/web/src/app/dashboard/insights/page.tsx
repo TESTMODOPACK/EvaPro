@@ -580,17 +580,17 @@ function InsightsPageContent() {
       {quota && (
         <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
           <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem',
             padding: '0.6rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem',
             background: quota.nearLimit ? 'rgba(239,68,68,0.06)' : 'rgba(201,147,58,0.06)',
             border: quota.nearLimit ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(201,147,58,0.15)',
           }}>
             <span style={{ color: quota.nearLimit ? 'var(--danger)' : 'var(--text-secondary)' }}>
               {quota.nearLimit ? '⚠️ ' : '📊 '}
-              {t('insights.quotaUsage', { used: quota.weeklyUsed, limit: quota.weeklyLimit, remaining: quota.remaining })}
+              Organización: {quota.monthlyUsed ?? 0} de {quota.monthlyLimit ?? 0} informes usados este período ({quota.monthlyRemaining ?? 0} restantes)
             </span>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {t('insights.quotaWeekly')}
+              Tu cuota personal: {quota.weeklyUsed ?? 0}/{quota.weeklyLimit ?? 0} esta semana
             </span>
           </div>
         </div>
