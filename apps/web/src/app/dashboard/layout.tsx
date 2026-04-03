@@ -69,7 +69,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { t } = useTranslation();
   const router   = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, token, user, logout } = useAuthStore();
+  const { isAuthenticated, token, user, logout, _hasHydrated } = useAuthStore();
   const { data: sub, isLoading: subLoading, isError: subError } = useMySubscription();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -80,11 +80,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [pathname]);
 
   useEffect(() => {
+    // Wait for Zustand to rehydrate from localStorage before checking auth
+    if (!_hasHydrated) return;
     if (!isAuthenticated || token === 'demo-token' || !token) {
       logout();
       router.replace('/login');
     }
-  }, [isAuthenticated, token, router, logout]);
+  }, [_hasHydrated, isAuthenticated, token, router, logout]);
 
   // Onboarding banner disabled — configuration is now handled in Ajustes (Settings)
   // The onboarding page still exists for manual access if needed.

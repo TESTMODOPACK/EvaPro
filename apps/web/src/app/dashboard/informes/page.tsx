@@ -358,7 +358,7 @@ export default function InformesPage() {
   const currentRole = useAuthStore((s) => s.user?.role);
   const toast = useToastStore();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
-  const { data: usersPage } = useUsers();
+  const { data: usersPage } = useUsers(1, 500);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
 
@@ -406,7 +406,9 @@ export default function InformesPage() {
 
   // Use configured departments from Mantenedores
   const { departments } = useDepartments();
-  const positions = Array.from(new Set(users.map((u: any) => u.position).filter(Boolean))).sort() as string[];
+  // Positions filtered by selected department (dependency: department → positions)
+  const usersForPositions = filterDepartment ? users.filter((u: any) => u.department === filterDepartment) : users;
+  const positions = Array.from(new Set(usersForPositions.map((u: any) => u.position).filter(Boolean))).sort() as string[];
   const sortedCycles = cycles
     ? [...cycles].sort((a: any, b: any) => {
         if (a.status === 'closed' && b.status !== 'closed') return -1;
@@ -549,7 +551,7 @@ export default function InformesPage() {
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Departamento</label>
-                <select style={{ ...selectStyle, minWidth: '180px' }} value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)}>
+                <select style={{ ...selectStyle, minWidth: '180px' }} value={filterDepartment} onChange={(e) => { setFilterDepartment(e.target.value); setFilterPosition(''); }}>
                   <option value="">Todos</option>
                   {departments.map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
