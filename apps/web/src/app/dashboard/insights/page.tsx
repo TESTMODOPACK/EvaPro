@@ -500,11 +500,12 @@ function InsightsPageContent() {
 
   const currentUserId = useAuthStore((s) => s.user?.userId);
   const { data: cycles, isLoading: loadingCycles } = useCycles();
-  const { data: usersPage } = useUsers();
+  const { data: usersPage } = useUsers(1, 500);
 
   const token = useAuthStore((s) => s.token);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedDept, setSelectedDept] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('summary');
   const [showGuide, setShowGuide] = useState(false);
   const [quota, setQuota] = useState<any>(null);
@@ -517,9 +518,15 @@ function InsightsPageContent() {
 
   const allUsers = usersPage?.data || [];
   // Managers only see their direct reports; admins see all
-  const users = role === 'manager'
+  const scopedUsers = role === 'manager'
     ? allUsers.filter((u: any) => u.managerId === currentUserId)
     : allUsers;
+  // Extract unique departments
+  const departments = Array.from(new Set(scopedUsers.map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  // Filter by department if selected
+  const users = selectedDept
+    ? scopedUsers.filter((u: any) => u.department === selectedDept)
+    : scopedUsers;
   const sortedCycles = cycles
     ? [...cycles].sort((a: any, b: any) => {
         if (a.status === 'closed' && b.status !== 'closed') return -1;
@@ -586,7 +593,7 @@ function InsightsPageContent() {
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem', padding: '1.5rem' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>
-            {'Gu\u00eda: Insights con Inteligencia Artificial'}
+            {'Guía: Informes con Inteligencia Artificial'}
           </h3>
           <div style={{ marginBottom: '1rem' }}>
             <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>{'Funcionalidades disponibles:'}</p>
@@ -604,7 +611,7 @@ function InsightsPageContent() {
 
       {/* Selectors */}
       <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
           <div>
             <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
               {'Ciclo de Evaluaci\u00f3n'}
@@ -627,7 +634,23 @@ function InsightsPageContent() {
           </div>
           <div>
             <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-              {'Colaborador'}
+              Departamento
+            </label>
+            <select
+              className="input"
+              style={{ width: '100%' }}
+              value={selectedDept}
+              onChange={(e) => { setSelectedDept(e.target.value); setSelectedUserId(null); }}
+            >
+              <option value="">Todos los departamentos</option>
+              {departments.map((d: string) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+              Colaborador
             </label>
             <select
               className="input"
@@ -635,10 +658,10 @@ function InsightsPageContent() {
               value={selectedUserId || ''}
               onChange={(e) => setSelectedUserId(e.target.value || null)}
             >
-              <option value="">{'Selecciona un colaborador'}</option>
+              <option value="">Selecciona un colaborador ({users.length})</option>
               {users.map((u: any) => (
                 <option key={u.id} value={u.id}>
-                  {u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}
+                  {u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}
                 </option>
               ))}
             </select>

@@ -587,7 +587,7 @@
     "excelNote": "Excel incluye 4 hojas: Resumen, Por Departamento, Detalle de evaluaciones y Ranking por evaluado."
   },
   "insights": {
-    "title": "Insights IA",
+    "title": "Informes con Inteligencia Artificial",
     "subtitle": "Análisis inteligente basado en datos de desempeño",
     "flightRiskError": "No se pudo cargar el análisis de riesgo de fuga. Puede que no haya suficientes datos.",
     "scoreNote": "Puntuación algorítmica basada en: desempeño (30%), OKRs (25%), feedback (20%), objetivos en riesgo (15%), 9-box (10%) • Solo visible para administradores",
