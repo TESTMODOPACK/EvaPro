@@ -522,7 +522,7 @@ function InsightsPageContent() {
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedDept, setSelectedDept] = useState('');
-  const [activeTab, setActiveTab] = useState<Tab>('summary');
+  const [activeTab, setActiveTab] = useState<Tab>('prediction');
   const [showGuide, setShowGuide] = useState(false);
 
   // Load usage quota via React Query (auto-refreshes when invalidated after generation)
@@ -641,7 +641,7 @@ function InsightsPageContent() {
                 className="input"
                 style={{ width: '100%' }}
                 value={selectedCycleId || ''}
-                onChange={(e) => setSelectedCycleId(e.target.value || null)}
+                onChange={(e) => { setSelectedCycleId(e.target.value || null); if (e.target.value) setActiveTab('summary'); }}
               >
                 <option value="">{'Selecciona un ciclo'}</option>
                 {sortedCycles.map((c: any) => (
