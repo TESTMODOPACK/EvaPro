@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { UserNote } from './entities/user-note.entity';
@@ -534,5 +534,40 @@ export class UsersService {
     }
 
     return { invited, skipped };
+  }
+
+  // ─── Generate fake RUTs for users without one ─────────────────────────
+
+  private generateValidRut(base: number): string {
+    const body = String(base);
+    const digits = body.split('').reverse().map(Number);
+    const series = [2, 3, 4, 5, 6, 7];
+    let sum = 0;
+    for (let i = 0; i < digits.length; i++) {
+      sum += digits[i] * series[i % series.length];
+    }
+    const remainder = 11 - (sum % 11);
+    const dv = remainder === 11 ? '0' : remainder === 10 ? 'K' : String(remainder);
+    return `${body}-${dv}`;
+  }
+
+  async fillFakeRuts(tenantId?: string): Promise<{ updated: number }> {
+    const where: any = { rut: IsNull() };
+    if (tenantId) where.tenantId = tenantId;
+
+    const users = await this.userRepository.find({ where, select: ['id'] });
+    if (users.length === 0) return { updated: 0 };
+
+    // Generate unique RUTs starting from a random base in the 10M-25M range
+    const startBase = 10_000_000 + Math.floor(Math.random() * 15_000_000);
+    let updated = 0;
+
+    for (let i = 0; i < users.length; i++) {
+      const rut = this.generateValidRut(startBase + i);
+      await this.userRepository.update(users[i].id, { rut });
+      updated++;
+    }
+
+    return { updated };
   }
 }

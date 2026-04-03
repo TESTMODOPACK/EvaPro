@@ -105,6 +105,14 @@ export class UsersController {
     return this.usersService.getBulkImport(id, req.user.tenantId);
   }
 
+  /** POST /users/fill-fake-ruts — Generate valid fake RUTs for users without one */
+  @Post('fill-fake-ruts')
+  @Roles('super_admin', 'tenant_admin')
+  fillFakeRuts(@Request() req: any) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.fillFakeRuts(tenantId);
+  }
+
   /** PATCH /users/:id */
   @Patch(':id')
   update(
