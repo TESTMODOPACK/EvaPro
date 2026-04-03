@@ -69,7 +69,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
   // CV
   const [uploadingCv, setUploadingCv] = useState(false);
-  const [analyzingCv, setAnalyzingCv] = useState(false);
+  const [analyzingCvId, setAnalyzingCvId] = useState<string | null>(null);
   const [expandedCvPanel, setExpandedCvPanel] = useState<string | null>(null);
 
   // Edit candidate
@@ -195,16 +195,16 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
   // ─── AI CV Analysis ─────────────────────────────────────────────────
   const handleAnalyzeCv = async (candidateId: string) => {
-    if (!token) return;
-    setAnalyzingCv(true);
+    if (!token || analyzingCvId) return;
+    setAnalyzingCvId(candidateId);
     try {
       await api.recruitment.candidates.analyzeCv(token, candidateId);
-      toast('Analisis de CV completado', 'success');
+      toast('Análisis de CV completado', 'success');
       fetchProcess();
     } catch (err: any) {
       toast(err.message || 'Error al analizar CV', 'error');
     }
-    setAnalyzingCv(false);
+    setAnalyzingCvId(null);
   };
 
   // ─── Interview ──────────────────────────────────────────────────────
@@ -557,8 +557,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                               {canManageCv && (
                                 <>
-                                  <button className="btn-primary" onClick={() => handleAnalyzeCv(c.id)} disabled={analyzingCv} style={{ fontSize: '0.85rem' }}>
-                                    {analyzingCv ? 'Analizando... (10-20 seg)' : 'Analizar CV con IA'}
+                                  <button className="btn-primary" onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId} style={{ fontSize: '0.85rem' }}>
+                                    {analyzingCvId === c.id ? 'Analizando... (10-20 seg)' : 'Analizar CV con IA'}
                                   </button>
                                   <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.82rem' }}>
                                     Cambiar CV
@@ -576,8 +576,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                               {canManageCv && (
                                 <div style={{ display: 'flex', gap: '0.35rem' }}>
                                   <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
-                                    onClick={() => handleAnalyzeCv(c.id)} disabled={analyzingCv}>
-                                    {analyzingCv ? 'Analizando...' : 'Re-analizar'}
+                                    onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId}>
+                                    {analyzingCvId === c.id ? 'Analizando...' : 'Re-analizar'}
                                   </button>
                                   <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
                                     Cambiar CV
