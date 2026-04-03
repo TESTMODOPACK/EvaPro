@@ -384,6 +384,11 @@ function FlightRiskSection() {
   const { t } = useTranslation();
   const { data, isLoading, error } = useFlightRisk();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [searchFR, setSearchFR] = useState('');
+  const [deptFilterFR, setDeptFilterFR] = useState('');
+  const [riskFilterFR, setRiskFilterFR] = useState('');
+  const [pageFR, setPageFR] = useState(1);
+  const PAGE_SIZE = 20;
 
   if (isLoading) return <Spinner />;
 
@@ -399,80 +404,103 @@ function FlightRiskSection() {
   }
 
   const { summary, scores, generatedAt, totalEmployees } = data;
+  const allScores = (scores as any[]).sort((a: any, b: any) => b.riskScore - a.riskScore);
+  const departments = Array.from(new Set(allScores.map((s: any) => s.department).filter(Boolean))).sort() as string[];
+
+  // Apply filters
+  let filtered = allScores;
+  if (searchFR) {
+    const q = searchFR.toLowerCase();
+    filtered = filtered.filter((s: any) => (s.name || '').toLowerCase().includes(q));
+  }
+  if (deptFilterFR) filtered = filtered.filter((s: any) => s.department === deptFilterFR);
+  if (riskFilterFR) filtered = filtered.filter((s: any) => s.riskLevel === riskFilterFR);
+
+  const totalFiltered = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+  const paged = filtered.slice((pageFR - 1) * PAGE_SIZE, pageFR * PAGE_SIZE);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-        <div className="card" style={{ padding: '1.25rem', borderTop: '3px solid var(--success)', textAlign: 'center' }}>
-          <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)', margin: 0 }}>{summary?.low ?? 0}</p>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{'Riesgo Bajo'}</p>
+        <div className="card" style={{ padding: '1rem', borderTop: '3px solid var(--success)', textAlign: 'center', cursor: 'pointer', opacity: riskFilterFR === 'low' ? 1 : 0.7 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'low' ? '' : 'low'); setPageFR(1); }}>
+          <p style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--success)', margin: 0 }}>{summary?.low ?? 0}</p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Riesgo Bajo</p>
         </div>
-        <div className="card" style={{ padding: '1.25rem', borderTop: '3px solid #f59e0b', textAlign: 'center' }}>
-          <p style={{ fontSize: '2rem', fontWeight: 800, color: '#f59e0b', margin: 0 }}>{summary?.medium ?? 0}</p>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{'Riesgo Medio'}</p>
+        <div className="card" style={{ padding: '1rem', borderTop: '3px solid #f59e0b', textAlign: 'center', cursor: 'pointer', opacity: riskFilterFR === 'medium' ? 1 : 0.7 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'medium' ? '' : 'medium'); setPageFR(1); }}>
+          <p style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f59e0b', margin: 0 }}>{summary?.medium ?? 0}</p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Riesgo Medio</p>
         </div>
-        <div className="card" style={{ padding: '1.25rem', borderTop: '3px solid var(--danger)', textAlign: 'center' }}>
-          <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--danger)', margin: 0 }}>{summary?.high ?? 0}</p>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{'Riesgo Alto'}</p>
+        <div className="card" style={{ padding: '1rem', borderTop: '3px solid var(--danger)', textAlign: 'center', cursor: 'pointer', opacity: riskFilterFR === 'high' ? 1 : 0.7 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'high' ? '' : 'high'); setPageFR(1); }}>
+          <p style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--danger)', margin: 0 }}>{summary?.high ?? 0}</p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Riesgo Alto</p>
         </div>
+      </div>
+
+      {/* Filters */}
+      <div className="card" style={{ padding: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)', width: '200px' }}
+          placeholder="Buscar colaborador..." value={searchFR} onChange={(e) => { setSearchFR(e.target.value); setPageFR(1); }} />
+        <select style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
+          value={deptFilterFR} onChange={(e) => { setDeptFilterFR(e.target.value); setPageFR(1); }}>
+          <option value="">Todos los departamentos</option>
+          {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
+          value={riskFilterFR} onChange={(e) => { setRiskFilterFR(e.target.value); setPageFR(1); }}>
+          <option value="">Todos los niveles</option>
+          <option value="high">Alto</option>
+          <option value="medium">Medio</option>
+          <option value="low">Bajo</option>
+        </select>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+          {totalFiltered} de {totalEmployees} colaboradores
+        </span>
       </div>
 
       {/* Table */}
       <div className="card" style={{ padding: '1.25rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 700 }}>
-            {'Ranking de Riesgo — '}{totalEmployees}{' colaboradores'}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0 }}>
+            Ranking de Riesgo
           </h3>
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            {'Actualizado: '}{new Date(generatedAt).toLocaleString('es-CL')}
+            Actualizado: {new Date(generatedAt).toLocaleString('es-CL')}
           </span>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--border)' }}>
-              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'#'}</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Colaborador'}</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Departamento'}</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Riesgo'}</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Nivel'}</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{'Factores'}</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>#</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Colaborador</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Departamento</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Riesgo</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Nivel</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Factores</th>
             </tr>
           </thead>
           <tbody>
-            {(scores as any[])
-              .sort((a: any, b: any) => b.riskScore - a.riskScore)
-              .map((s: any, i: number) => {
+            {paged.map((s: any, i: number) => {
                 const badge = riskBadge[s.riskLevel] ?? riskBadge.low;
                 const isOpen = expanded === s.userId;
+                const globalIdx = (pageFR - 1) * PAGE_SIZE + i + 1;
                 return (
                   <React.Fragment key={s.userId}>
-                    <tr
-                      style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                      onClick={() => setExpanded(isOpen ? null : s.userId)}
-                    >
-                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>{i + 1}</td>
+                    <tr style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => setExpanded(isOpen ? null : s.userId)}>
+                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>{globalIdx}</td>
                       <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{s.name}</td>
                       <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-secondary)' }}>{s.department || '—'}</td>
                       <td style={{ padding: '0.6rem 0.75rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <div style={{ flex: 1, maxWidth: '80px', height: '6px', borderRadius: '3px', background: 'var(--border)', overflow: 'hidden' }}>
-                            <div style={{
-                              height: '100%',
-                              width: `${s.riskScore}%`,
-                              background: s.riskLevel === 'high' ? 'var(--danger)' : s.riskLevel === 'medium' ? '#f59e0b' : 'var(--success)',
-                              borderRadius: '3px',
-                            }} />
+                            <div style={{ height: '100%', width: `${s.riskScore}%`, background: s.riskLevel === 'high' ? 'var(--danger)' : s.riskLevel === 'medium' ? '#f59e0b' : 'var(--success)', borderRadius: '3px' }} />
                           </div>
                           <span style={{ fontWeight: 700, minWidth: '30px' }}>{s.riskScore}</span>
                         </div>
                       </td>
-                      <td style={{ padding: '0.6rem 0.75rem' }}>
-                        <span className={`badge ${badge.cls}`} style={{ fontSize: '0.65rem' }}>{badge.label}</span>
-                      </td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>
-                        <span style={{ fontSize: '0.72rem' }}>{isOpen ? '▲ ocultar' : `▼ ver ${(s.factors || []).length}`}</span>
-                      </td>
+                      <td style={{ padding: '0.6rem 0.75rem' }}><span className={`badge ${badge.cls}`} style={{ fontSize: '0.65rem' }}>{badge.label}</span></td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}><span style={{ fontSize: '0.72rem' }}>{isOpen ? '▲' : `▼ ${(s.factors || []).length}`}</span></td>
                     </tr>
                     {isOpen && (s.factors || []).length > 0 && (
                       <tr style={{ background: 'rgba(99,102,241,0.03)' }}>
@@ -481,11 +509,7 @@ function FlightRiskSection() {
                             {(s.factors || []).map((f: any, fi: number) => (
                               <li key={fi}>
                                 <strong>{f.label || f}</strong>: {f.value || ''}
-                                {f.impact && (
-                                  <span style={{ marginLeft: '0.3rem', color: f.impact === 'negative' ? 'var(--danger)' : f.impact === 'positive' ? 'var(--success)' : 'var(--text-muted)', fontSize: '0.72rem' }}>
-                                    ({f.impact === 'negative' ? 'riesgo' : f.impact === 'positive' ? 'favorable' : 'neutral'})
-                                  </span>
-                                )}
+                                {f.impact && <span style={{ marginLeft: '0.3rem', color: f.impact === 'negative' ? 'var(--danger)' : f.impact === 'positive' ? 'var(--success)' : 'var(--text-muted)', fontSize: '0.72rem' }}>({f.impact === 'negative' ? 'riesgo' : f.impact === 'positive' ? 'favorable' : 'neutral'})</span>}
                               </li>
                             ))}
                           </ul>
@@ -497,6 +521,13 @@ function FlightRiskSection() {
               })}
           </tbody>
         </table>
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+            <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pageFR <= 1} onClick={() => setPageFR(p => p - 1)}>Anterior</button>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {pageFR} de {totalPages}</span>
+            <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pageFR >= totalPages} onClick={() => setPageFR(p => p + 1)}>Siguiente</button>
+          </div>
+        )}
       </div>
 
       <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right' }}>
@@ -868,54 +899,125 @@ function PredictionSection({ userId }: { userId: string | null }) {
 function RetentionSection() {
   const { t } = useTranslation();
   const { data, isLoading } = useRetentionRecommendations();
+  const [searchRT, setSearchRT] = useState('');
+  const [deptFilterRT, setDeptFilterRT] = useState('');
+  const [riskFilterRT, setRiskFilterRT] = useState('');
+  const [pageRT, setPageRT] = useState(1);
+  const [expandedRT, setExpandedRT] = useState<string | null>(null);
+  const RT_PAGE = 15;
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
   if (!data) return null;
 
+  const allRecs = data.recommendations || [];
+  const departments = Array.from(new Set(allRecs.map((r: any) => r.department).filter(Boolean))).sort() as string[];
+
+  let filtered = allRecs;
+  if (searchRT) { const q = searchRT.toLowerCase(); filtered = filtered.filter((r: any) => (r.name || '').toLowerCase().includes(q)); }
+  if (deptFilterRT) filtered = filtered.filter((r: any) => r.department === deptFilterRT);
+  if (riskFilterRT) filtered = filtered.filter((r: any) => r.riskLevel === riskFilterRT);
+
+  const totalFiltered = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / RT_PAGE));
+  const paged = filtered.slice((pageRT - 1) * RT_PAGE, pageRT * RT_PAGE);
+
   return (
     <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Summary */}
+      {/* Summary KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--danger)', cursor: 'pointer', opacity: riskFilterRT === 'high' ? 1 : 0.7 }}
+          onClick={() => { setRiskFilterRT(riskFilterRT === 'high' ? '' : 'high'); setPageRT(1); }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--danger)' }}>{data.totalHighRisk}</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('insights.highRiskEmployees')}</div>
         </div>
-        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--accent)' }}>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--accent)', cursor: 'pointer', opacity: riskFilterRT === 'medium' ? 1 : 0.7 }}
+          onClick={() => { setRiskFilterRT(riskFilterRT === 'medium' ? '' : 'medium'); setPageRT(1); }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>{data.totalMediumRisk}</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('insights.mediumRiskEmployees')}</div>
         </div>
       </div>
 
-      {/* Recommendations per employee */}
-      {data.recommendations?.map((rec: any) => (
-        <div key={rec.userId} className="card" style={{ padding: '1.25rem', borderLeft: `4px solid ${rec.riskLevel === 'high' ? 'var(--danger)' : 'var(--accent)'}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <div>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{rec.name}</span>
-              {rec.department && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{rec.department}</span>}
-            </div>
-            <span className={`badge ${rec.riskLevel === 'high' ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: '0.72rem' }}>
-              {t('insights.riskScore')}: {rec.riskScore}
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {rec.actions?.map((action: any, i: number) => (
-              <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.82rem', padding: '0.4rem 0.6rem', background: 'rgba(201,147,58,0.04)', borderRadius: 'var(--radius-sm)' }}>
-                <span className={`badge ${action.priority === 'alta' ? 'badge-danger' : action.priority === 'media' ? 'badge-warning' : 'badge-ghost'}`} style={{ fontSize: '0.68rem', flexShrink: 0 }}>
-                  {action.priority}
-                </span>
-                <span style={{ color: 'var(--text-secondary)' }}>{action.description}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+      {/* Filters */}
+      <div className="card" style={{ padding: '0.85rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)', width: '200px' }}
+          placeholder="Buscar colaborador..." value={searchRT} onChange={(e) => { setSearchRT(e.target.value); setPageRT(1); }} />
+        <select style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
+          value={deptFilterRT} onChange={(e) => { setDeptFilterRT(e.target.value); setPageRT(1); }}>
+          <option value="">Todos los departamentos</option>
+          {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
+          value={riskFilterRT} onChange={(e) => { setRiskFilterRT(e.target.value); setPageRT(1); }}>
+          <option value="">Todos los niveles</option>
+          <option value="high">Alto</option>
+          <option value="medium">Medio</option>
+        </select>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{totalFiltered} colaboradores</span>
+      </div>
 
-      {data.recommendations?.length === 0 && (
-        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          <p>{t('insights.noRiskEmployees')}</p>
-        </div>
-      )}
+      {/* Table view instead of cards */}
+      <div className="card" style={{ padding: '1.25rem' }}>
+        {paged.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <p>{allRecs.length === 0 ? t('insights.noRiskEmployees') : 'Sin resultados para los filtros seleccionados'}</p>
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Colaborador</th>
+                <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Departamento</th>
+                <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Riesgo</th>
+                <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paged.map((rec: any) => {
+                const isOpen = expandedRT === rec.userId;
+                return (
+                  <React.Fragment key={rec.userId}>
+                    <tr style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => setExpandedRT(isOpen ? null : rec.userId)}>
+                      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{rec.name}</td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-secondary)' }}>{rec.department || '—'}</td>
+                      <td style={{ padding: '0.6rem 0.75rem' }}>
+                        <span className={`badge ${rec.riskLevel === 'high' ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: '0.68rem' }}>
+                          {rec.riskLevel === 'high' ? 'Alto' : 'Medio'} ({rec.riskScore})
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                        {isOpen ? '▲ ocultar' : `▼ ${(rec.actions || []).length} acciones`}
+                      </td>
+                    </tr>
+                    {isOpen && (rec.actions || []).length > 0 && (
+                      <tr style={{ background: 'rgba(201,147,58,0.03)' }}>
+                        <td colSpan={4} style={{ padding: '0.75rem 1.25rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                            {rec.actions.map((action: any, i: number) => (
+                              <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.82rem', padding: '0.35rem 0.5rem', background: 'rgba(201,147,58,0.04)', borderRadius: 'var(--radius-sm, 6px)' }}>
+                                <span className={`badge ${action.priority === 'alta' ? 'badge-danger' : action.priority === 'media' ? 'badge-warning' : 'badge-ghost'}`} style={{ fontSize: '0.65rem', flexShrink: 0 }}>
+                                  {action.priority}
+                                </span>
+                                <span style={{ color: 'var(--text-secondary)' }}>{action.description}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+            <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pageRT <= 1} onClick={() => setPageRT(p => p - 1)}>Anterior</button>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {pageRT} de {totalPages}</span>
+            <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pageRT >= totalPages} onClick={() => setPageRT(p => p + 1)}>Siguiente</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
