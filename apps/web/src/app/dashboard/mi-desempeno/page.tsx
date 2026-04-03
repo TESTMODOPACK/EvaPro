@@ -10,6 +10,7 @@ import CompetencyRadarChart from '@/components/CompetencyRadarChart';
 import SelfVsOthersChart from '@/components/SelfVsOthersChart';
 import GapAnalysisChart from '@/components/GapAnalysisChart';
 import { useGapAnalysisIndividual } from '@/hooks/useReports';
+import { PageSkeleton } from '@/components/LoadingSkeleton';
 
 function Spinner() {
   return (
@@ -104,7 +105,7 @@ export default function MiDesempenoPage() {
       .finally(() => setLoading(false));
   }, [token, user?.userId, cycleTypeFilter]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <PageSkeleton cards={5} tableRows={5} />;
 
   const cycles = history?.cycles || history?.history || [];
   const latestScore = cycles.length > 0 ? cycles[cycles.length - 1] : null;

@@ -1,5 +1,6 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
+import { PageSkeleton } from '@/components/LoadingSkeleton';
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -404,7 +405,7 @@ function DesarrolloPageContent() {
     ? users.filter((u: any) => u.managerId === user?.userId || u.id === user?.userId)
     : users;
 
-  if (loading) return <Spinner />;
+  if (loading) return <PageSkeleton cards={3} tableRows={5} />;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>

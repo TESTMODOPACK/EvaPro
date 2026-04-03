@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useCycles } from '@/hooks/useCycles';
 import { usePendingEvaluations, useMyCompletedEvaluations } from '@/hooks/useEvaluations';
 import { useAuthStore } from '@/store/auth.store';
@@ -337,7 +338,7 @@ function AdminEvaluationsView() {
       )}
 
       {isLoading ? (
-        <Spinner />
+        <PageSkeleton cards={0} tableRows={4} />
       ) : !cycles || cycles.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <div style={{ marginBottom: '0.75rem' }}>

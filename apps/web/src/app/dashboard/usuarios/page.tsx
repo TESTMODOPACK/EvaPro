@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import { useDepartments } from '@/hooks/useDepartments';
 import { formatRutInput, validateRut, normalizeRut } from '@/lib/rut';
+import { TableSkeleton } from '@/components/LoadingSkeleton';
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -1037,7 +1038,7 @@ export default function UsuariosPage() {
 
       {/* Table */}
       {isLoading ? (
-        <Spinner />
+        <TableSkeleton rows={8} cols={5} />
       ) : users.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay usuarios registrados</p>

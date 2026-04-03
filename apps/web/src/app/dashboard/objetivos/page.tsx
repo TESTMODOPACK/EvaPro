@@ -1,5 +1,6 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
+import { PageSkeleton } from '@/components/LoadingSkeleton';
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -486,7 +487,7 @@ function TeamSummaryView() {
   const [filterDept, setFilterDept] = useState('all');
   const [filterRisk, setFilterRisk] = useState<'all' | 'at_risk' | 'ok'>('all');
 
-  if (isLoading) return <Spinner />;
+  if (isLoading) return <PageSkeleton cards={3} tableRows={6} />;
   if (!data || !data.members || data.members.length === 0) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>

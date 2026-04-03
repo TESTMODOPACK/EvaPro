@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { useDashboardStats } from '@/hooks/useDashboard';
+import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { usePendingEvaluations } from '@/hooks/useEvaluations';
 import { useCycles } from '@/hooks/useCycles';
 import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
@@ -65,7 +66,7 @@ function SuperAdminDashboard() {
     enterprise: 'badge-success',
   };
 
-  if (loading) return <Spinner />;
+  if (loading) return <PageSkeleton cards={5} tableRows={4} />;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
