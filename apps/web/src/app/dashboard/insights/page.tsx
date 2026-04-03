@@ -91,7 +91,7 @@ function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }
           {t('insights.noSummary')}
         </p>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '1rem' }}>
-          {t('insights.weeklyLimit')}
+          Cada generación consume 1 crédito de la cuota mensual de tu organización.
         </p>
         <button
           className="btn-primary"

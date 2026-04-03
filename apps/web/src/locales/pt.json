@@ -609,14 +609,14 @@
     "riskScore": "Score risco",
     "noRiskEmployees": "Nenhum colaborador em risco alto ou médio. Excelente!",
     "noSummary": "Nenhum resumo de IA gerado para este colaborador neste ciclo",
-    "weeklyLimit": "Cada geração utiliza sua cota semanal de relatórios de IA",
+    "weeklyLimit": "Cada geração consome 1 crédito da cota mensal da sua organização",
     "generating": "Gerando com IA...",
     "generateBtn": "Gerar Resumo com IA",
     "generatingHint": "Isso pode levar 10-30 segundos...",
     "downloadPdf": "Baixar PDF",
     "execSummary": "Resumo Executivo",
     "quotaUsage": "Relatórios IA: {{used}} de {{limit}} usados esta semana ({{remaining}} restantes)",
-    "quotaWeekly": "Cota semanal"
+    "quotaWeekly": "Cota mensal da organização"
   },
   "mantenedores": {
     "title": "Dados Personalizados",

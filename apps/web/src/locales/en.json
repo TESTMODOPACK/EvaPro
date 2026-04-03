@@ -609,14 +609,14 @@
     "riskScore": "Risk score",
     "noRiskEmployees": "No employees at high or medium risk. Excellent!",
     "noSummary": "No AI summary generated for this employee in this cycle",
-    "weeklyLimit": "Each generation uses your weekly AI reports quota",
+    "weeklyLimit": "Each generation uses 1 credit from your organization's monthly quota",
     "generating": "Generating with AI...",
     "generateBtn": "Generate AI Summary",
     "generatingHint": "This may take 10-30 seconds...",
     "downloadPdf": "Download PDF",
     "execSummary": "Executive Summary",
     "quotaUsage": "AI Reports: {{used}} of {{limit}} used this week ({{remaining}} remaining)",
-    "quotaWeekly": "Weekly quota"
+    "quotaWeekly": "Organization monthly quota"
   },
   "mantenedores": {
     "title": "Custom Data",
