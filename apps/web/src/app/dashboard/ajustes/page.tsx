@@ -67,6 +67,7 @@ export default function AjustesPage() {
   const [tenantSessionTimeout, setTenantSessionTimeout] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
+  const [commercialAddress, setCommercialAddress] = useState('');
   const [dateFormat, setDateFormat] = useState('');
   const [defaultLanguage, setDefaultLanguage] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -92,6 +93,7 @@ export default function AjustesPage() {
       .then((t: any) => {
         setTenantName(t.name || '');
         setTenantRut(t.rut ? formatRut(t.rut) : '');
+        setCommercialAddress(t.commercialAddress || '');
         const s = t.settings || {};
         setTenantSettings(s);
         setTenantTimezone(s.timezone || '');
@@ -130,6 +132,7 @@ export default function AjustesPage() {
         primaryColor: primaryColor && /^#[0-9a-fA-F]{6}$/.test(primaryColor) ? primaryColor : null,
         dateFormat: dateFormat || null,
         defaultLanguage: defaultLanguage || null,
+        commercialAddress: commercialAddress || null,
         emailNotifications,
         notificationTypes: {
           evaluations: notifEvaluations,
@@ -370,7 +373,8 @@ export default function AjustesPage() {
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>Dirección comercial</label>
-                <input className="input" type="text" value={(sub?.tenant as any)?.commercialAddress || 'No registrada'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                <input className="input" type="text" placeholder="Ej: Av. Providencia 1234, Santiago"
+                  value={commercialAddress} onChange={(e) => setCommercialAddress(e.target.value)} />
               </div>
             </div>
             {Array.isArray(tenantSettings.initialCompetencies) && tenantSettings.initialCompetencies.length > 0 && (

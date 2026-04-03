@@ -392,6 +392,11 @@ export class TenantsService {
       }
     }
 
+    // Commercial address (editable by tenant admin — stored on tenant column, not settings)
+    if (dto.commercialAddress !== undefined) {
+      tenant.commercialAddress = typeof dto.commercialAddress === 'string' ? dto.commercialAddress.trim() || null : null;
+    }
+
     tenant.settings = currentSettings;
     await this.tenantRepository.save(tenant);
     return {
@@ -403,6 +408,7 @@ export class TenantsService {
       notificationTypes: currentSettings.notificationTypes,
       dateFormat: currentSettings.dateFormat,
       defaultLanguage: currentSettings.defaultLanguage,
+      commercialAddress: tenant.commercialAddress,
     };
   }
 
