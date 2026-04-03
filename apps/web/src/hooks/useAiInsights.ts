@@ -4,9 +4,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 
+/**
+ * Silently log AI errors instead of blocking UI with alert().
+ * The mutation's isPending/isError states handle UI feedback.
+ */
 function handleAiError(error: any) {
   const msg = error?.message || error?.data?.message || 'Error al comunicarse con la IA';
-  alert(msg);
+  console.warn('[AI]', msg);
+  // Don't alert — let the component handle error state via mutation.isError
 }
 
 export function useAiSummary(cycleId: string | null, userId: string | null) {
@@ -27,6 +32,7 @@ export function useGenerateSummary() {
       api.ai.generateSummary(token!, cycleId, userId),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['ai', 'summary', vars.cycleId, vars.userId] });
+      qc.invalidateQueries({ queryKey: ['ai', 'quota'] }); // Refresh quota
     },
     onError: handleAiError,
   });
@@ -49,6 +55,7 @@ export function useAnalyzeBias() {
     mutationFn: (cycleId: string) => api.ai.analyzeBias(token!, cycleId),
     onSuccess: (_data, cycleId) => {
       qc.invalidateQueries({ queryKey: ['ai', 'bias', cycleId] });
+      qc.invalidateQueries({ queryKey: ['ai', 'quota'] }); // Refresh quota
     },
     onError: handleAiError,
   });
@@ -72,6 +79,7 @@ export function useGenerateSuggestions() {
       api.ai.generateSuggestions(token!, cycleId, userId),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['ai', 'suggestions', vars.cycleId, vars.userId] });
+      qc.invalidateQueries({ queryKey: ['ai', 'quota'] }); // Refresh quota
     },
     onError: handleAiError,
   });

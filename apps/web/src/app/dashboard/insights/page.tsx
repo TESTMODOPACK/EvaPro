@@ -2,6 +2,7 @@
 import { PlanGate } from '@/components/PlanGate';
 
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
@@ -101,7 +102,12 @@ function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }
         </button>
         {generate.isPending && (
           <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            {t('insights.generatingHint')}
+            {t('insights.generatingHint')} Este proceso puede tardar hasta 30 segundos.
+          </p>
+        )}
+        {generate.isError && (
+          <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
+            Error al generar. El proceso puede haber tardado más de lo esperado. Recarga la página para verificar si el informe fue generado.
           </p>
         )}
       </div>
@@ -291,6 +297,16 @@ function SuggestionsSection({ cycleId, userId }: { cycleId: string; userId: stri
         >
           {generate.isPending ? 'Generando sugerencias...' : 'Generar Sugerencias con IA'}
         </button>
+        {generate.isPending && (
+          <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Este proceso puede tardar hasta 30 segundos. No cierres esta página.
+          </p>
+        )}
+        {generate.isError && (
+          <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
+            Error al generar. El proceso puede haber tardado más de lo esperado. Recarga la página para verificar.
+          </p>
+        )}
       </div>
     );
   }
@@ -508,13 +524,15 @@ function InsightsPageContent() {
   const [selectedDept, setSelectedDept] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('summary');
   const [showGuide, setShowGuide] = useState(false);
-  const [quota, setQuota] = useState<any>(null);
 
-  // Load usage quota
-  React.useEffect(() => {
-    if (!token) return;
-    api.ai.getUsage(token).then(setQuota).catch(() => {});
-  }, [token]);
+  // Load usage quota via React Query (auto-refreshes when invalidated after generation)
+  const { data: quota } = useQuery({
+    queryKey: ['ai', 'quota'],
+    queryFn: () => api.ai.getUsage(token!),
+    enabled: !!token,
+    staleTime: 30_000,
+    retry: false,
+  });
 
   const allUsers = usersPage?.data || [];
   // Managers only see their direct reports; admins see all
@@ -669,14 +687,32 @@ function InsightsPageContent() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        {selectedCycleId && tabBtn('summary', 'Resumen IA')}
-        {selectedCycleId && isAdmin && tabBtn('bias', 'Detecci\u00f3n de Sesgos')}
-        {selectedCycleId && tabBtn('suggestions', 'Sugerencias de Desarrollo')}
-        {isAdmin && tabBtn('flight-risk', '\u26A0\uFE0F Riesgo de Fuga')}
-        {tabBtn('prediction', '\uD83D\uDCC8 Predicciones')}
-        {isAdmin && tabBtn('retention', '\uD83D\uDEE1\uFE0F Retenci\u00f3n')}
+      {/* Tabs — separated into IA (requires generation) and Algorithmic (instant) */}
+      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
+        {/* IA Section */}
+        {selectedCycleId && (
+          <div style={{ marginBottom: '0.5rem' }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>
+              Análisis con IA (requiere generación)
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {tabBtn('summary', '🤖 Resumen IA')}
+              {isAdmin && tabBtn('bias', '🔍 Detección de Sesgos')}
+              {tabBtn('suggestions', '💡 Sugerencias de Desarrollo')}
+            </div>
+          </div>
+        )}
+        {/* Algorithmic Section */}
+        <div>
+          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>
+            Análisis algorítmico (datos en tiempo real)
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {isAdmin && tabBtn('flight-risk', '⚠️ Riesgo de Fuga')}
+            {tabBtn('prediction', '📈 Predicciones')}
+            {isAdmin && tabBtn('retention', '🛡️ Retención')}
+          </div>
+        </div>
       </div>
 
       {/* Content */}
