@@ -115,6 +115,47 @@ export class AuthService {
     }
   }
 
+  /** Log failed login attempt to audit log */
+  async logFailedLogin(email: string, ipAddress: string, tenantSlug?: string): Promise<void> {
+    try {
+      const user = await this.usersService.findByEmail(email, tenantSlug);
+      await this.auditService.log(
+        user?.tenantId || null,
+        user?.id || null,
+        'login.failed',
+        'User',
+        user?.id || undefined,
+        { email, reason: user ? (user.isActive ? 'invalid_password' : 'inactive_user') : 'user_not_found' },
+        ipAddress,
+      );
+    } catch {
+      // Non-critical — don't block login flow
+    }
+  }
+
+  /** Change password on first login (mustChangePassword flow) */
+  async changePasswordFirstLogin(email: string, currentPassword: string, newPassword: string, tenantSlug?: string): Promise<void> {
+    const user = await this.usersService.findByEmail(email, tenantSlug);
+    if (!user || !user.passwordHash) {
+      throw new BadRequestException('Credenciales inválidas');
+    }
+    const validPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!validPassword) {
+      throw new BadRequestException('La contraseña actual es incorrecta');
+    }
+    if (currentPassword === newPassword) {
+      throw new BadRequestException('La nueva contraseña debe ser diferente a la actual');
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    user.mustChangePassword = false;
+    user.resetCode = null;
+    user.resetCodeExpires = null;
+    await this.userRepo.save(user);
+
+    await this.auditService.log(user.tenantId, user.id, 'password.changed_first_login', 'User', user.id).catch(() => {});
+  }
+
   async resetPassword(email: string, code: string, newPassword: string, tenantSlug?: string): Promise<void> {
     const user = await this.usersService.findByEmail(email, tenantSlug);
     if (!user) {
@@ -133,6 +174,7 @@ export class AuthService {
     user.passwordHash = await bcrypt.hash(newPassword, 12);
     user.resetCode = null;
     user.resetCodeExpires = null;
+    user.mustChangePassword = false;
     await this.userRepo.save(user);
   }
 

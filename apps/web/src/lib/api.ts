@@ -184,6 +184,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ email, password, tenantSlug }),
       }),
+    changePassword: (email: string, currentPassword: string, newPassword: string, tenantSlug?: string) =>
+      request<any>("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ email, currentPassword, newPassword, tenantSlug }),
+      }),
   },
 
   tenants: {

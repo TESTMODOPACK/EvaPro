@@ -186,6 +186,7 @@ export class UsersService {
       position: dto.position,
       hireDate: dto.hireDate ? new Date(dto.hireDate) : undefined,
       isActive: true,
+      mustChangePassword: true,
     });
 
     const saved = await this.userRepository.save(user);
@@ -394,6 +395,7 @@ export class UsersService {
             position: positionIdx >= 0 ? cols[positionIdx] : undefined,
             hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
             isActive: true,
+            mustChangePassword: true,
           }),
         );
         successCount++;
@@ -524,7 +526,7 @@ export class UsersService {
 
       const newUser = this.userRepository.create({
         tenantId, email, firstName, lastName: '',
-        passwordHash, role: role as any, isActive: true,
+        passwordHash, role: role as any, isActive: true, mustChangePassword: true,
       });
       const saved = await this.userRepository.save(newUser);
 

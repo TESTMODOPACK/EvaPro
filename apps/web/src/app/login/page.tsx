@@ -20,6 +20,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
+  const [showForceChange, setShowForceChange] = useState(false);
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [changePwdLoading, setChangePwdLoading] = useState(false);
+  const [changePwdMsg, setChangePwdMsg] = useState('');
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoveryTenant, setRecoveryTenant] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
@@ -53,9 +58,18 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const tenantIdentifier = rutValue ? normalizeRut(rutValue) : undefined;
-      const { access_token } = await api.auth.login(email.trim(), password, tenantIdentifier);
+      const result = await api.auth.login(email.trim(), password, tenantIdentifier);
+      const { access_token, mustChangePassword } = result as any;
       const user = decodeJwtPayload(access_token);
       if (!user) throw new Error("Token inválido");
+
+      if (mustChangePassword) {
+        // Don't set auth yet — force password change first
+        setShowForceChange(true);
+        setLoading(false);
+        return;
+      }
+
       setAuth(access_token, user);
       router.replace("/dashboard");
     } catch (err: any) {
@@ -362,6 +376,72 @@ export default function LoginPage() {
               </div>
             )}
             <button onClick={() => setShowRecovery(false)} style={{ marginTop: "1rem", background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.82rem", cursor: "pointer", width: "100%", textAlign: "center" }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Force Password Change Modal ─── */}
+      {showForceChange && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "1rem" }}>
+          <div className="card" style={{ padding: "2rem", width: "100%", maxWidth: "420px" }}>
+            <h3 style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "0.25rem" }}>Cambiar contraseña</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1.5rem" }}>
+              Por seguridad, debes cambiar tu contraseña temporal antes de continuar.
+            </p>
+            {changePwdMsg && (
+              <div style={{
+                padding: "0.6rem 0.8rem", marginBottom: "1rem", borderRadius: "var(--radius-sm)",
+                background: changePwdMsg.includes("exitosa") ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
+                border: `1px solid ${changePwdMsg.includes("exitosa") ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
+                color: changePwdMsg.includes("exitosa") ? "#10b981" : "var(--danger)",
+                fontSize: "0.82rem",
+              }}>{changePwdMsg}</div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div>
+                <label style={labelStyle}>Nueva contraseña</label>
+                <input className="input" type="password" placeholder="Mínimo 8 caracteres, 1 mayúscula, 1 número" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
+              </div>
+              <div>
+                <label style={labelStyle}>Confirmar contraseña</label>
+                <input className="input" type="password" placeholder="Repetir nueva contraseña" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} />
+              </div>
+              <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", margin: 0 }}>
+                Debe tener al menos 8 caracteres, una letra mayúscula, una minúscula y un número.
+              </p>
+              <button className="btn-primary" disabled={changePwdLoading || !newPwd || !confirmPwd}
+                style={{ padding: "0.7rem 1.5rem", opacity: changePwdLoading ? 0.6 : 1 }}
+                onClick={async () => {
+                  setChangePwdMsg('');
+                  if (newPwd !== confirmPwd) { setChangePwdMsg('Las contraseñas no coinciden'); return; }
+                  if (newPwd.length < 8 || !/[A-Z]/.test(newPwd) || !/[a-z]/.test(newPwd) || !/\d/.test(newPwd)) {
+                    setChangePwdMsg('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.');
+                    return;
+                  }
+                  setChangePwdLoading(true);
+                  try {
+                    const tenantIdentifier = tenantRut.trim() ? normalizeRut(tenantRut.trim()) : undefined;
+                    await api.auth.changePassword(email.trim(), password, newPwd, tenantIdentifier);
+                    setChangePwdMsg('Contraseña actualizada exitosamente. Iniciando sesión...');
+                    // Now login again with new password
+                    setTimeout(async () => {
+                      try {
+                        const result = await api.auth.login(email.trim(), newPwd, tenantIdentifier);
+                        const { access_token } = result as any;
+                        const user = decodeJwtPayload(access_token);
+                        if (user) { setAuth(access_token, user); router.replace("/dashboard"); }
+                      } catch { setChangePwdMsg('Contraseña cambiada. Por favor inicia sesión nuevamente.'); setShowForceChange(false); }
+                    }, 1500);
+                  } catch (err: any) {
+                    setChangePwdMsg(err.message || 'Error al cambiar contraseña');
+                  } finally {
+                    setChangePwdLoading(false);
+                  }
+                }}
+              >
+                {changePwdLoading ? "Guardando..." : "Cambiar contraseña"}
+              </button>
+            </div>
           </div>
         </div>
       )}

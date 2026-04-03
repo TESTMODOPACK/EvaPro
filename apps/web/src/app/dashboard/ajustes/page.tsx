@@ -154,16 +154,24 @@ export default function AjustesPage() {
     } catch {}
   };
 
+  const [passwordError, setPasswordError] = useState('');
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError('');
     if (!user?.id || !newPassword) return;
+    if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      setPasswordError('Debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.');
+      return;
+    }
     try {
       await updateUser.mutateAsync({ id: user.id, data: { currentPassword, newPassword } });
       setPasswordSaved(true);
       setCurrentPassword('');
       setNewPassword('');
       setTimeout(() => setPasswordSaved(false), 3000);
-    } catch {}
+    } catch (err: any) {
+      setPasswordError(err.message || 'Error al cambiar contraseña');
+    }
   };
 
   if (isLoading) {
@@ -325,6 +333,7 @@ export default function AjustesPage() {
                   {t('settings.security.changePassword')}
                 </button>
                 {passwordSaved && <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>{t('settings.security.passwordSaved')}</span>}
+                {passwordError && <span style={{ color: 'var(--danger)', fontSize: '0.82rem', fontWeight: 600 }}>{passwordError}</span>}
               </div>
             </form>
           </div>

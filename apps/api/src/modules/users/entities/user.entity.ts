@@ -53,6 +53,9 @@ export class User {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  @Column({ type: 'boolean', default: false, name: 'must_change_password', comment: 'Forces password change on next login — set to true when admin creates user with temp password' })
+  mustChangePassword: boolean;
+
   @Column({ type: 'boolean', default: true, name: 'leaderboard_opt_in', comment: 'User opts into gamification leaderboard' })
   leaderboardOptIn: boolean;
 
