@@ -74,9 +74,14 @@ function CheckInsTab() {
 
   const users = usersPage?.data || [];
 
+  const [ciPage, setCiPage] = useState(1);
+  const CI_PAGE_SIZE = 15;
+
   const sorted = checkIns
     ? [...checkIns].sort((a: any, b: any) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime())
     : [];
+  const ciTotalPages = Math.max(1, Math.ceil(sorted.length / CI_PAGE_SIZE));
+  const pagedCheckIns = sorted.slice((ciPage - 1) * CI_PAGE_SIZE, ciPage * CI_PAGE_SIZE);
 
   function handleCreate() {
     if (!form.employeeId || !form.scheduledDate || !form.scheduledTime || !form.topic) return;
@@ -206,7 +211,7 @@ function CheckInsTab() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {sorted.map((ci: any) => (
+          {pagedCheckIns.map((ci: any) => (
             <div key={ci.id} className="card" style={{ padding: '1.25rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1 }}>
@@ -248,6 +253,15 @@ function CheckInsTab() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {ciTotalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={ciPage <= 1} onClick={() => setCiPage(p => p - 1)}>Anterior</button>
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {ciPage} de {ciTotalPages} ({sorted.length} check-ins)</span>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={ciPage >= ciTotalPages} onClick={() => setCiPage(p => p + 1)}>Siguiente</button>
         </div>
       )}
     </div>

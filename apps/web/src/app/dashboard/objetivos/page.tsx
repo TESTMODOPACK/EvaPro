@@ -938,6 +938,14 @@ function ObjetivosPageContent() {
       })
     : [];
 
+  // Pagination — reset page when filters change
+  const [objPage, setObjPage] = useState(1);
+  const OBJ_PAGE_SIZE = 20;
+  const objTotalFiltered = filtered.length;
+  const objTotalPages = Math.max(1, Math.ceil(objTotalFiltered / OBJ_PAGE_SIZE));
+  const safePage = Math.min(objPage, objTotalPages);
+  const pagedFiltered = filtered.slice((safePage - 1) * OBJ_PAGE_SIZE, safePage * OBJ_PAGE_SIZE);
+
   // Title and subtitle based on role
   const pageTitle = isAdmin
     ? t('objetivos.orgObjectives')
@@ -1581,7 +1589,7 @@ function ObjetivosPageContent() {
                 }
               });
             } else {
-              items = (filtered as any[]).map((obj) => ({ type: 'row' as const, obj }));
+              items = (pagedFiltered as any[]).map((obj) => ({ type: 'row' as const, obj }));
             }
 
             return items.map((item, idx) => {
@@ -1898,6 +1906,15 @@ function ObjetivosPageContent() {
       )}
       </>
       )}
+      {/* Pagination */}
+      {objTotalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1.25rem' }}>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={objPage <= 1} onClick={() => setObjPage(p => p - 1)}>Anterior</button>
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {objPage} de {objTotalPages} ({objTotalFiltered} objetivos)</span>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={objPage >= objTotalPages} onClick={() => setObjPage(p => p + 1)}>Siguiente</button>
+        </div>
+      )}
+
       {confirmState && (
         <ConfirmModal
           message={confirmState.message}

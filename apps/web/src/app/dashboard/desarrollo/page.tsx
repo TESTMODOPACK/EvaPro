@@ -101,6 +101,10 @@ function DesarrolloPageContent() {
   const isManager = role === 'manager';
   const canCreate = isAdmin || isManager;
 
+  // Pagination
+  const [pdiPage, setPdiPage] = useState(1);
+  const PDI_PAGE_SIZE = 15;
+
   const [confirmState, setConfirmState] = useState<{
     message: string;
     detail?: string;
@@ -706,13 +710,16 @@ function DesarrolloPageContent() {
 
       {/* Plans list — managers only see their team's plans */}
       {(() => {
-        const visiblePlans = isManager
+        const allVisible = isManager
           ? plans.filter((p: any) => {
               const planUser = users.find((u: any) => u.id === p.userId);
               return planUser?.managerId === user?.userId || p.userId === user?.userId;
             })
           : plans;
-        return visiblePlans.length === 0 && !loading ? (
+        const pdiTotalPages = Math.max(1, Math.ceil(allVisible.length / PDI_PAGE_SIZE));
+        const safePdiPage = Math.min(pdiPage, pdiTotalPages);
+        const visiblePlans = allVisible.slice((safePdiPage - 1) * PDI_PAGE_SIZE, safePdiPage * PDI_PAGE_SIZE);
+        return allVisible.length === 0 && !loading ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           {t('desarrollo.emptyPlans')}
         </div>
@@ -793,6 +800,21 @@ function DesarrolloPageContent() {
           })}
         </div>
       );
+      })()}
+
+      {/* Pagination */}
+      {(() => {
+        const allVisible = isManager
+          ? plans.filter((p: any) => { const pu = users.find((u: any) => u.id === p.userId); return pu?.managerId === user?.userId || p.userId === user?.userId; })
+          : plans;
+        const tp = Math.max(1, Math.ceil(allVisible.length / PDI_PAGE_SIZE));
+        return tp > 1 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+            <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pdiPage <= 1} onClick={() => setPdiPage(p => p - 1)}>Anterior</button>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {Math.min(pdiPage, tp)} de {tp} ({allVisible.length} planes)</span>
+            <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pdiPage >= tp} onClick={() => setPdiPage(p => p + 1)}>Siguiente</button>
+          </div>
+        ) : null;
       })()}
 
       {/* Plan detail modal */}
