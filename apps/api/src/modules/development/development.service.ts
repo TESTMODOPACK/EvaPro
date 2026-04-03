@@ -16,6 +16,8 @@ import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { RoleCompetency } from './entities/role-competency.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 
 @Injectable()
 export class DevelopmentService {
@@ -36,6 +38,7 @@ export class DevelopmentService {
     private readonly assessmentRepo: Repository<TalentAssessment>,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ─── Competencies ──────────────────────────────────────────────────────
@@ -377,6 +380,27 @@ export class DevelopmentService {
     this.auditService.log(tenantId, userId || null, 'pdi.status_changed', 'development_plan', plan.id, {
       planTitle: plan.title, previousStatus: 'borrador', newStatus: 'activo',
     }).catch(() => {});
+
+    // Notify plan owner: signature pending for PDI
+    this.notificationsService.create({
+      tenantId,
+      userId: plan.userId,
+      type: NotificationType.GENERAL,
+      title: 'Firma pendiente — Plan de desarrollo',
+      message: `Tu plan de desarrollo "${plan.title}" ha sido activado. Por favor revisa y firma el plan en la sección Desarrollo.`,
+      metadata: { planId: plan.id, action: 'signature_pending', documentType: 'development_plan' },
+    }).catch(() => {});
+
+    // Send email notification
+    const owner = await this.userRepo.findOne({ where: { id: plan.userId }, select: ['id', 'email', 'firstName'] });
+    if (owner?.email) {
+      this.emailService.sendPdiAssigned(owner.email, {
+        firstName: owner.firstName,
+        planTitle: `[Requiere firma] ${plan.title}`,
+        tenantId,
+      }).catch(() => {});
+    }
+
     return saved;
   }
 

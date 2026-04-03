@@ -19,6 +19,8 @@ import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignme
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { EmailService } from '../notifications/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 import { PlanFeature } from '../../common/constants/plan-features';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
@@ -48,6 +50,7 @@ export class EvaluationsService {
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly emailService: EmailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ─── Cycles ───────────────────────────────────────────────────────────────
@@ -750,6 +753,15 @@ export class EvaluationsService {
         if (!ev.email) continue;
         this.emailService.sendCycleClosed(ev.email, {
           firstName: ev.firstName, cycleName: cycle.name, cycleId: id, tenantId,
+        }).catch(() => {});
+        // In-app notification: signature pending for results
+        this.notificationsService.create({
+          tenantId,
+          userId: ev.id,
+          type: NotificationType.GENERAL,
+          title: 'Firma pendiente — Resultados de evaluación',
+          message: `Los resultados del ciclo "${cycle.name}" están disponibles. Por favor revisa y firma tus resultados en Mi Desempeño.`,
+          metadata: { cycleId: id, action: 'signature_pending', documentType: 'evaluation_response' },
         }).catch(() => {});
       }
     }
