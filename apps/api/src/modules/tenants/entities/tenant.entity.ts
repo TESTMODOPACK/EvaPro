@@ -27,6 +27,15 @@ export class Tenant {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  industry: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true, name: 'employee_range' })
+  employeeRange: string | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true, name: 'commercial_address' })
+  commercialAddress: string | null;
+
   @Column({ type: 'jsonb', default: {} })
   settings: any;
 

@@ -346,12 +346,12 @@ export default function AjustesPage() {
       {activeTab === 'organizacion' && isTenantAdmin && (
         <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-          {/* Company info (read-only) */}
+          {/* Company info */}
           <div className="card" style={{ padding: '1.5rem', borderLeft: '3px solid var(--accent)' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>
               {t('settings.company.title')}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={labelStyle}>{t('settings.company.legalName')}</label>
                 <input className="input" type="text" value={tenantName || orgName || ''} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
@@ -360,18 +360,18 @@ export default function AjustesPage() {
                 <label style={labelStyle}>{t('settings.company.taxId')}</label>
                 <input className="input" type="text" value={tenantRut || orgRut || 'No registrado'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed', fontFamily: 'monospace' }} />
               </div>
-              {tenantSettings.industry && (
-                <div>
-                  <label style={labelStyle}>{t('settings.company.industry')}</label>
-                  <input className="input" type="text" value={tenantSettings.industry} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
-                </div>
-              )}
-              {tenantSettings.size && (
-                <div>
-                  <label style={labelStyle}>{t('settings.company.size')}</label>
-                  <input className="input" type="text" value={tenantSettings.size} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
-                </div>
-              )}
+              <div>
+                <label style={labelStyle}>Industria</label>
+                <input className="input" type="text" value={(sub?.tenant as any)?.industry || tenantSettings.industry || 'No registrada'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Rango de colaboradores</label>
+                <input className="input" type="text" value={(sub?.tenant as any)?.employeeRange || tenantSettings.size || 'No registrado'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Dirección comercial</label>
+                <input className="input" type="text" value={(sub?.tenant as any)?.commercialAddress || 'No registrada'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+              </div>
             </div>
             {Array.isArray(tenantSettings.initialCompetencies) && tenantSettings.initialCompetencies.length > 0 && (
               <div style={{ marginTop: '0.75rem' }}>

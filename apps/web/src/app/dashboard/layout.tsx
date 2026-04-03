@@ -86,16 +86,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [isAuthenticated, token, router, logout]);
 
-  // Show the onboarding banner for tenant_admin only if they haven't completed onboarding.
-  // Completion is persisted in localStorage ('evapro_onboarding_done').
-  useEffect(() => {
-    if (user?.role === 'tenant_admin' && !pathname.startsWith('/dashboard/onboarding')) {
-      const done = typeof window !== 'undefined'
-        ? localStorage.getItem('evapro_onboarding_done')
-        : null;
-      if (!done) setShowOnboarding(true);
-    }
-  }, [user, pathname]);
+  // Onboarding banner disabled — configuration is now handled in Ajustes (Settings)
+  // The onboarding page still exists for manual access if needed.
 
   // Derive subscription status from shared hook
   const subStatus: 'loading' | 'active' | 'none' | 'suspended' | 'skip' = (() => {

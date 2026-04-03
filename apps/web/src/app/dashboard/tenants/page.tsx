@@ -21,11 +21,21 @@ const planColor: Record<string, string> = {
   custom: 'badge-danger',
 };
 
+const INDUSTRIES = [
+  'Tecnología', 'Retail / Comercio', 'Servicios Financieros', 'Salud', 'Educación',
+  'Manufactura', 'Construcción', 'Minería', 'Energía', 'Telecomunicaciones',
+  'Transporte y Logística', 'Agricultura', 'Gobierno', 'Consultoría', 'Otro',
+];
+const EMPLOYEE_RANGES = ['1-15', '16-50', '51-100', '101-200', '201-500', '501-1000', '1000+'];
+
 const emptyForm = {
   name: '',
   slug: '',
   rut: '',
   ownerType: 'company',
+  industry: '',
+  employeeRange: '',
+  commercialAddress: '',
   planId: '',
   billingPeriod: 'monthly',
   adminEmail: '',
@@ -113,6 +123,9 @@ export default function TenantsPage() {
         slug: autoSlug(form.name),
         rut: form.rut,
         ownerType: form.ownerType,
+        industry: form.industry || undefined,
+        employeeRange: form.employeeRange || undefined,
+        commercialAddress: form.commercialAddress || undefined,
         ...(form.adminEmail ? {
           adminEmail: form.adminEmail,
           adminPassword: form.adminPassword,
@@ -159,6 +172,9 @@ export default function TenantsPage() {
         slug: form.slug,
         rut: form.rut,
         ownerType: form.ownerType,
+        industry: form.industry || null,
+        employeeRange: form.employeeRange || null,
+        commercialAddress: form.commercialAddress || null,
       });
 
       // Update or create subscription if plan changed
@@ -215,6 +231,9 @@ export default function TenantsPage() {
       slug: t.slug,
       rut: t.rut ? formatRut(t.rut) : '',
       ownerType: t.ownerType,
+      industry: t.industry || '',
+      employeeRange: t.employeeRange || '',
+      commercialAddress: t.commercialAddress || '',
       planId: sub?.planId || '',
       billingPeriod: sub?.billingPeriod?.toLowerCase() || 'monthly',
       adminEmail: '',
@@ -292,6 +311,24 @@ export default function TenantsPage() {
                 <option value="company">Empresa</option>
                 <option value="consultant">Consultor</option>
               </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Industria</label>
+              <select style={inputStyle} value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })}>
+                <option value="">Seleccionar industria...</option>
+                {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Rango de colaboradores</label>
+              <select style={inputStyle} value={form.employeeRange} onChange={(e) => setForm({ ...form, employeeRange: e.target.value })}>
+                <option value="">Seleccionar rango...</option>
+                {EMPLOYEE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={labelStyle}>Dirección comercial</label>
+              <input style={inputStyle} placeholder="Ej: Av. Providencia 1234, Santiago" value={form.commercialAddress} onChange={(e) => setForm({ ...form, commercialAddress: e.target.value })} />
             </div>
             <div>
               <label style={labelStyle}>Plan y período {!editingId && '*'}</label>
