@@ -11,6 +11,7 @@ import SelfVsOthersChart from '@/components/SelfVsOthersChart';
 import GapAnalysisChart from '@/components/GapAnalysisChart';
 import { useGapAnalysisIndividual } from '@/hooks/useReports';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
+import SignatureModal, { SignatureBadge } from '@/components/SignatureModal';
 
 function Spinner() {
   return (
@@ -75,6 +76,10 @@ export default function MiDesempenoPage() {
   // PDI expandable actions
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
 
+  // Signatures
+  const [signModal, setSignModal] = useState<{ documentType: string; documentId: string; documentName: string } | null>(null);
+  const [signatureMap, setSignatureMap] = useState<Record<string, any[]>>({});
+
   useEffect(() => {
     if (!token || !user?.userId) return;
     setLoading(true);
@@ -104,6 +109,25 @@ export default function MiDesempenoPage() {
       })
       .finally(() => setLoading(false));
   }, [token, user?.userId, cycleTypeFilter]);
+
+  // Load signatures for completed evaluations
+  const loadSignatures = async () => {
+    if (!token || completed.length === 0) return;
+    const map: Record<string, any[]> = {};
+    for (const ev of completed) {
+      const respId = ev.response?.id || ev.responseId;
+      if (!respId) continue;
+      try {
+        const sigs = await api.signatures.list(token, 'evaluation_response', respId);
+        if (Array.isArray(sigs) && sigs.length > 0) map[respId] = sigs;
+      } catch {}
+    }
+    setSignatureMap(map);
+  };
+
+  useEffect(() => {
+    if (completed.length > 0 && token) loadSignatures();
+  }, [completed.length, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <PageSkeleton cards={5} tableRows={5} />;
 
@@ -194,7 +218,7 @@ export default function MiDesempenoPage() {
             {'Mi Desempeño'}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {'Tu historial completo: evaluaciones, feedback, desarrollo, objetivos y reconocimientos'}
+            {'Tu historial completo: evaluaciones, feedback, desarrollo, objetivos, reconocimientos y firmas digitales'}
           </p>
         </div>
         <button type="button" onClick={handleExportCsv}
@@ -312,12 +336,15 @@ export default function MiDesempenoPage() {
                       <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Ciclo</th>
                       <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Puntaje</th>
                       <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Fecha</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Firma</th>
                     </tr>
                   </thead>
                   <tbody>
                     {completed.map((ev: any, i: number) => {
                       const evaluateeName = ev.evaluatee ? `${ev.evaluatee.firstName || ''} ${ev.evaluatee.lastName || ''}`.trim() : '--';
                       const relLabel: Record<string, string> = { self: 'Autoevaluacion', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
+                      const respId = ev.response?.id || ev.responseId;
+                      const sigs = respId ? signatureMap[respId] : null;
                       return (
                         <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                           <td style={{ padding: '0.6rem 0.75rem', fontWeight: 500 }}>{evaluateeName}</td>
@@ -330,6 +357,20 @@ export default function MiDesempenoPage() {
                           </td>
                           <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>
                             {ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            {sigs && sigs.length > 0 ? (
+                              <SignatureBadge signatures={sigs} />
+                            ) : respId ? (
+                              <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                                onClick={() => setSignModal({
+                                  documentType: 'evaluation_response',
+                                  documentId: respId,
+                                  documentName: `Evaluación ${ev.cycle?.name || ''} — ${evaluateeName}`,
+                                })}>
+                                ✍️ Firmar
+                              </button>
+                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>—</span>}
                           </td>
                         </tr>
                       );
@@ -826,6 +867,16 @@ export default function MiDesempenoPage() {
             )}
           </div>
         </div>
+      )}
+      {/* Signature Modal */}
+      {signModal && (
+        <SignatureModal
+          documentType={signModal.documentType}
+          documentId={signModal.documentId}
+          documentName={signModal.documentName}
+          onSigned={() => { setSignModal(null); loadSignatures(); }}
+          onCancel={() => setSignModal(null)}
+        />
       )}
     </div>
   );
