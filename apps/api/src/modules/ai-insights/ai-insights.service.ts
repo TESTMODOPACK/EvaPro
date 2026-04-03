@@ -182,24 +182,10 @@ export class AiInsightsService {
     }
   }
 
-  /** Check weekly limit per role (secondary limit within monthly budget) */
-  private async checkWeeklyRoleLimit(tenantId: string, generatedBy: string): Promise<void> {
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-
-    const weeklyCount = await this.insightRepo.count({
-      where: { tenantId, generatedBy, createdAt: MoreThan(weekAgo) },
-    });
-
-    const user = await this.userRepo.findOne({ where: { id: generatedBy }, select: ['id', 'role'] });
-    const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
-    const weeklyLimit = isAdmin ? 100 : 50;
-
-    if (weeklyCount >= weeklyLimit) {
-      throw new BadRequestException(
-        `Has alcanzado el limite semanal de ${weeklyLimit} informes de IA. El limite se renueva cada 7 dias.`,
-      );
-    }
+  /** @deprecated Weekly per-user limits removed. Use checkRateLimit (monthly org-wide) only. */
+  private async checkWeeklyRoleLimit(_tenantId: string, _generatedBy: string): Promise<void> {
+    // No-op: quota is now org-wide monthly only, controlled by the subscription plan.
+    // Kept as stub to avoid breaking callers; will be cleaned up later.
   }
 
   private async callClaude(prompt: string, maxTokens = 2000): Promise<{ text: string; tokensUsed: number }> {
@@ -933,38 +919,27 @@ export class AiInsightsService {
 
   // ─── Usage / Quota ──────────────────────────────────────────────────
 
-  async getUsageQuota(tenantId: string, userId: string) {
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-
-    const weeklyUsed = await this.insightRepo.count({
-      where: { tenantId, generatedBy: userId, createdAt: MoreThan(weekAgo) },
-    });
-
-    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'role'] });
-    const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
-    const weeklyLimit = isAdmin ? 100 : 50;
-    const weeklyRemaining = Math.max(0, weeklyLimit - weeklyUsed);
-
-    // Monthly plan-based limits (aligned to billing cycle)
+  async getUsageQuota(tenantId: string, _userId?: string) {
+    // Quota is org-wide monthly, based on the subscription plan.
+    // No per-user limits — any user that generates an AI report consumes 1 credit from the org pool.
     const { used: monthlyUsed, limit: monthlyLimit, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
     const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
     const nearLimit = monthlyLimit > 0 && monthlyRemaining <= Math.ceil(monthlyLimit * 0.1);
 
     return {
+      used: monthlyUsed,
+      limit: monthlyLimit,
+      remaining: monthlyRemaining,
       monthlyUsed,
       monthlyLimit,
       monthlyRemaining,
       periodStart,
       periodEnd,
-      weeklyUsed,
-      weeklyLimit,
-      weeklyRemaining,
       nearLimit,
       message: monthlyLimit <= 0
         ? 'Su plan no incluye informes de IA.'
         : nearLimit
-          ? `Atencion: quedan ${monthlyRemaining} de ${monthlyLimit} informes de IA en este periodo.`
+          ? `Atención: quedan ${monthlyRemaining} de ${monthlyLimit} informes de IA en este período.`
           : null,
     };
   }

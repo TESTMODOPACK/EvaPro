@@ -587,10 +587,12 @@ function InsightsPageContent() {
           }}>
             <span style={{ color: quota.nearLimit ? 'var(--danger)' : 'var(--text-secondary)' }}>
               {quota.nearLimit ? '⚠️ ' : '📊 '}
-              Organización: {quota.monthlyUsed ?? 0} de {quota.monthlyLimit ?? 0} informes usados este período ({quota.monthlyRemaining ?? 0} restantes)
+              Informes IA: {quota.used ?? quota.monthlyUsed ?? 0} de {quota.limit ?? quota.monthlyLimit ?? 0} usados este período ({quota.remaining ?? quota.monthlyRemaining ?? 0} restantes)
             </span>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Tu cuota personal: {quota.weeklyUsed ?? 0}/{quota.weeklyLimit ?? 0} esta semana
+              {quota.periodStart && quota.periodEnd
+                ? `Período: ${new Date(quota.periodStart).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })} al ${new Date(quota.periodEnd).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`
+                : 'Cuota mensual'}
             </span>
           </div>
         </div>
