@@ -144,7 +144,7 @@ export default function MiDesempenoPage() {
 
   const handleExportCsv = () => {
     const rows: string[] = [];
-    const esc = (v: any) => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s; };
+    const esc = (v: any) => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s; };
 
     rows.push('RESUMEN MI DESEMPEÑO');
     rows.push(`Último puntaje,${displayScore ?? 'Sin datos'}`);
