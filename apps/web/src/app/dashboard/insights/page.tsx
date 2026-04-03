@@ -404,7 +404,7 @@ function FlightRiskSection() {
   }
 
   const { summary, scores, generatedAt, totalEmployees } = data;
-  const allScores = (scores as any[]).sort((a: any, b: any) => b.riskScore - a.riskScore);
+  const allScores = [...(scores as any[])].sort((a: any, b: any) => b.riskScore - a.riskScore);
   const departments = Array.from(new Set(allScores.map((s: any) => s.department).filter(Boolean))).sort() as string[];
 
   // Apply filters
@@ -424,15 +424,15 @@ function FlightRiskSection() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-        <div className="card" style={{ padding: '1rem', borderTop: '3px solid var(--success)', textAlign: 'center', cursor: 'pointer', opacity: riskFilterFR === 'low' ? 1 : 0.7 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'low' ? '' : 'low'); setPageFR(1); }}>
+        <div className="card" style={{ padding: '1rem', borderTop: '3px solid var(--success)', textAlign: 'center', cursor: 'pointer', opacity: !riskFilterFR || riskFilterFR === 'low' ? 1 : 0.5 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'low' ? '' : 'low'); setPageFR(1); }}>
           <p style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--success)', margin: 0 }}>{summary?.low ?? 0}</p>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Riesgo Bajo</p>
         </div>
-        <div className="card" style={{ padding: '1rem', borderTop: '3px solid #f59e0b', textAlign: 'center', cursor: 'pointer', opacity: riskFilterFR === 'medium' ? 1 : 0.7 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'medium' ? '' : 'medium'); setPageFR(1); }}>
+        <div className="card" style={{ padding: '1rem', borderTop: '3px solid #f59e0b', textAlign: 'center', cursor: 'pointer', opacity: !riskFilterFR || riskFilterFR === 'medium' ? 1 : 0.5 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'medium' ? '' : 'medium'); setPageFR(1); }}>
           <p style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f59e0b', margin: 0 }}>{summary?.medium ?? 0}</p>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Riesgo Medio</p>
         </div>
-        <div className="card" style={{ padding: '1rem', borderTop: '3px solid var(--danger)', textAlign: 'center', cursor: 'pointer', opacity: riskFilterFR === 'high' ? 1 : 0.7 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'high' ? '' : 'high'); setPageFR(1); }}>
+        <div className="card" style={{ padding: '1rem', borderTop: '3px solid var(--danger)', textAlign: 'center', cursor: 'pointer', opacity: !riskFilterFR || riskFilterFR === 'high' ? 1 : 0.5 }} onClick={() => { setRiskFilterFR(riskFilterFR === 'high' ? '' : 'high'); setPageFR(1); }}>
           <p style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--danger)', margin: 0 }}>{summary?.high ?? 0}</p>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Riesgo Alto</p>
         </div>
@@ -481,6 +481,9 @@ function FlightRiskSection() {
             </tr>
           </thead>
           <tbody>
+            {paged.length === 0 && (
+              <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados para los filtros seleccionados</td></tr>
+            )}
             {paged.map((s: any, i: number) => {
                 const badge = riskBadge[s.riskLevel] ?? riskBadge.low;
                 const isOpen = expanded === s.userId;
@@ -925,12 +928,12 @@ function RetentionSection() {
     <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* Summary KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--danger)', cursor: 'pointer', opacity: riskFilterRT === 'high' ? 1 : 0.7 }}
+        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--danger)', cursor: 'pointer', opacity: !riskFilterRT || riskFilterRT === 'high' ? 1 : 0.5 }}
           onClick={() => { setRiskFilterRT(riskFilterRT === 'high' ? '' : 'high'); setPageRT(1); }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--danger)' }}>{data.totalHighRisk}</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('insights.highRiskEmployees')}</div>
         </div>
-        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--accent)', cursor: 'pointer', opacity: riskFilterRT === 'medium' ? 1 : 0.7 }}
+        <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid var(--accent)', cursor: 'pointer', opacity: !riskFilterRT || riskFilterRT === 'medium' ? 1 : 0.5 }}
           onClick={() => { setRiskFilterRT(riskFilterRT === 'medium' ? '' : 'medium'); setPageRT(1); }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>{data.totalMediumRisk}</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('insights.mediumRiskEmployees')}</div>
