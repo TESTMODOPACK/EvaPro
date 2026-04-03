@@ -961,6 +961,57 @@ export class AiInsightsService {
     };
   }
 
+  /** Full AI usage log for audit tab — all generations with user info */
+  async getAiUsageLog(tenantId: string, page = 1, limit = 25): Promise<{ data: any[]; total: number; totalTokens: number }> {
+    const typeLabels: Record<string, string> = {
+      summary: 'Resumen de desempeño', bias: 'Detección de sesgo',
+      suggestions: 'Sugerencias de desarrollo', survey_analysis: 'Análisis de encuesta',
+      cv_analysis: 'Análisis de CV', recruitment_recommendation: 'Recomendación de selección',
+    };
+
+    const [records, total] = await this.insightRepo.findAndCount({
+      where: { tenantId },
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    // Enrich with user names
+    const userIds = [...new Set(records.map(r => r.generatedBy).filter(Boolean))];
+    const userMap = new Map<string, any>();
+    if (userIds.length > 0) {
+      const users = await this.userRepo.find({
+        where: userIds.map(id => ({ id })),
+        select: ['id', 'email', 'firstName', 'lastName'],
+      });
+      for (const u of users) userMap.set(u.id, u);
+    }
+
+    // Total tokens
+    const tokensResult = await this.insightRepo.createQueryBuilder('i')
+      .where('i.tenantId = :tenantId', { tenantId })
+      .select('COALESCE(SUM(i.tokensUsed), 0)', 'total')
+      .getRawOne();
+
+    return {
+      data: records.map(r => {
+        const u = r.generatedBy ? userMap.get(r.generatedBy) : null;
+        return {
+          id: r.id,
+          type: r.type,
+          typeLabel: typeLabels[r.type] || r.type,
+          createdAt: r.createdAt,
+          tokensUsed: r.tokensUsed || 0,
+          generatedBy: r.generatedBy,
+          userName: u ? `${u.firstName} ${u.lastName}` : null,
+          userEmail: u?.email || null,
+        };
+      }),
+      total,
+      totalTokens: Number(tokensResult?.total || 0),
+    };
+  }
+
   // ─── PDF Export ──────────────────────────────────────────────────────
 
   async exportSummaryPdf(tenantId: string, cycleId: string, userId: string): Promise<Buffer> {

@@ -156,6 +156,17 @@ export class AiInsightsController {
     return this.aiService.getUsageQuota(req.user.tenantId, req.user.userId);
   }
 
+  /** Full AI usage log for audit tab */
+  @Get('usage-log')
+  @Roles('tenant_admin')
+  getUsageLog(
+    @Request() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.aiService.getAiUsageLog(req.user.tenantId, Number(page) || 1, Math.min(Number(limit) || 25, 100));
+  }
+
   // ─── PDF Export ──────────────────────────────────────────────────────
 
   @Get('summary-pdf/:userId/:cycleId')

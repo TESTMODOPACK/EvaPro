@@ -188,6 +188,102 @@ function GuidePanel(props: { open: boolean; onToggle: () => void; t: any }) {
 
 /* ─── Main page ───────────────────────────────────────────────── */
 
+/* ─── AI Usage Log Tab ──────────────────────────────────────── */
+
+function AiUsageTab() {
+  const token = useAuthStore((s) => s.token);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const LIMIT = 25;
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+  useEffect(() => {
+    if (!token) return;
+    setLoading(true);
+    fetch(`${BASE_URL}/ai/usage-log?page=${page}&limit=${LIMIT}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
+  }, [token, page]);
+
+  if (loading) return <Spinner />;
+  if (!data) return <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>No se pudo cargar el registro de uso IA</p>;
+
+  const totalPages = Math.max(1, Math.ceil((data.total || 0) / LIMIT));
+
+  return (
+    <div>
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Total Ejecuciones</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--accent)' }}>{data.total || 0}</div>
+        </div>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Tokens Consumidos</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#6366f1' }}>{(data.totalTokens || 0).toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card" style={{ padding: 0 }}>
+        {(!data.data || data.data.length === 0) ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin registros de uso de IA</div>
+        ) : (
+          <div className="table-wrapper">
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>#</th>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Fecha</th>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tipo de Informe</th>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Usuario</th>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.data.map((r: any, i: number) => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)' }}>{(page - 1) * LIMIT + i + 1}</td>
+                    <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      {new Date(r.createdAt).toLocaleDateString('es-CL')} {new Date(r.createdAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td style={{ padding: '0.5rem 0.75rem' }}>
+                      <span className="badge badge-accent" style={{ fontSize: '0.72rem' }}>{r.typeLabel}</span>
+                    </td>
+                    <td style={{ padding: '0.5rem 0.75rem' }}>
+                      {r.userName ? (
+                        <div>
+                          <div style={{ fontWeight: 500 }}>{r.userName}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{r.userEmail}</div>
+                        </div>
+                      ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Sistema</span>}
+                    </td>
+                    <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {(r.tokensUsed || 0).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button>
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {page} de {totalPages}</span>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Main Audit Page ──────────────────────────────────────── */
+
 export default function AuditoriaPage() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
@@ -209,6 +305,7 @@ export default function AuditoriaPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [activeAuditTab, setActiveAuditTab] = useState<'logs' | 'ai-usage'>('logs');
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search text by 400ms
@@ -336,6 +433,29 @@ export default function AuditoriaPage() {
       {/* Guide */}
       <GuidePanel open={guideOpen} onToggle={() => setGuideOpen(false)} t={t} />
 
+      {/* Tab bar */}
+      <div className="animate-fade-up" style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
+        {[
+          { id: 'logs' as const, label: 'Registro de Auditoría' },
+          { id: 'ai-usage' as const, label: 'Uso de IA (Anthropic)' },
+        ].map(tab => (
+          <button key={tab.id} onClick={() => setActiveAuditTab(tab.id)} style={{
+            padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: activeAuditTab === tab.id ? 700 : 500,
+            color: activeAuditTab === tab.id ? 'var(--accent)' : 'var(--text-secondary)',
+            background: 'none', border: 'none', cursor: 'pointer',
+            borderBottom: `2px solid ${activeAuditTab === tab.id ? 'var(--accent)' : 'transparent'}`,
+            marginBottom: '-1px',
+          }}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* AI Usage Tab */}
+      {activeAuditTab === 'ai-usage' && <AiUsageTab />}
+
+      {/* Audit Logs Tab */}
+      {activeAuditTab !== 'ai-usage' && <>
       {/* Filters */}
       <div className="animate-fade-up" style={{ marginBottom: '1.25rem', display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input type="date" style={{ ...inputSt, width: '145px' }} value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} title="Fecha desde" />
@@ -465,7 +585,7 @@ export default function AuditoriaPage() {
           </button>
         </div>
       )}
+      </>}
     </div>
   );
 }
-
