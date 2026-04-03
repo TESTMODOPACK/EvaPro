@@ -739,4 +739,224 @@ export class SurveysService {
       this.logger.error(`[Cron] Error in remindIncompleteSurveys: ${error}`);
     }
   }
+
+  // ─── Export ────────────────────────────────────────────────────────────
+
+  private escapeCsv(val: any): string {
+    const str = String(val ?? '');
+    return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+  }
+
+  async exportSurveyCsv(tenantId: string, surveyId: string): Promise<string> {
+    const results = await this.getResults(tenantId, surveyId);
+    const enps = await this.getENPS(tenantId, surveyId);
+    const depts = await this.getResultsByDepartment(tenantId, surveyId);
+
+    const rows: string[] = [];
+    rows.push(`Encuesta,${this.escapeCsv(results.survey.title)}`);
+    rows.push(`Tasa de respuesta,${results.responseRate}%`);
+    rows.push(`Respuestas,${results.totalResponses} de ${results.totalAssigned}`);
+    rows.push(`Promedio general,${results.overallAverage}`);
+    if (enps.enps !== null) rows.push(`eNPS,${enps.enps}`);
+    rows.push('');
+
+    // By category
+    rows.push('Categoría,Promedio,Respuestas');
+    for (const c of results.averageByCategory) {
+      rows.push(`${this.escapeCsv(c.category)},${c.average},${c.count}`);
+    }
+    rows.push('');
+
+    // By question
+    rows.push('Pregunta,Categoría,Promedio,Respuestas');
+    for (const q of results.averageByQuestion) {
+      rows.push(`${this.escapeCsv(q.questionText)},${this.escapeCsv(q.category)},${q.average},${q.count}`);
+    }
+    rows.push('');
+
+    // By department
+    if (depts.length > 0) {
+      rows.push('Departamento,Promedio,Respuestas');
+      for (const d of depts) {
+        rows.push(`${this.escapeCsv(d.department)},${d.average},${d.responseCount}`);
+      }
+      rows.push('');
+    }
+
+    // eNPS detail
+    if (enps.enps !== null) {
+      rows.push('eNPS Detalle');
+      rows.push(`Promotores,${enps.promoters},${enps.promoterPercent}%`);
+      rows.push(`Pasivos,${enps.passives},${enps.passivePercent}%`);
+      rows.push(`Detractores,${enps.detractors},${enps.detractorPercent}%`);
+      rows.push(`Score eNPS,${enps.enps}`);
+    }
+
+    return '\uFEFF' + rows.join('\n');
+  }
+
+  async exportSurveyXlsx(tenantId: string, surveyId: string): Promise<Buffer> {
+    const results = await this.getResults(tenantId, surveyId);
+    const enps = await this.getENPS(tenantId, surveyId);
+    const depts = await this.getResultsByDepartment(tenantId, surveyId);
+
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const accent = { argb: 'FFC9933A' };
+    const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+
+    // Sheet 1: Resumen
+    const ws1 = wb.addWorksheet('Resumen');
+    ws1.columns = [{ width: 25 }, { width: 20 }];
+    ws1.addRow(['Encuesta de Clima']).font = { bold: true, size: 14 };
+    ws1.addRow([]);
+    ws1.addRow(['Encuesta', results.survey.title]);
+    ws1.addRow(['Tasa de respuesta', `${results.responseRate}%`]);
+    ws1.addRow(['Respuestas', `${results.totalResponses} de ${results.totalAssigned}`]);
+    ws1.addRow(['Promedio general', results.overallAverage]);
+    if (enps.enps !== null) {
+      ws1.addRow([]);
+      ws1.addRow(['eNPS', enps.enps]);
+      ws1.addRow(['Promotores', `${enps.promoters} (${enps.promoterPercent}%)`]);
+      ws1.addRow(['Pasivos', `${enps.passives} (${enps.passivePercent}%)`]);
+      ws1.addRow(['Detractores', `${enps.detractors} (${enps.detractorPercent}%)`]);
+    }
+
+    // Sheet 2: Por Categoría
+    const ws2 = wb.addWorksheet('Por Categoría');
+    ws2.columns = [{ width: 25 }, { width: 15 }, { width: 15 }];
+    const h2 = ws2.addRow(['Categoría', 'Promedio', 'Respuestas']);
+    h2.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    for (const c of results.averageByCategory) {
+      ws2.addRow([c.category, c.average, c.count]);
+    }
+
+    // Sheet 3: Por Pregunta
+    const ws3 = wb.addWorksheet('Por Pregunta');
+    ws3.columns = [{ width: 50 }, { width: 20 }, { width: 12 }, { width: 12 }];
+    const h3 = ws3.addRow(['Pregunta', 'Categoría', 'Promedio', 'Respuestas']);
+    h3.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    for (const q of results.averageByQuestion) {
+      ws3.addRow([q.questionText, q.category, q.average, q.count]);
+    }
+
+    // Sheet 4: Por Departamento
+    if (depts.length > 0) {
+      const ws4 = wb.addWorksheet('Por Departamento');
+      ws4.columns = [{ width: 25 }, { width: 15 }, { width: 15 }];
+      const h4 = ws4.addRow(['Departamento', 'Promedio', 'Respuestas']);
+      h4.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+      for (const d of depts) {
+        ws4.addRow([d.department, d.average, d.responseCount]);
+      }
+    }
+
+    // Sheet 5: Respuestas Abiertas
+    if (results.openResponses.length > 0) {
+      const ws5 = wb.addWorksheet('Respuestas Abiertas');
+      ws5.columns = [{ width: 40 }, { width: 20 }, { width: 60 }];
+      const h5 = ws5.addRow(['Pregunta', 'Categoría', 'Respuesta']);
+      h5.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+      for (const r of results.openResponses) {
+        ws5.addRow([r.questionText, r.category, r.text]);
+      }
+    }
+
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  async exportSurveyPdf(tenantId: string, surveyId: string): Promise<Buffer> {
+    const results = await this.getResults(tenantId, surveyId);
+    const enps = await this.getENPS(tenantId, surveyId);
+    const depts = await this.getResultsByDepartment(tenantId, surveyId);
+
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    // Header
+    doc.setFillColor(26, 18, 6);
+    doc.rect(0, 0, pageW, 35, 'F');
+    doc.setTextColor(245, 228, 168);
+    doc.setFontSize(16);
+    doc.text('Encuesta de Clima', margin, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(201, 147, 58);
+    doc.text(results.survey.title, margin, 28);
+
+    let y = 45;
+
+    // KPIs
+    const kpis = [
+      { label: 'Tasa Respuesta', value: `${results.responseRate}%` },
+      { label: 'Promedio General', value: `${results.overallAverage}/5` },
+      { label: 'Respuestas', value: `${results.totalResponses}/${results.totalAssigned}` },
+    ];
+    if (enps.enps !== null) kpis.push({ label: 'eNPS', value: `${enps.enps}` });
+
+    const kpiW = (pageW - 2 * margin - (kpis.length - 1) * 4) / kpis.length;
+    kpis.forEach((kpi, i) => {
+      const x = margin + i * (kpiW + 4);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, kpiW, 22, 3, 3, 'F');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(kpi.label, x + kpiW / 2, y + 8, { align: 'center' });
+      doc.setFontSize(14);
+      doc.setTextColor(26, 18, 6);
+      doc.text(kpi.value, x + kpiW / 2, y + 18, { align: 'center' });
+    });
+    y += 30;
+
+    // Categories table
+    if (results.averageByCategory.length > 0) {
+      doc.setFontSize(11);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Resultados por Categoría', margin, y);
+      y += 5;
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [['Categoría', 'Promedio', 'Respuestas']],
+        body: results.averageByCategory.map((c: any) => [c.category, c.average.toFixed(2), c.count]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 8 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Department table
+    if (depts.length > 0 && y < 240) {
+      doc.setFontSize(11);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Resultados por Departamento', margin, y);
+      y += 5;
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [['Departamento', 'Promedio', 'Respuestas']],
+        body: depts.map((d: any) => [d.department, d.average.toFixed(2), d.responseCount]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 8 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Ascenda Performance`, margin, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
+  }
 }

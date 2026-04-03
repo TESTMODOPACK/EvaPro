@@ -9,12 +9,14 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -83,6 +85,32 @@ export class ObjectivesController {
   @Roles('super_admin', 'tenant_admin', 'manager')
   getTree(@Request() req: any) {
     return this.objectivesService.getObjectiveTree(req.user.tenantId);
+  }
+
+  /** Export objectives in CSV, XLSX, or PDF format */
+  @Get('export')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  async exportObjectives(
+    @Request() req: any,
+    @Query('format') format: string,
+    @Res() res: Response,
+  ) {
+    const { tenantId, userId, role } = req.user;
+    const ext = format?.toLowerCase() || 'csv';
+
+    if (ext === 'xlsx') {
+      const buffer = await this.objectivesService.exportObjectivesXlsx(tenantId, userId, role);
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename=objetivos.xlsx` });
+      return res.send(buffer);
+    }
+    if (ext === 'pdf') {
+      const buffer = await this.objectivesService.exportObjectivesPdf(tenantId, userId, role);
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename=objetivos.pdf` });
+      return res.send(buffer);
+    }
+    const csv = await this.objectivesService.exportObjectivesCsv(tenantId, userId, role);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename=objetivos.csv` });
+    return res.send(csv);
   }
 
   @Get('history-by-period')

@@ -6,12 +6,15 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   ParseUUIDPipe,
   UseGuards,
   HttpCode,
   HttpStatus,
   Request,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { SurveysService } from './surveys.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -95,6 +98,34 @@ export class SurveysController {
     @Body() dto: { answers: Array<{ questionId: string; value: number | string | string[] }> },
   ) {
     return this.surveysService.submitResponse(req.user.tenantId, id, req.user.userId, dto.answers);
+  }
+
+  /** Export survey results in CSV, XLSX, or PDF format */
+  @Get(':id/export')
+  @Roles('super_admin', 'tenant_admin')
+  async exportResults(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('format') format: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    const tenantId = req.user.tenantId;
+    const ext = format?.toLowerCase() || 'csv';
+
+    if (ext === 'xlsx') {
+      const buffer = await this.surveysService.exportSurveyXlsx(tenantId, id);
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename=encuesta-${id}.xlsx` });
+      return res.send(buffer);
+    }
+    if (ext === 'pdf') {
+      const buffer = await this.surveysService.exportSurveyPdf(tenantId, id);
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename=encuesta-${id}.pdf` });
+      return res.send(buffer);
+    }
+    // Default: CSV
+    const csv = await this.surveysService.exportSurveyCsv(tenantId, id);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename=encuesta-${id}.csv` });
+    return res.send(csv);
   }
 
   /** Get results by department — must be before :id/results */

@@ -34,6 +34,31 @@ export default function ResultadosEncuestaPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [showInitiativeModal, setShowInitiativeModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'department' | 'responses' | 'ai' | 'trends'>('overview');
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+  const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
+    if (!token || !surveyId) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${BASE_URL}/surveys/${surveyId}/export?format=${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error al exportar');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      const extMap: Record<string, string> = { csv: 'csv', xlsx: 'xlsx', pdf: 'pdf' };
+      link.href = URL.createObjectURL(blob);
+      link.download = `encuesta-clima.${extMap[format]}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {
+      toast('Error al exportar', 'error');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   useEffect(() => {
     if (!token || !surveyId) return;
@@ -142,9 +167,28 @@ export default function ResultadosEncuestaPage() {
             {results.survey?.status === 'closed' ? 'Cerrada' : 'Activa'}
           </span>
         </div>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {results.totalResponses} respuestas de {results.totalAssigned} asignados ({results.responseRate}% tasa de respuesta)
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0, flex: 1 }}>
+            {results.totalResponses} respuestas de {results.totalAssigned} asignados ({results.responseRate}% tasa de respuesta)
+          </p>
+          {isAdmin && (
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              {(['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
+                <button key={fmt} type="button" disabled={!!exporting}
+                  onClick={() => handleExport(fmt)}
+                  style={{
+                    padding: '0.35rem 0.7rem', fontSize: '0.72rem', fontWeight: 600,
+                    border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)',
+                    background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)',
+                    color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer',
+                    opacity: exporting && exporting !== fmt ? 0.5 : 1,
+                  }}>
+                  {exporting === fmt ? 'Exportando...' : fmt.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* KPI Cards */}

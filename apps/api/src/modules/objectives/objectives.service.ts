@@ -734,4 +734,166 @@ export class ObjectivesService {
     const avgProgress = Math.round(totalProgress / krs.length);
     await this.objectiveRepo.update({ id: objectiveId, tenantId }, { progress: avgProgress });
   }
+
+  // ─── Export ────────────────────────────────────────────────────────────
+
+  private escapeCsv(val: any): string {
+    const str = String(val ?? '');
+    return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+  }
+
+  private async getExportData(tenantId: string, userId?: string, role?: string): Promise<any[]> {
+    if (role === 'employee' || role === 'external') {
+      return this.findByUser(tenantId, userId!);
+    }
+    if (role === 'manager' && userId) {
+      return this.findByManager(tenantId, userId);
+    }
+    return this.findAll(tenantId);
+  }
+
+  async exportObjectivesCsv(tenantId: string, userId?: string, role?: string): Promise<string> {
+    const objectives = await this.getExportData(tenantId, userId, role);
+    const rows: string[] = [];
+    rows.push('Título,Tipo,Estado,Progreso %,Peso,Fecha Meta,Responsable,Departamento');
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    for (const obj of objectives) {
+      const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
+      const dept = obj.user?.department || '';
+      rows.push([
+        this.escapeCsv(obj.title), obj.type || 'OKR', statusLabels[obj.status] || obj.status,
+        obj.progress, obj.weight || 0,
+        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
+        this.escapeCsv(userName), this.escapeCsv(dept),
+      ].join(','));
+    }
+    return '\uFEFF' + rows.join('\n');
+  }
+
+  async exportObjectivesXlsx(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
+    const objectives = await this.getExportData(tenantId, userId, role);
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const accent = { argb: 'FFC9933A' };
+    const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+
+    // Sheet 1: Resumen
+    const ws1 = wb.addWorksheet('Resumen');
+    ws1.columns = [{ width: 25 }, { width: 15 }];
+    ws1.addRow(['Objetivos / OKRs']).font = { bold: true, size: 14 };
+    ws1.addRow([]);
+    const total = objectives.length;
+    const active = objectives.filter((o: any) => o.status === 'active').length;
+    const completed = objectives.filter((o: any) => o.status === 'completed').length;
+    const atRisk = objectives.filter((o: any) => o.status === 'active' && o.progress < 40).length;
+    const avgProgress = total > 0 ? Math.round(objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) / total) : 0;
+    ws1.addRow(['Total objetivos', total]);
+    ws1.addRow(['Activos', active]);
+    ws1.addRow(['Completados', completed]);
+    ws1.addRow(['En riesgo (<40%)', atRisk]);
+    ws1.addRow(['Progreso promedio', `${avgProgress}%`]);
+    ws1.addRow(['Fecha exportación', new Date().toLocaleDateString('es-CL')]);
+
+    // Sheet 2: Detalle
+    const ws2 = wb.addWorksheet('Objetivos');
+    ws2.columns = [
+      { width: 35 }, { width: 10 }, { width: 14 }, { width: 12 },
+      { width: 10 }, { width: 14 }, { width: 22 }, { width: 18 },
+    ];
+    const h2 = ws2.addRow(['Título', 'Tipo', 'Estado', 'Progreso %', 'Peso', 'Fecha Meta', 'Responsable', 'Departamento']);
+    h2.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    for (const obj of objectives) {
+      const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
+      ws2.addRow([
+        obj.title, obj.type || 'OKR', statusLabels[obj.status] || obj.status,
+        obj.progress, obj.weight || 0,
+        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
+        userName, obj.user?.department || '',
+      ]);
+    }
+
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  async exportObjectivesPdf(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
+    const objectives = await this.getExportData(tenantId, userId, role);
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const doc = new jsPDF('l', 'mm', 'a4'); // landscape for more columns
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    // Header
+    doc.setFillColor(26, 18, 6);
+    doc.rect(0, 0, pageW, 30, 'F');
+    doc.setTextColor(245, 228, 168);
+    doc.setFontSize(16);
+    doc.text('Objetivos / OKRs', margin, 16);
+    doc.setFontSize(9);
+    doc.setTextColor(201, 147, 58);
+    doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+
+    let y = 38;
+
+    // KPIs
+    const total = objectives.length;
+    const active = objectives.filter((o: any) => o.status === 'active').length;
+    const completedCount = objectives.filter((o: any) => o.status === 'completed').length;
+    const atRisk = objectives.filter((o: any) => o.status === 'active' && o.progress < 40).length;
+    const avgProgress = total > 0 ? Math.round(objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) / total) : 0;
+
+    const kpis = [
+      { label: 'Total', value: `${total}` },
+      { label: 'Activos', value: `${active}` },
+      { label: 'Completados', value: `${completedCount}` },
+      { label: 'En Riesgo', value: `${atRisk}` },
+      { label: 'Progreso Prom.', value: `${avgProgress}%` },
+    ];
+    const kpiW = (pageW - 2 * margin - 4 * 4) / 5;
+    kpis.forEach((kpi, i) => {
+      const x = margin + i * (kpiW + 4);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, kpiW, 18, 2, 2, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(kpi.label, x + kpiW / 2, y + 7, { align: 'center' });
+      doc.setFontSize(12);
+      doc.setTextColor(26, 18, 6);
+      doc.text(kpi.value, x + kpiW / 2, y + 15, { align: 'center' });
+    });
+    y += 26;
+
+    // Table
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [['Título', 'Tipo', 'Estado', 'Progreso', 'Peso', 'Fecha Meta', 'Responsable']],
+      body: objectives.map((o: any) => [
+        o.title, o.type || 'OKR', statusLabels[o.status] || o.status,
+        `${o.progress}%`, o.weight || 0,
+        o.targetDate ? new Date(o.targetDate).toLocaleDateString('es-CL') : '-',
+        o.user ? `${o.user.firstName || ''} ${o.user.lastName || ''}`.trim() : '',
+      ]),
+      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      bodyStyles: { fontSize: 7 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+    });
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Ascenda Performance`, margin, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
+  }
 }
