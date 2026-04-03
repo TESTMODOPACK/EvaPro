@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
+import SignatureModal, { SignatureBadge } from '@/components/SignatureModal';
 
 function Spinner() {
   return (
@@ -105,6 +106,10 @@ function DesarrolloPageContent() {
   // Pagination
   const [pdiPage, setPdiPage] = useState(1);
   const PDI_PAGE_SIZE = 15;
+
+  // Signatures
+  const [signModal, setSignModal] = useState<{ documentType: string; documentId: string; documentName: string } | null>(null);
+  const [pdiSignatures, setPdiSignatures] = useState<Record<string, any[]>>({});
 
   const [confirmState, setConfirmState] = useState<{
     message: string;
@@ -210,6 +215,20 @@ function DesarrolloPageContent() {
       setLoading(false);
     }
   }
+
+  // Load signatures for plans
+  async function loadPdiSignatures() {
+    if (!token || plans.length === 0) return;
+    const map: Record<string, any[]> = {};
+    for (const p of plans) {
+      try {
+        const sigs = await api.signatures.list(token, 'development_plan', p.id);
+        if (Array.isArray(sigs) && sigs.length > 0) map[p.id] = sigs;
+      } catch {}
+    }
+    setPdiSignatures(map);
+  }
+  useEffect(() => { if (plans.length > 0 && token) loadPdiSignatures(); }, [plans.length, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreatePlan(e: React.FormEvent) {
     e.preventDefault();
@@ -779,7 +798,15 @@ function DesarrolloPageContent() {
                       {plan.targetDate && <span>{`Fecha l\u00edmite: ${new Date(plan.targetDate).toLocaleDateString('es-CL')}`}</span>}
                       {plan.actions && <span>{`${plan.actions.length} acci\u00f3n${plan.actions.length !== 1 ? 'es' : ''}`}</span>}
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      {pdiSignatures[plan.id] ? (
+                        <SignatureBadge signatures={pdiSignatures[plan.id]} />
+                      ) : (plan.status === 'activo' || plan.status === 'completado') ? (
+                        <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          onClick={() => setSignModal({ documentType: 'development_plan', documentId: plan.id, documentName: plan.title || 'Plan de desarrollo' })}>
+                          ✍️ Firmar
+                        </button>
+                      ) : null}
                       {plan.status === 'borrador' && canCreate && (
                         <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} onClick={() => handleActivate(plan.id)}>
                           {t('desarrollo.activate')}
@@ -1167,6 +1194,17 @@ function DesarrolloPageContent() {
         confirmLabel={confirmState.confirmLabel}
         onConfirm={confirmState.onConfirm}
         onCancel={() => setConfirmState(null)}
+      />
+    )}
+
+    {/* Signature Modal */}
+    {signModal && (
+      <SignatureModal
+        documentType={signModal.documentType}
+        documentId={signModal.documentId}
+        documentName={signModal.documentName}
+        onSigned={() => { setSignModal(null); loadPdiSignatures(); }}
+        onCancel={() => setSignModal(null)}
       />
     )}
     </div>

@@ -74,6 +74,7 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/analytics-uso': ['super_admin', 'tenant_admin'],
   '/dashboard/analytics-ciclos': ['tenant_admin', 'manager'],
   '/dashboard/analytics-rotacion': ['tenant_admin'],
+  '/dashboard/firmas': ['tenant_admin'],
 };
 
 // ─── i18n-aware hooks ─────────────────────────────────────────────────────────

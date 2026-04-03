@@ -252,6 +252,13 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/postulantes', label: t('nav.applicants', 'Procesos de Selección'), icon: icons.recruitment },
       ],
     }] : []),
+    // ─── Firmas Digitales (admin only) ─────────────────────────
+    ...(isAdmin ? [{
+      title: 'Firmas Digitales',
+      items: [
+        { href: '/dashboard/firmas', label: 'Historial de Firmas', icon: icons.log },
+      ],
+    }] : []),
     // ─── Personas ───────────────────────────────────────────────
     ...(isAdminOrManager ? [{
       title: t('nav.people', 'Personas'),
