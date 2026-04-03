@@ -81,6 +81,15 @@ export class Objective {
   @Column({ type: 'uuid', name: 'cycle_id', nullable: true })
   cycleId: string;
 
+  @Column({ type: 'text', name: 'rejection_reason', nullable: true })
+  rejectionReason: string | null;
+
+  @Column({ type: 'uuid', name: 'approved_by', nullable: true })
+  approvedBy: string | null;
+
+  @Column({ type: 'timestamptz', name: 'approved_at', nullable: true })
+  approvedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

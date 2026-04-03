@@ -180,7 +180,7 @@ export class ObjectivesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.objectivesService.approve(req.user.tenantId, id);
+    return this.objectivesService.approve(req.user.tenantId, id, req.user.userId);
   }
 
   @Post(':id/reject')
@@ -188,8 +188,9 @@ export class ObjectivesController {
   reject(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
+    @Body() body?: { reason?: string },
   ) {
-    return this.objectivesService.reject(req.user.tenantId, id);
+    return this.objectivesService.reject(req.user.tenantId, id, req.user.userId, body?.reason);
   }
 
   @Delete(':id')

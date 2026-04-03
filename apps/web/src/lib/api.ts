@@ -564,8 +564,8 @@ export const api = {
       request<ObjectiveData>(`/objectives/${id}/submit-for-approval`, { method: "POST" }, token),
     approve: (token: string, id: string) =>
       request<ObjectiveData>(`/objectives/${id}/approve`, { method: "POST" }, token),
-    reject: (token: string, id: string) =>
-      request<ObjectiveData>(`/objectives/${id}/reject`, { method: "POST" }, token),
+    reject: (token: string, id: string, reason?: string) =>
+      request<ObjectiveData>(`/objectives/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }, token),
     atRisk: (token: string, userId?: string) =>
       request<ObjectiveData[]>(`/objectives/at-risk${userId ? `?userId=${userId}` : ""}`, {}, token),
     teamSummary: (token: string) =>

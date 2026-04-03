@@ -1023,8 +1023,21 @@ function ObjetivosPageContent() {
     approveObjective.mutate(id);
   }
 
+  // Rejection modal state
+  const [rejectModal, setRejectModal] = useState<{ id: string; title: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
   function handleReject(id: string) {
-    rejectObjective.mutate(id);
+    const obj = (objectives || []).find((o: any) => o.id === id);
+    setRejectModal({ id, title: obj?.title || '' });
+    setRejectReason('');
+  }
+
+  function confirmReject() {
+    if (!rejectModal) return;
+    rejectObjective.mutate({ id: rejectModal.id, reason: rejectReason || undefined });
+    setRejectModal(null);
+    setRejectReason('');
   }
 
   return (
@@ -1166,6 +1179,7 @@ function ObjetivosPageContent() {
                 <tbody>
                   <tr><td>Crear objetivos</td><td style={{ color: 'var(--success)' }}>Sí (para cualquiera)</td><td style={{ color: 'var(--success)' }}>Sí (para su equipo)</td><td style={{ color: 'var(--success)' }}>Sí (proponer propios)</td></tr>
                   <tr><td>Aprobar objetivos</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí (su equipo)</td><td style={{ color: 'var(--text-muted)' }}>No</td></tr>
+                  <tr><td>Rechazar con motivo</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí (su equipo)</td><td style={{ color: 'var(--text-muted)' }}>No</td></tr>
                   <tr><td>Ver objetivos</td><td style={{ color: 'var(--success)' }}>Todos</td><td style={{ color: 'var(--success)' }}>Su equipo + propios</td><td style={{ color: 'var(--success)' }}>Solo los suyos</td></tr>
                   <tr><td>Actualizar progreso</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí (solo los suyos)</td></tr>
                   <tr><td>Comentar</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí</td><td style={{ color: 'var(--success)' }}>Sí</td></tr>
@@ -1181,9 +1195,10 @@ function ObjetivosPageContent() {
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.78rem' }}>
               {[
                 { step: '1', label: 'Crear / Proponer', desc: 'Se define título, tipo y fecha. Queda como Borrador' },
-                { step: '2', label: 'Aprobar', desc: 'El encargado aprueba y pasa a En progreso' },
-                { step: '3', label: 'Avanzar', desc: 'El colaborador actualiza el % de avance' },
-                { step: '4', label: 'Completar', desc: 'Al llegar al 100% se marca como completado' },
+                { step: '2', label: 'Enviar a aprobación', desc: 'El colaborador envía para revisión de su jefatura' },
+                { step: '3', label: 'Aprobar o Rechazar', desc: 'El encargado aprueba (pasa a Activo) o rechaza con motivo (vuelve a Borrador)' },
+                { step: '4', label: 'Avanzar', desc: 'El colaborador actualiza el % de avance periódicamente' },
+                { step: '5', label: 'Completar', desc: 'Al llegar al 100% se marca como completado automáticamente' },
               ].map((s, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {i > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>&rarr;</span>}
@@ -1741,6 +1756,18 @@ function ObjetivosPageContent() {
                   </p>
                 )}
 
+                {/* Status banners */}
+                {obj.status === 'pending_approval' && (
+                  <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem', color: '#b45309', marginBottom: '0.35rem' }}>
+                    ⏳ Este objetivo está pendiente de aprobación por tu jefatura.
+                  </div>
+                )}
+                {obj.status === 'draft' && obj.rejectionReason && (
+                  <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem', color: 'var(--danger)', marginBottom: '0.35rem' }}>
+                    <strong>Rechazado:</strong> {obj.rejectionReason}
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.5rem', flexWrap: 'wrap' }}>
                   <button
@@ -1907,6 +1934,37 @@ function ObjetivosPageContent() {
       )}
       </>
       )}
+      {/* Rejection modal */}
+      {rejectModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setRejectModal(null); }}>
+          <div className="card" style={{ padding: '2rem', width: '100%', maxWidth: '450px' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.5rem' }}>Rechazar objetivo</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              {rejectModal.title}
+            </p>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Motivo del rechazo
+            </label>
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="Explica al colaborador por qué se rechaza este objetivo y qué debe corregir..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              style={{ width: '100%', resize: 'vertical', marginBottom: '1rem' }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button className="btn-ghost" onClick={() => setRejectModal(null)}>Cancelar</button>
+              <button className="btn-primary" onClick={confirmReject} disabled={rejectObjective.isPending}
+                style={{ background: 'var(--danger)', boxShadow: 'none' }}>
+                {rejectObjective.isPending ? 'Rechazando...' : 'Confirmar rechazo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Pagination */}
       {objTotalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1.25rem' }}>

@@ -80,7 +80,7 @@ export function useRejectObjective() {
   const token = useAuthStore((s) => s.token);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.objectives.reject(token!, id),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => api.objectives.reject(token!, id, reason),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['objectives'] }),
   });
 }

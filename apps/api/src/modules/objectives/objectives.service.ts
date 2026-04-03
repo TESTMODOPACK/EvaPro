@@ -280,30 +280,78 @@ export class ObjectivesService {
     }
 
     obj.status = ObjectiveStatus.PENDING_APPROVAL;
+    obj.rejectionReason = null; // Clear previous rejection reason
     const saved = await this.objectiveRepo.save(obj);
     this.auditService.log(tenantId, obj.userId, 'objective.submitted_for_approval', 'objective', id, { title: obj.title }).catch(() => {});
+
+    // Notify manager that an objective needs approval
+    const employee = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'firstName', 'lastName', 'managerId'] });
+    if (employee?.managerId) {
+      const manager = await this.userRepo.findOne({ where: { id: employee.managerId }, select: ['id', 'email', 'firstName'] });
+      if (manager?.email) {
+        this.emailService.sendObjectiveAssigned(manager.email, {
+          firstName: manager.firstName,
+          objectiveTitle: `[Pendiente de aprobación] ${obj.title}`,
+          objectiveType: obj.type || 'OKR',
+          assignedBy: `${employee.firstName} ${employee.lastName}`,
+          tenantId,
+        }).catch(() => {});
+      }
+    }
+
     return saved;
   }
 
   async approve(tenantId: string, id: string, approvedBy?: string): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Solo objetivos pendientes de aprobacion pueden ser aprobados');
+      throw new BadRequestException('Solo objetivos pendientes de aprobación pueden ser aprobados');
     }
     obj.status = ObjectiveStatus.ACTIVE;
+    obj.approvedBy = approvedBy || null;
+    obj.approvedAt = new Date();
+    obj.rejectionReason = null;
     const saved = await this.objectiveRepo.save(obj);
     this.auditService.log(tenantId, approvedBy || obj.userId, 'objective.approved', 'objective', id, { title: obj.title, approvedBy }).catch(() => {});
+
+    // Notify objective owner that it was approved
+    const owner = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'email', 'firstName'] });
+    if (owner?.email) {
+      this.emailService.sendObjectiveAssigned(owner.email, {
+        firstName: owner.firstName,
+        objectiveTitle: `[Aprobado] ${obj.title}`,
+        objectiveType: obj.type || 'OKR',
+        targetDate: obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : undefined,
+        tenantId,
+      }).catch(() => {});
+    }
+
     return saved;
   }
 
-  async reject(tenantId: string, id: string, rejectedBy?: string): Promise<Objective> {
+  async reject(tenantId: string, id: string, rejectedBy?: string, reason?: string): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Solo objetivos pendientes de aprobacion pueden ser rechazados');
+      throw new BadRequestException('Solo objetivos pendientes de aprobación pueden ser rechazados');
     }
     obj.status = ObjectiveStatus.DRAFT;
+    obj.rejectionReason = reason || null;
+    obj.approvedBy = null;
+    obj.approvedAt = null;
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(tenantId, rejectedBy || obj.userId, 'objective.rejected', 'objective', id, { title: obj.title, rejectedBy }).catch(() => {});
+    this.auditService.log(tenantId, rejectedBy || obj.userId, 'objective.rejected', 'objective', id, { title: obj.title, rejectedBy, reason }).catch(() => {});
+
+    // Notify objective owner that it was rejected
+    const owner = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'email', 'firstName'] });
+    if (owner?.email) {
+      this.emailService.sendObjectiveAssigned(owner.email, {
+        firstName: owner.firstName,
+        objectiveTitle: `[Rechazado] ${obj.title}`,
+        objectiveType: reason ? `Motivo: ${reason}` : 'Sin motivo especificado',
+        tenantId,
+      }).catch(() => {});
+    }
+
     return saved;
   }
 
