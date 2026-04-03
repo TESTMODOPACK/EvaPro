@@ -211,6 +211,12 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/informes', label: t('nav.informes', 'Informes por Colaborador'), icon: icons.reports },
         { href: '/dashboard/analytics', label: t('nav.analytics', 'Análisis del Ciclo'), icon: icons.analytics },
         { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },
+        { href: '/dashboard/analytics-pdi', label: 'Cumplimiento PDI', icon: icons.development },
+        { href: '/dashboard/analytics-ciclos', label: 'Comparativa de Ciclos', icon: icons.calibration },
+        ...(isAdmin ? [
+          { href: '/dashboard/analytics-uso', label: 'Adopción y Uso', icon: icons.analytics },
+          { href: '/dashboard/analytics-rotacion', label: 'Análisis de Rotación', icon: icons.users },
+        ] : []),
       ],
     }] : []),
     // ─── Desarrollo y Talento ───────────────────────────────────
@@ -289,6 +295,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/subscriptions', label: t('nav.subscriptions'), icon: icons.subscription },
         { href: '/dashboard/audit-log', label: t('nav.systemLog'), icon: icons.log },
         { href: '/dashboard/system-metrics', label: t('nav.usageMetrics'), icon: icons.analytics },
+        { href: '/dashboard/analytics-uso', label: 'Adopción y Uso', icon: icons.analytics },
         { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: '📋' },
       ],
     },

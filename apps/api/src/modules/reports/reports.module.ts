@@ -14,6 +14,7 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
 import { ExecutiveDashboardService } from './executive-dashboard.service';
+import { AnalyticsService } from './analytics.service';
 import { ReportsController } from './reports.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuditModule } from '../audit/audit.module';
@@ -22,6 +23,9 @@ import { SurveyResponse } from '../surveys/entities/survey-response.entity';
 import { SurveyQuestion } from '../surveys/entities/survey-question.entity';
 import { OrgDevelopmentPlan } from '../org-development/entities/org-development-plan.entity';
 import { OrgDevelopmentInitiative } from '../org-development/entities/org-development-initiative.entity';
+import { DevelopmentPlan } from '../development/entities/development-plan.entity';
+import { DevelopmentAction } from '../development/entities/development-action.entity';
+import { AuditLog } from '../audit/entities/audit-log.entity';
 
 @Module({
   imports: [
@@ -44,10 +48,13 @@ import { OrgDevelopmentInitiative } from '../org-development/entities/org-develo
       SurveyQuestion,
       OrgDevelopmentPlan,
       OrgDevelopmentInitiative,
+      DevelopmentPlan,
+      DevelopmentAction,
+      AuditLog,
     ]),
   ],
   controllers: [ReportsController],
-  providers: [ReportsService, KpiService, ExecutiveDashboardService],
+  providers: [ReportsService, KpiService, ExecutiveDashboardService, AnalyticsService],
   exports: [ReportsService, KpiService],
 })
 export class ReportsModule {}

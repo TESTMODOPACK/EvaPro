@@ -20,6 +20,7 @@ import { Response } from 'express';
 import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
 import { ExecutiveDashboardService } from './executive-dashboard.service';
+import { AnalyticsService } from './analytics.service';
 import { AuditService } from '../audit/audit.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -34,6 +35,7 @@ export class ReportsController {
     private readonly reportsService: ReportsService,
     private readonly kpiService: KpiService,
     private readonly executiveDashboardService: ExecutiveDashboardService,
+    private readonly analyticsService: AnalyticsService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -329,5 +331,38 @@ export class ReportsController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.csv`);
     return res.send(csv);
+  }
+
+  // ─── Analytics Reports ──────────────────────────────────────────────
+
+  /** Cumplimiento PDI — tenant_admin (all) / manager (team) */
+  @Get('analytics/pdi-compliance')
+  @Roles('tenant_admin', 'manager')
+  getPdiCompliance(@Request() req: any) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.analyticsService.getPdiCompliance(req.user.tenantId, managerId);
+  }
+
+  /** Uso del Sistema — super_admin (all orgs) / tenant_admin (own org) */
+  @Get('analytics/system-usage')
+  @Roles('super_admin', 'tenant_admin')
+  getSystemUsage(@Request() req: any) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.analyticsService.getSystemUsage(tenantId);
+  }
+
+  /** Comparativa entre Ciclos — tenant_admin (all) / manager (team) */
+  @Get('analytics/cycle-comparison')
+  @Roles('tenant_admin', 'manager')
+  getCycleComparison(@Request() req: any) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.analyticsService.getCycleComparison(req.user.tenantId, managerId);
+  }
+
+  /** Análisis de Rotación — tenant_admin only */
+  @Get('analytics/turnover')
+  @Roles('tenant_admin')
+  getTurnover(@Request() req: any) {
+    return this.analyticsService.getTurnoverAnalysis(req.user.tenantId);
   }
 }
