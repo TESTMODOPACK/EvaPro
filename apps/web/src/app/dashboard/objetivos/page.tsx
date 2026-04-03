@@ -4,6 +4,8 @@ import { PageSkeleton } from '@/components/LoadingSkeleton';
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
 import {
@@ -885,7 +887,10 @@ function ObjetivosPageContent() {
   const [formError, setFormError] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
   const [submitApprovalError, setSubmitApprovalError] = useState<{ id: string; message: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'list' | 'team' | 'tree'>('list');
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'list' | 'team' | 'tree' | 'approvals'>('list');
+  const [selectedForApproval, setSelectedForApproval] = useState<Set<string>>(new Set());
+  const [bulkApproving, setBulkApproving] = useState(false);
   const { data: treeData, isLoading: treeLoading } = useObjectiveTree();
 
   // Item 13: At-risk objectives count
@@ -1038,6 +1043,40 @@ function ObjetivosPageContent() {
     rejectObjective.mutate({ id: rejectModal.id, reason: rejectReason || undefined });
     setRejectModal(null);
     setRejectReason('');
+  }
+
+  // Pending objectives for approval tab
+  const pendingApproval = (objectives || []).filter((o: any) => o.status === 'pending_approval');
+
+  function toggleApprovalSelection(id: string) {
+    setSelectedForApproval(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedForApproval.size === pendingApproval.length) {
+      setSelectedForApproval(new Set());
+    } else {
+      setSelectedForApproval(new Set(pendingApproval.map((o: any) => o.id)));
+    }
+  }
+
+  async function handleBulkApprove() {
+    if (selectedForApproval.size === 0 || !token) return;
+    setBulkApproving(true);
+    try {
+      const ids = Array.from(selectedForApproval);
+      for (let i = 0; i < ids.length; i++) {
+        await api.objectives.approve(token, ids[i]);
+      }
+      setSelectedForApproval(new Set());
+      queryClient.invalidateQueries({ queryKey: ['objectives'] });
+    } catch {} finally {
+      setBulkApproving(false);
+    }
   }
 
   return (
@@ -1248,6 +1287,107 @@ function ObjetivosPageContent() {
           >
             {t('objetivos.treeTitle')}
           </button>
+          {pendingApproval.length > 0 && (
+            <button
+              onClick={() => setActiveTab('approvals')}
+              style={{
+                padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                background: 'none', border: 'none', borderBottom: activeTab === 'approvals' ? '2px solid var(--accent)' : '2px solid transparent',
+                color: activeTab === 'approvals' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: '-2px',
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+              }}
+            >
+              Aprobaciones
+              <span style={{ background: 'var(--danger)', color: '#fff', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.45rem', minWidth: '18px', textAlign: 'center' }}>
+                {pendingApproval.length}
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Approvals Panel — admin/manager only */}
+      {activeTab === 'approvals' && (isAdmin || isManager) && (
+        <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Bulk actions bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedForApproval.size === pendingApproval.length && pendingApproval.length > 0}
+                  onChange={toggleSelectAll} style={{ accentColor: 'var(--accent)' }} />
+                Seleccionar todos ({pendingApproval.length})
+              </label>
+              {selectedForApproval.size > 0 && (
+                <span style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>
+                  {selectedForApproval.size} seleccionado{selectedForApproval.size !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            {selectedForApproval.size > 0 && (
+              <button className="btn-primary" onClick={handleBulkApprove} disabled={bulkApproving}
+                style={{ fontSize: '0.82rem', padding: '0.4rem 1rem' }}>
+                {bulkApproving ? `Aprobando ${selectedForApproval.size}...` : `Aprobar ${selectedForApproval.size} objetivo${selectedForApproval.size !== 1 ? 's' : ''}`}
+              </button>
+            )}
+          </div>
+
+          {/* Pending objectives table */}
+          {pendingApproval.length === 0 ? (
+            <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              No hay objetivos pendientes de aprobación
+            </div>
+          ) : (
+            <div className="card" style={{ padding: 0 }}>
+              <div className="table-wrapper">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '0.6rem 0.75rem', width: '40px' }}></th>
+                      <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Objetivo</th>
+                      <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Colaborador</th>
+                      <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tipo</th>
+                      <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Peso</th>
+                      <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Fecha Meta</th>
+                      <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingApproval.map((obj: any) => {
+                      const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
+                      return (
+                        <tr key={obj.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>
+                            <input type="checkbox" checked={selectedForApproval.has(obj.id)}
+                              onChange={() => toggleApprovalSelection(obj.id)} style={{ accentColor: 'var(--accent)' }} />
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            <div style={{ fontWeight: 600 }}>{obj.title}</div>
+                            {obj.description && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{obj.description.substring(0, 80)}{obj.description.length > 80 ? '...' : ''}</div>}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>{userName}</td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}><span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>{obj.type}</span></td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>{obj.weight}%</td>
+                          <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>{obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '—'}</td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            <div style={{ display: 'flex', gap: '0.35rem' }}>
+                              <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', color: 'var(--success)', fontWeight: 600 }}
+                                onClick={() => handleApprove(obj.id)} disabled={approveObjective.isPending}>
+                                Aprobar
+                              </button>
+                              <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', color: 'var(--danger)', fontWeight: 600 }}
+                                onClick={() => handleReject(obj.id)} disabled={rejectObjective.isPending}>
+                                Rechazar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1848,6 +1988,29 @@ function ObjetivosPageContent() {
                   const canSaveProgress = !noteRequired || progressForm.notes.trim().length > 0;
                   return (
                   <>
+                    {/* Approval history */}
+                    {(obj.approvedBy || obj.rejectionReason) && (
+                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>
+                          Historial de aprobación
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.78rem' }}>
+                          {obj.approvedAt && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--success)' }}>
+                              <span>✅</span>
+                              <span>Aprobado el {new Date(obj.approvedAt).toLocaleDateString('es-CL')}</span>
+                            </div>
+                          )}
+                          {obj.rejectionReason && obj.status === 'draft' && (
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', color: 'var(--danger)' }}>
+                              <span>❌</span>
+                              <span>Rechazado: {obj.rejectionReason}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Progress update */}
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
                       {/* Warning banner for admin/manager updating someone else's objective */}
