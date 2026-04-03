@@ -194,7 +194,7 @@ export default function AjustesPage() {
       </div>
 
       {/* Tab navigation */}
-      <div className="animate-fade-up" style={{
+      <div className="animate-fade-up mobile-scroll-tabs" style={{
         display: 'flex', gap: '0.25rem', marginBottom: '1.5rem',
         borderBottom: '1px solid var(--border)', paddingBottom: '0',
       }}>
@@ -264,7 +264,7 @@ export default function AjustesPage() {
               {t('settings.profile.title')}
             </h2>
             <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={labelStyle}>Nombres</label>
                   <input className="input" type="text" value={firstName} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
@@ -455,7 +455,7 @@ export default function AjustesPage() {
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>
               {t('settings.org.title')}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+            <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={labelStyle}>{t('settings.org.timezone')}</label>
                 <select className="input" value={tenantTimezone} onChange={(e) => setTenantTimezone(e.target.value)}>

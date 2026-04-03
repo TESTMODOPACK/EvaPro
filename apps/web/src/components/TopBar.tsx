@@ -103,7 +103,7 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
             }} />
           ))}
         </div>
-        <span style={{
+        <span className="topbar-brand-text" style={{
           fontSize: '1rem',
           fontWeight: 700,
           background: 'linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%)',
@@ -118,9 +118,9 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
       {/* Right: Org + Language + Notifications + User */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
 
-        {/* Organization name */}
+        {/* Organization name — hidden on mobile via CSS */}
         {orgName && (
-          <div style={{
+          <div className="topbar-org-badge" style={{
             display: 'flex', alignItems: 'center', gap: '0.45rem',
             padding: '0.25rem 0.75rem',
             background: 'rgba(201,147,58,0.08)',

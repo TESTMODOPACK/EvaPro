@@ -266,7 +266,7 @@ export default function MiDesempenoPage() {
       </div>
 
       {/* Tab navigation */}
-      <div className="animate-fade-up-delay-2" style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '1.5rem', overflowX: 'auto' }}>
+      <div className="animate-fade-up-delay-2 mobile-scroll-tabs" style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '1.5rem', overflowX: 'auto' }}>
         <button style={tabStyle(activeTab === 'evaluaciones')} onClick={() => setActiveTab('evaluaciones')}>
           Evaluaciones ({completed.length})
         </button>

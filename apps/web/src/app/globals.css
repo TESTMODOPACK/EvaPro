@@ -303,11 +303,64 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
   .main-content {
     margin-left: 0 !important;
   }
+
+  /* P1: Reduce page padding on mobile */
+  .main-content > div {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  /* P2: TopBar — full width, hide non-essential elements */
   .topbar-desktop {
     left: 0 !important;
+    width: 100% !important;
+    padding: 0 0.75rem !important;
   }
+  .topbar-desktop .topbar-org-badge {
+    display: none !important;
+  }
+  .topbar-desktop .topbar-brand-text {
+    display: none !important;
+  }
+
+  /* P3: Hamburger visible */
   .hamburger-btn {
     display: flex !important;
+  }
+
+  /* P4: Tabs scroll horizontally on mobile */
+  .mobile-scroll-tabs {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap !important;
+  }
+  .mobile-scroll-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .mobile-scroll-tabs > button {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* P5: Force single column on small screens for tagged grids */
+  .mobile-single-col {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Cards grid — collapse to fewer columns */
+  .card {
+    min-width: 0;
+  }
+
+
+  /* Tables — ensure horizontal scroll */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table-wrapper table {
+    min-width: 600px;
   }
 }
 
