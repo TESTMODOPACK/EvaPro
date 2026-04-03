@@ -1,7 +1,8 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request,
+  Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, Res,
   ParseUUIDPipe, ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -14,6 +15,27 @@ export class RecognitionController {
   constructor(private readonly service: RecognitionService) {}
 
   // ─── Recognition Wall ────────────────────────────────────────────
+
+  /** Export recognitions in CSV, XLSX, or PDF */
+  @Get('export')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  async exportRecognitions(@Request() req: any, @Query('format') format: string, @Res() res: Response) {
+    const tenantId = req.user.tenantId;
+    const ext = format?.toLowerCase() || 'csv';
+    if (ext === 'xlsx') {
+      const buffer = await this.service.exportRecognitionsXlsx(tenantId);
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename=reconocimientos.xlsx' });
+      return res.send(buffer);
+    }
+    if (ext === 'pdf') {
+      const buffer = await this.service.exportRecognitionsPdf(tenantId);
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename=reconocimientos.pdf' });
+      return res.send(buffer);
+    }
+    const csv = await this.service.exportRecognitionsCsv(tenantId);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=reconocimientos.csv' });
+    return res.send(csv);
+  }
 
   @Get('wall')
   getWall(

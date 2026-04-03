@@ -215,6 +215,22 @@ export default function ReconocimientosPage() {
   const leaderboardData = rankingView === 'team' && teamLeaderboard ? teamLeaderboard : (leaderboard || []);
 
   const [showGuide, setShowGuide] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+  const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
+    if (!token) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${BASE_URL}/recognition/export?format=${format}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Error');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `reconocimientos.${format}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {} finally { setExporting(null); }
+  };
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1000px' }}>
@@ -228,9 +244,17 @@ export default function ReconocimientosPage() {
             {t('reconocimientos.subtitle')}
           </p>
         </div>
-        <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setShowGuide(!showGuide)}>
-          {showGuide ? 'Ocultar guia' : 'Como funciona'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+          {isAdmin && (['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
+            <button key={fmt} type="button" disabled={!!exporting} onClick={() => handleExport(fmt)}
+              style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', fontWeight: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)', color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer', opacity: exporting && exporting !== fmt ? 0.5 : 1 }}>
+              {exporting === fmt ? '...' : fmt.toUpperCase()}
+            </button>
+          ))}
+          <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setShowGuide(!showGuide)}>
+            {showGuide ? 'Ocultar guia' : 'Como funciona'}
+          </button>
+        </div>
       </div>
 
       {/* Guide */}

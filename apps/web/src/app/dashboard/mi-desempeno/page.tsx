@@ -142,15 +142,64 @@ export default function MiDesempenoPage() {
     return { icon: '\uD83D\uDCAC', color: 'var(--text-muted)', label: 'General' };
   };
 
+  const handleExportCsv = () => {
+    const rows: string[] = [];
+    const esc = (v: any) => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s; };
+
+    rows.push('RESUMEN MI DESEMPEÑO');
+    rows.push(`Último puntaje,${displayScore ?? 'Sin datos'}`);
+    rows.push(`Evaluaciones pendientes,${pending.length}`);
+    rows.push(`Feedback recibido,${feedbackReceived.length}`);
+    rows.push(`Objetivos activos,${activeObjectives.length}`);
+    rows.push(`Puntos reconocimiento,${myPoints}`);
+    rows.push('');
+
+    rows.push('EVALUACIONES COMPLETADAS');
+    rows.push('Evaluado,Tipo,Ciclo,Puntaje,Fecha');
+    for (const ev of completed) {
+      const name = ev.evaluatee ? `${ev.evaluatee.firstName || ''} ${ev.evaluatee.lastName || ''}`.trim() : '';
+      rows.push([esc(name), ev.relationType, esc(ev.cycle?.name || ''), ev.response?.overallScore ?? '', ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : ''].join(','));
+    }
+    rows.push('');
+
+    rows.push('FEEDBACK RECIBIDO');
+    rows.push('De,Tipo,Sentimiento,Mensaje,Fecha');
+    for (const fb of feedbackReceived) {
+      const from = fb.isAnonymous ? 'Anónimo' : fb.fromUser ? `${fb.fromUser.firstName} ${fb.fromUser.lastName}` : 'Anónimo';
+      rows.push([esc(from), fb.type || '', fb.sentiment || '', esc(fb.message || ''), fb.createdAt ? new Date(fb.createdAt).toLocaleDateString('es-CL') : ''].join(','));
+    }
+    rows.push('');
+
+    rows.push('OBJETIVOS');
+    rows.push('Título,Tipo,Estado,Progreso %,Fecha Meta');
+    for (const obj of objectives) {
+      rows.push([esc(obj.title), obj.type || '', obj.status || '', obj.progress || 0, obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : ''].join(','));
+    }
+
+    const csv = '\uFEFF' + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'mi-desempeno.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '960px' }}>
-      <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-          {'Mi Desempe\u00f1o'}
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {'Tu historial completo: evaluaciones, feedback, desarrollo, objetivos y reconocimientos'}
-        </p>
+      <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
+            {'Mi Desempeño'}
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            {'Tu historial completo: evaluaciones, feedback, desarrollo, objetivos y reconocimientos'}
+          </p>
+        </div>
+        <button type="button" onClick={handleExportCsv}
+          style={{ padding: '0.4rem 0.85rem', fontSize: '0.78rem', fontWeight: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', background: 'var(--bg-surface)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+          Exportar CSV
+        </button>
       </div>
 
       {/* Summary cards */}

@@ -746,4 +746,137 @@ export class RecognitionService {
     await this.userRepo.update({ id: userId, tenantId }, { leaderboardOptIn: optIn });
     return { optIn };
   }
+
+  // ─── Export ────────────────────────────────────────────────────────────
+
+  private esc(val: any): string {
+    const str = String(val ?? '');
+    return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+  }
+
+  async exportRecognitionsCsv(tenantId: string): Promise<string> {
+    const wall = await this.getWall(tenantId, 1, 500);
+    const items = wall.data || [];
+    const rows: string[] = ['De,Para,Mensaje,Valor Corporativo,Puntos,Fecha'];
+    for (const r of items) {
+      const from = r.fromUser ? `${r.fromUser.firstName} ${r.fromUser.lastName}` : '';
+      const to = r.toUser ? `${r.toUser.firstName} ${r.toUser.lastName}` : '';
+      rows.push([this.esc(from), this.esc(to), this.esc(r.message), this.esc(r.value?.name || ''), r.points || 0,
+        r.createdAt ? new Date(r.createdAt).toLocaleDateString('es-CL') : ''].join(','));
+    }
+    return '\uFEFF' + rows.join('\n');
+  }
+
+  async exportRecognitionsXlsx(tenantId: string): Promise<Buffer> {
+    const wall = await this.getWall(tenantId, 1, 500);
+    const items = wall.data || [];
+    const stats = await this.getStats(tenantId);
+    const leaderboard = await this.getLeaderboard(tenantId, 'month', 50);
+
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const accent = { argb: 'FFC9933A' };
+    const hFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    const hFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+
+    // Sheet 1: Resumen
+    const ws1 = wb.addWorksheet('Resumen');
+    ws1.columns = [{ width: 28 }, { width: 15 }];
+    ws1.addRow(['Reconocimientos']).font = { bold: true, size: 14 };
+    ws1.addRow([]);
+    ws1.addRow(['Total reconocimientos', stats.totalRecognitions ?? 0]);
+    ws1.addRow(['Este mes', stats.monthlyRecognitions ?? 0]);
+    ws1.addRow(['Insignias otorgadas', stats.totalBadgesEarned ?? 0]);
+    ws1.addRow(['Fecha exportación', new Date().toLocaleDateString('es-CL')]);
+    if (stats.topValues?.length > 0) {
+      ws1.addRow([]);
+      ws1.addRow(['Valores más reconocidos']).font = { bold: true };
+      for (const v of stats.topValues) ws1.addRow([v.valueName || v.name, v.count]);
+    }
+
+    // Sheet 2: Muro
+    const ws2 = wb.addWorksheet('Reconocimientos');
+    ws2.columns = [{ width: 22 }, { width: 22 }, { width: 40 }, { width: 18 }, { width: 10 }, { width: 14 }];
+    const h2 = ws2.addRow(['De', 'Para', 'Mensaje', 'Valor', 'Puntos', 'Fecha']);
+    h2.eachCell((c) => { c.font = hFont; c.fill = hFill; });
+    for (const r of items) {
+      ws2.addRow([
+        r.fromUser ? `${r.fromUser.firstName} ${r.fromUser.lastName}` : '',
+        r.toUser ? `${r.toUser.firstName} ${r.toUser.lastName}` : '',
+        r.message || '', r.value?.name || '', r.points || 0,
+        r.createdAt ? new Date(r.createdAt).toLocaleDateString('es-CL') : '',
+      ]);
+    }
+
+    // Sheet 3: Ranking
+    const ws3 = wb.addWorksheet('Ranking');
+    ws3.columns = [{ width: 8 }, { width: 25 }, { width: 18 }, { width: 18 }, { width: 12 }];
+    const h3 = ws3.addRow(['#', 'Colaborador', 'Departamento', 'Cargo', 'Puntos']);
+    h3.eachCell((c) => { c.font = hFont; c.fill = hFill; });
+    (leaderboard as any[]).forEach((l, i) => {
+      ws3.addRow([i + 1, l.userName || '', l.department || '', l.position || '', l.totalPoints || 0]);
+    });
+
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  async exportRecognitionsPdf(tenantId: string): Promise<Buffer> {
+    const wall = await this.getWall(tenantId, 1, 200);
+    const items = wall.data || [];
+    const stats = await this.getStats(tenantId);
+
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    doc.setFillColor(26, 18, 6);
+    doc.rect(0, 0, pageW, 30, 'F');
+    doc.setTextColor(245, 228, 168);
+    doc.setFontSize(16);
+    doc.text('Reconocimientos', margin, 16);
+    doc.setFontSize(9);
+    doc.setTextColor(201, 147, 58);
+    doc.text(`${stats.totalRecognitions ?? 0} reconocimientos totales — ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+
+    let y = 38;
+    const kpis = [
+      { label: 'Total', value: `${stats.totalRecognitions ?? 0}` },
+      { label: 'Este Mes', value: `${stats.monthlyRecognitions ?? 0}` },
+      { label: 'Insignias', value: `${stats.totalBadgesEarned ?? 0}` },
+    ];
+    const kpiW = (pageW - 2 * margin - 2 * 4) / 3;
+    kpis.forEach((kpi, i) => {
+      const x = margin + i * (kpiW + 4);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, kpiW, 18, 2, 2, 'F');
+      doc.setFontSize(7); doc.setTextColor(100, 116, 139);
+      doc.text(kpi.label, x + kpiW / 2, y + 7, { align: 'center' });
+      doc.setFontSize(12); doc.setTextColor(26, 18, 6);
+      doc.text(kpi.value, x + kpiW / 2, y + 15, { align: 'center' });
+    });
+    y += 26;
+
+    autoTable(doc, {
+      startY: y, margin: { left: margin, right: margin },
+      head: [['De', 'Para', 'Mensaje', 'Valor', 'Pts', 'Fecha']],
+      body: items.slice(0, 100).map((r: any) => [
+        r.fromUser ? `${r.fromUser.firstName} ${r.fromUser.lastName}` : '',
+        r.toUser ? `${r.toUser.firstName} ${r.toUser.lastName}` : '',
+        (r.message || '').substring(0, 60), r.value?.name || '', r.points || 0,
+        r.createdAt ? new Date(r.createdAt).toLocaleDateString('es-CL') : '',
+      ]),
+      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      bodyStyles: { fontSize: 7 }, alternateRowStyles: { fillColor: [248, 250, 252] },
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i); doc.setFontSize(7); doc.setTextColor(148, 163, 184);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Ascenda Performance`, margin, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+    return Buffer.from(doc.output('arraybuffer'));
+  }
 }
