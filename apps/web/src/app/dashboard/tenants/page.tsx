@@ -252,7 +252,7 @@ export default function TenantsPage() {
       <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Organizaciones</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestion de tenants de la plataforma</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestión de organizaciones de la plataforma</p>
         </div>
         <button className="btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
           + Nueva organizacion

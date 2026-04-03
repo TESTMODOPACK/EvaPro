@@ -42,10 +42,10 @@ const FEATURE_OPTIONS = [
   { key: 'TEMPLATES_CUSTOM', label: 'Plantillas personalizadas' },
   { key: 'PDI', label: 'Planes de desarrollo' },
   { key: 'NINE_BOX', label: 'Matriz Nine Box / Talento' },
-  { key: 'CALIBRATION', label: 'Calibracion' },
-  { key: 'POSTULANTS', label: 'Evaluacion de Postulantes' },
+  { key: 'CALIBRATION', label: 'Calibración' },
+  { key: 'POSTULANTS', label: 'Evaluación de Postulantes' },
   { key: 'ENGAGEMENT_SURVEYS', label: 'Encuestas de Clima' },
-  { key: 'AI_INSIGHTS', label: 'Analisis con IA' },
+  { key: 'AI_INSIGHTS', label: 'Análisis con IA' },
   { key: 'PUBLIC_API', label: 'API publica' },
 ];
 

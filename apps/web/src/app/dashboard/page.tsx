@@ -989,8 +989,8 @@ function EmployeeDashboard() {
       <div className="animate-fade-up-delay-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
         {/* Performance trend */}
         <div className="card" style={{ padding: '1.4rem' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>Mi historial de desempeno</h3>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>Evolucion de tu puntaje por ciclo</p>
+          <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>Mi historial de desempeño</h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>Evolución de tu puntaje por ciclo</p>
           {perfData.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={perfData}>

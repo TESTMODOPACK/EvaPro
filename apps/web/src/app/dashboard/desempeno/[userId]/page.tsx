@@ -99,10 +99,10 @@ export default function DesempenoPage() {
           ← Volver
         </button>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-          {userName || 'Cargando...'} — Historial de Desempeno
+          {userName || 'Cargando...'} — Historial de Desempeño
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Evolucion de puntajes a lo largo de los ciclos
+          Evolución de puntajes a lo largo de los ciclos
         </p>
       </div>
 
@@ -111,10 +111,10 @@ export default function DesempenoPage() {
       ) : history.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            No hay historial de desempeno
+            No hay historial de desempeño
           </p>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-            Este usuario aun no tiene evaluaciones completadas
+            Este usuario aún no tiene evaluaciones completadas
           </p>
         </div>
       ) : (
