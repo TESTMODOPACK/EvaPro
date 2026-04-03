@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
+import { generateTotpSecret, generateTotpUri, verifyTotp } from '../../common/utils/totp';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
@@ -178,4 +179,59 @@ export class AuthService {
     await this.userRepo.save(user);
   }
 
+  // ─── 2FA / MFA ─────────────────────────────────────────────────────
+
+  /** Step 1: Generate secret and return URI for QR code */
+  async setup2FA(userId: string): Promise<{ secret: string; uri: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new BadRequestException('Usuario no encontrado');
+    if (user.twoFactorEnabled) throw new BadRequestException('2FA ya está activado');
+
+    const secret = generateTotpSecret();
+    user.twoFactorSecret = secret;
+    await this.userRepo.save(user);
+
+    const uri = generateTotpUri(secret, user.email);
+    return { secret, uri };
+  }
+
+  /** Step 2: Verify code and enable 2FA */
+  async enable2FA(userId: string, code: string): Promise<{ enabled: boolean }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user || !user.twoFactorSecret) throw new BadRequestException('Primero debes configurar 2FA');
+    if (user.twoFactorEnabled) throw new BadRequestException('2FA ya está activado');
+
+    if (!verifyTotp(user.twoFactorSecret, code)) {
+      throw new BadRequestException('Código inválido. Verifica que tu app autenticadora esté sincronizada.');
+    }
+
+    user.twoFactorEnabled = true;
+    await this.userRepo.save(user);
+    await this.auditService.log(user.tenantId, userId, '2fa.enabled', 'User', userId).catch(() => {});
+    return { enabled: true };
+  }
+
+  /** Disable 2FA */
+  async disable2FA(userId: string, password: string): Promise<{ disabled: boolean }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new BadRequestException('Usuario no encontrado');
+    if (!user.twoFactorEnabled) throw new BadRequestException('2FA no está activado');
+
+    // Require password to disable (security)
+    if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+      throw new BadRequestException('Contraseña incorrecta');
+    }
+
+    user.twoFactorEnabled = false;
+    user.twoFactorSecret = null;
+    await this.userRepo.save(user);
+    await this.auditService.log(user.tenantId, userId, '2fa.disabled', 'User', userId).catch(() => {});
+    return { disabled: true };
+  }
+
+  /** Verify 2FA code during login */
+  verify2FACode(user: any, code: string): boolean {
+    if (!user.twoFactorSecret) return false;
+    return verifyTotp(user.twoFactorSecret, code);
+  }
 }

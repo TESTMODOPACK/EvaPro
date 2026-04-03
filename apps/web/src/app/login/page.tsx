@@ -21,6 +21,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const [showForceChange, setShowForceChange] = useState(false);
+  const [show2FA, setShow2FA] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [changePwdLoading, setChangePwdLoading] = useState(false);
@@ -58,13 +60,23 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const tenantIdentifier = rutValue ? normalizeRut(rutValue) : undefined;
-      const result = await api.auth.login(email.trim(), password, tenantIdentifier);
-      const { access_token, mustChangePassword } = result as any;
+      const loginPayload: any = { email: email.trim(), password, tenantSlug: tenantIdentifier };
+      if (show2FA && twoFactorCode) loginPayload.twoFactorCode = twoFactorCode;
+
+      const result = await api.auth.login(loginPayload.email, loginPayload.password, loginPayload.tenantSlug, loginPayload.twoFactorCode);
+      const { access_token, mustChangePassword, requires2FA } = result as any;
+
+      // 2FA required — show code input
+      if (requires2FA) {
+        setShow2FA(true);
+        setLoading(false);
+        return;
+      }
+
       const user = decodeJwtPayload(access_token);
       if (!user) throw new Error("Token inválido");
 
       if (mustChangePassword) {
-        // Don't set auth yet — force password change first
         setShowForceChange(true);
         setLoading(false);
         return;
@@ -302,6 +314,21 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
+
+            {/* 2FA Code input — shown when server requires it */}
+            {show2FA && (
+              <div>
+                <label htmlFor="login-2fa" style={labelStyle}>Código de autenticación (2FA)</label>
+                <input id="login-2fa" className="input" type="text" placeholder="123456" value={twoFactorCode}
+                  onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  maxLength={6} autoComplete="one-time-code" autoFocus
+                  style={{ letterSpacing: '0.3em', textAlign: 'center', fontSize: '1.1rem', fontWeight: 700 }}
+                />
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  Ingresa el código de 6 dígitos de tu app autenticadora (Google Authenticator, Authy, etc.)
+                </p>
+              </div>
+            )}
 
             <button type="submit" disabled={loading} style={{
               marginTop: "0.5rem", padding: "0.8rem 1.5rem", fontSize: "0.925rem",

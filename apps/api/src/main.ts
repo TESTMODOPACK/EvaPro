@@ -10,6 +10,18 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: '10mb' });
   app.useBodyParser('urlencoded', { limit: '10mb', extended: true } as any);
 
+  // ─── Security headers (replaces helmet for zero-dependency approach) ────
+  app.use((_req: any, res: any, next: any) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.removeHeader('X-Powered-By');
+    next();
+  });
+
   // CORS – reflect the request origin so credentials work with any frontend URL
   const frontendUrl = process.env.FRONTEND_URL;
   const allowedOrigins = frontendUrl

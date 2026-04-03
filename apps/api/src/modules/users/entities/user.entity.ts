@@ -96,6 +96,13 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true, name: 'signature_otp_expires' })
   signatureOtpExpires: Date | null;
 
+  // ─── 2FA / MFA fields ────────────────────────────────────────
+  @Column({ type: 'boolean', default: false, name: 'two_factor_enabled' })
+  twoFactorEnabled: boolean;
+
+  @Column({ type: 'varchar', length: 64, nullable: true, name: 'two_factor_secret' })
+  twoFactorSecret: string | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }

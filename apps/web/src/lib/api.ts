@@ -179,16 +179,22 @@ async function request<T>(
 
 export const api = {
   auth: {
-    login: (email: string, password: string, tenantSlug?: string) =>
+    login: (email: string, password: string, tenantSlug?: string, twoFactorCode?: string) =>
       request<AuthTokens>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password, tenantSlug }),
+        body: JSON.stringify({ email, password, tenantSlug, twoFactorCode }),
       }),
     changePassword: (email: string, currentPassword: string, newPassword: string, tenantSlug?: string) =>
       request<any>("/auth/change-password", {
         method: "POST",
         body: JSON.stringify({ email, currentPassword, newPassword, tenantSlug }),
       }),
+    setup2FA: (token: string) =>
+      request<{ secret: string; uri: string }>("/auth/2fa/setup", { method: "POST" }, token),
+    enable2FA: (token: string, code: string) =>
+      request<{ enabled: boolean }>("/auth/2fa/enable", { method: "POST", body: JSON.stringify({ code }) }, token),
+    disable2FA: (token: string, password: string) =>
+      request<{ disabled: boolean }>("/auth/2fa/disable", { method: "POST", body: JSON.stringify({ password }) }, token),
   },
 
   tenants: {

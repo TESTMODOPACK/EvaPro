@@ -1,4 +1,5 @@
-import { Controller, Post, Body, Req, UnauthorizedException, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Req, UseGuards, Request, UnauthorizedException, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
@@ -121,12 +122,24 @@ export class AuthController {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    // 2FA check: if enabled and no code provided, return requires2FA flag
+    if (user.twoFactorEnabled) {
+      const twoFactorCode = (loginDto as any).twoFactorCode;
+      if (!twoFactorCode) {
+        // Don't clear attempts yet — they still need to provide 2FA code
+        return { requires2FA: true, message: 'Se requiere código de autenticación de dos factores.' };
+      }
+      if (!this.authService.verify2FACode(user, twoFactorCode)) {
+        recordFailedAttempt(clientIp, loginDto.email);
+        throw new UnauthorizedException('Código 2FA inválido');
+      }
+    }
+
     // Success — clear rate limit
     clearAttempts(clientIp, loginDto.email);
 
     const result = await this.authService.login(user, clientIp);
 
-    // Include mustChangePassword flag in response
     return {
       ...result,
       mustChangePassword: user.mustChangePassword ?? false,
@@ -157,5 +170,33 @@ export class AuthController {
     validatePasswordPolicy(dto.newPassword);
     await this.authService.changePasswordFirstLogin(dto.email, dto.currentPassword, dto.newPassword, dto.tenantSlug);
     return { message: 'Contraseña actualizada exitosamente.' };
+  }
+
+  // ─── 2FA Endpoints ───────────────────────────────────────────────
+
+  /** Generate 2FA secret and QR URI */
+  @Post('2fa/setup')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  async setup2FA(@Request() req: any) {
+    return this.authService.setup2FA(req.user.userId);
+  }
+
+  /** Verify code and enable 2FA */
+  @Post('2fa/enable')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  async enable2FA(@Request() req: any, @Body() dto: { code: string }) {
+    if (!dto.code) throw new BadRequestException('Código requerido');
+    return this.authService.enable2FA(req.user.userId, dto.code);
+  }
+
+  /** Disable 2FA (requires password) */
+  @Post('2fa/disable')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  async disable2FA(@Request() req: any, @Body() dto: { password: string }) {
+    if (!dto.password) throw new BadRequestException('Contraseña requerida');
+    return this.authService.disable2FA(req.user.userId, dto.password);
   }
 }
