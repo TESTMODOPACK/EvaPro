@@ -72,7 +72,22 @@ function CheckInsTab() {
   const [rejectModal, setRejectModal] = useState<{ id: string; topic: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const users = usersPage?.data || [];
+  const allCiUsers = usersPage?.data || [];
+  const [ciSearch, setCiSearch] = useState('');
+  const [ciDeptFilter, setCiDeptFilter] = useState('');
+
+  const users = allCiUsers.filter((u: any) => {
+    if (u.id === currentUserId) return false;
+    if (!u.isActive) return false;
+    if (ciDeptFilter && u.department !== ciDeptFilter) return false;
+    if (ciSearch) {
+      const q = ciSearch.toLowerCase();
+      const name = `${u.firstName} ${u.lastName}`.toLowerCase();
+      if (!name.includes(q) && !(u.position || '').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  const ciDepts = Array.from(new Set(allCiUsers.filter((u: any) => u.isActive && u.id !== currentUserId).map((u: any) => u.department).filter(Boolean))).sort() as string[];
 
   const [ciPage, setCiPage] = useState(1);
   const CI_PAGE_SIZE = 15;
@@ -124,18 +139,29 @@ function CheckInsTab() {
       {/* Inline form */}
       {showForm && (
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-            <div>
-              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                {'Colaborador'}
-              </label>
-              <select className="input" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} style={{ width: '100%' }}>
-                <option value="">{'Seleccionar...'}</option>
-                {users.map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}</option>
-                ))}
+          {/* Collaborator search + filter */}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+              Colaborador
+            </label>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
+              <input className="input" type="text" placeholder="Buscar por nombre o cargo..."
+                value={ciSearch} onChange={(e) => setCiSearch(e.target.value)}
+                style={{ flex: '1 1 200px', fontSize: '0.82rem' }} />
+              <select className="input" value={ciDeptFilter} onChange={(e) => setCiDeptFilter(e.target.value)}
+                style={{ flex: '0 1 180px', fontSize: '0.82rem' }}>
+                <option value="">Todos los departamentos</option>
+                {ciDepts.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
+            <select className="input" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} style={{ width: '100%' }}>
+              <option value="">Seleccionar colaborador ({users.length} disponibles)...</option>
+              {users.map((u: any) => (
+                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
                 {'Fecha'}
