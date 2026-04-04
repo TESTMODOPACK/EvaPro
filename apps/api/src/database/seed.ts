@@ -578,14 +578,15 @@ async function seed() {
         }));
         console.log(`\u2705  System template created: ${tpl.name}`);
       } else {
-        // Update existing system template if it has fewer sections (was old version)
-        const existingSections = Array.isArray(exists.sections) ? exists.sections.length : 0;
-        const newSections = tpl.sections.length;
-        if (newSections > existingSections) {
+        // Update existing system template if it has fewer questions (was old version)
+        const countQ = (secs: any[]) => (secs || []).reduce((s: number, sec: any) => s + (sec.questions?.length || 0), 0);
+        const existingQ = countQ(exists.sections);
+        const newQ = countQ(tpl.sections);
+        if (newQ > existingQ) {
           exists.sections = tpl.sections;
           exists.description = tpl.description;
           await templateRepo.save(exists);
-          console.log(`\u2705  System template updated: ${tpl.name} (${existingSections} → ${newSections} sections)`);
+          console.log(`\u2705  System template updated: ${tpl.name} (${existingQ} → ${newQ} questions)`);
         }
       }
     }
