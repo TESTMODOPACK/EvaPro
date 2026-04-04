@@ -219,7 +219,7 @@ export default function ResultadosEncuestaPage() {
           <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Tipo</div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>&#128274;</div>
-            <div style={{ fontSize: '0.75rem', color: '#16a34a' }}>Anonima</div>
+            <div style={{ fontSize: '0.75rem', color: '#16a34a' }}>Anónima</div>
           </div>
         )}
       </div>
@@ -632,7 +632,7 @@ export default function ResultadosEncuestaPage() {
           <div className="card animate-fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500, padding: '1.75rem' }}>
             <h3 style={{ margin: '0 0 1rem' }}>Crear Iniciativas de Desarrollo</h3>
             <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Se crearan {aiAnalysis?.content?.suggestedInitiatives?.length || 0} iniciativas en estado borrador dentro del plan seleccionado.
+              Se crearán {aiAnalysis?.content?.suggestedInitiatives?.length || 0} iniciativas en estado borrador dentro del plan seleccionado.
             </p>
             {orgPlans.length > 0 ? (
               <div style={{ marginBottom: '1rem' }}>
