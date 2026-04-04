@@ -184,6 +184,7 @@ export class UsersService {
       managerId: dto.managerId,
       department: dto.department,
       position: dto.position,
+      hierarchyLevel: dto.hierarchyLevel ?? null,
       hireDate: dto.hireDate ? new Date(dto.hireDate) : undefined,
       isActive: true,
       mustChangePassword: true,
@@ -221,6 +222,7 @@ export class UsersService {
     if (dto.managerId !== undefined) user.managerId = dto.managerId;
     if (dto.department !== undefined) user.department = dto.department;
     if (dto.position !== undefined) user.position = dto.position;
+    if (dto.hierarchyLevel !== undefined) user.hierarchyLevel = dto.hierarchyLevel;
     if (dto.hireDate !== undefined) user.hireDate = new Date(dto.hireDate);
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
 
@@ -617,6 +619,41 @@ export class UsersService {
     }
 
     return { mismatches, fixed };
+  }
+
+  // ─── Org Chart ──────────────────────────────────────────────────────
+
+  async getOrgChart(tenantId: string): Promise<any[]> {
+    const users = await this.userRepository.find({
+      where: { tenantId, isActive: true },
+      select: ['id', 'firstName', 'lastName', 'position', 'hierarchyLevel', 'department', 'managerId', 'role'],
+      order: { firstName: 'ASC' },
+    });
+
+    const map = new Map<string, any>();
+    for (const u of users) {
+      map.set(u.id, {
+        id: u.id,
+        name: `${u.firstName} ${u.lastName}`,
+        position: u.position || null,
+        level: u.hierarchyLevel || null,
+        department: u.department || null,
+        role: u.role,
+        children: [],
+      });
+    }
+
+    const roots: any[] = [];
+    for (const u of users) {
+      const node = map.get(u.id);
+      if (u.managerId && map.has(u.managerId)) {
+        map.get(u.managerId).children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    return roots;
   }
 
   async fillFakeRuts(tenantId?: string): Promise<{ updated: number }> {

@@ -132,6 +132,17 @@ export class EvaluationsController {
     return this.evaluationsService.updateStage(stageId, req.user.tenantId, data);
   }
 
+  // ─── Peer Suggestion ──────────────────────────────────────────────────
+  @Get('evaluation-cycles/:cycleId/suggest-peers/:evaluateeId')
+  @Roles('super_admin', 'tenant_admin')
+  suggestPeers(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Param('evaluateeId', ParseUUIDPipe) evaluateeId: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.suggestPeers(req.user.tenantId, cycleId, evaluateeId);
+  }
+
   // ─── Peer Assignments (pre-launch) — admin only ──────────────────────────
   @Get('evaluation-cycles/:cycleId/peer-assignments')
   @Roles('super_admin', 'tenant_admin')

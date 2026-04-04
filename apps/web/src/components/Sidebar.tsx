@@ -266,6 +266,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         ...(isAdmin ? [
           { href: '/dashboard/usuarios', label: t('nav.users', 'Usuarios'), icon: icons.users },
         ] : []),
+        { href: '/dashboard/organigrama', label: 'Organigrama', icon: icons.users },
         ...(isAdminOrManager ? [
           { href: '/dashboard/dei', label: t('nav.dei', 'Diversidad e Inclusión'), icon: icons.orgDevelopment },
         ] : []),

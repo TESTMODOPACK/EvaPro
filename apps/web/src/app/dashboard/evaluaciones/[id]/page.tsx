@@ -73,6 +73,9 @@ export default function CycleDetailPage() {
   // ── Filters: peer section (draft) ───────────────────────────────────────
   const [peerFilterSearch, setPeerFilterSearch] = useState('');
   const [peerFilterDept, setPeerFilterDept] = useState('');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestingFor, setSuggestingFor] = useState<string | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   // ── Filters: assignments table (active/closed) ───────────────────────────
   const [assignFilterSearch, setAssignFilterSearch] = useState('');
@@ -840,7 +843,63 @@ export default function CycleDetailPage() {
             >
               {addPeer.isPending ? 'Agregando...' : 'Agregar'}
             </button>
+            {peerEvaluateeId && (
+              <button
+                className="btn-ghost"
+                onClick={async () => {
+                  if (!token) return;
+                  setSuggestingFor(peerEvaluateeId);
+                  setLoadingSuggestions(true);
+                  try {
+                    const result = await api.peerAssignments.suggestPeers(token, id, peerEvaluateeId);
+                    setSuggestions(result);
+                  } catch { setSuggestions([]); }
+                  setLoadingSuggestions(false);
+                }}
+                disabled={loadingSuggestions}
+                style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }}
+              >
+                {loadingSuggestions ? 'Buscando...' : 'Sugerir pares'}
+              </button>
+            )}
           </div>
+
+          {/* Peer suggestions panel */}
+          {suggestions.length > 0 && suggestingFor && (
+            <div style={{ padding: '0.75rem 1.5rem 1rem', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                Pares sugeridos (mismo nivel jerárquico)
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {suggestions.map((s: any) => (
+                  <button
+                    key={s.id}
+                    onClick={async () => {
+                      if (!token) return;
+                      await addPeer.mutateAsync({ cycleId: id, evaluateeId: suggestingFor, evaluatorId: s.id, relationType: 'peer' });
+                      setSuggestions(prev => prev.filter(p => p.id !== s.id));
+                    }}
+                    style={{
+                      padding: '0.4rem 0.75rem', borderRadius: 'var(--radius-sm, 6px)',
+                      border: '1px solid var(--border)', background: 'var(--bg-surface)',
+                      cursor: 'pointer', fontSize: '0.78rem', textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600 }}>{s.name}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', gap: '0.3rem' }}>
+                      {s.position && <span>{s.position}</span>}
+                      {s.sameLevel && <span style={{ color: 'var(--success)' }}>· Mismo nivel</span>}
+                      {s.sameDepartment && <span style={{ color: '#6366f1' }}>· Mismo depto.</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => { setSuggestions([]); setSuggestingFor(null); }}
+                style={{ marginTop: '0.5rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Cerrar sugerencias
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -47,6 +47,9 @@ export class User {
   @Column({ type: 'varchar', length: 100, nullable: true })
   position: string;
 
+  @Column({ type: 'int', nullable: true, name: 'hierarchy_level', comment: 'Numeric level from position catalog (1=highest). Null if free-text position.' })
+  hierarchyLevel: number | null;
+
   @Column({ type: 'date', nullable: true, name: 'hire_date' })
   hireDate: Date;
 

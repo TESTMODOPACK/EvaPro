@@ -582,6 +582,52 @@ export class EvaluationsService {
     return allowed.map((r) => ({ value: r, label: labels[r] || r }));
   }
 
+  async suggestPeers(tenantId: string, cycleId: string, evaluateeId: string): Promise<any[]> {
+    const evaluatee = await this.userRepo.findOne({ where: { id: evaluateeId, tenantId } });
+    if (!evaluatee) return [];
+
+    // Get already assigned peers for this evaluatee in this cycle
+    const existing = await this.peerAssignmentRepo.find({
+      where: { tenantId, cycleId, evaluateeId },
+      select: ['evaluatorId'],
+    });
+    const assignedIds = new Set(existing.map(e => e.evaluatorId));
+    assignedIds.add(evaluateeId); // exclude self
+
+    // Find peer candidates: same hierarchy level, active, not super_admin/external
+    const qb = this.userRepo.createQueryBuilder('u')
+      .where('u.tenantId = :tenantId', { tenantId })
+      .andWhere('u.isActive = true')
+      .andWhere('u.id != :evaluateeId', { evaluateeId })
+      .andWhere("u.role NOT IN ('super_admin', 'external')")
+      .select(['u.id', 'u.firstName', 'u.lastName', 'u.position', 'u.hierarchyLevel', 'u.department', 'u.managerId']);
+
+    // If evaluatee has a hierarchy level, prioritize same level
+    if (evaluatee.hierarchyLevel) {
+      qb.addSelect(
+        `CASE WHEN u.hierarchy_level = :level THEN 0 WHEN u.hierarchy_level IS NOT NULL THEN ABS(u.hierarchy_level - :level) ELSE 100 END`,
+        'levelDistance',
+      ).setParameter('level', evaluatee.hierarchyLevel)
+        .orderBy('levelDistance', 'ASC');
+    }
+    qb.addOrderBy('u.department', 'ASC').addOrderBy('u.firstName', 'ASC');
+
+    const candidates = await qb.getMany();
+
+    return candidates
+      .filter(c => !assignedIds.has(c.id))
+      .slice(0, 30)
+      .map(c => ({
+        id: c.id,
+        name: `${c.firstName} ${c.lastName}`,
+        position: c.position,
+        level: c.hierarchyLevel,
+        department: c.department,
+        sameLevel: evaluatee.hierarchyLevel != null && c.hierarchyLevel === evaluatee.hierarchyLevel,
+        sameDepartment: evaluatee.department && c.department === evaluatee.department,
+      }));
+  }
+
   async getPeerAssignments(tenantId: string, cycleId: string): Promise<PeerAssignment[]> {
     return this.peerAssignmentRepo.find({
       where: { tenantId, cycleId },

@@ -421,6 +421,47 @@ export class TenantsService {
     return result;
   }
 
+  // ─── Positions Catalog (structured, separate from string[] settings) ────
+
+  private static readonly DEFAULT_POSITIONS = [
+    { name: 'Gerente General', level: 1 },
+    { name: 'Gerente de Área', level: 2 },
+    { name: 'Subgerente', level: 3 },
+    { name: 'Jefe de Área', level: 4 },
+    { name: 'Coordinador', level: 5 },
+    { name: 'Analista', level: 6 },
+    { name: 'Asistente', level: 7 },
+  ];
+
+  async getPositionsCatalog(tenantId: string): Promise<{ name: string; level: number }[]> {
+    const tenant = await this.findById(tenantId);
+    const positions = tenant.settings?.positions;
+    if (Array.isArray(positions) && positions.length > 0) return positions;
+    return TenantsService.DEFAULT_POSITIONS;
+  }
+
+  async setPositionsCatalog(tenantId: string, positions: { name: string; level: number }[]): Promise<{ name: string; level: number }[]> {
+    const tenant = await this.findById(tenantId);
+    // Validate: non-empty, levels are positive integers, names non-empty
+    if (!Array.isArray(positions) || positions.length === 0) {
+      throw new BadRequestException('Debe incluir al menos un cargo');
+    }
+    for (const p of positions) {
+      if (!p.name?.trim()) throw new BadRequestException('El nombre del cargo no puede estar vacío');
+      if (!Number.isInteger(p.level) || p.level < 1) throw new BadRequestException(`Nivel inválido para "${p.name}": debe ser un entero >= 1`);
+    }
+    // Sort by level ascending
+    const sorted = [...positions].sort((a, b) => a.level - b.level);
+    tenant.settings = { ...(tenant.settings || {}), positions: sorted };
+    await this.tenantRepository.save(tenant);
+    return sorted;
+  }
+
+  async checkPositionUsage(tenantId: string, positionName: string): Promise<{ inUse: boolean; count: number }> {
+    const count = await this.userRepository.count({ where: { tenantId, position: positionName } });
+    return { inUse: count > 0, count };
+  }
+
   async getSystemStats(): Promise<any> {
     const totalTenants = await this.tenantRepository.count();
     const activeTenants = await this.tenantRepository.count({ where: { isActive: true } });

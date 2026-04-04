@@ -51,6 +51,13 @@ export class UsersController {
     return this.usersService.findAll(req.user.tenantId, page, limit, filters);
   }
 
+  /** GET /users/org-chart — Hierarchical org chart tree */
+  @Get('org-chart')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getOrgChart(@Request() req: any) {
+    return this.usersService.getOrgChart(req.user.tenantId);
+  }
+
   /** GET /users/:id */
   @Get(':id')
   findOne(

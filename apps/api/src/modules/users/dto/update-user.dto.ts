@@ -4,6 +4,7 @@ import {
   IsEmail,
   IsEnum,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
@@ -83,4 +84,8 @@ export class UpdateUserDto {
   @IsIn(['es', 'en', 'pt'])
   @IsOptional()
   language?: string;
+
+  @IsInt()
+  @IsOptional()
+  hierarchyLevel?: number;
 }

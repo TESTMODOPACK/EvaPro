@@ -227,6 +227,16 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(settings),
       }, token),
+    // Positions catalog
+    getPositionsCatalog: (token: string) =>
+      request<{ name: string; level: number }[]>("/tenants/me/positions", {}, token),
+    setPositionsCatalog: (token: string, positions: { name: string; level: number }[]) =>
+      request<{ name: string; level: number }[]>("/tenants/me/positions", {
+        method: "PUT",
+        body: JSON.stringify({ positions }),
+      }, token),
+    checkPositionUsage: (token: string, name: string) =>
+      request<{ inUse: boolean; count: number }>(`/tenants/me/positions/check-usage?name=${encodeURIComponent(name)}`, {}, token),
     listTickets: (token: string) => request<any[]>("/tenants/me/tickets", {}, token),
     createTicket: (token: string, data: any) =>
       request<any>("/tenants/me/tickets", { method: "POST", body: JSON.stringify(data) }, token),
@@ -436,6 +446,8 @@ export const api = {
       request<{ invited: number; skipped: string[] }>("/users/invite-bulk", { method: "POST", body: JSON.stringify(data) }, token),
     normalizeDepartments: (token: string, apply = false) =>
       request<{ mismatches: any[]; fixed: number }>(`/users/normalize-departments?apply=${apply}`, { method: "POST" }, token),
+    orgChart: (token: string) =>
+      request<any[]>("/users/org-chart", {}, token),
   },
 
   cycles: {
@@ -529,6 +541,8 @@ export const api = {
       request<{ value: string; label: string }[]>(`/evaluation-cycles/${cycleId}/allowed-relations`, {}, token),
     autoGenerate: (token: string, cycleId: string) =>
       request<{ created: number; skipped: number }>(`/evaluation-cycles/${cycleId}/auto-generate`, { method: "POST" }, token),
+    suggestPeers: (token: string, cycleId: string, evaluateeId: string) =>
+      request<any[]>(`/evaluation-cycles/${cycleId}/suggest-peers/${evaluateeId}`, {}, token),
   },
 
   feedback: {

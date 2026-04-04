@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, IsDateString } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, IsDateString, IsInt } from 'class-validator';
 
 export enum UserRole {
   SUPER_ADMIN = 'super_admin',       // Super Admin (multi-tenant)
@@ -47,4 +47,8 @@ export class CreateUserDto {
   @IsDateString()
   @IsOptional()
   hireDate?: string;
+
+  @IsInt()
+  @IsOptional()
+  hierarchyLevel?: number;
 }

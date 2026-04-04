@@ -60,6 +60,25 @@ export class TenantsController {
     return this.tenantsService.setCustomSetting(req.user.tenantId, key, values);
   }
 
+  /** Positions catalog — structured objects, not plain strings */
+  @Get('me/positions')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getPositionsCatalog(@Request() req: any) {
+    return this.tenantsService.getPositionsCatalog(req.user.tenantId);
+  }
+
+  @Put('me/positions')
+  @Roles('super_admin', 'tenant_admin')
+  setPositionsCatalog(@Request() req: any, @Body('positions') positions: { name: string; level: number }[]) {
+    return this.tenantsService.setPositionsCatalog(req.user.tenantId, positions);
+  }
+
+  @Get('me/positions/check-usage')
+  @Roles('super_admin', 'tenant_admin')
+  checkPositionUsage(@Request() req: any, @Query('name') name: string) {
+    return this.tenantsService.checkPositionUsage(req.user.tenantId, name);
+  }
+
   /** Update tenant general settings (timezone, sessionTimeout, etc.) */
   @Patch('me/settings')
   @Roles('super_admin', 'tenant_admin')

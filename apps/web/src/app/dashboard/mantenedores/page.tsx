@@ -30,12 +30,24 @@ export default function MantenedoresPage() {
   const [normalizing, setNormalizing] = useState(false);
   const [normalizeResult, setNormalizeResult] = useState<{ mismatches: any[]; fixed: number } | null>(null);
 
+  // Positions catalog (structured, separate from string[] settings)
+  const [positions, setPositions] = useState<{ name: string; level: number }[]>([]);
+  const [posExpanded, setPosExpanded] = useState(false);
+  const [posNewName, setPosNewName] = useState('');
+  const [posNewLevel, setPosNewLevel] = useState(1);
+  const [posSaving, setPosSaving] = useState(false);
+  const [posSaved, setPosSaved] = useState(false);
+  const [posError, setPosError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!token) return;
-    api.tenants.getAllCustomSettings(token)
-      .then((data) => setCustomSettings(data))
-      .catch(() => setCustomSettings({ ...CUSTOM_SETTINGS_DEFAULTS }))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.tenants.getAllCustomSettings(token).catch(() => ({ ...CUSTOM_SETTINGS_DEFAULTS })),
+      api.tenants.getPositionsCatalog(token).catch(() => []),
+    ]).then(([settings, pos]) => {
+      setCustomSettings(settings);
+      setPositions(pos);
+    }).finally(() => setLoading(false));
   }, [token]);
 
   const handleSaveSetting = async (key: string) => {
@@ -134,6 +146,85 @@ export default function MantenedoresPage() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           {t('mantenedores.subtitle')}
         </p>
+      </div>
+
+      {/* ─── Positions Catalog ─── */}
+      <div className="card animate-fade-up" style={{ overflow: 'hidden', padding: 0, marginBottom: '1rem' }}>
+        <button type="button" onClick={() => setPosExpanded(!posExpanded)}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', background: posExpanded ? 'var(--bg-secondary)' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>Cargos y Niveles Jerárquicos</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginLeft: '0.75rem' }}>{positions.length} cargos</span>
+          </div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transform: posExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>&#9660;</span>
+        </button>
+        {posExpanded && (
+          <div style={{ padding: '1.25rem', borderTop: '1px solid var(--border)' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+              Catálogo de posiciones con nivel jerárquico. El nivel 1 es el más alto (ej: Gerente General). Se usa para sugerir pares en evaluaciones 270/360 y visualizar el organigrama.
+            </p>
+            {/* Positions list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
+              {positions.map((p, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.85rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.88rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>{p.level}</span>
+                    <span>{p.name}</span>
+                  </div>
+                  <button type="button" onClick={async () => {
+                    if (!token) return;
+                    const usage = await api.tenants.checkPositionUsage(token, p.name).catch(() => ({ inUse: false, count: 0 }));
+                    if (usage.inUse) { setPosError(`"${p.name}" está en uso por ${usage.count} usuario(s)`); setTimeout(() => setPosError(null), 4000); return; }
+                    const updated = positions.filter((_, i) => i !== idx);
+                    setPositions(updated);
+                  }} title="Eliminar" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1.1rem', padding: '0 0.3rem', lineHeight: 1 }}>&times;</button>
+                </div>
+              ))}
+              {positions.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontStyle: 'italic' }}>Sin cargos configurados</p>}
+            </div>
+            {posError && <div style={{ padding: '0.5rem 0.75rem', marginBottom: '0.5rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontSize: '0.82rem', color: 'var(--danger)' }}>{posError}</div>}
+            {/* Add new position */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <input className="input" type="text" value={posNewName} onChange={(e) => setPosNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (posNewName.trim()) { setPositions(prev => [...prev, { name: posNewName.trim(), level: posNewLevel }].sort((a, b) => a.level - b.level)); setPosNewName(''); } } }}
+                placeholder="Nombre del cargo" style={{ flex: 1, fontSize: '0.88rem', minWidth: '150px' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Nivel:</label>
+                <input className="input" type="number" min={1} max={20} value={posNewLevel} onChange={(e) => setPosNewLevel(Number(e.target.value) || 1)}
+                  style={{ width: '60px', fontSize: '0.88rem', textAlign: 'center' }} />
+              </div>
+              <button type="button" className="btn-primary" disabled={!posNewName.trim()}
+                onClick={() => { if (posNewName.trim()) { setPositions(prev => [...prev, { name: posNewName.trim(), level: posNewLevel }].sort((a, b) => a.level - b.level)); setPosNewName(''); } }}
+                style={{ fontSize: '0.85rem', padding: '0.45rem 1rem', opacity: !posNewName.trim() ? 0.5 : 1 }}>
+                Agregar
+              </button>
+            </div>
+            {/* Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button type="button" className="btn-primary" disabled={posSaving}
+                onClick={async () => {
+                  if (!token || positions.length === 0) return;
+                  setPosSaving(true); setPosError(null);
+                  try {
+                    const saved = await api.tenants.setPositionsCatalog(token, positions);
+                    setPositions(saved); setPosSaved(true); setTimeout(() => setPosSaved(false), 3000);
+                  } catch (e: any) { setPosError(e.message || 'Error al guardar'); setTimeout(() => setPosError(null), 4000); }
+                  setPosSaving(false);
+                }}
+                style={{ fontSize: '0.85rem', padding: '0.45rem 1.2rem', opacity: posSaving ? 0.6 : 1 }}>
+                {posSaving ? 'Guardando...' : 'Guardar cargos'}
+              </button>
+              <button type="button" onClick={() => setPositions([
+                { name: 'Gerente General', level: 1 }, { name: 'Gerente de Área', level: 2 },
+                { name: 'Subgerente', level: 3 }, { name: 'Jefe de Área', level: 4 },
+                { name: 'Coordinador', level: 5 }, { name: 'Analista', level: 6 }, { name: 'Asistente', level: 7 },
+              ])} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.45rem 1rem', fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                Restaurar defaults
+              </button>
+              {posSaved && <span style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600 }}>&#10003; Guardado</span>}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

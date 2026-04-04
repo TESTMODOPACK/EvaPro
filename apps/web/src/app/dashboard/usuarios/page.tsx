@@ -9,6 +9,7 @@ import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import { useDepartments } from '@/hooks/useDepartments';
+import { usePositions } from '@/hooks/usePositions';
 import { formatRutInput, validateRut, normalizeRut } from '@/lib/rut';
 import { TableSkeleton } from '@/components/LoadingSkeleton';
 
@@ -45,6 +46,7 @@ const emptyForm = {
   role: 'employee',
   department: '',
   position: '',
+  hierarchyLevel: '' as string | number,
   managerId: '',
 };
 
@@ -130,7 +132,8 @@ export default function UsuariosPage() {
   // Use all users for dropdown options (departments, positions, managers)
   const allUsers = allUsersPag?.data || [];
   const departments = configuredDepartments;
-  const positions = Array.from(new Set(allUsers.map((u: any) => u.position).filter(Boolean))).sort() as string[];
+  const { positions: positionCatalog } = usePositions();
+  const existingPositions = Array.from(new Set(allUsers.map((u: any) => u.position).filter(Boolean))).sort() as string[];
 
   const totalUsers = allUsersPag?.total || 0;
   const activeUsers = allUsers.filter((u: any) => u.isActive).length;
@@ -176,6 +179,7 @@ export default function UsuariosPage() {
           role: form.role,
           department: form.department || undefined,
           position: form.position || undefined,
+          hierarchyLevel: form.hierarchyLevel ? Number(form.hierarchyLevel) : undefined,
           managerId: form.managerId || null,
         };
         if (form.password) data.password = form.password;
@@ -190,6 +194,7 @@ export default function UsuariosPage() {
           role: form.role,
           department: form.department || null,
           position: form.position || null,
+          hierarchyLevel: form.hierarchyLevel ? Number(form.hierarchyLevel) : undefined,
           managerId: form.managerId || undefined,
         });
       }
@@ -214,6 +219,7 @@ export default function UsuariosPage() {
       role: u.role || 'employee',
       department: u.department || '',
       position: u.position || '',
+      hierarchyLevel: u.hierarchyLevel ?? '',
       managerId: u.managerId || '',
     });
     setShowCreateForm(true);
@@ -228,7 +234,7 @@ export default function UsuariosPage() {
     }
   };
 
-  const updateField = (field: string, value: string) => {
+  const updateField = (field: string, value: string | number) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -679,16 +685,43 @@ export default function UsuariosPage() {
             </div>
             <div>
               <label style={labelStyle}>Cargo</label>
-              <input
-                style={inputStyle}
-                list="pos-options"
-                placeholder="Seleccionar o escribir nuevo"
-                value={form.position}
-                onChange={(e) => updateField('position', e.target.value)}
-              />
-              <datalist id="pos-options">
-                {positions.map((p) => <option key={p} value={p} />)}
-              </datalist>
+              {positionCatalog.length > 0 ? (
+                <>
+                  <select
+                    style={inputStyle}
+                    value={positionCatalog.some(p => p.name === form.position) ? form.position : (form.position ? '__custom__' : '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '__custom__') {
+                        updateField('position', '');
+                        updateField('hierarchyLevel', '');
+                      } else {
+                        const catalogItem = positionCatalog.find(p => p.name === val);
+                        updateField('position', val);
+                        updateField('hierarchyLevel', catalogItem?.level != null ? String(catalogItem.level) : '');
+                      }
+                    }}
+                  >
+                    <option value="">— Seleccionar cargo —</option>
+                    {positionCatalog.map((p) => (
+                      <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>
+                    ))}
+                    <option value="__custom__">Otro (personalizado)...</option>
+                  </select>
+                  {!positionCatalog.some(p => p.name === form.position) && form.position !== '' && (
+                    <input style={{ ...inputStyle, marginTop: '0.35rem' }} placeholder="Cargo personalizado"
+                      value={form.position} onChange={(e) => { updateField('position', e.target.value); updateField('hierarchyLevel', ''); }} />
+                  )}
+                  {/* Show custom input when __custom__ selected and position is empty */}
+                  {!positionCatalog.some(p => p.name === form.position) && form.position === '' && (
+                    <input style={{ ...inputStyle, marginTop: '0.35rem' }} placeholder="Escribir cargo personalizado"
+                      value="" onChange={(e) => { updateField('position', e.target.value); updateField('hierarchyLevel', ''); }} />
+                  )}
+                </>
+              ) : (
+                <input style={inputStyle} placeholder="Cargo" value={form.position}
+                  onChange={(e) => updateField('position', e.target.value)} />
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
