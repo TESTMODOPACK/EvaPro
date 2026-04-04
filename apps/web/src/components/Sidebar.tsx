@@ -290,6 +290,9 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
           { href: '/dashboard/mantenedores', label: t('nav.customData', 'Mantenedores'), icon: icons.settings },
         ] : []),
         { href: '/dashboard/mi-suscripcion', label: t('nav.subscription', 'Mi Suscripción'), icon: icons.subscription },
+        ...(isAdmin ? [
+          { href: '/dashboard/contratos', label: 'Contratos', icon: icons.log },
+        ] : []),
         { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },
       ],
     },

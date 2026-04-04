@@ -9,6 +9,7 @@ import { EvaluationResponse } from '../evaluations/entities/evaluation-response.
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
+import { Contract } from '../contracts/entities/contract.entity';
 import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -31,6 +32,8 @@ export class SignaturesService {
     private readonly planRepo: Repository<DevelopmentPlan>,
     @InjectRepository(DevelopmentAction)
     private readonly actionRepo: Repository<DevelopmentAction>,
+    @InjectRepository(Contract)
+    private readonly contractRepo: Repository<Contract>,
     private readonly emailService: EmailService,
     private readonly auditService: AuditService,
   ) {}
@@ -217,8 +220,16 @@ export class SignaturesService {
         });
       }
       case 'calibration_session': {
-        // Simplified: use the document ID as-is since we don't import CalibrationSession
         return JSON.stringify({ id: documentId, type: 'calibration_session', tenantId });
+      }
+      case 'contract': {
+        const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId } });
+        if (!contract) throw new NotFoundException('Contrato no encontrado');
+        return JSON.stringify({
+          id: contract.id, type: contract.type, title: contract.title,
+          content: contract.content || '', effectiveDate: contract.effectiveDate,
+          version: contract.version, tenantId: contract.tenantId,
+        });
       }
       default:
         throw new BadRequestException(`Tipo de documento no soportado: ${documentType}`);
@@ -239,6 +250,10 @@ export class SignaturesService {
         return `Evaluación ${documentId.slice(0, 8)}`;
       case 'calibration_session':
         return `Sesión de Calibración ${documentId.slice(0, 8)}`;
+      case 'contract': {
+        const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId }, select: ['id', 'title'] });
+        return contract?.title || `Contrato ${documentId.slice(0, 8)}`;
+      }
       default:
         return `Documento ${documentId.slice(0, 8)}`;
     }

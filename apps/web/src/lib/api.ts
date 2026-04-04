@@ -887,4 +887,14 @@ export const api = {
     verifyIntegrity: (token: string, id: string) =>
       request<any>(`/signatures/verify/${id}`, {}, token),
   },
+
+  contracts: {
+    list: (token: string) => request<any[]>("/contracts", {}, token),
+    getById: (token: string, id: string) => request<any>(`/contracts/${id}`, {}, token),
+    create: (token: string, data: any) => request<any>("/contracts", { method: "POST", body: JSON.stringify(data) }, token),
+    update: (token: string, id: string, data: any) => request<any>(`/contracts/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    sendForSignature: (token: string, id: string) => request<any>(`/contracts/${id}/send`, { method: "POST" }, token),
+    getTypes: (token: string) => request<any[]>("/contracts/types", {}, token),
+    getTemplates: (token: string) => request<any[]>("/contracts/templates", {}, token),
+  },
 };

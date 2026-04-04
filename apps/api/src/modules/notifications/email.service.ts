@@ -462,6 +462,43 @@ export class EmailService {
     );
   }
 
+  async sendContractForSignature(
+    email: string,
+    firstName: string,
+    contractTitle: string,
+    contractType: string,
+    tenantName: string,
+  ) {
+    const typeLabels: Record<string, string> = {
+      service_agreement: 'Contrato de Prestación de Servicios',
+      dpa: 'Acuerdo de Procesamiento de Datos',
+      terms_conditions: 'Términos y Condiciones',
+      privacy_policy: 'Política de Privacidad',
+      sla: 'Acuerdo de Nivel de Servicio',
+      nda: 'Acuerdo de Confidencialidad',
+      amendment: 'Enmienda',
+    };
+    await this.send(
+      email,
+      `Contrato pendiente de firma — ${contractTitle}`,
+      await this.wrapWithBranding(undefined, {
+        preheader: `Tiene un contrato pendiente de revisión y firma en EvaPro.`,
+        body: `
+          ${this.heading('Contrato Pendiente de Firma 📄')}
+          ${this.paragraph(`Hola <strong>${firstName}</strong>, se ha generado un nuevo contrato que requiere su revisión y firma electrónica:`)}
+          ${this.infoBox([
+            { label: 'Organización', value: tenantName },
+            { label: 'Tipo', value: typeLabels[contractType] || contractType },
+            { label: 'Documento', value: contractTitle },
+          ])}
+          ${this.paragraph('Para revisar y firmar el contrato, ingrese a <strong>EvaPro → Contratos</strong> en el menú lateral.')}
+          ${this.paragraph('La firma electrónica se realiza mediante código OTP enviado a su correo, generando un registro con valor probatorio (hash SHA-256, IP, fecha/hora).')}
+          ${this.alertBox('Revise el documento completo antes de firmar. Una vez firmado, el contrato queda vigente y no puede ser modificado.', 'warning')}
+        `,
+      }),
+    );
+  }
+
   async sendSurveyInvitation(
     email: string,
     data: { firstName: string; surveyTitle: string; dueDate: string; isAnonymous: boolean; tenantId?: string },

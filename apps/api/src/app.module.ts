@@ -27,6 +27,7 @@ import { SystemModule } from './modules/system/system.module';
 import { RecruitmentModule } from './modules/recruitment/recruitment.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -58,6 +59,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     RecruitmentModule,
     SignaturesModule,
     SurveysModule,
+    ContractsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -7,6 +7,7 @@ import { EvaluationResponse } from '../evaluations/entities/evaluation-response.
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
+import { Contract } from '../contracts/entities/contract.entity';
 import { SignaturesService } from './signatures.service';
 import { SignaturesController } from './signatures.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -17,7 +18,7 @@ import { AuditModule } from '../audit/audit.module';
     TypeOrmModule.forFeature([
       DocumentSignature, User,
       EvaluationCycle, EvaluationResponse, EvaluationAssignment,
-      DevelopmentPlan, DevelopmentAction,
+      DevelopmentPlan, DevelopmentAction, Contract,
     ]),
     NotificationsModule,
     AuditModule,
