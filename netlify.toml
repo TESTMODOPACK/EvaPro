@@ -8,4 +8,4 @@
   NODE_VERSION = "20"
 
 [[plugins]]
-  package = "@netlify/plugin-nextjs@^5"
+  package = "@netlify/plugin-nextjs"
