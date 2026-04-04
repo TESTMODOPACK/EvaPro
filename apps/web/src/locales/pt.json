@@ -973,6 +973,8 @@
       "connCompetencies": "Competências por Cargo: as competências e níveis esperados vêm do módulo de Desenvolvimento.",
       "connTalent": "Talentos: para candidatos internos, são exibidos avaliação de desempenho, potencial e posição Nine-Box.",
       "connUsers": "Usuários: candidatos internos estão vinculados a colaboradores existentes no sistema.",
+      "connAi": "Análise IA: para candidatos externos, o CV é analisado com IA para avaliar adequação ao cargo, pontos fortes e áreas de desenvolvimento.",
+      "connEvaluations": "Avaliações: para candidatos internos, o histórico completo de avaliações de desempenho é exibido.",
       "permissions": "Permissões por papel",
       "permAdmin": "Administrador: cria processos, adiciona candidatos, designa avaliadores, altera status e configura processos.",
       "permManager": "Gestor / Avaliador: avalia candidatos nos processos designados, consulta scorecards e comparativos."
@@ -1540,7 +1542,15 @@
       "payment.registered": "Pagamento registrado",
       "subscription_request.approved": "Solicitação de assinatura aprovada",
       "subscription_request.rejected": "Solicitação de assinatura rejeitada",
-      "report.viewed": "Relatório consultado"
+      "report.viewed": "Relatório consultado",
+      "login.failed": "Tentativa de acesso falhada",
+      "password.changed_first_login": "Senha alterada (primeiro acesso)",
+      "password.reset": "Redefinição de senha",
+      "2fa.enabled": "Verificação em duas etapas ativada",
+      "2fa.disabled": "Verificação em duas etapas desativada",
+      "subscription.ai_addon_purchased": "Add-on de IA contratado",
+      "subscription.ai_addon_removed": "Add-on de IA removido",
+      "report.exported": "Relatório exportado"
     },
     "entities": {
       "objective": "Objetivo",
@@ -1562,7 +1572,10 @@
       "subscription": "Assinatura",
       "subscription_request": "Solicitação",
       "payment": "Pagamento",
-      "document": "Documento"
+      "document": "Documento",
+      "signature": "Assinatura Digital",
+      "candidate": "Candidato",
+      "plan": "Plano"
     },
     "filterActions": {
       "login": "Logins",

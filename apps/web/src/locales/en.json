@@ -973,6 +973,8 @@
       "connCompetencies": "Role Competencies: competencies and expected levels come from the Development module.",
       "connTalent": "Talent: for internal candidates, their performance evaluation, potential and Nine-Box position are displayed.",
       "connUsers": "Users: internal candidates are linked to existing employees in the system.",
+      "connAi": "AI Analysis: for external candidates, CVs are analyzed with AI to evaluate role fit, strengths and areas for development.",
+      "connEvaluations": "Evaluations: for internal candidates, the complete performance evaluation history is displayed.",
       "permissions": "Role permissions",
       "permAdmin": "Administrator: creates processes, adds candidates, assigns evaluators, changes statuses and configures processes.",
       "permManager": "Manager / Evaluator: evaluates candidates in assigned processes, views scorecards and comparatives."
@@ -1540,7 +1542,15 @@
       "payment.registered": "Payment registered",
       "subscription_request.approved": "Subscription request approved",
       "subscription_request.rejected": "Subscription request rejected",
-      "report.viewed": "Report viewed"
+      "report.viewed": "Report viewed",
+      "login.failed": "Failed login attempt",
+      "password.changed_first_login": "Password changed (first login)",
+      "password.reset": "Password reset",
+      "2fa.enabled": "Two-factor authentication enabled",
+      "2fa.disabled": "Two-factor authentication disabled",
+      "subscription.ai_addon_purchased": "AI add-on purchased",
+      "subscription.ai_addon_removed": "AI add-on removed",
+      "report.exported": "Report exported"
     },
     "entities": {
       "objective": "Objective",
@@ -1562,7 +1572,10 @@
       "subscription": "Subscription",
       "subscription_request": "Request",
       "payment": "Payment",
-      "document": "Document"
+      "document": "Document",
+      "signature": "Digital Signature",
+      "candidate": "Candidate",
+      "plan": "Plan"
     },
     "filterActions": {
       "login": "Logins",
