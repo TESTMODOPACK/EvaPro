@@ -114,54 +114,43 @@ const dataSource = new DataSource({
 const DEMO_TEMPLATE_SECTIONS = [
   {
     id: 'sec1',
-    title: 'Competencias Generales',
+    title: 'Competencias Técnicas',
+    description: 'Evalúe el dominio técnico y la calidad del trabajo del colaborador.',
     questions: [
-      {
-        id: 'q1',
-        text: 'Calidad del trabajo: El colaborador entrega trabajo de alta calidad?',
-        type: 'scale',
-        scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
-        required: true,
-      },
-      {
-        id: 'q2',
-        text: 'Comunicacion: Se comunica de forma clara y efectiva?',
-        type: 'scale',
-        scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
-        required: true,
-      },
-      {
-        id: 'q3',
-        text: 'Trabajo en equipo: Colabora efectivamente con otros?',
-        type: 'scale',
-        scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
-        required: true,
-      },
-      {
-        id: 'q4',
-        text: 'Iniciativa: Propone mejoras y toma accion proactiva?',
-        type: 'scale',
-        scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
-        required: true,
-      },
+      { id: 'q1', text: 'Domina las herramientas, metodologías y conocimientos requeridos por su cargo', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+      { id: 'q2', text: 'La calidad de sus entregables es consistente y cumple con los estándares esperados', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+      { id: 'q3', text: 'Se mantiene actualizado y busca mejorar continuamente sus conocimientos', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
     ],
   },
   {
     id: 'sec2',
-    title: 'Comentarios',
+    title: 'Competencias Blandas',
+    description: 'Evalúe las habilidades interpersonales y de comunicación.',
     questions: [
-      {
-        id: 'q5',
-        text: 'Cuales son las principales fortalezas del colaborador?',
-        type: 'text',
-        required: true,
-      },
-      {
-        id: 'q6',
-        text: 'En que areas podria mejorar?',
-        type: 'text',
-        required: true,
-      },
+      { id: 'q4', text: 'Se comunica de forma clara, respetuosa y efectiva con su entorno', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+      { id: 'q5', text: 'Colabora efectivamente con otros miembros del equipo y áreas transversales', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+      { id: 'q6', text: 'Se adapta positivamente a los cambios y nuevas situaciones', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+      { id: 'q7', text: 'Demuestra creatividad e innovación al proponer soluciones', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+    ],
+  },
+  {
+    id: 'sec3',
+    title: 'Orientación a Resultados',
+    description: 'Evalúe el compromiso con los objetivos y la productividad.',
+    questions: [
+      { id: 'q8', text: 'Cumple con sus compromisos, metas y plazos asignados', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+      { id: 'q9', text: 'Toma iniciativa y propone mejoras de forma proactiva', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+      { id: 'q10', text: 'Prioriza actividades según su impacto en los resultados del equipo', type: 'scale', scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } }, required: true },
+    ],
+  },
+  {
+    id: 'sec4',
+    title: 'Retroalimentación General',
+    description: 'Espacio para comentarios cualitativos sobre el desempeño.',
+    questions: [
+      { id: 'q11', text: '¿Cuáles son las principales fortalezas del colaborador?', type: 'text', required: true },
+      { id: 'q12', text: '¿En qué áreas específicas podría mejorar?', type: 'text', required: true },
+      { id: 'q13', text: '¿Qué acción concreta recomendaría para su plan de desarrollo?', type: 'text', required: false },
     ],
   },
 ];
@@ -172,98 +161,152 @@ const scale = () => ({ min: 1, max: 5, labels: SCALE_LABELS });
 
 const SYSTEM_TEMPLATES = [
   {
-    name: 'Evaluaci\u00f3n de Liderazgo',
-    description: 'Plantilla para evaluar competencias de liderazgo y gesti\u00f3n de equipos. Ideal para encargados y gerentes.',
+    name: 'Evaluación de Liderazgo',
+    description: 'Plantilla para evaluar competencias de liderazgo y gestión de equipos. Ideal para gerentes, subgerentes y jefes de área.',
     sections: [
-      { id: 'lid1', title: 'Visi\u00f3n Estrat\u00e9gica', questions: [
-        { id: 'l1', text: 'Define objetivos claros y alineados con la estrategia de la organizaci\u00f3n', type: 'scale', scale: scale(), required: true },
+      { id: 'lid1', title: 'Visión Estratégica y Gestión', description: 'Capacidad de definir rumbo y tomar decisiones acertadas.', questions: [
+        { id: 'l1', text: 'Define objetivos claros y alineados con la estrategia de la organización', type: 'scale', scale: scale(), required: true },
         { id: 'l2', text: 'Anticipa riesgos y oportunidades del entorno', type: 'scale', scale: scale(), required: true },
-        { id: 'l3', text: 'Comunica la visi\u00f3n de forma inspiradora al equipo', type: 'scale', scale: scale(), required: true },
+        { id: 'l3', text: 'Comunica la visión de forma inspiradora al equipo', type: 'scale', scale: scale(), required: true },
+        { id: 'l4', text: 'Toma decisiones oportunas basadas en datos y análisis', type: 'scale', scale: scale(), required: true },
+        { id: 'l5', text: 'Asume responsabilidad por los resultados de su área', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: 'lid2', title: 'Gesti\u00f3n de Personas', questions: [
-        { id: 'l4', text: 'Delega responsabilidades de forma efectiva', type: 'scale', scale: scale(), required: true },
-        { id: 'l5', text: 'Desarrolla el talento de sus colaboradores', type: 'scale', scale: scale(), required: true },
-        { id: 'l6', text: 'Gestiona conflictos de manera constructiva', type: 'scale', scale: scale(), required: true },
-        { id: 'l7', text: 'Reconoce y valora los logros del equipo', type: 'scale', scale: scale(), required: true },
+      { id: 'lid2', title: 'Gestión de Personas y Desarrollo de Talento', description: 'Habilidad para liderar, motivar y desarrollar al equipo.', questions: [
+        { id: 'l6', text: 'Delega responsabilidades de forma efectiva según las capacidades del equipo', type: 'scale', scale: scale(), required: true },
+        { id: 'l7', text: 'Desarrolla activamente el talento de sus colaboradores (feedback, coaching, planes de desarrollo)', type: 'scale', scale: scale(), required: true },
+        { id: 'l8', text: 'Gestiona conflictos de manera constructiva y oportuna', type: 'scale', scale: scale(), required: true },
+        { id: 'l9', text: 'Reconoce y valora los logros individuales y colectivos del equipo', type: 'scale', scale: scale(), required: true },
+        { id: 'l10', text: 'Crea un ambiente de confianza donde el equipo puede expresar ideas y preocupaciones', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: 'lid3', title: 'Toma de Decisiones', questions: [
-        { id: 'l8', text: 'Toma decisiones oportunas basadas en datos', type: 'scale', scale: scale(), required: true },
-        { id: 'l9', text: 'Asume responsabilidad por los resultados', type: 'scale', scale: scale(), required: true },
+      { id: 'lid3', title: 'Comunicación e Influencia', description: 'Efectividad como comunicador y referente organizacional.', questions: [
+        { id: 'l11', text: 'Comunica cambios y decisiones de forma transparente y oportuna', type: 'scale', scale: scale(), required: true },
+        { id: 'l12', text: 'Promueve la colaboración entre su equipo y otras áreas', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: 'lid4', title: 'Comentarios de Liderazgo', questions: [
-        { id: 'l10', text: '\u00bfCu\u00e1l es la mayor fortaleza de liderazgo de esta persona?', type: 'text', required: true },
-        { id: 'l11', text: '\u00bfQu\u00e9 acci\u00f3n concreta mejorar\u00eda su liderazgo?', type: 'text', required: true },
+      { id: 'lid4', title: 'Retroalimentación de Liderazgo', questions: [
+        { id: 'l13', text: '¿Cuál es la mayor fortaleza de liderazgo de esta persona?', type: 'text', required: true },
+        { id: 'l14', text: '¿Qué acción concreta mejoraría su liderazgo?', type: 'text', required: true },
+        { id: 'l15', text: '¿Cómo describiría el clima del equipo bajo su dirección?', type: 'text', required: false },
       ]},
     ],
   },
   {
-    name: 'Evaluaci\u00f3n T\u00e9cnica',
-    description: 'Plantilla para evaluar competencias t\u00e9cnicas y espec\u00edficas del cargo. Para roles operativos y especialistas.',
+    name: 'Evaluación Técnica y Operativa',
+    description: 'Plantilla para evaluar competencias técnicas, resolución de problemas y productividad. Para roles operativos, especialistas y analistas.',
     sections: [
-      { id: 'tec1', title: 'Conocimiento T\u00e9cnico', questions: [
-        { id: 't1', text: 'Domina las herramientas y tecnolog\u00edas requeridas por el cargo', type: 'scale', scale: scale(), required: true },
-        { id: 't2', text: 'Se mantiene actualizado en su \u00e1rea de especialidad', type: 'scale', scale: scale(), required: true },
-        { id: 't3', text: 'Aplica mejores pr\u00e1cticas y est\u00e1ndares de la industria', type: 'scale', scale: scale(), required: true },
+      { id: 'tec1', title: 'Conocimiento Técnico', description: 'Dominio de herramientas y conocimientos del cargo.', questions: [
+        { id: 't1', text: 'Domina las herramientas y tecnologías requeridas por el cargo', type: 'scale', scale: scale(), required: true },
+        { id: 't2', text: 'Se mantiene actualizado en su área de especialidad', type: 'scale', scale: scale(), required: true },
+        { id: 't3', text: 'Aplica mejores prácticas y estándares de la industria', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: 'tec2', title: 'Resoluci\u00f3n de Problemas', questions: [
-        { id: 't4', text: 'Identifica la causa ra\u00edz de los problemas t\u00e9cnicos', type: 'scale', scale: scale(), required: true },
+      { id: 'tec2', title: 'Resolución de Problemas e Innovación', description: 'Capacidad analítica y propositiva.', questions: [
+        { id: 't4', text: 'Identifica la causa raíz de los problemas de forma metódica', type: 'scale', scale: scale(), required: true },
         { id: 't5', text: 'Propone soluciones innovadoras y eficientes', type: 'scale', scale: scale(), required: true },
-        { id: 't6', text: 'Documenta su trabajo y comparte conocimiento', type: 'scale', scale: scale(), required: true },
+        { id: 't6', text: 'Documenta su trabajo y comparte conocimiento con el equipo', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: 'tec3', title: 'Productividad', questions: [
-        { id: 't7', text: 'Cumple con los plazos comprometidos', type: 'scale', scale: scale(), required: true },
-        { id: 't8', text: 'La calidad de sus entregables es consistente', type: 'scale', scale: scale(), required: true },
+      { id: 'tec3', title: 'Productividad y Cumplimiento', description: 'Compromiso con plazos y calidad de entregables.', questions: [
+        { id: 't7', text: 'Cumple con los plazos y compromisos establecidos', type: 'scale', scale: scale(), required: true },
+        { id: 't8', text: 'La calidad de sus entregables es consistente y confiable', type: 'scale', scale: scale(), required: true },
+        { id: 't9', text: 'Gestiona su tiempo y prioridades de forma efectiva', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: 'tec4', title: 'Comentarios T\u00e9cnicos', questions: [
-        { id: 't9', text: '\u00bfEn qu\u00e9 \u00e1rea t\u00e9cnica destaca m\u00e1s?', type: 'text', required: true },
-        { id: 't10', text: '\u00bfQu\u00e9 capacitaci\u00f3n o certificaci\u00f3n le beneficiar\u00eda?', type: 'text', required: false },
+      { id: 'tec4', title: 'Retroalimentación Técnica', questions: [
+        { id: 't10', text: '¿En qué área técnica destaca más esta persona?', type: 'text', required: true },
+        { id: 't11', text: '¿Qué capacitación o certificación le beneficiaría?', type: 'text', required: false },
       ]},
     ],
   },
   {
-    name: 'Evaluaci\u00f3n 360\u00b0 Completa',
-    description: 'Plantilla integral para evaluaci\u00f3n 360\u00b0 que cubre competencias transversales, liderazgo, trabajo en equipo y desarrollo profesional.',
+    name: 'Evaluación 360° Completa',
+    description: 'Plantilla integral para evaluación 360° que cubre todas las competencias organizacionales. Diseñada para recibir evaluaciones de jefe, pares, reportes directos y autoevaluación.',
     sections: [
-      { id: '360a', title: 'Competencias Transversales', questions: [
-        { id: 'f1', text: 'Se comunica de forma clara y respetuosa', type: 'scale', scale: scale(), required: true },
-        { id: 'f2', text: 'Colabora efectivamente con personas de distintas \u00e1reas', type: 'scale', scale: scale(), required: true },
-        { id: 'f3', text: 'Demuestra integridad y \u00e9tica profesional', type: 'scale', scale: scale(), required: true },
-        { id: 'f4', text: 'Se adapta positivamente a los cambios', type: 'scale', scale: scale(), required: true },
+      { id: '360a', title: 'Competencias Transversales', description: 'Habilidades interpersonales y valores organizacionales.', questions: [
+        { id: 'f1', text: 'Se comunica de forma clara, respetuosa y asertiva', type: 'scale', scale: scale(), required: true },
+        { id: 'f2', text: 'Colabora efectivamente con personas de distintas áreas y niveles', type: 'scale', scale: scale(), required: true },
+        { id: 'f3', text: 'Demuestra integridad y ética profesional en todas sus acciones', type: 'scale', scale: scale(), required: true },
+        { id: 'f4', text: 'Se adapta positivamente a los cambios y nuevas situaciones', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: '360b', title: 'Orientaci\u00f3n a Resultados', questions: [
-        { id: 'f5', text: 'Cumple sus compromisos y metas asignadas', type: 'scale', scale: scale(), required: true },
-        { id: 'f6', text: 'Prioriza actividades seg\u00fan impacto organizacional', type: 'scale', scale: scale(), required: true },
+      { id: '360b', title: 'Orientación a Resultados', description: 'Compromiso con los objetivos y la mejora continua.', questions: [
+        { id: 'f5', text: 'Cumple sus compromisos, metas y plazos asignados', type: 'scale', scale: scale(), required: true },
+        { id: 'f6', text: 'Prioriza actividades según su impacto en los resultados del equipo y organización', type: 'scale', scale: scale(), required: true },
         { id: 'f7', text: 'Busca continuamente mejorar sus procesos de trabajo', type: 'scale', scale: scale(), required: true },
+        { id: 'f8', text: 'Toma iniciativa y propone soluciones sin esperar instrucciones', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: '360c', title: 'Desarrollo y Aprendizaje', questions: [
-        { id: 'f8', text: 'Busca activamente oportunidades de aprendizaje', type: 'scale', scale: scale(), required: true },
-        { id: 'f9', text: 'Acepta y aplica retroalimentaci\u00f3n constructiva', type: 'scale', scale: scale(), required: true },
-        { id: 'f10', text: 'Comparte conocimiento con sus compa\u00f1eros', type: 'scale', scale: scale(), required: true },
+      { id: '360c', title: 'Liderazgo y Trabajo en Equipo', description: 'Influencia positiva en el equipo, independiente del cargo.', questions: [
+        { id: 'f9', text: 'Contribuye a un ambiente de trabajo positivo y colaborativo', type: 'scale', scale: scale(), required: true },
+        { id: 'f10', text: 'Comparte conocimiento y ayuda al desarrollo de sus compañeros', type: 'scale', scale: scale(), required: true },
+        { id: 'f11', text: 'Acepta y aplica retroalimentación de forma constructiva', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: '360d', title: 'Retroalimentaci\u00f3n Abierta', questions: [
-        { id: 'f11', text: '\u00bfCu\u00e1les son las 3 principales fortalezas de esta persona?', type: 'text', required: true },
-        { id: 'f12', text: '\u00bfQu\u00e9 deber\u00eda dejar de hacer o cambiar?', type: 'text', required: true },
-        { id: 'f13', text: '\u00bfQu\u00e9 consejo le dar\u00edas para su desarrollo profesional?', type: 'text', required: false },
+      { id: '360d', title: 'Desarrollo Profesional', description: 'Compromiso con el aprendizaje y crecimiento.', questions: [
+        { id: 'f12', text: 'Busca activamente oportunidades de aprendizaje y capacitación', type: 'scale', scale: scale(), required: true },
+        { id: 'f13', text: 'Aplica nuevos conocimientos y habilidades en su trabajo diario', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: '360e', title: 'Retroalimentación Abierta', description: 'Comentarios cualitativos para complementar la evaluación numérica.', questions: [
+        { id: 'f14', text: '¿Cuáles son las 3 principales fortalezas de esta persona?', type: 'text', required: true },
+        { id: 'f15', text: '¿Qué debería dejar de hacer o cambiar?', type: 'text', required: true },
+        { id: 'f16', text: '¿Qué consejo le darías para su desarrollo profesional?', type: 'text', required: false },
       ]},
     ],
   },
   {
-    name: 'Evaluaci\u00f3n de Servicio al Cliente',
-    description: 'Plantilla para evaluar competencias de atenci\u00f3n y servicio. Para roles de soporte, ventas y atenci\u00f3n al p\u00fablico.',
+    name: 'Evaluación de Servicio al Cliente',
+    description: 'Plantilla para evaluar competencias de atención, empatía y orientación al servicio. Para roles de soporte, ventas y atención al público.',
     sections: [
-      { id: 'srv1', title: 'Atenci\u00f3n al Cliente', questions: [
-        { id: 's1', text: 'Atiende a los clientes con amabilidad y empat\u00eda', type: 'scale', scale: scale(), required: true },
-        { id: 's2', text: 'Resuelve consultas de forma r\u00e1pida y efectiva', type: 'scale', scale: scale(), required: true },
-        { id: 's3', text: 'Maneja quejas y reclamos con profesionalismo', type: 'scale', scale: scale(), required: true },
-        { id: 's4', text: 'Supera las expectativas del cliente', type: 'scale', scale: scale(), required: true },
+      { id: 'srv1', title: 'Atención y Empatía', description: 'Calidad de la interacción con clientes.', questions: [
+        { id: 's1', text: 'Atiende a los clientes con amabilidad, empatía y paciencia', type: 'scale', scale: scale(), required: true },
+        { id: 's2', text: 'Escucha activamente las necesidades del cliente antes de responder', type: 'scale', scale: scale(), required: true },
+        { id: 's3', text: 'Resuelve consultas de forma rápida y efectiva', type: 'scale', scale: scale(), required: true },
+        { id: 's4', text: 'Maneja quejas y reclamos con profesionalismo, buscando soluciones', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: 'srv2', title: 'Conocimiento del Producto/Servicio', questions: [
-        { id: 's5', text: 'Domina las caracter\u00edsticas de los productos/servicios', type: 'scale', scale: scale(), required: true },
-        { id: 's6', text: 'Identifica oportunidades de venta o mejora', type: 'scale', scale: scale(), required: true },
+      { id: 'srv2', title: 'Conocimiento y Proactividad', description: 'Dominio del producto/servicio y capacidad de anticipación.', questions: [
+        { id: 's5', text: 'Domina las características de los productos o servicios de la organización', type: 'scale', scale: scale(), required: true },
+        { id: 's6', text: 'Identifica oportunidades para mejorar la experiencia del cliente', type: 'scale', scale: scale(), required: true },
+        { id: 's7', text: 'Hace seguimiento proactivo para asegurar la satisfacción del cliente', type: 'scale', scale: scale(), required: true },
       ]},
-      { id: 'srv3', title: 'Comentarios de Servicio', questions: [
-        { id: 's7', text: '\u00bfQu\u00e9 hace bien esta persona al atender clientes?', type: 'text', required: true },
-        { id: 's8', text: '\u00bfC\u00f3mo podr\u00eda mejorar la experiencia del cliente?', type: 'text', required: true },
+      { id: 'srv3', title: 'Retroalimentación de Servicio', questions: [
+        { id: 's8', text: '¿Qué hace bien esta persona al atender clientes?', type: 'text', required: true },
+        { id: 's9', text: '¿Cómo podría mejorar la experiencia del cliente?', type: 'text', required: true },
+      ]},
+    ],
+  },
+  {
+    name: 'Evaluación por Competencias Organizacionales',
+    description: 'Plantilla alineada al modelo de competencias de la organización. Cubre las 8 competencias base del sistema: Liderazgo, Comunicación, Trabajo en equipo, Resolución de problemas, Adaptabilidad, Orientación a resultados, Conocimiento técnico, Creatividad e innovación.',
+    sections: [
+      { id: 'comp1', title: 'Liderazgo', description: 'Capacidad de influir, guiar y motivar a otros.', questions: [
+        { id: 'c1', text: 'Inspira confianza y guía a otros con su ejemplo', type: 'scale', scale: scale(), required: true },
+        { id: 'c2', text: 'Toma decisiones responsables considerando el impacto en el equipo', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'comp2', title: 'Comunicación', description: 'Efectividad para transmitir y recibir información.', questions: [
+        { id: 'c3', text: 'Se expresa con claridad, tanto verbal como escritamente', type: 'scale', scale: scale(), required: true },
+        { id: 'c4', text: 'Escucha activamente y demuestra comprensión de otros puntos de vista', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'comp3', title: 'Trabajo en Equipo', description: 'Colaboración y contribución al logro colectivo.', questions: [
+        { id: 'c5', text: 'Colabora activamente y contribuye al logro de los objetivos del equipo', type: 'scale', scale: scale(), required: true },
+        { id: 'c6', text: 'Apoya a sus compañeros y comparte conocimiento sin restricción', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'comp4', title: 'Resolución de Problemas', description: 'Capacidad analítica y orientación a soluciones.', questions: [
+        { id: 'c7', text: 'Analiza problemas desde múltiples perspectivas antes de actuar', type: 'scale', scale: scale(), required: true },
+        { id: 'c8', text: 'Genera soluciones prácticas y efectivas ante situaciones complejas', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'comp5', title: 'Adaptabilidad', description: 'Flexibilidad ante cambios y nuevos desafíos.', questions: [
+        { id: 'c9', text: 'Se adapta rápidamente a cambios en procesos, prioridades o entorno', type: 'scale', scale: scale(), required: true },
+        { id: 'c10', text: 'Mantiene un desempeño estable bajo presión o incertidumbre', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'comp6', title: 'Orientación a Resultados', description: 'Compromiso con el logro de metas y la excelencia.', questions: [
+        { id: 'c11', text: 'Se enfoca en cumplir y superar las metas establecidas', type: 'scale', scale: scale(), required: true },
+        { id: 'c12', text: 'Mide su propio desempeño y busca mejorar continuamente', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'comp7', title: 'Conocimiento Técnico', description: 'Dominio de las habilidades y herramientas del cargo.', questions: [
+        { id: 'c13', text: 'Posee el conocimiento técnico necesario para desempeñar su rol con efectividad', type: 'scale', scale: scale(), required: true },
+        { id: 'c14', text: 'Se mantiene actualizado en su área de especialización', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'comp8', title: 'Creatividad e Innovación', description: 'Capacidad de generar ideas nuevas y mejorar procesos.', questions: [
+        { id: 'c15', text: 'Propone ideas innovadoras para mejorar procesos o resultados', type: 'scale', scale: scale(), required: true },
+        { id: 'c16', text: 'Está abierto a nuevas formas de hacer las cosas y experimentar', type: 'scale', scale: scale(), required: true },
+      ]},
+      { id: 'comp9', title: 'Retroalimentación por Competencias', questions: [
+        { id: 'c17', text: '¿En qué competencia destaca más esta persona? Explique con un ejemplo concreto.', type: 'text', required: true },
+        { id: 'c18', text: '¿Qué competencia debería desarrollar como prioridad?', type: 'text', required: true },
+        { id: 'c19', text: '¿Qué acción específica recomendaría para su plan de desarrollo individual?', type: 'text', required: false },
       ]},
     ],
   },
@@ -521,7 +564,7 @@ async function seed() {
       console.log('\u2705  Default template created: Competencias Generales');
     }
 
-    /* ── System Templates (global, available to all tenants) ───────────── */
+    /* ── System Templates (available per tenant) ─────────────────────── */
     for (const tpl of SYSTEM_TEMPLATES) {
       const exists = await templateRepo.findOne({ where: { name: tpl.name, tenantId: tenant.id } });
       if (!exists) {
@@ -534,6 +577,16 @@ async function seed() {
           createdBy: admin.id,
         }));
         console.log(`\u2705  System template created: ${tpl.name}`);
+      } else {
+        // Update existing system template if it has fewer sections (was old version)
+        const existingSections = Array.isArray(exists.sections) ? exists.sections.length : 0;
+        const newSections = tpl.sections.length;
+        if (newSections > existingSections) {
+          exists.sections = tpl.sections;
+          exists.description = tpl.description;
+          await templateRepo.save(exists);
+          console.log(`\u2705  System template updated: ${tpl.name} (${existingSections} → ${newSections} sections)`);
+        }
       }
     }
 

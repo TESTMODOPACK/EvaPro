@@ -9,19 +9,47 @@ import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { useDepartments } from '@/hooks/useDepartments';
 
-// ─── Default template questions ────────────────────────────────────────
+// ─── Default climate survey template questions ────────────────────────
 const TEMPLATE_QUESTIONS = [
-  { category: 'Liderazgo', questionText: 'Mi lider directo me da retroalimentacion constructiva regularmente', questionType: 'likert_5', isRequired: true },
-  { category: 'Comunicacion', questionText: 'La comunicacion interna de la empresa es clara y oportuna', questionType: 'likert_5', isRequired: true },
-  { category: 'Bienestar', questionText: 'Siento que la empresa se preocupa por mi bienestar', questionType: 'likert_5', isRequired: true },
-  { category: 'Cultura', questionText: 'Me siento orgulloso/a de trabajar en esta empresa', questionType: 'likert_5', isRequired: true },
-  { category: 'Desarrollo', questionText: 'Tengo oportunidades reales de crecimiento profesional aqui', questionType: 'likert_5', isRequired: true },
-  { category: 'Gestion', questionText: 'Tengo los recursos necesarios para hacer bien mi trabajo', questionType: 'likert_5', isRequired: true },
-  { category: 'NPS', questionText: 'Del 0 al 10, que tan probable es que recomiendes esta empresa como lugar de trabajo?', questionType: 'nps', isRequired: true },
-  { category: 'General', questionText: 'Que mejorarias de tu experiencia en la empresa?', questionType: 'open_text', isRequired: false },
+  // Liderazgo y Jefatura (4)
+  { category: 'Liderazgo', questionText: 'Mi jefatura directa me da retroalimentación constructiva regularmente', questionType: 'likert_5', isRequired: true },
+  { category: 'Liderazgo', questionText: 'Mi jefatura se preocupa por mi desarrollo profesional', questionType: 'likert_5', isRequired: true },
+  { category: 'Liderazgo', questionText: 'Recibo reconocimiento cuando realizo un buen trabajo', questionType: 'likert_5', isRequired: true },
+  { category: 'Liderazgo', questionText: 'Confío en las decisiones que toma mi jefatura directa', questionType: 'likert_5', isRequired: true },
+  // Comunicación (3)
+  { category: 'Comunicación', questionText: 'La comunicación interna de la empresa es clara y oportuna', questionType: 'likert_5', isRequired: true },
+  { category: 'Comunicación', questionText: 'Conozco los objetivos estratégicos de la organización', questionType: 'likert_5', isRequired: true },
+  { category: 'Comunicación', questionText: 'Puedo expresar mis ideas y opiniones sin temor', questionType: 'likert_5', isRequired: true },
+  // Bienestar y Equilibrio (3)
+  { category: 'Bienestar', questionText: 'Siento que la empresa se preocupa por mi bienestar integral', questionType: 'likert_5', isRequired: true },
+  { category: 'Bienestar', questionText: 'Puedo mantener un equilibrio saludable entre mi vida laboral y personal', questionType: 'likert_5', isRequired: true },
+  { category: 'Bienestar', questionText: 'El ambiente de trabajo es respetuoso y libre de acoso', questionType: 'likert_5', isRequired: true },
+  // Cultura y Pertenencia (3)
+  { category: 'Cultura', questionText: 'Me siento orgulloso/a de trabajar en esta organización', questionType: 'likert_5', isRequired: true },
+  { category: 'Cultura', questionText: 'Los valores de la empresa se reflejan en las decisiones del día a día', questionType: 'likert_5', isRequired: true },
+  { category: 'Cultura', questionText: 'Siento que mi trabajo tiene un propósito y aporta valor', questionType: 'likert_5', isRequired: true },
+  // Desarrollo y Crecimiento (3)
+  { category: 'Desarrollo', questionText: 'Tengo oportunidades reales de crecimiento profesional aquí', questionType: 'likert_5', isRequired: true },
+  { category: 'Desarrollo', questionText: 'La organización invierte en capacitación y formación', questionType: 'likert_5', isRequired: true },
+  { category: 'Desarrollo', questionText: 'Sé qué competencias necesito desarrollar para avanzar en mi carrera', questionType: 'likert_5', isRequired: true },
+  // Gestión y Recursos (3)
+  { category: 'Gestión', questionText: 'Tengo los recursos y herramientas necesarios para hacer bien mi trabajo', questionType: 'likert_5', isRequired: true },
+  { category: 'Gestión', questionText: 'Los procesos internos facilitan (en vez de obstaculizar) mi trabajo', questionType: 'likert_5', isRequired: true },
+  { category: 'Gestión', questionText: 'La carga de trabajo es razonable y bien distribuida en mi equipo', questionType: 'likert_5', isRequired: true },
+  // Trabajo en Equipo (2)
+  { category: 'Equipo', questionText: 'Existe buena colaboración entre los miembros de mi equipo', questionType: 'likert_5', isRequired: true },
+  { category: 'Equipo', questionText: 'Las distintas áreas de la organización colaboran entre sí de forma efectiva', questionType: 'likert_5', isRequired: true },
+  // Compensación y Beneficios (2)
+  { category: 'Compensación', questionText: 'Considero que mi remuneración es justa en relación a mi rol y responsabilidades', questionType: 'likert_5', isRequired: true },
+  { category: 'Compensación', questionText: 'Los beneficios que ofrece la empresa son valorados y útiles', questionType: 'likert_5', isRequired: true },
+  // eNPS (1)
+  { category: 'NPS', questionText: 'Del 0 al 10, ¿qué tan probable es que recomiendes esta organización como lugar de trabajo?', questionType: 'nps', isRequired: true },
+  // Preguntas abiertas (2)
+  { category: 'General', questionText: '¿Qué es lo que más valoras de trabajar en esta organización?', questionType: 'open_text', isRequired: false },
+  { category: 'General', questionText: '¿Qué cambio concreto mejoraría tu experiencia laboral?', questionType: 'open_text', isRequired: false },
 ];
 
-const CATEGORIES = ['Liderazgo', 'Comunicacion', 'Bienestar', 'Cultura', 'Desarrollo', 'Gestion', 'NPS', 'General'];
+const CATEGORIES = ['Liderazgo', 'Comunicación', 'Bienestar', 'Cultura', 'Desarrollo', 'Gestión', 'Equipo', 'Compensación', 'NPS', 'General'];
 const QUESTION_TYPES = [
   { value: 'likert_5', label: 'Escala 1-5' },
   { value: 'nps', label: 'NPS (0-10)' },
