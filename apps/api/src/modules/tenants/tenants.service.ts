@@ -474,8 +474,10 @@ export class TenantsService {
   }): Promise<{ tenant: any; admin: any; usersCreated: number; competenciesCreated: number; summary: string[] }> {
     const summary: string[] = [];
 
-    // 1. Create tenant
-    const slug = data.org.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+    // 1. Create tenant (auto-generate unique slug)
+    let slug = data.org.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+    const existingSlug = await this.tenantRepository.findOne({ where: { slug } });
+    if (existingSlug) slug = `${slug}-${Date.now().toString(36).slice(-4)}`;
     const tenant = await this.create({
       name: data.org.name,
       slug,
@@ -508,7 +510,7 @@ export class TenantsService {
         tenantId: tenant.id,
         planId: (plan as any).id,
         status: 'active',
-        startDate: new Date(data.org.startDate),
+        startDate: data.org.startDate ? new Date(data.org.startDate) : new Date(),
         billingPeriod: data.org.billingPeriod as any,
         autoRenew: true,
       });

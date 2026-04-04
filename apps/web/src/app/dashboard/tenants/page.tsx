@@ -303,13 +303,13 @@ export default function TenantsPage() {
               setUploadResult(null);
               setError('');
               try {
-                const XLSX = await import('xlsx');
+                const XLSX = await import('xlsx/dist/xlsx.mini.min');
                 const data_ab = await file.arrayBuffer();
                 const wb = XLSX.read(data_ab, { type: 'array' });
 
                 // Parse helper: get cell value from sheet
                 const getVal = (sheetName: string, row: number, col: number) => {
-                  const ws = wb.Sheets[sheetName] || wb.Sheets[wb.SheetNames[col === 0 ? 0 : 0]];
+                  const ws = wb.Sheets[sheetName];
                   if (!ws) return '';
                   const cellRef = XLSX.utils.encode_cell({ r: row - 1, c: col - 1 });
                   const cell = ws[cellRef];
