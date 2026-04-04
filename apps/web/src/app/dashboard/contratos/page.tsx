@@ -34,6 +34,9 @@ export default function ContratosPage() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [creating, setCreating] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
+  const [editingContract, setEditingContract] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   const [createForm, setCreateForm] = useState({
     tenantId: '', type: 'service_agreement', title: '', description: '', content: '', effectiveDate: new Date().toISOString().split('T')[0],
   });
@@ -123,13 +126,15 @@ export default function ContratosPage() {
         </div>
       )}
 
-      {/* Create contract form — super_admin only */}
+      {/* Create contracts — super_admin only */}
       {showCreate && isSuperAdmin && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>Crear Contrato</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {/* Tenant selector */}
-            <div>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>Crear Contratos para una Organización</h3>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            Seleccione la organización y se crearán automáticamente los 6 contratos base (Servicios, DPA, Términos, Privacidad, SLA, NDA) con contenido legal pre-cargado y el nombre de la organización. Los contratos quedan como borrador para su revisión antes de enviar a firma.
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '250px' }}>
               <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Organización *</label>
               <select value={createForm.tenantId} onChange={(e) => setCreateForm(f => ({ ...f, tenantId: e.target.value }))}
                 style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
@@ -137,66 +142,26 @@ export default function ContratosPage() {
                 {tenants.map((t: any) => <option key={t.id} value={t.id}>{t.name} {t.rut ? `(${t.rut})` : ''}</option>)}
               </select>
             </div>
-            {/* Type + Template */}
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '200px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Tipo de Contrato *</label>
-                <select value={createForm.type} onChange={(e) => {
-                  const tpl = templates.find((t: any) => t.type === e.target.value);
-                  setCreateForm(f => ({
-                    ...f, type: e.target.value,
-                    title: tpl?.label || '',
-                    content: tpl?.content || '',
-                  }));
-                }}
-                  style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
-                  {templates.map((tpl: any) => <option key={tpl.type} value={tpl.type}>{tpl.label}</option>)}
-                </select>
-              </div>
-              <div style={{ flex: 1, minWidth: '200px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Fecha Efectiva *</label>
-                <input type="date" value={createForm.effectiveDate} onChange={(e) => setCreateForm(f => ({ ...f, effectiveDate: e.target.value }))}
-                  style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
-              </div>
-            </div>
-            {/* Title */}
-            <div>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Título del Contrato *</label>
-              <input type="text" value={createForm.title} onChange={(e) => setCreateForm(f => ({ ...f, title: e.target.value }))}
-                placeholder="Ej: Contrato de Prestación de Servicios"
-                style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
-            </div>
-            {/* Content preview/edit */}
-            <div>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                Contenido del Contrato
-                <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: '0.5rem' }}>(se carga automáticamente desde el template seleccionado)</span>
-              </label>
-              <textarea value={createForm.content} onChange={(e) => setCreateForm(f => ({ ...f, content: e.target.value }))}
-                rows={12}
-                style={{ width: '100%', padding: '0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', lineHeight: 1.6, fontFamily: 'inherit', resize: 'vertical' }} />
-            </div>
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button className="btn-primary" disabled={creating || !createForm.tenantId || !createForm.title}
-                onClick={async () => {
-                  if (!token) return;
-                  setCreating(true);
-                  try {
-                    await api.contracts.create(token, createForm);
-                    setShowCreate(false);
-                    setCreateForm({ tenantId: '', type: 'service_agreement', title: '', description: '', content: '', effectiveDate: new Date().toISOString().split('T')[0] });
-                    loadData();
-                  } catch (e: any) { setError(e.message); }
-                  setCreating(false);
-                }}
-                style={{ fontSize: '0.85rem', opacity: !createForm.tenantId || !createForm.title ? 0.5 : 1 }}>
-                {creating ? t('common.saving') : 'Crear como Borrador'}
-              </button>
-              <button className="btn-ghost" onClick={() => setShowCreate(false)} style={{ fontSize: '0.85rem' }}>
-                {t('common.cancel')}
-              </button>
-            </div>
+            <button className="btn-primary" disabled={creating || !createForm.tenantId}
+              onClick={async () => {
+                if (!token || !createForm.tenantId) return;
+                setCreating(true);
+                setError('');
+                try {
+                  const result = await api.contracts.bulkCreate(token, createForm.tenantId);
+                  setShowCreate(false);
+                  setCreateForm(f => ({ ...f, tenantId: '' }));
+                  loadData();
+                  if (result.created === 0) setError('Todos los contratos ya existen para esta organización.');
+                } catch (e: any) { setError(e.message); }
+                setCreating(false);
+              }}
+              style={{ fontSize: '0.85rem', opacity: !createForm.tenantId ? 0.5 : 1 }}>
+              {creating ? 'Creando...' : 'Crear Contratos Base'}
+            </button>
+            <button className="btn-ghost" onClick={() => setShowCreate(false)} style={{ fontSize: '0.85rem' }}>
+              {t('common.cancel')}
+            </button>
           </div>
         </div>
       )}
@@ -249,11 +214,42 @@ export default function ContratosPage() {
                   <div style={{ padding: '1.25rem', borderTop: '1px solid var(--border)' }}>
                     {c.description && <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>{c.description}</p>}
 
-                    {/* Contract content preview */}
-                    {c.content && (
-                      <div style={{ maxHeight: '300px', overflowY: 'auto', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '0.82rem', lineHeight: 1.7, color: 'var(--text-secondary)', marginBottom: '1rem', whiteSpace: 'pre-wrap' }}>
+                    {/* Contract content — view or edit mode */}
+                    {c.content && editingContract !== c.id && (
+                      <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '0.82rem', lineHeight: 1.7, color: 'var(--text-secondary)', marginBottom: '1rem', whiteSpace: 'pre-wrap' }}>
                         {c.content}
                       </div>
+                    )}
+                    {editingContract === c.id && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)}
+                          rows={16}
+                          style={{ width: '100%', padding: '0.75rem', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', lineHeight: 1.7, fontFamily: 'inherit', resize: 'vertical' }} />
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                          <button className="btn-primary" disabled={savingEdit}
+                            onClick={async () => {
+                              if (!token) return;
+                              setSavingEdit(true);
+                              try {
+                                await api.contracts.update(token, c.id, { content: editContent });
+                                setEditingContract(null);
+                                loadData();
+                              } catch (e: any) { setError(e.message); }
+                              setSavingEdit(false);
+                            }}
+                            style={{ fontSize: '0.82rem' }}>
+                            {savingEdit ? t('common.saving') : 'Guardar Borrador'}
+                          </button>
+                          <button className="btn-ghost" onClick={() => setEditingContract(null)} style={{ fontSize: '0.82rem' }}>
+                            {t('common.cancel')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {!c.content && c.status === 'draft' && (
+                      <p style={{ fontSize: '0.82rem', color: 'var(--warning)', marginBottom: '1rem' }}>
+                        Este contrato no tiene contenido. Edite el borrador antes de enviar a firma.
+                      </p>
                     )}
 
                     {c.fileUrl && (
@@ -270,22 +266,31 @@ export default function ContratosPage() {
                       </div>
                     )}
 
-                    {/* Super admin: send to signature */}
-                    {isSuperAdmin && c.status === 'draft' && (
-                      <button className="btn-primary"
-                        disabled={sending === c.id}
-                        onClick={async () => {
-                          if (!token) return;
-                          setSending(c.id);
-                          try {
-                            await api.contracts.sendForSignature(token, c.id);
-                            loadData();
-                          } catch (e: any) { setError(e.message); }
-                          setSending(null);
-                        }}
-                        style={{ fontSize: '0.85rem', marginRight: '0.5rem' }}>
-                        {sending === c.id ? 'Enviando...' : 'Enviar a Firma'}
-                      </button>
+                    {/* Super admin: draft actions */}
+                    {isSuperAdmin && c.status === 'draft' && editingContract !== c.id && (
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                        <button className="btn-ghost"
+                          onClick={() => { setEditingContract(c.id); setEditContent(c.content || ''); }}
+                          style={{ fontSize: '0.82rem' }}>
+                          Editar Borrador
+                        </button>
+                        {c.content && (
+                          <button className="btn-primary"
+                            disabled={sending === c.id}
+                            onClick={async () => {
+                              if (!token) return;
+                              setSending(c.id);
+                              try {
+                                await api.contracts.sendForSignature(token, c.id);
+                                loadData();
+                              } catch (e: any) { setError(e.message); }
+                              setSending(null);
+                            }}
+                            style={{ fontSize: '0.82rem' }}>
+                            {sending === c.id ? 'Enviando...' : 'Enviar a Firma'}
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {/* Sign button — tenant_admin */}

@@ -134,6 +134,47 @@ export class ContractsService {
     return contract;
   }
 
+  /** Create all base contracts with template content for a tenant */
+  async createAllBaseContracts(tenantId: string, createdBy: string): Promise<{ created: number; contracts: Contract[] }> {
+    const templates = this.getDefaultTemplates();
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    const created: Contract[] = [];
+
+    for (const tpl of templates) {
+      // Skip if this type already exists for the tenant
+      const exists = await this.contractRepo.findOne({ where: { tenantId, type: tpl.type } });
+      if (exists) continue;
+
+      // Replace placeholders in content
+      let content = tpl.content;
+      if (tenant) {
+        content = content
+          .replace(/\{\{tenantName\}\}/g, tenant.name || '')
+          .replace(/\{\{tenantRut\}\}/g, tenant.rut || 'Por definir')
+          .replace(/\{\{tenantAddress\}\}/g, (tenant as any).commercialAddress || 'Por definir')
+          .replace(/\{\{effectiveDate\}\}/g, new Date().toLocaleDateString('es-CL'))
+          .replace(/\{\{planName\}\}/g, tenant.plan || 'starter')
+          .replace(/\{\{maxEmployees\}\}/g, String(tenant.maxEmployees || 50));
+      }
+
+      // Title format: "Contrato [Tipo] — [Organización]"
+      const title = `Contrato ${tpl.label} — ${tenant?.name || 'Sin nombre'}`;
+      const contract = await this.contractRepo.save(this.contractRepo.create({
+        tenantId,
+        type: tpl.type,
+        title,
+        content,
+        status: 'draft',
+        effectiveDate: new Date(),
+        createdBy,
+      }));
+      created.push(contract);
+    }
+
+    await this.auditService.log(tenantId, createdBy, 'contracts.bulk_created', 'contract', null as any, { count: created.length }).catch(() => {});
+    return { created: created.length, contracts: created };
+  }
+
   async activateAfterSignature(id: string): Promise<void> {
     const contract = await this.findById(id);
     if (contract.status === 'pending_signature') {

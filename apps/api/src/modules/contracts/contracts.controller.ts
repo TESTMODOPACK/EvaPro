@@ -42,6 +42,12 @@ export class ContractsController {
     return this.contractsService.create(dto, req.user.userId);
   }
 
+  @Post('bulk-create/:tenantId')
+  @Roles('super_admin')
+  createAllBase(@Param('tenantId', ParseUUIDPipe) tenantId: string, @Request() req: any) {
+    return this.contractsService.createAllBaseContracts(tenantId, req.user.userId);
+  }
+
   @Patch(':id')
   @Roles('super_admin')
   update(@Param('id', ParseUUIDPipe) id: string, @Request() req: any, @Body() dto: any) {

@@ -898,5 +898,6 @@ export const api = {
     sendForSignature: (token: string, id: string) => request<any>(`/contracts/${id}/send`, { method: "POST" }, token),
     getTypes: (token: string) => request<any[]>("/contracts/types", {}, token),
     getTemplates: (token: string) => request<any[]>("/contracts/templates", {}, token),
+    bulkCreate: (token: string, tenantId: string) => request<any>(`/contracts/bulk-create/${tenantId}`, { method: "POST" }, token),
   },
 };
