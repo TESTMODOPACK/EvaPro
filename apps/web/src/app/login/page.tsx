@@ -255,23 +255,6 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.15rem" }}>
             <div>
-              <label htmlFor="login-rut" style={labelStyle}>RUT Empresa</label>
-              <div style={{ position: "relative" }}>
-                <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-                  </svg>
-                </span>
-                <input id="login-rut" className="input" type="text" placeholder="Ej: 76.123.456-7" value={tenantRut}
-                  onChange={(e) => { setTenantRut(formatRutInput(e.target.value)); setRutError(""); }}
-                  autoCapitalize="none" autoComplete="organization" maxLength={12}
-                  style={{ paddingLeft: "2.5rem" }}
-                />
-              </div>
-              {rutError && <p style={{ color: "var(--danger)", fontSize: "0.78rem", marginTop: "0.25rem" }}>{rutError}</p>}
-            </div>
-
-            <div>
               <label htmlFor="login-email" style={labelStyle}>{t('login.email')}</label>
               <div style={{ position: "relative" }}>
                 <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
@@ -433,9 +416,14 @@ export default function LoginPage() {
                 <label style={labelStyle}>Confirmar contraseña</label>
                 <input className="input" type="password" placeholder="Repetir nueva contraseña" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} />
               </div>
-              <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", margin: 0 }}>
-                Debe tener al menos 8 caracteres, una letra mayúscula, una minúscula y un número.
-              </p>
+              <div style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                <span style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.15rem" }}>Requisitos de la contraseña:</span>
+                <span style={{ color: newPwd.length >= 8 ? "#10b981" : "var(--text-muted)" }}>{newPwd.length >= 8 ? "✓" : "○"} Mínimo 8 caracteres</span>
+                <span style={{ color: /[A-Z]/.test(newPwd) ? "#10b981" : "var(--text-muted)" }}>{/[A-Z]/.test(newPwd) ? "✓" : "○"} Al menos una letra mayúscula</span>
+                <span style={{ color: /[a-z]/.test(newPwd) ? "#10b981" : "var(--text-muted)" }}>{/[a-z]/.test(newPwd) ? "✓" : "○"} Al menos una letra minúscula</span>
+                <span style={{ color: /\d/.test(newPwd) ? "#10b981" : "var(--text-muted)" }}>{/\d/.test(newPwd) ? "✓" : "○"} Al menos un número</span>
+                <span style={{ color: newPwd && confirmPwd && newPwd === confirmPwd ? "#10b981" : "var(--text-muted)" }}>{newPwd && confirmPwd && newPwd === confirmPwd ? "✓" : "○"} Las contraseñas coinciden</span>
+              </div>
               <button className="btn-primary" disabled={changePwdLoading || !newPwd || !confirmPwd}
                 style={{ padding: "0.7rem 1.5rem", opacity: changePwdLoading ? 0.6 : 1 }}
                 onClick={async () => {

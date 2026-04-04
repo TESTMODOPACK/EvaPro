@@ -505,6 +505,20 @@ async function seed() {
       console.log('\u2705  Manager created: carlos.lopez@evapro.demo');
     }
 
+    /* ── Test user for first-login password change ──────────────────────── */
+    let testNewUser = await userRepo.findOne({ where: { email: 'nuevo.usuario@evapro.demo', tenantId: tenant.id } });
+    if (!testNewUser) {
+      const pwHash = await bcrypt.hash('Temporal2026!', 10);
+      testNewUser = await userRepo.save(userRepo.create({
+        email: 'nuevo.usuario@evapro.demo', passwordHash: pwHash,
+        firstName: 'Nuevo', lastName: 'Usuario',
+        role: 'employee', department: 'Recursos Humanos', position: 'Analista',
+        hierarchyLevel: 6, isActive: true, tenantId: tenant.id,
+        managerId: admin.id, mustChangePassword: true,
+      }));
+      console.log('\u2705  Test user created: nuevo.usuario@evapro.demo (mustChangePassword=true)');
+    }
+
     /* ── Employees (realistic hierarchy) ───────────────────────────────── */
     const employeeDefs = [
       // Tecnología — reports to Carlos (manager)
