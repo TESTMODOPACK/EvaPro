@@ -343,12 +343,13 @@ export class ReportsController {
   async exportCrossAnalysis(
     @Request() req: any,
     @Query('format') format: string,
-    @Query('cycleId') cycleId?: string,
+    @Query('cycleIds') cycleIds?: string,
     @Query('surveyId') surveyId?: string,
     @Res({ passthrough: true }) res?: Response,
   ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
-    const data = await this.crossAnalysisService.getCrossAnalysis(req.user.tenantId, cycleId, surveyId, managerId);
+    const ids = cycleIds ? cycleIds.split(',').filter(Boolean) : undefined;
+    const data = await this.crossAnalysisService.getCrossAnalysis(req.user.tenantId, ids, surveyId, managerId);
     await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'cross-analysis', format }).catch(() => {});
 
     if (format === 'pdf') {
@@ -369,16 +370,24 @@ export class ReportsController {
     return res!.send(csv);
   }
 
+  @Get('cross-analysis/available')
+  @Roles('tenant_admin', 'manager')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
+  getCrossAnalysisAvailable(@Request() req: any) {
+    return this.crossAnalysisService.getAvailableData(req.user.tenantId);
+  }
+
   @Get('cross-analysis')
   @Roles('tenant_admin', 'manager')
   @Feature(PlanFeature.ADVANCED_REPORTS)
   getCrossAnalysis(
     @Request() req: any,
-    @Query('cycleId') cycleId?: string,
+    @Query('cycleIds') cycleIds?: string,
     @Query('surveyId') surveyId?: string,
   ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
-    return this.crossAnalysisService.getCrossAnalysis(req.user.tenantId, cycleId, surveyId, managerId);
+    const ids = cycleIds ? cycleIds.split(',').filter(Boolean) : undefined;
+    return this.crossAnalysisService.getCrossAnalysis(req.user.tenantId, ids, surveyId, managerId);
   }
 
   // ─── Analytics Reports ──────────────────────────────────────────────

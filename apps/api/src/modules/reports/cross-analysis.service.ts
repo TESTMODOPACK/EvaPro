@@ -76,19 +76,54 @@ export class CrossAnalysisService {
     private readonly userRepo: Repository<User>,
   ) {}
 
-  async getCrossAnalysis(tenantId: string, cycleId?: string, surveyId?: string, managerId?: string) {
-    // 1. Get performance data from cycle
-    const cycle = cycleId
-      ? await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } })
-      : await this.cycleRepo.findOne({ where: { tenantId, status: CycleStatus.CLOSED }, order: { endDate: 'DESC' } });
+  /** List available cycles and surveys for selection */
+  async getAvailableData(tenantId: string) {
+    const cycles = await this.cycleRepo.find({
+      where: { tenantId, status: CycleStatus.CLOSED },
+      select: ['id', 'name', 'type', 'startDate', 'endDate'],
+      order: { endDate: 'DESC' },
+    });
+    const surveys = await this.surveyRepo.find({
+      where: { tenantId, status: 'closed' },
+      select: ['id', 'title', 'startDate', 'endDate'],
+      order: { endDate: 'DESC' },
+    });
+    return { cycles, surveys };
+  }
+
+  async getCrossAnalysis(tenantId: string, cycleIds?: string[], surveyId?: string, managerId?: string) {
+    // 1. Get performance data from cycles (multiple supported)
+    let cycles: any[] = [];
+    if (cycleIds?.length) {
+      for (const cid of cycleIds) {
+        const c = await this.cycleRepo.findOne({ where: { id: cid, tenantId } });
+        if (c) cycles.push(c);
+      }
+    } else {
+      const latest = await this.cycleRepo.findOne({ where: { tenantId, status: CycleStatus.CLOSED }, order: { endDate: 'DESC' } });
+      if (latest) cycles = [latest];
+    }
 
     // 2. Get survey data
     const survey = surveyId
       ? await this.surveyRepo.findOne({ where: { id: surveyId, tenantId }, relations: ['questions'] })
       : await this.surveyRepo.findOne({ where: { tenantId, status: 'closed' }, order: { endDate: 'DESC' }, relations: ['questions'] });
 
-    if (!cycle && !survey) {
+    if (cycles.length === 0 && !survey) {
       return { error: 'No hay ciclos de evaluación ni encuestas cerradas disponibles para el análisis.' };
+    }
+
+    // 3. Validate: cycles and survey must be within 1 year of each other
+    if (survey && cycles.length > 0) {
+      const surveyEnd = new Date(survey.endDate || survey.startDate);
+      for (const c of cycles) {
+        const cycleEnd = new Date(c.endDate || c.startDate);
+        const diffMs = Math.abs(surveyEnd.getTime() - cycleEnd.getTime());
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        if (diffDays > 365) {
+          return { error: `El ciclo "${c.name}" y la encuesta "${survey.title}" tienen más de 1 año de diferencia. Seleccione datos del mismo período.` };
+        }
+      }
     }
 
     // 3. Get users for scope
@@ -97,14 +132,13 @@ export class CrossAnalysisService {
     const users = await this.userRepo.find({ where: userWhere, select: ['id', 'department'] });
     const userIds = new Set(users.map(u => u.id));
 
-    // 4. Performance by department — load assignments + responses separately
+    // 4. Performance by department — aggregate from all selected cycles
     const perfByDept: Record<string, number[]> = {};
-    if (cycle) {
+    for (const cycle of cycles) {
       const assignments = await this.assignmentRepo.find({
         where: { cycleId: cycle.id, tenantId },
         relations: ['evaluatee'],
       });
-      // Load all responses for this cycle and map by assignmentId
       const assignmentIds = assignments.map(a => a.id);
       const responses = assignmentIds.length > 0
         ? await this.evalResponseRepo.find({ where: { assignmentId: In(assignmentIds) }, select: ['assignmentId', 'overallScore'] })
@@ -273,7 +307,8 @@ export class CrossAnalysisService {
       quadrantLabels: QUADRANT_LABELS,
       categoryCorrelation,
       insights,
-      cycleName: cycle?.name || null,
+      cycleName: cycles.map(c => c.name).join(' + ') || null,
+      cycleCount: cycles.length,
       surveyTitle: survey?.title || null,
       generatedAt: new Date().toISOString(),
     };

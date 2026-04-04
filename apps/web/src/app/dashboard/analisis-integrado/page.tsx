@@ -25,15 +25,52 @@ function AnalisisIntegradoContent() {
   const [exporting, setExporting] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
 
+  // Selectors
+  const [availableCycles, setAvailableCycles] = useState<any[]>([]);
+  const [availableSurveys, setAvailableSurveys] = useState<any[]>([]);
+  const [selectedCycleIds, setSelectedCycleIds] = useState<Set<string>>(new Set());
+  const [selectedSurveyId, setSelectedSurveyId] = useState<string>('');
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+  // Load available data
   useEffect(() => {
     if (!token) return;
-    setError(null);
-    fetch(`${API}/reports/cross-analysis`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => { if (!r.ok) throw new Error('Error al cargar'); return r.json(); })
-      .then(setData)
-      .catch(e => setError(e.message))
+    fetch(`${API}/reports/cross-analysis/available`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : { cycles: [], surveys: [] })
+      .then(({ cycles, surveys }) => {
+        setAvailableCycles(cycles || []);
+        setAvailableSurveys(surveys || []);
+      })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
+
+  // Auto-load analysis with defaults on first render
+  useEffect(() => {
+    if (!token || availableCycles.length === 0 && availableSurveys.length === 0) return;
+    if (data) return; // already loaded
+    setLoadingAnalysis(true);
+    fetch(`${API}/reports/cross-analysis`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoadingAnalysis(false));
+  }, [token, availableCycles, availableSurveys]);
+
+  const handleAnalyze = async () => {
+    if (!token) return;
+    setLoadingAnalysis(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (selectedCycleIds.size > 0) params.set('cycleIds', Array.from(selectedCycleIds).join(','));
+      if (selectedSurveyId) params.set('surveyId', selectedSurveyId);
+      const res = await fetch(`${API}/reports/cross-analysis?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Error'); }
+      setData(await res.json());
+    } catch (e: any) { setError(e.message); }
+    setLoadingAnalysis(false);
+  };
 
   const handleExport = async (format: 'pdf' | 'xlsx' | 'csv') => {
     if (!token) return;
@@ -53,21 +90,6 @@ function AnalisisIntegradoContent() {
   };
 
   if (loading) return <PageSkeleton cards={4} tableRows={6} />;
-  if (error) return (
-    <div style={{ padding: '2rem 2.5rem' }}>
-      <div className="card" style={{ padding: '2rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
-        <p style={{ color: 'var(--danger)', fontWeight: 600 }}>{t('common.errorLoading')}</p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{error}</p>
-      </div>
-    </div>
-  );
-  if (data?.error) return (
-    <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>{t('crossAnalysis.title')}</h1>
-      <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>{data.error}</div>
-    </div>
-  );
-  if (!data) return null;
 
   const { summary, departments, quadrants, categoryCorrelation, insights } = data;
 
@@ -148,6 +170,69 @@ function AnalisisIntegradoContent() {
         </div>
       )}
 
+      {/* Selectors */}
+      <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          {/* Survey selector */}
+          <div style={{ flex: '1 1 250px' }}>
+            <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Encuesta de Clima</label>
+            <select value={selectedSurveyId} onChange={(e) => setSelectedSurveyId(e.target.value)}
+              style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}>
+              <option value="">Última cerrada (auto)</option>
+              {availableSurveys.map((s: any) => (
+                <option key={s.id} value={s.id}>{s.title} ({s.endDate ? new Date(s.endDate).toLocaleDateString('es-CL') : ''})</option>
+              ))}
+            </select>
+          </div>
+          {/* Cycles multi-select */}
+          <div style={{ flex: '2 1 350px' }}>
+            <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+              Ciclos de Evaluación <span style={{ fontWeight: 400, textTransform: 'none' }}>(seleccione 1 o más)</span>
+            </label>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+              {availableCycles.length === 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sin ciclos cerrados</span>}
+              {availableCycles.map((c: any) => {
+                const sel = selectedCycleIds.has(c.id);
+                return (
+                  <button key={c.id} type="button"
+                    onClick={() => setSelectedCycleIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
+                      return next;
+                    })}
+                    style={{
+                      padding: '0.35rem 0.65rem', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem',
+                      border: sel ? '2px solid var(--accent)' : '1px solid var(--border)',
+                      background: sel ? 'rgba(201,147,58,0.1)' : 'var(--bg-surface)',
+                      color: sel ? 'var(--accent)' : 'var(--text-primary)',
+                      fontWeight: sel ? 700 : 400, cursor: 'pointer',
+                    }}>
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {/* Analyze button */}
+          <button className="btn-primary" onClick={handleAnalyze} disabled={loadingAnalysis}
+            style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+            {loadingAnalysis ? 'Analizando...' : 'Analizar'}
+          </button>
+        </div>
+        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem', margin: '0.5rem 0 0' }}>
+          Si no selecciona, se usan los datos más recientes. Puede comparar 1 encuesta de clima con múltiples ciclos de evaluación del mismo período (máximo 1 año de diferencia).
+        </p>
+      </div>
+
+      {/* Error */}
+      {data?.error && (
+        <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--danger)' }}>
+          {data.error}
+        </div>
+      )}
+
+      {/* Results — only shown when data is loaded */}
+      {data && !data.error && <>
       {/* KPIs */}
       <div className="animate-fade-up mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
@@ -310,6 +395,15 @@ function AnalisisIntegradoContent() {
           <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
             {t('crossAnalysis.insightsDisclaimer')}
           </div>
+        </div>
+      )}
+      </>}
+
+      {/* Loading indicator */}
+      {loadingAnalysis && !data && (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+          <span className="spinner" style={{ marginBottom: '1rem' }} />
+          <p>Analizando datos...</p>
         </div>
       )}
     </div>
