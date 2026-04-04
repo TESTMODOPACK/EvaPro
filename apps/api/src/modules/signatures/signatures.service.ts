@@ -128,6 +128,15 @@ export class SignaturesService {
       ipAddress,
     ).catch(() => {});
 
+    // Auto-activate contract after signature
+    if (documentType === 'contract') {
+      const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId } });
+      if (contract && contract.status === 'pending_signature') {
+        contract.status = 'active';
+        await this.contractRepo.save(contract);
+      }
+    }
+
     return saved;
   }
 

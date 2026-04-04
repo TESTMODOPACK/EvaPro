@@ -23,6 +23,7 @@ export class ContractsController {
   }
 
   @Get()
+  @Roles('super_admin', 'tenant_admin')
   list(@Request() req: any) {
     if (req.user.role === 'super_admin') return this.contractsService.findAll();
     return this.contractsService.findByTenant(req.user.tenantId);
