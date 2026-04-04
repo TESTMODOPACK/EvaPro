@@ -247,6 +247,9 @@ importers:
         specifier: ^5.0.12
         version: 5.0.12(@types/react@18.3.28)(immer@11.1.4)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
     devDependencies:
+      '@netlify/plugin-nextjs':
+        specifier: 5.8.0
+        version: 5.8.0
       '@types/node':
         specifier: ^20
         version: 20.19.37
@@ -949,6 +952,10 @@ packages:
       reflect-metadata: ^0.1.13 || ^0.2.0
       rxjs: ^7.2.0
       typeorm: ^0.3.0
+
+  '@netlify/plugin-nextjs@5.8.0':
+    resolution: {integrity: sha512-1hduTMFYkZRSqRAPK1+5A6T/uc543PfxX0erzJEVWb9fKgPlY24ZQMi2nXBwlQ6JlBYjZJcMEtN2vhhNqyjgXA==}
+    engines: {node: '>=18.0.0'}
 
   '@next/env@14.2.35':
     resolution: {integrity: sha512-DuhvCtj4t9Gwrx80dmz2F4t/zKQ4ktN8WrMwOuVzkJfBilwAwGr6v16M5eI8yCuZ63H9TTuEU09Iu2HqkzFPVQ==}
@@ -5971,6 +5978,8 @@ snapshots:
       reflect-metadata: 0.2.2
       rxjs: 7.8.2
       typeorm: 0.3.28(pg@8.20.0)(ts-node@10.9.2(@types/node@22.19.15)(typescript@5.9.3))
+
+  '@netlify/plugin-nextjs@5.8.0': {}
 
   '@next/env@14.2.35': {}
 
