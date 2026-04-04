@@ -17,6 +17,7 @@ function CycleComparisonPageContent() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [quotaInfo, setQuotaInfo] = useState<any>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -141,6 +142,28 @@ function CycleComparisonPageContent() {
           </div>
         </div>
       </div>
+
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Comparativa de Ciclos</h3>
+          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <p><strong>¿Qué muestra?</strong> Comparación entre 2 o más ciclos de evaluación cerrados, mostrando evolución de puntajes y distribución por departamento.</p>
+            <p><strong>Cómo usar:</strong> 1) Seleccionar 2+ ciclos haciendo clic en cada uno. 2) Ver gráficos comparativos automáticos. 3) Opcionalmente, generar análisis con IA.</p>
+            <p><strong>Gráficos:</strong> Tendencia de puntaje promedio/mín/máx entre ciclos, y comparativa por departamento en gráfico horizontal agrupado.</p>
+            <p><strong>Análisis IA:</strong> Genera un análisis profundo con resumen ejecutivo, tendencias, fortalezas, alertas, departamentos que mejoraron/empeoraron, y recomendaciones. Consume 1 crédito de su cuota mensual de IA.</p>
+            <p><strong>Exportación:</strong> Excel y CSV con datos de todos los ciclos y desglose departamental.</p>
+          </div>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Administradores ven todos los ciclos. Encargados ven solo los datos de su equipo.
+          </div>
+        </div>
+      )}
 
       {/* Cycle Selection */}
       <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.5rem' }}>

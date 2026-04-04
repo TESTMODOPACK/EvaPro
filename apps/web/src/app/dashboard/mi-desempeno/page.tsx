@@ -79,6 +79,7 @@ export default function MiDesempenoPage() {
   // Signatures
   const [signModal, setSignModal] = useState<{ documentType: string; documentId: string; documentName: string } | null>(null);
   const [signatureMap, setSignatureMap] = useState<Record<string, any[]>>({});
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (!token || !user?.userId) return;
@@ -226,6 +227,29 @@ export default function MiDesempenoPage() {
           Exportar CSV
         </button>
       </div>
+
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Mi Desempeño</h3>
+          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <p><strong>¿Qué muestra?</strong> Tu historial de desempeño personal — puntajes, competencias, objetivos y feedback recibido a lo largo de los ciclos.</p>
+            <p><strong>Secciones:</strong> Puntaje global por ciclo, desglose por competencia, historial de evaluaciones, estado de objetivos personales, y feedback recibido.</p>
+            <p><strong>Puntaje:</strong> Se calcula como promedio ponderado de las evaluaciones recibidas (autoevaluación, jefe, pares, reportes directos según el tipo de ciclo).</p>
+            <p><strong>Objetivos:</strong> Muestra el estado de tus objetivos (activos, completados, en riesgo) y su progreso.</p>
+            <p><strong>Feedback:</strong> Retroalimentación rápida recibida de colegas, con indicador de sentimiento.</p>
+            <p><strong>Exportación:</strong> CSV con detalle de evaluaciones y puntajes.</p>
+          </div>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Cada colaborador ve únicamente su propia información. No se muestra información de otros usuarios.
+          </div>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>

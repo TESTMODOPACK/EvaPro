@@ -117,6 +117,7 @@ function SystemUsagePageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -174,6 +175,30 @@ function SystemUsagePageContent() {
           </button>
         </div>
       </div>
+
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Adopción y Uso del Sistema</h3>
+          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <p><strong>¿Qué muestra?</strong> Métricas de actividad de los últimos 30 días — quién está usando el sistema y con qué frecuencia.</p>
+            <p><strong>Indicadores:</strong> MAU (usuarios activos en el mes), WAU (activos en la semana), tasa de adopción (MAU/Total × 100).</p>
+            <p><strong>Uso por módulo:</strong> Qué áreas del sistema se usan más (evaluaciones, feedback, objetivos, etc.) con nombres traducidos al español.</p>
+            <p><strong>Acciones frecuentes:</strong> Las acciones más realizadas (inicio de sesión, creación de objetivos, feedback enviado, etc.) traducidas a nombres legibles.</p>
+            <p><strong>Actividad diaria:</strong> Gráfico con tendencia de acciones y usuarios únicos por día.</p>
+            <p><strong>Análisis:</strong> Interpretación automática del nivel de adopción con recomendaciones para mejorar el uso.</p>
+            <p><strong>Exportación:</strong> Excel y CSV.</p>
+          </div>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores del sistema.
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>

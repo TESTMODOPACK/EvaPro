@@ -13,6 +13,7 @@ function PdiCompliancePageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -79,6 +80,28 @@ function PdiCompliancePageContent() {
           </button>
         </div>
       </div>
+
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Cumplimiento de Desarrollo (PDI)</h3>
+          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <p><strong>¿Qué muestra?</strong> Estado de los planes de desarrollo individual — cuántos planes existen, tasa de completitud, acciones completadas vs vencidas, y desglose por departamento.</p>
+            <p><strong>Indicadores clave:</strong> Total de planes, tasa de completitud (%), acciones completadas vs total, acciones vencidas (requieren seguimiento inmediato).</p>
+            <p><strong>Por departamento:</strong> Muestra progreso promedio por área para identificar cuáles necesitan más apoyo.</p>
+            <p><strong>Análisis:</strong> Incluye interpretación automática del nivel de cumplimiento y recomendaciones.</p>
+            <p><strong>Exportación:</strong> Excel y CSV con detalle de planes y acciones.</p>
+          </div>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Administradores ven toda la organización. Encargados de equipo ven solo su equipo.
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="animate-fade-up-delay-1 mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>

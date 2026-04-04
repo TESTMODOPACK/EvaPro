@@ -66,6 +66,7 @@ export default function CycleDetailPage() {
   const [allowedRelations, setAllowedRelations] = useState<{ value: string; label: string }[]>([]);
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoGenResult, setAutoGenResult] = useState<{ created: number } | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   // ── Departments from Mantenedores ────────────────────────────────────────
   const { departments: deptOptions } = useDepartments();
@@ -594,6 +595,28 @@ export default function CycleDetailPage() {
                 transition: 'width 0.5s ease',
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Guide toggle */}
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Detalle del Ciclo de Evaluación</h3>
+          <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
+            <li><strong>¿Qué puedo hacer aquí?</strong> Administrar un ciclo de evaluación — ver su estado, gestionar asignaciones de evaluadores, lanzar o cerrar el ciclo.</li>
+            <li><strong>Estados del ciclo:</strong> Borrador (se pueden editar asignaciones), Activo (evaluadores completan sus formularios), Pausado (se detiene temporalmente), Cerrado (resultados finales disponibles).</li>
+            <li><strong>Asignaciones automáticas:</strong> El botón &quot;Generar asignaciones&quot; crea automáticamente las evaluaciones según el tipo de ciclo (90°: solo jefe, 180°: jefe+auto, 270°: jefe+auto+pares manuales, 360°: jefe+auto+pares+reportes directos).</li>
+            <li><strong>Asignación de pares:</strong> Para ciclos 270° y 360°, debe agregar evaluadores par manualmente o usar &quot;Sugerir pares&quot; que recomienda personas del mismo nivel jerárquico.</li>
+            <li><strong>Lanzamiento:</strong> Al lanzar el ciclo, se envían notificaciones por correo a todos los evaluadores. Se crean las asignaciones definitivas a partir de las pre-asignaciones.</li>
+          </ul>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores pueden gestionar ciclos y asignaciones.
           </div>
         </div>
       )}

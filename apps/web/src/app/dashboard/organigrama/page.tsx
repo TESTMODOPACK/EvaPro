@@ -80,6 +80,7 @@ export default function OrganigramaPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
   const { departments } = useDepartments();
 
   useEffect(() => {
@@ -127,6 +128,29 @@ export default function OrganigramaPage() {
           Estructura jerárquica de la organización basada en la relación jefe-colaborador
         </p>
       </div>
+
+      {/* Guide toggle */}
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Organigrama</h3>
+          <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
+            <li><strong>¿Qué muestra?</strong> La estructura jerárquica de la organización en forma de árbol, basada en la relación jefe-colaborador definida en cada usuario.</li>
+            <li><strong>Nodos:</strong> Cada persona muestra su nombre, cargo, departamento, nivel jerárquico y cantidad de reportes directos y totales.</li>
+            <li><strong>Niveles:</strong> Los colores y números de nivel (Nv.1, Nv.2, etc.) provienen del catálogo de cargos configurado en Mantenedores. Nivel 1 es el más alto.</li>
+            <li><strong>Raíces:</strong> Los usuarios sin jefatura directa asignada aparecen como raíces del árbol (nodos superiores).</li>
+            <li><strong>Filtros:</strong> Puede buscar por nombre o cargo, y filtrar por departamento para ver una sección específica.</li>
+            <li><strong>Colapsable:</strong> Haga clic en la flecha de cada nodo para expandir o colapsar sus subordinados. Los niveles profundos se colapsan automáticamente.</li>
+          </ul>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Administradores y encargados de equipo pueden ver el organigrama completo.
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card animate-fade-up" style={{ padding: '0.75rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>

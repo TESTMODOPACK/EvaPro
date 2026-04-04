@@ -29,6 +29,7 @@ function FirmasPageContent() {
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [showGuide, setShowGuide] = useState(false);
   const PAGE_SIZE = 15;
 
   useEffect(() => {
@@ -82,6 +83,27 @@ function FirmasPageContent() {
           Historial de firmas electrónicas de la organización
         </p>
       </div>
+
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Firmas Digitales</h3>
+          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <p><strong>¿Qué muestra?</strong> Historial de documentos firmados digitalmente en la organización (evaluaciones, planes de desarrollo, etc.).</p>
+            <p><strong>Proceso de firma:</strong> El sistema envía un código OTP al correo del firmante. El firmante ingresa el código para validar su identidad. Se genera un hash SHA-256 del documento como evidencia.</p>
+            <p><strong>Validez:</strong> Cada firma registra: quién firmó, cuándo, desde qué IP, y el hash del documento al momento de la firma. Si el documento se modifica después, el hash no coincidirá.</p>
+            <p><strong>Estados:</strong> Válida (documento sin alteraciones), Revocada (firma anulada por administrador).</p>
+          </div>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Cada usuario ve sus propias firmas. Administradores ven todas las firmas de la organización.
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>

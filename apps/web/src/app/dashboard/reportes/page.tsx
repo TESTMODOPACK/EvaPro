@@ -44,6 +44,7 @@ export default function ReportesPage() {
     : 10;
 
   const [exporting, setExporting] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const handleExport = async (format: 'csv' | 'pdf' | 'xlsx' | 'pptx') => {
     if (!selectedCycleId || !token) return;
@@ -89,6 +90,42 @@ export default function ReportesPage() {
           Vista integral del ciclo de evaluación: desempeño, objetivos, desarrollo y clima organizacional
         </p>
       </div>
+
+      {/* Guide */}
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Resumen Ejecutivo del Ciclo</h3>
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Qué muestra este reporte?</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              Una vista integral de un ciclo de evaluación seleccionado, combinando datos de desempeño, objetivos, dotación, clima laboral (eNPS) y desarrollo organizacional. Incluye un análisis rápido automático con interpretaciones de los resultados.
+            </p>
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>Secciones incluidas</p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <li><strong>Evaluación de Desempeño:</strong> Promedio global, tasa de completitud, desglose por departamento</li>
+              <li><strong>Objetivos:</strong> Total, completados, en progreso, tasa de cumplimiento</li>
+              <li><strong>Dotación y Clima:</strong> Usuarios activos, eNPS (si hay encuestas), desarrollo organizacional</li>
+              <li><strong>Análisis Rápido:</strong> Interpretación automática de los indicadores con recomendaciones</li>
+            </ul>
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>Exportación</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              Disponible en PDF (con gráficos), Excel, PowerPoint y CSV. El reporte incluye el detalle de evaluaciones y puntajes por departamento.
+            </p>
+          </div>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores y encargados de equipo pueden acceder a este reporte. Los encargados ven únicamente los datos de su equipo.
+          </div>
+        </div>
+      )}
 
       {/* Cycle selector + Export */}
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.5rem' }}>

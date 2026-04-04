@@ -83,6 +83,8 @@ function DesarrolloOrganizacionalPageContent() {
     onConfirm: () => void;
   } | null>(null);
 
+  const [showGuide, setShowGuide] = useState(false);
+
   // ── Estado general ─────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<any[]>([]);
@@ -411,6 +413,28 @@ function DesarrolloOrganizacionalPageContent() {
             </button>
           )}
         </div>
+
+        {/* Guide toggle */}
+        <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+          <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+            {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          </button>
+        </div>
+        {showGuide && (
+          <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Desarrollo Organizacional</h3>
+            <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
+              <li><strong>¿Qué es?</strong> Gestión de planes e iniciativas de desarrollo a nivel organizacional — programas de capacitación, mejora de procesos, proyectos estratégicos.</li>
+              <li><strong>Planes:</strong> Agrupaciones temáticas que contienen iniciativas. Cada plan tiene un nombre, descripción, fechas y departamentos asociados.</li>
+              <li><strong>Iniciativas:</strong> Acciones concretas dentro de un plan, con responsable, progreso (%) y fecha límite.</li>
+              <li><strong>Flujo:</strong> 1) Crear un plan. 2) Agregar iniciativas al plan. 3) Asignar responsables. 4) Actualizar progreso periódicamente. 5) Marcar como completada al finalizar.</li>
+              <li><strong>Estadísticas:</strong> Progreso promedio, cantidad de iniciativas por estado, departamentos involucrados.</li>
+            </ul>
+            <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Administradores crean y gestionan planes. Encargados pueden ver planes de su área. Colaboradores no tienen acceso.
+            </div>
+          </div>
+        )}
 
         {/* Info card */}
         <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>

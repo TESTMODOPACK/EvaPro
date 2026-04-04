@@ -90,6 +90,7 @@ export default function MiSuscripcionPage() {
 
   // AI usage
   const [aiUsage, setAiUsage] = useState<any>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   function showToast(msg: string) {
     setAutoRenewToast(msg);
@@ -192,6 +193,29 @@ export default function MiSuscripcionPage() {
           Plan y límites de tu organización
         </p>
       </div>
+
+      {/* Guide toggle */}
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Mi Suscripción</h3>
+          <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
+            <li><strong>¿Qué muestra?</strong> El estado de la suscripción de su organización — plan actual, uso, pagos y opciones de cambio.</li>
+            <li><strong>Plan actual:</strong> Muestra el plan contratado, sus funcionalidades incluidas, límite de usuarios y precio.</li>
+            <li><strong>Uso de IA:</strong> Muestra la cuota mensual de análisis con inteligencia artificial — cuántos informes se han generado y cuántos quedan. Puede ampliar la cuota comprando paquetes adicionales sin cambiar de plan.</li>
+            <li><strong>Paquetes de IA:</strong> Créditos adicionales (desde +50 hasta +500 análisis/mes) que se suman a la cuota base del plan. El costo se agrega a la facturación mensual.</li>
+            <li><strong>Solicitar cambio de plan:</strong> Si necesita más funcionalidades o usuarios, puede solicitar un cambio de plan. La solicitud es revisada y aprobada por el equipo de soporte.</li>
+            <li><strong>Historial de pagos:</strong> Registro de todos los pagos realizados con fechas y montos.</li>
+          </ul>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores de la organización pueden ver y gestionar la suscripción.
+          </div>
+        </div>
+      )}
 
       {sub && plan ? (
         <>

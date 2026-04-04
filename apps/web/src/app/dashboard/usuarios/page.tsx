@@ -87,6 +87,7 @@ export default function UsuariosPage() {
   const updateUser = useUpdateUser();
   const removeUser = useRemoveUser();
 
+  const [showGuide, setShowGuide] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -537,6 +538,28 @@ export default function UsuariosPage() {
           </div>
         )}
       </div>
+
+      {/* Guide toggle */}
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Gestión de Usuarios</h3>
+          <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
+            <li><strong>¿Qué incluye?</strong> Crear, editar y gestionar los colaboradores de la organización. Cada usuario tiene: nombre, correo, RUT, cargo, departamento, jefatura directa y rol.</li>
+            <li><strong>Roles del sistema:</strong> Administrador (gestión completa), Encargado de equipo (ve su equipo, aprueba objetivos), Colaborador (accede a sus evaluaciones y objetivos), Asesor externo (evaluador invitado, solo lectura).</li>
+            <li><strong>Jefatura directa:</strong> Define quién es el jefe de cada usuario. Esta relación se usa para: asignar evaluadores automáticamente, filtrar datos por equipo, y definir reportes directos en evaluaciones 360°.</li>
+            <li><strong>Cargo y nivel:</strong> Al seleccionar un cargo del catálogo (configurado en Mantenedores), se asigna automáticamente un nivel jerárquico que facilita la sugerencia de pares en evaluaciones.</li>
+            <li><strong>Importación masiva:</strong> El botón &quot;Importar CSV&quot; permite cargar múltiples usuarios desde un archivo. La plantilla incluye: correo, nombre, apellido, rut, contraseña, rol, departamento, cargo, fecha ingreso, jefatura directa (correo del jefe).</li>
+          </ul>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores pueden crear, editar y desactivar usuarios.
+          </div>
+        </div>
+      )}
 
       {/* Filters bar */}
       <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>

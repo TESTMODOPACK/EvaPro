@@ -20,6 +20,7 @@ function TurnoverPageContent() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -105,6 +106,31 @@ function TurnoverPageContent() {
           </button>
         </div>
       </div>
+
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Análisis de Rotación</h3>
+          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <p><strong>¿Qué muestra?</strong> Análisis de bajas (desactivaciones) en los últimos 12 meses — tasa de rotación, tendencias y distribución.</p>
+            <p><strong>Indicadores:</strong> Usuarios activos, bajas en 12 meses, tasa de rotación (bajas/total al inicio del período × 100), inactivos totales.</p>
+            <p><strong>Rangos de rotación:</strong> Saludable (&lt;8%), Moderada (8-15%), Alta (15-20%), Crítica (&gt;20%).</p>
+            <p><strong>Bajas por mes:</strong> Gráfico de barras mostrando los últimos 12 meses (incluye meses sin bajas con valor 0).</p>
+            <p><strong>Antigüedad al salir:</strong> Distribución de cuánto tiempo llevaban los colaboradores que se fueron (&lt;6m, 6-12m, 1-2a, 2-5a, &gt;5a).</p>
+            <p><strong>Bajas por departamento:</strong> Tabla con gráfico horizontal identificando áreas más afectadas.</p>
+            <p><strong>Análisis:</strong> Interpretación detallada con recomendaciones específicas según los datos (entrevistas de salida, revisión de onboarding, etc.).</p>
+            <p><strong>Exportación:</strong> Excel (multi-hoja) y CSV.</p>
+          </div>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores.
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
