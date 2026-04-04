@@ -65,6 +65,7 @@ export default function UsuariosPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDept, setFilterDept] = useState('');
   const [filterRole, setFilterRole] = useState('');
+  const [filterPosition, setFilterPosition] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -74,8 +75,8 @@ export default function UsuariosPage() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const filters = (debouncedSearch || filterDept || filterRole || filterStatus)
-    ? { search: debouncedSearch || undefined, department: filterDept || undefined, role: filterRole || undefined, status: filterStatus || undefined }
+  const filters = (debouncedSearch || filterDept || filterRole || filterPosition || filterStatus)
+    ? { search: debouncedSearch || undefined, department: filterDept || undefined, role: filterRole || undefined, position: filterPosition || undefined, status: filterStatus || undefined }
     : undefined;
 
   const { data: paginated, isLoading } = useUsers(page, pageSize, filters);
@@ -581,14 +582,21 @@ export default function UsuariosPage() {
             {departments.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
-        <div style={{ flex: '0 1 140px' }}>
+        <div style={{ flex: '0 1 180px' }}>
           <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rol</label>
           <select className="input" value={filterRole} onChange={(e) => { setFilterRole(e.target.value); setPage(1); }} style={{ fontSize: '0.85rem' }}>
-            <option value="">Todos</option>
-            <option value="tenant_admin">Encargado del Sistema</option>
+            <option value="">Todos los roles</option>
+            <option value="tenant_admin">Administrador</option>
             <option value="manager">Encargado de Equipo</option>
             <option value="employee">Colaborador</option>
             <option value="external">Asesor Externo</option>
+          </select>
+        </div>
+        <div style={{ flex: '0 1 170px' }}>
+          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cargo</label>
+          <select className="input" value={filterPosition} onChange={(e) => { setFilterPosition(e.target.value); setPage(1); }} style={{ fontSize: '0.85rem' }}>
+            <option value="">Todos los cargos</option>
+            {positionCatalog.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
           </select>
         </div>
         <div style={{ flex: '0 1 120px' }}>
@@ -599,11 +607,11 @@ export default function UsuariosPage() {
             <option value="inactive">Inactivos</option>
           </select>
         </div>
-        {(searchTerm || filterDept || filterRole || filterStatus) && (
+        {(searchTerm || filterDept || filterRole || filterPosition || filterStatus) && (
           <button
             className="btn-ghost"
             style={{ fontSize: '0.78rem', padding: '0.5rem 0.75rem' }}
-            onClick={() => { setSearchTerm(''); setFilterDept(''); setFilterRole(''); setFilterStatus(''); setPage(1); }}
+            onClick={() => { setSearchTerm(''); setFilterDept(''); setFilterRole(''); setFilterPosition(''); setFilterStatus(''); setPage(1); }}
           >
             Limpiar filtros
           </button>

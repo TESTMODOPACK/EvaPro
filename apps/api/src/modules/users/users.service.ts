@@ -100,7 +100,7 @@ export class UsersService {
     tenantId: string,
     page = 1,
     limit = 50,
-    filters?: { search?: string; department?: string; role?: string; status?: string },
+    filters?: { search?: string; department?: string; role?: string; position?: string; status?: string },
   ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(Math.max(1, limit), 100);
@@ -119,6 +119,9 @@ export class UsersService {
     }
     if (filters?.role) {
       qb.andWhere('user.role = :role', { role: filters.role });
+    }
+    if (filters?.position) {
+      qb.andWhere('user.position = :position', { position: filters.position });
     }
     if (filters?.status === 'active') {
       qb.andWhere('user.is_active = true');

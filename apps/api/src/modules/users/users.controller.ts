@@ -43,10 +43,11 @@ export class UsersController {
     @Query('search') search?: string,
     @Query('department') department?: string,
     @Query('role') role?: string,
+    @Query('position') position?: string,
     @Query('status') status?: string,
   ) {
-    const filters = (search || department || role || status)
-      ? { search, department, role, status }
+    const filters = (search || department || role || position || status)
+      ? { search, department, role, position, status }
       : undefined;
     return this.usersService.findAll(req.user.tenantId, page, limit, filters);
   }
