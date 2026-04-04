@@ -899,5 +899,6 @@ export const api = {
     getTypes: (token: string) => request<any[]>("/contracts/types", {}, token),
     getTemplates: (token: string) => request<any[]>("/contracts/templates", {}, token),
     bulkCreate: (token: string, tenantId: string) => request<any>(`/contracts/bulk-create/${tenantId}`, { method: "POST" }, token),
+    remove: (token: string, id: string) => request<void>(`/contracts/${id}`, { method: "DELETE" }, token),
   },
 };

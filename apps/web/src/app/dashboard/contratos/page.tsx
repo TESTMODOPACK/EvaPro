@@ -37,6 +37,7 @@ export default function ContratosPage() {
   const [editingContract, setEditingContract] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     tenantId: '', type: 'service_agreement', title: '', description: '', content: '', effectiveDate: new Date().toISOString().split('T')[0],
   });
@@ -290,6 +291,20 @@ export default function ContratosPage() {
                             {sending === c.id ? 'Enviando...' : 'Enviar a Firma'}
                           </button>
                         )}
+                        <button
+                          disabled={deleting === c.id}
+                          onClick={async () => {
+                            if (!token || !confirm(`¿Eliminar "${c.title}"? Esta acción no se puede deshacer.`)) return;
+                            setDeleting(c.id);
+                            try {
+                              await api.contracts.remove(token, c.id);
+                              loadData();
+                            } catch (e: any) { setError(e.message); }
+                            setDeleting(null);
+                          }}
+                          style={{ background: 'none', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm, 6px)', padding: '0.35rem 0.75rem', fontSize: '0.82rem', color: 'var(--danger)', cursor: deleting === c.id ? 'wait' : 'pointer', opacity: deleting === c.id ? 0.5 : 1 }}>
+                          {deleting === c.id ? 'Eliminando...' : 'Eliminar'}
+                        </button>
                       </div>
                     )}
 

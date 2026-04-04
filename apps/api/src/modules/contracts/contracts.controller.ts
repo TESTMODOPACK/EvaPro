@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, UseGuards, Request, ParseUUIDPipe,
+  Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, ParseUUIDPipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -52,6 +52,13 @@ export class ContractsController {
   @Roles('super_admin')
   update(@Param('id', ParseUUIDPipe) id: string, @Request() req: any, @Body() dto: any) {
     return this.contractsService.update(id, dto, req.user.userId);
+  }
+
+  @Delete(':id')
+  @Roles('super_admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.contractsService.remove(id, req.user.userId);
   }
 
   @Post(':id/send')

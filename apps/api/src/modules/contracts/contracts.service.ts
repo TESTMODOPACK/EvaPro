@@ -110,6 +110,15 @@ export class ContractsService {
     return this.contractRepo.save(contract);
   }
 
+  async remove(id: string, userId: string): Promise<void> {
+    const contract = await this.findById(id);
+    if (contract.status !== 'draft') {
+      throw new BadRequestException('Solo se pueden eliminar contratos en estado borrador');
+    }
+    await this.auditService.log(contract.tenantId, userId, 'contract.deleted', 'contract', id, { title: contract.title }).catch(() => {});
+    await this.contractRepo.remove(contract);
+  }
+
   async sendForSignature(id: string, userId: string): Promise<Contract> {
     const contract = await this.findById(id);
     if (contract.status !== 'draft') {
