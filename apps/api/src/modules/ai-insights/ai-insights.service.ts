@@ -113,53 +113,83 @@ export class AiInsightsService {
   }
 
   /** Get subscription info with plan limit + addon */
-  private async getSubscriptionAiInfo(tenantId: string): Promise<{ limit: number; planLimit: number; addonCalls: number; periodStart: Date; periodEnd: Date }> {
+  private async getSubscriptionAiInfo(tenantId: string): Promise<{
+    planLimit: number; addonCalls: number; addonUsed: number;
+    periodStart: Date; periodEnd: Date; subscriptionStartDate: Date | null;
+  }> {
     const sub = await this.subscriptionsService.findByTenantId(tenantId);
-    if (!sub?.plan) return { limit: 0, planLimit: 0, addonCalls: 0, periodStart: new Date(), periodEnd: new Date() };
+    if (!sub?.plan) return { planLimit: 0, addonCalls: 0, addonUsed: 0, periodStart: new Date(), periodEnd: new Date(), subscriptionStartDate: null };
 
     // If plan includes AI_INSIGHTS but maxAiCallsPerMonth is 0/null, use default 100
     const hasAiFeature = (sub.plan.features || []).includes('AI_INSIGHTS');
     let planLimit = sub.plan.maxAiCallsPerMonth ?? 0;
     if (hasAiFeature && planLimit <= 0) planLimit = 100;
 
-    // Add purchased addon calls
+    // Addon credits are independent — they persist until exhausted
     const addonCalls = (sub as any).aiAddonCalls || 0;
-    const limit = planLimit + addonCalls;
+    const addonUsed = (sub as any).aiAddonUsed || 0; // track how many addon credits used
 
-    // Calculate current billing period based on subscription startDate
+    // Period: calculated from subscription start date, rolling monthly
+    const startDate = sub.startDate ? new Date(sub.startDate) : new Date();
     const now = new Date();
-    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
-    return { limit, planLimit, addonCalls, periodStart, periodEnd };
+    // Find the current period start: same day-of-month as subscription start, rolling monthly
+    const subDay = startDate.getUTCDate();
+    let periodStart: Date;
+    let periodEnd: Date;
+
+    // Current month's period start
+    const thisMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), subDay));
+    if (now >= thisMonthStart) {
+      periodStart = thisMonthStart;
+      periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, subDay));
+    } else {
+      periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, subDay));
+      periodEnd = thisMonthStart;
+    }
+
+    return { planLimit, addonCalls, addonUsed, periodStart, periodEnd, subscriptionStartDate: startDate };
   }
 
-  /** Count AI calls for the current billing period (calendar month in UTC) */
-  private async getMonthlyCallCount(tenantId: string): Promise<{ used: number; periodStart: Date; periodEnd: Date; limit: number; planLimit: number; addonCalls: number }> {
-    const { limit, planLimit, addonCalls, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
+  /** Count AI calls for the current billing period */
+  private async getMonthlyCallCount(tenantId: string): Promise<{
+    planUsed: number; addonUsed: number; totalUsed: number;
+    planLimit: number; addonRemaining: number; totalLimit: number;
+    periodStart: Date; periodEnd: Date;
+  }> {
+    const { planLimit, addonCalls, addonUsed, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
 
-    // Count insights created in current period (calendar month)
-    const used = await this.insightRepo.count({
+    // Count insights created in current period (plan credits)
+    const periodUsed = await this.insightRepo.count({
       where: { tenantId, createdAt: MoreThan(periodStart) },
     });
 
-    this.logger.log(`AI usage: tenant=${tenantId.slice(0,8)}, used=${used}, limit=${limit} (plan=${planLimit}+addon=${addonCalls}), period=${periodStart.toISOString().slice(0,10)} to ${periodEnd.toISOString().slice(0,10)}`);
-    return { used, periodStart, periodEnd, limit, planLimit, addonCalls };
+    // Plan credits used this period (capped at planLimit)
+    const planUsed = Math.min(periodUsed, planLimit);
+    // If usage exceeds plan limit, the excess comes from addon
+    const addonUsedThisPeriod = Math.max(0, periodUsed - planLimit);
+    const totalAddonUsed = addonUsed + addonUsedThisPeriod; // historical + this period
+    const addonRemaining = Math.max(0, addonCalls - totalAddonUsed);
+    const totalUsed = periodUsed;
+    const totalLimit = planLimit + addonRemaining;
+
+    this.logger.log(`AI usage: tenant=${tenantId.slice(0,8)}, planUsed=${planUsed}/${planLimit}, addonRemaining=${addonRemaining}/${addonCalls}, total=${totalUsed}/${totalLimit}, period=${periodStart.toISOString().slice(0,10)} to ${periodEnd.toISOString().slice(0,10)}`);
+    return { planUsed, addonUsed: totalAddonUsed, totalUsed, planLimit, addonRemaining, totalLimit, periodStart, periodEnd };
   }
 
   /** Check plan-based monthly rate limit */
   private async checkRateLimit(tenantId: string): Promise<void> {
-    const { limit, used, periodEnd } = await this.getMonthlyCallCount(tenantId);
-    if (limit <= 0) {
+    const { totalUsed, totalLimit, planLimit, addonRemaining, periodEnd } = await this.getMonthlyCallCount(tenantId);
+    if (totalLimit <= 0) {
       throw new BadRequestException(
         'Su plan no incluye informes de IA. Actualice a un plan superior para acceder a esta funcionalidad.',
       );
     }
 
-    if (used >= limit) {
+    if (totalUsed >= totalLimit) {
       const renewDate = periodEnd.toLocaleDateString('es-CL', { day: 'numeric', month: 'long' });
       throw new BadRequestException(
-        `Se alcanzo el limite mensual de ${limit} informes de IA para su organizacion. El limite se renueva el ${renewDate}.`,
+        `Se alcanzó el límite de ${totalLimit} informes de IA (${planLimit} del plan + ${addonRemaining} adicionales). El límite del plan se renueva el ${renewDate}. Puede adquirir créditos adicionales desde Mi Suscripción.`,
       );
     }
   }
@@ -902,9 +932,11 @@ export class AiInsightsService {
   // ─── Usage / Quota ──────────────────────────────────────────────────
 
   async getUsageQuota(tenantId: string, _userId?: string) {
-    // Quota is org-wide monthly, based on the subscription plan + addon.
-    const { used: monthlyUsed, limit: monthlyLimit, planLimit, addonCalls, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
-    const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
+    // Quota: plan credits (monthly renewable) + addon credits (persist until exhausted)
+    const { planUsed, totalUsed, planLimit, addonRemaining, totalLimit, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
+    const monthlyUsed = totalUsed;
+    const monthlyLimit = totalLimit;
+    const monthlyRemaining = Math.max(0, totalLimit - totalUsed);
     const nearLimit = monthlyLimit > 0 && monthlyRemaining <= Math.ceil(monthlyLimit * 0.1);
 
     return {
@@ -914,22 +946,24 @@ export class AiInsightsService {
       monthlyUsed,
       monthlyLimit,
       monthlyRemaining,
+      planUsed,
       planLimit,
-      addonCalls,
+      addonRemaining,
       periodStart,
       periodEnd,
       nearLimit,
+      hasAiAccess: monthlyLimit > 0,
       warning: monthlyLimit <= 0
         ? 'Su plan no incluye informes de IA.'
         : nearLimit
-          ? `Atención: quedan ${monthlyRemaining} de ${monthlyLimit} informes de IA en este período.`
+          ? `Atención: quedan ${monthlyRemaining} de ${monthlyLimit} informes de IA en este período (${planLimit - planUsed} del plan + ${addonRemaining} adicionales).`
           : null,
     };
   }
 
   /** Get tenant-level AI usage for subscription page */
   async getTenantUsage(tenantId: string) {
-    const { used: monthlyUsed, limit: monthlyLimit, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
+    const { totalUsed: monthlyUsed, totalLimit: monthlyLimit, planUsed, planLimit, addonRemaining, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
     const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
 
     // Last generations in current period
