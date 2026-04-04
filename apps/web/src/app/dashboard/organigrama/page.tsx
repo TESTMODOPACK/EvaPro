@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
@@ -74,6 +75,7 @@ function OrgNode({ node, depth = 0 }: { node: any; depth?: number }) {
 }
 
 export default function OrganigramaPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,7 +97,7 @@ export default function OrganigramaPage() {
   if (error) return (
     <div style={{ padding: '2rem 2.5rem' }}>
       <div className="card" style={{ padding: '2rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
-        <p style={{ color: 'var(--danger)', fontWeight: 600 }}>Error al cargar el organigrama</p>
+        <p style={{ color: 'var(--danger)', fontWeight: 600 }}>{t('common.errorLoading')}</p>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{error}</p>
       </div>
     </div>
@@ -123,21 +125,21 @@ export default function OrganigramaPage() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Organigrama</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('orgChart.title')}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Estructura jerárquica de la organización basada en la relación jefe-colaborador
+          {t('orgChart.subtitle')}
         </p>
       </div>
 
       {/* Guide toggle */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Organigrama</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('orgChart.guide.title')}</h3>
           <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
             <li><strong>¿Qué muestra?</strong> La estructura jerárquica de la organización en forma de árbol, basada en la relación jefe-colaborador definida en cada usuario.</li>
             <li><strong>Nodos:</strong> Cada persona muestra su nombre, cargo, departamento, nivel jerárquico y cantidad de reportes directos y totales.</li>
@@ -154,12 +156,12 @@ export default function OrganigramaPage() {
 
       {/* Filters */}
       <div className="card animate-fade-up" style={{ padding: '0.75rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <input type="text" placeholder="Buscar por nombre o cargo..."
+        <input type="text" placeholder={t('orgChart.searchPlaceholder')}
           value={search} onChange={(e) => setSearch(e.target.value)}
           style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)', flex: '1 1 180px', minWidth: '150px' }} />
         <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}
           style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}>
-          <option value="">Todos los departamentos</option>
+          <option value="">{t('common.allDepartments')}</option>
           {departments.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
         {(search || deptFilter) && (

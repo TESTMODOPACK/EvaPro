@@ -1,6 +1,7 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -16,6 +17,7 @@ const tenureLabels: Record<string, string> = {
 };
 
 function TurnoverPageContent() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,7 @@ function TurnoverPageContent() {
   // Analysis logic
   const hasDeactivations = data.totalDeactivations12m > 0;
   const rateLevel = data.turnoverRate > 20 ? 'critical' : data.turnoverRate > 15 ? 'high' : data.turnoverRate > 8 ? 'moderate' : 'healthy';
-  const rateLabelMap = { critical: 'Crítica', high: 'Alta', moderate: 'Moderada', healthy: 'Saludable' };
+  const rateLabelMap = { critical: t('analyticsRotacion.critical'), high: t('analyticsRotacion.high'), moderate: t('analyticsRotacion.moderate'), healthy: t('analyticsRotacion.healthy') };
   const rateColorMap = { critical: 'var(--danger)', high: '#ef4444', moderate: '#f59e0b', healthy: 'var(--success)' };
 
   // Find highest-turnover department
@@ -84,8 +86,8 @@ function TurnoverPageContent() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Análisis de Rotación</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Análisis de bajas en los últimos 12 meses</p>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('analyticsRotacion.title')}</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('analyticsRotacion.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
@@ -94,7 +96,7 @@ function TurnoverPageContent() {
             disabled={!!exporting}
             style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}
           >
-            {exporting === 'xlsx' ? 'Exportando...' : 'Exportar Excel'}
+            {exporting === 'xlsx' ? t('common.exporting') : t('common.exportExcel')}
           </button>
           <button
             className="btn-ghost"
@@ -102,20 +104,20 @@ function TurnoverPageContent() {
             disabled={!!exporting}
             style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}
           >
-            {exporting === 'csv' ? 'Exportando...' : 'Exportar CSV'}
+            {exporting === 'csv' ? t('common.exporting') : t('common.exportCsv')}
           </button>
         </div>
       </div>
 
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
 
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Análisis de Rotación</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('analyticsRotacion.guide.title')}</h3>
           <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             <p><strong>¿Qué muestra?</strong> Análisis de bajas (desactivaciones) en los últimos 12 meses — tasa de rotación, tendencias y distribución.</p>
             <p><strong>Indicadores:</strong> Usuarios activos, bajas en 12 meses, tasa de rotación (bajas/total al inicio del período × 100), inactivos totales.</p>
@@ -135,20 +137,20 @@ function TurnoverPageContent() {
       {/* KPIs */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Activos</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsRotacion.active')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)' }}>{data.activeUsers}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Bajas (12m)</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsRotacion.departures12m')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--danger)' }}>{data.totalDeactivations12m}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Tasa Rotación</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsRotacion.turnoverRate')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: rateColorMap[rateLevel] }}>{data.turnoverRate}%</div>
           <div style={{ fontSize: '0.72rem', color: rateColorMap[rateLevel], fontWeight: 600, marginTop: '0.15rem' }}>{rateLabelMap[rateLevel]}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Inactivos Total</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsRotacion.inactive')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-muted)' }}>{data.inactiveUsers}</div>
         </div>
       </div>
@@ -157,7 +159,7 @@ function TurnoverPageContent() {
       <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
         {/* Monthly trend - always show */}
         <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Bajas por Mes</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsRotacion.byMonth')}</h2>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={allMonths}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -177,14 +179,14 @@ function TurnoverPageContent() {
           </ResponsiveContainer>
           {!hasDeactivations && (
             <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.5rem' }}>
-              Sin bajas registradas en los últimos 12 meses
+              {t('analyticsRotacion.noDeactivations')}
             </p>
           )}
         </div>
 
         {/* By tenure - always show */}
         <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Antigüedad al Salir</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsRotacion.byTenure')}</h2>
           {hasDeactivations ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -215,7 +217,7 @@ function TurnoverPageContent() {
       {/* By Department */}
       {data.byDepartment?.length > 0 && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Bajas por Departamento</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsRotacion.byDepartment')}</h2>
           <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
             <div>
               <ResponsiveContainer width="100%" height={Math.max(180, data.byDepartment.length * 35)}>
@@ -232,9 +234,9 @@ function TurnoverPageContent() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                    <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Departamento</th>
-                    <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Bajas</th>
-                    <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>% del Total</th>
+                    <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.department')}</th>
+                    <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analyticsRotacion.departures')}</th>
+                    <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analyticsRotacion.pctTotal')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -256,7 +258,7 @@ function TurnoverPageContent() {
 
       {/* Analysis Section */}
       <div className="card animate-fade-up" style={{ padding: '1.5rem', borderLeft: `4px solid ${rateColorMap[rateLevel]}` }}>
-        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Análisis del Resultado</h2>
+        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsRotacion.analysis')}</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.88rem', lineHeight: 1.6 }}>
           {/* Rate interpretation */}
           <div>
@@ -320,7 +322,7 @@ function TurnoverPageContent() {
           {/* Recommendations */}
           {hasDeactivations && (
             <div style={{ marginTop: '0.5rem', padding: '0.85rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-              <strong style={{ fontSize: '0.85rem' }}>Recomendaciones:</strong>
+              <strong style={{ fontSize: '0.85rem' }}>{t('analyticsRotacion.recommendations')}:</strong>
               <ul style={{ margin: '0.5rem 0 0 1.25rem', padding: 0, fontSize: '0.84rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                 {rateLevel !== 'healthy' && <li>Realizar entrevistas de salida para identificar causas recurrentes</li>}
                 {topDept && topDept.count >= 2 && <li>Investigar condiciones específicas del departamento {topDept.department}</li>}

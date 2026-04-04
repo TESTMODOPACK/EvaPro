@@ -1,6 +1,7 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, Cell, ZAxis } from 'recharts';
@@ -16,6 +17,7 @@ const QUADRANT_CONFIG: Record<string, { label: string; color: string; icon: stri
 };
 
 function AnalisisIntegradoContent() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -54,14 +56,14 @@ function AnalisisIntegradoContent() {
   if (error) return (
     <div style={{ padding: '2rem 2.5rem' }}>
       <div className="card" style={{ padding: '2rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
-        <p style={{ color: 'var(--danger)', fontWeight: 600 }}>Error al cargar el análisis</p>
+        <p style={{ color: 'var(--danger)', fontWeight: 600 }}>{t('common.errorLoading')}</p>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{error}</p>
       </div>
     </div>
   );
   if (data?.error) return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>Análisis Integrado Clima–Desempeño</h1>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>{t('crossAnalysis.title')}</h1>
       <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>{data.error}</div>
     </div>
   );
@@ -73,7 +75,7 @@ function AnalisisIntegradoContent() {
   const scatterData = (departments || []).filter((d: any) => d.performance != null && d.engagement != null)
     .map((d: any) => ({ x: d.performance, y: d.engagement, name: d.department, quadrant: d.quadrant }));
 
-  const corrLabel = summary?.correlation >= 0.5 ? 'Fuerte positiva' : summary?.correlation >= 0.2 ? 'Moderada positiva' : summary?.correlation >= -0.2 ? 'Débil / nula' : 'Negativa';
+  const corrLabel = summary?.correlation >= 0.5 ? t('crossAnalysis.correlationLabels.strong') : summary?.correlation >= 0.2 ? t('crossAnalysis.correlationLabels.moderate') : summary?.correlation >= -0.2 ? t('crossAnalysis.correlationLabels.weak') : t('crossAnalysis.correlationLabels.negative');
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -81,9 +83,9 @@ function AnalisisIntegradoContent() {
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
           <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Análisis Integrado Clima–Desempeño</h1>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('crossAnalysis.title')}</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-              Cruce entre evaluaciones de desempeño y encuestas de clima laboral
+              {t('crossAnalysis.subtitle')}
               {data.cycleName && <> · Ciclo: <strong>{data.cycleName}</strong></>}
               {data.surveyTitle && <> · Encuesta: <strong>{data.surveyTitle}</strong></>}
             </p>
@@ -102,12 +104,12 @@ function AnalisisIntegradoContent() {
       {/* Guide */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Análisis Integrado Clima–Desempeño</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('crossAnalysis.guide.title')}</h3>
           <div style={{ marginBottom: '1rem' }}>
             <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Qué es este análisis?</p>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
@@ -149,22 +151,22 @@ function AnalisisIntegradoContent() {
       {/* KPIs */}
       <div className="animate-fade-up mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>Desempeño Promedio</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>{t('crossAnalysis.avgPerformance')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: summary?.avgPerformance >= 7 ? '#10b981' : summary?.avgPerformance >= 5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgPerformance ?? '–'}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>escala 0-10</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.scale010')}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>Clima Promedio</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>{t('crossAnalysis.avgEngagement')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: summary?.avgEngagement >= 3.5 ? '#10b981' : summary?.avgEngagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgEngagement ?? '–'}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>escala 1-5</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.scale15')}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>eNPS</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: (summary?.eNPS ?? 0) >= 30 ? '#10b981' : (summary?.eNPS ?? 0) >= 0 ? '#f59e0b' : '#ef4444' }}>{summary?.eNPS ?? '–'}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>promotores - detractores</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.promotersDetractors')}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>Correlación</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>{t('crossAnalysis.correlation')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent)' }}>{summary?.correlation ?? '–'}</div>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{corrLabel}</div>
         </div>
@@ -173,7 +175,7 @@ function AnalisisIntegradoContent() {
       {/* Quadrant Chart */}
       {scatterData.length >= 2 && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Mapa de Cuadrantes por Departamento</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('crossAnalysis.quadrantMap')}</h2>
           <ResponsiveContainer width="100%" height={320}>
             <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -204,15 +206,15 @@ function AnalisisIntegradoContent() {
           </ResponsiveContainer>
           {/* Threshold lines info */}
           <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            <span>Umbral desempeño: ≥ 7.0</span>
-            <span>Umbral clima: ≥ 3.5</span>
+            <span>{t('crossAnalysis.perfThreshold')}: ≥ 7.0</span>
+            <span>{t('crossAnalysis.engThreshold')}: ≥ 3.5</span>
           </div>
         </div>
       )}
 
       {/* Quadrant Legend (always visible) */}
       <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
-        <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem' }}>Clasificación de Cuadrantes</h3>
+        <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('crossAnalysis.quadrantClassification')}</h3>
         <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
           {Object.entries(QUADRANT_CONFIG).filter(([k]) => k !== 'no_data').map(([key, q]) => {
             const count = (quadrants?.[key] || []).length;
@@ -238,15 +240,15 @@ function AnalisisIntegradoContent() {
       {/* Department Table */}
       {departments?.length > 0 && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Detalle por Departamento</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('crossAnalysis.deptDetail')}</h2>
           <div className="table-wrapper">
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Departamento</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Desempeño</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Clima</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Cuadrante</th>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.department')}</th>
+                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('crossAnalysis.avgPerformance')}</th>
+                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('crossAnalysis.avgEngagement')}</th>
+                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('crossAnalysis.quadrantClassification')}</th>
                   <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Eval.</th>
                   <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Resp.</th>
                 </tr>
@@ -276,7 +278,7 @@ function AnalisisIntegradoContent() {
       {/* Climate Category Breakdown */}
       {categoryCorrelation?.length > 0 && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Dimensiones de Clima Laboral</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('crossAnalysis.climateDimensions')}</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {categoryCorrelation.map((c: any) => {
               const pct = ((c.avgScore - 1) / 4) * 100; // 1-5 → 0-100%
@@ -299,14 +301,14 @@ function AnalisisIntegradoContent() {
       {/* Insights */}
       {insights?.length > 0 && (
         <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Análisis e Insights</h3>
+          <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>{t('crossAnalysis.insightsTitle')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             {insights.map((ins: string, i: number) => (
               <p key={i} style={{ margin: 0, paddingLeft: '1rem', borderLeft: '2px solid var(--border)' }}>{ins}</p>
             ))}
           </div>
           <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            Este análisis se genera automáticamente cruzando los datos más recientes de evaluaciones de desempeño y encuestas de clima. Los resultados deben ser validados por el equipo de RRHH antes de tomar decisiones.
+            {t('crossAnalysis.insightsDisclaimer')}
           </div>
         </div>
       )}

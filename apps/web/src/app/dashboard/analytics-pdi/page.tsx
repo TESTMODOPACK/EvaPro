@@ -1,6 +1,7 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
@@ -8,6 +9,7 @@ import { PageSkeleton } from '@/components/LoadingSkeleton';
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
 function PdiCompliancePageContent() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ function PdiCompliancePageContent() {
   if (error) return (
     <div style={{ padding: '2rem 2.5rem' }}>
       <div className="card" style={{ padding: '2rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
-        <p style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '0.5rem' }}>Error al cargar el reporte</p>
+        <p style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '0.5rem' }}>{t('common.errorLoading')}</p>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{error}</p>
       </div>
     </div>
@@ -68,28 +70,28 @@ function PdiCompliancePageContent() {
       {/* Header + Export */}
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Cumplimiento de Desarrollo (PDI)</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Estado de los planes de desarrollo individual en la organización</p>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('analyticsPdi.title')}</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('analyticsPdi.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" onClick={() => handleExport('xlsx')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-            {exporting === 'xlsx' ? 'Exportando...' : 'Excel'}
+            {exporting === 'xlsx' ? t('common.exporting') : t('common.exportExcel')}
           </button>
           <button className="btn-ghost" onClick={() => handleExport('csv')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-            {exporting === 'csv' ? 'Exportando...' : 'CSV'}
+            {exporting === 'csv' ? t('common.exporting') : t('common.exportCsv')}
           </button>
         </div>
       </div>
 
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
 
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Cumplimiento de Desarrollo (PDI)</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('analyticsPdi.guide.title')}</h3>
           <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             <p><strong>¿Qué muestra?</strong> Estado de los planes de desarrollo individual — cuántos planes existen, tasa de completitud, acciones completadas vs vencidas, y desglose por departamento.</p>
             <p><strong>Indicadores clave:</strong> Total de planes, tasa de completitud (%), acciones completadas vs total, acciones vencidas (requieren seguimiento inmediato).</p>
@@ -106,27 +108,27 @@ function PdiCompliancePageContent() {
       {/* KPIs */}
       <div className="animate-fade-up-delay-1 mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Total Planes</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsPdi.totalPlans')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{data.totalPlans}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Tasa Completado</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsPdi.completionRate')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: data.completionRate >= 70 ? 'var(--success)' : data.completionRate >= 40 ? 'var(--warning)' : 'var(--danger)' }}>{data.completionRate}%</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Acciones Completadas</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsPdi.actionsCompleted')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>{data.actionCompletionRate}%</div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{data.completedActions}/{data.totalActions}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Acciones Vencidas</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsPdi.overdueActions')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: data.overdueActions > 0 ? 'var(--danger)' : 'var(--success)' }}>{data.overdueActions}</div>
         </div>
       </div>
 
       {/* Status breakdown */}
       <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Distribución por Estado</h2>
+        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsPdi.statusDistribution')}</h2>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
           {Object.entries(data.byStatus || {}).map(([status, count]) => (
             <div key={status} style={{ padding: '0.5rem 1rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.82rem' }}>
@@ -140,15 +142,15 @@ function PdiCompliancePageContent() {
       {/* By Department */}
       {data.byDepartment?.length > 0 && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Por Departamento</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsPdi.byDepartment')}</h2>
           <div className="table-wrapper">
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Departamento</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Total</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Completados</th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Progreso Prom.</th>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.department')}</th>
+                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.total')}</th>
+                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analyticsPdi.completed')}</th>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analyticsPdi.avgProgress')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -175,7 +177,7 @@ function PdiCompliancePageContent() {
 
       {/* Analysis Section */}
       <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: `4px solid ${completionLevel === 'bueno' ? 'var(--success)' : completionLevel === 'moderado' ? 'var(--warning)' : 'var(--danger)'}` }}>
-        <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Análisis del Resultado</h3>
+        <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>{t('analyticsPdi.analysis')}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           <p>
             <strong>Cumplimiento general:</strong> {data.completionRate}% de los planes de desarrollo están completados.

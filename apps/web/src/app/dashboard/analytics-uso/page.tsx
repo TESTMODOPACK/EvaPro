@@ -1,6 +1,7 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
@@ -112,6 +113,7 @@ const actionLabels: Record<string, string> = {
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
 function SystemUsagePageContent() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -152,7 +154,7 @@ function SystemUsagePageContent() {
   if (error) return (
     <div style={{ padding: '2rem 2.5rem' }}>
       <div className="card" style={{ padding: '2rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
-        <p style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '0.5rem' }}>Error al cargar el reporte</p>
+        <p style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '0.5rem' }}>{t('common.errorLoading')}</p>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{error}</p>
       </div>
     </div>
@@ -163,28 +165,28 @@ function SystemUsagePageContent() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Adopción y Uso del Sistema</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Métricas de actividad de los últimos 30 días</p>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('analyticsUso.title')}</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('analyticsUso.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" onClick={() => handleExport('xlsx')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-            {exporting === 'xlsx' ? 'Exportando...' : 'Excel'}
+            {exporting === 'xlsx' ? t('common.exporting') : t('common.exportExcel')}
           </button>
           <button className="btn-ghost" onClick={() => handleExport('csv')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-            {exporting === 'csv' ? 'Exportando...' : 'CSV'}
+            {exporting === 'csv' ? t('common.exporting') : t('common.exportCsv')}
           </button>
         </div>
       </div>
 
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
 
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Adopción y Uso del Sistema</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('analyticsUso.guide.title')}</h3>
           <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             <p><strong>¿Qué muestra?</strong> Métricas de actividad de los últimos 30 días — quién está usando el sistema y con qué frecuencia.</p>
             <p><strong>Indicadores:</strong> MAU (usuarios activos en el mes), WAU (activos en la semana), tasa de adopción (MAU/Total × 100).</p>
@@ -203,19 +205,19 @@ function SystemUsagePageContent() {
       {/* KPIs */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Usuarios Totales</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsUso.totalUsers')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{data.totalUsers}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Activos Mes (MAU)</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsUso.mau')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{data.mau}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Activos Semana (WAU)</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsUso.wau')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>{data.wau}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Tasa Adopción</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsUso.adoptionRate')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: data.adoptionRate >= 70 ? 'var(--success)' : data.adoptionRate >= 40 ? 'var(--warning)' : 'var(--danger)' }}>{data.adoptionRate}%</div>
         </div>
       </div>
@@ -223,7 +225,7 @@ function SystemUsagePageContent() {
       {/* Daily activity chart */}
       {data.dailyActivity?.length > 0 && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Actividad Diaria (últimos 30 días)</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsUso.dailyActivity')}</h2>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={data.dailyActivity}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -240,7 +242,7 @@ function SystemUsagePageContent() {
       <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         {/* Module usage */}
         <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Uso por Módulo</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsUso.moduleUsage')}</h2>
           {data.moduleUsage?.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {data.moduleUsage.slice(0, 10).map((m: any) => (
@@ -258,7 +260,7 @@ function SystemUsagePageContent() {
 
         {/* Top actions */}
         <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Acciones Más Frecuentes</h2>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsUso.topActions')}</h2>
           {data.topActions?.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               {data.topActions.map((a: any, i: number) => (
@@ -277,7 +279,7 @@ function SystemUsagePageContent() {
 
       {/* Analysis Section */}
       <div className="card animate-fade-up" style={{ padding: '1.25rem', marginTop: '1.5rem', borderLeft: `4px solid ${data.adoptionRate >= 70 ? 'var(--success)' : data.adoptionRate >= 40 ? 'var(--warning)' : 'var(--danger)'}` }}>
-        <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Análisis del Resultado</h3>
+        <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>{t('analyticsUso.analysis')}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           <p>
             <strong>Adopción:</strong> {data.adoptionRate}% de los usuarios iniciaron sesión en los últimos 30 días ({data.mau} de {data.totalUsers}).

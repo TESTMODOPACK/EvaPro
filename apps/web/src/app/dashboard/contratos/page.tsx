@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
