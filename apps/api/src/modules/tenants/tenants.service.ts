@@ -465,7 +465,7 @@ export class TenantsService {
   // ─── Bulk Onboarding (from Excel data) ─────────────────────────────
 
   async bulkOnboard(data: {
-    org: { name: string; rut?: string; ownerType?: string; industry?: string; employeeRange?: string; commercialAddress?: string; plan: string; billingPeriod: string; startDate: string };
+    org: { name: string; rut?: string; ownerType?: string; industry?: string; employeeRange?: string; commercialAddress?: string; plan?: string; billingPeriod?: string; startDate?: string };
     admin: { email: string; firstName: string; lastName: string; rut?: string; password: string; position?: string; department?: string };
     departments?: string[];
     positions?: { name: string; level: number }[];
@@ -502,22 +502,24 @@ export class TenantsService {
     tenant.settings = settings;
     await this.tenantRepository.save(tenant);
 
-    // 3. Create subscription
+    // 3. Create subscription (optional — defaults to starter if not specified)
+    const planCode = data.org.plan || 'starter';
+    const billingPeriod = data.org.billingPeriod || 'monthly';
     const planRepo = this.subscriptionRepo.manager.getRepository('subscription_plans');
-    const plan = await planRepo.findOne({ where: { code: data.org.plan, isActive: true } });
+    const plan = await planRepo.findOne({ where: { code: planCode, isActive: true } });
     if (plan) {
       const sub = this.subscriptionRepo.create({
         tenantId: tenant.id,
         planId: (plan as any).id,
         status: 'active',
         startDate: data.org.startDate ? new Date(data.org.startDate) : new Date(),
-        billingPeriod: data.org.billingPeriod as any,
+        billingPeriod: billingPeriod as any,
         autoRenew: true,
       });
       await this.subscriptionRepo.save(sub);
-      summary.push(`Suscripción plan "${(plan as any).name}" (${data.org.billingPeriod}) activada`);
+      summary.push(`Suscripción plan "${(plan as any).name}" (${billingPeriod}) activada`);
     } else {
-      summary.push(`ADVERTENCIA: Plan "${data.org.plan}" no encontrado. Sin suscripción.`);
+      summary.push(`ADVERTENCIA: Plan "${planCode}" no encontrado. Sin suscripción.`);
     }
 
     // 4. Create admin user
