@@ -253,15 +253,15 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/postulantes', label: t('nav.applicants', 'Procesos de Selección'), icon: icons.recruitment },
       ],
     }] : []),
-    // ─── Firmas Digitales (admin only) ─────────────────────────
-    ...(isAdmin ? [{
+    // ─── Firmas Digitales (todos los roles) ─────────────────────
+    {
       title: 'Firmas Digitales',
       items: [
-        { href: '/dashboard/firmas', label: 'Historial de Firmas', icon: icons.log },
+        { href: '/dashboard/firmas', label: 'Mis Firmas', icon: icons.log },
       ],
-    }] : []),
+    },
     // ─── Personas ───────────────────────────────────────────────
-    ...(isAdminOrManager ? [{
+    {
       title: t('nav.people', 'Personas'),
       items: [
         ...(isAdmin ? [
@@ -272,7 +272,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
           { href: '/dashboard/dei', label: t('nav.dei', 'Diversidad e Inclusión'), icon: icons.orgDevelopment },
         ] : []),
       ],
-    }] : []),
+    },
     // ─── Operaciones ──────────────────────────────────────────────
     ...(isAdmin ? [{
       title: t('nav.operations', 'Operaciones'),

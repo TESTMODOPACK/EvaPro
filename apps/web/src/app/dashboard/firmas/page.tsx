@@ -38,7 +38,12 @@ function FirmasPageContent() {
     if (!token) return;
     setLoading(true);
     api.signatures.listAll(token)
-      .then((data: any) => setSignatures(Array.isArray(data) ? data : []))
+      .then((data: any) => {
+        const all = Array.isArray(data) ? data : [];
+        // Non-admins only see their own signatures
+        const filtered = isAdmin ? all : all.filter((s: any) => s.signedBy === user?.userId);
+        setSignatures(filtered);
+      })
       .catch(() => setSignatures([]))
       .finally(() => setLoading(false));
   }, [token]);
