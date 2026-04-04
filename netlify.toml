@@ -1,6 +1,6 @@
 [build]
   base = "apps/web"
-  command = "pnpm install --frozen-lockfile && pnpm run build"
+  command = "pnpm install --no-frozen-lockfile && pnpm run build"
   publish = ".next"
 
 [build.environment]
@@ -8,4 +8,4 @@
   NODE_VERSION = "20"
 
 [[plugins]]
-  package = "@netlify/plugin-nextjs"
+  package = "@netlify/plugin-nextjs@^5"
