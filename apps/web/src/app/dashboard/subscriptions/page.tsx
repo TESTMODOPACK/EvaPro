@@ -5,6 +5,7 @@ import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { formatCLP } from '@/lib/format';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
+import { FEATURE_LABELS } from '@/lib/feature-routes';
 
 function Spinner() {
   return (
@@ -30,24 +31,8 @@ const planStatusBadge: Record<string, string> = {
 
 // ─── Empty forms ────────────────────────────────────────────────────────────
 
-const FEATURE_OPTIONS = [
-  { key: 'EVAL_90_180', label: 'Evaluaciones 90/180' },
-  { key: 'EVAL_270', label: 'Evaluaciones 270' },
-  { key: 'EVAL_360', label: 'Evaluaciones 360' },
-  { key: 'BASIC_REPORTS', label: 'Reportes básicos' },
-  { key: 'ADVANCED_REPORTS', label: 'Reportes avanzados' },
-  { key: 'OKR', label: 'OKRs / Objetivos' },
-  { key: 'FEEDBACK', label: 'Feedback continuo' },
-  { key: 'CHECKINS', label: 'Check-ins 1:1' },
-  { key: 'TEMPLATES_CUSTOM', label: 'Plantillas personalizadas' },
-  { key: 'PDI', label: 'Planes de desarrollo' },
-  { key: 'NINE_BOX', label: 'Matriz Nine Box / Talento' },
-  { key: 'CALIBRATION', label: 'Calibración' },
-  { key: 'POSTULANTS', label: 'Evaluación de Postulantes' },
-  { key: 'ENGAGEMENT_SURVEYS', label: 'Encuestas de Clima' },
-  { key: 'AI_INSIGHTS', label: 'Análisis con IA' },
-  { key: 'PUBLIC_API', label: 'API publica' },
-];
+// Derived from the central FEATURE_LABELS registry (feature-routes.ts)
+const FEATURE_OPTIONS = Object.entries(FEATURE_LABELS).map(([key, label]) => ({ key, label }));
 
 const CURRENCY_OPTIONS = ['UF', 'CLP', 'USD'];
 

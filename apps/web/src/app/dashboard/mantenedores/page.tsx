@@ -27,6 +27,8 @@ export default function MantenedoresPage() {
   const [settingSaved, setSettingSaved] = useState<string | null>(null);
   const [settingError, setSettingError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [normalizing, setNormalizing] = useState(false);
+  const [normalizeResult, setNormalizeResult] = useState<{ mismatches: any[]; fixed: number } | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -94,6 +96,18 @@ export default function MantenedoresPage() {
       ...prev,
       [key]: prev[key].filter((_, i) => i !== index),
     }));
+  };
+
+  const handleNormalizeDepts = async (apply: boolean) => {
+    if (!token) return;
+    setNormalizing(true);
+    try {
+      const res = await api.users.normalizeDepartments(token, apply);
+      setNormalizeResult(res);
+    } catch {
+      setNormalizeResult(null);
+    }
+    setNormalizing(false);
   };
 
   const handleRestoreDefaults = (key: string) => {
@@ -296,6 +310,80 @@ export default function MantenedoresPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* Normalize departments tool */}
+                  {key === 'departments' && (
+                    <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleNormalizeDepts(false)}
+                          disabled={normalizing}
+                          style={{
+                            background: 'none',
+                            border: '1px solid var(--border)',
+                            borderRadius: '6px',
+                            padding: '0.45rem 1rem',
+                            fontSize: '0.82rem',
+                            color: 'var(--text-secondary)',
+                            cursor: normalizing ? 'wait' : 'pointer',
+                            opacity: normalizing ? 0.6 : 1,
+                          }}
+                        >
+                          {normalizing ? 'Analizando...' : 'Verificar departamentos de colaboradores'}
+                        </button>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          Detecta colaboradores con departamentos que no coinciden con la lista configurada
+                        </span>
+                      </div>
+                      {normalizeResult && (
+                        <div style={{ marginTop: '0.75rem' }}>
+                          {normalizeResult.mismatches.length === 0 ? (
+                            <p style={{ fontSize: '0.85rem', color: 'var(--success)', fontWeight: 600 }}>
+                              Todos los departamentos de colaboradores coinciden con la lista configurada.
+                            </p>
+                          ) : (
+                            <>
+                              <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                                <strong>{normalizeResult.mismatches.length}</strong> colaborador(es) con departamento diferente:
+                                {normalizeResult.fixed > 0 && (
+                                  <span style={{ color: 'var(--success)', marginLeft: '0.5rem' }}>
+                                    ({normalizeResult.fixed} corregidos)
+                                  </span>
+                                )}
+                              </p>
+                              <div style={{
+                                maxHeight: '200px', overflowY: 'auto',
+                                background: 'var(--bg-secondary)', borderRadius: '6px',
+                                padding: '0.5rem 0.75rem', fontSize: '0.82rem',
+                              }}>
+                                {normalizeResult.mismatches.map((m, i) => (
+                                  <div key={i} style={{ padding: '0.25rem 0', borderBottom: i < normalizeResult.mismatches.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                    <strong>{m.name}</strong>: &quot;{m.current}&quot;
+                                    {m.suggested
+                                      ? <span style={{ color: 'var(--primary)' }}> → {m.suggested}</span>
+                                      : <span style={{ color: 'var(--danger)' }}> (sin coincidencia)</span>
+                                    }
+                                  </div>
+                                ))}
+                              </div>
+                              {normalizeResult.fixed === 0 && normalizeResult.mismatches.some(m => m.suggested) && (
+                                <button
+                                  type="button"
+                                  className="btn-primary"
+                                  onClick={() => handleNormalizeDepts(true)}
+                                  disabled={normalizing}
+                                  style={{ marginTop: '0.75rem', fontSize: '0.85rem', padding: '0.45rem 1.2rem' }}
+                                >
+                                  Corregir departamentos sugeridos
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

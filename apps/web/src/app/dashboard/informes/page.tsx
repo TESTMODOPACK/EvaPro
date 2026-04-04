@@ -362,7 +362,7 @@ export default function InformesPage() {
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
 
-  const handleExport = useCallback(async (format: 'pptx' | 'csv') => {
+  const handleExport = useCallback(async (format: 'pdf' | 'xlsx' | 'pptx' | 'csv') => {
     if (!token || !selectedCycleId) return;
     setExporting(format);
     try {
@@ -429,28 +429,12 @@ export default function InformesPage() {
         </div>
         {selectedCycleId && (
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              className="btn-primary"
-              style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }}
-              onClick={() => handleExport('pptx')}
-              disabled={exporting === 'pptx'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              {exporting === 'pptx' ? 'Generando...' : 'PowerPoint'}
-            </button>
-            <button
-              className="btn-ghost"
-              style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }}
-              onClick={() => handleExport('csv')}
-              disabled={exporting === 'csv'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              {exporting === 'csv' ? 'Generando...' : 'CSV'}
-            </button>
+            {(['pdf', 'xlsx', 'pptx', 'csv'] as const).map((fmt) => (
+              <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
+                style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
+                {exporting === fmt ? '...' : fmt.toUpperCase()}
+              </button>
+            ))}
           </div>
         )}
       </div>

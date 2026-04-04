@@ -476,4 +476,98 @@ export class FeedbackService {
       categories,
     };
   }
+
+  // ─── Export ──────────────────────────────────────────────────────────
+
+  async exportFeedbackCsv(tenantId: string): Promise<string> {
+    const checkins = await this.checkInRepo.find({
+      where: { tenantId },
+      relations: ['manager', 'employee'],
+      order: { scheduledDate: 'DESC' },
+    });
+    const feedback = await this.quickFeedbackRepo.find({
+      where: { tenantId },
+      relations: ['fromUser', 'toUser'],
+      order: { createdAt: 'DESC' },
+    });
+
+    const esc = (v: string) => `"${String(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const lines: string[] = [];
+
+    lines.push('Feedback y Check-ins — Resumen');
+    lines.push(`Total Check-ins,${checkins.length}`);
+    lines.push(`Check-ins Completados,${checkins.filter(c => c.status === 'completed').length}`);
+    lines.push(`Total Feedback Rápido,${feedback.length}`);
+    lines.push('');
+
+    lines.push('Check-ins');
+    lines.push('Fecha,Jefe,Colaborador,Estado,Tema,Notas');
+    for (const c of checkins) {
+      const mgr = c.manager ? `${c.manager.firstName} ${c.manager.lastName}` : '';
+      const emp = c.employee ? `${c.employee.firstName} ${c.employee.lastName}` : '';
+      const date = c.scheduledDate ? new Date(c.scheduledDate).toLocaleDateString('es-CL') : '';
+      lines.push([date, esc(mgr), esc(emp), c.status, esc(c.topic || ''), esc(c.notes || '')].join(','));
+    }
+    lines.push('');
+
+    lines.push('Feedback Rápido');
+    lines.push('Fecha,De,Para,Categoría,Sentimiento,Mensaje');
+    for (const f of feedback) {
+      const from = f.fromUser ? `${f.fromUser.firstName} ${f.fromUser.lastName}` : '';
+      const to = f.toUser ? `${f.toUser.firstName} ${f.toUser.lastName}` : '';
+      const date = f.createdAt ? new Date(f.createdAt).toLocaleDateString('es-CL') : '';
+      lines.push([date, esc(from), esc(to), esc(f.category || ''), f.sentiment || '', esc(f.message || '')].join(','));
+    }
+
+    return '\uFEFF' + lines.join('\n');
+  }
+
+  async exportFeedbackXlsx(tenantId: string): Promise<Buffer> {
+    const checkins = await this.checkInRepo.find({
+      where: { tenantId },
+      relations: ['manager', 'employee'],
+      order: { scheduledDate: 'DESC' },
+    });
+    const feedback = await this.quickFeedbackRepo.find({
+      where: { tenantId },
+      relations: ['fromUser', 'toUser'],
+      order: { createdAt: 'DESC' },
+    });
+
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+
+    const ws1 = wb.addWorksheet('Check-ins');
+    ws1.columns = [
+      { header: 'Fecha', width: 12 }, { header: 'Jefe', width: 22 },
+      { header: 'Colaborador', width: 22 }, { header: 'Estado', width: 12 },
+      { header: 'Tema', width: 30 }, { header: 'Notas', width: 35 },
+    ];
+    for (const c of checkins) {
+      ws1.addRow([
+        c.scheduledDate ? new Date(c.scheduledDate).toLocaleDateString('es-CL') : '',
+        c.manager ? `${c.manager.firstName} ${c.manager.lastName}` : '',
+        c.employee ? `${c.employee.firstName} ${c.employee.lastName}` : '',
+        c.status, c.topic || '', c.notes || '',
+      ]);
+    }
+
+    const ws2 = wb.addWorksheet('Feedback Rápido');
+    ws2.columns = [
+      { header: 'Fecha', width: 12 }, { header: 'De', width: 22 },
+      { header: 'Para', width: 22 }, { header: 'Categoría', width: 12 },
+      { header: 'Sentimiento', width: 12 }, { header: 'Mensaje', width: 40 },
+    ];
+    for (const f of feedback) {
+      ws2.addRow([
+        f.createdAt ? new Date(f.createdAt).toLocaleDateString('es-CL') : '',
+        f.fromUser ? `${f.fromUser.firstName} ${f.fromUser.lastName}` : '',
+        f.toUser ? `${f.toUser.firstName} ${f.toUser.lastName}` : '',
+        f.category || '', f.sentiment || '', f.message || '',
+      ]);
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
 }

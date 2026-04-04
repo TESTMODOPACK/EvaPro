@@ -553,6 +553,72 @@ export class UsersService {
     return `${body}-${dv}`;
   }
 
+  /**
+   * Normalize user departments: find users whose department doesn't match
+   * any value in the tenant's configured department list (Mantenedores).
+   * Returns a preview of mismatches or applies fixes with closest match.
+   */
+  async normalizeDepartments(tenantId: string, apply = false): Promise<{
+    mismatches: { userId: string; name: string; current: string; suggested: string | null }[];
+    fixed: number;
+  }> {
+    // Get configured departments
+    const tenant = await this.tenantRepo.findOneByOrFail({ id: tenantId });
+    const configuredDepts: string[] = tenant.settings?.departments ?? [];
+    if (configuredDepts.length === 0) {
+      return { mismatches: [], fixed: 0 };
+    }
+
+    // Get all users with a department set
+    const users = await this.userRepository.find({
+      where: { tenantId, isActive: true },
+      select: ['id', 'firstName', 'lastName', 'department'],
+    });
+
+    const lowerConfigured = configuredDepts.map(d => d.toLowerCase().trim());
+
+    const mismatches: { userId: string; name: string; current: string; suggested: string | null }[] = [];
+    for (const u of users) {
+      if (!u.department) continue;
+      const dept = u.department.trim();
+      const idx = lowerConfigured.indexOf(dept.toLowerCase());
+      if (idx >= 0) {
+        // Exact match (case-insensitive) — fix casing if different
+        if (dept !== configuredDepts[idx]) {
+          mismatches.push({
+            userId: u.id,
+            name: `${u.firstName} ${u.lastName}`,
+            current: dept,
+            suggested: configuredDepts[idx],
+          });
+        }
+        continue;
+      }
+      // No exact match — try partial match
+      const partial = configuredDepts.find(cd =>
+        cd.toLowerCase().includes(dept.toLowerCase()) || dept.toLowerCase().includes(cd.toLowerCase()),
+      );
+      mismatches.push({
+        userId: u.id,
+        name: `${u.firstName} ${u.lastName}`,
+        current: dept,
+        suggested: partial || null,
+      });
+    }
+
+    let fixed = 0;
+    if (apply) {
+      for (const m of mismatches) {
+        if (m.suggested) {
+          await this.userRepository.update(m.userId, { department: m.suggested });
+          fixed++;
+        }
+      }
+    }
+
+    return { mismatches, fixed };
+  }
+
   async fillFakeRuts(tenantId?: string): Promise<{ updated: number }> {
     const where: any = { rut: IsNull() };
     if (tenantId) where.tenantId = tenantId;

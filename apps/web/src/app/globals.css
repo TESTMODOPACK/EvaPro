@@ -302,6 +302,8 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
   }
   .main-content {
     margin-left: 0 !important;
+    overflow-x: hidden;
+    max-width: 100vw;
   }
 
   /* P1: Reduce page padding on mobile */
@@ -348,19 +350,84 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     grid-template-columns: 1fr !important;
   }
 
-  /* Cards grid — collapse to fewer columns */
+  /* P6: Cards — prevent overflow */
   .card {
     min-width: 0;
+    overflow: hidden;
+    word-break: break-word;
   }
 
+  /* P7: ALL fixed multi-column grids → single column on mobile.
+     Catches inline gridTemplateColumns with '1fr 1fr' patterns. */
+  .main-content div[style*="1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
 
-  /* Tables — ensure horizontal scroll */
+  /* P8: Auto-fit grids with large minmax (300px+) that overflow 375px screens */
+  .main-content div[style*="minmax(3"],
+  .main-content div[style*="minmax(4"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* P9: 5-column repeat grids → 2 columns */
+  .main-content div[style*="repeat(5"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* P10: Recharts — prevent chart overflow */
+  .recharts-responsive-container,
+  .recharts-wrapper {
+    max-width: 100% !important;
+    overflow: hidden;
+  }
+  .recharts-legend-wrapper {
+    font-size: 0.7rem !important;
+  }
+  .recharts-text {
+    font-size: 0.65rem !important;
+  }
+
+  /* P11: Flex containers — ensure wrapping (except scroll-tabs) */
+  .main-content > div div[style*="display: flex"][style*="gap"]:not(.mobile-scroll-tabs) {
+    flex-wrap: wrap;
+  }
+
+  /* P12: Select dropdowns and inputs — respect container width */
+  select, input[type="text"], input[type="email"], input[type="date"] {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* P13: Tables — horizontal scroll */
   .table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
   .table-wrapper table {
     min-width: 600px;
+  }
+
+  /* P14: Department/label text with fixed min-width in bar charts — shrink */
+  .main-content div[style*="min-width: 120px"],
+  .main-content div[style*="min-width: 150px"],
+  .main-content div[style*="min-width: 180px"],
+  .main-content span[style*="min-width: 120px"],
+  .main-content span[style*="min-width: 150px"],
+  .main-content span[style*="min-width: 180px"] {
+    min-width: 70px !important;
+    font-size: 0.75rem !important;
+  }
+
+}
+
+/* Very small screens (iPhone SE, etc.) — extra padding reduction */
+@media (max-width: 400px) {
+  .main-content > div {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+  .main-content div[style*="minmax(155px"] {
+    grid-template-columns: 1fr 1fr !important;
   }
 }
 

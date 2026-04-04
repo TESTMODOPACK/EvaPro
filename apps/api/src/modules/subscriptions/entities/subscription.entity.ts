@@ -59,6 +59,12 @@ export class Subscription {
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'last_payment_amount', nullable: true })
   lastPaymentAmount: number | null;
 
+  @Column({ type: 'int', name: 'ai_addon_calls', default: 0, comment: 'Additional AI calls purchased as add-on (on top of plan limit)' })
+  aiAddonCalls: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'ai_addon_price', default: 0, comment: 'Monthly price in plan currency for the AI add-on' })
+  aiAddonPrice: number;
+
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 

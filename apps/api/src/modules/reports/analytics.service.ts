@@ -291,4 +291,253 @@ export class AnalyticsService {
       byTenure: Object.entries(tenureGroups).map(([range, count]) => ({ range, count })),
     };
   }
+
+  // ─── PDI Compliance Export ─────────────────────────────────────────────
+
+  exportPdiComplianceCsv(data: any): string {
+    const esc = (v: string) => `"${String(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const lines: string[] = [];
+    lines.push('Cumplimiento de Desarrollo (PDI) — Resumen');
+    lines.push(`Total Planes,${data.totalPlans}`);
+    lines.push(`Tasa Completitud,${data.completionRate}%`);
+    lines.push(`Acciones Completadas,${data.completedActions}/${data.totalActions} (${data.actionCompletionRate}%)`);
+    lines.push(`Acciones Vencidas,${data.overdueActions}`);
+    lines.push('');
+    if (data.byStatus) {
+      lines.push('Distribución por Estado');
+      lines.push('Estado,Cantidad');
+      for (const [status, count] of Object.entries(data.byStatus)) lines.push(`${esc(status)},${count}`);
+      lines.push('');
+    }
+    if (data.byDepartment?.length) {
+      lines.push('Por Departamento');
+      lines.push('Departamento,Total,Completados,Progreso Promedio');
+      for (const d of data.byDepartment) lines.push(`${esc(d.department)},${d.total},${d.completed},${d.avgProgress}%`);
+    }
+    return '\uFEFF' + lines.join('\n');
+  }
+
+  async exportPdiComplianceXlsx(data: any): Promise<Buffer> {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws1 = wb.addWorksheet('Resumen PDI');
+    ws1.columns = [{ width: 25 }, { width: 15 }];
+    ws1.addRow(['Cumplimiento de Desarrollo (PDI)']).font = { bold: true, size: 14 };
+    ws1.addRow([]);
+    ws1.addRow(['Total Planes', data.totalPlans]);
+    ws1.addRow(['Tasa Completitud', `${data.completionRate}%`]);
+    ws1.addRow(['Acciones Completadas', `${data.completedActions}/${data.totalActions}`]);
+    ws1.addRow(['Acciones Vencidas', data.overdueActions]);
+    if (data.byDepartment?.length) {
+      const ws2 = wb.addWorksheet('Por Departamento');
+      ws2.columns = [{ header: 'Departamento', width: 25 }, { header: 'Total', width: 10 }, { header: 'Completados', width: 12 }, { header: 'Progreso %', width: 12 }];
+      for (const d of data.byDepartment) ws2.addRow([d.department, d.total, d.completed, d.avgProgress]);
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
+
+  // ─── System Usage Export ──────────────────────────────────────────────
+
+  exportSystemUsageCsv(data: any): string {
+    const esc = (v: string) => `"${String(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const lines: string[] = [];
+    lines.push('Adopción y Uso del Sistema — Resumen');
+    lines.push(`Usuarios Totales,${data.totalUsers}`);
+    lines.push(`Activos Mes (MAU),${data.mau}`);
+    lines.push(`Activos Semana (WAU),${data.wau}`);
+    lines.push(`Tasa Adopción,${data.adoptionRate}%`);
+    lines.push('');
+    if (data.moduleUsage?.length) {
+      lines.push('Uso por Módulo');
+      lines.push('Módulo,Acciones');
+      for (const m of data.moduleUsage) lines.push(`${esc(m.module)},${m.count}`);
+      lines.push('');
+    }
+    if (data.topActions?.length) {
+      lines.push('Acciones Más Frecuentes');
+      lines.push('Acción,Cantidad');
+      for (const a of data.topActions) lines.push(`${esc(a.action)},${a.count}`);
+      lines.push('');
+    }
+    if (data.dailyActivity?.length) {
+      lines.push('Actividad Diaria');
+      lines.push('Fecha,Acciones,Usuarios');
+      for (const d of data.dailyActivity) lines.push(`${d.date},${d.actions},${d.users}`);
+    }
+    return '\uFEFF' + lines.join('\n');
+  }
+
+  async exportSystemUsageXlsx(data: any): Promise<Buffer> {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws1 = wb.addWorksheet('Resumen');
+    ws1.columns = [{ width: 25 }, { width: 15 }];
+    ws1.addRow(['Adopción y Uso del Sistema']).font = { bold: true, size: 14 };
+    ws1.addRow([]);
+    ws1.addRow(['Usuarios Totales', data.totalUsers]);
+    ws1.addRow(['Activos Mes (MAU)', data.mau]);
+    ws1.addRow(['Activos Semana (WAU)', data.wau]);
+    ws1.addRow(['Tasa Adopción', `${data.adoptionRate}%`]);
+    if (data.moduleUsage?.length) {
+      const ws2 = wb.addWorksheet('Uso por Módulo');
+      ws2.columns = [{ header: 'Módulo', width: 25 }, { header: 'Acciones', width: 12 }];
+      for (const m of data.moduleUsage) ws2.addRow([m.module, m.count]);
+    }
+    if (data.dailyActivity?.length) {
+      const ws3 = wb.addWorksheet('Actividad Diaria');
+      ws3.columns = [{ header: 'Fecha', width: 12 }, { header: 'Acciones', width: 10 }, { header: 'Usuarios', width: 10 }];
+      for (const d of data.dailyActivity) ws3.addRow([d.date, d.actions, d.users]);
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
+
+  // ─── Cycle Comparison Export ────────────────────────────────────────────
+
+  exportCycleComparisonCsv(data: any): string {
+    const esc = (v: string) => `"${String(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const lines: string[] = [];
+
+    lines.push('Comparativa de Ciclos de Evaluación');
+    lines.push('');
+    lines.push('Ciclo,Tipo,Fecha Inicio,Fecha Fin,Evaluados,Con Puntaje,Promedio,Mínimo,Máximo');
+    for (const c of data.cycles || []) {
+      lines.push([
+        esc(c.cycleName), esc(c.cycleType),
+        c.startDate ? new Date(c.startDate).toLocaleDateString('es-CL') : '',
+        c.endDate ? new Date(c.endDate).toLocaleDateString('es-CL') : '',
+        c.totalEvaluated, c.withScores,
+        c.avgScore ?? '', c.minScore ?? '', c.maxScore ?? '',
+      ].join(','));
+    }
+    lines.push('');
+
+    // Department breakdown per cycle
+    for (const c of data.cycles || []) {
+      if (c.byDepartment?.length) {
+        lines.push(`Desglose por Departamento — ${c.cycleName}`);
+        lines.push('Departamento,Promedio,Evaluados');
+        for (const d of c.byDepartment) {
+          lines.push(`${esc(d.department)},${d.avgScore},${d.count}`);
+        }
+        lines.push('');
+      }
+    }
+
+    return '\uFEFF' + lines.join('\n');
+  }
+
+  async exportCycleComparisonXlsx(data: any): Promise<Buffer> {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+
+    // Sheet 1: Resumen
+    const ws1 = wb.addWorksheet('Comparativa');
+    ws1.columns = [
+      { header: 'Ciclo', width: 25 }, { header: 'Tipo', width: 12 },
+      { header: 'Inicio', width: 12 }, { header: 'Fin', width: 12 },
+      { header: 'Evaluados', width: 12 }, { header: 'Con Puntaje', width: 12 },
+      { header: 'Promedio', width: 10 }, { header: 'Mín', width: 8 }, { header: 'Máx', width: 8 },
+    ];
+    for (const c of data.cycles || []) {
+      ws1.addRow([
+        c.cycleName, c.cycleType,
+        c.startDate ? new Date(c.startDate).toLocaleDateString('es-CL') : '',
+        c.endDate ? new Date(c.endDate).toLocaleDateString('es-CL') : '',
+        c.totalEvaluated, c.withScores,
+        c.avgScore, c.minScore, c.maxScore,
+      ]);
+    }
+
+    // Sheet 2: Department breakdown
+    const ws2 = wb.addWorksheet('Por Departamento');
+    ws2.columns = [
+      { header: 'Ciclo', width: 25 }, { header: 'Departamento', width: 25 },
+      { header: 'Promedio', width: 10 }, { header: 'Evaluados', width: 10 },
+    ];
+    for (const c of data.cycles || []) {
+      for (const d of c.byDepartment || []) {
+        ws2.addRow([c.cycleName, d.department, d.avgScore, d.count]);
+      }
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
+
+  // ─── Turnover CSV Export ───────────────────────────────────────────────
+  exportTurnoverCsv(data: any): string {
+    const esc = (v: string) => `"${String(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const lines: string[] = [];
+
+    lines.push('Análisis de Rotación — Resumen');
+    lines.push(`Usuarios activos,${data.activeUsers}`);
+    lines.push(`Usuarios inactivos,${data.inactiveUsers}`);
+    lines.push(`Bajas últimos 12 meses,${data.totalDeactivations12m}`);
+    lines.push(`Tasa de rotación,${data.turnoverRate}%`);
+    lines.push('');
+
+    if (data.byMonth?.length) {
+      lines.push('Bajas por Mes');
+      lines.push('Mes,Bajas');
+      for (const m of data.byMonth) lines.push(`${m.month},${m.count}`);
+      lines.push('');
+    }
+
+    if (data.byDepartment?.length) {
+      lines.push('Bajas por Departamento');
+      lines.push('Departamento,Bajas');
+      for (const d of data.byDepartment) lines.push(`${esc(d.department)},${d.count}`);
+      lines.push('');
+    }
+
+    if (data.byTenure?.length) {
+      lines.push('Antigüedad al Salir');
+      lines.push('Rango,Cantidad');
+      for (const t of data.byTenure) lines.push(`${esc(t.range)},${t.count}`);
+    }
+
+    return '\uFEFF' + lines.join('\n');
+  }
+
+  // ─── Turnover XLSX Export ──────────────────────────────────────────────
+  async exportTurnoverXlsx(data: any): Promise<Buffer> {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+
+    // Sheet 1: Resumen
+    const ws1 = wb.addWorksheet('Resumen');
+    ws1.columns = [{ width: 30 }, { width: 15 }];
+    ws1.addRow(['Análisis de Rotación']).font = { bold: true, size: 14 };
+    ws1.addRow([]);
+    ws1.addRow(['Usuarios activos', data.activeUsers]);
+    ws1.addRow(['Usuarios inactivos', data.inactiveUsers]);
+    ws1.addRow(['Bajas últimos 12 meses', data.totalDeactivations12m]);
+    ws1.addRow(['Tasa de rotación', `${data.turnoverRate}%`]);
+
+    // Sheet 2: Bajas por Mes
+    if (data.byMonth?.length) {
+      const ws2 = wb.addWorksheet('Bajas por Mes');
+      ws2.columns = [{ header: 'Mes', width: 15 }, { header: 'Bajas', width: 10 }];
+      for (const m of data.byMonth) ws2.addRow([m.month, m.count]);
+    }
+
+    // Sheet 3: Bajas por Departamento
+    if (data.byDepartment?.length) {
+      const ws3 = wb.addWorksheet('Bajas por Departamento');
+      ws3.columns = [{ header: 'Departamento', width: 25 }, { header: 'Bajas', width: 10 }];
+      for (const d of data.byDepartment) ws3.addRow([d.department, d.count]);
+    }
+
+    // Sheet 4: Antigüedad
+    if (data.byTenure?.length) {
+      const ws4 = wb.addWorksheet('Antigüedad al Salir');
+      ws4.columns = [{ header: 'Rango', width: 15 }, { header: 'Cantidad', width: 10 }];
+      for (const t of data.byTenure) ws4.addRow([t.range, t.count]);
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/components/PlanGate';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -152,7 +153,7 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
   );
 }
 
-export default function ReconocimientosPage() {
+function ReconocimientosPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
@@ -854,5 +855,13 @@ export default function ReconocimientosPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ReconocimientosPage() {
+  return (
+    <PlanGate feature="RECOGNITION">
+      <ReconocimientosPageContent />
+    </PlanGate>
   );
 }

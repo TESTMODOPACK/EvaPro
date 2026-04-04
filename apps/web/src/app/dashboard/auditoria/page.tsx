@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
@@ -284,7 +285,7 @@ function AiUsageTab() {
 
 /* ─── Main Audit Page ──────────────────────────────────────── */
 
-export default function AuditoriaPage() {
+function AuditoriaPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [logs, setLogs] = useState<any[]>([]);
@@ -587,5 +588,13 @@ export default function AuditoriaPage() {
       )}
       </>}
     </div>
+  );
+}
+
+export default function AuditoriaPage() {
+  return (
+    <PlanGate feature="AUDIT_LOG">
+      <AuditoriaPageContent />
+    </PlanGate>
   );
 }

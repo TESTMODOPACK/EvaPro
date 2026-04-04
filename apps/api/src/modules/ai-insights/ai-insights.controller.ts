@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Delete,
+  Body,
   Param,
   Query,
   Res,
@@ -182,6 +183,17 @@ export class AiInsightsController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=informe-ia-${userId}.pdf`);
     return res.send(buffer);
+  }
+
+  // ─── Cycle Comparison AI ──────────────────────────────────────────────
+
+  @Post('cycle-comparison')
+  @Roles('super_admin', 'tenant_admin')
+  analyzeCycleComparison(
+    @Body() body: { cycleIds: string[] },
+    @Request() req: any,
+  ) {
+    return this.aiService.analyzeCycleComparison(req.user.tenantId, body.cycleIds, req.user.userId);
   }
 
   // ─── Cache Management ─────────────────────────────────────────────────

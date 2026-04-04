@@ -105,6 +105,16 @@ export class UsersController {
     return this.usersService.getBulkImport(id, req.user.tenantId);
   }
 
+  /** POST /users/normalize-departments — Fix user departments that don't match configured list */
+  @Post('normalize-departments')
+  @Roles('super_admin', 'tenant_admin')
+  normalizeDepartments(
+    @Request() req: any,
+    @Query('apply') apply?: string,
+  ) {
+    return this.usersService.normalizeDepartments(req.user.tenantId, apply === 'true');
+  }
+
   /** POST /users/fill-fake-ruts — Generate valid fake RUTs for users without one */
   @Post('fill-fake-ruts')
   @Roles('super_admin', 'tenant_admin')

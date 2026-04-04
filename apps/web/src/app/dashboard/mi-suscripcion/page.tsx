@@ -4,27 +4,9 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
+import { FEATURE_LABELS } from '@/lib/feature-routes';
 
-const featureLabels: Record<string, string> = {
-  EVAL_90_180: 'Evaluaciones 90° / 180°',
-  EVAL_270: 'Evaluaciones 270°',
-  EVAL_360: 'Evaluaciones 360°',
-  BASIC_REPORTS: 'Reportes básicos',
-  ADVANCED_REPORTS: 'Reportes avanzados (Radar, Bell, Heatmap, Gap)',
-  OKR: 'OKRs / Objetivos',
-  FEEDBACK: 'Feedback continuo',
-  CHECKINS: 'Check-ins 1:1',
-  TEMPLATES_CUSTOM: 'Plantillas personalizadas',
-  PDI: 'Planes de desarrollo (PDI)',
-  NINE_BOX: 'Matriz Nine Box / Talento',
-  CALIBRATION: 'Calibración',
-  POSTULANTS: 'Evaluación de Postulantes',
-  ENGAGEMENT_SURVEYS: 'Encuestas de Clima',
-  AUDIT_LOG: 'Registro de Auditoria',
-  DEI: 'Diversidad e Inclusión',
-  AI_INSIGHTS: 'Análisis con IA',
-  PUBLIC_API: 'API publica',
-};
+const featureLabels = FEATURE_LABELS;
 
 function Spinner() {
   return (
@@ -86,6 +68,11 @@ export default function MiSuscripcionPage() {
   // Proration
   const [proration, setProration] = useState<{ credit: number; daysRemaining: number; totalDays: number } | null>(null);
 
+  // AI Addon
+  const [aiPacks, setAiPacks] = useState<any[]>([]);
+  const [aiAddon, setAiAddon] = useState<{ calls: number; price: number; packId: string | null }>({ calls: 0, price: 0, packId: null });
+  const [aiAddonSaving, setAiAddonSaving] = useState(false);
+
   // Plans list
   const [plans, setPlans] = useState<any[]>([]);
 
@@ -120,8 +107,10 @@ export default function MiSuscripcionPage() {
       api.subscriptions.plans.list(token).catch(() => []),
       api.subscriptions.myRequests(token).catch(() => []),
       api.ai.getTenantUsage(token).catch(() => null),
+      api.subscriptions.getAiPacks(token).catch(() => []),
+      api.subscriptions.getAiAddon(token).catch(() => ({ calls: 0, price: 0, packId: null })),
     ])
-      .then(([s, count, pays, prot, plns, reqs, aiUse]) => {
+      .then(([s, count, pays, prot, plns, reqs, aiUse, packs, addon]) => {
         setSub(s);
         setUserCount(count as number);
         setPayments(pays as any[]);
@@ -129,6 +118,8 @@ export default function MiSuscripcionPage() {
         setPlans((plns as any[]).filter((p: any) => p.isActive));
         setMyRequests(reqs as any[]);
         setAiUsage(aiUse);
+        setAiPacks(packs as any[]);
+        setAiAddon(addon as any);
       })
       .finally(() => setLoading(false));
   }
@@ -429,6 +420,90 @@ export default function MiSuscripcionPage() {
                   </div>
                 )}
               </>
+            )}
+
+            {/* AI Add-on Pack selector */}
+            {aiPacks.length > 0 && aiUsage?.hasAiAccess && (
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.75rem' }}>
+                  Ampliar cuota de análisis IA
+                </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                  Compre créditos adicionales de IA sin cambiar su plan. Se suman a la cuota base de su plan actual.
+                  {aiAddon.calls > 0 && (
+                    <span style={{ color: 'var(--success)', fontWeight: 600 }}>
+                      {' '}Actualmente tiene +{aiAddon.calls} créditos adicionales ({aiAddon.price} UF/mes).
+                    </span>
+                  )}
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {/* Option to remove addon */}
+                  <button
+                    onClick={async () => {
+                      if (!token) return;
+                      setAiAddonSaving(true);
+                      try {
+                        await api.subscriptions.setAiAddon(token, 'none');
+                        setAiAddon({ calls: 0, price: 0, packId: null });
+                        showToast('Add-on de IA eliminado');
+                        loadAll();
+                      } catch { /* ignore */ }
+                      setAiAddonSaving(false);
+                    }}
+                    disabled={aiAddonSaving || !aiAddon.packId}
+                    style={{
+                      padding: '0.6rem 0.85rem', borderRadius: 'var(--radius-sm, 6px)',
+                      border: !aiAddon.packId ? '2px solid var(--accent)' : '1px solid var(--border)',
+                      background: !aiAddon.packId ? 'rgba(201,147,58,0.08)' : 'var(--bg-surface)',
+                      cursor: aiAddonSaving || !aiAddon.packId ? 'default' : 'pointer',
+                      fontSize: '0.82rem', fontWeight: !aiAddon.packId ? 700 : 400,
+                      color: !aiAddon.packId ? 'var(--accent)' : 'var(--text-primary)',
+                      opacity: aiAddonSaving ? 0.5 : 1,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600 }}>Sin add-on</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Solo cuota del plan</div>
+                  </button>
+                  {aiPacks.map((pack: any) => {
+                    const isSelected = aiAddon.packId === pack.id;
+                    return (
+                      <button
+                        key={pack.id}
+                        onClick={async () => {
+                          if (!token || isSelected) return;
+                          setAiAddonSaving(true);
+                          try {
+                            await api.subscriptions.setAiAddon(token, pack.id);
+                            setAiAddon({ calls: pack.calls, price: pack.monthlyPrice, packId: pack.id });
+                            showToast(`Add-on "${pack.name}" activado`);
+                            loadAll();
+                          } catch { /* ignore */ }
+                          setAiAddonSaving(false);
+                        }}
+                        disabled={aiAddonSaving || isSelected}
+                        style={{
+                          padding: '0.6rem 0.85rem', borderRadius: 'var(--radius-sm, 6px)',
+                          border: isSelected ? '2px solid var(--accent)' : '1px solid var(--border)',
+                          background: isSelected ? 'rgba(201,147,58,0.08)' : 'var(--bg-surface)',
+                          cursor: aiAddonSaving || isSelected ? 'default' : 'pointer',
+                          fontSize: '0.82rem', fontWeight: isSelected ? 700 : 400,
+                          color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
+                          opacity: aiAddonSaving ? 0.5 : 1,
+                          textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600 }}>{pack.name}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          {pack.monthlyPrice} {pack.currency}/mes
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                  El costo del add-on se agrega a la facturación mensual de su suscripción. Puede cambiar o cancelar en cualquier momento.
+                </p>
+              </div>
             )}
           </div>
 

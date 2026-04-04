@@ -4,8 +4,9 @@
  *
  * Plan → Feature mapping:
  *   Starter : EVAL_90_180, BASIC_REPORTS
- *   Growth  : all Starter + EVAL_270, OKR, FEEDBACK, CHECKINS, TEMPLATES_CUSTOM
- *   Pro     : all Growth + EVAL_360, ADVANCED_REPORTS, PDI, NINE_BOX, CALIBRATION, AUDIT_LOG, DEI
+ *   Growth  : all Starter + EVAL_270, OKR, FEEDBACK, CHECKINS, TEMPLATES_CUSTOM, RECOGNITION, ENGAGEMENT_SURVEYS
+ *   Pro     : all Growth + EVAL_360, ADVANCED_REPORTS, PDI, NINE_BOX, CALIBRATION, POSTULANTS,
+ *             ORG_DEVELOPMENT, SIGNATURES, ANALYTICS_REPORTS, AUDIT_LOG, DEI
  *   Enterprise: all Pro + AI_INSIGHTS, PUBLIC_API
  */
 export const PlanFeature = {
@@ -17,6 +18,7 @@ export const PlanFeature = {
   // Reportes
   BASIC_REPORTS: 'BASIC_REPORTS',
   ADVANCED_REPORTS: 'ADVANCED_REPORTS', // radar, bell, heatmap, gap analysis
+  ANALYTICS_REPORTS: 'ANALYTICS_REPORTS', // PDI compliance, rotation, usage, cycle comparison
 
   // Módulos
   OKR: 'OKR',
@@ -27,6 +29,9 @@ export const PlanFeature = {
   NINE_BOX: 'NINE_BOX',
   CALIBRATION: 'CALIBRATION',
   POSTULANTS: 'POSTULANTS',
+  RECOGNITION: 'RECOGNITION',
+  ORG_DEVELOPMENT: 'ORG_DEVELOPMENT',
+  SIGNATURES: 'SIGNATURES',
 
   // Engagement
   ENGAGEMENT_SURVEYS: 'ENGAGEMENT_SURVEYS',
@@ -58,6 +63,7 @@ export const PLAN_FEATURES = {
     PlanFeature.FEEDBACK,
     PlanFeature.CHECKINS,
     PlanFeature.TEMPLATES_CUSTOM,
+    PlanFeature.RECOGNITION,
     PlanFeature.ENGAGEMENT_SURVEYS,
   ],
   pro: [
@@ -66,6 +72,7 @@ export const PLAN_FEATURES = {
     PlanFeature.EVAL_360,
     PlanFeature.BASIC_REPORTS,
     PlanFeature.ADVANCED_REPORTS,
+    PlanFeature.ANALYTICS_REPORTS,
     PlanFeature.OKR,
     PlanFeature.FEEDBACK,
     PlanFeature.CHECKINS,
@@ -74,6 +81,9 @@ export const PLAN_FEATURES = {
     PlanFeature.NINE_BOX,
     PlanFeature.CALIBRATION,
     PlanFeature.POSTULANTS,
+    PlanFeature.RECOGNITION,
+    PlanFeature.ORG_DEVELOPMENT,
+    PlanFeature.SIGNATURES,
     PlanFeature.ENGAGEMENT_SURVEYS,
     PlanFeature.AUDIT_LOG,
     PlanFeature.DEI,
@@ -84,6 +94,7 @@ export const PLAN_FEATURES = {
     PlanFeature.EVAL_360,
     PlanFeature.BASIC_REPORTS,
     PlanFeature.ADVANCED_REPORTS,
+    PlanFeature.ANALYTICS_REPORTS,
     PlanFeature.OKR,
     PlanFeature.FEEDBACK,
     PlanFeature.CHECKINS,
@@ -92,6 +103,9 @@ export const PLAN_FEATURES = {
     PlanFeature.NINE_BOX,
     PlanFeature.CALIBRATION,
     PlanFeature.POSTULANTS,
+    PlanFeature.RECOGNITION,
+    PlanFeature.ORG_DEVELOPMENT,
+    PlanFeature.SIGNATURES,
     PlanFeature.ENGAGEMENT_SURVEYS,
     PlanFeature.AUDIT_LOG,
     PlanFeature.DEI,

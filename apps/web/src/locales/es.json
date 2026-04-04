@@ -6,7 +6,7 @@
     "evaluation": "Evaluación",
     "evalCycles": "Ciclos de Evaluación",
     "calibration": "Calibración",
-    "reports": "Reportes",
+    "reports": "Resumen Ejecutivo del Ciclo",
     "analytics": "Análisis del Ciclo",
     "informes": "Informes por Colaborador",
     "aiInsights": "Informes IA",
@@ -1153,6 +1153,11 @@
     "guideLaborText": "Si necesita un informe para una auditoría laboral o proceso legal, exporte el rango de fechas relevante con el filtro \"Solo evidencia legal\" activado. El CSV resultante contiene toda la trazabilidad necesaria: quién, qué, cuándo, desde dónde y por qué.",
     "actions": {
       "login": "Inicio de sesión",
+      "login.failed": "Intento de acceso fallido",
+      "password.changed_first_login": "Cambio de contraseña (primer ingreso)",
+      "password.reset": "Restablecimiento de contraseña",
+      "2fa.enabled": "Activación de verificación en dos pasos",
+      "2fa.disabled": "Desactivación de verificación en dos pasos",
       "objective.created": "Objetivo creado",
       "objective.updated": "Objetivo modificado",
       "objective.submitted_for_approval": "Objetivo enviado a aprobación",
@@ -1201,7 +1206,10 @@
       "payment.registered": "Pago registrado",
       "subscription_request.approved": "Solicitud de suscripción aprobada",
       "subscription_request.rejected": "Solicitud de suscripción rechazada",
-      "report.viewed": "Reporte consultado"
+      "report.viewed": "Reporte consultado",
+      "subscription.ai_addon_purchased": "Add-on de IA contratado",
+      "subscription.ai_addon_removed": "Add-on de IA removido",
+      "report.exported": "Reporte exportado"
     },
     "entities": {
       "objective": "Objetivo",
@@ -1223,7 +1231,10 @@
       "subscription": "Suscripción",
       "subscription_request": "Solicitud",
       "payment": "Pago",
-      "document": "Documento"
+      "document": "Documento",
+      "signature": "Firma Digital",
+      "candidate": "Postulante",
+      "plan": "Plan"
     },
     "filterActions": {
       "login": "Inicios de sesión",

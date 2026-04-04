@@ -353,7 +353,7 @@ async function seed() {
         quarterlyPrice: 4.05,    // 1.5 × 3 × 0.90
         semiannualPrice: 7.65,   // 1.5 × 6 × 0.85
         yearlyPrice: 14.40,      // 1.5 × 12 × 0.80
-        features: ['EVAL_90_180', 'EVAL_270', 'BASIC_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM'],
+        features: ['EVAL_90_180', 'EVAL_270', 'BASIC_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'RECOGNITION', 'ENGAGEMENT_SURVEYS'],
         isActive: true, displayOrder: 2,
       }));
       console.log('\u2705  Plan "Growth" created (1.5 UF/mes, 50 users)');
@@ -365,7 +365,7 @@ async function seed() {
         quarterlyPrice: 9.45,    // 3.5 × 3 × 0.90
         semiannualPrice: 17.85,  // 3.5 × 6 × 0.85
         yearlyPrice: 33.60,      // 3.5 × 12 × 0.80
-        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS'],
+        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'ANALYTICS_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI'],
         isActive: true, displayOrder: 3,
       }));
       console.log('\u2705  Plan "Pro" created (3.5 UF/mes, 200 users)');
@@ -377,19 +377,26 @@ async function seed() {
         quarterlyPrice: 21.60,   // 8 × 3 × 0.90
         semiannualPrice: 40.80,  // 8 × 6 × 0.85
         yearlyPrice: 76.80,      // 8 × 12 × 0.80
-        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS', 'AI_INSIGHTS', 'PUBLIC_API'],
+        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'ANALYTICS_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI', 'AI_INSIGHTS', 'PUBLIC_API'],
         isActive: true, displayOrder: 4,
       }));
       console.log('\u2705  Plan "Enterprise" created (8 UF/mes, unlimited)');
     }
 
-    // ── Feature migration: ensure POSTULANTS is present in Pro & Enterprise ──
-    for (const planCode of ['pro', 'enterprise']) {
+    // ── Feature migration: ensure new features are present in existing plans ──
+    const featureMigrations: Record<string, string[]> = {
+      growth: ['RECOGNITION', 'ENGAGEMENT_SURVEYS'],
+      pro: ['POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ANALYTICS_REPORTS', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI'],
+      enterprise: ['POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ANALYTICS_REPORTS', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI'],
+    };
+    for (const [planCode, requiredFeatures] of Object.entries(featureMigrations)) {
       const plan = await planRepo.findOne({ where: { code: planCode } });
-      if (plan && !plan.features.includes('POSTULANTS')) {
-        plan.features = [...plan.features, 'POSTULANTS'];
+      if (!plan) continue;
+      const missing = requiredFeatures.filter(f => !plan.features.includes(f));
+      if (missing.length > 0) {
+        plan.features = [...plan.features, ...missing];
         await planRepo.save(plan);
-        console.log(`\u2705  Added POSTULANTS feature to "${plan.name}" plan`);
+        console.log(`\u2705  Added features to "${plan.name}": ${missing.join(', ')}`);
       }
     }
 

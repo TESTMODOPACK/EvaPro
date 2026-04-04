@@ -639,8 +639,30 @@ function LocationsTab() {
 
 function FeedbackPageContent() {
   const { t } = useTranslation();
+  const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.user?.role);
   const [activeTab, setActiveTab] = useState<ActiveTab>('checkins');
   const [showGuide, setShowGuide] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleExport = async (format: 'csv' | 'xlsx') => {
+    if (!token) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/feedback/export?format=${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error al exportar');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `feedback-checkins.${format}`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { /* ignore */ }
+    setExporting(null);
+  };
+  const isAdminOrManager = role === 'tenant_admin' || role === 'super_admin' || role === 'manager';
 
   const tabBtn = (tab: ActiveTab, label: string) => (
     <button
@@ -656,11 +678,23 @@ function FeedbackPageContent() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
-      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('feedback.title')}</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {t('feedback.subtitle')}
-        </p>
+      <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('feedback.title')}</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            {t('feedback.subtitle')}
+          </p>
+        </div>
+        {isAdminOrManager && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn-ghost" onClick={() => handleExport('xlsx')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
+              {exporting === 'xlsx' ? 'Exportando...' : 'Excel'}
+            </button>
+            <button className="btn-ghost" onClick={() => handleExport('csv')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
+              {exporting === 'csv' ? 'Exportando...' : 'CSV'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Guide toggle */}

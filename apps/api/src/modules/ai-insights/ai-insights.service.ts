@@ -112,36 +112,39 @@ export class AiInsightsService {
     return { deleted: result.affected || 0 };
   }
 
-  /** Get subscription info with plan limit */
-  private async getSubscriptionAiInfo(tenantId: string): Promise<{ limit: number; periodStart: Date; periodEnd: Date }> {
+  /** Get subscription info with plan limit + addon */
+  private async getSubscriptionAiInfo(tenantId: string): Promise<{ limit: number; planLimit: number; addonCalls: number; periodStart: Date; periodEnd: Date }> {
     const sub = await this.subscriptionsService.findByTenantId(tenantId);
-    if (!sub?.plan) return { limit: 0, periodStart: new Date(), periodEnd: new Date() };
+    if (!sub?.plan) return { limit: 0, planLimit: 0, addonCalls: 0, periodStart: new Date(), periodEnd: new Date() };
 
     // If plan includes AI_INSIGHTS but maxAiCallsPerMonth is 0/null, use default 100
     const hasAiFeature = (sub.plan.features || []).includes('AI_INSIGHTS');
-    let limit = sub.plan.maxAiCallsPerMonth ?? 0;
-    if (hasAiFeature && limit <= 0) limit = 100;
+    let planLimit = sub.plan.maxAiCallsPerMonth ?? 0;
+    if (hasAiFeature && planLimit <= 0) planLimit = 100;
+
+    // Add purchased addon calls
+    const addonCalls = (sub as any).aiAddonCalls || 0;
+    const limit = planLimit + addonCalls;
 
     // Calculate current billing period based on subscription startDate
-    // Use first day of current month as period start (simpler, no timezone issues)
     const now = new Date();
     const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
-    return { limit, periodStart, periodEnd };
+    return { limit, planLimit, addonCalls, periodStart, periodEnd };
   }
 
   /** Count AI calls for the current billing period (calendar month in UTC) */
-  private async getMonthlyCallCount(tenantId: string): Promise<{ used: number; periodStart: Date; periodEnd: Date; limit: number }> {
-    const { limit, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
+  private async getMonthlyCallCount(tenantId: string): Promise<{ used: number; periodStart: Date; periodEnd: Date; limit: number; planLimit: number; addonCalls: number }> {
+    const { limit, planLimit, addonCalls, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
 
     // Count insights created in current period (calendar month)
     const used = await this.insightRepo.count({
       where: { tenantId, createdAt: MoreThan(periodStart) },
     });
 
-    this.logger.log(`AI usage: tenant=${tenantId.slice(0,8)}, used=${used}, limit=${limit}, period=${periodStart.toISOString().slice(0,10)} to ${periodEnd.toISOString().slice(0,10)}`);
-    return { used, periodStart, periodEnd, limit };
+    this.logger.log(`AI usage: tenant=${tenantId.slice(0,8)}, used=${used}, limit=${limit} (plan=${planLimit}+addon=${addonCalls}), period=${periodStart.toISOString().slice(0,10)} to ${periodEnd.toISOString().slice(0,10)}`);
+    return { used, periodStart, periodEnd, limit, planLimit, addonCalls };
   }
 
   /** Check plan-based monthly rate limit */
@@ -899,9 +902,8 @@ export class AiInsightsService {
   // ─── Usage / Quota ──────────────────────────────────────────────────
 
   async getUsageQuota(tenantId: string, _userId?: string) {
-    // Quota is org-wide monthly, based on the subscription plan.
-    // No per-user limits — any user that generates an AI report consumes 1 credit from the org pool.
-    const { used: monthlyUsed, limit: monthlyLimit, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
+    // Quota is org-wide monthly, based on the subscription plan + addon.
+    const { used: monthlyUsed, limit: monthlyLimit, planLimit, addonCalls, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
     const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
     const nearLimit = monthlyLimit > 0 && monthlyRemaining <= Math.ceil(monthlyLimit * 0.1);
 
@@ -912,10 +914,12 @@ export class AiInsightsService {
       monthlyUsed,
       monthlyLimit,
       monthlyRemaining,
+      planLimit,
+      addonCalls,
       periodStart,
       periodEnd,
       nearLimit,
-      message: monthlyLimit <= 0
+      warning: monthlyLimit <= 0
         ? 'Su plan no incluye informes de IA.'
         : nearLimit
           ? `Atención: quedan ${monthlyRemaining} de ${monthlyLimit} informes de IA en este período.`
@@ -943,6 +947,7 @@ export class AiInsightsService {
       survey_analysis: 'Análisis de encuesta',
       cv_analysis: 'Análisis de CV',
       recruitment_recommendation: 'Recomendación de selección',
+      cycle_comparison: 'Comparativa de ciclos (IA)',
     };
 
     return {
@@ -1009,6 +1014,103 @@ export class AiInsightsService {
       }),
       total,
       totalTokens: Number(tokensResult?.total || 0),
+    };
+  }
+
+  // ─── Cycle Comparison AI Analysis ────────────────────────────────────
+
+  async analyzeCycleComparison(tenantId: string, cycleIds: string[], generatedBy: string): Promise<any> {
+    await this.checkRateLimit(tenantId);
+
+    // Fetch cycle data for selected cycles
+    const cycles: any[] = [];
+    for (const cid of cycleIds) {
+      const cycle = await this.cycleRepo.findOne({ where: { id: cid, tenantId } });
+      if (!cycle) continue;
+      const assignments = await this.assignmentRepo.find({
+        where: { cycleId: cid, tenantId },
+        relations: ['evaluatee'],
+      });
+      const withScores = assignments.filter((a: any) => a.response?.overallScore != null);
+      const scores = withScores.map((a: any) => Number(a.response.overallScore));
+      const avg = scores.length > 0 ? Number((scores.reduce((s, v) => s + v, 0) / scores.length).toFixed(2)) : null;
+      const min = scores.length > 0 ? Math.min(...scores) : null;
+      const max = scores.length > 0 ? Math.max(...scores) : null;
+
+      // Department breakdown
+      const deptScores: Record<string, number[]> = {};
+      for (const a of withScores) {
+        const dept = (a.evaluatee as any)?.department || 'Sin departamento';
+        if (!deptScores[dept]) deptScores[dept] = [];
+        deptScores[dept].push(Number((a as any).response.overallScore));
+      }
+
+      cycles.push({
+        name: cycle.name,
+        type: cycle.type,
+        startDate: cycle.startDate,
+        endDate: cycle.endDate,
+        totalEvaluated: assignments.length,
+        withScores: withScores.length,
+        avgScore: avg, minScore: min, maxScore: max,
+        byDepartment: Object.entries(deptScores).map(([dept, s]) => ({
+          department: dept,
+          avgScore: Number((s.reduce((a, b) => a + b, 0) / s.length).toFixed(2)),
+          count: s.length,
+        })),
+      });
+    }
+
+    if (cycles.length < 2) {
+      throw new BadRequestException('Se requieren al menos 2 ciclos para generar una comparativa.');
+    }
+
+    const prompt = `Eres un experto en gestión de talento y RRHH. Analiza la siguiente comparativa entre ${cycles.length} ciclos de evaluación de desempeño de una organización.
+
+Datos de los ciclos:
+${cycles.map((c, i) => `
+Ciclo ${i + 1}: "${c.name}" (${c.type})
+- Período: ${c.startDate ? new Date(c.startDate).toLocaleDateString('es-CL') : 'N/A'} al ${c.endDate ? new Date(c.endDate).toLocaleDateString('es-CL') : 'N/A'}
+- Evaluados: ${c.totalEvaluated}, Con puntaje: ${c.withScores}
+- Promedio: ${c.avgScore ?? 'N/A'}, Mín: ${c.minScore ?? 'N/A'}, Máx: ${c.maxScore ?? 'N/A'}
+- Por departamento: ${c.byDepartment.map((d: any) => `${d.department}: ${d.avgScore} (${d.count} eval.)`).join(', ') || 'Sin datos'}
+`).join('\n')}
+
+Responde en formato JSON con esta estructura exacta:
+{
+  "resumen": "Resumen ejecutivo de la comparación (2-3 párrafos)",
+  "tendencias": ["Lista de tendencias identificadas entre ciclos"],
+  "fortalezas": ["Aspectos positivos y mejoras observadas"],
+  "alertas": ["Alertas o áreas de preocupación"],
+  "departamentos": {
+    "mejoraron": ["Departamentos con mejora notable"],
+    "empeoraron": ["Departamentos que bajaron rendimiento"]
+  },
+  "recomendaciones": ["Recomendaciones accionables basadas en el análisis"],
+  "conclusion": "Conclusión general en 1-2 oraciones"
+}
+
+Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
+
+    const { text, tokensUsed } = await this.callClaude(prompt, 3000);
+    const analysis = this.parseJson(text);
+
+    // Save as insight for quota tracking
+    const insight = this.insightRepo.create({
+      tenantId,
+      type: InsightType.CYCLE_COMPARISON,
+      cycleId: cycleIds[0], // Primary cycle
+      generatedBy,
+      content: { analysis, cyclesCompared: cycles.map(c => c.name) },
+      tokensUsed,
+    });
+    await this.insightRepo.save(insight);
+
+    return {
+      analysis,
+      cyclesCompared: cycles,
+      generatedAt: new Date().toISOString(),
+      tokensUsed,
     };
   }
 

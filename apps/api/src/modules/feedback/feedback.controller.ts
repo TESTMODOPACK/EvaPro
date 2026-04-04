@@ -6,12 +6,15 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
+  Res,
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -27,6 +30,27 @@ import { PlanFeature } from '../../common/constants/plan-features';
 @Feature(PlanFeature.FEEDBACK)
 export class FeedbackController {
   constructor(private readonly feedbackService: FeedbackService) {}
+
+  // ─── Export ─────────────────────────────────────────────────────────────
+
+  @Get('export')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  async exportFeedback(
+    @Request() req: any,
+    @Query('format') format: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (format === 'xlsx') {
+      const buffer = await this.feedbackService.exportFeedbackXlsx(req.user.tenantId);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=feedback-checkins.xlsx');
+      return res.send(buffer);
+    }
+    const csv = await this.feedbackService.exportFeedbackCsv(req.user.tenantId);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=feedback-checkins.csv');
+    return res.send(csv);
+  }
 
   // ─── Check-ins ────────────────────────────────────────────────────────────
 

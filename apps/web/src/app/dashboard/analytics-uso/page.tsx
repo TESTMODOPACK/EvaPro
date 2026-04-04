@@ -1,35 +1,178 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 const moduleLabels: Record<string, string> = {
-  User: 'Usuarios', cycle: 'Ciclos', evaluation: 'Evaluaciones', objective: 'Objetivos',
-  feedback: 'Feedback', checkin: 'Check-ins', development_plan: 'PDI', recognition: 'Reconocimientos',
-  survey: 'Encuestas', tenant: 'Organizaciones', competency: 'Competencias',
+  // Entity types used in audit log
+  User: 'Usuarios',
+  user: 'Usuarios',
+  cycle: 'Ciclos de Evaluación',
+  cycle_stage: 'Etapas de Ciclo',
+  evaluation: 'Evaluaciones',
+  assignment: 'Asignaciones',
+  objective: 'Objetivos',
+  feedback: 'Feedback',
+  checkin: 'Check-ins 1:1',
+  development_plan: 'Planes de Desarrollo (PDI)',
+  competency: 'Competencias',
+  recognition: 'Reconocimientos',
+  engagement_survey: 'Encuestas de Clima',
+  survey: 'Encuestas de Clima',
+  talent_assessment: 'Evaluación de Talento',
+  calibration_entry: 'Calibración',
+  recruitment_process: 'Procesos de Selección',
+  candidate: 'Postulantes',
+  signature: 'Firmas Digitales',
+  bulk_import: 'Importación Masiva',
+  subscription: 'Suscripciones',
+  tenant: 'Organización',
+  plan: 'Planes',
 };
 
-export default function SystemUsagePage() {
+const actionLabels: Record<string, string> = {
+  // Auth
+  login: 'Inicio de sesión',
+  'login.failed': 'Intento de acceso fallido',
+  'password.changed_first_login': 'Cambio de contraseña (primer ingreso)',
+  'password.reset': 'Restablecimiento de contraseña',
+  '2fa.enabled': 'Activación de 2FA',
+  '2fa.disabled': 'Desactivación de 2FA',
+  // Users
+  'user.created': 'Creación de usuario',
+  'user.updated': 'Actualización de usuario',
+  'user.deactivated': 'Desactivación de usuario',
+  'user.invited': 'Invitación de usuario',
+  'user.invite_resent': 'Reenvío de invitación',
+  'user.role_changed': 'Cambio de rol',
+  'users.bulk_imported': 'Importación masiva de usuarios',
+  // Cycles
+  'cycle.created': 'Creación de ciclo',
+  'cycle.launched': 'Lanzamiento de ciclo',
+  'cycle.closed': 'Cierre de ciclo',
+  'cycle.paused': 'Pausa de ciclo',
+  'cycle.resumed': 'Reanudación de ciclo',
+  'cycle.stage_advanced': 'Avance de etapa',
+  // Evaluations
+  'evaluation.submitted': 'Evaluación completada',
+  'evaluation.response_saved': 'Respuesta de evaluación guardada',
+  'evaluation.saved_draft': 'Evaluación guardada (borrador)',
+  // Objectives
+  'objective.created': 'Creación de objetivo',
+  'objective.submitted_for_approval': 'Objetivo enviado a aprobación',
+  'objective.approved': 'Objetivo aprobado',
+  'objective.rejected': 'Objetivo rechazado',
+  'objective.cancelled': 'Objetivo cancelado',
+  'objective.progress_updated': 'Actualización de avance',
+  // Feedback & Check-ins
+  'feedback.sent': 'Feedback enviado',
+  'checkin.created': 'Check-in creado',
+  'checkin.completed': 'Check-in completado',
+  'checkin.rejected': 'Check-in rechazado',
+  // Development
+  'competency.created': 'Competencia creada',
+  'competency.approved': 'Competencia aprobada',
+  'competency.rejected': 'Competencia rechazada',
+  'pdi.created': 'PDI creado',
+  'pdi.status_changed': 'Cambio de estado de PDI',
+  // Talent & Calibration
+  'talent.assessed': 'Evaluación de talento',
+  'calibration.entry_adjusted': 'Ajuste de calibración',
+  // Recruitment
+  'recruitment.process_created': 'Proceso de selección creado',
+  'candidate.hired': 'Postulante contratado',
+  'candidate.rejected': 'Postulante rechazado',
+  // Signatures
+  'document.signed': 'Documento firmado',
+  // Surveys
+  survey_created: 'Encuesta creada',
+  'survey.launched': 'Encuesta lanzada',
+  'survey.closed': 'Encuesta cerrada',
+  // Subscriptions
+  'subscription.created': 'Suscripción creada',
+  'subscription.renewed': 'Suscripción renovada',
+  'subscription.cancelled': 'Suscripción cancelada',
+  'subscription.plan_changed': 'Cambio de plan',
+  'subscription.status_changed': 'Cambio de estado de suscripción',
+  'plan_change.requested': 'Solicitud de cambio de plan',
+  'plan_change.approved': 'Cambio de plan aprobado',
+  'plan_change.rejected': 'Cambio de plan rechazado',
+  'subscription_request.approved': 'Solicitud de suscripción aprobada',
+  'subscription_request.rejected': 'Solicitud de suscripción rechazada',
+  'subscription.ai_addon_purchased': 'Add-on IA contratado',
+  'subscription.ai_addon_removed': 'Add-on IA removido',
+  // Other
+  'payment.registered': 'Pago registrado',
+  'report.viewed': 'Reporte consultado',
+  'candidate.stage_changed': 'Etapa de postulante cambiada',
+};
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+function SystemUsagePageContent() {
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/reports/analytics/system-usage`, {
+    setError(null);
+    fetch(`${API}/reports/analytics/system-usage`, {
       headers: { Authorization: `Bearer ${token}` },
-    }).then(r => r.json()).then(setData).catch(() => {}).finally(() => setLoading(false));
+    }).then(r => {
+      if (!r.ok) throw new Error('Error al cargar los datos');
+      return r.json();
+    }).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, [token]);
 
+  const handleExport = async (format: 'csv' | 'xlsx') => {
+    if (!token) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${API}/reports/analytics/system-usage/export?format=${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error al exportar');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `adopcion-uso.${format}`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { /* ignore */ }
+    setExporting(null);
+  };
+
   if (loading) return <PageSkeleton cards={4} tableRows={6} />;
+  if (error) return (
+    <div style={{ padding: '2rem 2.5rem' }}>
+      <div className="card" style={{ padding: '2rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
+        <p style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '0.5rem' }}>Error al cargar el reporte</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{error}</p>
+      </div>
+    </div>
+  );
   if (!data) return <div style={{ padding: '2rem 2.5rem' }}><p style={{ color: 'var(--text-muted)' }}>No se pudo cargar el reporte.</p></div>;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
-      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Adopción y Uso del Sistema</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Métricas de actividad de los últimos 30 días</p>
+      <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Adopción y Uso del Sistema</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Métricas de actividad de los últimos 30 días</p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn-ghost" onClick={() => handleExport('xlsx')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
+            {exporting === 'xlsx' ? 'Exportando...' : 'Excel'}
+          </button>
+          <button className="btn-ghost" onClick={() => handleExport('csv')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
+            {exporting === 'csv' ? 'Exportando...' : 'CSV'}
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -77,7 +220,7 @@ export default function SystemUsagePage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {data.moduleUsage.slice(0, 10).map((m: any) => (
                 <div key={m.module} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.82rem' }}>
-                  <span style={{ minWidth: '120px', fontWeight: 500 }}>{moduleLabels[m.module] || m.module}</span>
+                  <span style={{ minWidth: '180px', fontWeight: 500 }}>{moduleLabels[m.module] || m.module}</span>
                   <div style={{ flex: 1, height: '8px', borderRadius: '999px', background: 'var(--border)' }}>
                     <div style={{ height: '100%', width: `${Math.min((m.count / (data.moduleUsage[0]?.count || 1)) * 100, 100)}%`, borderRadius: '999px', background: 'var(--accent)' }} />
                   </div>
@@ -97,7 +240,7 @@ export default function SystemUsagePage() {
                 <div key={a.action} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', minWidth: '18px' }}>{i + 1}.</span>
-                    <span>{a.action}</span>
+                    <span>{actionLabels[a.action] || a.action}</span>
                   </span>
                   <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{a.count}</span>
                 </div>
@@ -106,6 +249,42 @@ export default function SystemUsagePage() {
           ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos</p>}
         </div>
       </div>
+
+      {/* Analysis Section */}
+      <div className="card animate-fade-up" style={{ padding: '1.25rem', marginTop: '1.5rem', borderLeft: `4px solid ${data.adoptionRate >= 70 ? 'var(--success)' : data.adoptionRate >= 40 ? 'var(--warning)' : 'var(--danger)'}` }}>
+        <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Análisis del Resultado</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          <p>
+            <strong>Adopción:</strong> {data.adoptionRate}% de los usuarios iniciaron sesión en los últimos 30 días ({data.mau} de {data.totalUsers}).
+            {data.adoptionRate >= 70 ? ' Excelente nivel de adopción del sistema.' :
+             data.adoptionRate >= 40 ? ' Nivel moderado. Se recomienda incentivar el uso mediante comunicaciones y capacitaciones.' :
+             ' Nivel bajo. Es necesario investigar las barreras de adopción y reforzar la capacitación.'}
+          </p>
+          <p>
+            <strong>Actividad semanal:</strong> {data.wau} usuarios activos esta semana (WAU).
+            {data.totalUsers > 0 && ` Esto representa el ${Math.round((data.wau / data.totalUsers) * 100)}% del total.`}
+          </p>
+          {data.moduleUsage?.[0] && (
+            <p>
+              <strong>Módulo más usado:</strong> {moduleLabels[data.moduleUsage[0].module] || data.moduleUsage[0].module} con {data.moduleUsage[0].count} acciones.
+              {data.moduleUsage.length > 1 && ` Seguido por ${moduleLabels[data.moduleUsage[1].module] || data.moduleUsage[1].module} (${data.moduleUsage[1].count}).`}
+            </p>
+          )}
+          {data.topActions?.[0] && (
+            <p>
+              <strong>Acción más frecuente:</strong> {actionLabels[data.topActions[0].action] || data.topActions[0].action} ({data.topActions[0].count} veces).
+            </p>
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+export default function SystemUsagePage() {
+  return (
+    <PlanGate feature="ANALYTICS_REPORTS">
+      <SystemUsagePageContent />
+    </PlanGate>
   );
 }

@@ -771,4 +771,58 @@ export class SubscriptionsService {
 
     return { renewed, suspended };
   }
+
+  // ─── AI Add-on Packs ──────────────────────────────────────────────────
+
+  /** Available AI packs for purchase */
+  getAiPacks(): { id: string; name: string; calls: number; monthlyPrice: number; currency: string }[] {
+    return [
+      { id: 'ai-pack-50',  name: '+50 análisis IA / mes',  calls: 50,  monthlyPrice: 0.5, currency: 'UF' },
+      { id: 'ai-pack-100', name: '+100 análisis IA / mes', calls: 100, monthlyPrice: 0.8, currency: 'UF' },
+      { id: 'ai-pack-250', name: '+250 análisis IA / mes', calls: 250, monthlyPrice: 1.5, currency: 'UF' },
+      { id: 'ai-pack-500', name: '+500 análisis IA / mes', calls: 500, monthlyPrice: 2.5, currency: 'UF' },
+    ];
+  }
+
+  /** Purchase or change AI pack for a tenant */
+  async setAiAddon(tenantId: string, packId: string | null, approvedBy: string): Promise<{ subscription: Subscription; pack: any }> {
+    const sub = await this.findByTenantId(tenantId);
+    if (!sub) throw new NotFoundException('No se encontró una suscripción activa');
+
+    if (!packId || packId === 'none') {
+      // Remove addon
+      sub.aiAddonCalls = 0;
+      sub.aiAddonPrice = 0;
+      await this.subRepo.save(sub);
+      await this.auditService.log(tenantId, approvedBy, 'subscription.ai_addon_removed', 'subscription', sub.id).catch(() => {});
+      return { subscription: sub, pack: null };
+    }
+
+    const packs = this.getAiPacks();
+    const pack = packs.find(p => p.id === packId);
+    if (!pack) throw new BadRequestException('Paquete de IA no válido');
+
+    sub.aiAddonCalls = pack.calls;
+    sub.aiAddonPrice = pack.monthlyPrice;
+    await this.subRepo.save(sub);
+
+    await this.auditService.log(tenantId, approvedBy, 'subscription.ai_addon_purchased', 'subscription', sub.id, {
+      pack: pack.name, calls: pack.calls, price: pack.monthlyPrice,
+    }).catch(() => {});
+
+    return { subscription: sub, pack };
+  }
+
+  /** Get current AI addon for a tenant */
+  async getAiAddon(tenantId: string): Promise<{ calls: number; price: number; packId: string | null }> {
+    const sub = await this.findByTenantId(tenantId);
+    if (!sub) return { calls: 0, price: 0, packId: null };
+    const packs = this.getAiPacks();
+    const currentPack = packs.find(p => p.calls === sub.aiAddonCalls) || null;
+    return {
+      calls: sub.aiAddonCalls || 0,
+      price: Number(sub.aiAddonPrice) || 0,
+      packId: currentPack?.id || null,
+    };
+  }
 }

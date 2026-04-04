@@ -717,6 +717,9 @@ function TreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
 function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean }) {
   const { t } = useTranslation();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [treeSearch, setTreeSearch] = useState('');
+  const [treeType, setTreeType] = useState('');
+  const [treeStatus, setTreeStatus] = useState('');
 
   if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
   if (!data || data.length === 0) {
@@ -728,23 +731,87 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
     );
   }
 
+  // Filter tree nodes recursively
+  const matchesFilter = (node: any): boolean => {
+    const q = treeSearch.toLowerCase();
+    const nameMatch = !q || (node.title || '').toLowerCase().includes(q) || (node.userName || '').toLowerCase().includes(q);
+    const typeMatch = !treeType || node.type === treeType;
+    const statusMatch = !treeStatus || node.status === treeStatus;
+    return nameMatch && typeMatch && statusMatch;
+  };
+
+  const filterTree = (nodes: any[]): any[] => {
+    return nodes.reduce((acc: any[], node: any) => {
+      const filteredChildren = filterTree(node.children || []);
+      if (matchesFilter(node) || filteredChildren.length > 0) {
+        acc.push({ ...node, children: filteredChildren });
+      }
+      return acc;
+    }, []);
+  };
+
+  const filteredData = (treeSearch || treeType || treeStatus) ? filterTree(data) : data;
+
   // Group by user for better visualization
   const totalCount = (nodes: any[]): number => nodes.reduce((sum, n) => sum + 1 + totalCount(n.children || []), 0);
-  const total = totalCount(data);
+  const total = totalCount(filteredData);
 
   const grouped: Record<string, { userName: string; position: string; nodes: any[] }> = {};
-  for (const node of data) {
+  for (const node of filteredData) {
     const key = node.userName || 'Sin asignar';
     if (!grouped[key]) grouped[key] = { userName: key, position: node.userPosition || '', nodes: [] };
     grouped[key].nodes.push(node);
   }
   const groups = Object.values(grouped).sort((a, b) => a.userName.localeCompare(b.userName));
 
+  const filterStyle: React.CSSProperties = {
+    padding: '0.4rem 0.65rem', fontSize: '0.82rem',
+    background: 'var(--bg-surface)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)',
+  };
+
   return (
     <div className="animate-fade-up">
-      <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-        {total} objetivo(s) agrupados por {groups.length} colaborador(es). Haz clic en cada colaborador para expandir/colapsar.
+      {/* Tree filters */}
+      <div className="card" style={{ padding: '0.75rem', marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="Buscar objetivo o colaborador..."
+          value={treeSearch}
+          onChange={(e) => setTreeSearch(e.target.value)}
+          style={{ ...filterStyle, flex: '1 1 180px', minWidth: '150px' }}
+        />
+        <select value={treeType} onChange={(e) => setTreeType(e.target.value)} style={filterStyle}>
+          <option value="">Todos los tipos</option>
+          <option value="OKR">OKR</option>
+          <option value="KPI">KPI</option>
+          <option value="SMART">SMART</option>
+        </select>
+        <select value={treeStatus} onChange={(e) => setTreeStatus(e.target.value)} style={filterStyle}>
+          <option value="">Todos los estados</option>
+          <option value="draft">Borrador</option>
+          <option value="pending_approval">Pendiente</option>
+          <option value="active">Activo</option>
+          <option value="completed">Completado</option>
+          <option value="abandoned">Abandonado</option>
+        </select>
+        {(treeSearch || treeType || treeStatus) && (
+          <button
+            onClick={() => { setTreeSearch(''); setTreeType(''); setTreeStatus(''); }}
+            style={{ ...filterStyle, cursor: 'pointer', color: 'var(--danger)', fontWeight: 600, background: 'none' }}
+          >
+            Limpiar
+          </button>
+        )}
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {total} objetivo(s) · {groups.length} colaborador(es)
+        </span>
       </div>
+      {groups.length === 0 && (treeSearch || treeType || treeStatus) && (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No se encontraron objetivos con los filtros seleccionados</p>
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {groups.map((group) => {
           const isCollapsed = collapsedGroups[group.userName];
@@ -1082,26 +1149,33 @@ function ObjetivosPageContent() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
-      <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>
             {pageTitle}
-            {atRiskCount > 0 && (
-              <span style={{
+          </h1>
+          {atRiskCount > 0 && (
+            <span
+              title="Objetivos cuyo avance está significativamente por debajo del ritmo esperado según su fecha límite, o con menos de 40% de progreso si no tienen fecha."
+              style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 background: 'var(--danger)', color: '#fff', borderRadius: '999px',
                 fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.5rem',
-                minWidth: '22px',
+                minWidth: '22px', cursor: 'help',
               }}>
-                {atRiskCount} en riesgo
-              </span>
-            )}
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {pageSubtitle}
-          </p>
+              {atRiskCount} en riesgo
+            </span>
+          )}
         </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+          {pageSubtitle}
+        </p>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {canCreate && (
+            <button className="btn-primary" onClick={() => { setShowForm(!showForm); setShowGuide(false); }} style={{ fontSize: '0.82rem' }}>
+              {showForm ? t('common.cancel') : isEmployee ? '+ Proponer' : `+ ${t('objetivos.newObjective')}`}
+            </button>
+          )}
           {/* Export buttons */}
           {(['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
             <button key={fmt} type="button" disabled={!!exporting}
@@ -1119,11 +1193,6 @@ function ObjetivosPageContent() {
           <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
             {showGuide ? t('objetivos.hideGuide') : t('objetivos.howItWorks')}
           </button>
-          {canCreate && (
-            <button className="btn-primary" onClick={() => { setShowForm(!showForm); setShowGuide(false); }}>
-              {showForm ? t('common.cancel') : isEmployee ? '+ Proponer Objetivo' : `+ ${t('objetivos.newObjective')}`}
-            </button>
-          )}
         </div>
       </div>
 

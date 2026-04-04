@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
+import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import {
@@ -383,6 +384,7 @@ const riskBadge: Record<string, { cls: string; label: string }> = {
 function FlightRiskSection() {
   const { t } = useTranslation();
   const { data, isLoading, error } = useFlightRisk();
+  const { departments } = useDepartments();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [searchFR, setSearchFR] = useState('');
   const [deptFilterFR, setDeptFilterFR] = useState('');
@@ -405,7 +407,6 @@ function FlightRiskSection() {
 
   const { summary, scores, generatedAt, totalEmployees } = data;
   const allScores = [...(scores as any[])].sort((a: any, b: any) => b.riskScore - a.riskScore);
-  const departments = Array.from(new Set(allScores.map((s: any) => s.department).filter(Boolean))).sort() as string[];
 
   // Apply filters
   let filtered = allScores;
@@ -573,8 +574,8 @@ function InsightsPageContent() {
   const scopedUsers = role === 'manager'
     ? allUsers.filter((u: any) => u.managerId === currentUserId)
     : allUsers;
-  // Extract unique departments
-  const departments = Array.from(new Set(scopedUsers.map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  // Use configured departments from Mantenedores (consistent across the platform)
+  const { departments } = useDepartments();
   // Filter by department if selected
   const users = selectedDept
     ? scopedUsers.filter((u: any) => u.department === selectedDept)
@@ -902,6 +903,7 @@ function PredictionSection({ userId }: { userId: string | null }) {
 function RetentionSection() {
   const { t } = useTranslation();
   const { data, isLoading } = useRetentionRecommendations();
+  const { departments } = useDepartments();
   const [searchRT, setSearchRT] = useState('');
   const [deptFilterRT, setDeptFilterRT] = useState('');
   const [riskFilterRT, setRiskFilterRT] = useState('');
@@ -913,7 +915,6 @@ function RetentionSection() {
   if (!data) return null;
 
   const allRecs = data.recommendations || [];
-  const departments = Array.from(new Set(allRecs.map((r: any) => r.department).filter(Boolean))).sort() as string[];
 
   let filtered = allRecs;
   if (searchRT) { const q = searchRT.toLowerCase(); filtered = filtered.filter((r: any) => (r.name || '').toLowerCase().includes(q)); }

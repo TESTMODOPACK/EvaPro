@@ -316,6 +316,13 @@ export const api = {
       request<void>(`/subscriptions/requests/${id}/approve`, { method: "PATCH" }, token),
     rejectRequest: (token: string, id: string, reason: string) =>
       request<void>(`/subscriptions/requests/${id}/reject`, { method: "PATCH", body: JSON.stringify({ reason }) }, token),
+    // AI Add-on Packs
+    getAiPacks: (token: string) =>
+      request<{ id: string; name: string; calls: number; monthlyPrice: number; currency: string }[]>("/subscriptions/ai-packs", {}, token),
+    getAiAddon: (token: string) =>
+      request<{ calls: number; price: number; packId: string | null }>("/subscriptions/ai-addon", {}, token),
+    setAiAddon: (token: string, packId: string | null) =>
+      request<any>("/subscriptions/ai-addon", { method: "PATCH", body: JSON.stringify({ packId }) }, token),
   },
 
   talent: {
@@ -427,6 +434,8 @@ export const api = {
       request<{ ok: boolean }>(`/users/${userId}/resend-invite`, { method: "POST" }, token),
     inviteBulk: (token: string, data: { emails: string[]; role?: string }) =>
       request<{ invited: number; skipped: string[] }>("/users/invite-bulk", { method: "POST", body: JSON.stringify(data) }, token),
+    normalizeDepartments: (token: string, apply = false) =>
+      request<{ mismatches: any[]; fixed: number }>(`/users/normalize-departments?apply=${apply}`, { method: "POST" }, token),
   },
 
   cycles: {

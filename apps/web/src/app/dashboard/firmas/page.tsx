@@ -1,4 +1,5 @@
 'use client';
+import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
@@ -16,7 +17,7 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   revoked: { label: 'Revocada', color: 'var(--danger)' },
 };
 
-export default function FirmasPage() {
+function FirmasPageContent() {
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
@@ -191,5 +192,13 @@ export default function FirmasPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function FirmasPage() {
+  return (
+    <PlanGate feature="SIGNATURES">
+      <FirmasPageContent />
+    </PlanGate>
   );
 }

@@ -12,6 +12,7 @@ import {
 } from '@/hooks/useCycles';
 import { usePeerAssignments, useAddPeerAssignment, useRemovePeerAssignment } from '@/hooks/usePeerAssignments';
 import { useUsers } from '@/hooks/useUsers';
+import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import Link from 'next/link';
@@ -65,6 +66,9 @@ export default function CycleDetailPage() {
   const [allowedRelations, setAllowedRelations] = useState<{ value: string; label: string }[]>([]);
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoGenResult, setAutoGenResult] = useState<{ created: number } | null>(null);
+
+  // ── Departments from Mantenedores ────────────────────────────────────────
+  const { departments: deptOptions } = useDepartments();
 
   // ── Filters: peer section (draft) ───────────────────────────────────────
   const [peerFilterSearch, setPeerFilterSearch] = useState('');
@@ -233,12 +237,6 @@ export default function CycleDetailPage() {
     return acc;
   }, {} as Record<string, any[]>);
   const showPeerSection = cycle.status === 'draft';
-
-  // ── Unique dept options ────────────────────────────────────────────────
-  const deptOptions: string[] = Array.from(new Set([
-    ...usersList.map((u: any) => u.department),
-    ...assignmentList.map((a: any) => a.evaluatee?.department),
-  ].filter(Boolean))).sort() as string[];
 
   // ── Filtered peer groups ───────────────────────────────────────────────
   const filteredPeerEntries = Object.entries(peerListGrouped).filter(([, assignments]) => {

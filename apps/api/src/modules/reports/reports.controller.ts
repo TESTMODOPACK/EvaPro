@@ -335,12 +335,56 @@ export class ReportsController {
 
   // ─── Analytics Reports ──────────────────────────────────────────────
 
+  @Get('analytics/pdi-compliance/export')
+  @Roles('tenant_admin', 'manager')
+  async exportPdiCompliance(
+    @Request() req: any,
+    @Query('format') format: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    const data = await this.analyticsService.getPdiCompliance(req.user.tenantId, managerId);
+    await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'pdi-compliance', format }).catch(() => {});
+    if (format === 'xlsx') {
+      const buffer = await this.analyticsService.exportPdiComplianceXlsx(data);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=cumplimiento-pdi.xlsx');
+      return res.send(buffer);
+    }
+    const csv = this.analyticsService.exportPdiComplianceCsv(data);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=cumplimiento-pdi.csv');
+    return res.send(csv);
+  }
+
   /** Cumplimiento PDI — tenant_admin (all) / manager (team) */
   @Get('analytics/pdi-compliance')
   @Roles('tenant_admin', 'manager')
   getPdiCompliance(@Request() req: any) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     return this.analyticsService.getPdiCompliance(req.user.tenantId, managerId);
+  }
+
+  @Get('analytics/system-usage/export')
+  @Roles('super_admin', 'tenant_admin')
+  async exportSystemUsage(
+    @Request() req: any,
+    @Query('format') format: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const data = await this.analyticsService.getSystemUsage(tenantId);
+    await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'system-usage', format }).catch(() => {});
+    if (format === 'xlsx') {
+      const buffer = await this.analyticsService.exportSystemUsageXlsx(data);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=adopcion-uso.xlsx');
+      return res.send(buffer);
+    }
+    const csv = this.analyticsService.exportSystemUsageCsv(data);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=adopcion-uso.csv');
+    return res.send(csv);
   }
 
   /** Uso del Sistema — super_admin (all orgs) / tenant_admin (own org) */
@@ -351,12 +395,64 @@ export class ReportsController {
     return this.analyticsService.getSystemUsage(tenantId);
   }
 
+  @Get('analytics/cycle-comparison/export')
+  @Roles('tenant_admin', 'manager')
+  async exportCycleComparison(
+    @Request() req: any,
+    @Query('format') format: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    const data = await this.analyticsService.getCycleComparison(req.user.tenantId, managerId);
+    await this.auditService
+      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'cycle-comparison', format })
+      .catch(() => {});
+
+    if (format === 'xlsx') {
+      const buffer = await this.analyticsService.exportCycleComparisonXlsx(data);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=comparativa-ciclos.xlsx');
+      return res.send(buffer);
+    }
+
+    const csv = this.analyticsService.exportCycleComparisonCsv(data);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=comparativa-ciclos.csv');
+    return res.send(csv);
+  }
+
   /** Comparativa entre Ciclos — tenant_admin (all) / manager (team) */
   @Get('analytics/cycle-comparison')
   @Roles('tenant_admin', 'manager')
   getCycleComparison(@Request() req: any) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     return this.analyticsService.getCycleComparison(req.user.tenantId, managerId);
+  }
+
+  @Get('analytics/turnover/export')
+  @Roles('tenant_admin')
+  async exportTurnover(
+    @Request() req: any,
+    @Query('format') format: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const data = await this.analyticsService.getTurnoverAnalysis(req.user.tenantId);
+    await this.auditService
+      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'turnover', format })
+      .catch(() => {});
+
+    if (format === 'xlsx') {
+      const buffer = await this.analyticsService.exportTurnoverXlsx(data);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=analisis-rotacion.xlsx');
+      return res.send(buffer);
+    }
+
+    // CSV default
+    const csv = this.analyticsService.exportTurnoverCsv(data);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=analisis-rotacion.csv');
+    return res.send(csv);
   }
 
   /** Análisis de Rotación — tenant_admin only */

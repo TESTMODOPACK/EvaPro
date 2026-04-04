@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
@@ -65,7 +66,7 @@ function ProgressBar({ value }: { value: number }) {
 
 // ─── Componente principal ────────────────────────────────────────────────────
 
-export default function DesarrolloOrganizacionalPage() {
+function DesarrolloOrganizacionalPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
@@ -1138,5 +1139,13 @@ export default function DesarrolloOrganizacionalPage() {
       />
     )}
     </div>
+  );
+}
+
+export default function DesarrolloOrganizacionalPage() {
+  return (
+    <PlanGate feature="ORG_DEVELOPMENT">
+      <DesarrolloOrganizacionalPageContent />
+    </PlanGate>
   );
 }

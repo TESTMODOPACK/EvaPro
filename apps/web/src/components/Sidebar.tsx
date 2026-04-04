@@ -207,7 +207,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
     ...(isAdminOrManager ? [{
       title: t('nav.reportsGroup', 'Reportes y Análisis'),
       items: [
-        { href: '/dashboard/reportes', label: t('nav.reports', 'Reportes por Colaborador'), icon: icons.reports },
+        { href: '/dashboard/reportes', label: t('nav.reports', 'Resumen Ejecutivo del Ciclo'), icon: icons.reports },
         { href: '/dashboard/informes', label: t('nav.informes', 'Informes por Colaborador'), icon: icons.reports },
         { href: '/dashboard/analytics', label: t('nav.analytics', 'Análisis del Ciclo'), icon: icons.analytics },
         { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },

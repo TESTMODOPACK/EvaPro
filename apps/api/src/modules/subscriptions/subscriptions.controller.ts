@@ -84,6 +84,29 @@ export class SubscriptionsController {
     return this.subscriptionsService.calculateProration(req.user.tenantId);
   }
 
+  // ─── AI Add-on Packs ──────────────────────────────────────────────────
+
+  @Get('ai-packs')
+  @Roles('super_admin', 'tenant_admin')
+  getAiPacks() {
+    return this.subscriptionsService.getAiPacks();
+  }
+
+  @Get('ai-addon')
+  @Roles('super_admin', 'tenant_admin')
+  getAiAddon(@Request() req: any) {
+    return this.subscriptionsService.getAiAddon(req.user.tenantId);
+  }
+
+  @Patch('ai-addon')
+  @Roles('super_admin', 'tenant_admin')
+  setAiAddon(
+    @Request() req: any,
+    @Body() body: { packId: string | null },
+  ) {
+    return this.subscriptionsService.setAiAddon(req.user.tenantId, body.packId, req.user.userId);
+  }
+
   @Patch('my-subscription/auto-renew')
   @Roles('tenant_admin')
   toggleAutoRenew(
