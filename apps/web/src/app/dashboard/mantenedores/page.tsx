@@ -38,6 +38,7 @@ export default function MantenedoresPage() {
   const [posSaving, setPosSaving] = useState(false);
   const [posSaved, setPosSaved] = useState(false);
   const [posError, setPosError] = useState<string | null>(null);
+  const [posGuideOpen, setPosGuideOpen] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -160,9 +161,83 @@ export default function MantenedoresPage() {
         </button>
         {posExpanded && (
           <div style={{ padding: '1.25rem', borderTop: '1px solid var(--border)' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-              Catálogo de posiciones con nivel jerárquico. El nivel 1 es el más alto (ej: Gerente General). Se usa para sugerir pares en evaluaciones 270/360 y visualizar el organigrama.
-            </p>
+            {/* Guide toggle */}
+            <div style={{ marginBottom: '1rem' }}>
+              <button type="button" onClick={() => setPosGuideOpen(!posGuideOpen)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 600, padding: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ transition: 'transform 0.2s', transform: posGuideOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', fontSize: '0.7rem' }}>&#9654;</span>
+                Guía: Cargos y Niveles Jerárquicos
+              </button>
+            </div>
+
+            {posGuideOpen && (
+              <div className="animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.25rem', marginBottom: '1.25rem', background: 'var(--bg-surface)', borderRadius: '0 var(--radius-sm) var(--radius-sm) 0' }}>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>
+                  Guía: Cargos y Niveles Jerárquicos
+                </h4>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Qué es el catálogo de cargos?</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                    Es la lista de posiciones que existen en su organización, cada una con un nivel jerárquico numérico. El nivel 1 es el más alto (ej: Gerente General) y los niveles mayores representan posiciones subordinadas.
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Para qué se utiliza?</p>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                    <li><strong>Sugerencia de pares:</strong> En evaluaciones 270° y 360°, el sistema sugiere automáticamente evaluadores del mismo nivel jerárquico como pares potenciales.</li>
+                    <li><strong>Organigrama:</strong> El nivel se muestra en la vista de organigrama para facilitar la comprensión de la estructura.</li>
+                    <li><strong>Estandarización:</strong> Al crear o editar un usuario, el cargo se selecciona del catálogo en vez de escribirlo libremente, asegurando consistencia.</li>
+                  </ul>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Cómo funcionan los niveles?</p>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                    <li><strong>Nivel 1:</strong> Máxima autoridad (Gerente General, CEO, Director General)</li>
+                    <li><strong>Nivel 2-3:</strong> Alta dirección (Gerentes de Área, Subgerentes)</li>
+                    <li><strong>Nivel 4-5:</strong> Mandos medios (Jefes de Área, Coordinadores)</li>
+                    <li><strong>Nivel 6-7:</strong> Colaboradores (Analistas, Asistentes)</li>
+                    <li>Puede agregar más niveles según la complejidad de su organización</li>
+                  </ul>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Cómo se relaciona con las evaluaciones?</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {[
+                      { type: '90°', desc: 'Solo jefe directo evalúa al colaborador. La jerarquía se define por el campo "Jefatura directa" del usuario.' },
+                      { type: '180°', desc: 'Jefe directo + autoevaluación. El nivel jerárquico no interviene.' },
+                      { type: '270°', desc: 'Jefe + auto + pares. El sistema sugiere pares del mismo nivel jerárquico para agilizar la selección.' },
+                      { type: '360°', desc: 'Jefe + auto + pares + reportes directos. Los subordinados directos evalúan hacia arriba (solo 1 nivel, no saltando niveles).' },
+                    ].map((e) => (
+                      <div key={e.type} style={{ padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.8rem' }}>
+                        <strong style={{ color: 'var(--accent)' }}>{e.type}:</strong>{' '}
+                        <span style={{ color: 'var(--text-secondary)' }}>{e.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>Ejemplo práctico</p>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                    <p style={{ margin: '0 0 0.5rem' }}>Organización con: <strong>Gerente(Nv.2)</strong> → 3 <strong>Subgerentes(Nv.3)</strong> → <strong>Jefes de Área(Nv.4)</strong> → 5 <strong>Colaboradores(Nv.6)</strong> cada uno.</p>
+                    <p style={{ margin: '0 0 0.3rem' }}>En una evaluación <strong>360°</strong>:</p>
+                    <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                      <li>Cada Colaborador es evaluado por: su Jefe de Área + sí mismo + pares sugeridos del Nv.6 + nadie desde abajo (no tiene reportes)</li>
+                      <li>Cada Jefe de Área es evaluado por: su Subgerente + sí mismo + pares sugeridos del Nv.4 + sus 5 Colaboradores directos</li>
+                      <li>Cada Subgerente es evaluado por: el Gerente + sí mismo + otros Subgerentes (Nv.3) como pares + sus Jefes de Área directos</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  <strong style={{ color: 'var(--accent)' }}>Importante:</strong> La jefatura directa (quién reporta a quién) se define en el campo &quot;Jefatura directa&quot; al crear/editar un usuario, no por el nivel del cargo. El nivel jerárquico es informativo y se usa para sugerir pares automáticamente.
+                </div>
+              </div>
+            )}
             {/* Positions list */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
               {positions.map((p, idx) => (
