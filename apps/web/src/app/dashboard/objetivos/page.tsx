@@ -325,7 +325,7 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
 
 /* ─── Key Results Sub-component ───────────────────────────────────────────── */
 
-function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
+function KeyResultsSection({ objectiveId, canEdit = false }: { objectiveId: string; canEdit?: boolean }) {
   const { data: keyResults, isLoading } = useKeyResults(objectiveId);
   const createKR = useCreateKeyResult();
   const updateKR = useUpdateKeyResult();
@@ -366,15 +366,17 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
         <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-          Key Results
+          Resultados Clave
         </div>
-        <button
-          className="btn-ghost"
-          style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-          onClick={() => setShowAddKR(!showAddKR)}
-        >
-          {showAddKR ? 'Cancelar' : '+ Agregar KR'}
-        </button>
+        {canEdit && (
+          <button
+            className="btn-ghost"
+            style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+            onClick={() => setShowAddKR(!showAddKR)}
+          >
+            {showAddKR ? 'Cancelar' : '+ Agregar'}
+          </button>
+        )}
       </div>
 
       {/* Add KR form */}
@@ -383,7 +385,7 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
           <input
             className="input"
             type="text"
-            placeholder="Descripcion del resultado clave..."
+            placeholder="Descripción del resultado clave..."
             value={krForm.description}
             onChange={(e) => setKrForm({ ...krForm, description: e.target.value })}
             style={{ width: '100%', fontSize: '0.78rem' }}
@@ -403,7 +405,7 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
             </div>
           </div>
           <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem', alignSelf: 'flex-start' }} onClick={handleAddKR} disabled={createKR.isPending || !krForm.description.trim()}>
-            {createKR.isPending ? 'Creando...' : 'Crear KR'}
+            {createKR.isPending ? 'Creando...' : 'Crear Resultado Clave'}
           </button>
         </div>
       )}
@@ -425,17 +427,19 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
                     <span className={`badge ${kr.status === 'completed' ? 'badge-success' : 'badge-accent'}`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}>
                       {kr.status === 'completed' ? 'Completado' : 'Activo'}
                     </span>
-                    <button
-                      className="btn-ghost"
-                      style={{ fontSize: '0.7rem', padding: '0.15rem 0.3rem', color: 'var(--danger)' }}
-                      onClick={() => setConfirmState({
-                        message: 'Eliminar este KR?',
-                        danger: true,
-                        onConfirm: () => { setConfirmState(null); deleteKR.mutate(kr.id); },
-                      })}
-                    >
-                      &times;
-                    </button>
+                    {canEdit && (
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: '0.7rem', padding: '0.15rem 0.3rem', color: 'var(--danger)' }}
+                        onClick={() => setConfirmState({
+                          message: '¿Eliminar este resultado clave?',
+                          danger: true,
+                          onConfirm: () => { setConfirmState(null); deleteKR.mutate(kr.id); },
+                        })}
+                      >
+                        &times;
+                      </button>
+                    )}
                   </div>
                 </div>
                 {/* Progress bar */}
@@ -448,14 +452,14 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
                 {/* Values */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                   <span>Base: {kr.baseValue} {kr.unit}</span>
-                  {isEditing ? (
+                  {isEditing && canEdit ? (
                     <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
                       <input className="input" type="number" value={editValue} onChange={(e) => setEditValue(Number(e.target.value))} style={{ width: '80px', fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} />
                       <button className="btn-primary" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }} onClick={() => handleUpdateValue(kr.id, editValue)}>OK</button>
                       <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }} onClick={() => setEditingKrId(null)}>X</button>
                     </div>
                   ) : (
-                    <span style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--accent)' }} onClick={() => { setEditingKrId(kr.id); setEditValue(Number(kr.currentValue)); }}>
+                    <span style={{ cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', color: canEdit ? 'var(--accent)' : 'var(--text-muted)' }} onClick={() => canEdit && setEditingKrId(kr.id)}>
                       Actual: {kr.currentValue} / {kr.targetValue} {kr.unit}
                     </span>
                   )}
@@ -465,7 +469,7 @@ function KeyResultsSection({ objectiveId }: { objectiveId: string }) {
           })}
         </div>
       ) : (
-        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Sin Key Results. Agrega resultados clave para medir el avance.</p>
+        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{canEdit ? 'Sin resultados clave. Agrega indicadores para medir el avance del objetivo.' : 'Sin resultados clave definidos para este objetivo.'}</p>
       )}
       {confirmState && (
         <ConfirmModal
@@ -2146,8 +2150,10 @@ function ObjetivosPageContent() {
                       )}
                     </div>
 
-                    {/* Key Results section */}
-                    <KeyResultsSection objectiveId={obj.id} />
+                    {/* Key Results section — only for OKR type, create only for admin/manager */}
+                    {obj.type === 'OKR' && (
+                      <KeyResultsSection objectiveId={obj.id} canEdit={isAdmin || isManager} />
+                    )}
 
                     {/* Comments section */}
                     <CommentsSection
