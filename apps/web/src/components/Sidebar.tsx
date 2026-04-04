@@ -309,6 +309,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/system-metrics', label: t('nav.usageMetrics'), icon: icons.analytics },
         { href: '/dashboard/analytics-uso', label: 'Adopción y Uso', icon: icons.analytics },
         { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: '📋' },
+        { href: '/dashboard/contratos', label: 'Contratos', icon: icons.log },
       ],
     },
   ];
