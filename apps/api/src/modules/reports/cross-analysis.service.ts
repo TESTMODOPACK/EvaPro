@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
+import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { EngagementSurvey } from '../surveys/entities/engagement-survey.entity';
 import { SurveyResponse } from '../surveys/entities/survey-response.entity';
 import { SurveyQuestion } from '../surveys/entities/survey-question.entity';
@@ -63,6 +64,8 @@ export class CrossAnalysisService {
     private readonly cycleRepo: Repository<EvaluationCycle>,
     @InjectRepository(EvaluationAssignment)
     private readonly assignmentRepo: Repository<EvaluationAssignment>,
+    @InjectRepository(EvaluationResponse)
+    private readonly evalResponseRepo: Repository<EvaluationResponse>,
     @InjectRepository(EngagementSurvey)
     private readonly surveyRepo: Repository<EngagementSurvey>,
     @InjectRepository(SurveyResponse)
@@ -94,20 +97,27 @@ export class CrossAnalysisService {
     const users = await this.userRepo.find({ where: userWhere, select: ['id', 'department'] });
     const userIds = new Set(users.map(u => u.id));
 
-    // 4. Performance by department
+    // 4. Performance by department — load assignments + responses separately
     const perfByDept: Record<string, number[]> = {};
     if (cycle) {
       const assignments = await this.assignmentRepo.find({
         where: { cycleId: cycle.id, tenantId },
         relations: ['evaluatee'],
       });
+      // Load all responses for this cycle and map by assignmentId
+      const assignmentIds = assignments.map(a => a.id);
+      const responses = assignmentIds.length > 0
+        ? await this.evalResponseRepo.find({ where: { assignmentId: In(assignmentIds) }, select: ['assignmentId', 'overallScore'] })
+        : [];
+      const scoreByAssignment = new Map(responses.filter(r => r.overallScore != null).map(r => [r.assignmentId, Number(r.overallScore)]));
+
       for (const a of assignments) {
         if (managerId && !userIds.has(a.evaluateeId)) continue;
-        const score = (a as any).response?.overallScore;
+        const score = scoreByAssignment.get(a.id);
         if (score == null) continue;
         const dept = (a.evaluatee as any)?.department || 'Sin departamento';
         if (!perfByDept[dept]) perfByDept[dept] = [];
-        perfByDept[dept].push(Number(score));
+        perfByDept[dept].push(score);
       }
     }
 
