@@ -720,6 +720,13 @@ export default function UsuariosPage() {
                         const catalogItem = positionCatalog.find(p => p.name === val);
                         updateField('position', val);
                         updateField('hierarchyLevel', catalogItem?.level != null ? String(catalogItem.level) : '');
+                        // Clear managerId if current manager's level is no longer superior
+                        if (catalogItem?.level && form.managerId) {
+                          const currentManager = allUsers.find((u: any) => u.id === form.managerId) as any;
+                          if (currentManager?.hierarchyLevel && currentManager.hierarchyLevel >= catalogItem.level) {
+                            updateField('managerId', '');
+                          }
+                        }
                       }
                     }}
                   >
