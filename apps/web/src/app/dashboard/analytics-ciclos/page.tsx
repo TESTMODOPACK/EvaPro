@@ -1,6 +1,6 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
-import { AiQuotaBar } from '@/components/AiQuotaBar';
+import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
@@ -20,6 +20,7 @@ function CycleComparisonPageContent() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [quotaInfo, setQuotaInfo] = useState<any>(null);
+  const { isBlocked: aiBlocked } = useAiQuota();
   const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
@@ -216,8 +217,8 @@ function CycleComparisonPageContent() {
         <button
           className="btn-primary"
           onClick={handleAnalyze}
-          disabled={selected.size < 2 || analyzing}
-          style={{ fontSize: '0.85rem', opacity: selected.size < 2 || analyzing ? 0.5 : 1 }}
+          disabled={selected.size < 2 || analyzing || aiBlocked}
+          style={{ fontSize: '0.85rem', opacity: selected.size < 2 || analyzing || aiBlocked ? 0.5 : 1 }}
         >
           {analyzing ? t('analyticsCiclos.analyzing') : `${t('analyticsCiclos.analyzeCycles')} (${selected.size})`}
         </button>

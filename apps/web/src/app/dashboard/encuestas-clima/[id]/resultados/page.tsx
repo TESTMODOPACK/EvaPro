@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
-import { AiQuotaBar } from '@/components/AiQuotaBar';
+import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
@@ -24,6 +24,7 @@ export default function ResultadosEncuestaPage() {
   const user = useAuthStore((s) => s.user);
   const toast = useToastStore((s) => s.toast);
   const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
+  const { isBlocked: aiBlocked } = useAiQuota();
 
   const [results, setResults] = useState<any>(null);
   const [enps, setEnps] = useState<any>(null);
@@ -416,8 +417,8 @@ export default function ResultadosEncuestaPage() {
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
                 Genera un informe ejecutivo completo con fortalezas, áreas críticas, análisis de sentimiento y recomendaciones accionables.
               </p>
-              <button className="btn-primary" onClick={handleGenerateAi} disabled={generatingAi || results.totalResponses === 0}>
-                {generatingAi ? 'Generando análisis...' : 'Generar Análisis con IA'}
+              <button className="btn-primary" onClick={handleGenerateAi} disabled={generatingAi || results.totalResponses === 0 || aiBlocked}>
+                {aiBlocked ? 'Créditos IA agotados' : generatingAi ? 'Generando análisis...' : 'Generar Análisis con IA'}
               </button>
               {results.totalResponses === 0 && (
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
@@ -570,8 +571,8 @@ export default function ResultadosEncuestaPage() {
               )}
 
               {/* Regenerate */}
-              <button className="btn-ghost" style={{ fontSize: '0.85rem' }} onClick={handleGenerateAi} disabled={generatingAi}>
-                {generatingAi ? 'Regenerando...' : 'Regenerar análisis'}
+              <button className="btn-ghost" style={{ fontSize: '0.85rem' }} onClick={handleGenerateAi} disabled={generatingAi || aiBlocked}>
+                {aiBlocked ? 'Sin créditos' : generatingAi ? 'Regenerando...' : 'Regenerar análisis'}
               </button>
             </div>
           )}
