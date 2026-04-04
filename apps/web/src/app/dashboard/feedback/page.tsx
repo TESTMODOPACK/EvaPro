@@ -61,7 +61,7 @@ function CheckInsTab() {
   };
 
   const { data: checkIns, isLoading } = useCheckIns();
-  const { data: usersPage } = useUsers();
+  const { data: usersPage } = useUsers(1, 500);
   const { data: locations } = useMeetingLocations();
   const createCheckIn = useCreateCheckIn();
   const completeCheckIn = useCompleteCheckIn();
@@ -275,14 +275,30 @@ function QuickFeedbackTab() {
   const { data: received, isLoading: loadingReceived } = useReceivedFeedback();
   const { data: given, isLoading: loadingGiven } = useGivenFeedback();
   const { data: summary } = useFeedbackSummary();
-  const { data: usersPage } = useUsers();
+  const { data: usersPage } = useUsers(1, 500);
   const sendFeedback = useSendQuickFeedback();
 
   const [subTab, setSubTab] = useState<QuickSubTab>('received');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ toUserId: '', message: '', sentiment: 'positive' as Sentiment, category: '', isAnonymous: false });
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [recipientDeptFilter, setRecipientDeptFilter] = useState('');
 
-  const users = usersPage?.data || [];
+  const allUsers = usersPage?.data || [];
+  const currentUserId = useAuthStore((s) => s.user?.userId);
+  // Filter users for recipient: exclude self, filter by search and department
+  const users = allUsers.filter((u: any) => {
+    if (u.id === currentUserId) return false;
+    if (!u.isActive) return false;
+    if (recipientDeptFilter && u.department !== recipientDeptFilter) return false;
+    if (recipientSearch) {
+      const q = recipientSearch.toLowerCase();
+      const name = `${u.firstName} ${u.lastName}`.toLowerCase();
+      if (!name.includes(q) && !(u.position || '').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  const recipientDepts = Array.from(new Set(allUsers.filter((u: any) => u.isActive && u.id !== currentUserId).map((u: any) => u.department).filter(Boolean))).sort() as string[];
   const feedbackList = subTab === 'received' ? received : given;
   const isLoading = subTab === 'received' ? loadingReceived : loadingGiven;
 
@@ -373,15 +389,25 @@ function QuickFeedbackTab() {
             <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
               Destinatario
             </label>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
+              <input className="input" type="text" placeholder="Buscar por nombre o cargo..."
+                value={recipientSearch} onChange={(e) => setRecipientSearch(e.target.value)}
+                style={{ flex: '1 1 200px', fontSize: '0.82rem' }} />
+              <select className="input" value={recipientDeptFilter} onChange={(e) => setRecipientDeptFilter(e.target.value)}
+                style={{ flex: '0 1 180px', fontSize: '0.82rem' }}>
+                <option value="">Todos los departamentos</option>
+                {recipientDepts.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
             <select
               className="input"
               value={form.toUserId}
               onChange={(e) => setForm({ ...form, toUserId: e.target.value })}
               style={{ width: '100%' }}
             >
-              <option value="">Seleccionar usuario...</option>
+              <option value="">Seleccionar colaborador ({users.length} disponibles)...</option>
               {users.map((u: any) => (
-                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}</option>
               ))}
             </select>
           </div>
@@ -778,37 +804,6 @@ function FeedbackPageContent() {
           </div>
         </div>
       )}
-
-      {/* Info card */}
-      <div className="card animate-fade-up" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.5rem' }}>
-          {'\u00bfC\u00f3mo funciona el m\u00f3dulo de Retroalimentaci\u00f3n?'}
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
-          <div>
-            <p style={{ margin: '0 0 0.35rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {'Check-ins 1:1'}
-            </p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li>{'Reuniones programadas entre encargado y su reporte directo'}</li>
-              <li>{'Solo el encargado o administrador puede crear check-ins'}</li>
-              <li>{'Se valida que el colaborador sea reporte directo del encargado'}</li>
-              <li>{'Incluye tema, notas y lista de tareas de seguimiento'}</li>
-            </ul>
-          </div>
-          <div>
-            <p style={{ margin: '0 0 0.35rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {'Retroalimentaci\u00f3n R\u00e1pida (360\u00b0)'}
-            </p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li>{'Cualquier colaborador puede enviar feedback a cualquier otro'}</li>
-              <li>{'Tres tipos: positivo, neutral o constructivo'}</li>
-              <li>{'Opci\u00f3n de env\u00edo an\u00f3nimo para mayor confianza'}</li>
-              <li>{'Se conecta con evaluaciones de desempe\u00f1o y planes de desarrollo'}</li>
-            </ul>
-          </div>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
