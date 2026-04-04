@@ -262,7 +262,7 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
             style={{ fontSize: '0.78rem', padding: '0.3rem 0.5rem', width: 'auto' }}
           >
             <option value="comentario">Comentario</option>
-            <option value="felicitacion">Felicitacion</option>
+            <option value="felicitacion">Felicitación</option>
             <option value="seguimiento">Seguimiento</option>
             <option value="adjunto">Adjunto</option>
           </select>
