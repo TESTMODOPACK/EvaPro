@@ -38,6 +38,7 @@ export default function ContratosPage() {
   const [editContent, setEditContent] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     tenantId: '', type: 'service_agreement', title: '', description: '', content: '', effectiveDate: new Date().toISOString().split('T')[0],
   });
@@ -147,14 +148,14 @@ export default function ContratosPage() {
               onClick={async () => {
                 if (!token || !createForm.tenantId) return;
                 setCreating(true);
-                setError('');
+                setActionError(null);
                 try {
                   const result = await api.contracts.bulkCreate(token, createForm.tenantId);
                   setShowCreate(false);
                   setCreateForm(f => ({ ...f, tenantId: '' }));
                   loadData();
-                  if (result.created === 0) setError('Todos los contratos ya existen para esta organización.');
-                } catch (e: any) { setError(e.message); }
+                  if (result.created === 0) setActionError('Todos los contratos ya existen para esta organización.');
+                } catch (e: any) { setActionError(e.message); }
                 setCreating(false);
               }}
               style={{ fontSize: '0.85rem', opacity: !createForm.tenantId ? 0.5 : 1 }}>
@@ -164,6 +165,14 @@ export default function ContratosPage() {
               {t('common.cancel')}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Inline error messages */}
+      {actionError && (
+        <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--danger)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1.1rem', padding: '0 0.3rem' }}>&times;</button>
         </div>
       )}
 
@@ -235,7 +244,7 @@ export default function ContratosPage() {
                                 await api.contracts.update(token, c.id, { content: editContent });
                                 setEditingContract(null);
                                 loadData();
-                              } catch (e: any) { setError(e.message); }
+                              } catch (e: any) { setActionError(e.message); }
                               setSavingEdit(false);
                             }}
                             style={{ fontSize: '0.82rem' }}>
@@ -283,8 +292,9 @@ export default function ContratosPage() {
                               setSending(c.id);
                               try {
                                 await api.contracts.sendForSignature(token, c.id);
+                                setActionError(null);
                                 loadData();
-                              } catch (e: any) { setError(e.message); }
+                              } catch (e: any) { setActionError(e.message); }
                               setSending(null);
                             }}
                             style={{ fontSize: '0.82rem' }}>
@@ -296,10 +306,11 @@ export default function ContratosPage() {
                           onClick={async () => {
                             if (!token || !confirm(`¿Eliminar "${c.title}"? Esta acción no se puede deshacer.`)) return;
                             setDeleting(c.id);
+                            setActionError(null);
                             try {
                               await api.contracts.remove(token, c.id);
                               loadData();
-                            } catch (e: any) { setError(e.message); }
+                            } catch (e: any) { setActionError(e.message); }
                             setDeleting(null);
                           }}
                           style={{ background: 'none', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm, 6px)', padding: '0.35rem 0.75rem', fontSize: '0.82rem', color: 'var(--danger)', cursor: deleting === c.id ? 'wait' : 'pointer', opacity: deleting === c.id ? 0.5 : 1 }}>
