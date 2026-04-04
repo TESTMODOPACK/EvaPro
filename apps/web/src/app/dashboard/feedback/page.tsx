@@ -371,7 +371,7 @@ function QuickFeedbackTab() {
               key={tab}
               className={subTab === tab ? 'btn-primary' : 'btn-ghost'}
               style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}
-              onClick={() => setSubTab(tab)}
+              onClick={() => { setSubTab(tab); setShowForm(false); }}
             >
               {tab === 'received' ? t('feedback.received') : t('feedback.sent')}
             </button>
