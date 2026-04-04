@@ -1,8 +1,8 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
+import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
 import { useUsers } from '@/hooks/useUsers';
@@ -60,7 +60,7 @@ const severityBadge: Record<string, string> = {
 
 /* ─── Summary Tab ──────────────────────────────────────────────────── */
 
-function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }) {
+function SummarySection({ cycleId, userId, aiBlocked }: { cycleId: string; userId: string; aiBlocked: boolean }) {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const { data: cached, isLoading } = useAiSummary(cycleId, userId);
@@ -77,7 +77,10 @@ function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }
       a.href = URL.createObjectURL(blob);
       a.download = `informe-ia-${userId}.pdf`;
       a.click();
-    } catch {}
+    } catch (err) {
+      console.error('Error al descargar PDF:', err);
+      alert('Error al descargar el informe PDF. Intente nuevamente.');
+    }
   };
 
   if (isLoading) return <Spinner />;
@@ -97,9 +100,10 @@ function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }
         <button
           className="btn-primary"
           onClick={() => generate.mutate({ cycleId, userId })}
-          disabled={generate.isPending}
+          disabled={generate.isPending || aiBlocked}
+          title={aiBlocked ? 'Créditos IA agotados' : undefined}
         >
-          {generate.isPending ? t('insights.generating') : t('insights.generateBtn')}
+          {generate.isPending ? t('insights.generating') : aiBlocked ? 'Créditos IA agotados' : t('insights.generateBtn')}
         </button>
         {generate.isPending && (
           <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -180,7 +184,7 @@ function SummarySection({ cycleId, userId }: { cycleId: string; userId: string }
 
 /* ─── Bias Tab ──────────────────────────────────────────────────────── */
 
-function BiasSection({ cycleId }: { cycleId: string }) {
+function BiasSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocked: boolean }) {
   const { data: cached, isLoading } = useAiBias(cycleId);
   const analyze = useAnalyzeBias();
 
@@ -198,9 +202,10 @@ function BiasSection({ cycleId }: { cycleId: string }) {
         <button
           className="btn-primary"
           onClick={() => analyze.mutate(cycleId)}
-          disabled={analyze.isPending}
+          disabled={analyze.isPending || aiBlocked}
+          title={aiBlocked ? 'Créditos IA agotados' : undefined}
         >
-          {analyze.isPending ? 'Analizando sesgos...' : 'Analizar Sesgos con IA'}
+          {analyze.isPending ? 'Analizando sesgos...' : aiBlocked ? 'Créditos IA agotados' : 'Analizar Sesgos con IA'}
         </button>
         {analyze.isPending && (
           <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -276,7 +281,7 @@ function BiasSection({ cycleId }: { cycleId: string }) {
 
 /* ─── Suggestions Tab ────────────────────────────────────────────────── */
 
-function SuggestionsSection({ cycleId, userId }: { cycleId: string; userId: string }) {
+function SuggestionsSection({ cycleId, userId, aiBlocked }: { cycleId: string; userId: string; aiBlocked: boolean }) {
   const { data: cached, isLoading } = useAiSuggestions(cycleId, userId);
   const generate = useGenerateSuggestions();
 
@@ -294,9 +299,10 @@ function SuggestionsSection({ cycleId, userId }: { cycleId: string; userId: stri
         <button
           className="btn-primary"
           onClick={() => generate.mutate({ cycleId, userId })}
-          disabled={generate.isPending}
+          disabled={generate.isPending || aiBlocked}
+          title={aiBlocked ? 'Créditos IA agotados' : undefined}
         >
-          {generate.isPending ? 'Generando sugerencias...' : 'Generar Sugerencias con IA'}
+          {generate.isPending ? 'Generando sugerencias...' : aiBlocked ? 'Créditos IA agotados' : 'Generar Sugerencias con IA'}
         </button>
         {generate.isPending && (
           <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -560,14 +566,8 @@ function InsightsPageContent() {
   const [activeTab, setActiveTab] = useState<Tab>('prediction');
   const [showGuide, setShowGuide] = useState(false);
 
-  // Load usage quota via React Query (auto-refreshes when invalidated after generation)
-  const { data: quota } = useQuery({
-    queryKey: ['ai', 'quota'],
-    queryFn: () => api.ai.getUsage(token!),
-    enabled: !!token,
-    staleTime: 30_000,
-    retry: false,
-  });
+  // AI quota — used to disable generate buttons when credits exhausted
+  const { isBlocked: aiBlocked } = useAiQuota();
 
   const allUsers = usersPage?.data || [];
   // Managers only see their direct reports; admins see all
@@ -611,27 +611,10 @@ function InsightsPageContent() {
         </p>
       </div>
 
-      {/* Quota indicator */}
-      {quota && (
-        <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem',
-            padding: '0.6rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem',
-            background: quota.nearLimit ? 'rgba(239,68,68,0.06)' : 'rgba(201,147,58,0.06)',
-            border: quota.nearLimit ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(201,147,58,0.15)',
-          }}>
-            <span style={{ color: quota.nearLimit ? 'var(--danger)' : 'var(--text-secondary)' }}>
-              {quota.nearLimit ? '⚠️ ' : '📊 '}
-              Informes IA: {quota.used ?? quota.monthlyUsed ?? 0} de {quota.limit ?? quota.monthlyLimit ?? 0} usados este período ({quota.remaining ?? quota.monthlyRemaining ?? 0} restantes)
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {quota.periodStart && quota.periodEnd
-                ? `Período: ${new Date(quota.periodStart).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })} al ${new Date(quota.periodEnd).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`
-                : 'Cuota mensual'}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Quota indicator — reusable component */}
+      <div className="animate-fade-up">
+        <AiQuotaBar />
+      </div>
 
       {/* Guide toggle */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
@@ -764,7 +747,7 @@ function InsightsPageContent() {
       {selectedCycleId && activeTab === 'summary' && (
         <div className="animate-fade-up">
           {selectedUserId ? (
-            <SummarySection cycleId={selectedCycleId} userId={selectedUserId} />
+            <SummarySection cycleId={selectedCycleId} userId={selectedUserId} aiBlocked={aiBlocked} />
           ) : (
             <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
@@ -777,14 +760,14 @@ function InsightsPageContent() {
 
       {selectedCycleId && activeTab === 'bias' && isAdmin && (
         <div className="animate-fade-up">
-          <BiasSection cycleId={selectedCycleId} />
+          <BiasSection cycleId={selectedCycleId} aiBlocked={aiBlocked} />
         </div>
       )}
 
       {selectedCycleId && activeTab === 'suggestions' && (
         <div className="animate-fade-up">
           {selectedUserId ? (
-            <SuggestionsSection cycleId={selectedCycleId} userId={selectedUserId} />
+            <SuggestionsSection cycleId={selectedCycleId} userId={selectedUserId} aiBlocked={aiBlocked} />
           ) : (
             <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ServiceUnavailableException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, IsNull, In } from 'typeorm';
+import { Repository, MoreThan, MoreThanOrEqual, IsNull, In } from 'typeorm';
 import Anthropic from '@anthropic-ai/sdk';
 import { AiInsight, InsightType } from './entities/ai-insight.entity';
 import { ReportsService } from '../reports/reports.service';
@@ -18,6 +18,7 @@ import { buildBiasPrompt } from './prompts/bias.prompt';
 import { buildSuggestionsPrompt } from './prompts/suggestions.prompt';
 import { buildSurveyAnalysisPrompt } from './prompts/survey-analysis.prompt';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { Subscription } from '../subscriptions/entities/subscription.entity';
 
 const MODEL = 'claude-haiku-4-5-20251001';
 const CACHE_DAYS = 7;
@@ -55,6 +56,8 @@ export class AiInsightsService {
     private readonly competencyRepo: Repository<Competency>,
     @InjectRepository(TalentAssessment)
     private readonly talentRepo: Repository<TalentAssessment>,
+    @InjectRepository(Subscription)
+    private readonly subscriptionRepo: Repository<Subscription>,
     private readonly reportsService: ReportsService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
@@ -126,8 +129,8 @@ export class AiInsightsService {
     if (hasAiFeature && planLimit <= 0) planLimit = 100;
 
     // Addon credits are independent — they persist until exhausted
-    const addonCalls = (sub as any).aiAddonCalls || 0;
-    const addonUsed = (sub as any).aiAddonUsed || 0; // track how many addon credits used
+    const addonCalls = sub.aiAddonCalls || 0;
+    const addonUsed = sub.aiAddonUsed || 0; // cumulative addon credits consumed across all periods
 
     // Period: calculated from subscription start date, rolling monthly
     const startDate = sub.startDate ? new Date(sub.startDate) : new Date();
@@ -191,6 +194,32 @@ export class AiInsightsService {
       throw new BadRequestException(
         `Se alcanzó el límite de ${totalLimit} informes de IA (${planLimit} del plan + ${addonRemaining} adicionales). El límite del plan se renueva el ${renewDate}. Puede adquirir créditos adicionales desde Mi Suscripción.`,
       );
+    }
+  }
+
+  /** After saving an insight, check if an addon credit was consumed and increment the counter */
+  private async trackAddonUsage(tenantId: string): Promise<void> {
+    try {
+      const { planLimit, periodStart } = await this.getSubscriptionAiInfo(tenantId);
+      if (planLimit <= 0) return;
+
+      // Count insights in current period
+      const periodUsed = await this.insightRepo.count({
+        where: { tenantId, createdAt: MoreThan(periodStart) },
+      });
+
+      // If usage exceeds plan limit, the latest call consumed an addon credit
+      if (periodUsed > planLimit) {
+        await this.subscriptionRepo.increment(
+          { tenantId, status: In(['active', 'trial']) },
+          'aiAddonUsed',
+          1,
+        );
+        this.logger.log(`Addon credit consumed: tenant=${tenantId.slice(0, 8)}, periodUsed=${periodUsed}, planLimit=${planLimit}`);
+      }
+    } catch (err) {
+      // Non-critical — log but don't fail the AI call
+      this.logger.warn(`Failed to track addon usage: ${err.message}`);
     }
   }
 
@@ -311,6 +340,7 @@ export class AiInsightsService {
       content, model: MODEL, tokensUsed, generatedBy,
     });
     const saved = await this.insightRepo.save(insight);
+    await this.trackAddonUsage(tenantId);
 
     try {
       await this.notificationsService.create({
@@ -408,6 +438,7 @@ export class AiInsightsService {
       content, model: MODEL, tokensUsed, generatedBy,
     });
     const saved = await this.insightRepo.save(insight);
+    await this.trackAddonUsage(tenantId);
 
     try {
       await this.notificationsService.create({
@@ -497,6 +528,7 @@ export class AiInsightsService {
       content, model: MODEL, tokensUsed, generatedBy,
     });
     const saved = await this.insightRepo.save(insight);
+    await this.trackAddonUsage(tenantId);
 
     try {
       await this.notificationsService.create({
@@ -1139,6 +1171,7 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
       tokensUsed,
     });
     await this.insightRepo.save(insight);
+    await this.trackAddonUsage(tenantId);
 
     return {
       analysis,
@@ -1294,7 +1327,9 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
       generatedBy,
     });
 
-    return this.insightRepo.save(insight);
+    const saved = await this.insightRepo.save(insight);
+    await this.trackAddonUsage(tenantId);
+    return saved;
   }
 
   // ─── Recruitment AI ─────────────────────────────────────────────────
@@ -1435,6 +1470,7 @@ Responde SOLO con el JSON, sin texto adicional ni markdown.`;
       generatedBy,
     });
     await this.insightRepo.save(insight);
+    await this.trackAddonUsage(tenantId);
 
     return { content, tokensUsed };
   }
@@ -1495,6 +1531,7 @@ Responde SOLO con el JSON.`;
       generatedBy,
     });
     await this.insightRepo.save(insight);
+    await this.trackAddonUsage(tenantId);
 
     return { content, tokensUsed };
   }

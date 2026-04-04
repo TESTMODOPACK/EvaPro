@@ -65,6 +65,9 @@ export class Subscription {
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'ai_addon_price', default: 0, comment: 'Monthly price in plan currency for the AI add-on' })
   aiAddonPrice: number;
 
+  @Column({ type: 'int', name: 'ai_addon_used', default: 0, comment: 'Cumulative addon credits consumed (persists across periods, never resets)' })
+  aiAddonUsed: number;
+
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 

@@ -6,6 +6,7 @@ import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import { useDepartments } from '@/hooks/useDepartments';
+import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 
 const STAGES = [
   { key: 'registered', label: 'Registrado', badge: 'badge-ghost' },
@@ -43,6 +44,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const role = useAuthStore((s) => s.user?.role);
   const toast = useToastStore((s) => s.toast);
   const isAdmin = role === 'tenant_admin' || role === 'super_admin';
+  const { isBlocked: aiBlocked } = useAiQuota();
 
   const [process, setProcess] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -282,6 +284,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
+      {/* AI Quota */}
+      <AiQuotaBar />
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
@@ -557,8 +561,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                               {canManageCv && (
                                 <>
-                                  <button className="btn-primary" onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId} style={{ fontSize: '0.85rem' }}>
-                                    {analyzingCvId === c.id ? 'Analizando... (10-20 seg)' : 'Analizar CV con IA'}
+                                  <button className="btn-primary" onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId || aiBlocked} style={{ fontSize: '0.85rem' }}>
+                                    {analyzingCvId === c.id ? 'Analizando... (10-20 seg)' : aiBlocked ? 'Créditos IA agotados' : 'Analizar CV con IA'}
                                   </button>
                                   <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.82rem' }}>
                                     Cambiar CV
@@ -576,8 +580,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                               {canManageCv && (
                                 <div style={{ display: 'flex', gap: '0.35rem' }}>
                                   <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
-                                    onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId}>
-                                    {analyzingCvId === c.id ? 'Analizando...' : 'Re-analizar'}
+                                    onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId || aiBlocked}>
+                                    {analyzingCvId === c.id ? 'Analizando...' : aiBlocked ? 'Sin créditos' : 'Re-analizar'}
                                   </button>
                                   <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
                                     Cambiar CV

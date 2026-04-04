@@ -14,6 +14,7 @@ import { Objective } from '../objectives/entities/objective.entity';
 import { QuickFeedback } from '../feedback/entities/quick-feedback.entity';
 import { Competency } from '../development/entities/competency.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
+import { Subscription } from '../subscriptions/entities/subscription.entity';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
       QuickFeedback,
       Competency,
       TalentAssessment,
+      Subscription,
     ]),
     ReportsModule,
     SubscriptionsModule,
