@@ -563,6 +563,36 @@ async function seed() {
       }
     }
 
+    /* ── Configure positions catalog in tenant settings ──────────────────── */
+    const defaultPositions = [
+      { name: 'Gerente General', level: 1 },
+      { name: 'Gerente de Área', level: 2 },
+      { name: 'Subgerente', level: 3 },
+      { name: 'Jefe de Área', level: 4 },
+      { name: 'Coordinador', level: 5 },
+      { name: 'Analista', level: 6 },
+      { name: 'Asistente', level: 7 },
+    ];
+    if (!tenant.settings?.positions || (tenant.settings.positions as any[]).length === 0) {
+      tenant.settings = { ...(tenant.settings || {}), positions: defaultPositions };
+      await tenantRepo.save(tenant);
+      console.log('\u2705  Positions catalog configured (7 levels)');
+    }
+
+    // Also fix hierarchy for ALL users without hierarchyLevel based on their position
+    const allTenantUsers = await userRepo.find({ where: { tenantId: tenant.id, isActive: true } });
+    const posMap = new Map(defaultPositions.map(p => [p.name.toLowerCase(), p.level]));
+    for (const u of allTenantUsers) {
+      if (u.position && !u.hierarchyLevel) {
+        const level = posMap.get(u.position.toLowerCase());
+        if (level) {
+          u.hierarchyLevel = level;
+          await userRepo.save(u);
+          console.log(`   Auto-assigned level ${level} to ${u.firstName} ${u.lastName} (${u.position})`);
+        }
+      }
+    }
+
     /* ── Default Template ────────────────────────────────────────────────── */
     let template = await templateRepo.findOne({
       where: { name: 'Competencias Generales', tenantId: tenant.id },
