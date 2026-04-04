@@ -127,11 +127,44 @@ export class ContractsService {
     if (!contract.content && !contract.fileUrl) {
       throw new BadRequestException('El contrato debe tener contenido o un archivo adjunto antes de enviarse a firma');
     }
+
+    // ─── Reglas de negocio para envío a firma ────────────────────────
+
+    // 1. La organización debe tener un plan (suscripción activa)
+    const sub = await this.tenantRepo.manager.getRepository('subscriptions').findOne({
+      where: { tenantId: contract.tenantId, status: 'active' },
+      relations: ['plan'],
+    });
+    if (!sub || !(sub as any).plan) {
+      throw new BadRequestException('La organización debe tener un plan activo antes de enviar contratos a firma. Asigne una suscripción primero.');
+    }
+
+    // 2. La organización debe tener dirección comercial
+    const tenant = await this.tenantRepo.findOne({ where: { id: contract.tenantId } });
+    if (!tenant) throw new BadRequestException('Organización no encontrada');
+    if (!tenant.commercialAddress || !tenant.commercialAddress.trim()) {
+      throw new BadRequestException('La organización debe tener una dirección comercial ingresada antes de enviar contratos a firma. Actualice los datos de la organización.');
+    }
+
+    // 3. El título debe seguir el formato: "Contrato [Tipo] — [Organización]"
+    const typeLabels: Record<string, string> = {
+      service_agreement: 'Prestación de Servicios',
+      dpa: 'Procesamiento de Datos (DPA)',
+      terms_conditions: 'Términos y Condiciones',
+      privacy_policy: 'Política de Privacidad',
+      sla: 'Nivel de Servicio (SLA)',
+      nda: 'Confidencialidad (NDA)',
+      amendment: 'Enmienda',
+    };
+    const expectedTitle = `Contrato ${typeLabels[contract.type] || contract.type} — ${tenant.name}`;
+    if (contract.title !== expectedTitle) {
+      contract.title = expectedTitle;
+    }
+
+    // ─── Fin validaciones ────────────────────────────────────────────
+
     contract.status = 'pending_signature';
     await this.contractRepo.save(contract);
-
-    // Send email to tenant admin
-    const tenant = await this.tenantRepo.findOne({ where: { id: contract.tenantId } });
     if (tenant) {
       const admins = await this.userRepo.find({ where: { tenantId: contract.tenantId, role: 'tenant_admin', isActive: true }, select: ['id', 'email', 'firstName'] });
       for (const admin of admins) {
