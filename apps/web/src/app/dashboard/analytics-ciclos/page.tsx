@@ -1,5 +1,6 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
+import { AiQuotaBar } from '@/components/AiQuotaBar';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
@@ -207,7 +208,10 @@ function CycleComparisonPageContent() {
         </div>
       </div>
 
-      {/* AI Analysis Button + Quota */}
+      {/* AI Quota Bar */}
+      <AiQuotaBar />
+
+      {/* AI Analysis Button */}
       <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <button
           className="btn-primary"
@@ -219,12 +223,6 @@ function CycleComparisonPageContent() {
         </button>
         {selected.size < 2 && (
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('analyticsCiclos.selectAtLeast2')}</span>
-        )}
-        {quotaInfo && (
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-            {t('analyticsCiclos.aiQuota')}: {quotaInfo.monthlyUsed}/{quotaInfo.monthlyLimit} {t('analyticsCiclos.usedThisMonth')}
-            {quotaInfo.warning && <span style={{ color: 'var(--warning)', marginLeft: '0.5rem' }}>{quotaInfo.warning}</span>}
-          </span>
         )}
         {analyzeError && (
           <span style={{ fontSize: '0.82rem', color: 'var(--danger)', fontWeight: 500 }}>{analyzeError}</span>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
+import { AiQuotaBar } from '@/components/AiQuotaBar';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
@@ -408,6 +409,7 @@ export default function ResultadosEncuestaPage() {
       {/* ─── AI Analysis Tab ─── */}
       {activeTab === 'ai' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <AiQuotaBar />
           {!aiAnalysis ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
               <h3 style={{ margin: '0 0 0.5rem' }}>Análisis con Inteligencia Artificial</h3>
