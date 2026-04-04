@@ -21,6 +21,7 @@ import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
 import { ExecutiveDashboardService } from './executive-dashboard.service';
 import { AnalyticsService } from './analytics.service';
+import { CrossAnalysisService } from './cross-analysis.service';
 import { AuditService } from '../audit/audit.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -36,6 +37,7 @@ export class ReportsController {
     private readonly kpiService: KpiService,
     private readonly executiveDashboardService: ExecutiveDashboardService,
     private readonly analyticsService: AnalyticsService,
+    private readonly crossAnalysisService: CrossAnalysisService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -331,6 +333,52 @@ export class ReportsController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.csv`);
     return res.send(csv);
+  }
+
+  // ─── Cross Analysis (Clima × Desempeño) ─────────────────────────────
+
+  @Get('cross-analysis/export')
+  @Roles('tenant_admin', 'manager')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
+  async exportCrossAnalysis(
+    @Request() req: any,
+    @Query('format') format: string,
+    @Query('cycleId') cycleId?: string,
+    @Query('surveyId') surveyId?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    const data = await this.crossAnalysisService.getCrossAnalysis(req.user.tenantId, cycleId, surveyId, managerId);
+    await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'cross-analysis', format }).catch(() => {});
+
+    if (format === 'pdf') {
+      const buffer = await this.crossAnalysisService.exportPdf(data);
+      res!.setHeader('Content-Type', 'application/pdf');
+      res!.setHeader('Content-Disposition', 'attachment; filename=analisis-integrado.pdf');
+      return res!.send(buffer);
+    }
+    if (format === 'xlsx') {
+      const buffer = await this.crossAnalysisService.exportXlsx(data);
+      res!.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res!.setHeader('Content-Disposition', 'attachment; filename=analisis-integrado.xlsx');
+      return res!.send(buffer);
+    }
+    const csv = this.crossAnalysisService.exportCsv(data);
+    res!.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res!.setHeader('Content-Disposition', 'attachment; filename=analisis-integrado.csv');
+    return res!.send(csv);
+  }
+
+  @Get('cross-analysis')
+  @Roles('tenant_admin', 'manager')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
+  getCrossAnalysis(
+    @Request() req: any,
+    @Query('cycleId') cycleId?: string,
+    @Query('surveyId') surveyId?: string,
+  ) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.crossAnalysisService.getCrossAnalysis(req.user.tenantId, cycleId, surveyId, managerId);
   }
 
   // ─── Analytics Reports ──────────────────────────────────────────────

@@ -211,6 +211,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/informes', label: t('nav.informes', 'Informes por Colaborador'), icon: icons.reports },
         { href: '/dashboard/analytics', label: t('nav.analytics', 'Análisis del Ciclo'), icon: icons.analytics },
         { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },
+        { href: '/dashboard/analisis-integrado', label: 'Análisis Integrado', icon: icons.analytics },
         { href: '/dashboard/analytics-pdi', label: 'Cumplimiento PDI', icon: icons.development },
         { href: '/dashboard/analytics-ciclos', label: 'Comparativa de Ciclos', icon: icons.calibration },
         ...(isAdmin ? [

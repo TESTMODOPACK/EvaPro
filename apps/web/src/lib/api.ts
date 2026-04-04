@@ -620,6 +620,13 @@ export const api = {
   reports: {
     executiveDashboard: (token: string, cycleId?: string) =>
       request<any>(`/reports/executive-dashboard${cycleId ? `?cycleId=${cycleId}` : ''}`, {}, token),
+    crossAnalysis: (token: string, cycleId?: string, surveyId?: string) => {
+      const params = new URLSearchParams();
+      if (cycleId) params.set('cycleId', cycleId);
+      if (surveyId) params.set('surveyId', surveyId);
+      const qs = params.toString();
+      return request<any>(`/reports/cross-analysis${qs ? `?${qs}` : ''}`, {}, token);
+    },
     cycleSummary: (token: string, cycleId: string) =>
       request<CycleSummary>(`/reports/cycle/${cycleId}/summary`, {}, token),
     individual: (token: string, cycleId: string, userId: string) =>

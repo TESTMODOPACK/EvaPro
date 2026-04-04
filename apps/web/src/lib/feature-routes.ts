@@ -11,6 +11,7 @@ export const ROUTE_FEATURE_MAP: Record<string, string> = {
   '/dashboard/insights': 'AI_INSIGHTS',
   '/dashboard/encuestas-clima': 'ENGAGEMENT_SURVEYS',
   '/dashboard/analytics': 'ADVANCED_REPORTS',
+  '/dashboard/analisis-integrado': 'ADVANCED_REPORTS',
   '/dashboard/analytics-pdi': 'ANALYTICS_REPORTS',
   '/dashboard/analytics-ciclos': 'ANALYTICS_REPORTS',
   '/dashboard/analytics-uso': 'ANALYTICS_REPORTS',

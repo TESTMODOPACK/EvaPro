@@ -15,6 +15,7 @@ import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
 import { ExecutiveDashboardService } from './executive-dashboard.service';
 import { AnalyticsService } from './analytics.service';
+import { CrossAnalysisService } from './cross-analysis.service';
 import { ReportsController } from './reports.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuditModule } from '../audit/audit.module';
@@ -54,7 +55,7 @@ import { AuditLog } from '../audit/entities/audit-log.entity';
     ]),
   ],
   controllers: [ReportsController],
-  providers: [ReportsService, KpiService, ExecutiveDashboardService, AnalyticsService],
+  providers: [ReportsService, KpiService, ExecutiveDashboardService, AnalyticsService, CrossAnalysisService],
   exports: [ReportsService, KpiService],
 })
 export class ReportsModule {}
