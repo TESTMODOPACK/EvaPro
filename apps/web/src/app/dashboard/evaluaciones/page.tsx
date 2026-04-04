@@ -341,7 +341,7 @@ function AdminEvaluationsView() {
           <select
             style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
             value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
-            <option value="">Todos los años</option>
+            <option value="">{t('evaluaciones.allYears')}</option>
             {Array.from(new Set((cycles || []).map((c: any) => c.startDate ? new Date(c.startDate).getFullYear().toString() : '').filter(Boolean))).sort().reverse().map((y: any) => (
               <option key={y} value={y}>{y}</option>
             ))}
@@ -368,11 +368,11 @@ function AdminEvaluationsView() {
             </svg>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            No hay ciclos de evaluaci\u00f3n
+            {t('evaluaciones.noCycles')}
           </p>
           {isAdmin && (
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-              Crea tu primer ciclo para comenzar
+              {t('evaluaciones.createFirstCycle')}
             </p>
           )}
         </div>
@@ -433,9 +433,9 @@ function AdminEvaluationsView() {
                   {cycle.status === 'active' && (
                     <div style={{ marginBottom: '0.5rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Progreso</span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t('evaluaciones.progress')}</span>
                         <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-hover)' }}>
-                          {totalEval > 0 ? 'En curso' : 'Sin asignaciones'}
+                          {totalEval > 0 ? t('evaluaciones.inProgress') : t('evaluaciones.noAssignments')}
                         </span>
                       </div>
                       <div style={{ height: '6px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
@@ -452,7 +452,7 @@ function AdminEvaluationsView() {
                   {cycle.status === 'closed' && (
                     <div style={{ marginBottom: '0.5rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Completado</span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t('evaluaciones.completedStatus')}</span>
                         <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--success)' }}>100%</span>
                       </div>
                       <div style={{ height: '6px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
@@ -489,7 +489,7 @@ function AdminEvaluationsView() {
                           <path d="M10 11v6M14 11v6" />
                           <path d="M9 6V4h6v2" />
                         </svg>
-                        {deleting === cycle.id ? 'Eliminando...' : 'Eliminar borrador'}
+                        {deleting === cycle.id ? t('evaluaciones.deleting') : t('evaluaciones.deleteDraft')}
                       </button>
                     </div>
                   )}

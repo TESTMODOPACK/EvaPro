@@ -98,8 +98,8 @@ export default function CycleDetailPage() {
   const handleAutoGenerate = async () => {
     if (!token) return;
     setConfirmState({
-      message: '¿Generar asignaciones automáticamente?',
-      detail: 'Se crearán autoevaluaciones, evaluaciones de jefe directo y reportes directos según corresponda. Las asignaciones de pares deben agregarse manualmente.',
+      message: t('evaluaciones.detail.confirmAutoGen'),
+      detail: t('evaluaciones.detail.autoGenDetail'),
       danger: false,
       onConfirm: async () => {
         setConfirmState(null);
@@ -120,8 +120,8 @@ export default function CycleDetailPage() {
 
   const handleLaunch = async () => {
     setConfirmState({
-      message: '¿Lanzar este ciclo?',
-      detail: 'Las evaluaciones se enviarán a todos los participantes.',
+      message: t('evaluaciones.detail.confirmLaunch'),
+      detail: t('evaluaciones.detail.launchDetail'),
       danger: false,
       onConfirm: async () => {
         setConfirmState(null);
@@ -142,8 +142,8 @@ export default function CycleDetailPage() {
 
   const handleClose = async () => {
     setConfirmState({
-      message: '¿Cerrar este ciclo?',
-      detail: 'No se podrán enviar más evaluaciones.',
+      message: t('evaluaciones.detail.confirmClose'),
+      detail: t('evaluaciones.detail.closeDetail'),
       danger: true,
       onConfirm: async () => {
         setConfirmState(null);
@@ -205,7 +205,7 @@ export default function CycleDetailPage() {
   if (isLoading) {
     return (
       <div style={{ padding: '2rem 2.5rem' }}>
-        <p style={{ color: 'var(--text-muted)' }}>Cargando ciclo...</p>
+        <p style={{ color: 'var(--text-muted)' }}>{t('evaluaciones.detail.loading')}</p>
       </div>
     );
   }
@@ -213,13 +213,13 @@ export default function CycleDetailPage() {
   if (isError || !cycle) {
     return (
       <div style={{ padding: '2rem 2.5rem' }}>
-        <p style={{ color: 'var(--danger)' }}>Error al cargar el ciclo de evaluaci&oacute;n.</p>
+        <p style={{ color: 'var(--danger)' }}>{t('evaluaciones.detail.loadError')}</p>
         <button
           className="btn-ghost"
           onClick={() => router.push('/dashboard/evaluaciones')}
           style={{ marginTop: '1rem' }}
         >
-          &larr; Volver a evaluaciones
+          &larr; {t('evaluaciones.detail.backToEvals')}
         </button>
       </div>
     );
@@ -279,7 +279,7 @@ export default function CycleDetailPage() {
           onClick={() => router.push('/dashboard/evaluaciones')}
           style={{ fontSize: '0.82rem', padding: '0.3rem 0.65rem' }}
         >
-          &larr; Volver a evaluaciones
+          &larr; {t('evaluaciones.detail.backToEvals')}
         </button>
       </div>
 
@@ -316,7 +316,7 @@ export default function CycleDetailPage() {
                 onClick={openEdit}
                 style={{ fontSize: '0.82rem' }}
               >
-                ✏️ Editar ciclo
+                {t('evaluaciones.detail.editCycle')}
               </button>
             )}
             {cycle.status === 'draft' && (
@@ -326,7 +326,7 @@ export default function CycleDetailPage() {
                 disabled={launching}
                 style={{ opacity: launching ? 0.6 : 1 }}
               >
-                {launching ? 'Lanzando...' : 'Lanzar ciclo'}
+                {launching ? t('evaluaciones.detail.launching') : t('evaluaciones.detail.launchCycle')}
               </button>
             )}
             {cycle.status === 'active' && (
@@ -334,11 +334,11 @@ export default function CycleDetailPage() {
                 <button
                   className="btn-ghost"
                   onClick={() =>
-                    toast.success('Recordatorios enviados a los participantes pendientes.')
+                    toast.success(t('evaluaciones.detail.reminderSent'))
                   }
                   style={{ fontSize: '0.85rem' }}
                 >
-                  Enviar recordatorio
+                  {t('evaluaciones.detail.sendReminder')}
                 </button>
                 <button
                   className="btn-primary"
@@ -349,7 +349,7 @@ export default function CycleDetailPage() {
                     background: 'var(--danger)',
                   }}
                 >
-                  {closing ? 'Cerrando...' : 'Cerrar ciclo'}
+                  {closing ? t('evaluaciones.detail.closing') : t('evaluaciones.detail.closeCycle')}
                 </button>
               </>
             )}
@@ -366,7 +366,7 @@ export default function CycleDetailPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Nombre del ciclo
+                  {t('evaluaciones.detail.cycleName')}
                 </label>
                 <input
                   className="input"
@@ -377,7 +377,7 @@ export default function CycleDetailPage() {
               </div>
               <div>
                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Fecha de inicio
+                  {t('evaluaciones.detail.startDate')}
                 </label>
                 <input
                   className="input"
@@ -388,7 +388,7 @@ export default function CycleDetailPage() {
               </div>
               <div>
                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Fecha de cierre
+                  {t('evaluaciones.detail.endDate')}
                 </label>
                 <input
                   className="input"
@@ -399,7 +399,7 @@ export default function CycleDetailPage() {
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Descripción
+                  {t('evaluaciones.detail.descriptionLabel')}
                 </label>
                 <textarea
                   className="input"
@@ -421,14 +421,14 @@ export default function CycleDetailPage() {
                 disabled={editSaving}
                 style={{ opacity: editSaving ? 0.6 : 1 }}
               >
-                {editSaving ? 'Guardando...' : 'Guardar cambios'}
+                {editSaving ? t('common.saving') : t('common.save')}
               </button>
               <button
                 className="btn-ghost"
                 onClick={() => setEditing(false)}
                 disabled={editSaving}
               >
-                Cancelar
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -457,7 +457,7 @@ export default function CycleDetailPage() {
                 </svg>
               </div>
               <div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>Inicio</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>{t('evaluaciones.detail.start')}</div>
                 <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {new Date(cycle.startDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </div>
@@ -480,7 +480,7 @@ export default function CycleDetailPage() {
                 </svg>
               </div>
               <div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>Cierre</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>{t('evaluaciones.detail.end')}</div>
                 <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {new Date(cycle.endDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </div>
@@ -501,7 +501,7 @@ export default function CycleDetailPage() {
               </svg>
             </div>
             <div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>Asignaciones</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>{t('evaluaciones.detail.assignments')}</div>
               <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 {completedAssignments}/{totalAssignments}
                 {totalAssignments > 0 && (
@@ -527,9 +527,9 @@ export default function CycleDetailPage() {
                 </svg>
               </div>
               <div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>Tipo</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.15rem' }}>{t('evaluaciones.detail.typeLabel')}</div>
                 <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Evaluación {cycle.type}°
+                  {t('evaluaciones.detail.evaluation')} {cycle.type}°
                 </div>
               </div>
             </div>
@@ -609,16 +609,16 @@ export default function CycleDetailPage() {
       </div>
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Detalle del Ciclo de Evaluación</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('evaluaciones.detail.guideTitle')}</h3>
           <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
-            <li><strong>¿Qué puedo hacer aquí?</strong> Administrar un ciclo de evaluación — ver su estado, gestionar asignaciones de evaluadores, lanzar o cerrar el ciclo.</li>
-            <li><strong>Estados del ciclo:</strong> Borrador (se pueden editar asignaciones), Activo (evaluadores completan sus formularios), Pausado (se detiene temporalmente), Cerrado (resultados finales disponibles).</li>
-            <li><strong>Asignaciones automáticas:</strong> El botón &quot;Generar asignaciones&quot; crea automáticamente las evaluaciones según el tipo de ciclo (90°: solo jefe, 180°: jefe+auto, 270°: jefe+auto+pares manuales, 360°: jefe+auto+pares+reportes directos).</li>
-            <li><strong>Asignación de pares:</strong> Para ciclos 270° y 360°, debe agregar evaluadores par manualmente o usar &quot;Sugerir pares&quot; que recomienda personas del mismo nivel jerárquico.</li>
-            <li><strong>Lanzamiento:</strong> Al lanzar el ciclo, se envían notificaciones por correo a todos los evaluadores. Se crean las asignaciones definitivas a partir de las pre-asignaciones.</li>
+            <li>{t('evaluaciones.detail.guideManage')}</li>
+            <li>{t('evaluaciones.detail.guideStates')}</li>
+            <li>{t('evaluaciones.detail.guideAutoAssign')}</li>
+            <li>{t('evaluaciones.detail.guidePeers')}</li>
+            <li>{t('evaluaciones.detail.guideLaunch')}</li>
           </ul>
           <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores pueden gestionar ciclos y asignaciones.
+            {t('evaluaciones.detail.guidePermissions')}
           </div>
         </div>
       )}
@@ -637,9 +637,9 @@ export default function CycleDetailPage() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
-                <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>{'Asignaci\u00f3n de Evaluadores'}</h2>
+                <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>{t('evaluaciones.detail.assignEvaluators')}</h2>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                  {'Configura qui\u00e9n eval\u00faa a qui\u00e9n antes de lanzar el ciclo'}
+                  {t('evaluaciones.detail.assignDesc')}
                 </p>
                 <p style={{ fontSize: '0.72rem', color: 'var(--accent)', marginTop: '0.25rem', fontWeight: 600 }}>
                   {'Tipo: '}{cycle.type === '90' ? '90\u00b0 (solo jefe)' : cycle.type === '180' ? '180\u00b0 (jefe + auto)' : cycle.type === '270' ? '270\u00b0 (jefe + auto + pares)' : '360\u00b0 (todos)'}{' \u2014 Relaciones permitidas: '}{allowedRelations.map((r) => r.label).join(', ') || 'Cargando...'}
@@ -651,7 +651,7 @@ export default function CycleDetailPage() {
                 disabled={autoGenerating}
                 style={{ fontSize: '0.82rem', padding: '0.45rem 1rem', whiteSpace: 'nowrap' }}
               >
-                {autoGenerating ? 'Generando...' : '\u26a1 Generar Asignaciones'}
+                {autoGenerating ? t('evaluaciones.detail.generating') : `\u26a1 ${t('evaluaciones.detail.generateAssignments')}`}
               </button>
             </div>
           </div>
@@ -662,7 +662,7 @@ export default function CycleDetailPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.5rem', marginBottom: '0.75rem', paddingTop: '0.75rem' }}>
                 <input
                   className="input"
-                  placeholder="Buscar evaluado..."
+                  placeholder={t('evaluaciones.detail.searchEvaluated')}
                   value={peerFilterSearch}
                   onChange={(e) => setPeerFilterSearch(e.target.value)}
                   style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
@@ -674,7 +674,7 @@ export default function CycleDetailPage() {
                     onChange={(e) => setPeerFilterDept(e.target.value)}
                     style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
                   >
-                    <option value="">Todos los departamentos</option>
+                    <option value="">{t('common.allDepartments')}</option>
                     {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 )}
@@ -684,7 +684,7 @@ export default function CycleDetailPage() {
                     onClick={() => { setPeerFilterSearch(''); setPeerFilterDept(''); }}
                     style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', color: 'var(--text-muted)' }}
                   >
-                    {'✕ Limpiar'}
+                    {`✕ ${t('evaluaciones.detail.cleanFilters')}`}
                   </button>
                 )}
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', alignSelf: 'center', marginLeft: 'auto' }}>
@@ -694,7 +694,7 @@ export default function CycleDetailPage() {
 
               {filteredPeerEntries.length === 0 && (
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '0.5rem 0' }}>
-                  {'Sin resultados para los filtros aplicados.'}
+                  {t('evaluaciones.detail.noFilterResults')}
                 </p>
               )}
 
@@ -763,7 +763,7 @@ export default function CycleDetailPage() {
                           disabled={removePeer.isPending}
                           style={{ fontSize: '0.75rem', color: 'var(--danger)', padding: '0.2rem 0.5rem' }}
                         >
-                          &times; Eliminar
+                          &times; {t('evaluaciones.detail.remove')}
                         </button>
                       </div>
                     ))}
@@ -775,7 +775,7 @@ export default function CycleDetailPage() {
 
           {peerList.length === 0 && (
             <div style={{ padding: '1.25rem 1.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              {'No hay evaluadores asignados a\u00fan. Usa "Generar Asignaciones" o agrega manualmente antes de lanzar el ciclo.'}
+              {t('evaluaciones.detail.noAssignments')}
             </div>
           )}
 
@@ -792,7 +792,7 @@ export default function CycleDetailPage() {
           >
             <div style={{ minWidth: '140px' }}>
               <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                {'Relaci\u00f3n'}
+                {t('evaluaciones.detail.relation')}
               </label>
               <select
                 value={peerRelationType}
@@ -810,7 +810,7 @@ export default function CycleDetailPage() {
             </div>
             <div style={{ flex: 1, minWidth: '160px' }}>
               <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                Evaluado
+                {t('evaluaciones.detail.evaluatee')}
               </label>
               <select
                 value={peerEvaluateeId}
@@ -835,7 +835,7 @@ export default function CycleDetailPage() {
             {peerRelationType !== 'self' && (
               <div style={{ flex: 1, minWidth: '160px' }}>
                 <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                  Evaluador
+                  {t('evaluaciones.detail.evaluator')}
                 </label>
                 <select
                   value={peerEvaluatorId}
@@ -866,7 +866,7 @@ export default function CycleDetailPage() {
                 opacity: !peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) ? 0.5 : 1,
               }}
             >
-              {addPeer.isPending ? 'Agregando...' : 'Agregar'}
+              {addPeer.isPending ? t('common.saving') : t('evaluaciones.detail.addAssignment')}
             </button>
             {peerEvaluateeId && (
               <button
@@ -884,7 +884,7 @@ export default function CycleDetailPage() {
                 disabled={loadingSuggestions}
                 style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }}
               >
-                {loadingSuggestions ? 'Buscando...' : 'Sugerir pares'}
+                {loadingSuggestions ? t('evaluaciones.detail.loadingSuggestions') : t('evaluaciones.detail.suggestPeers')}
               </button>
             )}
           </div>
@@ -893,7 +893,7 @@ export default function CycleDetailPage() {
           {suggestions.length > 0 && suggestingFor && (
             <div style={{ padding: '0.75rem 1.5rem 1rem', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                Pares sugeridos (mismo nivel jerárquico)
+                {t('evaluaciones.detail.suggestedPeers')}
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 {suggestions.map((s: any) => (
@@ -921,7 +921,7 @@ export default function CycleDetailPage() {
               </div>
               <button onClick={() => { setSuggestions([]); setSuggestingFor(null); }}
                 style={{ marginTop: '0.5rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Cerrar sugerencias
+                {t('common.close')}
               </button>
             </div>
           )}
@@ -943,7 +943,7 @@ export default function CycleDetailPage() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>
-                  <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Asignaciones</h2>
+                  <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>{t('evaluaciones.detail.assignmentsTable')}</h2>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
                     {filteredAssignments.length} de {assignmentList.length} asignaciones
                   </p>
@@ -953,7 +953,7 @@ export default function CycleDetailPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.5rem', marginTop: '0.75rem' }}>
                 <input
                   className="input"
-                  placeholder="Buscar nombre..."
+                  placeholder={t('evaluaciones.detail.filterSearch')}
                   value={assignFilterSearch}
                   onChange={(e) => setAssignFilterSearch(e.target.value)}
                   style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
@@ -965,7 +965,7 @@ export default function CycleDetailPage() {
                     onChange={(e) => setAssignFilterDept(e.target.value)}
                     style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
                   >
-                    <option value="">Todos los departamentos</option>
+                    <option value="">{t('common.allDepartments')}</option>
                     {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 )}
@@ -976,7 +976,7 @@ export default function CycleDetailPage() {
                     onChange={(e) => setAssignFilterRelation(e.target.value)}
                     style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
                   >
-                    <option value="">Todas las relaciones</option>
+                    <option value="">{t('evaluaciones.detail.filterRelation')}</option>
                     {uniqueRelations.map((r) => (
                       <option key={r} value={r}>{relationLabels[r] || r}</option>
                     ))}
@@ -988,11 +988,11 @@ export default function CycleDetailPage() {
                   onChange={(e) => setAssignFilterStatus(e.target.value)}
                   style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}
                 >
-                  <option value="">Todos los estados</option>
-                  <option value="pending">Pendiente</option>
-                  <option value="in_progress">En progreso</option>
-                  <option value="completed">Completada</option>
-                  <option value="submitted">Enviada</option>
+                  <option value="">{t('evaluaciones.detail.filterStatus')}</option>
+                  <option value="pending">{t('status.assignment.pending')}</option>
+                  <option value="in_progress">{t('status.assignment.in_progress')}</option>
+                  <option value="completed">{t('status.assignment.completed')}</option>
+                  <option value="submitted">{t('status.assignment.submitted')}</option>
                 </select>
                 {(assignFilterSearch || assignFilterDept || assignFilterStatus || assignFilterRelation) && (
                   <button
@@ -1000,7 +1000,7 @@ export default function CycleDetailPage() {
                     onClick={() => { setAssignFilterSearch(''); setAssignFilterDept(''); setAssignFilterStatus(''); setAssignFilterRelation(''); }}
                     style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', color: 'var(--text-muted)' }}
                   >
-                    {'✕ Limpiar'}
+                    {`✕ ${t('evaluaciones.detail.cleanFilters')}`}
                   </button>
                 )}
               </div>
@@ -1009,7 +1009,7 @@ export default function CycleDetailPage() {
             <div style={{ padding: '0 1.5rem 1rem' }}>
               {filteredAssignments.length === 0 ? (
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '1rem 0' }}>
-                  Sin resultados para los filtros aplicados.
+                  {t('evaluaciones.detail.noFilterResults')}
                 </p>
               ) : (() => {
                 // Group by evaluateeId

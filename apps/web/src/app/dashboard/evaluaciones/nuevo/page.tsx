@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useCreateCycle } from '@/hooks/useCycles';
 import { useTemplates } from '@/hooks/useTemplates';
-
-const STEPS = ['Información', 'Configuración', 'Plantilla', 'Revisión'];
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -18,8 +17,10 @@ const labelStyle: React.CSSProperties = {
 };
 
 export default function NuevoCicloPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const createCycle = useCreateCycle();
+  const STEPS = [t('evaluaciones.nuevo.stepInfo'), t('evaluaciones.nuevo.stepConfig'), t('evaluaciones.nuevo.stepTemplate'), t('evaluaciones.nuevo.stepReview')];
   const { data: templates, isLoading: loadingTemplates } = useTemplates();
 
   const [step, setStep] = useState(1);
@@ -78,13 +79,13 @@ export default function NuevoCicloPage() {
           onClick={() => router.push('/dashboard/evaluaciones')}
           style={{ marginBottom: '0.75rem', fontSize: '0.82rem', padding: '0.3rem 0.65rem' }}
         >
-          &larr; Volver a evaluaciones
+          &larr; {t('evaluaciones.nuevo.backToEvals')}
         </button>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-          Nuevo ciclo de evaluaci&oacute;n
+          {t('evaluaciones.nuevo.title')}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Configura un nuevo ciclo en 4 pasos
+          {t('evaluaciones.nuevo.subtitle')}
         </p>
       </div>
 
@@ -168,27 +169,27 @@ export default function NuevoCicloPage() {
         {step === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-              Informaci&oacute;n b&aacute;sica
+              {t('evaluaciones.nuevo.basicInfo')}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
-              Define el nombre y descripci&oacute;n del ciclo de evaluaci&oacute;n
+              {t('evaluaciones.nuevo.basicInfoDesc')}
             </p>
             <div>
-              <label style={labelStyle}>Nombre del ciclo *</label>
+              <label style={labelStyle}>{t('evaluaciones.nuevo.cycleName')}</label>
               <input
                 className="input"
                 type="text"
-                placeholder="Ej. Evaluación Semestral Q1 2026"
+                placeholder={t('evaluaciones.nuevo.cycleNamePlaceholder')}
                 value={form.name}
                 onChange={(e) => set('name', e.target.value)}
               />
             </div>
             <div>
-              <label style={labelStyle}>Descripci&oacute;n</label>
+              <label style={labelStyle}>{t('evaluaciones.nuevo.description')}</label>
               <textarea
                 className="input"
                 rows={4}
-                placeholder="Describe el propósito de este ciclo de evaluación..."
+                placeholder={t('evaluaciones.nuevo.descriptionPlaceholder')}
                 value={form.description}
                 onChange={(e) => set('description', e.target.value)}
                 style={{ resize: 'vertical', minHeight: '100px' }}
@@ -201,22 +202,22 @@ export default function NuevoCicloPage() {
         {step === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-              Configuraci&oacute;n del ciclo
+              {t('evaluaciones.nuevo.cycleConfig')}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
-              Selecciona el tipo de evaluaci&oacute;n y el rango de fechas
+              {t('evaluaciones.nuevo.cycleConfigDesc')}
             </p>
             <div>
-              <label style={labelStyle}>Tipo de evaluaci&oacute;n</label>
+              <label style={labelStyle}>{t('evaluaciones.nuevo.evalType')}</label>
               <select
                 className="input"
                 value={form.type}
                 onChange={(e) => set('type', e.target.value)}
               >
-                <option value="90">90&deg; &mdash; Jefatura directa</option>
-                <option value="180">180&deg; &mdash; Jefatura + Autoevaluaci&oacute;n</option>
-                <option value="270">270&deg; &mdash; Jefatura + Auto + Pares</option>
-                <option value="360">360&deg; &mdash; Evaluaci&oacute;n completa</option>
+                <option value="90">{t('evaluaciones.nuevo.type90Desc')}</option>
+                <option value="180">{t('evaluaciones.nuevo.type180Desc')}</option>
+                <option value="270">{t('evaluaciones.nuevo.type270Desc')}</option>
+                <option value="360">{t('evaluaciones.nuevo.type360Desc')}</option>
               </select>
               {/* Type description guide */}
               <div style={{
@@ -229,23 +230,12 @@ export default function NuevoCicloPage() {
                 color: 'var(--text-secondary)',
                 lineHeight: 1.65,
               }}>
-                {form.type === '90' && (
-                  <><strong style={{ color: 'var(--accent)' }}>90&deg; &mdash; Solo jefatura:</strong>{' '}El encargado directo eval&uacute;a al colaborador. Es el tipo m&aacute;s simple. No incluye autoevaluaci&oacute;n ni evaluaci&oacute;n de pares. Ideal para evaluaciones r&aacute;pidas o primeros ciclos.</>
-                )}
-                {form.type === '180' && (
-                  <><strong style={{ color: 'var(--accent)' }}>180&deg; &mdash; Jefatura + Autoevaluaci&oacute;n:</strong>{' '}El colaborador se autoevalúa y también es evaluado por su encargado directo. Fomenta la reflexi&oacute;n personal y la alineaci&oacute;n de percepciones entre jefe y colaborador.</>
-                )}
-                {form.type === '270' && (
-                  <><strong style={{ color: 'var(--accent)' }}>270&deg; &mdash; Jefatura + Auto + Pares:</strong>{' '}Incluye 180&deg; m&aacute;s la evaluaci&oacute;n de compa&ntilde;eros del equipo (pares). Ofrece una visi&oacute;n m&aacute;s completa del desempe&ntilde;o considerando perspectivas de colegas de trabajo.</>
-                )}
-                {form.type === '360' && (
-                  <><strong style={{ color: 'var(--accent)' }}>360&deg; &mdash; Evaluaci&oacute;n completa:</strong>{' '}Incluye 270&deg; m&aacute;s una etapa de calibraci&oacute;n por parte del administrador y entrega de feedback directo al colaborador. Es el proceso m&aacute;s completo, recomendado para evaluaciones anuales de desempe&ntilde;o.</>
-                )}
+                {t(`evaluaciones.nuevo.type${form.type}Detail`)}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
-                <label style={labelStyle}>Fecha de inicio *</label>
+                <label style={labelStyle}>{t('evaluaciones.nuevo.startDate')}</label>
                 <input
                   className="input"
                   type="date"
@@ -254,7 +244,7 @@ export default function NuevoCicloPage() {
                 />
               </div>
               <div>
-                <label style={labelStyle}>Fecha de cierre *</label>
+                <label style={labelStyle}>{t('evaluaciones.nuevo.endDate')}</label>
                 <input
                   className="input"
                   type="date"
@@ -270,18 +260,18 @@ export default function NuevoCicloPage() {
         {step === 3 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-              Seleccionar plantilla
+              {t('evaluaciones.nuevo.selectTemplate')}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
-              Elige la plantilla de preguntas que se usar&aacute; en este ciclo
+              {t('evaluaciones.nuevo.selectTemplateDesc')}
             </p>
             {loadingTemplates ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                Cargando plantillas...
+                {t('evaluaciones.nuevo.loadingTemplates')}
               </p>
             ) : !Array.isArray(templates) || templates.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                No hay plantillas disponibles. Crea una plantilla primero.
+                {t('evaluaciones.nuevo.noTemplates')}
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -350,10 +340,10 @@ export default function NuevoCicloPage() {
         {step === 4 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-              Revisi&oacute;n final
+              {t('evaluaciones.nuevo.reviewTitle')}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
-              Confirma los datos antes de crear el ciclo
+              {t('evaluaciones.nuevo.reviewDesc')}
             </p>
 
             <div
@@ -368,13 +358,13 @@ export default function NuevoCicloPage() {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Nombre</span>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('evaluaciones.nuevo.nameLabel')}</span>
                 <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{form.name}</span>
               </div>
               {form.description && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                    Descripci&oacute;n
+                    {t('evaluaciones.nuevo.descLabel')}
                   </span>
                   <span
                     style={{
@@ -396,11 +386,11 @@ export default function NuevoCicloPage() {
                 }}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Tipo</span>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('evaluaciones.nuevo.typeLabel')}</span>
                 <span className="badge badge-accent">{typeLabels[form.type]}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Per&iacute;odo</span>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('evaluaciones.nuevo.periodLabel')}</span>
                 <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>
                   {form.startDate} &mdash; {form.endDate}
                 </span>
@@ -413,9 +403,9 @@ export default function NuevoCicloPage() {
                 }}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Plantilla</span>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('evaluaciones.nuevo.templateLabel')}</span>
                 <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>
-                  {selectedTemplate?.name || 'No seleccionada'}
+                  {selectedTemplate?.name || t('evaluaciones.nuevo.noTemplate')}
                 </span>
               </div>
             </div>
@@ -431,7 +421,7 @@ export default function NuevoCicloPage() {
                   fontSize: '0.85rem',
                 }}
               >
-                Error al crear el ciclo. Int&eacute;ntalo de nuevo.
+                {t('evaluaciones.nuevo.createError')}
               </div>
             )}
           </div>
@@ -450,7 +440,7 @@ export default function NuevoCicloPage() {
               onClick={() => setStep((s) => s - 1)}
               style={{ fontSize: '0.875rem' }}
             >
-              &larr; Anterior
+              &larr; {t('evaluaciones.nuevo.previous')}
             </button>
           )}
         </div>
@@ -462,7 +452,7 @@ export default function NuevoCicloPage() {
               onClick={() => setStep((s) => s + 1)}
               style={{ opacity: canNext() ? 1 : 0.5 }}
             >
-              Siguiente &rarr;
+              {t('evaluaciones.nuevo.next')} &rarr;
             </button>
           ) : (
             <button
@@ -471,7 +461,7 @@ export default function NuevoCicloPage() {
               disabled={createCycle.isPending}
               style={{ opacity: createCycle.isPending ? 0.6 : 1 }}
             >
-              {createCycle.isPending ? 'Creando...' : 'Crear ciclo de evaluación'}
+              {createCycle.isPending ? t('evaluaciones.nuevo.creating') : t('evaluaciones.nuevo.createCycle')}
             </button>
           )}
         </div>

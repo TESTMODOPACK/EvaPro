@@ -57,10 +57,10 @@ const QUESTION_TYPES = [
   { value: 'multiple_choice', label: 'Opción Múltiple' },
 ];
 
-const STATUS_MAP: Record<string, { label: string; badge: string }> = {
-  draft: { label: 'Borrador', badge: 'badge-ghost' },
-  active: { label: 'Activa', badge: 'badge-success' },
-  closed: { label: 'Cerrada', badge: 'badge-warning' },
+const STATUS_BADGE: Record<string, string> = {
+  draft: 'badge-ghost',
+  active: 'badge-success',
+  closed: 'badge-warning',
 };
 
 function EncuestasClimaPageContent() {
@@ -103,7 +103,7 @@ function EncuestasClimaPageContent() {
       const pending = await api.surveys.getMyPending(token);
       setPendingSurveys(pending);
     } catch (e: any) {
-      toast(e.message || 'Error al cargar encuestas', 'error');
+      toast(e.message || t('surveys.loadError'), 'error');
     } finally {
       setLoading(false);
     }
@@ -114,7 +114,7 @@ function EncuestasClimaPageContent() {
   const handleCreate = async () => {
     if (!token || !form.title.trim()) return;
     if (form.questions.length === 0) {
-      toast('La encuesta debe tener al menos una pregunta', 'error');
+      toast(t('surveys.needOneQuestion'), 'error');
       return;
     }
     setCreating(true);
@@ -124,12 +124,12 @@ function EncuestasClimaPageContent() {
         questions: form.questions.map((q, i) => ({ ...q, sortOrder: i })),
       };
       await api.surveys.create(token, dto);
-      toast('Encuesta creada exitosamente', 'success');
+      toast(t('surveys.createdSuccess'), 'success');
       setShowCreate(false);
       resetForm();
       loadData();
     } catch (e: any) {
-      toast(e.message || 'Error al crear encuesta', 'error');
+      toast(e.message || t('surveys.createError'), 'error');
     } finally {
       setCreating(false);
     }
@@ -139,10 +139,10 @@ function EncuestasClimaPageContent() {
     if (!token) return;
     try {
       await api.surveys.launch(token, id);
-      toast('Encuesta lanzada exitosamente', 'success');
+      toast(t('surveys.launchedSuccess'), 'success');
       loadData();
     } catch (e: any) {
-      toast(e.message || 'Error al lanzar encuesta', 'error');
+      toast(e.message || t('surveys.launchError'), 'error');
     }
   };
 
@@ -150,10 +150,10 @@ function EncuestasClimaPageContent() {
     if (!token) return;
     try {
       await api.surveys.close(token, id);
-      toast('Encuesta cerrada exitosamente', 'success');
+      toast(t('surveys.closedSuccess'), 'success');
       loadData();
     } catch (e: any) {
-      toast(e.message || 'Error al cerrar encuesta', 'error');
+      toast(e.message || t('surveys.closeError'), 'error');
     }
   };
 
@@ -161,11 +161,11 @@ function EncuestasClimaPageContent() {
     if (!token) return;
     try {
       await api.surveys.delete(token, id);
-      toast('Encuesta eliminada', 'success');
+      toast(t('surveys.deletedSuccess'), 'success');
       setConfirmDelete(null);
       loadData();
     } catch (e: any) {
-      toast(e.message || 'Error al eliminar', 'error');
+      toast(e.message || t('surveys.deleteError'), 'error');
     }
   };
 
@@ -223,7 +223,7 @@ function EncuestasClimaPageContent() {
             {t('surveys.title', 'Encuestas de Clima')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Mide el compromiso y satisfacción de tu equipo
+            {t('surveys.subtitle')}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -235,7 +235,7 @@ function EncuestasClimaPageContent() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              Nueva Encuesta
+              {t('surveys.create')}
             </button>
           )}
         </div>
@@ -245,60 +245,51 @@ function EncuestasClimaPageContent() {
       {showGuide && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-            Guía de Encuestas de Clima
+            {t('surveys.guide.title')}
           </h3>
 
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-              Qué es una encuesta de clima?
+              {t('surveys.guide.whatIs')}
             </div>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-              Una encuesta de clima mide el compromiso, satisfacción y bienestar de los colaboradores. Los resultados permiten identificar fortalezas y áreas de mejora en la organización.
+              {t('surveys.guide.whatIsDesc')}
             </p>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Tipos de pregunta</div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('surveys.guide.questionTypes')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Likert 1-5:</strong> Escala de acuerdo (Muy en desacuerdo a Muy de acuerdo)
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>NPS (0-10):</strong> Net Promoter Score, mide la probabilidad de recomendar la empresa
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Texto Abierto:</strong> Respuesta libre para capturar feedback cualitativo
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Opción Múltiple:</strong> Selección de una o varias opciones predefinidas
-              </div>
+              {[
+                { label: 'Likert 1-5:', desc: t('surveys.guide.likertDesc') },
+                { label: 'NPS (0-10):', desc: t('surveys.guide.npsDesc') },
+                { label: t('surveys.questionTypeLabels.open_text') + ':', desc: t('surveys.guide.openTextDesc') },
+                { label: t('surveys.questionTypeLabels.multiple_choice') + ':', desc: t('surveys.guide.multipleChoiceDesc') },
+              ].map((item, i) => (
+                <div key={i} style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <strong>{item.label}</strong> {item.desc}
+                </div>
+              ))}
             </div>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Flujo</div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('surveys.guide.flow')}</div>
             <ol style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
-              <li>Crear encuesta (borrador) con preguntas y configuración</li>
-              <li>Lanzar encuesta (se notifica a los colaboradores)</li>
-              <li>Colaboradores responden (anónimamente si está configurado)</li>
-              <li>Cerrar encuesta y ver resultados</li>
-              <li>Generar análisis con IA (plan Enterprise)</li>
-              <li>Crear iniciativas de desarrollo desde el análisis</li>
+              {['flowStep1', 'flowStep2', 'flowStep3', 'flowStep4', 'flowStep5', 'flowStep6'].map((key) => (
+                <li key={key}>{t(`surveys.guide.${key}`)}</li>
+              ))}
             </ol>
           </div>
 
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Permisos</div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('surveys.guide.permissions')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Administrador:</strong> Crea, lanza, cierra encuestas. Ve resultados completos y genera análisis IA
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Encargado:</strong> Ve resultados de su departamento
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Colaborador:</strong> Responde encuestas asignadas
-              </div>
+              {['permAdmin', 'permManager', 'permEmployee'].map((key) => (
+                <div key={key} style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {t(`surveys.guide.${key}`)}
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -307,7 +298,7 @@ function EncuestasClimaPageContent() {
       {/* ─── CREATE FORM (inline, not modal) ─── */}
       {showCreate && isAdmin && (
         <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: '0 0 1.25rem' }}>Nueva Encuesta de Clima</h3>
+          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: '0 0 1.25rem' }}>{t('surveys.newSurvey')}</h3>
 
           {/* Basic info */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
@@ -332,13 +323,13 @@ function EncuestasClimaPageContent() {
             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
                 <input type="checkbox" checked={form.isAnonymous} onChange={(e) => setForm((f) => ({ ...f, isAnonymous: e.target.checked }))} />
-                Respuestas anonimas
+                {t('surveys.anonymousResponses')}
               </label>
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audiencia</label>
                 <select className="input" value={form.targetAudience} onChange={(e) => setForm((f) => ({ ...f, targetAudience: e.target.value as any }))}>
-                  <option value="all">Todos los colaboradores</option>
-                  <option value="by_department">Por departamento</option>
+                  <option value="all">{t('surveys.audienceAll')}</option>
+                  <option value="by_department">{t('surveys.audienceByDept')}</option>
                 </select>
               </div>
             </div>
@@ -369,13 +360,13 @@ function EncuestasClimaPageContent() {
           {/* Questions builder */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>Preguntas ({form.questions.length})</h4>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>{t('surveys.questionsCount', { count: form.questions.length })}</h4>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setForm((f) => ({ ...f, questions: [...TEMPLATE_QUESTIONS] }))}>
-                  Usar plantilla
+                  {t('surveys.useTemplate')}
                 </button>
                 <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={addQuestion}>
-                  + Agregar
+                  {t('surveys.addQuestion')}
                 </button>
               </div>
             </div>
@@ -400,7 +391,7 @@ function EncuestasClimaPageContent() {
                         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <select className="input" style={{ flex: 1, minWidth: 120, fontSize: '0.8rem' }} value={q.questionType} onChange={(e) => updateQuestion(i, 'questionType', e.target.value)}>
-                        {QUESTION_TYPES.map((tp) => <option key={tp.value} value={tp.value}>{tp.label}</option>)}
+                        {QUESTION_TYPES.map((tp) => <option key={tp.value} value={tp.value}>{t(`surveys.questionTypeLabels.${tp.value}`, tp.label)}</option>)}
                       </select>
                     </div>
                   </div>
@@ -412,9 +403,9 @@ function EncuestasClimaPageContent() {
 
           {/* Actions */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-            <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</button>
+            <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => { setShowCreate(false); resetForm(); }}>{t('common.cancel')}</button>
             <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={handleCreate} disabled={creating || !form.title.trim()}>
-              {creating ? 'Creando...' : 'Crear Encuesta'}
+              {creating ? t('surveys.creating') : t('surveys.createSurvey')}
             </button>
           </div>
         </div>
@@ -425,7 +416,7 @@ function EncuestasClimaPageContent() {
         <div className="animate-fade-up-delay-1" style={{ marginBottom: '2rem' }}>
           <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--warning)', display: 'inline-block' }} />
-            Encuestas Pendientes
+            {t('surveys.pendingSurveys')}
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {pendingSurveys.map((s) => (
@@ -433,19 +424,19 @@ function EncuestasClimaPageContent() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
                     <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{s.title}</span>
-                    {s.isAnonymous && <span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>Anónima</span>}
+                    {s.isAnonymous && <span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{t('surveys.anonymousLabel')}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     {s.description && (
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{s.description}</span>
                     )}
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      Fecha limite: <strong style={{ color: 'var(--warning)' }}>{new Date(s.endDate).toLocaleDateString('es-ES')}</strong>
+                      {t('surveys.dueDate')}: <strong style={{ color: 'var(--warning)' }}>{new Date(s.endDate).toLocaleDateString('es-ES')}</strong>
                     </span>
                   </div>
                 </div>
                 <Link href={`/dashboard/encuestas-clima/${s.id}/responder`} className="btn-primary" style={{ fontSize: '0.82rem', textDecoration: 'none' }}>
-                  Responder
+                  {t('surveys.respondBtn')}
                 </Link>
               </div>
             ))}
@@ -458,7 +449,7 @@ function EncuestasClimaPageContent() {
         <div className="animate-fade-up-delay-2">
           <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
-            Todas las Encuestas
+            {t('surveys.allSurveys')}
           </h2>
 
           {surveys.length === 0 ? (
@@ -470,10 +461,10 @@ function EncuestasClimaPageContent() {
                 </svg>
               </div>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-                No hay encuestas creadas
+                {t('surveys.noSurveysCreated')}
               </p>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                Crea tu primera encuesta de clima para comenzar
+                {t('surveys.createFirst')}
               </p>
             </div>
           ) : (
@@ -483,13 +474,13 @@ function EncuestasClimaPageContent() {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
                       <span style={{ fontWeight: 700, fontSize: '0.9rem', flex: 1 }}>{s.title}</span>
-                      <span className={`badge ${STATUS_MAP[s.status]?.badge || 'badge-ghost'}`} style={{ fontSize: '0.65rem' }}>
-                        {STATUS_MAP[s.status]?.label || s.status}
+                      <span className={`badge ${STATUS_BADGE[s.status] || 'badge-ghost'}`} style={{ fontSize: '0.65rem' }}>
+                        {t(`surveys.status.${s.status}`) || s.status}
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      <span>{s.isAnonymous ? 'Anónima' : 'Identificada'}</span>
-                      <span>{s.responseCount || 0} respuestas</span>
+                      <span>{s.isAnonymous ? t('surveys.anonymousLabel') : t('surveys.identifiedLabel')}</span>
+                      <span>{s.responseCount || 0} {t('surveys.responses')}</span>
                       <span>{new Date(s.startDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} - {new Date(s.endDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                     </div>
                   </div>
@@ -497,16 +488,16 @@ function EncuestasClimaPageContent() {
                   <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                     {s.status === 'draft' && (
                       <>
-                        <button onClick={() => handleLaunch(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(22,163,106,0.3)', background: 'rgba(22,163,106,0.08)', color: 'var(--success)', cursor: 'pointer' }}>Lanzar</button>
-                        <button onClick={() => setConfirmDelete(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: 'var(--danger)', cursor: 'pointer' }}>Eliminar</button>
+                        <button onClick={() => handleLaunch(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(22,163,106,0.3)', background: 'rgba(22,163,106,0.08)', color: 'var(--success)', cursor: 'pointer' }}>{t('surveys.launch')}</button>
+                        <button onClick={() => setConfirmDelete(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: 'var(--danger)', cursor: 'pointer' }}>{t('common.delete')}</button>
                       </>
                     )}
                     {s.status === 'active' && (
-                      <button onClick={() => handleClose(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(234,179,8,0.08)', color: 'var(--warning)', cursor: 'pointer' }}>Cerrar</button>
+                      <button onClick={() => handleClose(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(234,179,8,0.08)', color: 'var(--warning)', cursor: 'pointer' }}>{t('surveys.close')}</button>
                     )}
                     {(s.status === 'active' || s.status === 'closed') && (
                       <Link href={`/dashboard/encuestas-clima/${s.id}/resultados`} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(201,147,58,0.3)', background: 'rgba(201,147,58,0.08)', color: 'var(--accent)', cursor: 'pointer', textDecoration: 'none' }}>
-                        Resultados
+                        {t('surveys.results')}
                       </Link>
                     )}
                   </div>
@@ -521,11 +512,11 @@ function EncuestasClimaPageContent() {
       {confirmDelete && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmDelete(null)}>
           <div className="card animate-fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, padding: '1.75rem' }}>
-            <h3 style={{ margin: '0 0 1rem' }}>¿Eliminar encuesta?</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Esta acción no se puede deshacer.</p>
+            <h3 style={{ margin: '0 0 1rem' }}>{t('surveys.deleteConfirm')}</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('surveys.deleteWarning')}</p>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button onClick={() => handleDelete(confirmDelete)} style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Eliminar</button>
+              <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setConfirmDelete(null)}>{t('common.cancel')}</button>
+              <button onClick={() => handleDelete(confirmDelete)} style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>{t('common.delete')}</button>
             </div>
           </div>
         </div>
