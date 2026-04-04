@@ -603,7 +603,29 @@ export class TenantsService {
       summary.push(`${usersCreated} colaboradores creados`);
     }
 
-    // 7. Audit
+    // 7. Auto-create base contracts (draft)
+    try {
+      const contractRepo = this.tenantRepository.manager.getRepository('contracts');
+      const contractTypes = [
+        { type: 'service_agreement', title: 'Contrato de Prestación de Servicios' },
+        { type: 'dpa', title: 'Acuerdo de Procesamiento de Datos (DPA)' },
+        { type: 'terms_conditions', title: 'Términos y Condiciones de Uso' },
+        { type: 'privacy_policy', title: 'Política de Privacidad' },
+      ];
+      for (const ct of contractTypes) {
+        await contractRepo.save(contractRepo.create({
+          tenantId: tenant.id,
+          type: ct.type,
+          title: ct.title,
+          status: 'draft',
+          effectiveDate: data.org.startDate ? new Date(data.org.startDate) : new Date(),
+          createdBy: savedAdmin.id,
+        }));
+      }
+      summary.push(`4 contratos base creados (borrador)`);
+    } catch { /* contracts table may not exist yet */ }
+
+    // 8. Audit
     await this.auditLogRepo.save(this.auditLogRepo.create({
       tenantId: tenant.id,
       userId: null as any,

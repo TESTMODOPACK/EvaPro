@@ -26,14 +26,28 @@ export default function ContratosPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [signModal, setSignModal] = useState<{ documentType: string; documentId: string; documentName: string } | null>(null);
   const [signatureMap, setSignatureMap] = useState<Record<string, any[]>>({});
+  const isSuperAdmin = role === 'super_admin';
 
-  useEffect(() => {
+  // Super admin: create contract form
+  const [showCreate, setShowCreate] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [sending, setSending] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState({
+    tenantId: '', type: 'service_agreement', title: '', description: '', content: '', effectiveDate: new Date().toISOString().split('T')[0],
+  });
+
+  const loadData = () => {
     if (!token) return;
-    api.contracts.list(token)
-      .then(setContracts)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [token]);
+    api.contracts.list(token).then(setContracts).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    if (isSuperAdmin) {
+      api.contracts.getTemplates(token).then(setTemplates).catch(() => {});
+      api.tenants.list(token).then(setTenants).catch(() => {});
+    }
+  };
+
+  useEffect(() => { loadData(); }, [token]);
 
   // Load signatures for each contract
   useEffect(() => {
@@ -63,11 +77,18 @@ export default function ContratosPage() {
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
-      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('contracts.title')}</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {t('contracts.subtitle')}
-        </p>
+      <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('contracts.title')}</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            {t('contracts.subtitle')}
+          </p>
+        </div>
+        {isSuperAdmin && (
+          <button className="btn-primary" onClick={() => setShowCreate(!showCreate)} style={{ fontSize: '0.85rem' }}>
+            {showCreate ? t('common.cancel') : '+ Crear Contrato'}
+          </button>
+        )}
       </div>
 
       {/* Guide */}
@@ -102,6 +123,84 @@ export default function ContratosPage() {
         </div>
       )}
 
+      {/* Create contract form — super_admin only */}
+      {showCreate && isSuperAdmin && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>Crear Contrato</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Tenant selector */}
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Organización *</label>
+              <select value={createForm.tenantId} onChange={(e) => setCreateForm(f => ({ ...f, tenantId: e.target.value }))}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                <option value="">— Seleccionar organización —</option>
+                {tenants.map((t: any) => <option key={t.id} value={t.id}>{t.name} {t.rut ? `(${t.rut})` : ''}</option>)}
+              </select>
+            </div>
+            {/* Type + Template */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Tipo de Contrato *</label>
+                <select value={createForm.type} onChange={(e) => {
+                  const tpl = templates.find((t: any) => t.type === e.target.value);
+                  setCreateForm(f => ({
+                    ...f, type: e.target.value,
+                    title: tpl?.label || '',
+                    content: tpl?.content || '',
+                  }));
+                }}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                  {templates.map((tpl: any) => <option key={tpl.type} value={tpl.type}>{tpl.label}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Fecha Efectiva *</label>
+                <input type="date" value={createForm.effectiveDate} onChange={(e) => setCreateForm(f => ({ ...f, effectiveDate: e.target.value }))}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
+              </div>
+            </div>
+            {/* Title */}
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Título del Contrato *</label>
+              <input type="text" value={createForm.title} onChange={(e) => setCreateForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Ej: Contrato de Prestación de Servicios"
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
+            </div>
+            {/* Content preview/edit */}
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                Contenido del Contrato
+                <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: '0.5rem' }}>(se carga automáticamente desde el template seleccionado)</span>
+              </label>
+              <textarea value={createForm.content} onChange={(e) => setCreateForm(f => ({ ...f, content: e.target.value }))}
+                rows={12}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', lineHeight: 1.6, fontFamily: 'inherit', resize: 'vertical' }} />
+            </div>
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button className="btn-primary" disabled={creating || !createForm.tenantId || !createForm.title}
+                onClick={async () => {
+                  if (!token) return;
+                  setCreating(true);
+                  try {
+                    await api.contracts.create(token, createForm);
+                    setShowCreate(false);
+                    setCreateForm({ tenantId: '', type: 'service_agreement', title: '', description: '', content: '', effectiveDate: new Date().toISOString().split('T')[0] });
+                    loadData();
+                  } catch (e: any) { setError(e.message); }
+                  setCreating(false);
+                }}
+                style={{ fontSize: '0.85rem', opacity: !createForm.tenantId || !createForm.title ? 0.5 : 1 }}>
+                {creating ? t('common.saving') : 'Crear como Borrador'}
+              </button>
+              <button className="btn-ghost" onClick={() => setShowCreate(false)} style={{ fontSize: '0.85rem' }}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Contracts list */}
       {contracts.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
@@ -129,6 +228,7 @@ export default function ContratosPage() {
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{c.title}</div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {isSuperAdmin && c.tenant?.name && <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{c.tenant.name}</span>}
                         <span>{t(`contracts.types.${c.type}`, { defaultValue: c.type })}</span>
                         <span>· v{c.version}</span>
                         {c.effectiveDate && <span>· Desde {new Date(c.effectiveDate).toLocaleDateString('es-CL')}</span>}
@@ -170,7 +270,25 @@ export default function ContratosPage() {
                       </div>
                     )}
 
-                    {/* Sign button */}
+                    {/* Super admin: send to signature */}
+                    {isSuperAdmin && c.status === 'draft' && (
+                      <button className="btn-primary"
+                        disabled={sending === c.id}
+                        onClick={async () => {
+                          if (!token) return;
+                          setSending(c.id);
+                          try {
+                            await api.contracts.sendForSignature(token, c.id);
+                            loadData();
+                          } catch (e: any) { setError(e.message); }
+                          setSending(null);
+                        }}
+                        style={{ fontSize: '0.85rem', marginRight: '0.5rem' }}>
+                        {sending === c.id ? 'Enviando...' : 'Enviar a Firma'}
+                      </button>
+                    )}
+
+                    {/* Sign button — tenant_admin */}
                     {canSign && sigs.length === 0 && (
                       <button className="btn-primary" onClick={() => setSignModal({ documentType: 'contract', documentId: c.id, documentName: c.title })}
                         style={{ fontSize: '0.85rem' }}>
