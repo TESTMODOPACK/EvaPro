@@ -498,18 +498,19 @@ async function seed() {
       manager = userRepo.create({
         email: 'carlos.lopez@evapro.demo', passwordHash: pwHash,
         firstName: 'Carlos', lastName: 'Lopez',
-        role: 'manager', department: 'Tecnología', position: 'Product Manager',
-        isActive: true, tenantId: tenant.id,
+        role: 'manager', department: 'Tecnología', position: 'Gerente de Tecnología',
+        hierarchyLevel: 2, isActive: true, tenantId: tenant.id, managerId: admin.id,
       });
       manager = await userRepo.save(manager);
       console.log('\u2705  Manager created: carlos.lopez@evapro.demo');
     }
 
-    /* ── Employees ───────────────────────────────────────────────────────── */
+    /* ── Employees (realistic hierarchy) ───────────────────────────────── */
     const employeeDefs = [
-      { email: 'ana.martinez@evapro.demo', firstName: 'Ana', lastName: 'Martinez', department: 'Marketing', position: 'Disenadora UX' },
-      { email: 'luis.rodriguez@evapro.demo', firstName: 'Luis', lastName: 'Rodriguez', department: 'Tecnología', position: 'Ingeniero DevOps' },
-      { email: 'sandra.torres@evapro.demo', firstName: 'Sandra', lastName: 'Torres', department: 'Tecnología', position: 'Analista QA' },
+      // Tecnología — reports to Carlos (manager)
+      { email: 'ana.martinez@evapro.demo', firstName: 'Ana', lastName: 'Martinez', department: 'Tecnología', position: 'Diseñadora UX', hierarchyLevel: 6 },
+      { email: 'luis.rodriguez@evapro.demo', firstName: 'Luis', lastName: 'Rodriguez', department: 'Tecnología', position: 'Ingeniero DevOps', hierarchyLevel: 6 },
+      { email: 'sandra.torres@evapro.demo', firstName: 'Sandra', lastName: 'Torres', department: 'Tecnología', position: 'Analista QA', hierarchyLevel: 6 },
     ];
 
     const empUsers: User[] = [];
@@ -526,13 +527,12 @@ async function seed() {
     }
 
     // Ensure ASCII-safe names (fix any old encoding issues)
-    const nameFixMap: Record<string, { firstName: string; lastName: string; department: string; position: string }> = {
-      'carlos.lopez@evapro.demo': { firstName: 'Carlos', lastName: 'Lopez', department: 'Tecnología', position: 'Gerente de Tecnología' },
-      'ana.martinez@evapro.demo': { firstName: 'Ana', lastName: 'Martinez', department: 'Marketing', position: 'Disenadora UX' },
-      'luis.rodriguez@evapro.demo': { firstName: 'Luis', lastName: 'Rodriguez', department: 'Tecnología', position: 'Ingeniero DevOps' },
-      'sandra.torres@evapro.demo': { firstName: 'Sandra', lastName: 'Torres', department: 'Tecnología', position: 'Analista QA' },
-      'admin@evapro.demo': { firstName: 'Admin', lastName: 'EvaPro', department: 'Recursos Humanos', position: 'Encargado del Sistema' },
-      'superadmin@evapro.demo': { firstName: 'Super', lastName: 'Admin', department: 'Tecnología', position: 'Super Administrador' },
+    const nameFixMap: Record<string, { firstName: string; lastName: string; department: string; position: string; hierarchyLevel?: number }> = {
+      'carlos.lopez@evapro.demo': { firstName: 'Carlos', lastName: 'Lopez', department: 'Tecnología', position: 'Gerente de Tecnología', hierarchyLevel: 2 },
+      'ana.martinez@evapro.demo': { firstName: 'Ana', lastName: 'Martinez', department: 'Tecnología', position: 'Diseñadora UX', hierarchyLevel: 6 },
+      'luis.rodriguez@evapro.demo': { firstName: 'Luis', lastName: 'Rodriguez', department: 'Tecnología', position: 'Ingeniero DevOps', hierarchyLevel: 6 },
+      'sandra.torres@evapro.demo': { firstName: 'Sandra', lastName: 'Torres', department: 'Tecnología', position: 'Analista QA', hierarchyLevel: 6 },
+      'admin@evapro.demo': { firstName: 'Admin', lastName: 'EvaPro', department: 'Recursos Humanos', position: 'Encargado del Sistema', hierarchyLevel: 4 },
     };
     for (const [email, fix] of Object.entries(nameFixMap)) {
       const user = await userRepo.findOne({ where: { email, tenantId: tenant.id } });
@@ -542,6 +542,9 @@ async function seed() {
         if (user.lastName !== fix.lastName) { user.lastName = fix.lastName; changed = true; }
         if (user.department !== fix.department) { user.department = fix.department; changed = true; }
         if (user.position !== fix.position) { user.position = fix.position; changed = true; }
+        if (fix.hierarchyLevel && user.hierarchyLevel !== fix.hierarchyLevel) { user.hierarchyLevel = fix.hierarchyLevel; changed = true; }
+        // Ensure manager hierarchy: employees report to Carlos, Carlos reports to Admin
+        if (email === 'carlos.lopez@evapro.demo' && admin && !user.managerId) { user.managerId = admin.id; changed = true; }
         if (changed) { await userRepo.save(user); console.log(`   Fixed data for: ${email}`); }
       }
     }
