@@ -159,6 +159,16 @@ function AnalisisIntegradoContent() {
             </div>
           </div>
           <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Cómo seleccionar los datos?</p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <li>Seleccione <strong>1 encuesta de clima</strong> y <strong>1 o más ciclos de evaluación</strong> del mismo período</li>
+              <li>Si no selecciona nada, se usan automáticamente los datos más recientes</li>
+              <li>Puede comparar una encuesta anual de clima con las 2 evaluaciones semestrales del mismo año</li>
+              <li><strong>Restricción:</strong> La diferencia máxima entre la encuesta y cualquier ciclo es de 1 año</li>
+              <li>Los puntajes de desempeño se promedian entre todos los ciclos seleccionados por departamento</li>
+            </ul>
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
             <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Qué es la correlación?</p>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
               Un coeficiente que mide la relación lineal entre clima y desempeño a nivel departamental: 1.0 = relación perfecta positiva, 0 = sin relación, -1.0 = relación inversa. Valores sobre 0.5 indican que mejorar el clima tiene alto impacto en desempeño.
