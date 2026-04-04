@@ -150,10 +150,17 @@ export default function UsuariosPage() {
     return `${mgr.firstName || ''} ${mgr.lastName || ''}`.trim() || mgr.email;
   };
 
-  // Users who can be managers
-  const managerOptions = allUsers.filter((u: any) =>
-    u.isActive && (u.role === 'manager' || u.role === 'tenant_admin'),
-  );
+  // Users who can be managers — filter by superior hierarchy level
+  const selectedLevel = form.hierarchyLevel ? Number(form.hierarchyLevel) : null;
+  const managerOptions = allUsers.filter((u: any) => {
+    if (!u.isActive) return false;
+    if (u.role !== 'manager' && u.role !== 'tenant_admin') return false;
+    // If the current user has a hierarchy level, only show managers with a superior (lower number) level
+    if (selectedLevel && u.hierarchyLevel) {
+      return u.hierarchyLevel < selectedLevel;
+    }
+    return true;
+  });
 
   const handleCreate = async () => {
     if (!form.email || !form.firstName || !form.lastName || (!editingId && !form.password)) return;
@@ -687,23 +694,6 @@ export default function UsuariosPage() {
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Jefatura directa</label>
-              <select
-                style={inputStyle}
-                value={form.managerId}
-                onChange={(e) => updateField('managerId', e.target.value)}
-              >
-                <option value="">Sin jefatura asignada</option>
-                {managerOptions
-                  .filter((m: any) => m.id !== editingId)
-                  .map((m: any) => (
-                    <option key={m.id} value={m.id}>
-                      {m.firstName} {m.lastName} ({getRoleLabel(m.role)})
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div>
               <label style={labelStyle}>Departamento</label>
               <select
                 style={inputStyle}
@@ -752,6 +742,26 @@ export default function UsuariosPage() {
               ) : (
                 <input style={inputStyle} placeholder="Cargo" value={form.position}
                   onChange={(e) => updateField('position', e.target.value)} />
+              )}
+            </div>
+            <div>
+              <label style={labelStyle}>Jefatura directa</label>
+              <select
+                style={inputStyle}
+                value={form.managerId}
+                onChange={(e) => updateField('managerId', e.target.value)}
+              >
+                <option value="">Sin jefatura asignada</option>
+                {managerOptions
+                  .filter((m: any) => m.id !== editingId)
+                  .map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.firstName} {m.lastName}{m.hierarchyLevel ? ` (Nv.${m.hierarchyLevel})` : ''} — {m.position || getRoleLabel(m.role)}
+                    </option>
+                  ))}
+              </select>
+              {selectedLevel && managerOptions.filter((m: any) => m.id !== editingId).length === 0 && (
+                <p style={{ fontSize: '0.72rem', color: 'var(--warning)', marginTop: '0.2rem' }}>No hay usuarios con nivel jerárquico superior al cargo seleccionado</p>
               )}
             </div>
           </div>
