@@ -208,6 +208,8 @@ export const api = {
       request<Tenant>(`/tenants/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
     deactivate: (token: string, id: string) =>
       request<void>(`/tenants/${id}`, { method: "DELETE" }, token),
+    bulkOnboard: (token: string, data: any) =>
+      request<any>("/tenants/bulk-onboard", { method: "POST", body: JSON.stringify(data) }, token),
     systemStats: (token: string) => request<any>("/tenants/system-stats", {}, token),
     usageMetrics: (token: string) => request<any>("/tenants/usage-metrics", {}, token),
     getAllCustomSettings: (token: string) =>

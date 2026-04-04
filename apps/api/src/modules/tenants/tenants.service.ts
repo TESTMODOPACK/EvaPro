@@ -462,6 +462,156 @@ export class TenantsService {
     return { inUse: count > 0, count };
   }
 
+  // ─── Bulk Onboarding (from Excel data) ─────────────────────────────
+
+  async bulkOnboard(data: {
+    org: { name: string; rut?: string; ownerType?: string; industry?: string; employeeRange?: string; commercialAddress?: string; plan: string; billingPeriod: string; startDate: string };
+    admin: { email: string; firstName: string; lastName: string; rut?: string; password: string; position?: string; department?: string };
+    departments?: string[];
+    positions?: { name: string; level: number }[];
+    competencies?: { name: string; category: string; description?: string; expectedLevel?: number }[];
+    users?: { email: string; firstName: string; lastName: string; rut?: string; password: string; role: string; department?: string; position?: string; hireDate?: string; managerEmail?: string }[];
+  }): Promise<{ tenant: any; admin: any; usersCreated: number; competenciesCreated: number; summary: string[] }> {
+    const summary: string[] = [];
+
+    // 1. Create tenant
+    const slug = data.org.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+    const tenant = await this.create({
+      name: data.org.name,
+      slug,
+      rut: data.org.rut,
+      ownerType: data.org.ownerType || 'company',
+      industry: data.org.industry,
+      employeeRange: data.org.employeeRange,
+      commercialAddress: data.org.commercialAddress,
+    });
+    summary.push(`Organización "${tenant.name}" creada (ID: ${tenant.id})`);
+
+    // 2. Configure settings (departments + positions)
+    const settings: any = { ...(tenant.settings || {}) };
+    if (data.departments?.length) {
+      settings.departments = data.departments;
+      summary.push(`${data.departments.length} departamentos configurados`);
+    }
+    if (data.positions?.length) {
+      settings.positions = data.positions.sort((a, b) => a.level - b.level);
+      summary.push(`${data.positions.length} cargos configurados`);
+    }
+    tenant.settings = settings;
+    await this.tenantRepository.save(tenant);
+
+    // 3. Create subscription
+    const planRepo = this.subscriptionRepo.manager.getRepository('subscription_plans');
+    const plan = await planRepo.findOne({ where: { code: data.org.plan, isActive: true } });
+    if (plan) {
+      const sub = this.subscriptionRepo.create({
+        tenantId: tenant.id,
+        planId: (plan as any).id,
+        status: 'active',
+        startDate: new Date(data.org.startDate),
+        billingPeriod: data.org.billingPeriod as any,
+        autoRenew: true,
+      });
+      await this.subscriptionRepo.save(sub);
+      summary.push(`Suscripción plan "${(plan as any).name}" (${data.org.billingPeriod}) activada`);
+    } else {
+      summary.push(`ADVERTENCIA: Plan "${data.org.plan}" no encontrado. Sin suscripción.`);
+    }
+
+    // 4. Create admin user
+    const bcrypt = await import('bcrypt');
+    const adminHash = await bcrypt.hash(data.admin.password, 12);
+    const adminUser = this.userRepository.create({
+      tenantId: tenant.id,
+      email: data.admin.email,
+      firstName: data.admin.firstName,
+      lastName: data.admin.lastName,
+      rut: data.admin.rut || null,
+      passwordHash: adminHash,
+      role: 'tenant_admin',
+      department: data.admin.department || null,
+      position: data.admin.position || null,
+      isActive: true,
+      mustChangePassword: true,
+    } as any);
+    const savedAdmin: any = await this.userRepository.save(adminUser);
+    summary.push(`Administrador "${data.admin.firstName} ${data.admin.lastName}" creado (${data.admin.email})`);
+
+    // 5. Create competencies
+    let competenciesCreated = 0;
+    if (data.competencies?.length) {
+      const compRepo = this.userRepository.manager.getRepository('competencies');
+      for (const comp of data.competencies) {
+        await compRepo.save(compRepo.create({
+          tenantId: tenant.id,
+          name: comp.name,
+          category: comp.category,
+          description: comp.description || null,
+          expectedLevel: comp.expectedLevel || null,
+          isActive: true,
+          status: 'approved',
+        }));
+        competenciesCreated++;
+      }
+      summary.push(`${competenciesCreated} competencias creadas`);
+    }
+
+    // 6. Create additional users
+    let usersCreated = 0;
+    const emailToId = new Map<string, string>();
+    emailToId.set(data.admin.email.toLowerCase(), savedAdmin.id);
+
+    if (data.users?.length) {
+      // First pass: create users without managerId
+      for (const u of data.users) {
+        const hash = await bcrypt.hash(u.password, 12);
+        const user = this.userRepository.create({
+          tenantId: tenant.id,
+          email: u.email,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          rut: u.rut || null,
+          passwordHash: hash,
+          role: u.role || 'employee',
+          department: u.department || null,
+          position: u.position || null,
+          hireDate: u.hireDate ? new Date(u.hireDate) : null,
+          isActive: true,
+          mustChangePassword: true,
+        } as any);
+        const saved: any = await this.userRepository.save(user);
+        emailToId.set(u.email.toLowerCase(), saved.id);
+        usersCreated++;
+      }
+
+      // Second pass: assign managers by email
+      for (const u of data.users) {
+        if (u.managerEmail) {
+          const managerId = emailToId.get(u.managerEmail.toLowerCase());
+          if (managerId) {
+            const userId = emailToId.get(u.email.toLowerCase());
+            if (userId) {
+              await this.userRepository.update(userId, { managerId });
+            }
+          }
+        }
+      }
+      summary.push(`${usersCreated} colaboradores creados`);
+    }
+
+    // 7. Audit
+    await this.auditLogRepo.save(this.auditLogRepo.create({
+      tenantId: tenant.id,
+      userId: null as any,
+      action: 'tenant.bulk_onboarded',
+      entityType: 'tenant',
+      entityId: tenant.id,
+      metadata: { usersCreated, competenciesCreated, plan: data.org.plan },
+    } as any));
+
+    return { tenant, admin: savedAdmin, usersCreated, competenciesCreated, summary };
+  }
+
   async getSystemStats(): Promise<any> {
     const totalTenants = await this.tenantRepository.count();
     const activeTenants = await this.tenantRepository.count({ where: { isActive: true } });

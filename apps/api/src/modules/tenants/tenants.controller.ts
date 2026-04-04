@@ -111,6 +111,12 @@ export class TenantsController {
     return this.tenantsService.create(dto);
   }
 
+  /** Bulk onboard a new organization from Excel data */
+  @Post('bulk-onboard')
+  bulkOnboard(@Body() dto: any) {
+    return this.tenantsService.bulkOnboard(dto);
+  }
+
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
     return this.tenantsService.update(id, dto);

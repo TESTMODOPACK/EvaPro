@@ -66,6 +66,9 @@ export default function TenantsPage() {
   const [saving, setSaving] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<any>(null);
 
   // Fetch available subscription plans and existing subscriptions
   useEffect(() => {
@@ -273,10 +276,144 @@ export default function TenantsPage() {
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Organizaciones</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestión de organizaciones de la plataforma</p>
         </div>
-        <button className="btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
-          + Nueva organizacion
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn-ghost" onClick={() => { setShowUpload(!showUpload); setUploadResult(null); }}>
+            {showUpload ? 'Cancelar carga' : 'Cargar desde Excel'}
+          </button>
+          <button className="btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
+            + Nueva organizacion
+          </button>
+        </div>
       </div>
+
+      {/* Excel Upload Section */}
+      {showUpload && (
+        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>Cargar Organización desde Excel</h3>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            Suba la plantilla de onboarding (Plantilla_Onboarding_EvaPro.xlsx) para crear una organización completa con su administrador, departamentos, cargos, competencias y colaboradores.
+          </p>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file || !token) return;
+              setUploading(true);
+              setUploadResult(null);
+              setError('');
+              try {
+                const XLSX = await import('xlsx');
+                const data_ab = await file.arrayBuffer();
+                const wb = XLSX.read(data_ab, { type: 'array' });
+
+                // Parse helper: get cell value from sheet
+                const getVal = (sheetName: string, row: number, col: number) => {
+                  const ws = wb.Sheets[sheetName] || wb.Sheets[wb.SheetNames[col === 0 ? 0 : 0]];
+                  if (!ws) return '';
+                  const cellRef = XLSX.utils.encode_cell({ r: row - 1, c: col - 1 });
+                  const cell = ws[cellRef];
+                  return cell?.v?.toString()?.trim() || '';
+                };
+                const sheetName = (idx: number) => wb.SheetNames[idx] || '';
+                const s = (idx: number) => sheetName(idx);
+                const org = {
+                  name: getVal(s(0), 5, 2),
+                  rut: getVal(s(0), 6, 2),
+                  ownerType: getVal(s(0), 7, 2) || 'company',
+                  industry: getVal(s(0), 8, 2),
+                  employeeRange: getVal(s(0), 9, 2),
+                  commercialAddress: getVal(s(0), 10, 2),
+                  plan: getVal(s(0), 11, 2) || 'starter',
+                  billingPeriod: getVal(s(0), 12, 2) || 'monthly',
+                  startDate: getVal(s(0), 13, 2) || new Date().toISOString().split('T')[0],
+                };
+
+                const admin = {
+                  email: getVal(s(1), 5, 2),
+                  firstName: getVal(s(1), 6, 2),
+                  lastName: getVal(s(1), 7, 2),
+                  rut: getVal(s(1), 8, 2),
+                  password: getVal(s(1), 9, 2),
+                  position: getVal(s(1), 10, 2),
+                  department: getVal(s(1), 11, 2),
+                };
+
+                const departments: string[] = [];
+                for (let r = 5; r <= 24; r++) {
+                  const name = getVal(s(2), r, 2);
+                  if (name) departments.push(name);
+                }
+
+                const positions: { name: string; level: number }[] = [];
+                for (let r = 5; r <= 19; r++) {
+                  const name = getVal(s(3), r, 2);
+                  const level = parseInt(getVal(s(3), r, 3));
+                  if (name && level) positions.push({ name, level });
+                }
+
+                const competencies: any[] = [];
+                for (let r = 5; r <= 19; r++) {
+                  const name = getVal(s(4), r, 2);
+                  const category = getVal(s(4), r, 3);
+                  if (name && category) competencies.push({
+                    name, category,
+                    description: getVal(s(4), r, 4),
+                    expectedLevel: parseInt(getVal(s(4), r, 5)) || undefined,
+                  });
+                }
+
+                const users: any[] = [];
+                for (let r = 5; r <= 54; r++) {
+                  const email = getVal(s(5), r, 1);
+                  if (!email || !email.includes('@')) continue;
+                  users.push({
+                    email,
+                    firstName: getVal(s(5), r, 2),
+                    lastName: getVal(s(5), r, 3),
+                    rut: getVal(s(5), r, 4),
+                    password: getVal(s(5), r, 5),
+                    role: getVal(s(5), r, 6) || 'employee',
+                    department: getVal(s(5), r, 7),
+                    position: getVal(s(5), r, 8),
+                    hireDate: getVal(s(5), r, 9),
+                    managerEmail: getVal(s(5), r, 10),
+                  });
+                }
+
+                if (!org.name || !admin.email || !admin.password) {
+                  setError('Faltan datos obligatorios: nombre de organización, correo y contraseña del admin');
+                  setUploading(false);
+                  return;
+                }
+
+                const result = await api.tenants.bulkOnboard(token, { org, admin, departments, positions, competencies, users });
+                setUploadResult(result);
+                setSuccess('Organización creada exitosamente');
+                // Reload tenants list
+                api.tenants.list(token).then(setTenants).catch(() => {});
+              } catch (err: any) {
+                setError(err.message || 'Error al procesar el archivo');
+              }
+              setUploading(false);
+            }}
+            disabled={uploading}
+            style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}
+          />
+          {uploading && <p style={{ color: 'var(--accent)', fontSize: '0.85rem', fontWeight: 600 }}>Procesando archivo...</p>}
+
+          {uploadResult && (
+            <div style={{ marginTop: '0.75rem', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--success)', marginBottom: '0.5rem' }}>Organización creada exitosamente</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                {(uploadResult.summary || []).map((s: string, i: number) => (
+                  <div key={i}>{s.startsWith('ADVERTENCIA') ? <span style={{ color: 'var(--warning)' }}>{s}</span> : s}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       {error && (
