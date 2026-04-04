@@ -176,6 +176,23 @@ export class TenantsService {
       adminUser = await this.userRepository.save(adminUser);
     }
 
+    // Auto-create base contracts (draft)
+    try {
+      const contractRepo = this.tenantRepository.manager.getRepository('contracts');
+      const createdBy = adminUser?.id || null;
+      for (const ct of [
+        { type: 'service_agreement', title: 'Contrato de Prestación de Servicios' },
+        { type: 'dpa', title: 'Acuerdo de Procesamiento de Datos (DPA)' },
+        { type: 'terms_conditions', title: 'Términos y Condiciones de Uso' },
+        { type: 'privacy_policy', title: 'Política de Privacidad' },
+      ]) {
+        await contractRepo.save(contractRepo.create({
+          tenantId: saved.id, type: ct.type, title: ct.title,
+          status: 'draft', effectiveDate: new Date(), createdBy,
+        }));
+      }
+    } catch { /* contracts table may not exist yet */ }
+
     return { tenant: saved, adminUser: adminUser ? { id: adminUser.id, email: adminUser.email } : null };
   }
 
