@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
@@ -353,6 +354,7 @@ function HeatmapSection({ cycleId }: { cycleId: string }) {
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 export default function InformesPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const currentUserId = useAuthStore((s) => s.user?.userId);
   const currentRole = useAuthStore((s) => s.user?.role);
@@ -442,7 +444,7 @@ export default function InformesPage() {
       {/* Guide */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button onClick={() => setShowGuide(!showGuide)} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}>
-          {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfC\u00f3mo usar esta p\u00e1gina?'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
         {showGuide && (
           <div className="card animate-fade-up" style={{ padding: '1.5rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>

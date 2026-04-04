@@ -1,6 +1,7 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
@@ -18,6 +19,7 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 };
 
 function FirmasPageContent() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
@@ -86,7 +88,7 @@ function FirmasPageContent() {
 
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
@@ -47,6 +48,7 @@ function GapSection({ cycleId, userId }: { cycleId: string; userId: string }) {
 }
 
 export default function MiDesempenoPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const [history, setHistory] = useState<any>(null);
@@ -224,13 +226,13 @@ export default function MiDesempenoPage() {
         </div>
         <button type="button" onClick={handleExportCsv}
           style={{ padding: '0.4rem 0.85rem', fontSize: '0.78rem', fontWeight: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', background: 'var(--bg-surface)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-          Exportar CSV
+          {t('common.exportCsv')}
         </button>
       </div>
 
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
 

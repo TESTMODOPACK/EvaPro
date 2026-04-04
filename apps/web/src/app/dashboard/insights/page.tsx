@@ -641,7 +641,7 @@ function InsightsPageContent() {
           style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
         >
           <span style={{ transition: 'transform 0.2s', transform: showGuide ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>{'\u25B6'}</span>
-          {'\u00bfC\u00f3mo funciona?'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
 

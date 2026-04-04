@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter, useParams } from 'next/navigation';
 import ConfirmModal from '@/components/ConfirmModal';
 import { useToastStore } from '@/store/toast.store';
@@ -25,6 +26,7 @@ import {
 } from '@/lib/statusMaps';
 
 export default function CycleDetailPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
@@ -602,7 +604,7 @@ export default function CycleDetailPage() {
       {/* Guide toggle */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
       {showGuide && (

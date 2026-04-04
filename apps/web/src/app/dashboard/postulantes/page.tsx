@@ -57,7 +57,7 @@ function PostulantesPageContent() {
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setShowGuide(!showGuide)}>
-            {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+            {showGuide ? t('common.hideGuide') : t('common.showGuide')}
           </button>
           {isAdmin && (
             <Link href="/dashboard/postulantes/nuevo" style={{ textDecoration: 'none' }}>

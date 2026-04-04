@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
@@ -46,6 +47,7 @@ interface CompetencyForm {
 }
 
 export default function CompetenciasPage() {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const toast = useToastStore();
   const isAdmin = user?.role === 'tenant_admin';
@@ -239,7 +241,7 @@ export default function CompetenciasPage() {
         onClick={() => setShowGuide(!showGuide)}
         style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0, textAlign: 'left' }}
       >
-        {showGuide ? '\u25BC Ocultar gu\u00eda' : '\u25B6 \u00bfC\u00f3mo funciona el cat\u00e1logo de competencias?'}
+        {showGuide ? t('common.hideGuide') : t('common.showGuide')}
       </button>
 
       {showGuide && (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
@@ -55,6 +56,7 @@ const requestStatusBadge: Record<string, string> = {
 };
 
 export default function MiSuscripcionPage() {
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [sub, setSub] = useState<any>(null);
   const [payments, setPayments] = useState<any[]>([]);
@@ -197,7 +199,7 @@ export default function MiSuscripcionPage() {
       {/* Guide toggle */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
       {showGuide && (

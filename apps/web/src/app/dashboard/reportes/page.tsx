@@ -94,7 +94,7 @@ export default function ReportesPage() {
       {/* Guide */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
       {showGuide && (
@@ -400,7 +400,7 @@ export default function ReportesPage() {
                   {(['pdf', 'xlsx', 'pptx', 'csv'] as const).map((fmt) => (
                     <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
                       style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-                      {exporting === fmt ? 'Generando...' : fmt.toUpperCase()}
+                      {exporting === fmt ? t('common.generating') : fmt.toUpperCase()}
                     </button>
                   ))}
                 </div>

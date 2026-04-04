@@ -52,10 +52,10 @@ function SuperAdminDashboard() {
   }, [token]);
 
   const kpis = [
-    { label: 'Total organizaciones', value: stats?.totalTenants ?? 0, color: '#6366f1' },
-    { label: 'Usuarios globales', value: stats?.totalUsers ?? 0, color: '#10b981' },
-    { label: 'Orgs activas', value: stats?.activeTenants ?? 0, color: '#f59e0b' },
-    { label: 'Usuarios activos', value: stats?.activeUsers ?? 0, color: '#8b5cf6' },
+    { label: t('dashboard.totalOrgs'), value: stats?.totalTenants ?? 0, color: '#6366f1' },
+    { label: t('dashboard.globalUsers'), value: stats?.totalUsers ?? 0, color: '#10b981' },
+    { label: t('dashboard.activeOrgs'), value: stats?.activeTenants ?? 0, color: '#f59e0b' },
+    { label: t('dashboard.activeUsersCount'), value: stats?.activeUsers ?? 0, color: '#8b5cf6' },
   ];
 
   const recentTenants: any[] = stats?.recentTenants ?? [];
@@ -76,7 +76,7 @@ function SuperAdminDashboard() {
           {t('nav.systemPanel')}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          {`Administraci\u00f3n central de EvaPro`}
+          {t('dashboard.centralAdmin')}
         </p>
       </div>
 
@@ -128,27 +128,27 @@ function SuperAdminDashboard() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <span style={{ fontSize: '1.3rem' }}>{'📋'}</span>
                 <div>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>Solicitudes</h3>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>{t('dashboard.requests')}</h3>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
-                    {pending > 0 ? `${pending} solicitud${pending !== 1 ? 'es' : ''} pendiente${pending !== 1 ? 's' : ''} de respuesta` : 'Todas las solicitudes respondidas'}
+                    {pending > 0 ? t('dashboard.pendingRequests', { count: pending }) : t('dashboard.allRequestsAnswered')}
                   </p>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontWeight: 700, fontSize: '1.2rem', color: open > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{open}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Abiertas</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('dashboard.open')}</div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontWeight: 700, fontSize: '1.2rem', color: inReview > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>{inReview}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>En revisión</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('dashboard.inReview')}</div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--success)' }}>{responded}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Respondidas</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('dashboard.responded')}</div>
                 </div>
                 <Link href="/dashboard/solicitudes" className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem', textDecoration: 'none' }}>
-                  Ver todas
+                  {t('dashboard.viewAll')}
                 </Link>
               </div>
             </div>
@@ -164,7 +164,7 @@ function SuperAdminDashboard() {
                           {t.tenant?.name || ''} · {new Date(t.createdAt).toLocaleDateString('es-CL')}
                         </span>
                       </div>
-                      <span className="badge badge-warning" style={{ fontSize: '0.68rem' }}>Abierta</span>
+                      <span className="badge badge-warning" style={{ fontSize: '0.68rem' }}>{t('solicitudes.status.open')}</span>
                     </div>
                   </Link>
                 ))}
@@ -177,11 +177,11 @@ function SuperAdminDashboard() {
       {/* Quick nav */}
       <div className="animate-fade-up-delay-1" style={{ display: 'flex', gap: '0.75rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
         {[
-          { label: 'Organizaciones', href: '/dashboard/tenants' },
-          { label: 'Suscripciones', href: '/dashboard/subscriptions' },
-          { label: 'Log del Sistema', href: '/dashboard/audit-log' },
-          { label: 'Métricas de Uso', href: '/dashboard/system-metrics' },
-          { label: 'Solicitudes', href: '/dashboard/solicitudes' },
+          { label: t('dashboard.organizations'), href: '/dashboard/tenants' },
+          { label: t('dashboard.subscriptions'), href: '/dashboard/subscriptions' },
+          { label: t('dashboard.systemLog'), href: '/dashboard/audit-log' },
+          { label: t('dashboard.usageMetrics'), href: '/dashboard/system-metrics' },
+          { label: t('dashboard.requests'), href: '/dashboard/solicitudes' },
         ].map((nav, i) => (
           <Link key={i} href={nav.href} className="btn-ghost" style={{ fontSize: '0.85rem', textDecoration: 'none' }}>
             {nav.label}
@@ -196,27 +196,27 @@ function SuperAdminDashboard() {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div>
-            <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Ultimas organizaciones</h2>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Registros mas recientes</p>
+            <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>{t('dashboard.lastOrgs')}</h2>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{t('dashboard.recentRecords')}</p>
           </div>
           <Link href="/dashboard/tenants" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
-            {'Ver todas \u2192'}
+            {`${t('dashboard.viewAll')} \u2192`}
           </Link>
         </div>
 
         {recentTenants.length === 0 ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Sin organizaciones registradas
+            {t('dashboard.noOrgsRegistered')}
           </div>
         ) : (
           <div className="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>Nombre</th>
-                  <th>Plan</th>
-                  <th>Usuarios</th>
-                  <th>Creado</th>
+                  <th>{t('dashboard.name')}</th>
+                  <th>{t('dashboard.plan')}</th>
+                  <th>{t('dashboard.users')}</th>
+                  <th>{t('dashboard.created')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -268,6 +268,7 @@ const statusLabel = assignmentStatusLabel;
 const statusBadge = assignmentStatusBadge;
 
 function RegularDashboard() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const { data: stats, isLoading: loadingStats } = useDashboardStats();
   const { data: pendingEvals, isLoading: loadingPending } = usePendingEvaluations();
@@ -283,7 +284,7 @@ function RegularDashboard() {
 
   const kpis = [
     {
-      label: 'Evaluaciones activas',
+      label: t('dashboard.activeEvals'),
       value: stats ? String(stats.totalAssignments) : '\u2013',
       color: '#6366f1',
       icon: (
@@ -295,7 +296,7 @@ function RegularDashboard() {
       ),
     },
     {
-      label: 'Empleados evaluados',
+      label: t('dashboard.evaluatedEmployees'),
       value: stats ? String(stats.completedAssignments) : '\u2013',
       color: '#10b981',
       icon: (
@@ -308,7 +309,7 @@ function RegularDashboard() {
       ),
     },
     {
-      label: 'Puntuacion promedio',
+      label: t('dashboard.averageScore'),
       value: stats?.averageScore ? Number(stats.averageScore).toFixed(1) : '\u2013',
       color: '#f59e0b',
       icon: (
@@ -318,7 +319,7 @@ function RegularDashboard() {
       ),
     },
     {
-      label: 'Pendientes de completar',
+      label: t('dashboard.pendingToComplete'),
       value: stats ? String(stats.pendingAssignments) : '\u2013',
       color: '#ef4444',
       icon: (
@@ -345,8 +346,8 @@ function RegularDashboard() {
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>
           {user?.role === 'external'
-            ? 'Panel de Revision'
-            : `Hola, ${user?.firstName || user?.email?.split('@')[0] || 'usuario'}`}
+            ? t('dashboard.reviewPanel')
+            : `${t('dashboard.hello')}, ${user?.firstName || user?.email?.split('@')[0] || 'usuario'}`}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -381,10 +382,10 @@ function RegularDashboard() {
               </div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                  {'\uD83D\uDDFA\uFE0F'} Flujo de uso recomendado
+                  {'\uD83D\uDDFA\uFE0F'} {t('dashboard.guideTitle')}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  Pasos sugeridos para tu rol — puedes volver a consultarlo cuando quieras
+                  {t('dashboard.guideSubtitle')}
                 </div>
               </div>
             </div>
@@ -401,7 +402,7 @@ function RegularDashboard() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
-              Ya lo entendí
+              {t('dashboard.dismissGuide')}
             </button>
           </div>
 
@@ -490,7 +491,7 @@ function RegularDashboard() {
                   color: 'var(--text-muted)',
                   display: 'flex', alignItems: 'center', gap: '0.25rem',
                 }}>
-                  {stats.completionRate != null ? `${stats.completionRate}% completado` : ''}
+                  {stats.completionRate != null ? `${stats.completionRate}% ${t('dashboard.completed')}` : ''}
                 </div>
               )}
             </div>
@@ -507,7 +508,7 @@ function RegularDashboard() {
           display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flexWrap: 'wrap',
         }}>
           <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0, paddingTop: '1px' }}>
-            Novedades
+            {t('dashboard.news')}
           </span>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flex: 1 }}>
             {changelog.map((entry: any) => (
@@ -530,17 +531,17 @@ function RegularDashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontSize: '1.1rem' }}>{'\u26a0'}</span>
             <span style={{ fontWeight: 600, color: 'var(--danger)' }}>
-              {atRiskCount} objetivo{atRiskCount !== 1 ? 's' : ''} en riesgo
+              {t('dashboard.objectivesAtRisk', { count: atRiskCount })}
             </span>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-              (progreso menor al 40%)
+              {t('dashboard.objectivesAtRiskDetail')}
             </span>
           </div>
           <Link
             href="/dashboard/objetivos"
             style={{ fontSize: '0.78rem', color: 'var(--danger)', textDecoration: 'none', fontWeight: 600 }}
           >
-            {'Ver objetivos \u2192'}
+            {`${t('dashboard.viewObjectives')} \u2192`}
           </Link>
         </div>
       )}
@@ -563,11 +564,11 @@ function RegularDashboard() {
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Evaluaciones pendientes</h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Asignaciones por completar</p>
+              <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>{t('dashboard.pendingEvals')}</h2>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{t('dashboard.assignmentsToComplete')}</p>
             </div>
             <Link href="/dashboard/evaluaciones" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
-              {'Ver todas \u2192'}
+              {`${t('dashboard.viewAllLink')} \u2192`}
             </Link>
           </div>
 
@@ -575,17 +576,17 @@ function RegularDashboard() {
             <Spinner />
           ) : !pendingEvals || pendingEvals.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Sin evaluaciones pendientes
+              {t('dashboard.noPendingEvals')}
             </div>
           ) : (
             <div className="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>Evaluado</th>
-                    <th>Ciclo</th>
-                    <th>Estado</th>
-                    <th>{`Acci\u00f3n`}</th>
+                    <th>{t('dashboard.evaluated')}</th>
+                    <th>{t('dashboard.cycle')}</th>
+                    <th>{t('common.status')}</th>
+                    <th>{t('dashboard.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -612,7 +613,7 @@ function RegularDashboard() {
                           className="btn-primary"
                           style={{ padding: '0.3rem 0.75rem', fontSize: '0.78rem' }}
                         >
-                          Responder
+                          {t('dashboard.respond')}
                         </Link>
                       </td>
                     </tr>
@@ -628,12 +629,12 @@ function RegularDashboard() {
           {/* Cycle progress */}
           <div className="card" style={{ padding: '1.4rem' }}>
             <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>
-              {activeCycle ? activeCycle.name : 'Ciclo activo'}
+              {activeCycle ? activeCycle.name : t('dashboard.activeCycle')}
             </h3>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
               {activeCycle
-                ? `Finaliza el ${new Date(activeCycle.endDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}`
-                : 'Sin ciclo activo'}
+                ? t('dashboard.endsOn', { date: new Date(activeCycle.endDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) })
+                : t('dashboard.noActiveCycle')}
             </p>
 
             {loadingCycles ? (
@@ -641,8 +642,8 @@ function RegularDashboard() {
             ) : stats ? (
               <>
                 {[
-                  { label: 'Completadas', value: stats.completedAssignments, total: stats.totalAssignments, color: 'var(--success)' },
-                  { label: 'Pendientes', value: stats.pendingAssignments, total: stats.totalAssignments, color: 'var(--warning)' },
+                  { label: t('dashboard.completedLabel'), value: stats.completedAssignments, total: stats.totalAssignments, color: 'var(--success)' },
+                  { label: t('dashboard.pendingLabel'), value: stats.pendingAssignments, total: stats.totalAssignments, color: 'var(--warning)' },
                 ].map((item, i) => (
                   <div key={i} style={{ marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
@@ -662,19 +663,19 @@ function RegularDashboard() {
                 ))}
               </>
             ) : (
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Sin datos disponibles</p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('dashboard.noDataAvailable')}</p>
             )}
           </div>
 
           {/* Quick actions */}
           <div className="card" style={{ padding: '1.4rem' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>Acciones rapidas</h3>
+            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>{t('dashboard.quickActions')}</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               {([
-                { label: 'Mi desempeño', href: '/dashboard/mi-desempeno', roles: ['tenant_admin', 'manager', 'employee'] },
-                { label: 'Nueva evaluacion', href: '/dashboard/evaluaciones', roles: ['tenant_admin'] },
-                { label: 'Agregar usuario', href: '/dashboard/usuarios', roles: ['tenant_admin'] },
-                { label: 'Ver reportes', href: '/dashboard/reportes', roles: ['tenant_admin', 'manager'] },
+                { label: t('dashboard.myPerformance'), href: '/dashboard/mi-desempeno', roles: ['tenant_admin', 'manager', 'employee'] },
+                { label: t('dashboard.newEvaluation'), href: '/dashboard/evaluaciones', roles: ['tenant_admin'] },
+                { label: t('dashboard.addUser'), href: '/dashboard/usuarios', roles: ['tenant_admin'] },
+                { label: t('dashboard.viewReports'), href: '/dashboard/reportes', roles: ['tenant_admin', 'manager'] },
               ] as { label: string; href: string; roles: string[] }[])
                 .filter((a) => a.roles.includes(user?.role || ''))
                 .map((action, i) => (
@@ -715,7 +716,7 @@ function RegularDashboard() {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
                 </svg>
-                Ver guía de uso
+                {t('dashboard.showGuide')}
               </button>
             )}
           </div>
@@ -735,10 +736,10 @@ function RegularDashboard() {
         {/* Tendencia de Desempeno */}
         <div className="card" style={{ padding: '1.4rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
-            {`Tendencia de Desempe\u00f1o`}
+            {t('dashboard.perfTrend')}
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-            {`Puntuaci\u00f3n promedio por ciclo`}
+            {t('dashboard.avgScoreByCycle')}
           </p>
           {perfData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
@@ -777,7 +778,7 @@ function RegularDashboard() {
             </ResponsiveContainer>
           ) : (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              {`Sin historial de desempe\u00f1o a\u00fan`}
+              {t('dashboard.noPerfHistory')}
             </div>
           )}
         </div>
@@ -785,10 +786,10 @@ function RegularDashboard() {
         {/* Mi Feedback — show only when user has received feedback */}
         {totalFeedback > 0 && <div className="card" style={{ padding: '1.4rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
-            Mi Feedback
+            {t('dashboard.myFeedback')}
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-            Resumen de feedback recibido
+            {t('dashboard.feedbackSummary')}
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -802,7 +803,7 @@ function RegularDashboard() {
               }}>
                 {positiveCount}
               </div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Positivo</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{t('dashboard.positive')}</span>
             </div>
 
             {/* Neutral */}
@@ -815,7 +816,7 @@ function RegularDashboard() {
               }}>
                 {neutralCount}
               </div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Neutral</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{t('dashboard.neutral')}</span>
             </div>
 
             {/* Constructivo */}
@@ -828,7 +829,7 @@ function RegularDashboard() {
               }}>
                 {constructiveCount}
               </div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Constructivo</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{t('dashboard.constructive')}</span>
             </div>
           </div>
 
@@ -841,7 +842,7 @@ function RegularDashboard() {
             alignItems: 'center',
           }}>
             <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Total: <strong style={{ color: 'var(--text-primary)' }}>{totalFeedback}</strong>
+              {t('common.total')}: <strong style={{ color: 'var(--text-primary)' }}>{totalFeedback}</strong>
             </span>
             <Link
               href="/dashboard/feedback"
@@ -852,7 +853,7 @@ function RegularDashboard() {
                 fontWeight: 600,
               }}
             >
-              {'Ver feedback \u2192'}
+              {`${t('dashboard.viewFeedback')} \u2192`}
             </Link>
           </div>
         </div>}
@@ -864,6 +865,7 @@ function RegularDashboard() {
 // ─── Employee Dashboard ─────────────────────────────────────────────────────
 
 function EmployeeDashboard() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
   const { data: pendingEvals, isLoading: loadingPending } = usePendingEvaluations();
@@ -901,7 +903,7 @@ function EmployeeDashboard() {
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>
-          Hola, {user?.firstName || user?.email?.split('@')[0] || 'usuario'}
+          {t('dashboard.hello')}, {user?.firstName || user?.email?.split('@')[0] || 'usuario'}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -911,19 +913,19 @@ function EmployeeDashboard() {
       {/* Quick KPIs */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Evaluaciones pendientes</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('dashboard.pendingEvals')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pendingList.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pendingList.length}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Objetivos activos</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('dashboard.activeObjectives')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{activeObjectives.length}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Feedback recibido</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('dashboard.feedbackReceived')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{totalFeedback}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Ultimo puntaje</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('dashboard.lastScore')}</div>
           <div style={{ marginTop: '0.25rem' }}>
             {perfData.length > 0
               ? <ScoreBadge score={perfData[perfData.length - 1].avgOverall} size="lg" />
@@ -938,23 +940,23 @@ function EmployeeDashboard() {
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>Mis evaluaciones pendientes</h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Evaluaciones que debes completar</p>
+              <h2 style={{ fontWeight: 700, fontSize: '0.975rem' }}>{t('dashboard.myPendingEvals')}</h2>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{t('dashboard.evalsToComplete')}</p>
             </div>
           </div>
           {loadingPending ? <Spinner /> : pendingList.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              No tienes evaluaciones pendientes
+              {t('dashboard.noPendingEvalsEmployee')}
             </div>
           ) : (
             <div className="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>Evaluado</th>
-                    <th>Tipo</th>
-                    <th>Ciclo</th>
-                    <th>Accion</th>
+                    <th>{t('dashboard.evaluated')}</th>
+                    <th>{t('dashboard.type')}</th>
+                    <th>{t('dashboard.cycle')}</th>
+                    <th>{t('dashboard.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -962,10 +964,10 @@ function EmployeeDashboard() {
                     <tr key={ev.id || i}>
                       <td style={{ fontWeight: 600, fontSize: '0.875rem' }}>
                         {ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : 'Sin asignar'}
-                        {ev.evaluateeId === user?.userId && <span className="badge badge-accent" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>Autoevaluacion</span>}
+                        {ev.evaluateeId === user?.userId && <span className="badge badge-accent" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>{t('dashboard.selfEval')}</span>}
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                        {ev.relationType === 'self' ? 'Autoevaluacion' : ev.relationType === 'manager' ? 'Jefatura' : ev.relationType === 'peer' ? 'Par' : ev.relationType || '--'}
+                        {ev.relationType === 'self' ? t('dashboard.selfEval') : ev.relationType === 'manager' ? t('dashboard.manager') : ev.relationType === 'peer' ? t('dashboard.peer') : ev.relationType || '--'}
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{ev.cycle?.name || '--'}</td>
                       <td>
@@ -974,7 +976,7 @@ function EmployeeDashboard() {
                           className="btn-primary"
                           style={{ padding: '0.3rem 0.75rem', fontSize: '0.78rem' }}
                         >
-                          Responder
+                          {t('dashboard.respond')}
                         </Link>
                       </td>
                     </tr>
@@ -990,8 +992,8 @@ function EmployeeDashboard() {
       <div className="animate-fade-up-delay-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
         {/* Performance trend */}
         <div className="card" style={{ padding: '1.4rem' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>Mi historial de desempeño</h3>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>Evolución de tu puntaje por ciclo</p>
+          <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>{t('dashboard.myPerfHistory')}</h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>{t('dashboard.perfEvolution')}</p>
           {perfData.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={perfData}>
@@ -1003,7 +1005,7 @@ function EmployeeDashboard() {
             </ResponsiveContainer>
           ) : (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Aun no tienes historial de evaluaciones
+              {t('dashboard.noPerfHistoryEmployee')}
             </div>
           )}
         </div>
@@ -1012,16 +1014,16 @@ function EmployeeDashboard() {
         <div className="card" style={{ padding: '1.4rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
-              <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.1rem' }}>Mis objetivos</h3>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{activeObjectives.length} activos</p>
+              <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.1rem' }}>{t('dashboard.myObjectives')}</h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('dashboard.activeCount', { count: activeObjectives.length })}</p>
             </div>
             <Link href="/dashboard/objetivos" style={{ fontSize: '0.78rem', color: 'var(--accent-hover)', textDecoration: 'none', fontWeight: 600 }}>
-              {'Ver todos \u2192'}
+              {`${t('dashboard.viewAllObjectives')} \u2192`}
             </Link>
           </div>
           {loadingObj ? <Spinner /> : activeObjectives.length === 0 ? (
             <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              No tienes objetivos activos
+              {t('dashboard.noActiveObjectives')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1226,6 +1228,7 @@ const TYPE_ICONS: Record<string, string> = { feature: '\uD83C\uDD95', improvemen
 // ─── Stats Sidebar (role-aware) ──────────────────────────────────────────────
 
 function DashboardStats() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const role = user?.role || 'employee';
   const isAdminOrManager = role === 'tenant_admin' || role === 'manager';
@@ -1255,19 +1258,19 @@ function DashboardStats() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 0.25rem' }}>
-        Resumen
+        {t('dashboard.summary')}
       </h3>
 
       {/* Pending evaluations — all roles */}
       <div style={cardStyle}>
-        <div style={labelStyle}>Evaluaciones pendientes</div>
+        <div style={labelStyle}>{t('dashboard.pendingEvals')}</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
           <span style={{ ...valueStyle, color: pendingCount > 0 ? 'var(--warning)' : 'var(--success)' }}>
             {pendingCount}
           </span>
           {pendingCount > 0 && (
             <Link href="/dashboard/evaluaciones" style={{ fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none' }}>
-              Completar
+              {t('dashboard.complete')}
             </Link>
           )}
         </div>
@@ -1276,12 +1279,12 @@ function DashboardStats() {
       {/* Active cycles — admin/manager */}
       {isAdminOrManager && (
         <div style={cardStyle}>
-          <div style={labelStyle}>Ciclos activos</div>
+          <div style={labelStyle}>{t('dashboard.activeCycles')}</div>
           <div style={valueStyle}>{activeCycles.length}</div>
           {stats && (
             <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Completitud</span>
+                <span>{t('dashboard.completion')}</span>
                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{stats.completionRate || 0}%</span>
               </div>
               <div style={{
@@ -1303,7 +1306,7 @@ function DashboardStats() {
       {/* Score — admin/manager */}
       {isAdminOrManager && stats?.averageScore && (
         <div style={cardStyle}>
-          <div style={labelStyle}>Puntaje promedio</div>
+          <div style={labelStyle}>{t('dashboard.scoreAvg')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={valueStyle}>{Number(stats.averageScore).toFixed(1)}</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>/ 10</span>
@@ -1313,14 +1316,14 @@ function DashboardStats() {
 
       {/* At-risk objectives — all roles */}
       <div style={cardStyle}>
-        <div style={labelStyle}>Objetivos en riesgo</div>
+        <div style={labelStyle}>{t('dashboard.atRiskObjectives')}</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
           <span style={{ ...valueStyle, color: atRiskCount > 0 ? 'var(--danger)' : 'var(--success)' }}>
             {atRiskCount}
           </span>
           {atRiskCount > 0 && (
             <Link href="/dashboard/objetivos" style={{ fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none' }}>
-              Ver detalle
+              {t('dashboard.viewDetail')}
             </Link>
           )}
         </div>
@@ -1329,12 +1332,12 @@ function DashboardStats() {
       {/* Feedback summary — all roles */}
       {feedbackSummary && feedbackSummary.total > 0 && (
         <div style={cardStyle}>
-          <div style={labelStyle}>Feedback recibido</div>
+          <div style={labelStyle}>{t('dashboard.feedbackReceived')}</div>
           <div style={valueStyle}>{feedbackSummary.total}</div>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem' }}>
-            <span className="badge badge-success">{feedbackSummary.positive} positivo</span>
-            <span className="badge badge-warning">{feedbackSummary.neutral} neutral</span>
-            <span className="badge badge-danger">{feedbackSummary.constructive} constructivo</span>
+            <span className="badge badge-success">{feedbackSummary.positive} {t('dashboard.positiveLabel')}</span>
+            <span className="badge badge-warning">{feedbackSummary.neutral} {t('dashboard.neutralLabel')}</span>
+            <span className="badge badge-danger">{feedbackSummary.constructive} {t('dashboard.constructiveLabel')}</span>
           </div>
         </div>
       )}
@@ -1342,19 +1345,19 @@ function DashboardStats() {
       {/* Admin-specific: total users */}
       {role === 'tenant_admin' && stats && (
         <div style={cardStyle}>
-          <div style={labelStyle}>Total evaluaciones</div>
+          <div style={labelStyle}>{t('dashboard.totalEvals')}</div>
           <div style={{ display: 'flex', gap: '1rem' }}>
             <div>
               <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--success)' }}>{stats.completedAssignments}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>completadas</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('dashboard.completedEvals')}</div>
             </div>
             <div>
               <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--warning)' }}>{stats.pendingAssignments}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>pendientes</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('dashboard.pendingEvals2')}</div>
             </div>
             <div>
               <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{stats.totalAssignments}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>total</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('dashboard.totalLabel')}</div>
             </div>
           </div>
         </div>
@@ -1366,16 +1369,17 @@ function DashboardStats() {
 // ─── Welcome Page ────────────────────────────────────────────────────────────
 
 function WelcomePage() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const { data: changelog, isLoading: loadingCL, isError: errorCL } = useChangelog(5);
   const steps = ROLE_STEPS[user?.role || 'employee'] || ROLE_STEPS.employee;
   const today = new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const quickLinks = [
-    { label: 'Evaluaciones', href: '/dashboard/evaluaciones', icon: '\uD83D\uDCDD' },
-    { label: 'Objetivos', href: '/dashboard/objetivos', icon: '\uD83C\uDFAF' },
-    { label: 'Feedback', href: '/dashboard/feedback', icon: '\uD83D\uDCAC' },
-    { label: 'Notificaciones', href: '/dashboard/notificaciones', icon: '\uD83D\uDD14' },
+    { label: t('dashboard.evaluations'), href: '/dashboard/evaluaciones', icon: '\uD83D\uDCDD' },
+    { label: t('dashboard.objectives'), href: '/dashboard/objetivos', icon: '\uD83C\uDFAF' },
+    { label: t('dashboard.feedback'), href: '/dashboard/feedback', icon: '\uD83D\uDCAC' },
+    { label: t('dashboard.notifications'), href: '/dashboard/notificaciones', icon: '\uD83D\uDD14' },
   ];
 
   return (
@@ -1385,7 +1389,7 @@ function WelcomePage() {
       {/* Welcome Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-          {'\uD83D\uDC4B'} Bienvenido/a, {user?.firstName || 'Usuario'}
+          {'\uD83D\uDC4B'} {t('dashboard.welcomeTo')}, {user?.firstName || 'Usuario'}
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
           {getRoleLabel(user?.role || 'employee')} {'\u00B7'} {today}
@@ -1395,18 +1399,18 @@ function WelcomePage() {
       {/* System Changelog */}
       {loadingCL && (
         <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--border)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Cargando novedades...</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('dashboard.loadingNews')}</p>
         </div>
       )}
       {errorCL && (
         <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', borderLeft: '4px solid #f59e0b' }}>
-          <p style={{ color: '#92400e', fontSize: '0.85rem' }}>No se pudieron cargar las novedades del sistema.</p>
+          <p style={{ color: '#92400e', fontSize: '0.85rem' }}>{t('dashboard.newsLoadError')}</p>
         </div>
       )}
       {!loadingCL && changelog && changelog.length > 0 && (
         <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--primary)' }}>
           <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {'\uD83D\uDCE2'} Novedades del Sistema
+            {'\uD83D\uDCE2'} {t('dashboard.systemNews')}
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {changelog.map((entry: any) => (
@@ -1427,7 +1431,7 @@ function WelcomePage() {
       {/* Journey Steps */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {'\uD83D\uDDFA\uFE0F'} Como usar EvaPro
+          {'\uD83D\uDDFA\uFE0F'} {t('dashboard.howToUse')}
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
           {steps.map((step, i) => (
@@ -1446,7 +1450,7 @@ function WelcomePage() {
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{step.title}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{step.desc}</div>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600 }}>
-                  Ir {'\u2192'}
+                  {t('dashboard.go')} {'\u2192'}
                 </div>
               </div>
             </Link>
@@ -1456,7 +1460,7 @@ function WelcomePage() {
 
       {/* Quick Access */}
       <div className="card" style={{ padding: '1rem' }}>
-        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 0.75rem' }}>{'\u26A1'} Accesos rápidos</h3>
+        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 0.75rem' }}>{'\u26A1'} {t('dashboard.quickAccess')}</h3>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {quickLinks.map((link) => (
             <Link key={link.href} href={link.href}

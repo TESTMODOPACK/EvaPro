@@ -580,7 +580,7 @@ function LocationsTab() {
 
       {loadError && (
         <div className="card" style={{ padding: '1rem', marginBottom: '1rem', borderLeft: '4px solid var(--danger)' }}>
-          <p style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>Error al cargar lugares</p>
+          <p style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>{t('common.errorLoading')}</p>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{(loadError as any)?.message || 'Verifique que su plan incluya la funcionalidad de Feedback.'}</p>
         </div>
       )}
@@ -688,10 +688,10 @@ function FeedbackPageContent() {
         {isAdminOrManager && (
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="btn-ghost" onClick={() => handleExport('xlsx')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-              {exporting === 'xlsx' ? 'Exportando...' : 'Excel'}
+              {exporting === 'xlsx' ? t('common.exporting') : t('common.exportExcel')}
             </button>
             <button className="btn-ghost" onClick={() => handleExport('csv')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-              {exporting === 'csv' ? 'Exportando...' : 'CSV'}
+              {exporting === 'csv' ? t('common.exporting') : t('common.exportCsv')}
             </button>
           </div>
         )}
@@ -705,7 +705,7 @@ function FeedbackPageContent() {
           style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
         >
           <span style={{ transition: 'transform 0.2s', transform: showGuide ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>{'\u25B6'}</span>
-          {'\uD83D\uDCD6 Gu\u00eda de uso: Feedback y Reuniones 1:1'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
 

@@ -83,7 +83,7 @@ function EmployeeEvaluationsView() {
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--warning)', display: 'inline-block' }} />
-          Evaluaciones pendientes
+          {t('evaluaciones.pendingEvals')}
         </h2>
 
         {loadingPending ? <Spinner /> : pending.length === 0 ? (
@@ -97,22 +97,22 @@ function EmployeeEvaluationsView() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
                     <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                      {ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : 'Sin asignar'}
+                      {ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : t('evaluaciones.unassigned')}
                     </span>
                     {ev.evaluateeId === userId && (
-                      <span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>Eres tu</span>
+                      <span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{t('evaluaciones.itsYou')}</span>
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      Tipo: <strong style={{ color: 'var(--text-secondary)' }}>{relationLabels[ev.relationType] || ev.relationType}</strong>
+                      {t('evaluaciones.typeLabel')}: <strong style={{ color: 'var(--text-secondary)' }}>{relationLabels[ev.relationType] || ev.relationType}</strong>
                     </span>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      Ciclo: <strong style={{ color: 'var(--text-secondary)' }}>{ev.cycle?.name || '--'}</strong>
+                      {t('evaluaciones.cycleLabel')}: <strong style={{ color: 'var(--text-secondary)' }}>{ev.cycle?.name || '--'}</strong>
                     </span>
                     {ev.dueDate && (
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        Fecha limite: <strong style={{ color: 'var(--warning)' }}>{new Date(ev.dueDate).toLocaleDateString('es-ES')}</strong>
+                        {t('evaluaciones.dueDate')}: <strong style={{ color: 'var(--warning)' }}>{new Date(ev.dueDate).toLocaleDateString('es-ES')}</strong>
                       </span>
                     )}
                   </div>
@@ -122,7 +122,7 @@ function EmployeeEvaluationsView() {
                   className="btn-primary"
                   style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
                 >
-                  Responder
+                  {t('evaluaciones.respond')}
                 </Link>
               </div>
             ))}
@@ -134,23 +134,23 @@ function EmployeeEvaluationsView() {
       <div className="animate-fade-up-delay-2">
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)', display: 'inline-block' }} />
-          Evaluaciones completadas
+          {t('evaluaciones.completedEvals')}
         </h2>
 
         {loadingCompleted ? <Spinner /> : completed.length === 0 ? (
           <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Aun no has completado evaluaciones</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('evaluaciones.noCompletedYet')}</p>
           </div>
         ) : (
           <div className="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>Evaluado</th>
-                  <th>Tipo</th>
-                  <th>Ciclo</th>
-                  <th>Puntaje</th>
-                  <th>Fecha</th>
+                  <th>{t('evaluaciones.evaluatedCol')}</th>
+                  <th>{t('evaluaciones.typeLabel')}</th>
+                  <th>{t('evaluaciones.cycleLabel')}</th>
+                  <th>{t('evaluaciones.score')}</th>
+                  <th>{t('evaluaciones.dateCol')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -158,7 +158,7 @@ function EmployeeEvaluationsView() {
                   <tr key={ev.id}>
                     <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>
                       {ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}
-                      {ev.evaluateeId === userId && <span className="badge badge-accent" style={{ marginLeft: '0.4rem', fontSize: '0.6rem' }}>Tu</span>}
+                      {ev.evaluateeId === userId && <span className="badge badge-accent" style={{ marginLeft: '0.4rem', fontSize: '0.6rem' }}>{t('evaluaciones.you')}</span>}
                     </td>
                     <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{relationLabels[ev.relationType] || ev.relationType}</td>
                     <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{ev.cycle?.name || '--'}</td>
@@ -231,7 +231,7 @@ function AdminEvaluationsView() {
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-            {showGuide ? 'Ocultar gu\u00eda' : 'C\u00f3mo funciona'}
+            {showGuide ? t('common.hideGuide') : t('common.showGuide')}
           </button>
           {isAdmin && (
             <Link href="/dashboard/evaluaciones/nuevo" style={{ textDecoration: 'none' }}>
@@ -239,7 +239,7 @@ function AdminEvaluationsView() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                Nuevo ciclo
+                {t('evaluaciones.newCycle')}
               </button>
             </Link>
           )}
@@ -250,94 +250,77 @@ function AdminEvaluationsView() {
       {showGuide && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
-            {'Gu\u00eda de uso: Ciclos de Evaluaci\u00f3n'}
+            {t('evaluaciones.guide.title')}
           </h3>
 
           {/* Section 1 */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-              {'\u00bfQu\u00e9 es un ciclo de evaluaci\u00f3n?'}
+              {t('evaluaciones.guide.whatIs')}
             </div>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-              {'Un ciclo agrupa las evaluaciones de desempe\u00f1o de un per\u00edodo. Se configura el tipo (90\u00b0, 180\u00b0, 270\u00b0, 360\u00b0), se asignan evaluadores y se procesan los resultados.'}
+              {t('evaluaciones.guide.whatIsDesc')}
             </p>
           </div>
 
           {/* Section 2 - Types */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-              {'Tipos de evaluaci\u00f3n'}
+              {t('evaluaciones.guide.types')}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>{'90\u00b0:'}</strong>{' Solo el encargado eval\u00faa al colaborador'}
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>{'180\u00b0:'}</strong>{' Autoevaluaci\u00f3n + evaluaci\u00f3n del encargado'}
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>{'270\u00b0:'}</strong>{' 180\u00b0 + evaluaci\u00f3n de pares'}
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>{'360\u00b0:'}</strong>{' 270\u00b0 + calibraci\u00f3n + entrega de feedback'}
-              </div>
+              {['type90', 'type180', 'type270', 'type360'].map((key) => (
+                <div key={key} style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {t(`evaluaciones.guide.${key}`)}
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Section 3 - Stages */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {'Etapas del ciclo'}
-              <span className="badge badge-accent" style={{ fontSize: '0.6rem' }}>B3.14 - NUEVO</span>
+              {t('evaluaciones.guide.stages')}
+              <span className="badge badge-accent" style={{ fontSize: '0.6rem' }}>{t('evaluaciones.guide.stagesNew')}</span>
             </div>
             <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
-              <li>{'Al crear un ciclo se generan etapas autom\u00e1ticas seg\u00fan el tipo'}</li>
-              <li>{'Cada etapa debe completarse antes de avanzar a la siguiente'}</li>
-              <li style={{ marginTop: '0.25rem' }}>
-                {'Etapas: '}
-                <strong>{'Autoevaluaci\u00f3n \u2192 Evaluaci\u00f3n Encargado \u2192 Evaluaci\u00f3n Pares \u2192 Calibraci\u00f3n \u2192 Entrega Feedback \u2192 Cierre'}</strong>
-              </li>
+              <li>{t('evaluaciones.guide.stagesAutomatic')}</li>
+              <li>{t('evaluaciones.guide.stagesComplete')}</li>
+              <li style={{ marginTop: '0.25rem' }}><strong>{t('evaluaciones.guide.stagesFlow')}</strong></li>
             </ul>
           </div>
 
           {/* Section 4 - Flow */}
           <div style={{ marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Flujo</div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('evaluaciones.guide.flow')}</div>
             <ol style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
-              <li>{'Crear ciclo (borrador)'}</li>
-              <li>{'Asignar evaluadores'}</li>
-              <li>{'Lanzar ciclo (se notifica a evaluadores)'}</li>
-              <li>{'Evaluadores completan formularios por etapa'}</li>
-              <li>{'Calibraci\u00f3n (360\u00b0)'}</li>
-              <li>{'Cierre y visualizaci\u00f3n de resultados'}</li>
+              {['flowStep1', 'flowStep2', 'flowStep3', 'flowStep4', 'flowStep5', 'flowStep6'].map((key) => (
+                <li key={key}>{t(`evaluaciones.guide.${key}`)}</li>
+              ))}
             </ol>
           </div>
 
           {/* Section 5 - Anonymity */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {'Anonimato configurable'}
-              <span className="badge badge-accent" style={{ fontSize: '0.6rem' }}>B2.13 - NUEVO</span>
+              {t('evaluaciones.guide.anonymity')}
+              <span className="badge badge-accent" style={{ fontSize: '0.6rem' }}>{t('evaluaciones.guide.anonymityNew')}</span>
             </div>
             <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, margin: 0, paddingLeft: '1.2rem' }}>
-              <li>{'En la configuraci\u00f3n del ciclo se puede definir qu\u00e9 tipos de evaluador son an\u00f3nimos'}</li>
-              <li>{'Por defecto: pares y externos son an\u00f3nimos, encargado y autoevaluaci\u00f3n son visibles'}</li>
+              <li>{t('evaluaciones.guide.anonymityConfig')}</li>
+              <li>{t('evaluaciones.guide.anonymityDefault')}</li>
             </ul>
           </div>
 
           {/* Section 6 - Permissions */}
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Permisos</div>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('evaluaciones.guide.permissions')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>Administrador:</strong>{' Crea ciclos, asigna evaluadores, avanza etapas, cierra'}
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>{'Encargado de Equipo:'}</strong>{' Ve asignaciones de su equipo, completa evaluaciones'}
-              </div>
-              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <strong>{'Colaborador:'}</strong>{' Completa su autoevaluaci\u00f3n, ve resultados al cierre'}
-              </div>
+              {['permAdmin', 'permManager', 'permEmployee'].map((key) => (
+                <div key={key} style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {t(`evaluaciones.guide.${key}`)}
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -349,11 +332,11 @@ function AdminEvaluationsView() {
           <select
             style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
             value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">Todos los estados</option>
-            <option value="draft">Borrador</option>
-            <option value="active">Activo</option>
-            <option value="paused">Pausado</option>
-            <option value="closed">Cerrado</option>
+            <option value="">{t('evaluaciones.allStatuses')}</option>
+            <option value="draft">{t('status.cycle.draft')}</option>
+            <option value="active">{t('status.cycle.active')}</option>
+            <option value="paused">{t('status.process.in_progress')}</option>
+            <option value="closed">{t('status.cycle.closed')}</option>
           </select>
           <select
             style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}

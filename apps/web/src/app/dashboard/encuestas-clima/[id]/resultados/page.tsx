@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
@@ -14,6 +15,7 @@ import {
 const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 
 export default function ResultadosEncuestaPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const surveyId = params.id as string;
@@ -183,7 +185,7 @@ export default function ResultadosEncuestaPage() {
                     color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer',
                     opacity: exporting && exporting !== fmt ? 0.5 : 1,
                   }}>
-                  {exporting === fmt ? 'Exportando...' : fmt.toUpperCase()}
+                  {exporting === fmt ? t('common.exporting') : fmt.toUpperCase()}
                 </button>
               ))}
             </div>

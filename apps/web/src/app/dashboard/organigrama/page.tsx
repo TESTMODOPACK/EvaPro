@@ -179,7 +179,7 @@ export default function OrganigramaPage() {
       {filtered.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            {(search || deptFilter) ? 'No se encontraron resultados con los filtros aplicados' : 'No hay colaboradores activos para mostrar'}
+            {(search || deptFilter) ? t('orgChart.noFilterResults') : t('orgChart.noActiveUsers')}
           </p>
         </div>
       ) : (

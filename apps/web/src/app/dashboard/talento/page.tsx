@@ -883,7 +883,7 @@ function TalentoPageContent() {
           style={{ fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '.5rem' }}
         >
           <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: showGuide ? 'rotate(90deg)' : 'rotate(0deg)' }}>{'\u25B6'}</span>
-          {showGuide ? 'Ocultar gu\u00eda de uso' : 'Ver gu\u00eda de uso'}
+          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
       </div>
 

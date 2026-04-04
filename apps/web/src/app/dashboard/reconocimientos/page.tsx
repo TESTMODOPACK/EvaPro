@@ -253,7 +253,7 @@ function ReconocimientosPageContent() {
             </button>
           ))}
           <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setShowGuide(!showGuide)}>
-            {showGuide ? 'Ocultar guia' : 'Como funciona'}
+            {showGuide ? t('common.hideGuide') : t('common.showGuide')}
           </button>
         </div>
       </div>
