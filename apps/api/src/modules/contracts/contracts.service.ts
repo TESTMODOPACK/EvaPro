@@ -252,10 +252,10 @@ export class ContractsService {
         label: 'Contrato de Prestación de Servicios',
         content: `CONTRATO DE PRESTACIÓN DE SERVICIOS DE SOFTWARE (SaaS)
 
-Entre EVA360 SpA, RUT 77.XXX.XXX-X, representada por su representante legal, en adelante "el Proveedor", y {{tenantName}}, RUT {{tenantRut}}, con domicilio en {{tenantAddress}}, en adelante "el Cliente".
+Entre Grupo Ascenda SpA, RUT 77.XXX.XXX-X, representada por su representante legal, en adelante "el Proveedor", y {{tenantName}}, RUT {{tenantRut}}, con domicilio en {{tenantAddress}}, en adelante "el Cliente".
 
 PRIMERO: OBJETO
-El Proveedor pondrá a disposición del Cliente la plataforma EvaPro (Eva360) como servicio de software en la nube (SaaS) para la gestión de evaluaciones de desempeño, clima laboral, objetivos y desarrollo del personal.
+El Proveedor pondrá a disposición del Cliente la plataforma Eva360 como servicio de software en la nube (SaaS) para la gestión de evaluaciones de desempeño, clima laboral, objetivos y desarrollo del personal.
 
 SEGUNDO: PLAN Y ALCANCE
 Plan contratado: {{planName}}
@@ -282,7 +282,7 @@ QUINTO: PROTECCIÓN DE DATOS
 Las partes se comprometen a cumplir la Ley 19.628 sobre Protección de Datos Personales. El tratamiento de datos personales se rige por el Acuerdo de Procesamiento de Datos (DPA) adjunto.
 
 SEXTO: PROPIEDAD INTELECTUAL
-La plataforma EvaPro y su código fuente son propiedad exclusiva del Proveedor. El Cliente retiene la propiedad de todos los datos ingresados en la plataforma.
+La plataforma Eva360 y su código fuente son propiedad exclusiva del Proveedor. El Cliente retiene la propiedad de todos los datos ingresados en la plataforma.
 
 SÉPTIMO: VIGENCIA Y TERMINACIÓN
 Este contrato tiene vigencia desde la fecha de inicio por períodos renovables automáticamente. Cualquiera de las partes puede terminar el contrato con 30 días de aviso previo por escrito. Al término, el Proveedor exportará los datos del Cliente en formato estándar dentro de 30 días.
@@ -295,7 +295,7 @@ La responsabilidad máxima del Proveedor se limita al monto pagado por el Client
         label: 'Acuerdo de Procesamiento de Datos (DPA)',
         content: `ACUERDO DE PROCESAMIENTO DE DATOS PERSONALES
 
-En cumplimiento de la Ley 19.628 sobre Protección de la Vida Privada, entre EVA360 SpA ("Encargado del Tratamiento") y {{tenantName}} ("Responsable del Tratamiento").
+En cumplimiento de la Ley 19.628 sobre Protección de la Vida Privada, entre Grupo Ascenda SpA ("Encargado del Tratamiento") y {{tenantName}} ("Responsable del Tratamiento").
 
 1. DATOS TRATADOS
 - Datos de identificación: nombre, apellido, RUT, correo electrónico
@@ -336,10 +336,10 @@ El Encargado notificará al Responsable cualquier brecha de seguridad dentro de 
       {
         type: 'terms_conditions',
         label: 'Términos y Condiciones de Uso',
-        content: `TÉRMINOS Y CONDICIONES DE USO — EVAPRO (EVA360)
+        content: `TÉRMINOS Y CONDICIONES DE USO — EVA360
 
 1. ACEPTACIÓN
-Al acceder y utilizar EvaPro, usted acepta estos términos en nombre de su organización ({{tenantName}}).
+Al acceder y utilizar Eva360, usted acepta estos términos en nombre de su organización ({{tenantName}}).
 
 2. USO ACEPTABLE
 - Usar la plataforma solo para fines de gestión de desempeño y talento
@@ -352,7 +352,7 @@ Al acceder y utilizar EvaPro, usted acepta estos términos en nombre de su organ
 El servicio está disponible 24/7 con un objetivo de disponibilidad del 99.5% mensual. Las ventanas de mantenimiento programado se notificarán con 48 horas de anticipación.
 
 4. PROPIEDAD INTELECTUAL
-EvaPro, su diseño, código y documentación son propiedad de Eva360 SpA. Los datos ingresados por los usuarios son propiedad de la organización cliente.
+Eva360, su diseño, código y documentación son propiedad de Grupo Ascenda SpA. Los datos ingresados por los usuarios son propiedad de la organización cliente.
 
 5. MODIFICACIONES
 Ascenda se reserva el derecho de modificar estos términos con 30 días de aviso previo. El uso continuado después de la notificación constituye aceptación.`,
@@ -360,7 +360,7 @@ Ascenda se reserva el derecho de modificar estos términos con 30 días de aviso
       {
         type: 'privacy_policy',
         label: 'Política de Privacidad',
-        content: `POLÍTICA DE PRIVACIDAD — EVAPRO (EVA360)
+        content: `POLÍTICA DE PRIVACIDAD — EVA360
 
 1. DATOS QUE RECOLECTAMOS
 - Datos de registro: nombre, correo, RUT, cargo, departamento
