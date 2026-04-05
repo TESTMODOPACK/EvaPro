@@ -346,6 +346,8 @@ function AiUsageTab() {
 function AuditoriaPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.user?.role) || '';
+  const isSuperAdmin = role === 'super_admin';
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -388,14 +390,20 @@ function AuditoriaPageContent() {
     if (actionFilter) filters.action = actionFilter;
     if (debouncedSearch) filters.searchText = debouncedSearch;
     if (evidenceOnly) filters.evidenceOnly = true;
-    api.auditLogs.tenant(token, filters)
+
+    // super_admin uses /audit-logs (all orgs); tenant_admin uses /audit-logs/tenant
+    const apiCall = isSuperAdmin
+      ? api.auditLogs.list(token, page, limit, { action: actionFilter || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, entityType: entityType || undefined, searchText: debouncedSearch || undefined })
+      : api.auditLogs.tenant(token, filters);
+
+    apiCall
       .then((res: any) => {
         setLogs(Array.isArray(res) ? res : res.data || []);
         setTotal(res.total || 0);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [token, page, dateFrom, dateTo, entityType, actionFilter, debouncedSearch, evidenceOnly]);
+  }, [token, page, dateFrom, dateTo, entityType, actionFilter, debouncedSearch, evidenceOnly, isSuperAdmin]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 

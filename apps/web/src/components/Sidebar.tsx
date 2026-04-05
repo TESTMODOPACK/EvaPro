@@ -305,12 +305,11 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard', label: t('nav.systemPanel'), icon: icons.dashboard },
         { href: '/dashboard/tenants', label: t('nav.organizations'), icon: icons.home },
         { href: '/dashboard/subscriptions', label: t('nav.subscriptions'), icon: icons.subscription },
-        { href: '/dashboard/audit-log', label: t('nav.systemLog'), icon: icons.log },
         { href: '/dashboard/system-metrics', label: t('nav.usageMetrics'), icon: icons.analytics },
         { href: '/dashboard/analytics-uso', label: 'Adopción y Uso', icon: icons.analytics },
+        { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.log },
         { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: '📋' },
         { href: '/dashboard/contratos', label: 'Contratos', icon: icons.log },
-        { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.log },
       ],
     },
   ];

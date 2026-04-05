@@ -35,9 +35,9 @@ export class AuditController {
     return this.auditService.findAll(page, limit, { action, tenantId, dateFrom, dateTo, entityType, searchText });
   }
 
-  // Tenant admin: own organization logs with advanced filters
+  // Tenant admin (+ super_admin): own organization logs with advanced filters
   @Get('tenant')
-  @Roles('tenant_admin')
+  @Roles('super_admin', 'tenant_admin')
   findByTenant(
     @Request() req: any,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -56,9 +56,9 @@ export class AuditController {
     });
   }
 
-  // Tenant admin: export CSV
+  // Export CSV
   @Get('tenant/export')
-  @Roles('tenant_admin')
+  @Roles('super_admin', 'tenant_admin')
   async exportCsv(
     @Request() req: any,
     @Res() res: Response,
