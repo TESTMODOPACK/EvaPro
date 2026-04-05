@@ -297,70 +297,100 @@ export default function TenantsPage() {
             onClick={async () => {
               const XLSX = await import('xlsx/dist/xlsx.mini.min');
               const wb = XLSX.utils.book_new();
-              // Hoja 1: Organización
+              // IMPORTANT: Row numbers must match the parser's getVal() calls exactly
+              // Parser reads: org rows 5-15, admin rows 5-11, depts col2 rows 5+, positions col2 rows 5+, competencies col2 rows 5+, users row 5+
+
+              // Hoja 1: Organización (parser reads row 5=name, 6=rut, ..., 14=legalRepName, 15=legalRepRut)
               const orgData = [
-                ['PLANTILLA DE ONBOARDING — EVAPRO'], [],
-                ['HOJA 1: DATOS DE LA ORGANIZACIÓN'], [],
-                ['Campo', 'Valor'],
-                ['Nombre de la empresa', ''],
-                ['RUT de la empresa', ''],
-                ['Tipo (company/consultant)', 'company'],
-                ['Industria', ''],
-                ['Rango de colaboradores', ''],
-                ['Dirección comercial', ''],
-                ['Plan (starter/growth/pro/enterprise)', 'starter'],
-                ['Período de facturación (monthly/quarterly/semiannual/yearly)', 'monthly'],
-                ['Fecha de inicio (YYYY-MM-DD)', new Date().toISOString().split('T')[0]],
-                ['Nombre representante legal', ''],
-                ['RUT representante legal', ''],
+                ['PLANTILLA DE ONBOARDING — EVAPRO'], [''],
+                ['DATOS DE LA ORGANIZACIÓN'], ['Campo', 'Valor'],
+                ['Nombre de la empresa *', ''],           // row 5 → getVal(s(0), 5, 2)
+                ['RUT de la empresa', ''],                // row 6
+                ['Tipo (company/consultant)', 'company'], // row 7
+                ['Industria', ''],                        // row 8
+                ['Rango de colaboradores', ''],            // row 9
+                ['Dirección comercial', ''],               // row 10
+                ['Plan (starter/growth/pro/enterprise)', 'starter'], // row 11
+                ['Período facturación (monthly/quarterly/semiannual/yearly)', 'monthly'], // row 12
+                ['Fecha de inicio (YYYY-MM-DD)', new Date().toISOString().split('T')[0]], // row 13
+                ['Nombre representante legal', ''],        // row 14
+                ['RUT representante legal', ''],            // row 15
               ];
               const ws1 = XLSX.utils.aoa_to_sheet(orgData);
-              ws1['!cols'] = [{ wch: 45 }, { wch: 40 }];
+              ws1['!cols'] = [{ wch: 48 }, { wch: 40 }];
               XLSX.utils.book_append_sheet(wb, ws1, 'Organización');
-              // Hoja 2: Administrador
+
+              // Hoja 2: Administrador (parser reads rows 5-11)
               const adminData = [
-                ['HOJA 2: ADMINISTRADOR DEL SISTEMA'], [],
-                ['El primer usuario creado tendrá rol de Administrador'], [],
-                ['Campo', 'Valor'],
-                ['Email', ''],
-                ['Nombres', ''],
-                ['Apellidos', ''],
-                ['RUT', ''],
-                ['Contraseña temporal', 'EvaPro2026!'],
-                ['Cargo', ''],
-                ['Departamento', ''],
+                ['ADMINISTRADOR DEL SISTEMA'], [''],
+                ['El primer usuario creado tendrá rol de Administrador'], ['Campo', 'Valor'],
+                ['Email *', ''],              // row 5
+                ['Nombres *', ''],            // row 6
+                ['Apellidos *', ''],          // row 7
+                ['RUT', ''],                  // row 8
+                ['Contraseña temporal *', 'EvaPro2026!'], // row 9
+                ['Cargo', ''],                // row 10
+                ['Departamento', ''],         // row 11
               ];
               const ws2 = XLSX.utils.aoa_to_sheet(adminData);
-              ws2['!cols'] = [{ wch: 30 }, { wch: 40 }];
+              ws2['!cols'] = [{ wch: 32 }, { wch: 40 }];
               XLSX.utils.book_append_sheet(wb, ws2, 'Administrador');
-              // Hoja 3: Departamentos
+
+              // Hoja 3: Departamentos (parser reads col 2 starting row 5)
               const deptData = [
-                ['HOJA 3: DEPARTAMENTOS'], [],
-                ['Nombre del departamento'],
-                ['Tecnología'], ['Ventas'], ['Recursos Humanos'], ['Finanzas'], ['Operaciones'],
+                ['DEPARTAMENTOS'], [''],
+                ['Ingrese un departamento por fila en la columna B'], ['', 'Nombre del departamento'],
+                ['', 'Tecnología'],           // row 5, col 2
+                ['', 'Ventas'],               // row 6, col 2
+                ['', 'Recursos Humanos'],
+                ['', 'Finanzas'],
+                ['', 'Operaciones'],
+                ['', 'Marketing'],
+                ['', 'Legal'],
+                ['', 'Administración'],
               ];
               const ws3 = XLSX.utils.aoa_to_sheet(deptData);
-              ws3['!cols'] = [{ wch: 30 }];
+              ws3['!cols'] = [{ wch: 8 }, { wch: 30 }];
               XLSX.utils.book_append_sheet(wb, ws3, 'Departamentos');
-              // Hoja 4: Cargos
+
+              // Hoja 4: Cargos (parser reads col 2=name, col 3=level starting row 5)
               const posData = [
-                ['HOJA 4: CATÁLOGO DE CARGOS'], [],
-                ['Nombre del cargo', 'Nivel jerárquico (1=más alto)'],
-                ['Gerente General', 1], ['Gerente de Área', 2], ['Jefe de Departamento', 3],
-                ['Coordinador', 4], ['Analista Senior', 5], ['Analista', 6], ['Asistente', 7],
+                ['CATÁLOGO DE CARGOS'], [''],
+                ['Nombre en col B, nivel en col C (1=más alto)'], ['', 'Nombre del cargo', 'Nivel'],
+                ['', 'Gerente General', 1],   // row 5
+                ['', 'Gerente de Área', 2],
+                ['', 'Jefe de Departamento', 3],
+                ['', 'Coordinador', 4],
+                ['', 'Analista Senior', 5],
+                ['', 'Analista', 6],
+                ['', 'Asistente', 7],
               ];
               const ws4 = XLSX.utils.aoa_to_sheet(posData);
-              ws4['!cols'] = [{ wch: 30 }, { wch: 28 }];
+              ws4['!cols'] = [{ wch: 8 }, { wch: 28 }, { wch: 8 }];
               XLSX.utils.book_append_sheet(wb, ws4, 'Cargos');
-              // Hoja 5: Colaboradores
+
+              // Hoja 5: Competencias (parser reads col 2=name, col 3=category starting row 5)
+              const compData = [
+                ['COMPETENCIAS (opcional)'], [''],
+                ['Nombre en col B, categoría en col C'], ['', 'Nombre', 'Categoría', 'Descripción', 'Nivel esperado'],
+                ['', 'Liderazgo', 'Habilidades directivas', 'Capacidad para guiar equipos', 3],
+                ['', 'Comunicación', 'Habilidades interpersonales', 'Comunicación efectiva', 3],
+                ['', 'Trabajo en equipo', 'Habilidades interpersonales', '', 3],
+              ];
+              const ws5 = XLSX.utils.aoa_to_sheet(compData);
+              ws5['!cols'] = [{ wch: 8 }, { wch: 25 }, { wch: 25 }, { wch: 35 }, { wch: 14 }];
+              XLSX.utils.book_append_sheet(wb, ws5, 'Competencias');
+
+              // Hoja 6: Colaboradores (parser reads row 5+ with col 1=email)
               const usrData = [
-                ['HOJA 5: COLABORADORES'], [],
-                ['Email', 'Nombres', 'Apellidos', 'RUT', 'Contraseña', 'Rol (manager/employee)', 'Departamento', 'Cargo', 'Fecha ingreso (YYYY-MM-DD)', 'Email del jefe directo'],
+                ['COLABORADORES'], [''],
+                ['Complete los datos de cada colaborador desde la fila 5'],
+                ['Email *', 'Nombres *', 'Apellidos *', 'RUT', 'Contraseña *', 'Rol (manager/employee)', 'Departamento', 'Cargo', 'Fecha ingreso', 'Email jefe directo'],
                 ['ejemplo@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'EvaPro2026!', 'employee', 'Ventas', 'Ejecutivo de Ventas', '2024-01-15', 'jefe@empresa.cl'],
               ];
-              const ws5 = XLSX.utils.aoa_to_sheet(usrData);
-              ws5['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 25 }];
-              XLSX.utils.book_append_sheet(wb, ws5, 'Colaboradores');
+              const ws6 = XLSX.utils.aoa_to_sheet(usrData);
+              ws6['!cols'] = [{ wch: 25 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 25 }];
+              XLSX.utils.book_append_sheet(wb, ws6, 'Colaboradores');
               XLSX.writeFile(wb, 'Plantilla_Onboarding_EvaPro.xlsx');
             }}>
             {'📥'} Descargar plantilla Excel
@@ -399,8 +429,8 @@ export default function TenantsPage() {
                   plan: getVal(s(0), 11, 2) || 'starter',
                   billingPeriod: getVal(s(0), 12, 2) || 'monthly',
                   startDate: getVal(s(0), 13, 2) || new Date().toISOString().split('T')[0],
-                  legalRepName: getVal(s(0), 14, 2),
-                  legalRepRut: getVal(s(0), 15, 2),
+                  legalRepName: getVal(s(0), 14, 2) || '',
+                  legalRepRut: getVal(s(0), 15, 2) || '',
                 };
 
                 const admin = {
