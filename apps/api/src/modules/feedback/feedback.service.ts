@@ -155,6 +155,29 @@ export class FeedbackService {
     return saved;
   }
 
+  async deleteCheckIn(tenantId: string, id: string, userId: string, role: string): Promise<{ deleted: boolean }> {
+    const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+
+    // Solo el creador (manager) o un admin puede eliminar
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (!isAdmin && ci.managerId !== userId) {
+      throw new ForbiddenException('Solo el creador del check-in o un administrador puede eliminarlo.');
+    }
+
+    // Solo se pueden eliminar check-ins programados (no completados)
+    if (ci.status === CheckInStatus.COMPLETED) {
+      throw new BadRequestException('No se puede eliminar un check-in ya completado. Los registros completados son evidencia.');
+    }
+
+    await this.checkInRepo.remove(ci);
+    this.auditService.log(tenantId, userId, 'checkin.deleted', 'checkin', id, {
+      topic: ci.topic, employeeId: ci.employeeId, status: ci.status,
+    }).catch(() => {});
+
+    return { deleted: true };
+  }
+
   async findCheckIns(tenantId: string, userId: string, role: string): Promise<CheckIn[]> {
     const isAdminOrManager = role === 'super_admin' || role === 'tenant_admin' || role === 'manager';
     const where = isAdminOrManager

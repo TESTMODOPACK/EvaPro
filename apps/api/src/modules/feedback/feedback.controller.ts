@@ -80,6 +80,15 @@ export class FeedbackController {
     return this.feedbackService.updateCheckIn(req.user.tenantId, id, dto);
   }
 
+  @Delete('checkins/:id')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  deleteCheckIn(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.feedbackService.deleteCheckIn(req.user.tenantId, id, req.user.userId, req.user.role);
+  }
+
   @Post('checkins/:id/complete')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   completeCheckIn(

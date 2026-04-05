@@ -4,7 +4,7 @@ import { PlanGate } from '@/components/PlanGate';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ConfirmModal from '@/components/ConfirmModal';
-import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
+import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useDeleteCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
@@ -66,6 +66,7 @@ function CheckInsTab() {
   const createCheckIn = useCreateCheckIn();
   const completeCheckIn = useCompleteCheckIn();
   const rejectCheckIn = useRejectCheckIn();
+  const deleteCheckIn = useDeleteCheckIn();
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ employeeId: '', scheduledDate: '', scheduledTime: '', topic: '', locationId: '' });
@@ -428,6 +429,18 @@ function CheckInsTab() {
                   {ci.status === 'scheduled' && ci.employeeId === currentUserId && (
                     <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => setRejectModal({ id: ci.id, topic: ci.topic })}>
                       {t('feedback.reject')}
+                    </button>
+                  )}
+                  {ci.status !== 'completed' && canCreateCheckIn && ci.managerId === currentUserId && (
+                    <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--text-muted)' }}
+                      onClick={() => {
+                        if (confirm(`¿Eliminar el check-in "${ci.topic}"? Esta acción no se puede deshacer.`)) {
+                          deleteCheckIn.mutate(ci.id);
+                        }
+                      }}
+                      disabled={deleteCheckIn.isPending}
+                      title="Eliminar check-in">
+                      🗑
                     </button>
                   )}
                 </div>

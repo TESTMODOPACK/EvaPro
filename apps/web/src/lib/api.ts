@@ -558,6 +558,8 @@ export const api = {
       request<CheckInData>(`/feedback/checkins/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
     completeCheckIn: (token: string, id: string, data?: { notes?: string; actionItems?: any[]; rating?: number }) =>
       request<CheckInData>(`/feedback/checkins/${id}/complete`, { method: "POST", ...(data ? { body: JSON.stringify(data) } : {}) }, token),
+    deleteCheckIn: (token: string, id: string) =>
+      request<{ deleted: boolean }>(`/feedback/checkins/${id}`, { method: "DELETE" }, token),
     sendQuickFeedback: (token: string, data: any) =>
       request<QuickFeedbackData>("/feedback/quick", { method: "POST", body: JSON.stringify(data) }, token),
     receivedFeedback: (token: string) =>
