@@ -31,6 +31,10 @@ const moduleLabels: Record<string, string> = {
   subscription: 'Suscripciones',
   tenant: 'Organización',
   plan: 'Planes',
+  contract: 'Contratos',
+  report: 'Reportes',
+  ai_insight: 'Informes IA',
+  notification: 'Notificaciones',
 };
 
 const actionLabels: Record<string, string> = {
@@ -104,6 +108,23 @@ const actionLabels: Record<string, string> = {
   'subscription_request.rejected': 'Solicitud de suscripción rechazada',
   'subscription.ai_addon_purchased': 'Add-on IA contratado',
   'subscription.ai_addon_removed': 'Add-on IA removido',
+  // Contracts
+  'contracts.bulk_created': 'Contratos creados automáticamente',
+  'contract.created': 'Contrato creado',
+  'contract.updated': 'Contrato actualizado',
+  'contract.sent_for_signature': 'Contrato enviado a firma',
+  'contract.signed': 'Contrato firmado',
+  'contract.deleted': 'Contrato eliminado',
+  // AI
+  'ai.summary_generated': 'Resumen IA generado',
+  'ai.bias_analyzed': 'Análisis de sesgos generado',
+  'ai.suggestions_generated': 'Sugerencias IA generadas',
+  // Check-in requests
+  'checkin.requested': 'Solicitud de reunión',
+  'checkin.deleted': 'Check-in eliminado',
+  // Tenant
+  'tenant.bulk_onboarded': 'Organización creada por plantilla',
+  'tenant.settings_updated': 'Configuración actualizada',
   // Other
   'payment.registered': 'Pago registrado',
   'report.viewed': 'Reporte consultado',

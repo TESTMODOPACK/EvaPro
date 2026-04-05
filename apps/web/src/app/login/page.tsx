@@ -185,11 +185,11 @@ export default function LoginPage() {
           fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1,
           marginBottom: "0.5rem",
         }}>
-          <span style={{ color: "#F5E4A8" }}>Ascenda</span>{" "}
+          <span style={{ color: "#F5E4A8" }}>Eva</span>
           <span style={{
             background: "linear-gradient(135deg, #E8C97A 0%, #C9933A 100%)",
             WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          }}>Performance</span>
+          }}>360</span>
         </h1>
 
         <p style={{
@@ -222,7 +222,7 @@ export default function LoginPage() {
           position: "absolute", bottom: "2rem", left: "3.5rem",
           fontSize: "0.72rem", color: "rgba(201,147,58,0.35)",
         }}>
-          &copy; {new Date().getFullYear()} Ascenda Performance
+          &copy; {new Date().getFullYear()} Eva360 by Ascenda
         </p>
       </div>
 

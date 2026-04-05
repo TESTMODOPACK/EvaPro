@@ -589,7 +589,7 @@ export default function OnboardingPage() {
               </svg>
             </div>
             <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Ascenda <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>Performance</span>
+              Eva<span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>360</span>
             </span>
           </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>

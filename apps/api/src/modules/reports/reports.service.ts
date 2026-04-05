@@ -1491,7 +1491,7 @@ export class ReportsService {
     const heatmapData = await this.performanceHeatmap(cycleId, tenantId);
 
     const pptx = new PptxGenJS();
-    pptx.author = 'Ascenda Performance';
+    pptx.author = 'Eva360';
     pptx.title = `Reporte - ${summary.cycle.name}`;
     pptx.subject = 'Evaluación de Desempeño';
 
@@ -1504,7 +1504,7 @@ export class ReportsService {
     // ─── Slide 1: Title ─────────────────────────────────────────────
     const slide1 = pptx.addSlide();
     slide1.background = { color: DARK };
-    slide1.addText('Ascenda Performance', {
+    slide1.addText('Eva360', {
       x: 0.8, y: 1.0, w: 8.4, h: 0.6,
       fontSize: 14, color: GOLD_LIGHT, fontFace: 'Arial',
     });
@@ -1696,7 +1696,7 @@ export class ReportsService {
     // ─── Slide 6: Closing ───────────────────────────────────────────
     const slideEnd = pptx.addSlide();
     slideEnd.background = { color: DARK };
-    slideEnd.addText('Ascenda Performance', {
+    slideEnd.addText('Eva360', {
       x: 0.5, y: 2.0, w: 9, h: 0.8,
       fontSize: 28, bold: true, color: GOLD_LIGHT, align: 'center', fontFace: 'Arial',
     });

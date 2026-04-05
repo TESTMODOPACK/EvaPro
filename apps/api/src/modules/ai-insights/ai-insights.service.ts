@@ -1220,7 +1220,7 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
     doc.setTextColor(232, 201, 122);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('Ascenda Performance — Informe IA', 14, 13);
+    doc.text('Eva360 — Informe IA', 14, 13);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
@@ -1270,7 +1270,7 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
       const footerY = doc.internal.pageSize.getHeight() - 8;
-      doc.text(`Generado por Ascenda Performance con IA — ${new Date().toLocaleDateString('es-CL')}`, leftMargin, footerY);
+      doc.text(`Generado por Eva360 con IA — ${new Date().toLocaleDateString('es-CL')}`, leftMargin, footerY);
       doc.text(`Página ${p} de ${pageCount}`, pageWidth - 14, footerY, { align: 'right' });
     }
 

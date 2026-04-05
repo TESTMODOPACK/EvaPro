@@ -21,7 +21,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Ascenda Performance – Evaluación de Desempeño',
+  title: 'Eva360 by Ascenda – Evaluación de Desempeño',
   description: 'Plataforma multi-tenant de evaluación de desempeño para empresas',
   manifest: '/manifest.json',
   appleWebApp: {

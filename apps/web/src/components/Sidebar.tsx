@@ -333,7 +333,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       display: 'flex', flexDirection: 'column',
       zIndex: 100,
     }}>
-      {/* Sidebar header — Ascenda bars icon */}
+      {/* Sidebar header — Eva360 logo with Ascenda bars */}
       <div style={{ padding: '1.25rem 1.25rem 0.75rem', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px' }}>
@@ -350,7 +350,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
             background: 'linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
           }}>
-            Ascenda
+            Eva360
           </span>
         </div>
       </div>

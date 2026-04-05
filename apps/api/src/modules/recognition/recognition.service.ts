@@ -874,7 +874,7 @@ export class RecognitionService {
     const pageCount = doc.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i); doc.setFontSize(7); doc.setTextColor(148, 163, 184);
-      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Ascenda Performance`, margin, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`, margin, doc.internal.pageSize.getHeight() - 8);
       doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
     }
     return Buffer.from(doc.output('arraybuffer'));

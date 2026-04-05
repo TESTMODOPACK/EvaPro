@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { Tenant } from '../tenants/entities/tenant.entity';
 
 /**
- * EmailService — Beautiful branded transactional emails for Ascenda Performance.
+ * EmailService — Beautiful branded transactional emails for Eva360.
  *
  * Uses Resend (https://resend.com) when RESEND_API_KEY is set.
  * Falls back to console logging in development.
@@ -13,7 +13,7 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private resend: any = null;
-  private readonly from = process.env.EMAIL_FROM || 'Ascenda Performance <onboarding@resend.dev>';
+  private readonly from = process.env.EMAIL_FROM || 'Eva360 <onboarding@resend.dev>';
   private readonly appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
 
   constructor(
@@ -235,11 +235,11 @@ export class EmailService {
   ) {
     await this.send(
       email,
-      `Te han invitado a Ascenda Performance — ${data.orgName}`,
+      `Te han invitado a Eva360 — ${data.orgName}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `${data.inviterName || data.orgName} te ha invitado a la plataforma de evaluación de desempeño.`,
         body: `
-          ${this.heading('¡Bienvenido/a a Ascenda Performance! 🎉')}
+          ${this.heading('¡Bienvenido/a a Eva360! 🎉')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, ${data.inviterName ? `<strong>${data.inviterName}</strong> te ha` : `<strong>${data.orgName}</strong> te ha`} invitado a la plataforma de gestión del desempeño.`)}
           ${data.tempPassword ? `
             ${this.infoBox([
@@ -775,7 +775,7 @@ export class EmailService {
   ) {
     await this.send(
       email,
-      'Código de recuperación — Ascenda Performance',
+      'Código de recuperación — Eva360',
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Recibimos tu solicitud de recuperación de contraseña. El código expira en ${data.expiryMinutes} minutos.`,
         body: `
@@ -815,7 +815,7 @@ export class EmailService {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ascenda Performance</title>
+  <title>Eva360</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;color:#f8fafc;font-size:1px;">${preheader}</div>` : ''}
@@ -851,7 +851,7 @@ export class EmailService {
         <tr>
           <td style="background:#f1f5f9;border-radius:0 0 16px 16px;padding:20px 36px;text-align:center;">
             <p style="margin:0;font-size:0.75rem;color:#94a3b8;line-height:1.6;">
-              © ${new Date().getFullYear()} Ascenda Performance. Todos los derechos reservados.<br>
+              © ${new Date().getFullYear()} Eva360. Todos los derechos reservados.<br>
               <a href="${this.appUrl}" style="color:#C9933A;text-decoration:none;">ascenda.cl</a>
               &nbsp;·&nbsp;
               <a href="${this.appUrl}/dashboard/ajustes" style="color:#94a3b8;text-decoration:none;">Preferencias de notificación</a>

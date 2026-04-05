@@ -14,7 +14,7 @@ export function generateTotpSecret(): string {
 }
 
 /** Generate OTP Auth URL for QR codes */
-export function generateTotpUri(secret: string, email: string, issuer = 'Ascenda Performance'): string {
+export function generateTotpUri(secret: string, email: string, issuer = 'Eva360'): string {
   return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(email)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&digits=${TOTP_DIGITS}&period=${TOTP_PERIOD}`;
 }
 

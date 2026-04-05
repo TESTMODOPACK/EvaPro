@@ -111,7 +111,7 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
           WebkitTextFillColor: 'transparent',
           letterSpacing: '0.02em',
         }}>
-          Performance
+          Eva360
         </span>
       </div>
 
