@@ -42,7 +42,7 @@ export default function CycleDetailPage() {
   const { data: peerAssignments } = usePeerAssignments(id);
   const addPeer = useAddPeerAssignment();
   const removePeer = useRemovePeerAssignment();
-  const { data: usersData } = useUsers();
+  const { data: usersData } = useUsers(1, 500);
 
   const token = useAuthStore((s) => s.token);
   const [confirmState, setConfirmState] = useState<{
@@ -65,6 +65,8 @@ export default function CycleDetailPage() {
   const [peerEvaluateeId, setPeerEvaluateeId] = useState('');
   const [peerEvaluatorId, setPeerEvaluatorId] = useState('');
   const [peerRelationType, setPeerRelationType] = useState('');
+  const [manualDeptFilter, setManualDeptFilter] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [allowedRelations, setAllowedRelations] = useState<{ value: string; label: string }[]>([]);
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoGenResult, setAutoGenResult] = useState<{ created: number } | null>(null);
@@ -713,32 +715,40 @@ export default function CycleDetailPage() {
                       overflow: 'hidden',
                     }}
                   >
-                    {/* Evaluatee header */}
-                    <div style={{
+                    {/* Evaluatee header — clickable to collapse */}
+                    <div
+                      onClick={() => setCollapsedGroups(prev => {
+                        const next = new Set(prev);
+                        next.has(evaluateeId) ? next.delete(evaluateeId) : next.add(evaluateeId);
+                        return next;
+                      })}
+                      style={{
                       padding: '0.6rem 1rem',
                       background: 'rgba(99,102,241,0.07)',
-                      borderBottom: '1px solid var(--border)',
+                      borderBottom: collapsedGroups.has(evaluateeId) ? 'none' : '1px solid var(--border)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.5rem',
+                      cursor: 'pointer',
                     }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                       </svg>
                       <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>
-                        {evalueeName}
+                        {evalueeName}{first.evaluatee?.position ? ` (${first.evaluatee.position})` : ''}
                       </span>
                       {first.evaluatee?.department && (
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '0.1rem 0.5rem', borderRadius: '999px', border: '1px solid var(--border)' }}>
                           {first.evaluatee.department}
                         </span>
                       )}
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         {assignments.length} evaluador{assignments.length !== 1 ? 'es' : ''}
+                        <span style={{ fontSize: '0.65rem', transition: 'transform 0.2s', transform: collapsedGroups.has(evaluateeId) ? 'rotate(0deg)' : 'rotate(90deg)', display: 'inline-block' }}>▶</span>
                       </span>
                     </div>
-                    {/* Evaluators list */}
-                    {assignments.map((pa: any, idx: number) => (
+                    {/* Evaluators list — collapsible */}
+                    {!collapsedGroups.has(evaluateeId) && assignments.map((pa: any, idx: number) => (
                       <div
                         key={pa.id}
                         style={{
@@ -753,6 +763,7 @@ export default function CycleDetailPage() {
                         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', flex: 1 }}>
                           {pa.evaluator?.firstName || pa.evaluator?.email || pa.evaluatorId || '\u2014'}
                           {pa.evaluator?.lastName ? ` ${pa.evaluator.lastName}` : ''}
+                          {pa.evaluator?.position ? <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}> ({pa.evaluator.position})</span> : ''}
                         </span>
                         <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>
                           {relationLabels[pa.relationType] || pa.relationType}
@@ -779,113 +790,154 @@ export default function CycleDetailPage() {
             </div>
           )}
 
-          {/* Add assignment form */}
-          <div
-            style={{
-              padding: '1rem 1.5rem',
-              borderTop: '1px solid var(--border)',
-              display: 'flex',
-              gap: '0.75rem',
-              alignItems: 'flex-end',
-              flexWrap: 'wrap',
-            }}
-          >
-            <div style={{ minWidth: '140px' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                {t('evaluaciones.detail.relation')}
-              </label>
-              <select
-                value={peerRelationType}
-                onChange={(e) => setPeerRelationType(e.target.value)}
-                style={{
-                  width: '100%', padding: '0.5rem 0.75rem',
-                  borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)',
-                  background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem',
-                }}
-              >
-                {allowedRelations.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
+          {/* Manual assignment section */}
+          <div style={{ borderTop: '1px solid var(--border)', padding: '1rem 1.5rem' }}>
+            {/* Explanatory note */}
+            <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Asignación manual de evaluadores. Seleccione la relación, departamento, evaluado y evaluador. Si ya existe una asignación con la misma relación para el evaluado, debe eliminarla primero.
             </div>
-            <div style={{ flex: 1, minWidth: '160px' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                {t('evaluaciones.detail.evaluatee')}
-              </label>
-              <select
-                value={peerEvaluateeId}
-                onChange={(e) => {
-                  setPeerEvaluateeId(e.target.value);
-                  if (e.target.value === peerEvaluatorId) setPeerEvaluatorId('');
-                }}
-                style={{
-                  width: '100%', padding: '0.5rem 0.75rem',
-                  borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)',
-                  background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem',
-                }}
-              >
-                <option value="">Seleccionar evaluado</option>
-                {usersList.map((u: any) => (
-                  <option key={u.id} value={u.id}>
-                    {u.firstName ? `${u.firstName} ${u.lastName || ''}${u.position ? ` - ${u.position}` : ''}` : u.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {peerRelationType !== 'self' && (
-              <div style={{ flex: 1, minWidth: '160px' }}>
+
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              {/* Relación — filtered by cycle type */}
+              <div style={{ minWidth: '140px' }}>
                 <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-                  {t('evaluaciones.detail.evaluator')}
+                  {t('evaluaciones.detail.relation')}
                 </label>
                 <select
-                  value={peerEvaluatorId}
-                  onChange={(e) => setPeerEvaluatorId(e.target.value)}
-                  style={{
-                    width: '100%', padding: '0.5rem 0.75rem',
-                    borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)',
-                    background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem',
-                  }}
+                  value={peerRelationType}
+                  onChange={(e) => { setPeerRelationType(e.target.value); setPeerEvaluatorId(''); }}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                 >
-                  <option value="">Seleccionar evaluador</option>
+                  {allowedRelations.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Departamento filter */}
+              <div style={{ minWidth: '140px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
+                  Departamento
+                </label>
+                <select
+                  value={manualDeptFilter}
+                  onChange={(e) => { setManualDeptFilter(e.target.value); setPeerEvaluateeId(''); setPeerEvaluatorId(''); }}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                >
+                  <option value="">Todos</option>
+                  {deptOptions.map((d: string) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Evaluado — filtered by department */}
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
+                  {t('evaluaciones.detail.evaluatee')}
+                </label>
+                <select
+                  value={peerEvaluateeId}
+                  onChange={(e) => {
+                    const newId = e.target.value;
+                    setPeerEvaluateeId(newId);
+                    setPeerEvaluatorId('');
+                    // Auto-fill evaluator based on relation type
+                    if (newId && peerRelationType === 'manager') {
+                      const selectedUser = usersList.find((u: any) => u.id === newId);
+                      if (selectedUser?.managerId) setPeerEvaluatorId(selectedUser.managerId);
+                    }
+                  }}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                >
+                  <option value="">Seleccionar evaluado ({usersList.filter((u: any) => !manualDeptFilter || u.department === manualDeptFilter).length})</option>
                   {usersList
-                    .filter((u: any) => u.id !== peerEvaluateeId)
+                    .filter((u: any) => !manualDeptFilter || u.department === manualDeptFilter)
                     .map((u: any) => (
                       <option key={u.id} value={u.id}>
-                        {u.firstName ? `${u.firstName} ${u.lastName || ''}${u.position ? ` - ${u.position}` : ''}` : u.email}
+                        {u.firstName} {u.lastName || ''}{u.position ? ` (${u.position})` : ''}{u.department ? ` — ${u.department}` : ''}
                       </option>
                     ))}
                 </select>
               </div>
-            )}
-            <button
-              className="btn-primary"
-              onClick={handleAddPeer}
-              disabled={!peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) || addPeer.isPending}
-              style={{
-                fontSize: '0.85rem', padding: '0.5rem 1.25rem',
-                opacity: !peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) ? 0.5 : 1,
-              }}
-            >
-              {addPeer.isPending ? t('common.saving') : t('evaluaciones.detail.addAssignment')}
-            </button>
-            {peerEvaluateeId && (
+
+              {/* Evaluador — auto-filled or filtered by relation */}
+              {peerRelationType !== 'self' && (
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
+                    {t('evaluaciones.detail.evaluator')}
+                    {peerRelationType === 'manager' && peerEvaluatorId && <span style={{ color: 'var(--success)', fontSize: '0.7rem', marginLeft: '0.3rem' }}>(auto-asignado)</span>}
+                  </label>
+                  <select
+                    value={peerEvaluatorId}
+                    onChange={(e) => setPeerEvaluatorId(e.target.value)}
+                    disabled={peerRelationType === 'manager' && !!peerEvaluatorId}
+                    style={{
+                      width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)',
+                      background: peerRelationType === 'manager' && peerEvaluatorId ? 'var(--bg-secondary)' : 'var(--bg-surface)',
+                      color: 'var(--text-primary)', fontSize: '0.85rem',
+                    }}
+                  >
+                    <option value="">Seleccionar evaluador</option>
+                    {usersList
+                      .filter((u: any) => {
+                        if (u.id === peerEvaluateeId) return false;
+                        // Filter by relation type
+                        if (peerRelationType === 'manager') {
+                          // Only show the direct manager
+                          const evaluatee = usersList.find((eu: any) => eu.id === peerEvaluateeId);
+                          return evaluatee?.managerId === u.id;
+                        }
+                        if (peerRelationType === 'direct_report') {
+                          // Only show users whose manager is the evaluatee
+                          return u.managerId === peerEvaluateeId;
+                        }
+                        // peer: show all (except evaluatee)
+                        return true;
+                      })
+                      .map((u: any) => (
+                        <option key={u.id} value={u.id}>
+                          {u.firstName} {u.lastName || ''}{u.position ? ` (${u.position})` : ''}{u.department ? ` — ${u.department}` : ''}
+                        </option>
+                      ))}
+                  </select>
+                  {peerRelationType === 'manager' && peerEvaluateeId && !peerEvaluatorId && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--warning)' }}>Este colaborador no tiene jefatura asignada</span>
+                  )}
+                </div>
+              )}
+
               <button
-                className="btn-ghost"
-                onClick={async () => {
-                  if (!token) return;
-                  setSuggestingFor(peerEvaluateeId);
-                  setLoadingSuggestions(true);
-                  try {
-                    const result = await api.peerAssignments.suggestPeers(token, id, peerEvaluateeId);
-                    setSuggestions(result);
-                  } catch { setSuggestions([]); }
-                  setLoadingSuggestions(false);
-                }}
-                disabled={loadingSuggestions}
-                style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }}
+                className="btn-primary"
+                onClick={handleAddPeer}
+                disabled={!peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) || addPeer.isPending}
+                style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem', opacity: !peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) ? 0.5 : 1 }}
               >
-                {loadingSuggestions ? t('evaluaciones.detail.loadingSuggestions') : t('evaluaciones.detail.suggestPeers')}
+                {addPeer.isPending ? t('common.saving') : t('evaluaciones.detail.addAssignment')}
               </button>
+            </div>
+
+            {/* Suggest peers button */}
+            {peerEvaluateeId && peerRelationType === 'peer' && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <button
+                  className="btn-ghost"
+                  onClick={async () => {
+                    if (!token) return;
+                    setSuggestingFor(peerEvaluateeId);
+                    setLoadingSuggestions(true);
+                    try {
+                      const result = await api.peerAssignments.suggestPeers(token, id, peerEvaluateeId);
+                      setSuggestions(result);
+                    } catch { setSuggestions([]); }
+                    setLoadingSuggestions(false);
+                  }}
+                  disabled={loadingSuggestions}
+                  style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }}
+                >
+                  {loadingSuggestions ? t('evaluaciones.detail.loadingSuggestions') : t('evaluaciones.detail.suggestPeers')}
+                </button>
+              </div>
             )}
           </div>
 
