@@ -41,6 +41,26 @@ export function useCompleteCheckIn() {
   });
 }
 
+export function useRequestCheckIn() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { topic: string; suggestedDate?: string }) =>
+      api.feedback.requestCheckIn(token!, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] }),
+  });
+}
+
+export function useAcceptCheckIn() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string } }) =>
+      api.feedback.acceptCheckInRequest(token!, id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] }),
+  });
+}
+
 export function useDeleteCheckIn() {
   const token = useAuthStore((s) => s.token);
   const qc = useQueryClient();

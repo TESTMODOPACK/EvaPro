@@ -4,7 +4,7 @@ import { PlanGate } from '@/components/PlanGate';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ConfirmModal from '@/components/ConfirmModal';
-import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useDeleteCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
+import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useDeleteCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
@@ -14,6 +14,7 @@ type QuickSubTab = 'received' | 'given';
 type Sentiment = 'positive' | 'neutral' | 'constructive';
 
 const statusBadge: Record<string, string> = {
+  requested: 'badge-accent',
   scheduled: 'badge-warning',
   completed: 'badge-success',
   cancelled: 'badge-danger',
@@ -54,6 +55,7 @@ function CheckInsTab() {
   const canCreateCheckIn = role === 'tenant_admin' || role === 'manager' || role === 'super_admin';
 
   const statusLabel: Record<string, string> = {
+    requested: 'Solicitada',
     scheduled: t('feedback.statusScheduled'),
     completed: t('feedback.statusCompleted'),
     cancelled: t('feedback.statusCancelled'),
@@ -67,6 +69,11 @@ function CheckInsTab() {
   const completeCheckIn = useCompleteCheckIn();
   const rejectCheckIn = useRejectCheckIn();
   const deleteCheckIn = useDeleteCheckIn();
+  const requestCheckIn = useRequestCheckIn();
+  const acceptCheckIn = useAcceptCheckIn();
+  const isEmployee = role === 'employee';
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [requestForm, setRequestForm] = useState({ topic: '', suggestedDate: '' });
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ employeeId: '', scheduledDate: '', scheduledTime: '', topic: '', locationId: '' });
@@ -133,12 +140,54 @@ function CheckInsTab() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
         <h2 style={{ fontWeight: 700, fontSize: '1rem' }}>{'Check-ins 1:1'}</h2>
-        {canCreateCheckIn && (
-          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? t('common.cancel') : t('feedback.newCheckIn')}
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {canCreateCheckIn && (
+            <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+              {showForm ? t('common.cancel') : t('feedback.newCheckIn')}
+            </button>
+          )}
+          {isEmployee && (
+            <button className="btn-primary" onClick={() => setShowRequestForm(!showRequestForm)}>
+              {showRequestForm ? t('common.cancel') : 'Solicitar Reunión'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Employee: Request meeting form */}
+      {showRequestForm && isEmployee && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.5rem' }}>Solicitar reunión 1:1 con tu jefatura</h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+            Tu encargado recibirá una notificación y podrá agendar la reunión.
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: 2, minWidth: '200px' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Tema de la reunión *</label>
+              <input className="input" type="text" placeholder="¿De qué te gustaría conversar?" style={{ width: '100%' }}
+                value={requestForm.topic} onChange={(e) => setRequestForm({ ...requestForm, topic: e.target.value })} />
+            </div>
+            <div style={{ minWidth: '150px' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Fecha sugerida (opcional)</label>
+              <input className="input" type="date" style={{ width: '100%' }}
+                value={requestForm.suggestedDate} onChange={(e) => setRequestForm({ ...requestForm, suggestedDate: e.target.value })} />
+            </div>
+            <button className="btn-primary" style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem' }}
+              disabled={!requestForm.topic.trim() || requestCheckIn.isPending}
+              onClick={async () => {
+                try {
+                  await requestCheckIn.mutateAsync({ topic: requestForm.topic.trim(), suggestedDate: requestForm.suggestedDate || undefined });
+                  setRequestForm({ topic: '', suggestedDate: '' });
+                  setShowRequestForm(false);
+                } catch (e: any) {
+                  alert(e.message || 'Error al solicitar reunión');
+                }
+              }}>
+              {requestCheckIn.isPending ? 'Enviando...' : 'Enviar solicitud'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Inline form */}
       {showForm && (
@@ -417,6 +466,18 @@ function CheckInsTab() {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', flexShrink: 0 }}>
+                  {/* Manager: Accept a requested check-in */}
+                  {ci.status === 'requested' && canCreateCheckIn && ci.managerId === currentUserId && (
+                    <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                      onClick={async () => {
+                        try {
+                          await acceptCheckIn.mutateAsync({ id: ci.id });
+                        } catch (e: any) { alert(e.message || 'Error'); }
+                      }}
+                      disabled={acceptCheckIn.isPending}>
+                      {acceptCheckIn.isPending ? '...' : '✓ Aceptar'}
+                    </button>
+                  )}
                   {ci.status === 'scheduled' && canCreateCheckIn && (
                     <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
                       onClick={() => {

@@ -14,6 +14,7 @@ import { MeetingLocation } from './meeting-location.entity';
 import { DevelopmentPlan } from '../../development/entities/development-plan.entity';
 
 export enum CheckInStatus {
+  REQUESTED = 'requested',
   SCHEDULED = 'scheduled',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',

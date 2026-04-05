@@ -562,6 +562,10 @@ export const api = {
       request<CheckInData>(`/feedback/checkins/${id}/complete`, { method: "POST", ...(data ? { body: JSON.stringify(data) } : {}) }, token),
     deleteCheckIn: (token: string, id: string) =>
       request<{ deleted: boolean }>(`/feedback/checkins/${id}`, { method: "DELETE" }, token),
+    requestCheckIn: (token: string, data: { topic: string; suggestedDate?: string }) =>
+      request<CheckInData>("/feedback/checkins/request", { method: "POST", body: JSON.stringify(data) }, token),
+    acceptCheckInRequest: (token: string, id: string, data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string }) =>
+      request<CheckInData>(`/feedback/checkins/${id}/accept`, { method: "POST", ...(data ? { body: JSON.stringify(data) } : {}) }, token),
     sendQuickFeedback: (token: string, data: any) =>
       request<QuickFeedbackData>("/feedback/quick", { method: "POST", body: JSON.stringify(data) }, token),
     receivedFeedback: (token: string) =>

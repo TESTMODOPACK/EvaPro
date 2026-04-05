@@ -178,6 +178,83 @@ export class FeedbackService {
     return { deleted: true };
   }
 
+  /** Employee requests a check-in with their direct manager */
+  async requestCheckIn(tenantId: string, employeeId: string, dto: { topic: string; suggestedDate?: string }): Promise<CheckIn> {
+    // Find the employee's direct manager
+    const employee = await this.userRepo.findOne({
+      where: { id: employeeId, tenantId },
+      select: ['id', 'managerId', 'firstName', 'lastName'],
+    });
+    if (!employee) throw new NotFoundException('Colaborador no encontrado');
+    if (!employee.managerId) {
+      throw new BadRequestException('No tienes una jefatura directa asignada. Contacta al administrador.');
+    }
+
+    const ci = this.checkInRepo.create({
+      tenantId,
+      managerId: employee.managerId,
+      employeeId,
+      scheduledDate: dto.suggestedDate ? new Date(dto.suggestedDate) : new Date(),
+      topic: dto.topic,
+      actionItems: [],
+      agendaTopics: [],
+      status: CheckInStatus.REQUESTED,
+    } as any);
+    const saved = await this.checkInRepo.save(ci);
+
+    // Notify the manager
+    const employeeName = `${employee.firstName} ${employee.lastName}`;
+    await this.notificationsService.create({
+      tenantId,
+      userId: employee.managerId,
+      type: NotificationType.CHECKIN_SCHEDULED,
+      title: 'Solicitud de reunión 1:1',
+      message: `${employeeName} ha solicitado una reunión 1:1: "${dto.topic}"`,
+      metadata: { checkInId: (saved as any).id, requestedBy: employeeId },
+    }).catch(() => {});
+
+    this.auditService.log(tenantId, employeeId, 'checkin.requested', 'checkin', (saved as any).id, {
+      topic: dto.topic, managerId: employee.managerId,
+    }).catch(() => {});
+
+    return saved as any;
+  }
+
+  /** Manager accepts a requested check-in — changes status to scheduled */
+  async acceptCheckInRequest(tenantId: string, checkInId: string, managerId: string, data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string }): Promise<CheckIn> {
+    const ci = await this.checkInRepo.findOne({ where: { id: checkInId, tenantId } });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+    if (ci.status !== CheckInStatus.REQUESTED) {
+      throw new BadRequestException('Solo se pueden aceptar solicitudes pendientes');
+    }
+    if (ci.managerId !== managerId) {
+      throw new ForbiddenException('Solo el encargado asignado puede aceptar esta solicitud');
+    }
+
+    ci.status = CheckInStatus.SCHEDULED;
+    if (data?.scheduledDate) ci.scheduledDate = new Date(data.scheduledDate);
+    if (data?.scheduledTime) ci.scheduledTime = data.scheduledTime;
+    if (data?.locationId) ci.locationId = data.locationId;
+    const saved = await this.checkInRepo.save(ci);
+
+    // Notify employee that request was accepted
+    const manager = await this.userRepo.findOne({ where: { id: managerId }, select: ['id', 'firstName', 'lastName'] });
+    const managerName = manager ? `${manager.firstName} ${manager.lastName}` : 'Tu encargado';
+    await this.notificationsService.create({
+      tenantId,
+      userId: ci.employeeId,
+      type: NotificationType.CHECKIN_SCHEDULED,
+      title: 'Solicitud de reunión aceptada',
+      message: `${managerName} ha aceptado tu solicitud de reunión: "${ci.topic}"`,
+      metadata: { checkInId: ci.id },
+    }).catch(() => {});
+
+    // Send email invitation
+    await this.sendCheckInInvitation(saved, tenantId);
+
+    return saved;
+  }
+
   async findCheckIns(tenantId: string, userId: string, role: string): Promise<CheckIn[]> {
     const isAdminOrManager = role === 'super_admin' || role === 'tenant_admin' || role === 'manager';
     const where = isAdminOrManager

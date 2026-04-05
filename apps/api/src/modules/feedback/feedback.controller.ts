@@ -80,6 +80,22 @@ export class FeedbackController {
     return this.feedbackService.updateCheckIn(req.user.tenantId, id, dto);
   }
 
+  @Post('checkins/request')
+  @Roles('employee')
+  requestCheckIn(@Request() req: any, @Body() dto: { topic: string; suggestedDate?: string }) {
+    return this.feedbackService.requestCheckIn(req.user.tenantId, req.user.userId, dto);
+  }
+
+  @Post('checkins/:id/accept')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  acceptCheckInRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body?: { scheduledDate?: string; scheduledTime?: string; locationId?: string },
+  ) {
+    return this.feedbackService.acceptCheckInRequest(req.user.tenantId, id, req.user.userId, body);
+  }
+
   @Delete('checkins/:id')
   @Roles('super_admin', 'tenant_admin', 'manager')
   deleteCheckIn(
