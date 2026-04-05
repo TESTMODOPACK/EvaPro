@@ -420,10 +420,11 @@ async function seed() {
         quarterlyPrice: 21.60,   // 8 × 3 × 0.90
         semiannualPrice: 40.80,  // 8 × 6 × 0.85
         yearlyPrice: 76.80,      // 8 × 12 × 0.80
+        maxAiCallsPerMonth: 400,
         features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'ANALYTICS_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI', 'AI_INSIGHTS', 'PUBLIC_API'],
         isActive: true, displayOrder: 4,
       }));
-      console.log('\u2705  Plan "Enterprise" created (8 UF/mes, unlimited)');
+      console.log('\u2705  Plan "Enterprise" created (8 UF/mes, 400 AI calls/month)');
     }
 
     // ── Feature migration: ensure new features are present in existing plans ──
@@ -443,18 +444,43 @@ async function seed() {
       }
     }
 
+    // Use Enterprise plan for demo to test AI features
+    const enterprisePlan = await planRepo.findOne({ where: { code: 'enterprise' } });
     let subscription = await subRepo.findOne({ where: { tenantId: tenant.id } });
     if (!subscription) {
       subscription = subRepo.create({
         tenantId: tenant.id,
-        planId: starterPlan.id,
+        planId: enterprisePlan?.id || starterPlan.id,
         status: 'active',
         startDate: new Date(),
+        aiAddonCalls: 50,
       });
       await subRepo.save(subscription);
-      console.log('\u2705  Subscription created for demo tenant (Starter plan)');
+      console.log('\u2705  Subscription created for demo tenant (Enterprise plan, 50 addon credits)');
     } else {
-      console.log('   Subscription already exists for demo tenant.');
+      // Migrate existing subscription to Enterprise + 50 addon credits for testing
+      let subChanged = false;
+      if (enterprisePlan && subscription.planId !== enterprisePlan.id) {
+        subscription.planId = enterprisePlan.id;
+        subChanged = true;
+      }
+      if (!subscription.aiAddonCalls || subscription.aiAddonCalls < 50) {
+        subscription.aiAddonCalls = 50;
+        subChanged = true;
+      }
+      if (subChanged) {
+        await subRepo.save(subscription);
+        console.log('\u2705  Subscription upgraded to Enterprise + 50 addon credits');
+      } else {
+        console.log('   Subscription already configured.');
+      }
+    }
+
+    // Ensure Enterprise plan has maxAiCallsPerMonth = 400
+    if (enterprisePlan && (!enterprisePlan.maxAiCallsPerMonth || enterprisePlan.maxAiCallsPerMonth < 400)) {
+      enterprisePlan.maxAiCallsPerMonth = 400;
+      await planRepo.save(enterprisePlan);
+      console.log('\u2705  Enterprise plan updated: maxAiCallsPerMonth = 400');
     }
 
     /* ── Super Admin ─────────────────────────────────────────────────────── */
