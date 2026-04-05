@@ -36,6 +36,12 @@ export class Tenant {
   @Column({ type: 'varchar', length: 300, nullable: true, name: 'commercial_address' })
   commercialAddress: string | null;
 
+  @Column({ type: 'varchar', length: 200, nullable: true, name: 'legal_rep_name', comment: 'Nombre completo del representante legal' })
+  legalRepName: string | null;
+
+  @Column({ type: 'varchar', length: 12, nullable: true, name: 'legal_rep_rut', comment: 'RUT del representante legal' })
+  legalRepRut: string | null;
+
   @Column({ type: 'jsonb', default: {} })
   settings: any;
 

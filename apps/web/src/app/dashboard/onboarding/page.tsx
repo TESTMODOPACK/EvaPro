@@ -13,6 +13,8 @@ interface WizardState {
   orgRut: string;
   orgIndustry: string;
   orgSize: string;
+  legalRepName: string;
+  legalRepRut: string;
   // Step 2 — Equipo
   teamEmails: string;
   // Step 3 — Competencias
@@ -158,6 +160,24 @@ function StepEmpresa({ state, onChange }: { state: WizardState; onChange: (k: ke
             Selecciona el tamaño de tu equipo para continuar
           </p>
         )}
+      </div>
+
+      {/* Legal representative */}
+      <div style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
+        <h4 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Representante Legal</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
+          <div>
+            <label style={labelStyle}>Nombres y Apellidos</label>
+            <input className="input" type="text" placeholder="Ej: Juan Pérez González"
+              value={state.legalRepName} onChange={(e) => onChange('legalRepName', e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>RUT del Representante</label>
+            <input className="input" type="text" placeholder="Ej: 12.345.678-9"
+              value={state.legalRepRut} onChange={(e) => onChange('legalRepRut', e.target.value)} />
+          </div>
+        </div>
+        <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Opcional — necesario para generar contratos legales.</p>
       </div>
 
       {(!state.orgIndustry || !state.orgSize) && (
@@ -403,7 +423,7 @@ export default function OnboardingPage() {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [tenantSettings, setTenantSettings] = useState<Record<string, any>>({});
   const [state, setState] = useState<WizardState>({
-    orgName: '', orgRut: '', orgIndustry: '', orgSize: '',
+    orgName: '', orgRut: '', orgIndustry: '', orgSize: '', legalRepName: '', legalRepRut: '',
     teamEmails: '',
     selectedCompetencies: ['trabajo_equipo', 'comunicacion', 'orientacion_resultados'],
     customCompetency: '',
@@ -466,6 +486,8 @@ export default function OnboardingPage() {
           onboardingDone: true,
           ...(state.orgIndustry ? { industry: state.orgIndustry } : {}),
           ...(state.orgSize ? { size: state.orgSize } : {}),
+          ...(state.legalRepName ? { legalRepName: state.legalRepName } : {}),
+          ...(state.legalRepRut ? { legalRepRut: state.legalRepRut } : {}),
           ...(state.selectedCompetencies.length > 0 ? { initialCompetencies: state.selectedCompetencies } : {}),
         };
         await api.tenants.update(token, tenantId, { settings: mergedSettings });

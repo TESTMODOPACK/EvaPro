@@ -7,10 +7,22 @@ import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 
 const docTypeLabels: Record<string, string> = {
+  // Evaluation documents
   evaluation_response: 'Resultado de Evaluación',
   evaluation_cycle: 'Ciclo de Evaluación',
   development_plan: 'Plan de Desarrollo',
   calibration_session: 'Sesión de Calibración',
+  // Contract types
+  service_agreement: 'Contrato de Prestación de Servicios',
+  dpa: 'Acuerdo de Procesamiento de Datos (DPA)',
+  terms_conditions: 'Términos y Condiciones de Uso',
+  privacy_policy: 'Política de Privacidad',
+  sla: 'Acuerdo de Nivel de Servicio (SLA)',
+  nda: 'Acuerdo de Confidencialidad (NDA)',
+  amendment: 'Enmienda / Addendum',
+  // Other signable documents
+  contract: 'Contrato',
+  acknowledgment: 'Acuse de Recibo',
 };
 
 const statusLabels: Record<string, { label: string; color: string }> = {

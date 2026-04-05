@@ -68,6 +68,8 @@ export default function AjustesPage() {
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
   const [commercialAddress, setCommercialAddress] = useState('');
+  const [legalRepName, setLegalRepName] = useState('');
+  const [legalRepRut, setLegalRepRut] = useState('');
   const [emailFrom, setEmailFrom] = useState('');
   const [dateFormat, setDateFormat] = useState('');
   const [defaultLanguage, setDefaultLanguage] = useState('');
@@ -99,6 +101,8 @@ export default function AjustesPage() {
         setTenantName(t.name || '');
         setTenantRut(t.rut ? formatRut(t.rut) : '');
         setCommercialAddress(t.commercialAddress || '');
+        setLegalRepName(t.legalRepName || '');
+        setLegalRepRut(t.legalRepRut || '');
         const s = t.settings || {};
         setTenantSettings(s);
         setTenantTimezone(s.timezone || '');
@@ -143,6 +147,8 @@ export default function AjustesPage() {
         dateFormat: dateFormat || null,
         defaultLanguage: defaultLanguage || null,
         commercialAddress: commercialAddress || null,
+        legalRepName: legalRepName || null,
+        legalRepRut: legalRepRut || null,
         emailFrom: emailFrom || null,
         emailNotifications,
         notificationTypes: {
@@ -398,6 +404,26 @@ export default function AjustesPage() {
                 <input className="input" type="text" placeholder="Ej: Av. Providencia 1234, Santiago"
                   value={commercialAddress} onChange={(e) => setCommercialAddress(e.target.value)} />
               </div>
+            </div>
+
+            {/* Legal representative */}
+            <div style={{ marginTop: '1.25rem' }}>
+              <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem' }}>Representante Legal</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Nombres y Apellidos</label>
+                  <input className="input" type="text" placeholder="Ej: Juan Pérez González"
+                    value={legalRepName} onChange={(e) => setLegalRepName(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>RUT</label>
+                  <input className="input" type="text" placeholder="Ej: 12.345.678-9"
+                    value={legalRepRut} onChange={(e) => setLegalRepRut(e.target.value)} />
+                </div>
+              </div>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                Datos del representante legal para efectos de contratos y documentos formales.
+              </p>
             </div>
             {Array.isArray(tenantSettings.initialCompetencies) && tenantSettings.initialCompetencies.length > 0 && (
               <div style={{ marginTop: '0.75rem' }}>

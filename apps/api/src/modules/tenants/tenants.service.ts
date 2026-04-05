@@ -429,6 +429,14 @@ export class TenantsService {
       tenant.commercialAddress = typeof dto.commercialAddress === 'string' ? dto.commercialAddress.trim() || null : null;
     }
 
+    // Legal representative data (for contracts)
+    if (dto.legalRepName !== undefined) {
+      tenant.legalRepName = typeof dto.legalRepName === 'string' ? dto.legalRepName.trim() || null : null;
+    }
+    if (dto.legalRepRut !== undefined) {
+      tenant.legalRepRut = typeof dto.legalRepRut === 'string' ? dto.legalRepRut.trim() || null : null;
+    }
+
     tenant.settings = currentSettings;
     await this.tenantRepository.save(tenant);
     return {
@@ -442,6 +450,8 @@ export class TenantsService {
       defaultLanguage: currentSettings.defaultLanguage,
       emailFrom: currentSettings.emailFrom,
       commercialAddress: tenant.commercialAddress,
+      legalRepName: tenant.legalRepName,
+      legalRepRut: tenant.legalRepRut,
     };
   }
 
