@@ -195,9 +195,25 @@ export default function CycleDetailPage() {
     if (!peerEvaluateeId) return;
     const evaluatorId = peerRelationType === 'self' ? peerEvaluateeId : peerEvaluatorId;
     if (!evaluatorId) return;
-    await addPeer.mutateAsync({ cycleId: id, evaluateeId: peerEvaluateeId, evaluatorId, relationType: peerRelationType });
-    setPeerEvaluateeId('');
-    setPeerEvaluatorId('');
+
+    // Check for duplicate assignment
+    const duplicate = peerList.some((pa: any) =>
+      pa.evaluateeId === peerEvaluateeId &&
+      pa.evaluatorId === evaluatorId &&
+      pa.relationType === peerRelationType
+    );
+    if (duplicate) {
+      toast.error('Esta asignación ya existe. Elimínela primero si desea cambiarla.');
+      return;
+    }
+
+    try {
+      await addPeer.mutateAsync({ cycleId: id, evaluateeId: peerEvaluateeId, evaluatorId, relationType: peerRelationType });
+      setPeerEvaluateeId('');
+      setPeerEvaluatorId('');
+    } catch (e: any) {
+      toast.error(e.message || 'Error al agregar asignación');
+    }
   };
 
   const handleRemovePeer = async (peerAssignmentId: string) => {
@@ -805,7 +821,16 @@ export default function CycleDetailPage() {
                 </label>
                 <select
                   value={peerRelationType}
-                  onChange={(e) => { setPeerRelationType(e.target.value); setPeerEvaluatorId(''); }}
+                  onChange={(e) => {
+                    const newRel = e.target.value;
+                    setPeerRelationType(newRel);
+                    setPeerEvaluatorId('');
+                    // Auto-fill evaluator if switching to 'manager' with evaluatee already selected
+                    if (newRel === 'manager' && peerEvaluateeId) {
+                      const selectedUser = usersList.find((u: any) => u.id === peerEvaluateeId);
+                      if (selectedUser?.managerId) setPeerEvaluatorId(selectedUser.managerId);
+                    }
+                  }}
                   style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                 >
                   {allowedRelations.map((r) => (
@@ -871,10 +896,10 @@ export default function CycleDetailPage() {
                   <select
                     value={peerEvaluatorId}
                     onChange={(e) => setPeerEvaluatorId(e.target.value)}
-                    disabled={peerRelationType === 'manager' && !!peerEvaluatorId}
+                    disabled={peerRelationType === 'manager'}
                     style={{
                       width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)',
-                      background: peerRelationType === 'manager' && peerEvaluatorId ? 'var(--bg-secondary)' : 'var(--bg-surface)',
+                      background: peerRelationType === 'manager' ? 'var(--bg-secondary)' : 'var(--bg-surface)',
                       color: 'var(--text-primary)', fontSize: '0.85rem',
                     }}
                   >
