@@ -735,6 +735,33 @@ function InsightsPageContent() {
         </div>
       </div>
 
+      {/* Context banner — show selected user/cycle for IA tabs */}
+      {selectedCycleId && selectedUserId && ['summary', 'suggestions'].includes(activeTab) && (() => {
+        const selectedUser = allUsers.find((u: any) => u.id === selectedUserId);
+        const selectedCycle = sortedCycles.find((c: any) => c.id === selectedCycleId);
+        return selectedUser ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem',
+            padding: '0.6rem 1rem', marginBottom: '1rem', borderRadius: 'var(--radius-sm)',
+            background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',
+          }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              <strong style={{ color: 'var(--accent)' }}>{selectedUser.firstName} {selectedUser.lastName}</strong>
+              {selectedUser.position ? ` — ${selectedUser.position}` : ''}
+              {selectedUser.department ? ` (${selectedUser.department})` : ''}
+              {selectedCycle ? ` · ${selectedCycle.name}` : ''}
+            </span>
+            <button
+              className="btn-ghost"
+              onClick={() => setSelectedUserId(null)}
+              style={{ fontSize: '0.78rem', padding: '0.2rem 0.6rem' }}
+            >
+              Cambiar colaborador
+            </button>
+          </div>
+        ) : null;
+      })()}
+
       {/* Content */}
       {!selectedCycleId && !['flight-risk', 'prediction', 'retention'].includes(activeTab) && (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
@@ -747,7 +774,7 @@ function InsightsPageContent() {
       {selectedCycleId && activeTab === 'summary' && (
         <div className="animate-fade-up">
           {selectedUserId ? (
-            <SummarySection cycleId={selectedCycleId} userId={selectedUserId} aiBlocked={aiBlocked} />
+            <SummarySection key={`summary-${selectedCycleId}-${selectedUserId}`} cycleId={selectedCycleId} userId={selectedUserId} aiBlocked={aiBlocked} />
           ) : (
             <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
@@ -760,14 +787,14 @@ function InsightsPageContent() {
 
       {selectedCycleId && activeTab === 'bias' && isAdmin && (
         <div className="animate-fade-up">
-          <BiasSection cycleId={selectedCycleId} aiBlocked={aiBlocked} />
+          <BiasSection key={`bias-${selectedCycleId}`} cycleId={selectedCycleId} aiBlocked={aiBlocked} />
         </div>
       )}
 
       {selectedCycleId && activeTab === 'suggestions' && (
         <div className="animate-fade-up">
           {selectedUserId ? (
-            <SuggestionsSection cycleId={selectedCycleId} userId={selectedUserId} aiBlocked={aiBlocked} />
+            <SuggestionsSection key={`suggestions-${selectedCycleId}-${selectedUserId}`} cycleId={selectedCycleId} userId={selectedUserId} aiBlocked={aiBlocked} />
           ) : (
             <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
