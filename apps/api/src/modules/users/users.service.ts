@@ -412,7 +412,7 @@ export class UsersService {
             managerId,
             rut: parsedRut,
             department: department || undefined,
-            position: positionIdx >= 0 ? cols[positionIdx] : undefined,
+            position: position || undefined,
             hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
             isActive: true,
             mustChangePassword: true,

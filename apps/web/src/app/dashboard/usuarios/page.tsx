@@ -370,8 +370,13 @@ export default function UsuariosPage() {
       return { valid: false, errors: ['El archivo debe tener al menos el encabezado y una fila de datos.'], converted: '', previewRows: [] };
     }
 
+    // Limit to 500 rows (check early)
+    if (lines.length - 1 > 500) {
+      return { valid: false, errors: [`El archivo tiene ${lines.length - 1} filas de datos. El máximo permitido es 500 usuarios por archivo.`], converted: '', previewRows: [] };
+    }
+
     // Parse header
-    const rawHeader = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+    const rawHeader = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"*]/g, '').replace(/\s+/g, ' ').trim());
     const mappedHeader = rawHeader.map(h => COLUMN_MAP[h] || h);
 
     // Check required columns
@@ -381,12 +386,6 @@ export default function UsuariosPage() {
       if (!mappedHeader.includes(col)) {
         errors.push(`Columna requerida faltante: "${colLabels[col] || col}" (o "${col}").`);
       }
-    }
-
-    // Limit to 500 rows
-    if (lines.length - 1 > 500) {
-      errors.push(`El archivo tiene ${lines.length - 1} filas de datos. El máximo permitido es 500 usuarios por archivo.`);
-      return { valid: false, errors, converted: '', previewRows: [] };
     }
 
     if (errors.length > 0) {
