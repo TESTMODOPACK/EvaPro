@@ -380,7 +380,9 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 
               {selectedUsers.length === 0 ? (
                 <div className="card" style={{ borderRadius: '0 0 var(--radius) var(--radius)', textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  No hay empleados en este cuadrante.
+                  {rawUsers.length > 0 && (boxSearch || boxDeptFilter)
+                    ? `No se encontraron colaboradores con los filtros aplicados (${rawUsers.length} en total en este cuadrante).`
+                    : 'No hay empleados en este cuadrante.'}
                 </div>
               ) : (
                 <div className="card" style={{ padding: 0, borderRadius: '0 0 var(--radius) var(--radius)' }}>
@@ -615,6 +617,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [filterPool, setFilterPool] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [segDeptFilter, setSegDeptFilter] = useState('');
 
   useEffect(() => {
     if (!selectedCycleId) { setSegData(null); setAssessments([]); return; }
@@ -645,15 +648,20 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
     else { setSortField(field); setSortDir('asc'); }
   }
 
+  // Compute unique departments for the filter dropdown
+  const segDepts = Array.from(new Set(assessments.map((a: any) => (a.user || a).department).filter(Boolean))).sort() as string[];
+
   const filtered = assessments
     .filter((a) => {
       const u = a.user || a;
       const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
       const dept = (u.department || '').toLowerCase();
+      const pos = (u.position || '').toLowerCase();
       const q = search.toLowerCase();
-      const matchSearch = !q || name.includes(q) || dept.includes(q);
+      const matchSearch = !q || name.includes(q) || dept.includes(q) || pos.includes(q);
       const matchPool = filterPool === 'all' || a.talentPool === filterPool;
-      return matchSearch && matchPool;
+      const matchDept = !segDeptFilter || u.department === segDeptFilter;
+      return matchSearch && matchPool && matchDept;
     })
     .sort((a, b) => {
       const u1 = a.user || a;
@@ -764,16 +772,29 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
               <input
                 className="input"
                 type="text"
-                placeholder="Buscar por nombre o departamento..."
+                placeholder="Buscar por nombre, cargo o departamento..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={{ minWidth: '220px', flex: 1, fontSize: '.875rem' }}
+                style={{ minWidth: '200px', flex: 1, fontSize: '.875rem' }}
               />
+              {segDepts.length > 1 && (
+                <select
+                  className="input"
+                  value={segDeptFilter}
+                  onChange={(e) => setSegDeptFilter(e.target.value)}
+                  style={{ fontSize: '0.82rem', padding: '0.35rem 0.5rem' }}
+                >
+                  <option value="">Todos los deptos.</option>
+                  {segDepts.map((d: string) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              )}
               <span style={{ fontSize: '.82rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
+                {filtered.length} de {assessments.length}
               </span>
-              {(search || filterPool !== 'all') && (
-                <button className="btn-ghost" style={{ fontSize: '.82rem' }} onClick={() => { setSearch(''); setFilterPool('all'); }}>
+              {(search || filterPool !== 'all' || segDeptFilter) && (
+                <button className="btn-ghost" style={{ fontSize: '.82rem' }} onClick={() => { setSearch(''); setFilterPool('all'); setSegDeptFilter(''); }}>
                   Limpiar filtros
                 </button>
               )}

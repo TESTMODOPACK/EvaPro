@@ -21,6 +21,8 @@ const severityBadge: Record<string, string> = {
 function CycleComparisonPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.user?.role);
+  const isAdmin = role === 'tenant_admin' || role === 'super_admin';
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -427,8 +429,8 @@ function CycleComparisonPageContent() {
           </div>
         </div>
       )}
-      {/* ═══ Bias Detection Section ═══ */}
-      <div className="animate-fade-up" style={{ marginTop: '2rem' }}>
+      {/* ═══ Bias Detection Section — admin only ═══ */}
+      {isAdmin && <div className="animate-fade-up" style={{ marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {'🔍'} Detección de Sesgos por Ciclo
         </h2>
@@ -457,7 +459,7 @@ function CycleComparisonPageContent() {
         {biasSelectedCycleId && (
           <BiasAnalysisSection key={`bias-${biasSelectedCycleId}`} cycleId={biasSelectedCycleId} aiBlocked={aiBlocked} />
         )}
-      </div>
+      </div>}
     </div>
   );
 }
