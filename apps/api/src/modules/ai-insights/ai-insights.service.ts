@@ -133,7 +133,9 @@ export class AiInsightsService {
     const addonUsed = sub.aiAddonUsed || 0; // cumulative addon credits consumed across all periods
 
     // Period: calculated from subscription start date, rolling monthly
-    const startDate = sub.startDate ? new Date(sub.startDate) : new Date();
+    // Force UTC interpretation for date-only fields (PostgreSQL 'date' type)
+    const rawDate = sub.startDate;
+    const startDate = rawDate instanceof Date ? rawDate : new Date(rawDate + 'T00:00:00Z');
     const now = new Date();
 
     // Find the current period start: same day-of-month as subscription start, rolling monthly
@@ -163,9 +165,16 @@ export class AiInsightsService {
     const { planLimit, addonCalls, addonUsed, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
 
     // Count insights created in current period (plan credits)
+    // Use MoreThanOrEqual to include insights created at exactly period start
     const periodUsed = await this.insightRepo.count({
-      where: { tenantId, createdAt: MoreThan(periodStart) },
+      where: { tenantId, createdAt: MoreThanOrEqual(periodStart) },
     });
+
+    // Debug: count ALL insights for this tenant to detect period mismatch
+    const totalAllTime = await this.insightRepo.count({ where: { tenantId } });
+    if (totalAllTime > 0 && periodUsed === 0) {
+      this.logger.warn(`AI period mismatch: tenant=${tenantId.slice(0,8)}, totalAllTime=${totalAllTime}, periodUsed=0, periodStart=${periodStart.toISOString()}, periodEnd=${periodEnd.toISOString()}`);
+    }
 
     // Plan credits used this period (capped at planLimit)
     const planUsed = Math.min(periodUsed, planLimit);
