@@ -401,7 +401,7 @@ export default function MiSuscripcionPage() {
                 <span style={{ fontSize: '1.5rem' }}>&#128274;</span>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>No incluido en su plan</div>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Los informes de IA estan disponibles en planes superiores.</div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Los informes de IA están disponibles en planes superiores.</div>
                 </div>
               </div>
             ) : (
@@ -426,12 +426,19 @@ export default function MiSuscripcionPage() {
                   </div>
                 )}
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  {aiUsage.monthlyRemaining} informes restantes. Periodo: {aiUsage.periodStart ? new Date(aiUsage.periodStart).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '--'} al {aiUsage.periodEnd ? new Date(aiUsage.periodEnd).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '--'}.
+                  {aiUsage.monthlyRemaining} informes restantes. Período: {aiUsage.periodStart ? new Date(aiUsage.periodStart).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '--'} al {aiUsage.periodEnd ? new Date(aiUsage.periodEnd).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '--'}.
+                </div>
+                {/* Plan + Addon breakdown */}
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  <span>Plan: {aiUsage.planUsed ?? 0}/{aiUsage.planLimit ?? 0}</span>
+                  {(aiUsage.addonRemaining > 0 || aiUsage.addonCalls > 0) && (
+                    <span>Adicionales: {aiUsage.addonRemaining ?? 0} restantes de {aiUsage.addonCalls ?? 0}</span>
+                  )}
                 </div>
                 {aiUsage.lastGenerations?.length > 0 && (
                   <div style={{ marginTop: '1rem' }}>
                     <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Ultimas generaciones
+                      Últimas generaciones
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                       {aiUsage.lastGenerations.slice(0, 5).map((g: any) => (

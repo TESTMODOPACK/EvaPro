@@ -996,6 +996,7 @@ export class AiInsightsService {
   /** Get tenant-level AI usage for subscription page */
   async getTenantUsage(tenantId: string) {
     const { totalUsed: monthlyUsed, totalLimit: monthlyLimit, planUsed, planLimit, addonRemaining, periodStart, periodEnd } = await this.getMonthlyCallCount(tenantId);
+    const { addonCalls } = await this.getSubscriptionAiInfo(tenantId);
     const monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
 
     // Last generations in current period
@@ -1020,6 +1021,10 @@ export class AiInsightsService {
       monthlyUsed,
       monthlyLimit,
       monthlyRemaining,
+      planUsed,
+      planLimit,
+      addonCalls,
+      addonRemaining,
       periodStart,
       periodEnd,
       hasAiAccess: monthlyLimit > 0,

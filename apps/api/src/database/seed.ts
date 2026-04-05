@@ -376,72 +376,64 @@ async function seed() {
     /* ── Subscription Plans (UF pricing) + Demo Subscription ──────────── */
     // Prices in UF (Unidad de Fomento, Chile) — reajustable por IPC
     // UF March 2026 ≈ $39.841 CLP
-    let starterPlan = await planRepo.findOne({ where: { code: 'starter' } });
-    if (!starterPlan) {
-      starterPlan = planRepo.create({
-        name: 'Starter', code: 'starter',
-        description: 'Gratis — Ideal para conocer EvaPro (hasta 15 usuarios, 2 ciclos/a\u00f1o)',
+    // ── Create each plan independently (upsert pattern) ──────────────────
+    const planDefs = [
+      {
+        code: 'starter', name: 'Starter', displayOrder: 1,
+        description: 'Gratis — Ideal para conocer EvaPro (hasta 15 usuarios, 2 ciclos/año)',
         maxEmployees: 15, monthlyPrice: 0,
         features: ['EVAL_90_180', 'BASIC_REPORTS'],
-        isActive: true, displayOrder: 1,
-      });
-      starterPlan = await planRepo.save(starterPlan);
-      console.log('\u2705  Plan "Starter" created (Gratis, 15 users)');
-
-      // Pricing: monthly base, quarterly -10%, semiannual -15%, annual -20%
-      await planRepo.save(planRepo.create({
-        name: 'Growth', code: 'growth',
+      },
+      {
+        code: 'growth', name: 'Growth', displayOrder: 2,
         description: 'Para PYMEs en crecimiento — 1,5 UF/mes (hasta 50 usuarios)',
         maxEmployees: 50, monthlyPrice: 1.5,
-        quarterlyPrice: 4.05,    // 1.5 × 3 × 0.90
-        semiannualPrice: 7.65,   // 1.5 × 6 × 0.85
-        yearlyPrice: 14.40,      // 1.5 × 12 × 0.80
+        quarterlyPrice: 4.05, semiannualPrice: 7.65, yearlyPrice: 14.40,
         features: ['EVAL_90_180', 'EVAL_270', 'BASIC_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'RECOGNITION', 'ENGAGEMENT_SURVEYS'],
-        isActive: true, displayOrder: 2,
-      }));
-      console.log('\u2705  Plan "Growth" created (1.5 UF/mes, 50 users)');
-
-      await planRepo.save(planRepo.create({
-        name: 'Pro', code: 'pro',
+      },
+      {
+        code: 'pro', name: 'Pro', displayOrder: 3,
         description: 'Para empresas medianas — 3,5 UF/mes (hasta 200 usuarios)',
         maxEmployees: 200, monthlyPrice: 3.5,
-        quarterlyPrice: 9.45,    // 3.5 × 3 × 0.90
-        semiannualPrice: 17.85,  // 3.5 × 6 × 0.85
-        yearlyPrice: 33.60,      // 3.5 × 12 × 0.80
+        quarterlyPrice: 9.45, semiannualPrice: 17.85, yearlyPrice: 33.60,
         features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'ANALYTICS_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI'],
-        isActive: true, displayOrder: 3,
-      }));
-      console.log('\u2705  Plan "Pro" created (3.5 UF/mes, 200 users)');
-
-      await planRepo.save(planRepo.create({
-        name: 'Enterprise', code: 'enterprise',
+        maxAiCallsPerMonth: 100,
+      },
+      {
+        code: 'enterprise', name: 'Enterprise', displayOrder: 4,
         description: 'Para corporativos y consultores — 8 UF/mes (usuarios ilimitados)',
         maxEmployees: 9999, monthlyPrice: 8,
-        quarterlyPrice: 21.60,   // 8 × 3 × 0.90
-        semiannualPrice: 40.80,  // 8 × 6 × 0.85
-        yearlyPrice: 76.80,      // 8 × 12 × 0.80
-        maxAiCallsPerMonth: 400,
+        quarterlyPrice: 21.60, semiannualPrice: 40.80, yearlyPrice: 76.80,
         features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'ANALYTICS_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI', 'AI_INSIGHTS', 'PUBLIC_API'],
-        isActive: true, displayOrder: 4,
-      }));
-      console.log('\u2705  Plan "Enterprise" created (8 UF/mes, 400 AI calls/month)');
-    }
+        maxAiCallsPerMonth: 400,
+      },
+    ];
 
-    // ── Feature migration: ensure new features are present in existing plans ──
-    const featureMigrations: Record<string, string[]> = {
-      growth: ['RECOGNITION', 'ENGAGEMENT_SURVEYS'],
-      pro: ['POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ANALYTICS_REPORTS', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI'],
-      enterprise: ['POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ANALYTICS_REPORTS', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI'],
-    };
-    for (const [planCode, requiredFeatures] of Object.entries(featureMigrations)) {
-      const plan = await planRepo.findOne({ where: { code: planCode } });
-      if (!plan) continue;
-      const missing = requiredFeatures.filter(f => !plan.features.includes(f));
-      if (missing.length > 0) {
-        plan.features = [...plan.features, ...missing];
-        await planRepo.save(plan);
-        console.log(`\u2705  Added features to "${plan.name}": ${missing.join(', ')}`);
+    let starterPlan: any = null;
+    for (const def of planDefs) {
+      let plan = await planRepo.findOne({ where: { code: def.code } });
+      if (!plan) {
+        plan = planRepo.create({ ...def, isActive: true });
+        plan = await planRepo.save(plan);
+        console.log(`✅  Plan "${def.name}" created (${def.monthlyPrice} UF/mes)`);
+      } else {
+        // Ensure all required features exist
+        const missing = (def.features || []).filter((f: string) => !(plan!.features || []).includes(f));
+        let changed = false;
+        if (missing.length > 0) {
+          plan.features = [...(plan.features || []), ...missing];
+          changed = true;
+          console.log(`✅  Added features to "${plan.name}": ${missing.join(', ')}`);
+        }
+        // Ensure maxAiCallsPerMonth is set correctly
+        if (def.maxAiCallsPerMonth && (!plan.maxAiCallsPerMonth || plan.maxAiCallsPerMonth < def.maxAiCallsPerMonth)) {
+          plan.maxAiCallsPerMonth = def.maxAiCallsPerMonth;
+          changed = true;
+          console.log(`✅  Updated "${plan.name}" maxAiCallsPerMonth → ${def.maxAiCallsPerMonth}`);
+        }
+        if (changed) await planRepo.save(plan);
       }
+      if (def.code === 'starter') starterPlan = plan;
     }
 
     // Use Enterprise plan for demo to test AI features
@@ -474,13 +466,6 @@ async function seed() {
       } else {
         console.log('   Subscription already configured.');
       }
-    }
-
-    // Ensure Enterprise plan has maxAiCallsPerMonth = 400
-    if (enterprisePlan && (!enterprisePlan.maxAiCallsPerMonth || enterprisePlan.maxAiCallsPerMonth < 400)) {
-      enterprisePlan.maxAiCallsPerMonth = 400;
-      await planRepo.save(enterprisePlan);
-      console.log('\u2705  Enterprise plan updated: maxAiCallsPerMonth = 400');
     }
 
     /* ── Super Admin ─────────────────────────────────────────────────────── */
