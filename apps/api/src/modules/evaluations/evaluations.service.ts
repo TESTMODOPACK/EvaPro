@@ -1159,10 +1159,14 @@ export class EvaluationsService {
 
   async getStats(tenantId: string, userId?: string, role?: string) {
     const isManager = role === 'manager';
+    const isEmployee = role === 'employee';
 
     // Manager: only see stats for their direct reports
+    // Employee: only see their own stats
     let teamUserIds: string[] | null = null;
-    if (isManager && userId) {
+    if (isEmployee && userId) {
+      teamUserIds = [userId]; // Only own data
+    } else if (isManager && userId) {
       const directReports = await this.userRepo.find({
         where: { tenantId, managerId: userId, isActive: true },
         select: ['id'],
@@ -1211,8 +1215,8 @@ export class EvaluationsService {
       averageScore: avgScoreResult?.avg
         ? parseFloat(avgScoreResult.avg).toFixed(1)
         : null,
-      scope: isManager ? 'team' : 'organization',
-      teamSize: teamUserIds ? teamUserIds.length - 1 : null, // exclude self
+      scope: isEmployee ? 'personal' : isManager ? 'team' : 'organization',
+      teamSize: isManager && teamUserIds ? teamUserIds.length - 1 : null,
     };
   }
 

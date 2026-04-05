@@ -313,7 +313,14 @@ export default function AjustesPage() {
                 </div>
                 <div>
                   <label style={labelStyle}>Cargo</label>
-                  <input className="input" type="text" placeholder="Tu cargo" value={position} onChange={(e) => setPosition(e.target.value)} />
+                  <input className="input" type="text" placeholder="Tu cargo" value={position}
+                    onChange={(e) => setPosition(e.target.value)}
+                    disabled={user?.role === 'employee'}
+                    style={user?.role === 'employee' ? { background: 'var(--bg-secondary)', color: 'var(--text-muted)', cursor: 'not-allowed' } : undefined}
+                  />
+                  {user?.role === 'employee' && (
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>El cargo es gestionado por el administrador</span>
+                  )}
                 </div>
               </div>
               <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>

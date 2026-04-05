@@ -267,7 +267,7 @@ export class EvaluationsController {
 
   // ─── Dashboard Stats — admin + manager ───────────────────────────────────
   @Get('dashboard/stats')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   getStats(@Request() req: any) {
     return this.evaluationsService.getStats(req.user.tenantId, req.user.userId, req.user.role);
   }

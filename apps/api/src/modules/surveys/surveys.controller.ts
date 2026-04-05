@@ -46,9 +46,9 @@ export class SurveysController {
     return this.surveysService.getTrends(req.user.tenantId);
   }
 
-  /** Get survey detail */
+  /** Get survey detail — employees need access to respond */
   @Get(':id')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   findOne(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.surveysService.findById(req.user.tenantId, id);
   }

@@ -356,6 +356,11 @@ function RegularDashboard() {
               Mi equipo ({stats.teamSize} colaboradores)
             </span>
           )}
+          {stats?.scope === 'personal' && (
+            <span style={{ marginLeft: '0.75rem', padding: '0.15rem 0.6rem', background: 'rgba(16,185,129,0.1)', color: '#10b981', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600 }}>
+              Mi desempeño
+            </span>
+          )}
         </p>
       </div>
 
