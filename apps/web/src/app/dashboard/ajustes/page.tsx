@@ -44,7 +44,7 @@ export default function AjustesPage() {
   const { data: user, isLoading } = useCurrentUser();
   const updateUser = useUpdateUser();
   const { data: sub } = useMySubscription();
-  const isTenantAdmin = user?.role === 'tenant_admin';
+  const isTenantAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
   const orgName = sub?.tenant?.name || '';
   const orgRut = sub?.tenant?.rut ? formatRut(sub.tenant.rut) : '';
 
@@ -75,6 +75,10 @@ export default function AjustesPage() {
   const [notifFeedback, setNotifFeedback] = useState(true);
   const [notifObjectives, setNotifObjectives] = useState(true);
   const [notifRecognitions, setNotifRecognitions] = useState(true);
+  const [notifContracts, setNotifContracts] = useState(true);
+  const [notifDevelopment, setNotifDevelopment] = useState(true);
+  const [notifSurveys, setNotifSurveys] = useState(true);
+  const [notifAi, setNotifAi] = useState(true);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>('perfil');
@@ -108,6 +112,10 @@ export default function AjustesPage() {
         setNotifFeedback(nt.feedback !== false);
         setNotifObjectives(nt.objectives !== false);
         setNotifRecognitions(nt.recognitions !== false);
+        setNotifContracts(nt.contracts !== false);
+        setNotifDevelopment(nt.development !== false);
+        setNotifSurveys(nt.surveys !== false);
+        setNotifAi(nt.ai !== false);
       })
       .catch(() => {});
   }, [token, isTenantAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -139,6 +147,10 @@ export default function AjustesPage() {
           feedback: notifFeedback,
           objectives: notifObjectives,
           recognitions: notifRecognitions,
+          contracts: notifContracts,
+          development: notifDevelopment,
+          surveys: notifSurveys,
+          ai: notifAi,
         },
       });
       setSettingsSaved(true);
@@ -188,7 +200,7 @@ export default function AjustesPage() {
   const tabs: Array<{ id: SettingsTab; label: string; icon: string; adminOnly?: boolean }> = [
     { id: 'perfil', label: 'Mi perfil', icon: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z' },
     ...(isTenantAdmin ? [
-      { id: 'organizacion' as SettingsTab, label: 'Organizacion', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', adminOnly: true },
+      { id: 'organizacion' as SettingsTab, label: 'Organización', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', adminOnly: true },
       { id: 'notificaciones' as SettingsTab, label: 'Notificaciones', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0', adminOnly: true },
     ] : []),
   ];
@@ -302,7 +314,7 @@ export default function AjustesPage() {
                 </div>
               </div>
               <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-                Los datos personales (nombres, apellidos, RUT) son gestionados por el administrador de tu organizacion.
+                Los datos personales (nombres, apellidos, RUT) son gestionados por el administrador de tu organización.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <button type="submit" className="btn-primary" disabled={updateUser.isPending} style={{ opacity: updateUser.isPending ? 0.6 : 1 }}>
@@ -532,10 +544,10 @@ export default function AjustesPage() {
 
           <div className="card" style={{ padding: '1.5rem' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-              Emails automaticos
+              Emails automáticos
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
-              Controla que tipos de email reciben los colaboradores de tu organizacion.
+              Controla qué tipos de email reciben los colaboradores de tu organización.
             </p>
 
             {/* Master toggle */}
@@ -556,10 +568,14 @@ export default function AjustesPage() {
             {emailNotifications && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 {[
-                  { label: 'Evaluaciones', desc: 'Ciclos lanzados, recordatorios y resultados', value: notifEvaluations, setter: setNotifEvaluations },
-                  { label: 'Feedback y check-ins', desc: 'Feedback recibido, reuniones 1:1 programadas', value: notifFeedback, setter: setNotifFeedback },
-                  { label: 'Objetivos y OKRs', desc: 'Alertas de progreso bajo y vencimientos', value: notifObjectives, setter: setNotifObjectives },
-                  { label: 'Reconocimientos', desc: 'Reconocimientos, insignias y desafios', value: notifRecognitions, setter: setNotifRecognitions },
+                  { label: 'Evaluaciones', desc: 'Ciclos lanzados, recordatorios, resultados y calibración', value: notifEvaluations, setter: setNotifEvaluations },
+                  { label: 'Feedback y check-ins', desc: 'Feedback recibido, reuniones 1:1 programadas y vencidas', value: notifFeedback, setter: setNotifFeedback },
+                  { label: 'Objetivos y OKRs', desc: 'Asignación, progreso bajo, vencimientos y completados', value: notifObjectives, setter: setNotifObjectives },
+                  { label: 'Desarrollo y PDI', desc: 'Planes de desarrollo asignados y acciones vencidas', value: notifDevelopment, setter: setNotifDevelopment },
+                  { label: 'Reconocimientos', desc: 'Reconocimientos, insignias y desafíos', value: notifRecognitions, setter: setNotifRecognitions },
+                  { label: 'Contratos y firmas', desc: 'Solicitudes de firma, códigos OTP de verificación', value: notifContracts, setter: setNotifContracts },
+                  { label: 'Encuestas de clima', desc: 'Invitaciones a encuestas y recordatorios', value: notifSurveys, setter: setNotifSurveys },
+                  { label: 'Informes de IA', desc: 'Notificaciones cuando un análisis IA está listo', value: notifAi, setter: setNotifAi },
                 ].map((item) => (
                   <div key={item.label} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -577,7 +593,7 @@ export default function AjustesPage() {
             )}
 
             <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-              Los emails del sistema (invitaciones, recuperacion de contrasena, encuestas) siempre se envian.
+              Los emails del sistema (invitaciones, recuperación de contraseña) siempre se envían.
             </p>
           </div>
 
