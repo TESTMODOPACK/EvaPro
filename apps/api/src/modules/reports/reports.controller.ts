@@ -228,9 +228,12 @@ export class ReportsController {
     @Query('position') position: string,
     @Request() req: any,
   ) {
-    const filters = (department || position) ? { department, position } : undefined;
+    const filters: any = {};
+    if (department) filters.department = department;
+    if (position) filters.position = position;
+    if (req.user.role === 'manager') filters.managerId = req.user.userId;
     this.logAccess(req, 'bell_curve', { cycleId, filters });
-    return this.reportsService.bellCurve(cycleId, req.user.tenantId, filters);
+    return this.reportsService.bellCurve(cycleId, req.user.tenantId, Object.keys(filters).length ? filters : undefined);
   }
 
   @Get('cycle/:cycleId/heatmap')
@@ -242,9 +245,12 @@ export class ReportsController {
     @Query('position') position: string,
     @Request() req: any,
   ) {
-    const filters = (department || position) ? { department, position } : undefined;
+    const filters: any = {};
+    if (department) filters.department = department;
+    if (position) filters.position = position;
+    if (req.user.role === 'manager') filters.managerId = req.user.userId;
     this.logAccess(req, 'performance_heatmap', { cycleId, filters });
-    return this.reportsService.performanceHeatmap(cycleId, req.user.tenantId, filters);
+    return this.reportsService.performanceHeatmap(cycleId, req.user.tenantId, Object.keys(filters).length ? filters : undefined);
   }
 
   // ─── Competency Heatmap ──────────────────────────────────────────────
@@ -258,9 +264,12 @@ export class ReportsController {
     @Query('position') position: string,
     @Request() req: any,
   ) {
-    const filters = (department || position) ? { department, position } : undefined;
+    const filters: any = {};
+    if (department) filters.department = department;
+    if (position) filters.position = position;
+    if (req.user.role === 'manager') filters.managerId = req.user.userId;
     this.logAccess(req, 'competency_heatmap', { cycleId, filters });
-    return this.reportsService.competencyHeatmap(cycleId, req.user.tenantId, filters);
+    return this.reportsService.competencyHeatmap(cycleId, req.user.tenantId, Object.keys(filters).length ? filters : undefined);
   }
 
   // ─── Gap Analysis ─────────────────────────────────────────────────────

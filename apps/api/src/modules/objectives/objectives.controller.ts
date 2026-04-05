@@ -84,7 +84,7 @@ export class ObjectivesController {
   @Get('tree')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getTree(@Request() req: any) {
-    return this.objectivesService.getObjectiveTree(req.user.tenantId);
+    return this.objectivesService.getObjectiveTree(req.user.tenantId, req.user.role, req.user.userId);
   }
 
   /** Export objectives in CSV, XLSX, or PDF format */

@@ -601,12 +601,18 @@ export class ObjectivesService {
    * Root objectives (parentObjectiveId = null) are at the top,
    * with children nested recursively.
    */
-  async getObjectiveTree(tenantId: string): Promise<any[]> {
-    const all = await this.objectiveRepo.find({
-      where: { tenantId },
-      relations: ['user'],
-      order: { createdAt: 'ASC' },
-    });
+  async getObjectiveTree(tenantId: string, role?: string, currentUserId?: string): Promise<any[]> {
+    const qb = this.objectiveRepo.createQueryBuilder('o')
+      .leftJoinAndSelect('o.user', 'u')
+      .where('o.tenantId = :tenantId', { tenantId })
+      .orderBy('o.createdAt', 'ASC');
+
+    // Manager: only see objectives from their team + own
+    if (role === 'manager' && currentUserId) {
+      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', { mgr: currentUserId });
+    }
+
+    const all = await qb.getMany();
 
     const map = new Map<string, any>();
     for (const obj of all) {
