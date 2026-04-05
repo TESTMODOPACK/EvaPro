@@ -116,6 +116,8 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
   const [saving, setSaving] = useState(false);
   const [sortField, setSortField] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [boxSearch, setBoxSearch] = useState('');
+  const [boxDeptFilter, setBoxDeptFilter] = useState('');
 
   useEffect(() => {
     if (!selectedCycleId) { setNineBoxData(null); return; }
@@ -208,7 +210,18 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
   }
 
   const rawUsers = selectedBox !== null ? getBoxUsers(selectedBox) : [];
-  const selectedUsers = [...rawUsers].sort((a, b) => {
+  // Apply search + department filter
+  const filteredUsers = rawUsers.filter((a: any) => {
+    const u = a.user || a;
+    const name = `${u.firstName} ${u.lastName}`.toLowerCase();
+    const dept = (u.department || '').toLowerCase();
+    const matchesSearch = !boxSearch || name.includes(boxSearch.toLowerCase()) || dept.includes(boxSearch.toLowerCase()) || (u.position || '').toLowerCase().includes(boxSearch.toLowerCase());
+    const matchesDept = !boxDeptFilter || u.department === boxDeptFilter;
+    return matchesSearch && matchesDept;
+  });
+  // Get unique departments from raw users for the filter dropdown
+  const boxDepts = Array.from(new Set(rawUsers.map((a: any) => (a.user || a).department).filter(Boolean))).sort() as string[];
+  const selectedUsers = [...filteredUsers].sort((a, b) => {
     const u1 = a.user || a;
     const u2 = b.user || b;
     let cmp = 0;
@@ -300,7 +313,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                   return (
                     <div
                       key={cell.box}
-                      onClick={() => setSelectedBox(isSelected ? null : cell.box)}
+                      onClick={() => { setSelectedBox(isSelected ? null : cell.box); setBoxSearch(''); setBoxDeptFilter(''); }}
                       style={{
                         background: cell.bg,
                         borderRadius: 'var(--radius-sm)',
@@ -329,6 +342,18 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
             </div>
           </div>
 
+          {/* Hint to click on quadrants */}
+          {selectedBox === null && (
+            <div style={{
+              textAlign: 'center', marginTop: '0.75rem', padding: '0.5rem',
+              fontSize: '0.82rem', color: 'var(--text-muted)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+            }}>
+              <span style={{ fontSize: '1rem' }}>{'👆'}</span>
+              Haz clic en un cuadrante para ver los colaboradores clasificados
+            </div>
+          )}
+
           {/* Selected box detail panel */}
           {selectedBox !== null && (
             <div className="animate-fade-up" style={{ marginTop: '1.5rem' }}>
@@ -344,7 +369,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                     borderBottom: 'none',
                     borderRadius: 'var(--radius) var(--radius) 0 0',
                   }}>
-                    <span style={{ fontWeight: 800, fontSize: '1.4rem', color: cell?.textColor }}>{selectedUsers.length}</span>
+                    <span style={{ fontWeight: 800, fontSize: '1.4rem', color: cell?.textColor }}>{rawUsers.length}</span>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '.95rem', color: cell?.textColor }}>{cell ? t(cell.labelKey) : ''}</div>
                       <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>Cuadrante {selectedBox} — {isAdmin ? 'clic en una fila para editar' : 'vista de solo lectura'}</div>
@@ -371,6 +396,41 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
                       <span>{t('talento.editHint')}</span>
                     </div>
                   )}
+
+                  {/* Filters bar */}
+                  {rawUsers.length > 3 && (
+                    <div style={{
+                      display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap',
+                      padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--border)',
+                      background: 'var(--bg-base)',
+                    }}>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Buscar colaborador..."
+                        value={boxSearch}
+                        onChange={(e) => setBoxSearch(e.target.value)}
+                        style={{ flex: 1, minWidth: '150px', maxWidth: '280px', fontSize: '0.82rem', padding: '0.35rem 0.65rem' }}
+                      />
+                      {boxDepts.length > 1 && (
+                        <select
+                          className="input"
+                          value={boxDeptFilter}
+                          onChange={(e) => setBoxDeptFilter(e.target.value)}
+                          style={{ fontSize: '0.82rem', padding: '0.35rem 0.5rem' }}
+                        >
+                          <option value="">Todos los deptos.</option>
+                          {boxDepts.map((d: string) => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
+                      )}
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {selectedUsers.length} de {rawUsers.length} colaboradores
+                      </span>
+                    </div>
+                  )}
+
                   <div className="table-wrapper" style={{ margin: 0, overflowX: 'auto' }}>
                     <table style={{ minWidth: '760px' }}>
                       <thead>
