@@ -44,7 +44,7 @@ export default function AjustesPage() {
   const { data: user, isLoading } = useCurrentUser();
   const updateUser = useUpdateUser();
   const { data: sub } = useMySubscription();
-  const isTenantAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
+  const isTenantAdmin = user?.role === 'tenant_admin';
   const orgName = sub?.tenant?.name || '';
   const orgRut = sub?.tenant?.rut ? formatRut(sub.tenant.rut) : '';
 
