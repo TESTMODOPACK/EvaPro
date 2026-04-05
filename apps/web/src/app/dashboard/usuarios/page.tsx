@@ -278,19 +278,61 @@ export default function UsuariosPage() {
     }
   };
 
-  // Download CSV template (Spanish column names mapped to backend English names)
-  const downloadTemplate = () => {
-    const header = 'correo,nombre,apellido,rut,contrasena,rol,departamento,cargo,fecha_ingreso,jefatura_directa';
-    const example1 = 'juan.perez@empresa.cl,Juan,Perez,12345678-9,Clave123!,colaborador,Tecnologia,Desarrollador,15-01-2024,maria.garcia@empresa.cl';
-    const example2 = 'maria.garcia@empresa.cl,Maria,Garcia,98765432-1,Clave123!,encargado_equipo,Ventas,Jefa de Ventas,01-06-2023,';
-    const example3 = 'carlos.lopez@empresa.cl,Carlos,Lopez,,colaborador,RRHH,Analista,,maria.garcia@empresa.cl';
-    const csv = [header, example1, example2, example3].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'plantilla_usuarios_evapro.csv';
-    link.click();
-    URL.revokeObjectURL(link.href);
+  // Download Excel template with org-specific departments and positions
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx/dist/xlsx.mini.min');
+    const wb = XLSX.utils.book_new();
+    const depts = configuredDepartments || [];
+    const positions = positionCatalog || [];
+
+    // Sheet 1: Colaboradores (main data entry)
+    const usrHeaders = ['correo *', 'nombre *', 'apellido *', 'rut', 'contrasena', 'rol', 'departamento *', 'cargo *', 'fecha_ingreso (DD-MM-AAAA)', 'jefatura_directa (correo)'];
+    const exRow1 = ['juan.perez@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'Clave123!', 'colaborador', depts[0] || 'Tecnología', positions[0]?.name || 'Analista', '15-01-2024', 'maria@empresa.cl'];
+    const exRow2 = ['maria.garcia@empresa.cl', 'María', 'García', '', '', 'encargado_equipo', depts[1] || 'Ventas', positions[1]?.name || 'Gerente', '01-06-2023', ''];
+    const ws1 = XLSX.utils.aoa_to_sheet([usrHeaders, exRow1, exRow2]);
+    ws1['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 28 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Colaboradores');
+
+    // Sheet 2: Departamentos válidos
+    const deptRows = [['DEPARTAMENTOS VÁLIDOS'], ['(Use estos valores exactos en la columna "departamento")'], [], ...depts.map(d => [d])];
+    const ws2 = XLSX.utils.aoa_to_sheet(deptRows);
+    ws2['!cols'] = [{ wch: 35 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Departamentos válidos');
+
+    // Sheet 3: Cargos válidos
+    const posRows = [['CARGOS VÁLIDOS'], ['(Use estos valores exactos en la columna "cargo")'], [],
+      ['Cargo', 'Nivel jerárquico'],
+      ...positions.map((p: any) => [p.name, p.level]),
+    ];
+    const ws3 = XLSX.utils.aoa_to_sheet(posRows);
+    ws3['!cols'] = [{ wch: 30 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Cargos válidos');
+
+    // Sheet 4: Instrucciones
+    const instrRows = [
+      ['INSTRUCCIONES DE LA PLANTILLA DE CARGA DE USUARIOS'], [],
+      ['Campo', 'Obligatorio', 'Descripción', 'Ejemplo'],
+      ['correo', 'Sí', 'Correo electrónico único del usuario', 'juan@empresa.cl'],
+      ['nombre', 'Sí', 'Nombres del colaborador', 'Juan'],
+      ['apellido', 'Sí', 'Apellidos del colaborador', 'Pérez González'],
+      ['rut', 'No', 'RUT con formato (puntos y guión)', '12.345.678-9'],
+      ['contrasena', 'No', 'Si se deja vacía se asigna: EvaPro2026!', 'MiClave123!'],
+      ['rol', 'No', 'Valores: colaborador, encargado_equipo, encargado_sistema, asesor_externo. Default: colaborador', 'colaborador'],
+      ['departamento', 'Sí', 'Debe coincidir con un departamento de la hoja "Departamentos válidos"', depts[0] || 'Tecnología'],
+      ['cargo', 'Sí', 'Debe coincidir con un cargo de la hoja "Cargos válidos"', positions[0]?.name || 'Analista'],
+      ['fecha_ingreso', 'No', 'Formato DD-MM-AAAA', '15-01-2024'],
+      ['jefatura_directa', 'No', 'Correo del jefe directo (debe existir en la organización)', 'jefe@empresa.cl'],
+      [], ['NOTAS:'],
+      ['• Máximo 500 usuarios por archivo'],
+      ['• Los campos marcados con * son obligatorios'],
+      ['• Los departamentos y cargos deben coincidir exactamente con los configurados'],
+      ['• El rol super_admin NO está permitido en esta carga'],
+    ];
+    const ws4 = XLSX.utils.aoa_to_sheet(instrRows);
+    ws4['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 55 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, ws4, 'Instrucciones');
+
+    XLSX.writeFile(wb, 'plantilla_usuarios_evapro.xlsx');
   };
 
   // Map Spanish CSV columns to English backend columns
@@ -333,12 +375,18 @@ export default function UsuariosPage() {
     const mappedHeader = rawHeader.map(h => COLUMN_MAP[h] || h);
 
     // Check required columns
-    const requiredCols = ['email', 'first_name', 'last_name'];
+    const requiredCols = ['email', 'first_name', 'last_name', 'department', 'position'];
+    const colLabels: Record<string, string> = { email: 'correo', first_name: 'nombre', last_name: 'apellido', department: 'departamento', position: 'cargo' };
     for (const col of requiredCols) {
       if (!mappedHeader.includes(col)) {
-        const spanishName = col === 'email' ? 'correo' : col === 'first_name' ? 'nombre' : 'apellido';
-        errors.push(`Columna requerida faltante: "${spanishName}" (o "${col}").`);
+        errors.push(`Columna requerida faltante: "${colLabels[col] || col}" (o "${col}").`);
       }
+    }
+
+    // Limit to 500 rows
+    if (lines.length - 1 > 500) {
+      errors.push(`El archivo tiene ${lines.length - 1} filas de datos. El máximo permitido es 500 usuarios por archivo.`);
+      return { valid: false, errors, converted: '', previewRows: [] };
     }
 
     if (errors.length > 0) {
@@ -350,11 +398,13 @@ export default function UsuariosPage() {
     const lnIdx = mappedHeader.indexOf('last_name');
     const roleIdx = mappedHeader.indexOf('role');
     const deptIdx = mappedHeader.indexOf('department');
+    const posIdx = mappedHeader.indexOf('position');
     const dateIdx = mappedHeader.indexOf('hire_date');
 
-    // Prepare department validation (case-insensitive, accent-insensitive)
+    // Prepare department + position validation (case-insensitive, accent-insensitive)
     const deptMatch = (a: string, b: string) => (a || '').localeCompare(b || '', undefined, { sensitivity: 'base' }) === 0;
     const validDepts = configuredDepartments || [];
+    const validPositions = (positionCatalog || []).map((p: any) => p.name);
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const dateRegex = /^\d{2}-\d{2}-\d{4}$/;
@@ -390,6 +440,24 @@ export default function UsuariosPage() {
       if (!cols[fnIdx]) errors.push(`Fila ${rowNum}: Nombres vacío.`);
       if (!cols[lnIdx]) errors.push(`Fila ${rowNum}: Apellidos vacío.`);
 
+      // Validate department (required)
+      if (deptIdx >= 0) {
+        if (!cols[deptIdx]) {
+          errors.push(`Fila ${rowNum}: Departamento vacío (obligatorio).`);
+        } else if (!validDepts.some((d) => deptMatch(d, cols[deptIdx]))) {
+          errors.push(`Fila ${rowNum}: Departamento no válido: "${cols[deptIdx]}". Vea hoja "Departamentos válidos".`);
+        }
+      }
+
+      // Validate position (required)
+      if (posIdx >= 0) {
+        if (!cols[posIdx]) {
+          errors.push(`Fila ${rowNum}: Cargo vacío (obligatorio).`);
+        } else if (validPositions.length > 0 && !validPositions.some((p: string) => deptMatch(p, cols[posIdx]))) {
+          errors.push(`Fila ${rowNum}: Cargo no válido: "${cols[posIdx]}". Vea hoja "Cargos válidos".`);
+        }
+      }
+
       // Validate role if provided
       if (roleIdx >= 0 && cols[roleIdx]) {
         const rawRole = cols[roleIdx].toLowerCase();
@@ -401,12 +469,7 @@ export default function UsuariosPage() {
         }
       }
 
-      // Validate department against configured list
-      if (deptIdx >= 0 && cols[deptIdx]) {
-        if (!validDepts.some((d) => deptMatch(d, cols[deptIdx]))) {
-          errors.push(`Fila ${rowNum}: Departamento no valido: "${cols[deptIdx]}". Valores permitidos: ${(configuredDepartments || []).join(', ')}.`);
-        }
-      }
+      // Department already validated above as required field
 
       // Validate and convert date if provided (DD-MM-YYYY to YYYY-MM-DD)
       if (dateIdx >= 0 && cols[dateIdx]) {
@@ -434,22 +497,42 @@ export default function UsuariosPage() {
     };
   };
 
-  // Handle file upload with validation
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Excel or CSV file upload with validation
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      if (!text) return;
-      const result = validateAndParseCSV(text);
-      setCsvErrors(result.errors);
-      setCsvPreviewRows(result.previewRows);
-      // Store the converted (English columns + ISO dates) version
-      setCsvContent(result.valid ? result.converted : '');
-      setBulkResult(null);
-    };
-    reader.readAsText(file);
+
+    let text = '';
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+    if (isExcel) {
+      try {
+        const XLSX = await import('xlsx/dist/xlsx.mini.min');
+        const ab = await file.arrayBuffer();
+        const wb = XLSX.read(ab, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]]; // First sheet = Colaboradores
+        if (!ws) { setCsvErrors(['No se encontró la hoja "Colaboradores" en el archivo.']); return; }
+        // Convert to CSV for existing parser (backend expects CSV)
+        text = XLSX.utils.sheet_to_csv(ws);
+      } catch {
+        setCsvErrors(['Error al leer el archivo Excel. Verifique que sea un archivo .xlsx válido.']);
+        return;
+      }
+    } else {
+      // Legacy CSV support
+      text = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target?.result as string || '');
+        reader.readAsText(file);
+      });
+    }
+
+    if (!text) return;
+    const result = validateAndParseCSV(text);
+    setCsvErrors(result.errors);
+    setCsvPreviewRows(result.previewRows);
+    setCsvContent(result.valid ? result.converted : '');
+    setBulkResult(null);
   };
 
   // Submit bulk import
@@ -561,7 +644,7 @@ export default function UsuariosPage() {
             <li><strong>Roles del sistema:</strong> Administrador (gestión completa), Encargado de equipo (ve su equipo, aprueba objetivos), Colaborador (accede a sus evaluaciones y objetivos), Asesor externo (evaluador invitado, solo lectura).</li>
             <li><strong>Jefatura directa:</strong> Define quién es el jefe de cada usuario. Esta relación se usa para: asignar evaluadores automáticamente, filtrar datos por equipo, y definir reportes directos en evaluaciones 360°.</li>
             <li><strong>Cargo y nivel:</strong> Al seleccionar un cargo del catálogo (configurado en Mantenedores), se asigna automáticamente un nivel jerárquico que facilita la sugerencia de pares en evaluaciones.</li>
-            <li><strong>Importación masiva:</strong> El botón &quot;Importar CSV&quot; permite cargar múltiples usuarios desde un archivo. La plantilla incluye: correo, nombre, apellido, rut, contraseña, rol, departamento, cargo, fecha ingreso, jefatura directa (correo del jefe).</li>
+            <li><strong>Importación masiva:</strong> El botón &quot;Importar Excel&quot; permite cargar hasta 500 usuarios desde un archivo .xlsx. La plantilla se genera con los departamentos y cargos de su organización. Campos obligatorios: correo, nombre, apellido, departamento y cargo.</li>
           </ul>
           <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
             <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores pueden crear, editar y desactivar usuarios.
@@ -851,14 +934,14 @@ export default function UsuariosPage() {
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.5rem' }}>Carga masiva de usuarios</h3>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Suba un archivo CSV con los datos de los usuarios. La contrasena por defecto sera <code style={{ background: 'var(--bg-surface)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>EvaPro2026!</code> si no se especifica.
+            Suba un archivo Excel (.xlsx) con los datos de los usuarios. La contraseña por defecto será <code style={{ background: 'var(--bg-surface)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>EvaPro2026!</code> si no se especifica. Máximo 500 usuarios por archivo.
           </p>
 
           {/* Step 1: Download template */}
           <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>1. Descargar plantilla CSV</div>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>1. Descargar plantilla Excel</div>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-              Descargue la plantilla con datos de ejemplo, completela con los datos de sus empleados y vuelva a subirla.
+              La plantilla incluye los departamentos y cargos configurados en su organización. Complete los datos y vuelva a subirla.
             </p>
             <button className="btn-ghost" onClick={downloadTemplate} style={{ fontSize: '0.82rem' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -891,8 +974,8 @@ export default function UsuariosPage() {
                     ['rut', 'No', 'RUT del usuario (sin puntos ni guion)', '12345678-9'],
                     ['contrasena', 'No', 'Si se deja vacía, se asigna: EvaPro2026!', 'MiClave123!'],
                     ['rol', 'No', 'Ver tabla de roles abajo. Default: colaborador', 'colaborador'],
-                    ['departamento', 'No', 'Área o departamento de trabajo', 'Tecnologia'],
-                    ['cargo', 'No', 'Puesto o cargo del usuario', 'Desarrollador Senior'],
+                    ['departamento', 'Sí', 'Debe coincidir con departamentos configurados', 'Tecnología'],
+                    ['cargo', 'Sí', 'Debe coincidir con cargos configurados', 'Analista Senior'],
                     ['fecha_ingreso', 'No', 'Formato: DD-MM-AAAA', '15-01-2024'],
                     ['jefatura_directa', 'No', 'Correo del jefe directo del usuario', 'maria@empresa.cl'],
                   ].map(([col, req, desc, ej]) => (
@@ -936,10 +1019,10 @@ export default function UsuariosPage() {
 
           {/* Step 2: Upload file */}
           <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>2. Subir archivo CSV</div>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem' }}>2. Subir archivo Excel o CSV</div>
             <input
               type="file"
-              accept=".csv,.txt"
+              accept=".xlsx,.xls,.csv,.txt"
               onChange={handleFileUpload}
               style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}
             />
@@ -959,7 +1042,7 @@ export default function UsuariosPage() {
                   ))}
                 </div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem', marginBottom: 0 }}>
-                  Corrija los errores en el archivo CSV y vuelva a subirlo.
+                  Corrija los errores en el archivo y vuelva a subirlo.
                 </p>
               </div>
             )}

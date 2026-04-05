@@ -333,8 +333,21 @@ export class UsersService {
         const firstName = cols[firstNameIdx];
         const lastName = cols[lastNameIdx];
 
+        const department = departmentIdx >= 0 ? (cols[departmentIdx] || '').trim() : '';
+        const position = positionIdx >= 0 ? (cols[positionIdx] || '').trim() : '';
+
         if (!email || !firstName || !lastName) {
-          errors.push({ row: rowNum, message: 'email, first_name y last_name son requeridos' });
+          errors.push({ row: rowNum, message: 'email, nombre y apellido son requeridos' });
+          continue;
+        }
+
+        if (!department) {
+          errors.push({ row: rowNum, message: 'Departamento es requerido' });
+          continue;
+        }
+
+        if (!position) {
+          errors.push({ row: rowNum, message: 'Cargo es requerido' });
           continue;
         }
 
@@ -358,8 +371,7 @@ export class UsersService {
           continue;
         }
 
-        // Validate department
-        const department = departmentIdx >= 0 ? cols[departmentIdx] : undefined;
+        // Validate department against configured list
         if (department && !validDeptSet.has(normDept(department))) {
           errors.push({ row: rowNum, message: `Departamento no válido: "${department}". Valores permitidos: ${configuredDepts.join(', ')}` });
           continue;
