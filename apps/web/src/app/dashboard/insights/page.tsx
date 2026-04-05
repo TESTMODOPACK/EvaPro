@@ -11,7 +11,6 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import {
   useAiSummary, useGenerateSummary,
-  useAiBias, useAnalyzeBias,
   useAiSuggestions, useGenerateSuggestions,
   useFlightRisk,
   usePerformancePrediction, useRetentionRecommendations, useExplainability,
@@ -42,20 +41,6 @@ const typeLabel: Record<string, string> = {
   rotacion: 'Rotaci\u00f3n',
   certificacion: 'Certificaci\u00f3n',
   coaching: 'Coaching',
-};
-
-const biasTypeLabel: Record<string, string> = {
-  leniency: 'Lenidad',
-  severity: 'Severidad',
-  halo: 'Efecto Halo',
-  central_tendency: 'Tendencia Central',
-  contrast: 'Contraste',
-};
-
-const severityBadge: Record<string, string> = {
-  high: 'badge-danger',
-  medium: 'badge-warning',
-  low: 'badge-success',
 };
 
 /* ─── Summary Tab ──────────────────────────────────────────────────── */
@@ -177,103 +162,6 @@ function SummarySection({ cycleId, userId, aiBlocked }: { cycleId: string; userI
 
       <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right' }}>
         {'Generado por IA (Claude) \u2022 Los resultados son orientativos y deben ser validados por el encargado'}
-      </p>
-    </div>
-  );
-}
-
-/* ─── Bias Tab ──────────────────────────────────────────────────────── */
-
-function BiasSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocked: boolean }) {
-  const { data: cached, isLoading } = useAiBias(cycleId);
-  const analyze = useAnalyzeBias();
-
-  if (isLoading) return <Spinner />;
-
-  const data = cached?.content;
-
-  if (!data) {
-    return (
-      <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-        <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{'\uD83D\uDD0D'}</p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-          {'No hay an\u00e1lisis de sesgos para este ciclo'}
-        </p>
-        <button
-          className="btn-primary"
-          onClick={() => analyze.mutate(cycleId)}
-          disabled={analyze.isPending || aiBlocked}
-          title={aiBlocked ? 'Créditos IA agotados' : undefined}
-        >
-          {analyze.isPending ? 'Analizando sesgos...' : aiBlocked ? 'Créditos IA agotados' : 'Analizar Sesgos con IA'}
-        </button>
-        {analyze.isPending && (
-          <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            {'Analizando patrones estad\u00edsticos del ciclo...'}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Overall Assessment */}
-      <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 700 }}>{'Evaluaci\u00f3n General'}</h3>
-          {data.confidenceLevel != null && (
-            <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>
-              {'Confianza: '}{Math.round(data.confidenceLevel * 100)}{'%'}
-            </span>
-          )}
-        </div>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{data.overallAssessment}</p>
-        {data.dataQuality && (
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{data.dataQuality}</p>
-        )}
-      </div>
-
-      {/* Biases */}
-      {data.biasesDetected && data.biasesDetected.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 700 }}>{'Sesgos Detectados ('}{data.biasesDetected.length}{')'}</h3>
-          {data.biasesDetected.map((b: any, i: number) => (
-            <div key={i} className="card" style={{ padding: '1.25rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{biasTypeLabel[b.type] || b.type}</span>
-                <span className={`badge ${severityBadge[b.severity] || 'badge-accent'}`} style={{ fontSize: '0.65rem' }}>
-                  {b.severity === 'high' ? 'Alta' : b.severity === 'medium' ? 'Media' : 'Baja'}
-                </span>
-              </div>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                <strong>{'Evaluador:'}</strong> {b.evaluatorName}
-              </p>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                <strong>{'Evidencia:'}</strong> {b.evidence}
-              </p>
-              {b.affectedEvaluatees && (
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  {'Evaluados afectados: '}{b.affectedEvaluatees.join(', ')}
-                </p>
-              )}
-              {b.recommendation && (
-                <p style={{ fontSize: '0.78rem', color: 'var(--accent)', marginTop: '0.3rem', fontWeight: 600 }}>
-                  {'\u2192 '}{b.recommendation}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--success)', fontSize: '1.2rem', marginBottom: '0.25rem' }}>{'\u2705'}</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{'No se detectaron sesgos significativos en este ciclo'}</p>
-        </div>
-      )}
-
-      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-        {'Generado por IA (Claude) \u2022 Solo visible para administradores'}
       </p>
     </div>
   );
@@ -636,9 +524,9 @@ function InsightsPageContent() {
           <div style={{ marginBottom: '1rem' }}>
             <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>{'Funcionalidades disponibles:'}</p>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              <li><strong>{'Resumen IA:'}</strong>{' Sintetiza todas las evaluaciones de un colaborador en un resumen ejecutivo con fortalezas, \u00e1reas de mejora y recomendaciones'}</li>
-              <li><strong>{'Detecci\u00f3n de Sesgos:'}</strong>{' Identifica patrones de sesgo en evaluadores (lenidad, severidad, efecto halo) con evidencia estad\u00edstica. Solo para administradores'}</li>
-              <li><strong>{'Sugerencias de Desarrollo:'}</strong>{' Genera acciones concretas de mejora vinculadas a competencias, basadas en evaluaci\u00f3n, feedback y Nine Box'}</li>
+              <li><strong>{'Resumen IA:'}</strong>{' Sintetiza todas las evaluaciones de un colaborador en un resumen ejecutivo con fortalezas, áreas de mejora y recomendaciones'}</li>
+              <li><strong>{'Sugerencias de Desarrollo:'}</strong>{' Genera acciones concretas de mejora vinculadas a competencias, basadas en evaluación, feedback y Nine Box'}</li>
+              <li style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{'La Detección de Sesgos se encuentra en Análisis de Ciclos, ya que es un análisis a nivel de ciclo completo.'}</li>
             </ul>
           </div>
           <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -717,7 +605,6 @@ function InsightsPageContent() {
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               {tabBtn('summary', '🤖 Resumen IA')}
-              {isAdmin && tabBtn('bias', '🔍 Detección de Sesgos')}
               {tabBtn('suggestions', '💡 Sugerencias de Desarrollo')}
             </div>
           </div>
@@ -782,31 +669,6 @@ function InsightsPageContent() {
               </p>
             </div>
           )}
-        </div>
-      )}
-
-      {selectedCycleId && activeTab === 'bias' && isAdmin && (
-        <div className="animate-fade-up">
-          {/* Banner: bias is cycle-level, not per user */}
-          {(() => {
-            const selectedCycle = sortedCycles.find((c: any) => c.id === selectedCycleId);
-            return (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap',
-                padding: '0.6rem 1rem', marginBottom: '1rem', borderRadius: 'var(--radius-sm)',
-                background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)',
-              }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  {'🔍'} Análisis de sesgos a nivel de <strong style={{ color: 'var(--text-primary)' }}>ciclo completo</strong>
-                  {selectedCycle ? ` — ${selectedCycle.name}` : ''}
-                </span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                  Evalúa patrones de todos los evaluadores del ciclo
-                </span>
-              </div>
-            );
-          })()}
-          <BiasSection key={`bias-${selectedCycleId}`} cycleId={selectedCycleId} aiBlocked={aiBlocked} />
         </div>
       )}
 
