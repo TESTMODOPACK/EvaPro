@@ -356,7 +356,7 @@ export default function AjustesPage() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* TAB: Organizacion (tenant_admin only)                              */}
+      {/* TAB: Organización (tenant_admin only)                               */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'organizacion' && isTenantAdmin && (
         <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
