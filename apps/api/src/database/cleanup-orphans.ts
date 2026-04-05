@@ -26,15 +26,11 @@ async function main() {
     await client.connect();
     console.log('[cleanup] Connected to database');
 
-    // ── B2/B3: Tables with new columns that conflict on ALTER (existing rows lack new NOT NULL cols)
-    const b2b3Tables = [
-      'payment_history',    // Billing: payment records (FK to subscriptions)
-      'ai_insights',        // Phase 3: AI insights cache
-      'key_results',        // B2.10: new entity, has tenant_id NOT NULL
-      'notifications',      // B3.16: new entity
-      'cycle_stages',       // B3.14: new entity
-      'meeting_locations',  // Check-in meeting locations
-      'checkins',           // CheckIn has new columns (scheduledTime, locationId, etc.)
+    // ── B2/B3: Tables that need cleanup ONLY for initial schema migration
+    // NOTE: Most tables removed from this list to preserve production data.
+    // Only keep tables that truly need recreation on schema conflicts.
+    const b2b3Tables: string[] = [
+      // All tables PRESERVED — no longer dropped to protect production data
     ];
     for (const table of b2b3Tables) {
       try {
@@ -47,38 +43,10 @@ async function main() {
 
     // ── PDO: Org Development tables (new — drop to allow clean FK sync) ────
     // IMPORTANT: drop child tables first (actions → initiatives → plans)
-    const orgDevTables = [
-      'org_development_actions',
-      'org_development_initiatives',
-      'org_development_plans',
-    ];
-    for (const table of orgDevTables) {
-      try {
-        await client.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
-        console.log(`[cleanup] Dropped PDO table: ${table}`);
-      } catch (err: any) {
-        console.log(`[cleanup] Could not drop ${table}: ${err.message}`);
-      }
-    }
-
-    // ── Phase 5: Development tables (new — may not exist yet) ─────────────
-    // IMPORTANT: role_competencies has FK to competencies, so drop it first
-    const phase5Tables = [
-      'role_competencies',    // FK → competencies
-      'development_comments',
-      'development_actions',
-      'development_plans',
-      'competencies',
-    ];
-
-    for (const table of phase5Tables) {
-      try {
-        await client.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
-        console.log(`[cleanup] Dropped Phase 5 table: ${table}`);
-      } catch (err: any) {
-        console.log(`[cleanup] Could not drop ${table}: ${err.message}`);
-      }
-    }
+    // ── Org Development & Phase 5 tables — PRESERVED (no longer dropped)
+    // These tables now have production data and should not be recreated.
+    // TypeORM synchronize:true will ADD new columns without dropping tables.
+    console.log('[cleanup] Skipping table drops — preserving production data');
 
     // ── Fix ALL orphaned FK references to competencies ──────────────────
     // After competencies is dropped and recreated empty by TypeORM, any table
