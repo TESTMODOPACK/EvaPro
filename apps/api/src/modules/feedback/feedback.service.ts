@@ -231,22 +231,33 @@ export class FeedbackService {
       throw new ForbiddenException('Solo el encargado asignado puede aceptar esta solicitud');
     }
 
-    ci.status = CheckInStatus.SCHEDULED;
-    if (data?.scheduledDate) ci.scheduledDate = new Date(data.scheduledDate);
-    if (data?.scheduledTime) ci.scheduledTime = data.scheduledTime;
-    if (data?.locationId) ci.locationId = data.locationId;
-    const saved = await this.checkInRepo.save(ci);
+    // Atomic update to prevent double-accept race condition
+    const updateResult = await this.checkInRepo.update(
+      { id: checkInId, status: CheckInStatus.REQUESTED },
+      {
+        status: CheckInStatus.SCHEDULED,
+        ...(data?.scheduledDate ? { scheduledDate: new Date(data.scheduledDate) } : {}),
+        ...(data?.scheduledTime ? { scheduledTime: data.scheduledTime } : {}),
+        ...(data?.locationId ? { locationId: data.locationId } : {}),
+      },
+    );
+    if (!updateResult.affected) {
+      throw new BadRequestException('Esta solicitud ya fue procesada por otro usuario.');
+    }
+    const saved = await this.checkInRepo.findOne({ where: { id: checkInId }, relations: ['manager', 'employee', 'location'] });
+
+    if (!saved) return ci; // fallback
 
     // Notify employee that request was accepted
-    const manager = await this.userRepo.findOne({ where: { id: managerId }, select: ['id', 'firstName', 'lastName'] });
-    const managerName = manager ? `${manager.firstName} ${manager.lastName}` : 'Tu encargado';
+    const managerUser = await this.userRepo.findOne({ where: { id: managerId }, select: ['id', 'firstName', 'lastName'] });
+    const managerName = managerUser ? `${managerUser.firstName} ${managerUser.lastName}` : 'Tu encargado';
     await this.notificationsService.create({
       tenantId,
-      userId: ci.employeeId,
+      userId: saved.employeeId,
       type: NotificationType.CHECKIN_SCHEDULED,
       title: 'Solicitud de reunión aceptada',
-      message: `${managerName} ha aceptado tu solicitud de reunión: "${ci.topic}"`,
-      metadata: { checkInId: ci.id },
+      message: `${managerName} ha aceptado tu solicitud de reunión: "${saved.topic}"`,
+      metadata: { checkInId: saved.id },
     }).catch(() => {});
 
     // Send email invitation
