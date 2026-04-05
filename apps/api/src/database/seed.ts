@@ -438,7 +438,14 @@ async function seed() {
 
     // Use Enterprise plan for demo to test AI features
     const enterprisePlan = await planRepo.findOne({ where: { code: 'enterprise' } });
-    let subscription = await subRepo.findOne({ where: { tenantId: tenant.id } });
+    // Find the active subscription (same logic as SubscriptionsService.findByTenantId)
+    let subscription = await subRepo.findOne({
+      where: { tenantId: tenant.id, status: 'active' },
+      order: { createdAt: 'DESC' as const },
+    }) || await subRepo.findOne({
+      where: { tenantId: tenant.id },
+      order: { createdAt: 'DESC' as const },
+    });
     if (!subscription) {
       subscription = subRepo.create({
         tenantId: tenant.id,
@@ -461,10 +468,11 @@ async function seed() {
         subChanged = true;
       }
       if (subChanged) {
+        subscription.status = 'active'; // Ensure it's active
         await subRepo.save(subscription);
-        console.log('\u2705  Subscription upgraded to Enterprise + 50 addon credits');
+        console.log(`✅  Subscription upgraded: planId=${subscription.planId}, plan=${enterprisePlan?.name}, aiAddonCalls=${subscription.aiAddonCalls}, status=${subscription.status}`);
       } else {
-        console.log('   Subscription already configured.');
+        console.log(`   Subscription already configured: planId=${subscription.planId}, status=${subscription.status}, aiAddonCalls=${subscription.aiAddonCalls}`);
       }
     }
 
