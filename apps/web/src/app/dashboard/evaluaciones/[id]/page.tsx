@@ -67,6 +67,12 @@ export default function CycleDetailPage() {
   const [peerRelationType, setPeerRelationType] = useState('');
   const [manualDeptFilter, setManualDeptFilter] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Exception assignment states
+  const [excRelationType, setExcRelationType] = useState('manager');
+  const [excEvaluateeId, setExcEvaluateeId] = useState('');
+  const [excEvaluatorId, setExcEvaluatorId] = useState('');
+  const [excDeptFilter, setExcDeptFilter] = useState('');
+  const [excEvalDeptFilter, setExcEvalDeptFilter] = useState('');
   const [allowedRelations, setAllowedRelations] = useState<{ value: string; label: string }[]>([]);
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoGenResult, setAutoGenResult] = useState<{ created: number } | null>(null);
@@ -1018,6 +1024,119 @@ export default function CycleDetailPage() {
               </button>
             </div>
           )}
+          {/* ═══ Exception Assignment Section ═══ */}
+          <div style={{ borderTop: '2px solid var(--border)', padding: '1rem 1.5rem' }}>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {'⚡'} Asignación de excepciones
+              </h3>
+              <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--warning)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                Permite asignar evaluadores fuera del departamento del colaborador:
+                <ul style={{ margin: '0.3rem 0 0 1rem', padding: 0, lineHeight: 1.7 }}>
+                  <li><strong>Jefatura:</strong> Cualquier colaborador de nivel jerárquico superior (cualquier departamento)</li>
+                  <li><strong>Par:</strong> Cualquier colaborador del mismo nivel jerárquico (cualquier departamento)</li>
+                </ul>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              {/* Tipo de relación */}
+              <div style={{ minWidth: '130px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Relación</label>
+                <select value={excRelationType} onChange={(e) => { setExcRelationType(e.target.value); setExcEvaluatorId(''); }}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                  {allowedRelations.filter(r => r.value === 'manager' || r.value === 'peer').map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Departamento del evaluado */}
+              <div style={{ minWidth: '130px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Depto. evaluado</label>
+                <select value={excDeptFilter} onChange={(e) => { setExcDeptFilter(e.target.value); setExcEvaluateeId(''); setExcEvaluatorId(''); }}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                  <option value="">Todos</option>
+                  {deptOptions.map((d: string) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+
+              {/* Evaluado */}
+              <div style={{ flex: 1, minWidth: '180px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Evaluado</label>
+                <select value={excEvaluateeId} onChange={(e) => { setExcEvaluateeId(e.target.value); setExcEvaluatorId(''); }}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                  <option value="">Seleccionar evaluado</option>
+                  {usersList.filter((u: any) => !excDeptFilter || u.department === excDeptFilter).map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` (${u.position})` : ''}{u.department ? ` — ${u.department}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Departamento del evaluador */}
+              <div style={{ minWidth: '130px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Depto. evaluador</label>
+                <select value={excEvalDeptFilter} onChange={(e) => { setExcEvalDeptFilter(e.target.value); setExcEvaluatorId(''); }}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                  <option value="">Todos</option>
+                  {deptOptions.map((d: string) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+
+              {/* Evaluador — filtrado por jerarquía */}
+              <div style={{ flex: 1, minWidth: '180px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
+                  Evaluador
+                  {excRelationType === 'manager' && <span style={{ color: 'var(--accent)', fontSize: '0.68rem', marginLeft: '0.3rem' }}>(nivel superior)</span>}
+                  {excRelationType === 'peer' && <span style={{ color: '#6366f1', fontSize: '0.68rem', marginLeft: '0.3rem' }}>(mismo nivel)</span>}
+                </label>
+                <select value={excEvaluatorId} onChange={(e) => setExcEvaluatorId(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm, 0.375rem)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                  <option value="">Seleccionar evaluador</option>
+                  {(() => {
+                    const evaluatee = usersList.find((u: any) => u.id === excEvaluateeId);
+                    if (!evaluatee) return [];
+                    return usersList.filter((u: any) => {
+                      if (u.id === excEvaluateeId) return false;
+                      if (excEvalDeptFilter && u.department !== excEvalDeptFilter) return false;
+                      if (excRelationType === 'manager') {
+                        // Higher hierarchy level (lower number = higher)
+                        const evalLevel = evaluatee.hierarchyLevel ?? 99;
+                        const uLevel = u.hierarchyLevel ?? 99;
+                        return uLevel < evalLevel;
+                      }
+                      if (excRelationType === 'peer') {
+                        // Same hierarchy level
+                        if (!evaluatee.hierarchyLevel || !u.hierarchyLevel) return false;
+                        return u.hierarchyLevel === evaluatee.hierarchyLevel;
+                      }
+                      return true;
+                    });
+                  })().map((u: any) => (
+                    <option key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName}{u.position ? ` (${u.position})` : ''}{u.department ? ` — ${u.department}` : ''}
+                      {u.hierarchyLevel ? ` [Nv.${u.hierarchyLevel}]` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button className="btn-primary" style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem' }}
+                disabled={!excEvaluateeId || !excEvaluatorId || addPeer.isPending}
+                onClick={async () => {
+                  // Duplicate check
+                  const dup = peerList.some((pa: any) => pa.evaluateeId === excEvaluateeId && pa.evaluatorId === excEvaluatorId && pa.relationType === excRelationType);
+                  if (dup) { toast.error('Esta asignación ya existe.'); return; }
+                  try {
+                    await addPeer.mutateAsync({ cycleId: id, evaluateeId: excEvaluateeId, evaluatorId: excEvaluatorId, relationType: excRelationType });
+                    setExcEvaluateeId(''); setExcEvaluatorId('');
+                    toast.success('Asignación de excepción agregada');
+                  } catch (e: any) { toast.error(e.message || 'Error al agregar'); }
+                }}>
+                Agregar excepción
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
