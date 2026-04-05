@@ -432,14 +432,18 @@ export class ObjectivesService {
   // An objective is at-risk if its progress is behind the expected pace
   // Expected pace = (elapsed time / total time) * 100
   // At-risk when: progress < expectedPace * 0.6 (40% behind expected) OR progress < 40% with no target date
-  async getAtRiskObjectives(tenantId: string, filterUserId?: string): Promise<Objective[]> {
+  async getAtRiskObjectives(tenantId: string, filterUserId?: string, role?: string, currentUserId?: string): Promise<Objective[]> {
     // Fetch all active objectives first, then filter intelligently
     const qb = this.objectiveRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'u')
       .where('o.tenantId = :tenantId', { tenantId })
       .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE });
-    if (filterUserId) {
+
+    if (role === 'manager' && currentUserId) {
+      // Manager: only see at-risk objectives for their direct reports + own
+      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', { mgr: currentUserId });
+    } else if (filterUserId) {
       qb.andWhere('o.userId = :filterUserId', { filterUserId });
     }
     const activeObjectives = await qb.orderBy('o.progress', 'ASC').getMany();

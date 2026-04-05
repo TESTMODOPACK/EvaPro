@@ -66,7 +66,7 @@ export class ObjectivesController {
   @Get('at-risk')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getAtRisk(@Request() req: any, @Query('userId') filterUserId?: string) {
-    return this.objectivesService.getAtRiskObjectives(req.user.tenantId, filterUserId);
+    return this.objectivesService.getAtRiskObjectives(req.user.tenantId, filterUserId, req.user.role, req.user.userId);
   }
 
   // B4 Item 12: Team objectives summary
