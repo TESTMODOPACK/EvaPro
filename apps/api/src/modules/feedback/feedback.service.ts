@@ -140,7 +140,8 @@ export class FeedbackService {
   }
 
   async findCheckIns(tenantId: string, userId: string, role: string): Promise<CheckIn[]> {
-    const where = role === 'manager' || role === 'tenant_admin'
+    const isAdminOrManager = role === 'super_admin' || role === 'tenant_admin' || role === 'manager';
+    const where = isAdminOrManager
       ? [{ tenantId, managerId: userId }, { tenantId, employeeId: userId }]
       : [{ tenantId, employeeId: userId }];
     return this.checkInRepo.find({
@@ -271,8 +272,9 @@ export class FeedbackService {
         }],
       );
       await this.checkInRepo.update(checkIn.id, { emailSent: true });
-    } catch (e) {
-      console.error('[EmailService] Error sending check-in invitation:', e);
+      console.log(`[CheckIn] Email sent to ${employee.email} for check-in ${checkIn.id}`);
+    } catch (e: any) {
+      console.error(`[CheckIn] Email FAILED for ${employee.email}:`, e?.message || e);
     }
   }
 
