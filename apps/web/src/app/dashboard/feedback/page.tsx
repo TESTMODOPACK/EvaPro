@@ -907,7 +907,8 @@ function FeedbackPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('checkins');
+  // Employee starts on Quick Feedback tab (they can't create check-ins)
+  const [activeTab, setActiveTab] = useState<ActiveTab>(role === 'employee' ? 'quick' : 'checkins');
   const [showGuide, setShowGuide] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
 
