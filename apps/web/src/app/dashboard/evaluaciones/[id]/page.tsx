@@ -929,13 +929,29 @@ export default function CycleDetailPage() {
                   {peerRelationType === 'manager' && peerEvaluateeId && !peerEvaluatorId && (
                     <span style={{ fontSize: '0.72rem', color: 'var(--warning)' }}>Este colaborador no tiene jefatura asignada</span>
                   )}
+                  {peerRelationType === 'manager' && peerEvaluateeId && peerEvaluatorId && (() => {
+                    const ev = usersList.find((u: any) => u.id === peerEvaluateeId);
+                    const mgr = usersList.find((u: any) => u.id === peerEvaluatorId);
+                    if (ev?.department && mgr?.department && ev.department !== mgr.department) {
+                      return <span style={{ fontSize: '0.72rem', color: 'var(--danger)' }}>⚠ El jefe ({mgr.department}) es de un departamento diferente al evaluado ({ev.department})</span>;
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
 
               <button
                 className="btn-primary"
                 onClick={handleAddPeer}
-                disabled={!peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) || addPeer.isPending}
+                disabled={!peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) || addPeer.isPending || (() => {
+                  // Block if manager is from different department
+                  if (peerRelationType === 'manager' && peerEvaluateeId && peerEvaluatorId) {
+                    const ev = usersList.find((u: any) => u.id === peerEvaluateeId);
+                    const mgr = usersList.find((u: any) => u.id === peerEvaluatorId);
+                    return !!(ev?.department && mgr?.department && ev.department !== mgr.department);
+                  }
+                  return false;
+                })()}
                 style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem', opacity: !peerEvaluateeId || (peerRelationType !== 'self' && !peerEvaluatorId) ? 0.5 : 1 }}
               >
                 {addPeer.isPending ? t('common.saving') : t('evaluaciones.detail.addAssignment')}

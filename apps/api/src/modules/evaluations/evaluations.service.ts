@@ -494,7 +494,7 @@ export class EvaluationsService {
     const allowedRelations = this.getAllowedRelations(cycle.type as CycleType);
     const users = await this.userRepo.find({
       where: { tenantId, isActive: true },
-      select: ['id', 'managerId', 'role'],
+      select: ['id', 'managerId', 'role', 'department', 'firstName', 'lastName'],
     });
 
     // Exclude super_admin and external from evaluatees
@@ -510,6 +510,7 @@ export class EvaluationsService {
     );
 
     const toCreate: Partial<PeerAssignment>[] = [];
+    let skipped = 0;
 
     for (const evaluatee of evaluatees) {
       // Self-evaluation
@@ -526,23 +527,34 @@ export class EvaluationsService {
         }
       }
 
-      // Manager evaluation
+      // Manager evaluation — only if manager is in the same department
       if (allowedRelations.includes(RelationType.MANAGER) && evaluatee.managerId) {
-        const key = `${evaluatee.id}|${evaluatee.managerId}|${RelationType.MANAGER}`;
-        if (!existingSet.has(key)) {
-          toCreate.push({
-            tenantId,
-            cycleId,
-            evaluateeId: evaluatee.id,
-            evaluatorId: evaluatee.managerId,
-            relationType: RelationType.MANAGER,
-          });
+        const manager = users.find((u) => u.id === evaluatee.managerId);
+        const sameDept = !!(evaluatee.department && manager?.department && evaluatee.department === manager.department);
+        if (sameDept) {
+          const key = `${evaluatee.id}|${evaluatee.managerId}|${RelationType.MANAGER}`;
+          if (!existingSet.has(key)) {
+            toCreate.push({
+              tenantId,
+              cycleId,
+              evaluateeId: evaluatee.id,
+              evaluatorId: evaluatee.managerId,
+              relationType: RelationType.MANAGER,
+            });
+          }
+        } else {
+          skipped++;
+          console.warn(`[AutoGen] Skipped: ${evaluatee.firstName} ${evaluatee.lastName} (${evaluatee.department}) — manager ${manager?.firstName} ${manager?.lastName} is in different dept (${manager?.department})`);
         }
       }
 
-      // Direct reports evaluate upward (360° only)
+      // Direct reports evaluate upward (360° only) — same department only
       if (allowedRelations.includes(RelationType.DIRECT_REPORT)) {
-        const directReports = users.filter((u) => u.managerId === evaluatee.id && u.role !== 'super_admin' && u.role !== 'external');
+        const directReports = users.filter((u) =>
+          u.managerId === evaluatee.id &&
+          u.role !== 'super_admin' && u.role !== 'external' &&
+          (!!(evaluatee.department && u.department && evaluatee.department === u.department))
+        );
         for (const dr of directReports) {
           const key = `${evaluatee.id}|${dr.id}|${RelationType.DIRECT_REPORT}`;
           if (!existingSet.has(key)) {
@@ -561,7 +573,7 @@ export class EvaluationsService {
     // Note: PEER assignments are NOT auto-generated (admin must select peers manually)
 
     if (toCreate.length === 0) {
-      return { created: 0, skipped: evaluatees.length };
+      return { created: 0, skipped };
     }
 
     const entities = toCreate.map((pa) => this.peerAssignmentRepo.create(pa));
