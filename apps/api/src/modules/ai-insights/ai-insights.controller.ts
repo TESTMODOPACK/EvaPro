@@ -157,15 +157,21 @@ export class AiInsightsController {
     return this.aiService.getUsageQuota(req.user.tenantId, req.user.userId);
   }
 
-  /** Full AI usage log for audit tab */
+  /** Full AI usage log for audit tab — super_admin can filter by tenantId */
   @Get('usage-log')
-  @Roles('tenant_admin')
+  @Roles('super_admin', 'tenant_admin')
   getUsageLog(
     @Request() req: any,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('tenantId') filterTenantId?: string,
   ) {
-    return this.aiService.getAiUsageLog(req.user.tenantId, Number(page) || 1, Math.min(Number(limit) || 25, 100));
+    // super_admin can filter by tenant or see all; tenant_admin sees only their own
+    let tenantId = req.user.tenantId;
+    if (req.user.role === 'super_admin') {
+      tenantId = filterTenantId || ''; // empty = all orgs
+    }
+    return this.aiService.getAiUsageLog(tenantId, Number(page) || 1, Math.min(Number(limit) || 25, 100));
   }
 
   // ─── PDF Export ──────────────────────────────────────────────────────

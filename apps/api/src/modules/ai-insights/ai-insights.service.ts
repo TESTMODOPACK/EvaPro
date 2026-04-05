@@ -1045,8 +1045,9 @@ export class AiInsightsService {
       cv_analysis: 'Análisis de CV', recruitment_recommendation: 'Recomendación de selección',
     };
 
+    const where = tenantId ? { tenantId } : {};
     const [records, total] = await this.insightRepo.findAndCount({
-      where: { tenantId },
+      where,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -1064,10 +1065,10 @@ export class AiInsightsService {
     }
 
     // Total tokens
-    const tokensResult = await this.insightRepo.createQueryBuilder('i')
-      .where('i.tenantId = :tenantId', { tenantId })
-      .select('COALESCE(SUM(i.tokensUsed), 0)', 'total')
-      .getRawOne();
+    const qb = this.insightRepo.createQueryBuilder('i')
+      .select('COALESCE(SUM(i.tokensUsed), 0)', 'total');
+    if (tenantId) qb.where('i.tenantId = :tenantId', { tenantId });
+    const tokensResult = await qb.getRawOne();
 
     return {
       data: records.map(r => {

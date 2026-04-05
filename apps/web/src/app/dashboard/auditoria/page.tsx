@@ -193,19 +193,39 @@ function GuidePanel(props: { open: boolean; onToggle: () => void; t: any }) {
 
 function AiUsageTab() {
   const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.user?.role) || '';
+  const isSuperAdmin = role === 'super_admin';
   const [data, setData] = useState<any>(null);
+  const [quota, setQuota] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState('');
   const LIMIT = 25;
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+  // Load tenants list for super_admin filter
+  useEffect(() => {
+    if (!token || !isSuperAdmin) return;
+    fetch(`${BASE_URL}/tenants`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(setTenants).catch(() => []);
+  }, [token, isSuperAdmin]);
 
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    fetch(`${BASE_URL}/ai/usage-log?page=${page}&limit=${LIMIT}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(r => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [token, page]);
+    const tenantParam = isSuperAdmin && selectedTenantId ? `&tenantId=${selectedTenantId}` : '';
+    Promise.all([
+      fetch(`${BASE_URL}/ai/usage-log?page=${page}&limit=${LIMIT}${tenantParam}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json()),
+      !isSuperAdmin ? fetch(`${BASE_URL}/ai/usage`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.ok ? r.json() : null) : Promise.resolve(null),
+    ]).then(([d, q]) => { setData(d); setQuota(q); })
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [token, page, isSuperAdmin, selectedTenantId]);
 
   if (loading) return <Spinner />;
   if (!data) return <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>No se pudo cargar el registro de uso IA</p>;
@@ -214,16 +234,52 @@ function AiUsageTab() {
 
   return (
     <div>
+      {/* SuperAdmin: Organization filter */}
+      {isSuperAdmin && tenants.length > 0 && (
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+            Filtrar por organización
+          </label>
+          <select className="input" value={selectedTenantId} onChange={(e) => { setSelectedTenantId(e.target.value); setPage(1); }}
+            style={{ maxWidth: '400px', width: '100%' }}>
+            <option value="">Todas las organizaciones</option>
+            {tenants.map((t: any) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isSuperAdmin ? 'repeat(auto-fit, minmax(155px, 1fr))' : 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Total Ejecuciones</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Total ejecuciones</div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--accent)' }}>{data.total || 0}</div>
         </div>
-        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Tokens Consumidos</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#6366f1' }}>{(data.totalTokens || 0).toLocaleString()}</div>
-        </div>
+        {isSuperAdmin && (
+          <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Tokens consumidos</div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#6366f1' }}>{(data.totalTokens || 0).toLocaleString()}</div>
+          </div>
+        )}
+        {!isSuperAdmin && quota && (
+          <>
+            <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Usados este período</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--accent)' }}>{quota.monthlyUsed || 0}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>de {quota.monthlyLimit || 0}</div>
+            </div>
+            <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Créditos restantes</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: (quota.monthlyRemaining || 0) <= 0 ? 'var(--danger)' : 'var(--success)' }}>
+                {quota.monthlyRemaining || 0}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Plan: {quota.planLimit || 0} {quota.addonRemaining > 0 ? `+ ${quota.addonRemaining} addon` : ''}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Table */}
@@ -237,9 +293,9 @@ function AiUsageTab() {
                 <tr style={{ borderBottom: '2px solid var(--border)' }}>
                   <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>#</th>
                   <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Fecha</th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tipo de Informe</th>
+                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tipo de informe</th>
                   <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Usuario</th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tokens</th>
+                  {isSuperAdmin && <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tokens</th>}
                 </tr>
               </thead>
               <tbody>
@@ -260,9 +316,11 @@ function AiUsageTab() {
                         </div>
                       ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Sistema</span>}
                     </td>
-                    <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      {(r.tokensUsed || 0).toLocaleString()}
-                    </td>
+                    {isSuperAdmin && (
+                      <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {(r.tokensUsed || 0).toLocaleString()}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
