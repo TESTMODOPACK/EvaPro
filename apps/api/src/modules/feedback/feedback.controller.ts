@@ -155,7 +155,7 @@ export class FeedbackController {
   @Post('quick')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   sendQuickFeedback(@Request() req: any, @Body() dto: CreateQuickFeedbackDto) {
-    return this.feedbackService.createQuickFeedback(req.user.tenantId, req.user.userId, dto);
+    return this.feedbackService.createQuickFeedback(req.user.tenantId, req.user.userId, dto, req.user.role);
   }
 
   @Get('quick/received')

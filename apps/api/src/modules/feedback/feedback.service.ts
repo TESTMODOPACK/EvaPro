@@ -346,8 +346,28 @@ export class FeedbackService {
     }
   }
 
-  async createQuickFeedback(tenantId: string, fromUserId: string, dto: CreateQuickFeedbackDto): Promise<QuickFeedback> {
+  async createQuickFeedback(tenantId: string, fromUserId: string, dto: CreateQuickFeedbackDto, role?: string): Promise<QuickFeedback> {
     this.validateFeedbackContent(dto.message);
+
+    // Validate recipient scope by role
+    if (role === 'employee' || role === 'manager') {
+      const sender = await this.userRepo.findOne({ where: { id: fromUserId, tenantId }, select: ['id', 'department', 'managerId'] });
+      const recipient = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'managerId'] });
+      if (sender && recipient) {
+        const sameDept = sender.department && recipient.department && sender.department === recipient.department;
+        if (role === 'employee') {
+          const isMyManager = sender.managerId === recipient.id;
+          if (!sameDept && !isMyManager) {
+            throw new ForbiddenException('Solo puedes enviar feedback a miembros de tu departamento o tu jefatura directa.');
+          }
+        } else if (role === 'manager') {
+          const isDirectReport = recipient.managerId === fromUserId;
+          if (!sameDept && !isDirectReport) {
+            throw new ForbiddenException('Solo puedes enviar feedback a tu equipo directo o miembros de tu departamento.');
+          }
+        }
+      }
+    }
 
     const qf = this.quickFeedbackRepo.create({
       tenantId,

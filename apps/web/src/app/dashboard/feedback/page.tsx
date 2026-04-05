@@ -312,10 +312,35 @@ function QuickFeedbackTab() {
 
   const allUsers = usersPage?.data || [];
   const currentUserId = useAuthStore((s) => s.user?.userId);
-  // Filter users for recipient: exclude self, filter by search and department
+  const currentRole = useAuthStore((s) => s.user?.role) || '';
+  // Find current user's department and managerId from the loaded users list
+  const currentUserData = allUsers.find((u: any) => u.id === currentUserId);
+  const myDepartment = currentUserData?.department || '';
+  const myManagerId = currentUserData?.managerId || '';
+
+  // Filter users for recipient by role-based business rules:
+  // - employee: same department + direct manager only
+  // - manager: direct reports + same department
+  // - tenant_admin/super_admin: all users
   const users = allUsers.filter((u: any) => {
     if (u.id === currentUserId) return false;
     if (!u.isActive) return false;
+
+    // Role-based scope restriction
+    if (currentRole === 'employee') {
+      // Employee: only same department + their direct manager
+      const sameDept = myDepartment && u.department === myDepartment;
+      const isMyManager = u.id === myManagerId;
+      if (!sameDept && !isMyManager) return false;
+    } else if (currentRole === 'manager') {
+      // Manager: direct reports + same department
+      const isDirectReport = u.managerId === currentUserId;
+      const sameDept = myDepartment && u.department === myDepartment;
+      if (!isDirectReport && !sameDept) return false;
+    }
+    // tenant_admin / super_admin: no scope restriction
+
+    // UI filters (search + department dropdown)
     if (recipientDeptFilter && u.department !== recipientDeptFilter) return false;
     if (recipientSearch) {
       const q = recipientSearch.toLowerCase();
@@ -324,7 +349,18 @@ function QuickFeedbackTab() {
     }
     return true;
   });
-  const recipientDepts = Array.from(new Set(allUsers.filter((u: any) => u.isActive && u.id !== currentUserId).map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  // Department dropdown — show only departments within the user's role scope (before search filter)
+  const scopedUsers = allUsers.filter((u: any) => {
+    if (u.id === currentUserId || !u.isActive) return false;
+    if (currentRole === 'employee') {
+      return (myDepartment && u.department === myDepartment) || u.id === myManagerId;
+    }
+    if (currentRole === 'manager') {
+      return u.managerId === currentUserId || (myDepartment && u.department === myDepartment);
+    }
+    return true;
+  });
+  const recipientDepts = Array.from(new Set(scopedUsers.map((u: any) => u.department).filter(Boolean))).sort() as string[];
   const feedbackList = subTab === 'received' ? received : given;
   const isLoading = subTab === 'received' ? loadingReceived : loadingGiven;
 
@@ -797,11 +833,13 @@ function FeedbackPageContent() {
               {'Quick Feedback (Retroalimentaci\u00f3n r\u00e1pida) - Feedback 360\u00b0:'}
             </p>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              <li>{'Cualquier usuario puede enviar feedback a cualquier otro usuario'}</li>
+              <li><strong>{'Administrador:'}</strong>{' Puede enviar feedback a cualquier colaborador de la organización'}</li>
+              <li><strong>{'Encargado de equipo:'}</strong>{' Puede enviar a su equipo directo y miembros de su mismo departamento'}</li>
+              <li><strong>{'Colaborador:'}</strong>{' Puede enviar a miembros de su departamento y a su jefatura directa'}</li>
               <li>{'Tipos de sentimiento: Positivo, Neutral, Constructivo'}</li>
-              <li>{'Opci\u00f3n de env\u00edo an\u00f3nimo'}</li>
-              <li>{'Visibilidad configurable (NUEVO B2.12): P\u00fablico (todos ven), Privado (solo emisor/receptor), Solo encargado (receptor y su encargado)'}</li>
-              <li>{'Categor\u00edas personalizables'}</li>
+              <li>{'Opción de envío anónimo'}</li>
+              <li>{'Visibilidad configurable: Público (todos ven), Privado (solo emisor/receptor), Solo encargado (receptor y su encargado)'}</li>
+              <li>{'Categorías personalizables'}</li>
             </ul>
           </div>
 
@@ -823,9 +861,9 @@ function FeedbackPageContent() {
               {'Permisos:'}
             </p>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              <li>{'Administrador: Crea check-ins con cualquiera, ve todo el feedback'}</li>
-              <li>{'Encargado de Equipo: Crea check-ins con sus reportes directos, env\u00eda/recibe feedback'}</li>
-              <li>{'Colaborador: Ve sus check-ins, env\u00eda/recibe feedback'}</li>
+              <li><strong>{'Administrador:'}</strong>{' Crea check-ins con cualquier colaborador, envía feedback a todos, gestiona lugares de reunión'}</li>
+              <li><strong>{'Encargado de Equipo:'}</strong>{' Crea check-ins con sus reportes directos, envía feedback a su equipo y departamento, gestiona lugares'}</li>
+              <li><strong>{'Colaborador:'}</strong>{' Ve sus check-ins asignados, envía feedback a su departamento y jefatura directa'}</li>
             </ul>
           </div>
         </div>
@@ -835,7 +873,7 @@ function FeedbackPageContent() {
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         {tabBtn('checkins', t('feedback.tabCheckIns'))}
         {tabBtn('quick', t('feedback.tabQuickFeedback'))}
-        {tabBtn('locations', t('feedback.tabLocations'))}
+        {isAdminOrManager && tabBtn('locations', t('feedback.tabLocations'))}
       </div>
 
       {/* Content */}
