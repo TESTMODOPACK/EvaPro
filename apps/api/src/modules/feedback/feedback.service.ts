@@ -346,28 +346,32 @@ export class FeedbackService {
     }
   }
 
-  async createQuickFeedback(tenantId: string, fromUserId: string, dto: CreateQuickFeedbackDto, role?: string): Promise<QuickFeedback> {
-    this.validateFeedbackContent(dto.message);
-
-    // Validate recipient scope by role
-    if (role === 'employee' || role === 'manager') {
+  async createQuickFeedback(tenantId: string, fromUserId: string, dto: CreateQuickFeedbackDto, role: string = 'employee'): Promise<QuickFeedback> {
+    // 1. Validate recipient scope by role FIRST (authorization before processing)
+    if (role !== 'tenant_admin' && role !== 'super_admin') {
       const sender = await this.userRepo.findOne({ where: { id: fromUserId, tenantId }, select: ['id', 'department', 'managerId'] });
       const recipient = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'managerId'] });
-      if (sender && recipient) {
-        const sameDept = sender.department && recipient.department && sender.department === recipient.department;
-        if (role === 'employee') {
-          const isMyManager = sender.managerId === recipient.id;
-          if (!sameDept && !isMyManager) {
-            throw new ForbiddenException('Solo puedes enviar feedback a miembros de tu departamento o tu jefatura directa.');
-          }
-        } else if (role === 'manager') {
-          const isDirectReport = recipient.managerId === fromUserId;
-          if (!sameDept && !isDirectReport) {
-            throw new ForbiddenException('Solo puedes enviar feedback a tu equipo directo o miembros de tu departamento.');
-          }
+      if (!sender) throw new NotFoundException('Usuario emisor no encontrado');
+      if (!recipient) throw new NotFoundException('Usuario destinatario no encontrado');
+
+      // Same department check: both must have a non-null department and match
+      const sameDept = !!(sender.department && recipient.department && sender.department === recipient.department);
+
+      if (role === 'employee') {
+        const isMyManager = !!(sender.managerId && sender.managerId === recipient.id);
+        if (!sameDept && !isMyManager) {
+          throw new ForbiddenException('Solo puedes enviar feedback a miembros de tu departamento o tu jefatura directa.');
+        }
+      } else if (role === 'manager') {
+        const isDirectReport = !!(recipient.managerId && recipient.managerId === fromUserId);
+        if (!sameDept && !isDirectReport) {
+          throw new ForbiddenException('Solo puedes enviar feedback a tu equipo directo o miembros de tu departamento.');
         }
       }
     }
+
+    // 2. Validate content (after authorization)
+    this.validateFeedbackContent(dto.message);
 
     const qf = this.quickFeedbackRepo.create({
       tenantId,

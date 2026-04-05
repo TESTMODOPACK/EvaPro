@@ -328,14 +328,14 @@ function QuickFeedbackTab() {
 
     // Role-based scope restriction
     if (currentRole === 'employee') {
-      // Employee: only same department + their direct manager
-      const sameDept = myDepartment && u.department === myDepartment;
-      const isMyManager = u.id === myManagerId;
+      // Employee: only same department (both must have one) + their direct manager
+      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
+      const isMyManager = !!(myManagerId && u.id === myManagerId);
       if (!sameDept && !isMyManager) return false;
     } else if (currentRole === 'manager') {
       // Manager: direct reports + same department
-      const isDirectReport = u.managerId === currentUserId;
-      const sameDept = myDepartment && u.department === myDepartment;
+      const isDirectReport = !!(u.managerId && u.managerId === currentUserId);
+      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
       if (!isDirectReport && !sameDept) return false;
     }
     // tenant_admin / super_admin: no scope restriction
@@ -353,10 +353,14 @@ function QuickFeedbackTab() {
   const scopedUsers = allUsers.filter((u: any) => {
     if (u.id === currentUserId || !u.isActive) return false;
     if (currentRole === 'employee') {
-      return (myDepartment && u.department === myDepartment) || u.id === myManagerId;
+      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
+      const isMyManager = !!(myManagerId && u.id === myManagerId);
+      return sameDept || isMyManager;
     }
     if (currentRole === 'manager') {
-      return u.managerId === currentUserId || (myDepartment && u.department === myDepartment);
+      const isDirectReport = !!(u.managerId && u.managerId === currentUserId);
+      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
+      return isDirectReport || sameDept;
     }
     return true;
   });
@@ -461,17 +465,23 @@ function QuickFeedbackTab() {
                 {recipientDepts.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
-            <select
-              className="input"
-              value={form.toUserId}
-              onChange={(e) => setForm({ ...form, toUserId: e.target.value })}
-              style={{ width: '100%' }}
-            >
-              <option value="">Seleccionar colaborador ({users.length} disponibles)...</option>
-              {users.map((u: any) => (
-                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}</option>
-              ))}
-            </select>
+            {users.length === 0 && scopedUsers.length === 0 ? (
+              <div style={{ padding: '0.75rem', background: 'rgba(245,158,11,0.08)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.2)', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                No tienes colaboradores disponibles para enviar feedback. Verifica que tengas un departamento asignado o una jefatura directa configurada.
+              </div>
+            ) : (
+              <select
+                className="input"
+                value={form.toUserId}
+                onChange={(e) => setForm({ ...form, toUserId: e.target.value })}
+                style={{ width: '100%' }}
+              >
+                <option value="">Seleccionar colaborador ({users.length} disponibles)...</option>
+                {users.map((u: any) => (
+                  <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div style={{ marginBottom: '0.75rem' }}>
             <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
@@ -880,7 +890,7 @@ function FeedbackPageContent() {
       <div className="animate-fade-up">
         {activeTab === 'checkins' && <CheckInsTab />}
         {activeTab === 'quick' && <QuickFeedbackTab />}
-        {activeTab === 'locations' && <LocationsTab />}
+        {activeTab === 'locations' && isAdminOrManager && <LocationsTab />}
       </div>
     </div>
   );
