@@ -290,9 +290,81 @@ export default function TenantsPage() {
       {showUpload && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>Cargar Organización desde Excel</h3>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Suba la plantilla de onboarding (Plantilla_Onboarding_EvaPro.xlsx) para crear una organización completa con su administrador, departamentos, cargos, competencias y colaboradores.
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+            Suba la plantilla de onboarding para crear una organización completa con su administrador, departamentos, cargos, competencias y colaboradores.
           </p>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }}
+            onClick={async () => {
+              const XLSX = await import('xlsx/dist/xlsx.mini.min');
+              const wb = XLSX.utils.book_new();
+              // Hoja 1: Organización
+              const orgData = [
+                ['PLANTILLA DE ONBOARDING — EVAPRO'], [],
+                ['HOJA 1: DATOS DE LA ORGANIZACIÓN'], [],
+                ['Campo', 'Valor'],
+                ['Nombre de la empresa', ''],
+                ['RUT de la empresa', ''],
+                ['Tipo (company/consultant)', 'company'],
+                ['Industria', ''],
+                ['Rango de colaboradores', ''],
+                ['Dirección comercial', ''],
+                ['Plan (starter/growth/pro/enterprise)', 'starter'],
+                ['Período de facturación (monthly/quarterly/semiannual/yearly)', 'monthly'],
+                ['Fecha de inicio (YYYY-MM-DD)', new Date().toISOString().split('T')[0]],
+                ['Nombre representante legal', ''],
+                ['RUT representante legal', ''],
+              ];
+              const ws1 = XLSX.utils.aoa_to_sheet(orgData);
+              ws1['!cols'] = [{ wch: 45 }, { wch: 40 }];
+              XLSX.utils.book_append_sheet(wb, ws1, 'Organización');
+              // Hoja 2: Administrador
+              const adminData = [
+                ['HOJA 2: ADMINISTRADOR DEL SISTEMA'], [],
+                ['El primer usuario creado tendrá rol de Administrador'], [],
+                ['Campo', 'Valor'],
+                ['Email', ''],
+                ['Nombres', ''],
+                ['Apellidos', ''],
+                ['RUT', ''],
+                ['Contraseña temporal', 'EvaPro2026!'],
+                ['Cargo', ''],
+                ['Departamento', ''],
+              ];
+              const ws2 = XLSX.utils.aoa_to_sheet(adminData);
+              ws2['!cols'] = [{ wch: 30 }, { wch: 40 }];
+              XLSX.utils.book_append_sheet(wb, ws2, 'Administrador');
+              // Hoja 3: Departamentos
+              const deptData = [
+                ['HOJA 3: DEPARTAMENTOS'], [],
+                ['Nombre del departamento'],
+                ['Tecnología'], ['Ventas'], ['Recursos Humanos'], ['Finanzas'], ['Operaciones'],
+              ];
+              const ws3 = XLSX.utils.aoa_to_sheet(deptData);
+              ws3['!cols'] = [{ wch: 30 }];
+              XLSX.utils.book_append_sheet(wb, ws3, 'Departamentos');
+              // Hoja 4: Cargos
+              const posData = [
+                ['HOJA 4: CATÁLOGO DE CARGOS'], [],
+                ['Nombre del cargo', 'Nivel jerárquico (1=más alto)'],
+                ['Gerente General', 1], ['Gerente de Área', 2], ['Jefe de Departamento', 3],
+                ['Coordinador', 4], ['Analista Senior', 5], ['Analista', 6], ['Asistente', 7],
+              ];
+              const ws4 = XLSX.utils.aoa_to_sheet(posData);
+              ws4['!cols'] = [{ wch: 30 }, { wch: 28 }];
+              XLSX.utils.book_append_sheet(wb, ws4, 'Cargos');
+              // Hoja 5: Colaboradores
+              const usrData = [
+                ['HOJA 5: COLABORADORES'], [],
+                ['Email', 'Nombres', 'Apellidos', 'RUT', 'Contraseña', 'Rol (manager/employee)', 'Departamento', 'Cargo', 'Fecha ingreso (YYYY-MM-DD)', 'Email del jefe directo'],
+                ['ejemplo@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'EvaPro2026!', 'employee', 'Ventas', 'Ejecutivo de Ventas', '2024-01-15', 'jefe@empresa.cl'],
+              ];
+              const ws5 = XLSX.utils.aoa_to_sheet(usrData);
+              ws5['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 25 }];
+              XLSX.utils.book_append_sheet(wb, ws5, 'Colaboradores');
+              XLSX.writeFile(wb, 'Plantilla_Onboarding_EvaPro.xlsx');
+            }}>
+            {'📥'} Descargar plantilla Excel
+          </button>
           <input
             type="file"
             accept=".xlsx,.xls"
@@ -327,6 +399,8 @@ export default function TenantsPage() {
                   plan: getVal(s(0), 11, 2) || 'starter',
                   billingPeriod: getVal(s(0), 12, 2) || 'monthly',
                   startDate: getVal(s(0), 13, 2) || new Date().toISOString().split('T')[0],
+                  legalRepName: getVal(s(0), 14, 2),
+                  legalRepRut: getVal(s(0), 15, 2),
                 };
 
                 const admin = {

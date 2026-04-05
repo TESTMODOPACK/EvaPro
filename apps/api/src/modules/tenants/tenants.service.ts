@@ -160,6 +160,11 @@ export class TenantsService {
       ownerType: dto.ownerType || 'company',
       maxEmployees: dto.maxEmployees || 50,
       isActive: true,
+      industry: dto.industry || null,
+      employeeRange: dto.employeeRange || null,
+      commercialAddress: dto.commercialAddress || null,
+      legalRepName: dto.legalRepName || null,
+      legalRepRut: dto.legalRepRut || null,
       settings: dto.settings || {},
     });
     const saved = await this.tenantRepository.save(tenant);
@@ -508,7 +513,7 @@ export class TenantsService {
   // ─── Bulk Onboarding (from Excel data) ─────────────────────────────
 
   async bulkOnboard(data: {
-    org: { name: string; rut?: string; ownerType?: string; industry?: string; employeeRange?: string; commercialAddress?: string; plan?: string; billingPeriod?: string; startDate?: string };
+    org: { name: string; rut?: string; ownerType?: string; industry?: string; employeeRange?: string; commercialAddress?: string; legalRepName?: string; legalRepRut?: string; plan?: string; billingPeriod?: string; startDate?: string };
     admin: { email: string; firstName: string; lastName: string; rut?: string; password: string; position?: string; department?: string };
     departments?: string[];
     positions?: { name: string; level: number }[];
@@ -529,6 +534,8 @@ export class TenantsService {
       industry: data.org.industry,
       employeeRange: data.org.employeeRange,
       commercialAddress: data.org.commercialAddress,
+      legalRepName: data.org.legalRepName || null,
+      legalRepRut: data.org.legalRepRut || null,
     });
     summary.push(`Organización "${tenant.name}" creada (ID: ${tenant.id})`);
 
