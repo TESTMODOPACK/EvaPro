@@ -1043,6 +1043,7 @@ export class AiInsightsService {
       summary: 'Resumen de desempeño', bias: 'Detección de sesgo',
       suggestions: 'Sugerencias de desarrollo', survey_analysis: 'Análisis de encuesta',
       cv_analysis: 'Análisis de CV', recruitment_recommendation: 'Recomendación de selección',
+      cycle_comparison: 'Comparativa de ciclos (IA)',
     };
 
     const where = tenantId ? { tenantId } : {};

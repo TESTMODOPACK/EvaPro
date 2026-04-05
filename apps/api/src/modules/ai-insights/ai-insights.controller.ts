@@ -169,7 +169,9 @@ export class AiInsightsController {
     // super_admin can filter by tenant or see all; tenant_admin sees only their own
     let tenantId = req.user.tenantId;
     if (req.user.role === 'super_admin') {
-      tenantId = filterTenantId || ''; // empty = all orgs
+      // Validate UUID format if provided, otherwise show all
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      tenantId = filterTenantId && uuidRegex.test(filterTenantId) ? filterTenantId : '';
     }
     return this.aiService.getAiUsageLog(tenantId, Number(page) || 1, Math.min(Number(limit) || 25, 100));
   }

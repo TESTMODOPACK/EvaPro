@@ -275,7 +275,7 @@ function AiUsageTab() {
                 {quota.monthlyRemaining || 0}
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Plan: {quota.planLimit || 0} {quota.addonRemaining > 0 ? `+ ${quota.addonRemaining} addon` : ''}
+                Plan: {quota?.planLimit || 0} {(quota?.addonRemaining ?? 0) > 0 ? `+ ${quota.addonRemaining} addon` : ''}
               </div>
             </div>
           </>
