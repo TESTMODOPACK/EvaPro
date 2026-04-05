@@ -787,6 +787,25 @@ function InsightsPageContent() {
 
       {selectedCycleId && activeTab === 'bias' && isAdmin && (
         <div className="animate-fade-up">
+          {/* Banner: bias is cycle-level, not per user */}
+          {(() => {
+            const selectedCycle = sortedCycles.find((c: any) => c.id === selectedCycleId);
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap',
+                padding: '0.6rem 1rem', marginBottom: '1rem', borderRadius: 'var(--radius-sm)',
+                background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)',
+              }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  {'🔍'} Análisis de sesgos a nivel de <strong style={{ color: 'var(--text-primary)' }}>ciclo completo</strong>
+                  {selectedCycle ? ` — ${selectedCycle.name}` : ''}
+                </span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                  Evalúa patrones de todos los evaluadores del ciclo
+                </span>
+              </div>
+            );
+          })()}
           <BiasSection key={`bias-${selectedCycleId}`} cycleId={selectedCycleId} aiBlocked={aiBlocked} />
         </div>
       )}
