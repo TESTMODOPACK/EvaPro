@@ -7,7 +7,7 @@ import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignm
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { DeiCorrectiveAction } from './entities/dei-corrective-action.entity';
 
-const DEFAULT_PRIVACY_MIN = 10; // Minimum group size for DEI metrics (spec: 10 personas)
+const DEFAULT_PRIVACY_MIN = 5; // Minimum group size for DEI metrics (configurable by tenant)
 const DEFAULT_MEDIUM_THRESHOLD = 1.5; // Gap >= 1.5 points = medium alert
 const DEFAULT_HIGH_THRESHOLD = 2.0; // Gap >= 2.0 points = high alert
 
@@ -32,7 +32,7 @@ export class DeiService {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
     const dei = tenant?.settings?.dei || {};
     return {
-      privacyMin: typeof dei.privacyMin === 'number' && dei.privacyMin >= 5 ? dei.privacyMin : DEFAULT_PRIVACY_MIN,
+      privacyMin: typeof dei.privacyMin === 'number' && dei.privacyMin >= 2 ? dei.privacyMin : DEFAULT_PRIVACY_MIN,
       mediumThreshold: typeof dei.mediumThreshold === 'number' && dei.mediumThreshold > 0 ? dei.mediumThreshold : DEFAULT_MEDIUM_THRESHOLD,
       highThreshold: typeof dei.highThreshold === 'number' && dei.highThreshold > 0 ? dei.highThreshold : DEFAULT_HIGH_THRESHOLD,
     };

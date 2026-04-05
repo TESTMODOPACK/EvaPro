@@ -78,7 +78,7 @@ export default function DeiPage() {
   const [showGuide, setShowGuide] = useState(false);
 
   // DEI Config state
-  const [deiConfig, setDeiConfig] = useState({ privacyMin: 10, mediumThreshold: 1.5, highThreshold: 2.0 });
+  const [deiConfig, setDeiConfig] = useState({ privacyMin: 5, mediumThreshold: 1.5, highThreshold: 2.0 });
   const [configSaving, setConfigSaving] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -169,8 +169,8 @@ export default function DeiPage() {
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
                 {t('dei.configPrivacyMin')}
               </label>
-              <input className="input" type="number" min={5} max={50} value={deiConfig.privacyMin}
-                onChange={(e) => setDeiConfig({ ...deiConfig, privacyMin: parseInt(e.target.value) || 10 })} />
+              <input className="input" type="number" min={2} max={50} value={deiConfig.privacyMin}
+                onChange={(e) => setDeiConfig({ ...deiConfig, privacyMin: Math.max(2, parseInt(e.target.value) || 5) })} />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
