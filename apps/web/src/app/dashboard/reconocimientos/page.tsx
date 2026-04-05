@@ -97,7 +97,7 @@ function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, e
 }
 
 function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any }) {
-  const { data: usersPage } = useUsers();
+  const { data: usersPage } = useUsers(1, 500);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const { data: competencies } = useQuery({
@@ -109,9 +109,16 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
   const [toUserId, setToUserId] = useState('');
   const [message, setMessage] = useState('');
   const [valueId, setValueId] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
   const [error, setError] = useState('');
 
-  const users = (usersPage as any)?.data || usersPage || [];
+  const allUsers = (usersPage as any)?.data || usersPage || [];
+  const users = (Array.isArray(allUsers) ? allUsers : []).filter((u: any) => {
+    if (u.id === user?.userId) return false;
+    if (deptFilter && u.department !== deptFilter) return false;
+    return true;
+  });
+  const depts = Array.from(new Set((Array.isArray(allUsers) ? allUsers : []).filter((u: any) => u.id !== user?.userId).map((u: any) => u.department).filter(Boolean))).sort() as string[];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,11 +136,15 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
   return (
     <form onSubmit={handleSubmit} className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
       <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 700 }}>{'✨'} {t('reconocimientos.sendTitle')}</h4>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <select className="input" value={deptFilter} onChange={(e) => { setDeptFilter(e.target.value); setToUserId(''); }}>
+          <option value="">Todos los deptos.</option>
+          {depts.map((d: string) => <option key={d} value={d}>{d}</option>)}
+        </select>
         <select className="input" value={toUserId} onChange={(e) => setToUserId(e.target.value)} required>
-          <option value="">{t('reconocimientos.selectPerson')}</option>
-          {(Array.isArray(users) ? users : []).filter((u: any) => u.id !== user?.userId).map((u: any) => (
-            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}</option>
+          <option value="">{t('reconocimientos.selectPerson')} ({users.length})</option>
+          {users.map((u: any) => (
+            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` (${u.position})` : ''}{u.department ? ` — ${u.department}` : ''}</option>
           ))}
         </select>
         <select className="input" value={valueId} onChange={(e) => setValueId(e.target.value)}>
