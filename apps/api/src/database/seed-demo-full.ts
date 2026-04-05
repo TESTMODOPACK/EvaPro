@@ -233,6 +233,50 @@ async function seedDemoFull() {
       }
     }
 
+    // ── Assign department-specific managers ──────────────────────────────
+    // First employee of each department becomes the department manager (role=manager)
+    const deptManagerMap: Record<string, string> = {};
+    const deptLeadPositions: Record<string, string> = {
+      'Tecnología': 'Gerente de Tecnología',
+      'Ventas': 'Gerente de Ventas',
+      'Marketing': 'Gerente de Marketing',
+      'Operaciones': 'Gerente de Operaciones',
+      'Finanzas': 'Gerente de Finanzas',
+      'Recursos Humanos': 'Gerente de RRHH',
+      'Legal': 'Gerente Legal',
+      'Administración': 'Jefe de Administración',
+      'Diseño': 'Gerente de Diseño',
+    };
+
+    // Carlos Lopez is manager of Tecnología
+    deptManagerMap['Tecnología'] = manager.id;
+
+    // For other departments, promote first employee to manager role
+    for (const emp of newEmployees) {
+      if (deptManagerMap[emp.department]) continue; // already has a manager
+      const u = await userRepo.findOne({ where: { email: emp.email, tenantId: tid } });
+      if (u) {
+        deptManagerMap[emp.department] = u.id;
+        u.role = 'manager';
+        u.position = deptLeadPositions[emp.department] || `Jefe de ${emp.department}`;
+        u.managerId = admin.id; // Department managers report to admin
+        await userRepo.save(u);
+        console.log(`✅ ${u.firstName} ${u.lastName} promoted to manager of ${emp.department}`);
+      }
+    }
+
+    // Now assign each employee their department manager
+    for (const emp of newEmployees) {
+      const u = await userRepo.findOne({ where: { email: emp.email, tenantId: tid } });
+      if (!u) continue;
+      const deptMgr = deptManagerMap[u.department || ''];
+      if (deptMgr && u.id !== deptMgr && u.managerId !== deptMgr) {
+        u.managerId = deptMgr;
+        await userRepo.save(u);
+      }
+    }
+    console.log(`✅ Department managers assigned: ${Object.keys(deptManagerMap).length} departments`);
+
     // Apply demographic data to ALL users
     const genders = ['masculino', 'femenino'];
     const nationalities = ['Chilena', 'Chilena', 'Chilena', 'Colombiana', 'Peruana', 'Argentina', 'Mexicana', 'Venezolana'];
