@@ -1157,29 +1157,47 @@ export class EvaluationsService {
 
   // ─── Dashboard Stats ──────────────────────────────────────────────────────
 
-  async getStats(tenantId: string) {
+  async getStats(tenantId: string, userId?: string, role?: string) {
+    const isManager = role === 'manager';
+
+    // Manager: only see stats for their direct reports
+    let teamUserIds: string[] | null = null;
+    if (isManager && userId) {
+      const directReports = await this.userRepo.find({
+        where: { tenantId, managerId: userId, isActive: true },
+        select: ['id'],
+      });
+      teamUserIds = [userId, ...directReports.map(u => u.id)];
+    }
+
     const [totalCycles, activeCycles] = await Promise.all([
       this.cycleRepo.count({ where: { tenantId } }),
       this.cycleRepo.count({ where: { tenantId, status: CycleStatus.ACTIVE } }),
     ]);
 
-    const totalAssignments = await this.assignmentRepo
+    // Total assignments — scoped to team for managers
+    const totalQb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .where('a.tenantId = :tenantId', { tenantId });
+    if (teamUserIds) totalQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
+    const totalAssignments = await totalQb.getCount();
+
+    // Completed assignments — scoped
+    const completedQb = this.assignmentRepo
       .createQueryBuilder('a')
       .where('a.tenantId = :tenantId', { tenantId })
-      .getCount();
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
+    if (teamUserIds) completedQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
+    const completedAssignments = await completedQb.getCount();
 
-    const completedAssignments = await this.assignmentRepo
-      .createQueryBuilder('a')
-      .where('a.tenantId = :tenantId', { tenantId })
-      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
-      .getCount();
-
-    const avgScoreResult = await this.responseRepo
+    // Average score — scoped
+    const avgQb = this.responseRepo
       .createQueryBuilder('r')
+      .innerJoin('r.assignment', 'a')
       .where('r.tenantId = :tenantId', { tenantId })
-      .andWhere('r.overall_score IS NOT NULL')
-      .select('AVG(r.overall_score)', 'avg')
-      .getRawOne();
+      .andWhere('r.overall_score IS NOT NULL');
+    if (teamUserIds) avgQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
+    const avgScoreResult = await avgQb.select('AVG(r.overall_score)', 'avg').getRawOne();
 
     return {
       totalCycles,
@@ -1193,6 +1211,8 @@ export class EvaluationsService {
       averageScore: avgScoreResult?.avg
         ? parseFloat(avgScoreResult.avg).toFixed(1)
         : null,
+      scope: isManager ? 'team' : 'organization',
+      teamSize: teamUserIds ? teamUserIds.length - 1 : null, // exclude self
     };
   }
 

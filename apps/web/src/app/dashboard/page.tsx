@@ -351,6 +351,11 @@ function RegularDashboard() {
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          {stats?.scope === 'team' && (
+            <span style={{ marginLeft: '0.75rem', padding: '0.15rem 0.6rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600 }}>
+              Mi equipo ({stats.teamSize} colaboradores)
+            </span>
+          )}
         </p>
       </div>
 

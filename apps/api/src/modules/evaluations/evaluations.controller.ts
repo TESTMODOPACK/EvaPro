@@ -269,7 +269,7 @@ export class EvaluationsController {
   @Get('dashboard/stats')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getStats(@Request() req: any) {
-    return this.evaluationsService.getStats(req.user.tenantId);
+    return this.evaluationsService.getStats(req.user.tenantId, req.user.userId, req.user.role);
   }
 
   // ─── Next Actions — all authenticated users ───────────────────────────────

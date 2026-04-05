@@ -66,6 +66,8 @@ export interface DashboardStats {
   totalAssignments: number; completedAssignments: number;
   pendingAssignments: number; completionRate: number;
   averageScore: string | null;
+  scope?: 'team' | 'organization';
+  teamSize?: number | null;
 }
 
 export interface UserNoteData {
