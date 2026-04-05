@@ -415,6 +415,15 @@ export class TenantsService {
       }
     }
 
+    // Email FROM address per organization
+    if (dto.emailFrom !== undefined) {
+      if (dto.emailFrom === null || dto.emailFrom === '') {
+        currentSettings.emailFrom = null;
+      } else if (typeof dto.emailFrom === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.emailFrom.trim())) {
+        currentSettings.emailFrom = dto.emailFrom.trim();
+      }
+    }
+
     // Commercial address (editable by tenant admin — stored on tenant column, not settings)
     if (dto.commercialAddress !== undefined) {
       tenant.commercialAddress = typeof dto.commercialAddress === 'string' ? dto.commercialAddress.trim() || null : null;
@@ -431,6 +440,7 @@ export class TenantsService {
       notificationTypes: currentSettings.notificationTypes,
       dateFormat: currentSettings.dateFormat,
       defaultLanguage: currentSettings.defaultLanguage,
+      emailFrom: currentSettings.emailFrom,
       commercialAddress: tenant.commercialAddress,
     };
   }

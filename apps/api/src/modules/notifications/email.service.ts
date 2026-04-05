@@ -13,7 +13,7 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private resend: any = null;
-  private readonly from = process.env.EMAIL_FROM || 'Ascenda Performance <noreply@ascenda.cl>';
+  private readonly from = process.env.EMAIL_FROM || 'Ascenda Performance <onboarding@resend.dev>';
   private readonly appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaluacion-desempeno.netlify.app';
 
   constructor(
@@ -23,18 +23,34 @@ export class EmailService {
     this.init();
   }
 
-  /** Fetch org logo and name from tenant settings */
-  async getOrgBranding(tenantId?: string): Promise<{ logoUrl: string | null; orgName: string }> {
-    if (!tenantId || !this.tenantRepo) return { logoUrl: null, orgName: '' };
+  /** Fetch org logo, name and email settings from tenant */
+  async getOrgBranding(tenantId?: string): Promise<{ logoUrl: string | null; orgName: string; emailFrom: string | null }> {
+    if (!tenantId || !this.tenantRepo) return { logoUrl: null, orgName: '', emailFrom: null };
     try {
       const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
       return {
         logoUrl: tenant?.settings?.logoUrl || null,
         orgName: tenant?.name || '',
+        emailFrom: tenant?.settings?.emailFrom || null,
       };
     } catch {
-      return { logoUrl: null, orgName: '' };
+      return { logoUrl: null, orgName: '', emailFrom: null };
     }
+  }
+
+  /** Get the FROM address for a tenant (tenant-specific > env default) */
+  private async getFromAddress(tenantId?: string): Promise<string> {
+    if (tenantId && this.tenantRepo) {
+      try {
+        const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings', 'name'] });
+        const custom = tenant?.settings?.emailFrom;
+        if (custom) {
+          // Format: "OrgName <email>" or just "email"
+          return custom.includes('<') ? custom : `${tenant?.name || 'EvaPro'} <${custom}>`;
+        }
+      } catch {}
+    }
+    return this.from;
   }
 
   private async init() {
@@ -82,18 +98,20 @@ export class EmailService {
 
   // ─── Core send ────────────────────────────────────────────────────────────
 
-  async send(to: string | string[], subject: string, html: string): Promise<void> {
+  async send(to: string | string[], subject: string, html: string, tenantId?: string): Promise<void> {
     const recipients = Array.isArray(to) ? to : [to];
+    const from = await this.getFromAddress(tenantId);
 
     if (!this.resend) {
-      this.logger.log(`[EMAIL PREVIEW]\nTo: ${recipients.join(', ')}\nSubject: ${subject}\n---`);
+      this.logger.log(`[EMAIL PREVIEW]\nFrom: ${from}\nTo: ${recipients.join(', ')}\nSubject: ${subject}\n---`);
       return;
     }
 
     try {
-      await this.resend.emails.send({ from: this.from, to: recipients, subject, html });
+      const result = await this.resend.emails.send({ from, to: recipients, subject, html });
+      this.logger.log(`✉️  Email sent: to=${recipients.join(', ')}, from=${from}, id=${result?.data?.id || 'ok'}`);
     } catch (err: any) {
-      this.logger.error(`Failed to send email to ${recipients.join(', ')}: ${err?.message}`);
+      this.logger.error(`❌ Email FAILED: to=${recipients.join(', ')}, from=${from}, error=${err?.message}`);
     }
   }
 
@@ -103,18 +121,21 @@ export class EmailService {
     subject: string,
     html: string,
     attachments: Array<{ filename: string; content: string; contentType: string }>,
+    tenantId?: string,
   ): Promise<void> {
     const recipients = Array.isArray(to) ? to : [to];
+    const from = await this.getFromAddress(tenantId);
 
     if (!this.resend) {
-      this.logger.log(`[EMAIL PREVIEW+ATTACHMENT]\nTo: ${recipients.join(', ')}\nSubject: ${subject}\nAttachments: ${attachments.map(a => a.filename).join(', ')}\n---`);
+      this.logger.log(`[EMAIL PREVIEW+ATTACHMENT]\nFrom: ${from}\nTo: ${recipients.join(', ')}\nSubject: ${subject}\nAttachments: ${attachments.map(a => a.filename).join(', ')}\n---`);
       return;
     }
 
     try {
-      await this.resend.emails.send({ from: this.from, to: recipients, subject, html, attachments });
+      const result = await this.resend.emails.send({ from, to: recipients, subject, html, attachments });
+      this.logger.log(`✉️  Email+attachment sent: to=${recipients.join(', ')}, from=${from}, id=${result?.data?.id || 'ok'}`);
     } catch (err: any) {
-      this.logger.error(`Failed to send email to ${recipients.join(', ')}: ${err?.message}`);
+      this.logger.error(`❌ Email+attachment FAILED: to=${recipients.join(', ')}, from=${from}, error=${err?.message}`);
     }
   }
 

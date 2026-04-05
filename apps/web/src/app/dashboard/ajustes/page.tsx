@@ -68,6 +68,7 @@ export default function AjustesPage() {
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
   const [commercialAddress, setCommercialAddress] = useState('');
+  const [emailFrom, setEmailFrom] = useState('');
   const [dateFormat, setDateFormat] = useState('');
   const [defaultLanguage, setDefaultLanguage] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -106,6 +107,7 @@ export default function AjustesPage() {
         setPrimaryColor(s.primaryColor || '');
         setDateFormat(s.dateFormat || '');
         setDefaultLanguage(s.defaultLanguage || '');
+        setEmailFrom(s.emailFrom || '');
         setEmailNotifications(s.emailNotifications !== false);
         const nt = s.notificationTypes || {};
         setNotifEvaluations(nt.evaluations !== false);
@@ -141,6 +143,7 @@ export default function AjustesPage() {
         dateFormat: dateFormat || null,
         defaultLanguage: defaultLanguage || null,
         commercialAddress: commercialAddress || null,
+        emailFrom: emailFrom || null,
         emailNotifications,
         notificationTypes: {
           evaluations: notifEvaluations,
@@ -595,6 +598,32 @@ export default function AjustesPage() {
             <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
               Los emails del sistema (invitaciones, recuperación de contraseña) siempre se envían.
             </p>
+          </div>
+
+          {/* Email FROM configuration */}
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+              Remitente de emails
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
+              Dirección de email corporativo desde la cual se enviarán las notificaciones de tu organización. Debe ser un dominio verificado en el proveedor de email.
+            </p>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Email corporativo (FROM)
+              </label>
+              <input className="input" type="email" placeholder="Ej: notificaciones@miempresa.cl"
+                value={emailFrom} onChange={(e) => setEmailFrom(e.target.value)}
+                style={{ width: '100%', maxWidth: '400px' }} />
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                Si no se configura, se usa el remitente por defecto del sistema. El dominio debe estar verificado en Resend para que los emails lleguen correctamente.
+              </p>
+            </div>
+            {emailFrom && (
+              <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                Los emails se enviarán desde: <strong>{emailFrom}</strong>
+              </div>
+            )}
           </div>
 
           {/* Save button */}
