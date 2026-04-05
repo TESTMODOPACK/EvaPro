@@ -220,7 +220,7 @@ function AnalisisIntegradoContent() {
                       color: sel ? 'var(--accent)' : 'var(--text-primary)',
                       fontWeight: sel ? 700 : 400, cursor: 'pointer',
                     }}>
-                    {c.name}
+                    {c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status})
                   </button>
                 );
               })}

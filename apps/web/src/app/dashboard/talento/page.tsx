@@ -246,7 +246,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
         >
           <option value="">Seleccionar ciclo...</option>
           {cycles.map((c: any) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status === 'draft' ? 'Borrador' : c.status})</option>
           ))}
         </select>
 
@@ -659,7 +659,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
         >
           <option value="">Seleccionar ciclo...</option>
           {cycles.map((c: any) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status === 'draft' ? 'Borrador' : c.status})</option>
           ))}
         </select>
       </div>

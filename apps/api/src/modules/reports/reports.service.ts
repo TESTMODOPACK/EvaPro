@@ -991,7 +991,7 @@ export class ReportsService {
 
       const questionIds = scaleQuestions.map((q: any) => q.id);
       // Fix C4: Calculate maxScale from ALL scale questions
-      const maxScale = Math.max(...scaleQuestions.map((q: any) => q.scale?.max ?? 5));
+      const maxScale = Math.max(...scaleQuestions.map((q: any) => q.scale?.max ?? 10));
 
       const byRelation: Record<string, { sum: number; count: number }> = {};
       let allSum = 0;
@@ -1208,7 +1208,7 @@ export class ReportsService {
         id: sec.id,
         title: sec.title || sec.id,
         questionIds: scaleQs.map((q: any) => q.id),
-        maxScale: scaleQs.length > 0 ? Math.max(...scaleQs.map((q: any) => q.scale?.max ?? 5)) : 5,
+        maxScale: scaleQs.length > 0 ? Math.max(...scaleQs.map((q: any) => q.scale?.max ?? 10)) : 10,
       };
     });
 

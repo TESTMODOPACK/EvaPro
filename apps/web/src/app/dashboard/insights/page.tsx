@@ -16,7 +16,7 @@ import {
   usePerformancePrediction, useRetentionRecommendations, useExplainability,
 } from '@/hooks/useAiInsights';
 
-type Tab = 'summary' | 'bias' | 'suggestions' | 'flight-risk' | 'prediction' | 'retention';
+type Tab = 'summary' | 'suggestions' | 'flight-risk' | 'prediction' | 'retention';
 
 function Spinner() {
   return (
