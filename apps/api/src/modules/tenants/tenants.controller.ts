@@ -96,6 +96,11 @@ export class TenantsController {
     return this.tenantsService.getUsageMetrics();
   }
 
+  @Get('ai-usage')
+  getAiUsage() {
+    return this.tenantsService.getAiUsageByTenant();
+  }
+
   @Get()
   findAll() {
     return this.tenantsService.findAll();

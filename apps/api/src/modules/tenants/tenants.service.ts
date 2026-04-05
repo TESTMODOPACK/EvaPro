@@ -8,6 +8,8 @@ import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { SupportTicket } from './entities/support-ticket.entity';
+import { AiInsight } from '../ai-insights/entities/ai-insight.entity';
+import { SubscriptionPlan } from '../subscriptions/entities/subscription-plan.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 
@@ -107,6 +109,10 @@ export class TenantsService {
     private readonly subscriptionRepo: Repository<Subscription>,
     @InjectRepository(SupportTicket)
     private readonly ticketRepo: Repository<SupportTicket>,
+    @InjectRepository(AiInsight)
+    private readonly aiInsightRepo: Repository<AiInsight>,
+    @InjectRepository(SubscriptionPlan)
+    private readonly planRepo: Repository<SubscriptionPlan>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -764,6 +770,105 @@ export class TenantsService {
       .getRawMany();
 
     return { usersPerMonth, tenantActivity };
+  }
+
+  // ─── AI Usage per Tenant ─────────────────────────────────────────────
+
+  async getAiUsageByTenant(): Promise<any[]> {
+    try {
+      // Get all active tenants with their subscriptions & plans
+      const tenants = await this.tenantRepository.find({
+        where: { isActive: true },
+        order: { name: 'ASC' },
+      });
+
+      const results = [];
+
+      for (const tenant of tenants) {
+        // Get subscription with plan
+        const sub = await this.subscriptionRepo.findOne({
+          where: { tenantId: tenant.id, status: 'active' },
+          relations: ['plan'],
+        }) || await this.subscriptionRepo.findOne({
+          where: { tenantId: tenant.id, status: 'trial' },
+          relations: ['plan'],
+        });
+
+        const planLimit = sub?.plan?.maxAiCallsPerMonth ?? 0;
+        const addonCalls = sub?.aiAddonCalls ?? 0;
+        const addonUsed = sub?.aiAddonUsed ?? 0;
+
+        // Count total AI insights for this tenant (all time)
+        const totalAllTime = await this.aiInsightRepo.count({
+          where: { tenantId: tenant.id },
+        });
+
+        // Count insights this month (current billing period)
+        const startDate = sub?.startDate ? new Date(sub.startDate) : new Date();
+        const now = new Date();
+        const subDay = startDate.getUTCDate();
+        const thisMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), subDay));
+        const periodStart = now >= thisMonthStart
+          ? thisMonthStart
+          : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, subDay));
+
+        const periodUsed = await this.aiInsightRepo
+          .createQueryBuilder('i')
+          .where('i.tenant_id = :tenantId', { tenantId: tenant.id })
+          .andWhere('i.created_at > :start', { start: periodStart })
+          .getCount();
+
+        // Count by type for this tenant (all time)
+        const byType = await this.aiInsightRepo
+          .createQueryBuilder('i')
+          .select('i.type', 'type')
+          .addSelect('COUNT(i.id)', 'count')
+          .where('i.tenant_id = :tenantId', { tenantId: tenant.id })
+          .groupBy('i.type')
+          .getRawMany();
+
+        // Tokens used total
+        const tokensResult = await this.aiInsightRepo
+          .createQueryBuilder('i')
+          .select('COALESCE(SUM(i.tokens_used), 0)', 'totalTokens')
+          .where('i.tenant_id = :tenantId', { tenantId: tenant.id })
+          .getRawOne();
+
+        const totalLimit = planLimit + Math.max(0, addonCalls - addonUsed);
+        const addonRemaining = Math.max(0, addonCalls - addonUsed);
+        const planUsed = Math.min(periodUsed, planLimit);
+        const pctUsed = totalLimit > 0 ? Math.round((periodUsed / totalLimit) * 100) : 0;
+
+        results.push({
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          plan: sub?.plan?.name ?? 'Sin plan',
+          planCode: sub?.plan?.code ?? null,
+          planLimit,
+          addonCalls,
+          addonUsed,
+          addonRemaining,
+          periodUsed,
+          totalLimit,
+          planUsed,
+          pctUsed,
+          totalAllTime,
+          totalTokens: Number(tokensResult?.totalTokens) || 0,
+          byType: byType.reduce((acc: Record<string, number>, r: any) => {
+            acc[r.type] = Number(r.count);
+            return acc;
+          }, {}),
+          status: sub?.status ?? 'none',
+        });
+      }
+
+      // Sort by periodUsed DESC (most active first)
+      results.sort((a, b) => b.periodUsed - a.periodUsed);
+
+      return results;
+    } catch (err) {
+      return [];
+    }
   }
 
   // ─── Support Tickets ────────────────────────────────────────────────

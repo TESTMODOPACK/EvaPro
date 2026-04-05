@@ -212,6 +212,7 @@ export const api = {
       request<any>("/tenants/bulk-onboard", { method: "POST", body: JSON.stringify(data) }, token),
     systemStats: (token: string) => request<any>("/tenants/system-stats", {}, token),
     usageMetrics: (token: string) => request<any>("/tenants/usage-metrics", {}, token),
+    aiUsage: (token: string) => request<any[]>("/tenants/ai-usage", {}, token),
     getAllCustomSettings: (token: string) =>
       request<Record<string, string[]>>("/tenants/me/custom-settings", {}, token),
     getCustomSetting: (token: string, key: string) =>

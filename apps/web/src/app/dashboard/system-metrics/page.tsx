@@ -14,15 +14,27 @@ function Spinner() {
 
 const planBadge: Record<string, string> = {
   starter: 'badge-accent',
+  growth: 'badge-warning',
   pro: 'badge-warning',
   enterprise: 'badge-success',
   custom: 'badge-danger',
+};
+
+const insightTypeLabels: Record<string, string> = {
+  summary: 'Resumen IA',
+  bias: 'Detección de Sesgos',
+  suggestions: 'Sugerencias',
+  survey_analysis: 'Análisis Encuesta',
+  cycle_comparison: 'Comparativa Ciclos',
+  cv_analysis: 'Análisis CV',
+  recommendation: 'Recomendación',
 };
 
 export default function SystemMetricsPage() {
   const token = useAuthStore((s) => s.token);
   const [stats, setStats] = useState<any>(null);
   const [metrics, setMetrics] = useState<any>(null);
+  const [aiUsage, setAiUsage] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -32,8 +44,9 @@ export default function SystemMetricsPage() {
     Promise.all([
       api.tenants.systemStats(token),
       api.tenants.usageMetrics(token),
+      api.tenants.aiUsage(token).catch(() => []),
     ])
-      .then(([s, m]) => { setStats(s); setMetrics(m); })
+      .then(([s, m, ai]) => { setStats(s); setMetrics(m); setAiUsage(ai || []); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
@@ -42,8 +55,14 @@ export default function SystemMetricsPage() {
     { label: 'Orgs activas', value: stats?.activeTenants ?? 0, color: '#10b981' },
     { label: 'Total usuarios', value: stats?.totalUsers ?? 0, color: '#6366f1' },
     { label: 'Accesos hoy', value: stats?.todayAccesses ?? 0, color: '#f59e0b' },
-    { label: 'Fallas (7 dias)', value: stats?.totalFailures7d ?? 0, color: '#ef4444' },
+    { label: 'Fallas (7 días)', value: stats?.totalFailures7d ?? 0, color: '#ef4444' },
   ];
+
+  // AI KPIs
+  const totalAiCalls = aiUsage.reduce((sum, t) => sum + (t.totalAllTime || 0), 0);
+  const totalAiTokens = aiUsage.reduce((sum, t) => sum + (t.totalTokens || 0), 0);
+  const totalPeriodUsed = aiUsage.reduce((sum, t) => sum + (t.periodUsed || 0), 0);
+  const orgsUsingAi = aiUsage.filter(t => t.totalAllTime > 0).length;
 
   // Plan distribution for bar chart
   const planDistribution: { plan: string; count: number }[] = stats?.usersPerPlan ?? [];
@@ -67,7 +86,7 @@ export default function SystemMetricsPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Metricas de Uso</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Métricas de Uso</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Vista general del sistema</p>
       </div>
 
@@ -112,12 +131,12 @@ export default function SystemMetricsPage() {
             Organizaciones por plan
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-            Distribucion de planes activos
+            Distribución de planes activos
           </p>
 
           {planDistribution.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Sin datos de distribucion
+              Sin datos de distribución
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -125,6 +144,7 @@ export default function SystemMetricsPage() {
                 const pct = (item.count / maxCount) * 100;
                 const colors: Record<string, string> = {
                   starter: '#6366f1',
+                  growth: '#8b5cf6',
                   pro: '#f59e0b',
                   enterprise: '#10b981',
                   custom: '#ef4444',
@@ -217,6 +237,205 @@ export default function SystemMetricsPage() {
         </div>
       </div>
 
+      {/* ══════ AI Usage Section ══════ */}
+      <div className="animate-fade-up-delay-3" style={{ marginTop: '2rem' }}>
+        <h2 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '1.3rem' }}>{'🤖'}</span> Uso de Inteligencia Artificial
+        </h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+          Consumo de créditos IA por organización — período actual y acumulado
+        </p>
+
+        {/* AI KPI Cards */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '1rem',
+          marginBottom: '1.5rem',
+        }}>
+          {[
+            { label: 'Consultas IA (período)', value: totalPeriodUsed, color: '#8b5cf6' },
+            { label: 'Consultas IA (total)', value: totalAiCalls, color: '#6366f1' },
+            { label: 'Tokens consumidos', value: totalAiTokens > 1000000 ? `${(totalAiTokens / 1000000).toFixed(1)}M` : totalAiTokens > 1000 ? `${(totalAiTokens / 1000).toFixed(1)}K` : totalAiTokens, color: '#f59e0b' },
+            { label: 'Orgs usando IA', value: orgsUsingAi, color: '#10b981' },
+          ].map((kpi, i) => (
+            <div key={i} className="card" style={{ padding: '1.2rem', position: 'relative', overflow: 'hidden' }}>
+              <div style={{
+                position: 'absolute', top: '-15px', right: '-15px',
+                width: '60px', height: '60px', borderRadius: '50%',
+                background: `${kpi.color}18`,
+              }} />
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.25rem', color: kpi.color }}>
+                {kpi.value}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{kpi.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* AI Usage Table by Organization */}
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.1rem' }}>
+              Créditos IA por organización
+            </h3>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Uso del período actual, límites y addon — ordenado por consumo
+            </p>
+          </div>
+
+          {aiUsage.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              Sin datos de uso IA
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Organización</th>
+                    <th>Plan</th>
+                    <th style={{ textAlign: 'center' }}>Período</th>
+                    <th style={{ textAlign: 'center' }}>Límite Plan</th>
+                    <th style={{ textAlign: 'center' }}>Addon</th>
+                    <th style={{ textAlign: 'center' }}>Total</th>
+                    <th style={{ textAlign: 'center' }}>% Uso</th>
+                    <th style={{ textAlign: 'center' }}>Acumulado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {aiUsage.map((org: any, i: number) => {
+                    const pct = org.pctUsed || 0;
+                    const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
+                    return (
+                      <tr key={org.tenantId || i}>
+                        <td style={{ fontWeight: 600, color: 'var(--text-primary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {org.tenantName}
+                        </td>
+                        <td>
+                          <span className={`badge ${planBadge[org.planCode] ?? 'badge-accent'}`} style={{ fontSize: '0.65rem' }}>
+                            {org.plan}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {org.periodUsed}
+                        </td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          {org.planLimit}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {org.addonCalls > 0 ? (
+                            <span style={{ fontSize: '0.82rem' }}>
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{org.addonRemaining}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>/{org.addonCalls}</span>
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>
+                          {org.totalLimit}
+                        </td>
+                        <td style={{ textAlign: 'center', minWidth: '120px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'center' }}>
+                            <div style={{ flex: 1, maxWidth: '60px', height: '6px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: barColor, borderRadius: '999px', transition: 'width 0.4s ease' }} />
+                            </div>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: barColor, minWidth: '35px' }}>
+                              {pct}%
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          {org.totalAllTime}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* AI Usage by Type — Breakdown */}
+        {aiUsage.some(t => Object.keys(t.byType || {}).length > 0) && (
+          <div className="card" style={{ padding: '1.4rem', marginTop: '1.25rem' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
+              Distribución por tipo de análisis
+            </h3>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+              Cantidad de consultas IA agrupadas por tipo — todas las organizaciones
+            </p>
+
+            {(() => {
+              // Aggregate by type across all tenants
+              const typeAgg: Record<string, number> = {};
+              aiUsage.forEach(org => {
+                Object.entries(org.byType || {}).forEach(([type, count]) => {
+                  typeAgg[type] = (typeAgg[type] || 0) + Number(count);
+                });
+              });
+              const sortedTypes = Object.entries(typeAgg).sort((a, b) => b[1] - a[1]);
+              const maxTypeCount = Math.max(...sortedTypes.map(t => t[1]), 1);
+
+              if (sortedTypes.length === 0) {
+                return <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos por tipo</div>;
+              }
+
+              const typeColors: Record<string, string> = {
+                summary: '#6366f1',
+                bias: '#ef4444',
+                suggestions: '#10b981',
+                survey_analysis: '#f59e0b',
+                cycle_comparison: '#8b5cf6',
+                cv_analysis: '#06b6d4',
+                recommendation: '#ec4899',
+              };
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {sortedTypes.map(([type, count]) => {
+                    const pct = (count / maxTypeCount) * 100;
+                    const color = typeColors[type] ?? '#6366f1';
+                    return (
+                      <div key={type}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                            {insightTypeLabels[type] || type}
+                          </span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color }}>
+                            {count}
+                          </span>
+                        </div>
+                        <div style={{ height: '20px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${pct}%`,
+                            height: '100%',
+                            borderRadius: 'var(--radius-sm)',
+                            background: color,
+                            transition: 'width 0.6s ease',
+                            minWidth: count > 0 ? '20px' : '0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            paddingRight: '0.4rem',
+                          }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff' }}>
+                              {count}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
       {/* Subscriptions summary + Daily accesses */}
       <div className="animate-fade-up-delay-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginTop: '1.25rem' }}>
         {/* Subscription breakdown */}
@@ -263,7 +482,7 @@ export default function SystemMetricsPage() {
         {/* Daily accesses + failures */}
         <div className="card" style={{ padding: '1.4rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
-            Accesos diarios (7 dias)
+            Accesos diarios (7 días)
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
             Logins y fallas registradas
