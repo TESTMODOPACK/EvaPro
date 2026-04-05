@@ -486,11 +486,16 @@ export default function OnboardingPage() {
           onboardingDone: true,
           ...(state.orgIndustry ? { industry: state.orgIndustry } : {}),
           ...(state.orgSize ? { size: state.orgSize } : {}),
-          ...(state.legalRepName ? { legalRepName: state.legalRepName } : {}),
-          ...(state.legalRepRut ? { legalRepRut: state.legalRepRut } : {}),
           ...(state.selectedCompetencies.length > 0 ? { initialCompetencies: state.selectedCompetencies } : {}),
         };
         await api.tenants.update(token, tenantId, { settings: mergedSettings });
+        // Save legal rep data via updateSettings (stored on tenant columns, not settings)
+        if (state.legalRepName || state.legalRepRut) {
+          await api.tenants.updateSettings(token, {
+            legalRepName: state.legalRepName || null,
+            legalRepRut: state.legalRepRut || null,
+          });
+        }
       } catch {
         // Non-critical: settings save failure should not block cycle creation
       }

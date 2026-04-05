@@ -412,13 +412,13 @@ export default function AjustesPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
                 <div>
                   <label style={labelStyle}>Nombres y Apellidos</label>
-                  <input className="input" type="text" placeholder="Ej: Juan Pérez González"
+                  <input className="input" type="text" placeholder="Ej: Juan Pérez González" maxLength={200}
                     value={legalRepName} onChange={(e) => setLegalRepName(e.target.value)} />
                 </div>
                 <div>
                   <label style={labelStyle}>RUT</label>
-                  <input className="input" type="text" placeholder="Ej: 12.345.678-9"
-                    value={legalRepRut} onChange={(e) => setLegalRepRut(e.target.value)} />
+                  <input className="input" type="text" placeholder="Ej: 12.345.678-9" maxLength={12}
+                    value={legalRepRut} onChange={(e) => setLegalRepRut(e.target.value.replace(/[^0-9kK.\-]/g, ''))} />
                 </div>
               </div>
               <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
