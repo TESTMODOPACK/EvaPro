@@ -14,7 +14,7 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private resend: any = null;
   private readonly from = process.env.EMAIL_FROM || 'Ascenda Performance <onboarding@resend.dev>';
-  private readonly appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaluacion-desempeno.netlify.app';
+  private readonly appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
 
   constructor(
     @Optional() @InjectRepository(Tenant)

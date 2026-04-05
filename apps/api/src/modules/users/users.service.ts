@@ -123,10 +123,11 @@ export class UsersService {
     if (filters?.position) {
       qb.andWhere('user.position = :position', { position: filters.position });
     }
-    if (filters?.status === 'active') {
-      qb.andWhere('user.is_active = true');
-    } else if (filters?.status === 'inactive') {
+    if (filters?.status === 'inactive') {
       qb.andWhere('user.is_active = false');
+    } else {
+      // Default: show only active users (unless explicitly requesting inactive)
+      qb.andWhere('user.is_active = true');
     }
 
     qb.orderBy('user.createdAt', 'DESC')
