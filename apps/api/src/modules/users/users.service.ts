@@ -125,8 +125,10 @@ export class UsersService {
     }
     if (filters?.status === 'inactive') {
       qb.andWhere('user.is_active = false');
+    } else if (filters?.status === 'all') {
+      // Show all users (active + inactive) — for admin views
     } else {
-      // Default: show only active users (unless explicitly requesting inactive)
+      // Default: show only active users
       qb.andWhere('user.is_active = true');
     }
 

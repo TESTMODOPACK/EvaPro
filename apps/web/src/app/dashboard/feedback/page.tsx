@@ -431,7 +431,7 @@ function CheckInsTab() {
                       {t('feedback.reject')}
                     </button>
                   )}
-                  {ci.status !== 'completed' && canCreateCheckIn && ci.managerId === currentUserId && (
+                  {ci.status !== 'completed' && canCreateCheckIn && (ci.managerId === currentUserId || role === 'tenant_admin' || role === 'super_admin') && (
                     <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--text-muted)' }}
                       onClick={() => {
                         if (confirm(`¿Eliminar el check-in "${ci.topic}"? Esta acción no se puede deshacer.`)) {

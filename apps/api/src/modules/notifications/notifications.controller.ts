@@ -59,7 +59,7 @@ export class NotificationsController {
   async testEmail(@Body() body: { to: string; template?: string }) {
     const to = body.to;
     const template = body.template || 'all';
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaluacion-desempeno.netlify.app';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
     const sent: string[] = [];
 
     if (template === 'all' || template === 'invitation') {

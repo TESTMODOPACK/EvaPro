@@ -542,7 +542,7 @@ export class EmailService {
           ])}
           ${this.paragraph(anonymousNote)}
           ${this.paragraph('Tu opinión es muy importante para mejorar el ambiente laboral. Por favor responde antes de la fecha límite.')}
-          ${this.cta('Responder Encuesta', `${process.env.FRONTEND_URL || 'https://app.ascendaperformance.com'}/dashboard/encuestas-clima`)}
+          ${this.cta('Responder Encuesta', `${this.appUrl}/dashboard/encuestas-clima`)}
           ${this.smallText('Si tienes problemas para acceder, ingresa a la plataforma y busca la sección "Encuestas de Clima".')}
         `,
       }),
