@@ -35,7 +35,8 @@ export function useCompleteCheckIn() {
   const token = useAuthStore((s) => s.token);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.feedback.completeCheckIn(token!, id),
+    mutationFn: ({ id, data }: { id: string; data?: { notes?: string; actionItems?: any[]; rating?: number } }) =>
+      api.feedback.completeCheckIn(token!, id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] }),
   });
 }

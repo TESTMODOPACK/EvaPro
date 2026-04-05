@@ -121,7 +121,10 @@ export class FeedbackService {
     return this.checkInRepo.save(ci);
   }
 
-  async completeCheckIn(tenantId: string, id: string, userId?: string): Promise<CheckIn> {
+  async completeCheckIn(
+    tenantId: string, id: string, userId?: string,
+    data?: { notes?: string; actionItems?: any[]; rating?: number },
+  ): Promise<CheckIn> {
     const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
     if (ci.status !== CheckInStatus.SCHEDULED) {
@@ -132,9 +135,22 @@ export class FeedbackService {
     }
     ci.status = CheckInStatus.COMPLETED;
     ci.completedAt = new Date();
+    // Save completion data: notes, action items, rating
+    if (data?.notes !== undefined) ci.notes = data.notes;
+    if (data?.actionItems && Array.isArray(data.actionItems)) {
+      ci.actionItems = data.actionItems.map((item: any) => ({
+        text: item.text || '',
+        completed: false,
+        assigneeName: item.assigneeName || '',
+        dueDate: item.dueDate || null,
+      }));
+    }
+    if (data?.rating && data.rating >= 1 && data.rating <= 5) ci.rating = data.rating;
+
     const saved = await this.checkInRepo.save(ci);
     this.auditService.log(tenantId, userId || null, 'checkin.completed', 'checkin', ci.id, {
       topic: ci.topic, managerId: ci.managerId, employeeId: ci.employeeId,
+      rating: ci.rating, actionItemsCount: ci.actionItems?.length || 0,
     }).catch(() => {});
     return saved;
   }

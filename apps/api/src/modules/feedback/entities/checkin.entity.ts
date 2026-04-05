@@ -107,6 +107,9 @@ export class CheckIn {
   @JoinColumn({ name: 'development_plan_id' })
   developmentPlan: DevelopmentPlan;
 
+  @Column({ type: 'smallint', nullable: true, comment: 'Valoración del check-in 1-5 (1=poco productivo, 5=muy productivo)' })
+  rating: number | null;
+
   @Column({ type: 'boolean', name: 'email_sent', default: false })
   emailSent: boolean;
 

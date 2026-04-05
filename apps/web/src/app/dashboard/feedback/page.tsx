@@ -71,6 +71,9 @@ function CheckInsTab() {
   const [form, setForm] = useState({ employeeId: '', scheduledDate: '', scheduledTime: '', topic: '', locationId: '' });
   const [rejectModal, setRejectModal] = useState<{ id: string; topic: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [completeModal, setCompleteModal] = useState<{ id: string; topic: string; employee: string } | null>(null);
+  const [completeForm, setCompleteForm] = useState({ notes: '', rating: 0, actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const allCiUsers = usersPage?.data || [];
   const [ciSearch, setCiSearch] = useState('');
@@ -227,6 +230,106 @@ function CheckInsTab() {
         </div>
       )}
 
+      {/* Complete check-in modal */}
+      {completeModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ padding: '1.5rem', maxWidth: '560px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>Completar Check-in</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              <strong>{completeModal.topic}</strong> — {completeModal.employee}
+            </p>
+
+            {/* Rating */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
+                ¿Cómo fue la reunión?
+              </label>
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button key={star} type="button" onClick={() => setCompleteForm({ ...completeForm, rating: star })}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', padding: '0.1rem', opacity: star <= completeForm.rating ? 1 : 0.3, transition: 'opacity 0.15s' }}>
+                    ⭐
+                  </button>
+                ))}
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '0.5rem', alignSelf: 'center' }}>
+                  {completeForm.rating === 5 ? 'Muy productiva' : completeForm.rating === 4 ? 'Productiva' : completeForm.rating === 3 ? 'Normal' : completeForm.rating === 2 ? 'Poco productiva' : completeForm.rating === 1 ? 'No productiva' : 'Sin valorar'}
+                </span>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Notas de la reunión
+              </label>
+              <textarea className="input" rows={4} placeholder="Resumen de lo conversado, puntos importantes..."
+                value={completeForm.notes} onChange={(e) => setCompleteForm({ ...completeForm, notes: e.target.value })}
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+
+            {/* Action Items */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Acuerdos y compromisos
+              </label>
+              {completeForm.actionItems.map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem', alignItems: 'flex-start' }}>
+                  <input className="input" type="text" placeholder="Acuerdo o compromiso..."
+                    value={item.text} onChange={(e) => {
+                      const items = [...completeForm.actionItems];
+                      items[idx] = { ...items[idx], text: e.target.value };
+                      setCompleteForm({ ...completeForm, actionItems: items });
+                    }}
+                    style={{ flex: 2, fontSize: '0.82rem' }} />
+                  <input className="input" type="text" placeholder="Responsable"
+                    value={item.assigneeName} onChange={(e) => {
+                      const items = [...completeForm.actionItems];
+                      items[idx] = { ...items[idx], assigneeName: e.target.value };
+                      setCompleteForm({ ...completeForm, actionItems: items });
+                    }}
+                    style={{ flex: 1, fontSize: '0.82rem' }} />
+                  <input className="input" type="date"
+                    value={item.dueDate} onChange={(e) => {
+                      const items = [...completeForm.actionItems];
+                      items[idx] = { ...items[idx], dueDate: e.target.value };
+                      setCompleteForm({ ...completeForm, actionItems: items });
+                    }}
+                    style={{ width: '130px', fontSize: '0.82rem' }} />
+                  {completeForm.actionItems.length > 1 && (
+                    <button type="button" onClick={() => {
+                      const items = completeForm.actionItems.filter((_, i) => i !== idx);
+                      setCompleteForm({ ...completeForm, actionItems: items });
+                    }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '1rem', padding: '0.3rem' }}>✕</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}
+                onClick={() => setCompleteForm({ ...completeForm, actionItems: [...completeForm.actionItems, { text: '', assigneeName: '', dueDate: '' }] })}>
+                + Agregar acuerdo
+              </button>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+              <button className="btn-ghost" onClick={() => setCompleteModal(null)}>Cancelar</button>
+              <button className="btn-primary" disabled={completeCheckIn.isPending}
+                onClick={() => {
+                  const data: any = {};
+                  if (completeForm.notes.trim()) data.notes = completeForm.notes.trim();
+                  if (completeForm.rating > 0) data.rating = completeForm.rating;
+                  const validItems = completeForm.actionItems.filter(i => i.text.trim());
+                  if (validItems.length > 0) data.actionItems = validItems;
+                  completeCheckIn.mutate({ id: completeModal.id, data }, {
+                    onSuccess: () => setCompleteModal(null),
+                  });
+                }}>
+                {completeCheckIn.isPending ? 'Guardando...' : 'Completar Check-in'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* List */}
       {isLoading ? (
         <Spinner />
@@ -263,10 +366,62 @@ function CheckInsTab() {
                       <strong>{'Motivo del rechazo:'}</strong> {ci.rejectionReason}
                     </div>
                   )}
+                  {/* Completed check-in details — expandable */}
+                  {ci.status === 'completed' && (ci.notes || ci.actionItems?.length > 0 || ci.rating) && (
+                    <button
+                      onClick={() => setExpandedId(expandedId === ci.id ? null : ci.id)}
+                      style={{ marginTop: '0.5rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600, padding: 0, display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                    >
+                      <span style={{ transform: expandedId === ci.id ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s', display: 'inline-block' }}>▶</span>
+                      Ver registro de la reunión
+                      {ci.rating && <span style={{ marginLeft: '0.5rem' }}>{'⭐'.repeat(ci.rating)}</span>}
+                    </button>
+                  )}
+                  {ci.status === 'completed' && expandedId === ci.id && (
+                    <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
+                      {ci.rating && (
+                        <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Valoración:</span>
+                          <span>{'⭐'.repeat(ci.rating)}{'☆'.repeat(5 - ci.rating)}</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            ({ci.rating === 5 ? 'Muy productivo' : ci.rating === 4 ? 'Productivo' : ci.rating === 3 ? 'Normal' : ci.rating === 2 ? 'Poco productivo' : 'No productivo'})
+                          </span>
+                        </div>
+                      )}
+                      {ci.notes && (
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Notas de la reunión:</div>
+                          <div style={{ color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{ci.notes}</div>
+                        </div>
+                      )}
+                      {ci.actionItems?.length > 0 && (
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Acuerdos y compromisos ({ci.actionItems.length}):</div>
+                          {ci.actionItems.map((item: any, idx: number) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.3rem 0', borderBottom: idx < ci.actionItems.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                              <span style={{ color: item.completed ? 'var(--success)' : 'var(--text-muted)' }}>{item.completed ? '✅' : '○'}</span>
+                              <div style={{ flex: 1 }}>
+                                <span style={{ color: 'var(--text-primary)' }}>{item.text}</span>
+                                {item.assigneeName && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>— {item.assigneeName}</span>}
+                                {item.dueDate && <span style={{ fontSize: '0.72rem', color: 'var(--warning)', marginLeft: '0.5rem' }}>Vence: {item.dueDate}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                        Completado el {ci.completedAt ? new Date(ci.completedAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', flexShrink: 0 }}>
                   {ci.status === 'scheduled' && canCreateCheckIn && (
-                    <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }} onClick={() => completeCheckIn.mutate(ci.id)} disabled={completeCheckIn.isPending}>
+                    <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                      onClick={() => {
+                        setCompleteModal({ id: ci.id, topic: ci.topic, employee: userName(ci.employee) });
+                        setCompleteForm({ notes: '', rating: 0, actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
+                      }}>
                       {t('feedback.complete')}
                     </button>
                   )}
@@ -829,11 +984,13 @@ function FeedbackPageContent() {
               {'Check-ins (Reuniones 1:1):'}
             </p>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              <li>{'Son reuniones de seguimiento peri\u00f3dicas entre encargado y colaborador'}</li>
-              <li>{'El encargado solo puede crear check-ins con sus reportes directos (se valida la relaci\u00f3n managerId)'}</li>
+              <li>{'Son reuniones de seguimiento periódicas entre encargado y colaborador'}</li>
+              <li>{'El encargado solo puede crear check-ins con sus reportes directos'}</li>
               <li>{'El administrador puede crear check-ins con cualquier colaborador'}</li>
-              <li>{'Se registra: fecha, tema, notas y acciones de seguimiento'}</li>
-              <li>{'El sistema env\u00eda recordatorio autom\u00e1tico si no hay check-in en 14 d\u00edas'}</li>
+              <li><strong>{'Flujo: '}</strong>{'Programar → Reunión → Completar (con registro)'}</li>
+              <li><strong>{'Al completar se registra: '}</strong>{'notas de la reunión, acuerdos/compromisos con responsable y fecha, y valoración de productividad (1-5 ⭐)'}</li>
+              <li>{'El colaborador puede rechazar un check-in indicando el motivo'}</li>
+              <li>{'Se envía invitación por email con archivo de calendario (.ics)'}</li>
             </ul>
           </div>
 

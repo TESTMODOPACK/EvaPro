@@ -85,8 +85,9 @@ export class FeedbackController {
   completeCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
+    @Body() body?: { notes?: string; actionItems?: any[]; rating?: number },
   ) {
-    return this.feedbackService.completeCheckIn(req.user.tenantId, id, req.user.userId);
+    return this.feedbackService.completeCheckIn(req.user.tenantId, id, req.user.userId, body);
   }
 
   @Patch('checkins/:id/add-topic')
