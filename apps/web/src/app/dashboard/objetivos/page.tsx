@@ -915,7 +915,7 @@ function ObjetivosPageContent() {
   const token = useAuthStore((s) => s.token);
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
-  const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
+  const handleExport = async (format: 'pdf' | 'xlsx' | 'pptx') => {
     if (!token) return;
     setExporting(format);
     try {
@@ -1190,7 +1190,7 @@ function ObjetivosPageContent() {
             </button>
           )}
           {/* Export buttons */}
-          {(['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
+          {(['pdf', 'xlsx', 'pptx'] as const).map((fmt) => (
             <button key={fmt} type="button" disabled={!!exporting}
               onClick={() => handleExport(fmt)}
               style={{

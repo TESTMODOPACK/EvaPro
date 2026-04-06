@@ -42,7 +42,7 @@ export default function ResultadosEncuestaPage() {
 
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
-  const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
+  const handleExport = async (format: 'pdf' | 'xlsx' | 'pptx') => {
     if (!token || !surveyId) return;
     setExporting(format);
     try {
@@ -177,7 +177,7 @@ export default function ResultadosEncuestaPage() {
           </p>
           {isAdmin && (
             <div style={{ display: 'flex', gap: '0.4rem' }}>
-              {(['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
+              {(['pdf', 'xlsx', 'pptx'] as const).map((fmt) => (
                 <button key={fmt} type="button" disabled={!!exporting}
                   onClick={() => handleExport(fmt)}
                   style={{

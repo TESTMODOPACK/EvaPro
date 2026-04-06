@@ -1497,10 +1497,8 @@ export class ReportsService {
   async exportPptx(cycleId: string, tenantId: string, userId?: string): Promise<Buffer> {
     const PptxGenJS = (await import('pptxgenjs')).default;
 
-    // Gather data
+    // Gather data (bell curve and heatmap are in Analytics Cycle, not here)
     const summary = await this.cycleSummary(cycleId, tenantId);
-    const bellData = await this.bellCurve(cycleId, tenantId);
-    const heatmapData = await this.performanceHeatmap(cycleId, tenantId);
 
     const pptx = new PptxGenJS();
     pptx.author = 'Eva360';
@@ -1615,97 +1613,9 @@ export class ReportsService {
       });
     }
 
-    // ─── Slide 4: Bell Curve Stats ──────────────────────────────────
-    if (bellData && !bellData.privacyRestricted && bellData.count > 0) {
-      const slide4 = pptx.addSlide();
-      slide4.background = { color: LIGHT_BG };
-      slide4.addText('Distribución de Puntajes (Curva de Bell)', {
-        x: 0.5, y: 0.3, w: 9, h: 0.5,
-        fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
-      });
+    // Bell curve and heatmap slides removed — they belong in Analytics Cycle export
 
-      const bellKpis = [
-        { label: 'Media', value: bellData.mean?.toFixed(2) || '0' },
-        { label: 'Desv. Estándar', value: bellData.stddev?.toFixed(2) || '0' },
-        { label: 'Total respuestas', value: String(bellData.count) },
-      ];
-      bellKpis.forEach((kpi, i) => {
-        slide4.addShape(pptx.ShapeType.roundRect, {
-          x: 0.5 + i * 3.0, y: 1.0, w: 2.5, h: 1.2,
-          fill: { color: 'FFFFFF' }, line: { color: GOLD, width: 1 },
-          rectRadius: 0.1,
-        });
-        slide4.addText(kpi.value, {
-          x: 0.5 + i * 3.0, y: 1.1, w: 2.5, h: 0.6,
-          fontSize: 24, bold: true, color: GOLD, align: 'center', fontFace: 'Arial',
-        });
-        slide4.addText(kpi.label, {
-          x: 0.5 + i * 3.0, y: 1.7, w: 2.5, h: 0.35,
-          fontSize: 10, color: GRAY, align: 'center', fontFace: 'Arial',
-        });
-      });
-
-      // Histogram as table
-      if (bellData.histogram && bellData.histogram.length > 0) {
-        const topBuckets = bellData.histogram.filter((b: any) => b.count > 0);
-        if (topBuckets.length > 0) {
-          slide4.addText('Distribución por rango', {
-            x: 0.5, y: 2.6, w: 9, h: 0.4,
-            fontSize: 12, bold: true, color: DARK, fontFace: 'Arial',
-          });
-          const histRows: any[][] = [[
-            { text: 'Rango', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
-            { text: 'Cantidad', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
-          ]];
-          for (const b of topBuckets.slice(0, 15)) {
-            histRows.push([b.rangeLabel || b.range, String(b.count)]);
-          }
-          slide4.addTable(histRows, {
-            x: 0.5, y: 3.1, w: 6,
-            fontSize: 9, fontFace: 'Arial',
-            border: { color: 'DDDDDD', pt: 0.5 },
-            colW: [3, 3],
-          });
-        }
-      }
-    }
-
-    // ─── Slide 5: Heatmap ───────────────────────────────────────────
-    if (heatmapData?.heatmap && heatmapData.heatmap.length > 0) {
-      const slide5 = pptx.addSlide();
-      slide5.background = { color: LIGHT_BG };
-      slide5.addText('Mapa de Calor por Departamento', {
-        x: 0.5, y: 0.3, w: 9, h: 0.5,
-        fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
-      });
-
-      const heatRows: any[][] = [[
-        { text: 'Departamento', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
-        { text: 'Promedio', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
-        { text: 'Evaluados', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
-        { text: 'Bajo', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
-        { text: 'Medio', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
-        { text: 'Alto', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
-      ]];
-      for (const dept of heatmapData.heatmap) {
-        heatRows.push([
-          dept.department,
-          String(dept.avgScore),
-          String(dept.total),
-          String(dept.low),
-          String(dept.mid),
-          String(dept.high),
-        ]);
-      }
-      slide5.addTable(heatRows, {
-        x: 0.5, y: 1.0, w: 9,
-        fontSize: 10, fontFace: 'Arial',
-        border: { color: 'DDDDDD', pt: 0.5 },
-        colW: [2.5, 1.3, 1.3, 1.3, 1.3, 1.3],
-      });
-    }
-
-    // ─── Slide 6: Closing ───────────────────────────────────────────
+    // ─── Slide 4: Closing ───────────────────────────────────────────
     const slideEnd = pptx.addSlide();
     slideEnd.background = { color: DARK };
     slideEnd.addText('Eva360', {

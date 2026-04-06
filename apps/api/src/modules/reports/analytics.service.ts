@@ -582,12 +582,28 @@ export class AnalyticsService {
     const esc = (v: string) => `"${String(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
     const lines: string[] = [];
 
-    lines.push('Análisis de Rotación — Resumen');
+    lines.push('Análisis de Dotación — Resumen');
     lines.push(`Usuarios activos,${data.activeUsers}`);
     lines.push(`Usuarios inactivos,${data.inactiveUsers}`);
     lines.push(`Bajas últimos 12 meses,${data.totalDeactivations12m}`);
     lines.push(`Tasa de rotación,${data.turnoverRate}%`);
+    lines.push(`Salidas voluntarias,${data.voluntary || 0}`);
+    lines.push(`Salidas involuntarias,${data.involuntary || 0}`);
     lines.push('');
+
+    if (data.byType?.length) {
+      lines.push('Por Tipo de Salida');
+      lines.push('Tipo,Cantidad');
+      for (const t of data.byType) lines.push(`${esc(t.type)},${t.count}`);
+      lines.push('');
+    }
+
+    if (data.byReason?.length) {
+      lines.push('Por Categoría de Motivo');
+      lines.push('Motivo,Cantidad');
+      for (const r of data.byReason) lines.push(`${esc(r.reason)},${r.count}`);
+      lines.push('');
+    }
 
     if (data.byMonth?.length) {
       lines.push('Bajas por Mes');
@@ -607,6 +623,14 @@ export class AnalyticsService {
       lines.push('Antigüedad al Salir');
       lines.push('Rango,Cantidad');
       for (const t of data.byTenure) lines.push(`${esc(t.range)},${t.count}`);
+      lines.push('');
+    }
+
+    if (data.wouldRehire) {
+      lines.push('Recontratarías');
+      lines.push(`Sí,${data.wouldRehire.yes || 0}`);
+      lines.push(`No,${data.wouldRehire.no || 0}`);
+      lines.push(`Sin respuesta,${data.wouldRehire.noAnswer || 0}`);
     }
 
     return '\uFEFF' + lines.join('\n');
@@ -620,32 +644,48 @@ export class AnalyticsService {
     // Sheet 1: Resumen
     const ws1 = wb.addWorksheet('Resumen');
     ws1.columns = [{ width: 30 }, { width: 15 }];
-    ws1.addRow(['Análisis de Rotación']).font = { bold: true, size: 14 };
+    ws1.addRow(['Análisis de Dotación']).font = { bold: true, size: 14 };
     ws1.addRow([]);
     ws1.addRow(['Usuarios activos', data.activeUsers]);
     ws1.addRow(['Usuarios inactivos', data.inactiveUsers]);
     ws1.addRow(['Bajas últimos 12 meses', data.totalDeactivations12m]);
     ws1.addRow(['Tasa de rotación', `${data.turnoverRate}%`]);
+    ws1.addRow(['Salidas voluntarias', data.voluntary || 0]);
+    ws1.addRow(['Salidas involuntarias', data.involuntary || 0]);
 
-    // Sheet 2: Bajas por Mes
+    // Sheet 2: Por Tipo de Salida
+    if (data.byType?.length) {
+      const ws = wb.addWorksheet('Por Tipo');
+      ws.columns = [{ header: 'Tipo', width: 25 }, { header: 'Cantidad', width: 12 }];
+      for (const t of data.byType) ws.addRow([t.type, t.count]);
+    }
+
+    // Sheet 3: Por Motivo
+    if (data.byReason?.length) {
+      const ws = wb.addWorksheet('Por Motivo');
+      ws.columns = [{ header: 'Categoría', width: 30 }, { header: 'Cantidad', width: 12 }];
+      for (const r of data.byReason) ws.addRow([r.reason, r.count]);
+    }
+
+    // Sheet 4: Bajas por Mes
     if (data.byMonth?.length) {
-      const ws2 = wb.addWorksheet('Bajas por Mes');
-      ws2.columns = [{ header: 'Mes', width: 15 }, { header: 'Bajas', width: 10 }];
-      for (const m of data.byMonth) ws2.addRow([m.month, m.count]);
+      const ws = wb.addWorksheet('Bajas por Mes');
+      ws.columns = [{ header: 'Mes', width: 15 }, { header: 'Bajas', width: 10 }];
+      for (const m of data.byMonth) ws.addRow([m.month, m.count]);
     }
 
-    // Sheet 3: Bajas por Departamento
+    // Sheet 5: Bajas por Departamento
     if (data.byDepartment?.length) {
-      const ws3 = wb.addWorksheet('Bajas por Departamento');
-      ws3.columns = [{ header: 'Departamento', width: 25 }, { header: 'Bajas', width: 10 }];
-      for (const d of data.byDepartment) ws3.addRow([d.department, d.count]);
+      const ws = wb.addWorksheet('Bajas por Departamento');
+      ws.columns = [{ header: 'Departamento', width: 25 }, { header: 'Bajas', width: 10 }];
+      for (const d of data.byDepartment) ws.addRow([d.department, d.count]);
     }
 
-    // Sheet 4: Antigüedad
+    // Sheet 6: Antigüedad
     if (data.byTenure?.length) {
-      const ws4 = wb.addWorksheet('Antigüedad al Salir');
-      ws4.columns = [{ header: 'Rango', width: 15 }, { header: 'Cantidad', width: 10 }];
-      for (const t of data.byTenure) ws4.addRow([t.range, t.count]);
+      const ws = wb.addWorksheet('Antigüedad al Salir');
+      ws.columns = [{ header: 'Rango', width: 15 }, { header: 'Cantidad', width: 10 }];
+      for (const t of data.byTenure) ws.addRow([t.range, t.count]);
     }
 
     const buf = await wb.xlsx.writeBuffer();

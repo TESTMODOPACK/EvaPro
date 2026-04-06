@@ -148,14 +148,6 @@ function TurnoverPageContent() {
           >
             {exporting === 'xlsx' ? t('common.exporting') : t('common.exportExcel')}
           </button>
-          <button
-            className="btn-ghost"
-            onClick={() => handleExport('csv')}
-            disabled={!!exporting}
-            style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}
-          >
-            {exporting === 'csv' ? t('common.exporting') : t('common.exportCsv')}
-          </button>
         </div>
       </div>
 
