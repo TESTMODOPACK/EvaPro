@@ -655,7 +655,7 @@ function DesarrolloOrganizacionalPageContent() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      Responsable (líder de la iniciativa)
+                      {t('orgDesarrollo.form.responsible', 'Responsable')} (líder de la iniciativa)
                     </label>
                     <select className="input" value={initForm.responsibleId} onChange={(e) => setInitForm({ ...initForm, responsibleId: e.target.value })}>
                       <option value="">— Seleccionar responsable —</option>
@@ -683,7 +683,7 @@ function DesarrolloOrganizacionalPageContent() {
                       />
                     </div>
                   )}
-                  <div>
+                  <div style={!editingInitId ? { gridColumn: 'span 2' } : undefined}>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
                       {t('orgDesarrollo.form.budget')}
                     </label>
@@ -722,7 +722,7 @@ function DesarrolloOrganizacionalPageContent() {
                   <div style={{ gridColumn: 'span 2' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                       <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        Participantes (colaboradores involucrados)
+                        {t('orgDesarrollo.form.participants', 'Participantes')} (colaboradores involucrados)
                         {initForm.participantIds.length > 0 && (
                           <span style={{ marginLeft: '0.5rem', background: 'var(--accent)', color: '#fff', borderRadius: '999px', padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>
                             {initForm.participantIds.length}
@@ -742,7 +742,7 @@ function DesarrolloOrganizacionalPageContent() {
                               setInitForm({ ...initForm, participantIds: e.target.checked ? activeIds : [] });
                             }}
                           />
-                          Seleccionar todos
+                          {t('common.selectAll', 'Seleccionar todos')}
                         </label>
                         {initForm.participantIds.length > 0 && (
                           <button
@@ -750,7 +750,7 @@ function DesarrolloOrganizacionalPageContent() {
                             onClick={() => setInitForm({ ...initForm, participantIds: [] })}
                             style={{ fontSize: '0.72rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                           >
-                            Limpiar
+                            {t('common.clear', 'Limpiar')}
                           </button>
                         )}
                       </div>
