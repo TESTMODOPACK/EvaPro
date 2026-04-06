@@ -50,7 +50,43 @@ const emptyForm = {
   position: '',
   hierarchyLevel: '' as string | number,
   managerId: '',
+  gender: '',
+  birthDate: '',
+  nationality: '',
+  seniorityLevel: '',
+  contractType: '',
+  workLocation: '',
 };
+
+const GENDER_OPTIONS = [
+  { value: '', label: '— Sin especificar —' },
+  { value: 'masculino', label: 'Masculino' },
+  { value: 'femenino', label: 'Femenino' },
+  { value: 'no_binario', label: 'No binario' },
+  { value: 'prefiero_no_decir', label: 'Prefiero no decir' },
+];
+const SENIORITY_OPTIONS = [
+  { value: '', label: '— Sin especificar —' },
+  { value: 'junior', label: 'Junior' },
+  { value: 'mid', label: 'Nivel Medio' },
+  { value: 'senior', label: 'Senior' },
+  { value: 'lead', label: 'Lead / Líder' },
+  { value: 'director', label: 'Director(a)' },
+  { value: 'executive', label: 'Ejecutivo(a)' },
+];
+const CONTRACT_OPTIONS = [
+  { value: '', label: '— Sin especificar —' },
+  { value: 'indefinido', label: 'Indefinido' },
+  { value: 'plazo_fijo', label: 'Plazo fijo' },
+  { value: 'honorarios', label: 'Honorarios' },
+  { value: 'practicante', label: 'Practicante' },
+];
+const LOCATION_OPTIONS = [
+  { value: '', label: '— Sin especificar —' },
+  { value: 'oficina', label: 'Oficina' },
+  { value: 'remoto', label: 'Remoto' },
+  { value: 'hibrido', label: 'Híbrido' },
+];
 
 export default function UsuariosPage() {
   const { t } = useTranslation();
@@ -201,6 +237,15 @@ export default function UsuariosPage() {
 
     setCreating(true);
     try {
+      // Build demographic fields (only send non-empty values)
+      const demoFields: any = {};
+      if (form.gender) demoFields.gender = form.gender;
+      if (form.birthDate) demoFields.birthDate = form.birthDate;
+      if (form.nationality) demoFields.nationality = form.nationality;
+      if (form.seniorityLevel) demoFields.seniorityLevel = form.seniorityLevel;
+      if (form.contractType) demoFields.contractType = form.contractType;
+      if (form.workLocation) demoFields.workLocation = form.workLocation;
+
       if (editingId) {
         const data: any = {
           firstName: form.firstName,
@@ -211,6 +256,7 @@ export default function UsuariosPage() {
           position: form.position || undefined,
           hierarchyLevel: form.hierarchyLevel ? Number(form.hierarchyLevel) : undefined,
           managerId: form.managerId || null,
+          ...demoFields,
         };
         if (form.password) data.password = form.password;
         await updateUser.mutateAsync({ id: editingId, data });
@@ -226,6 +272,7 @@ export default function UsuariosPage() {
           position: form.position || null,
           hierarchyLevel: form.hierarchyLevel ? Number(form.hierarchyLevel) : undefined,
           managerId: form.managerId || undefined,
+          ...demoFields,
         });
       }
       setForm(emptyForm);
@@ -253,6 +300,12 @@ export default function UsuariosPage() {
       position: u.position || '',
       hierarchyLevel: u.hierarchyLevel ?? '',
       managerId: u.managerId || '',
+      gender: u.gender || '',
+      birthDate: u.birthDate ? u.birthDate.slice(0, 10) : '',
+      nationality: u.nationality || '',
+      seniorityLevel: u.seniorityLevel || '',
+      contractType: u.contractType || '',
+      workLocation: u.workLocation || '',
     });
     setShowCreateForm(true);
   };
@@ -352,11 +405,11 @@ export default function UsuariosPage() {
     const positions = positionCatalog || [];
 
     // Sheet 1: Colaboradores (main data entry)
-    const usrHeaders = ['correo *', 'nombre *', 'apellido *', 'rut', 'contrasena', 'rol', 'departamento *', 'cargo *', 'nivel_jerarquico', 'fecha_ingreso (DD-MM-AAAA)', 'jefatura_directa (correo)'];
-    const exRow1 = ['juan.perez@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'Clave123!', 'colaborador', depts[0] || 'Tecnología', positions[0]?.name || 'Analista', positions[0]?.level || 6, '15-01-2024', 'maria@empresa.cl'];
-    const exRow2 = ['maria.garcia@empresa.cl', 'María', 'García', '', '', 'encargado_equipo', depts[1] || 'Ventas', positions[1]?.name || 'Gerente', positions[1]?.level || 2, '01-06-2023', ''];
+    const usrHeaders = ['correo *', 'nombre *', 'apellido *', 'rut', 'contrasena', 'rol', 'departamento *', 'cargo *', 'nivel_jerarquico', 'fecha_ingreso (DD-MM-AAAA)', 'jefatura_directa (correo)', 'genero', 'fecha_nacimiento (DD-MM-AAAA)', 'nacionalidad', 'nivel_senioridad', 'tipo_contrato', 'modalidad_trabajo'];
+    const exRow1 = ['juan.perez@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'Clave123!', 'colaborador', depts[0] || 'Tecnología', positions[0]?.name || 'Analista', positions[0]?.level || 6, '15-01-2024', 'maria@empresa.cl', 'masculino', '15-03-1990', 'Chilena', 'mid', 'indefinido', 'oficina'];
+    const exRow2 = ['maria.garcia@empresa.cl', 'María', 'García', '', '', 'encargado_equipo', depts[1] || 'Ventas', positions[1]?.name || 'Gerente', positions[1]?.level || 2, '01-06-2023', '', 'femenino', '22-08-1985', 'Chilena', 'senior', 'indefinido', 'hibrido'];
     const ws1 = XLSX.utils.aoa_to_sheet([usrHeaders, exRow1, exRow2]);
-    ws1['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 20 }, { wch: 28 }];
+    ws1['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 20 }, { wch: 28 }, { wch: 16 }, { wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws1, 'Colaboradores');
 
     // Sheet 2: Departamentos válidos
@@ -391,12 +444,19 @@ export default function UsuariosPage() {
       ['nivel_jerarquico', 'Condicional', 'Obligatorio si el cargo no está en el catálogo. Nivel 1=más alto. Si el cargo existe, se toma del catálogo', String(positions[0]?.level || 6)],
       ['fecha_ingreso', 'No', 'Formato DD-MM-AAAA', '15-01-2024'],
       ['jefatura_directa', 'No', 'Correo del jefe directo (debe existir en la organización)', 'jefe@empresa.cl'],
+      ['genero', 'No', 'Valores: masculino, femenino, no_binario, prefiero_no_decir', 'femenino'],
+      ['fecha_nacimiento', 'No', 'Formato DD-MM-AAAA', '15-03-1990'],
+      ['nacionalidad', 'No', 'Texto libre (ej: Chilena, Peruana, Colombiana)', 'Chilena'],
+      ['nivel_senioridad', 'No', 'Valores: junior, mid, senior, lead, director, executive', 'senior'],
+      ['tipo_contrato', 'No', 'Valores: indefinido, plazo_fijo, honorarios, practicante', 'indefinido'],
+      ['modalidad_trabajo', 'No', 'Valores: oficina, remoto, hibrido', 'hibrido'],
       [], ['NOTAS:'],
       ['• Máximo 500 usuarios por archivo'],
       ['• Los campos marcados con * son obligatorios'],
       ['• Los departamentos deben coincidir con los configurados en el sistema'],
       ['• Los cargos pueden ser del catálogo o nuevos. Si es nuevo, debe incluir nivel_jerarquico (1=más alto)'],
       ['• Cargos nuevos se agregan automáticamente al catálogo de la organización'],
+      ['• Los campos demográficos (género, nacimiento, nacionalidad, etc.) son opcionales pero necesarios para análisis DEI'],
       ['• El rol super_admin NO está permitido en esta carga'],
     ];
     const ws4 = XLSX.utils.aoa_to_sheet(instrRows);
@@ -419,6 +479,12 @@ export default function UsuariosPage() {
     nivel_jerarquico: 'hierarchy_level', hierarchy_level: 'hierarchy_level',
     fecha_ingreso: 'hire_date', hire_date: 'hire_date',
     jefatura_directa: 'manager_email', manager_email: 'manager_email',
+    genero: 'gender', gender: 'gender',
+    fecha_nacimiento: 'birth_date', birth_date: 'birth_date',
+    nacionalidad: 'nationality', nationality: 'nationality',
+    nivel_senioridad: 'seniority_level', seniority_level: 'seniority_level',
+    tipo_contrato: 'contract_type', contract_type: 'contract_type',
+    modalidad_trabajo: 'work_location', work_location: 'work_location',
   };
 
   // Map Spanish role names to backend codes
@@ -448,7 +514,7 @@ export default function UsuariosPage() {
     }
 
     // Parse header
-    const rawHeader = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"*]/g, '').replace(/\s+/g, ' ').trim());
+    const rawHeader = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"*]/g, '').replace(/\s*\(.*?\)\s*/g, '').replace(/\s+/g, ' ').trim());
     const mappedHeader = rawHeader.map(h => COLUMN_MAP[h] || h);
 
     // Check required columns
@@ -471,6 +537,7 @@ export default function UsuariosPage() {
     const deptIdx = mappedHeader.indexOf('department');
     const posIdx = mappedHeader.indexOf('position');
     const dateIdx = mappedHeader.indexOf('hire_date');
+    const birthDateIdx = mappedHeader.indexOf('birth_date');
 
     // Prepare department + position validation (case-insensitive, accent-insensitive)
     const deptMatch = (a: string, b: string) => (a || '').localeCompare(b || '', undefined, { sensitivity: 'base' }) === 0;
@@ -547,19 +614,23 @@ export default function UsuariosPage() {
 
       // Department already validated above as required field
 
-      // Validate and convert date if provided (DD-MM-YYYY to YYYY-MM-DD)
-      if (dateIdx >= 0 && cols[dateIdx]) {
-        const dateVal = cols[dateIdx];
-        if (dateRegex.test(dateVal)) {
-          const [dd, mm, yyyy] = dateVal.split('-');
-          const d = parseInt(dd), m = parseInt(mm), y = parseInt(yyyy);
-          if (m < 1 || m > 12) errors.push(`Fila ${rowNum}: Mes invalido en fecha: "${dateVal}".`);
-          else if (d < 1 || d > 31) errors.push(`Fila ${rowNum}: Dia invalido en fecha: "${dateVal}".`);
-          else cols[dateIdx] = `${yyyy}-${mm}-${dd}`;
-        } else if (!isoDateRegex.test(dateVal)) {
-          errors.push(`Fila ${rowNum}: Formato de fecha invalido: "${dateVal}". Use DD-MM-AAAA (ej: 15-01-2024).`);
+      // Validate and convert dates if provided (DD-MM-YYYY to YYYY-MM-DD)
+      const convertDate = (idx: number, label: string) => {
+        if (idx >= 0 && cols[idx]) {
+          const dateVal = cols[idx];
+          if (dateRegex.test(dateVal)) {
+            const [dd, mm, yyyy] = dateVal.split('-');
+            const d = parseInt(dd), m = parseInt(mm);
+            if (m < 1 || m > 12) errors.push(`Fila ${rowNum}: Mes invalido en ${label}: "${dateVal}".`);
+            else if (d < 1 || d > 31) errors.push(`Fila ${rowNum}: Dia invalido en ${label}: "${dateVal}".`);
+            else cols[idx] = `${yyyy}-${mm}-${dd}`;
+          } else if (!isoDateRegex.test(dateVal)) {
+            errors.push(`Fila ${rowNum}: Formato de fecha invalido en ${label}: "${dateVal}". Use DD-MM-AAAA.`);
+          }
         }
-      }
+      };
+      convertDate(dateIdx, 'fecha_ingreso');
+      convertDate(birthDateIdx, 'fecha_nacimiento');
 
       convertedLines.push(cols.join(','));
       if (previewRows.length < 5) previewRows.push(cols);
@@ -939,6 +1010,47 @@ export default function UsuariosPage() {
               )}
             </div>
           </div>
+          {/* Demographic fields — collapsible section */}
+          <details style={{ marginTop: '1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '0.75rem 1rem' }}>
+            <summary style={{ cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Datos demográficos (opcional — para análisis DEI)
+            </summary>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginTop: '0.75rem' }}>
+              <div>
+                <label style={labelStyle}>Género</label>
+                <select style={inputStyle} value={form.gender} onChange={(e) => updateField('gender', e.target.value)}>
+                  {GENDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Fecha de nacimiento</label>
+                <input style={inputStyle} type="date" value={form.birthDate} onChange={(e) => updateField('birthDate', e.target.value)} />
+              </div>
+              <div>
+                <label style={labelStyle}>Nacionalidad</label>
+                <input style={inputStyle} placeholder="Ej: Chilena" value={form.nationality} onChange={(e) => updateField('nationality', e.target.value)} />
+              </div>
+              <div>
+                <label style={labelStyle}>Nivel de senioridad</label>
+                <select style={inputStyle} value={form.seniorityLevel} onChange={(e) => updateField('seniorityLevel', e.target.value)}>
+                  {SENIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Tipo de contrato</label>
+                <select style={inputStyle} value={form.contractType} onChange={(e) => updateField('contractType', e.target.value)}>
+                  {CONTRACT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Modalidad de trabajo</label>
+                <select style={inputStyle} value={form.workLocation} onChange={(e) => updateField('workLocation', e.target.value)}>
+                  {LOCATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            </div>
+          </details>
+
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
             <button className="btn-primary" onClick={handleCreate} disabled={creating}>
               {creating ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear usuario'}
@@ -1063,6 +1175,12 @@ export default function UsuariosPage() {
                     ['nivel_jerarquico', 'Condicional', 'Obligatorio si el cargo no está en el catálogo. 1=más alto, 7+=operativo', '6'],
                     ['fecha_ingreso', 'No', 'Formato: DD-MM-AAAA', '15-01-2024'],
                     ['jefatura_directa', 'No', 'Correo del jefe directo del usuario', 'maria@empresa.cl'],
+                    ['genero', 'No', 'Valores: masculino, femenino, no_binario, prefiero_no_decir', 'femenino'],
+                    ['fecha_nacimiento', 'No', 'Formato: DD-MM-AAAA', '15-03-1990'],
+                    ['nacionalidad', 'No', 'Texto libre (ej: Chilena, Peruana)', 'Chilena'],
+                    ['nivel_senioridad', 'No', 'Valores: junior, mid, senior, lead, director, executive', 'senior'],
+                    ['tipo_contrato', 'No', 'Valores: indefinido, plazo_fijo, honorarios, practicante', 'indefinido'],
+                    ['modalidad_trabajo', 'No', 'Valores: oficina, remoto, hibrido', 'hibrido'],
                   ].map(([col, req, desc, ej]) => (
                     <tr key={col}>
                       <td><code style={{ background: 'rgba(99,102,241,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px', fontWeight: 600 }}>{col}</code></td>

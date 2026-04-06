@@ -474,6 +474,13 @@ export class UsersService {
     const hireDateIdx = header.indexOf('hire_date');
     const hierarchyLevelIdx = header.indexOf('hierarchy_level');
     const rutIdx = header.indexOf('rut');
+    // Demographic columns
+    const genderIdx = header.indexOf('gender');
+    const birthDateIdx = header.indexOf('birth_date');
+    const nationalityIdx = header.indexOf('nationality');
+    const seniorityIdx = header.indexOf('seniority_level');
+    const contractIdx = header.indexOf('contract_type');
+    const locationIdx = header.indexOf('work_location');
 
     if (emailIdx === -1 || firstNameIdx === -1 || lastNameIdx === -1) {
       saved.status = ImportStatus.FAILED;
@@ -578,6 +585,19 @@ export class UsersService {
           if (match) hierarchyLevel = match.level;
         }
 
+        // Parse demographic fields (all optional, validate enums)
+        const validGenders = ['masculino', 'femenino', 'no_binario', 'prefiero_no_decir'];
+        const validSeniority = ['junior', 'mid', 'senior', 'lead', 'director', 'executive'];
+        const validContract = ['indefinido', 'plazo_fijo', 'honorarios', 'practicante'];
+        const validLocation = ['oficina', 'remoto', 'hibrido'];
+
+        const rawGender = genderIdx >= 0 ? (cols[genderIdx] || '').trim().toLowerCase() : '';
+        const rawBirthDate = birthDateIdx >= 0 ? (cols[birthDateIdx] || '').trim() : '';
+        const rawNationality = nationalityIdx >= 0 ? (cols[nationalityIdx] || '').trim() : '';
+        const rawSeniority = seniorityIdx >= 0 ? (cols[seniorityIdx] || '').trim().toLowerCase() : '';
+        const rawContract = contractIdx >= 0 ? (cols[contractIdx] || '').trim().toLowerCase() : '';
+        const rawLocation = locationIdx >= 0 ? (cols[locationIdx] || '').trim().toLowerCase() : '';
+
         const savedUser = await this.userRepository.save(
           this.userRepository.create({
             tenantId,
@@ -592,6 +612,12 @@ export class UsersService {
             position: position || undefined,
             hierarchyLevel: hierarchyLevel || undefined,
             hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
+            gender: validGenders.includes(rawGender) ? rawGender : undefined,
+            birthDate: rawBirthDate ? new Date(rawBirthDate) : undefined,
+            nationality: rawNationality || undefined,
+            seniorityLevel: validSeniority.includes(rawSeniority) ? rawSeniority : undefined,
+            contractType: validContract.includes(rawContract) ? rawContract : undefined,
+            workLocation: validLocation.includes(rawLocation) ? rawLocation : undefined,
             isActive: true,
             mustChangePassword: true,
           }),
