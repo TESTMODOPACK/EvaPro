@@ -352,11 +352,11 @@ export default function UsuariosPage() {
     const positions = positionCatalog || [];
 
     // Sheet 1: Colaboradores (main data entry)
-    const usrHeaders = ['correo *', 'nombre *', 'apellido *', 'rut', 'contrasena', 'rol', 'departamento *', 'cargo *', 'fecha_ingreso (DD-MM-AAAA)', 'jefatura_directa (correo)'];
-    const exRow1 = ['juan.perez@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'Clave123!', 'colaborador', depts[0] || 'Tecnología', positions[0]?.name || 'Analista', '15-01-2024', 'maria@empresa.cl'];
-    const exRow2 = ['maria.garcia@empresa.cl', 'María', 'García', '', '', 'encargado_equipo', depts[1] || 'Ventas', positions[1]?.name || 'Gerente', '01-06-2023', ''];
+    const usrHeaders = ['correo *', 'nombre *', 'apellido *', 'rut', 'contrasena', 'rol', 'departamento *', 'cargo *', 'nivel_jerarquico', 'fecha_ingreso (DD-MM-AAAA)', 'jefatura_directa (correo)'];
+    const exRow1 = ['juan.perez@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'Clave123!', 'colaborador', depts[0] || 'Tecnología', positions[0]?.name || 'Analista', positions[0]?.level || 6, '15-01-2024', 'maria@empresa.cl'];
+    const exRow2 = ['maria.garcia@empresa.cl', 'María', 'García', '', '', 'encargado_equipo', depts[1] || 'Ventas', positions[1]?.name || 'Gerente', positions[1]?.level || 2, '01-06-2023', ''];
     const ws1 = XLSX.utils.aoa_to_sheet([usrHeaders, exRow1, exRow2]);
-    ws1['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 28 }];
+    ws1['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 20 }, { wch: 28 }];
     XLSX.utils.book_append_sheet(wb, ws1, 'Colaboradores');
 
     // Sheet 2: Departamentos válidos
@@ -366,9 +366,11 @@ export default function UsuariosPage() {
     XLSX.utils.book_append_sheet(wb, ws2, 'Departamentos válidos');
 
     // Sheet 3: Cargos válidos
-    const posRows = [['CARGOS VÁLIDOS'], ['(Use estos valores exactos en la columna "cargo")'], [],
-      ['Cargo', 'Nivel jerárquico'],
+    const posRows = [['CARGOS VÁLIDOS'], ['(Use estos valores en la columna "cargo". Si ingresa un cargo nuevo, debe incluir el nivel jerárquico)'], [],
+      ['Cargo', 'Nivel jerárquico (1=más alto)'],
       ...positions.map((p: any) => [p.name, p.level]),
+      [], ['NOTA: Si ingresa un cargo que no está en esta lista, se creará automáticamente en el catálogo.'],
+      ['El nivel jerárquico es obligatorio para cargos nuevos. Nivel 1 = más alto (ej: Gerente General), 7+ = operativo.'],
     ];
     const ws3 = XLSX.utils.aoa_to_sheet(posRows);
     ws3['!cols'] = [{ wch: 30 }, { wch: 18 }];
@@ -385,13 +387,16 @@ export default function UsuariosPage() {
       ['contrasena', 'No', 'Si se deja vacía se asigna: EvaPro2026!', 'MiClave123!'],
       ['rol', 'No', 'Valores: colaborador, encargado_equipo, encargado_sistema, asesor_externo. Default: colaborador', 'colaborador'],
       ['departamento', 'Sí', 'Debe coincidir con un departamento de la hoja "Departamentos válidos"', depts[0] || 'Tecnología'],
-      ['cargo', 'Sí', 'Debe coincidir con un cargo de la hoja "Cargos válidos"', positions[0]?.name || 'Analista'],
+      ['cargo', 'Sí', 'Cargo del catálogo o uno nuevo (si es nuevo, nivel_jerarquico es obligatorio)', positions[0]?.name || 'Analista'],
+      ['nivel_jerarquico', 'Condicional', 'Obligatorio si el cargo no está en el catálogo. Nivel 1=más alto. Si el cargo existe, se toma del catálogo', String(positions[0]?.level || 6)],
       ['fecha_ingreso', 'No', 'Formato DD-MM-AAAA', '15-01-2024'],
       ['jefatura_directa', 'No', 'Correo del jefe directo (debe existir en la organización)', 'jefe@empresa.cl'],
       [], ['NOTAS:'],
       ['• Máximo 500 usuarios por archivo'],
       ['• Los campos marcados con * son obligatorios'],
-      ['• Los departamentos y cargos deben coincidir exactamente con los configurados'],
+      ['• Los departamentos deben coincidir con los configurados en el sistema'],
+      ['• Los cargos pueden ser del catálogo o nuevos. Si es nuevo, debe incluir nivel_jerarquico (1=más alto)'],
+      ['• Cargos nuevos se agregan automáticamente al catálogo de la organización'],
       ['• El rol super_admin NO está permitido en esta carga'],
     ];
     const ws4 = XLSX.utils.aoa_to_sheet(instrRows);
@@ -411,6 +416,7 @@ export default function UsuariosPage() {
     rol: 'role', role: 'role',
     departamento: 'department', department: 'department',
     cargo: 'position', position: 'position',
+    nivel_jerarquico: 'hierarchy_level', hierarchy_level: 'hierarchy_level',
     fecha_ingreso: 'hire_date', hire_date: 'hire_date',
     jefatura_directa: 'manager_email', manager_email: 'manager_email',
   };
@@ -514,12 +520,17 @@ export default function UsuariosPage() {
         }
       }
 
-      // Validate position (required)
+      // Validate position (required) — accepts catalog or custom with hierarchy level
+      const hlIdx = mappedHeader.indexOf('hierarchy_level');
       if (posIdx >= 0) {
         if (!cols[posIdx]) {
           errors.push(`Fila ${rowNum}: Cargo vacío (obligatorio).`);
         } else if (validPositions.length > 0 && !validPositions.some((p: string) => deptMatch(p, cols[posIdx]))) {
-          errors.push(`Fila ${rowNum}: Cargo no válido: "${cols[posIdx]}". Vea hoja "Cargos válidos".`);
+          // Custom position — require hierarchy level
+          const hlVal = hlIdx >= 0 ? Number(cols[hlIdx]) : 0;
+          if (!hlVal || hlVal < 1) {
+            errors.push(`Fila ${rowNum}: Cargo "${cols[posIdx]}" no está en el catálogo. Ingrese nivel_jerarquico (1=más alto) para agregarlo automáticamente.`);
+          }
         }
       }
 
@@ -708,8 +719,9 @@ export default function UsuariosPage() {
             <li><strong>¿Qué incluye?</strong> Crear, editar y gestionar los colaboradores de la organización. Cada usuario tiene: nombre, correo, RUT, cargo, departamento, jefatura directa y rol.</li>
             <li><strong>Roles del sistema:</strong> Administrador (gestión completa), Encargado de equipo (ve su equipo, aprueba objetivos), Colaborador (accede a sus evaluaciones y objetivos), Asesor externo (evaluador invitado, solo lectura).</li>
             <li><strong>Jefatura directa:</strong> Define quién es el jefe de cada usuario. Esta relación se usa para: asignar evaluadores automáticamente, filtrar datos por equipo, y definir reportes directos en evaluaciones 360°.</li>
-            <li><strong>Cargo y nivel:</strong> Al seleccionar un cargo del catálogo (configurado en Mantenedores), se asigna automáticamente un nivel jerárquico que facilita la sugerencia de pares en evaluaciones.</li>
-            <li><strong>Importación masiva:</strong> El botón &quot;Importar Excel&quot; permite cargar hasta 500 usuarios desde un archivo .xlsx. La plantilla se genera con los departamentos y cargos de su organización. Campos obligatorios: correo, nombre, apellido, departamento y cargo.</li>
+            <li><strong>Cargo y nivel:</strong> Al seleccionar un cargo del catálogo (configurado en Mantenedores), se asigna automáticamente el nivel jerárquico de ese cargo. Al elegir &quot;Otro (personalizado)&quot;, debe ingresar el nivel jerárquico manualmente (1=más alto). El cargo nuevo se agrega automáticamente al catálogo de la organización.</li>
+            <li><strong>Nivel jerárquico:</strong> Define la posición del cargo en la estructura organizacional. Nivel 1 = más alto (ej: Gerente General), nivel 7+ = operativo. Se usa para: sugerencia de pares en evaluaciones, filtrar managers disponibles, y organigrama.</li>
+            <li><strong>Importación masiva:</strong> El botón &quot;Importar Excel&quot; permite cargar hasta 500 usuarios. La plantilla incluye columna &quot;nivel_jerarquico&quot;: si el cargo existe en el catálogo se toma el nivel del catálogo; si es un cargo nuevo, el nivel es obligatorio y el cargo se agrega automáticamente al catálogo.</li>
           </ul>
           <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
             <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores pueden crear, editar y desactivar usuarios.

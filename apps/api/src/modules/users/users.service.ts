@@ -472,6 +472,7 @@ export class UsersService {
     const positionIdx = header.indexOf('position');
     const managerEmailIdx = header.indexOf('manager_email');
     const hireDateIdx = header.indexOf('hire_date');
+    const hierarchyLevelIdx = header.indexOf('hierarchy_level');
     const rutIdx = header.indexOf('rut');
 
     if (emailIdx === -1 || firstNameIdx === -1 || lastNameIdx === -1) {
@@ -562,7 +563,22 @@ export class UsersService {
         const tempPassword = 'EvaPro2026!';
         const passwordHash = await bcrypt.hash(tempPassword, 10);
 
-        await this.userRepository.save(
+        // Parse hierarchy level from CSV or lookup from position catalog
+        let hierarchyLevel: number | undefined;
+        if (hierarchyLevelIdx >= 0 && cols[hierarchyLevelIdx]) {
+          const parsed = parseInt(cols[hierarchyLevelIdx]);
+          if (!isNaN(parsed) && parsed >= 1) hierarchyLevel = parsed;
+        }
+        // If no level from CSV but position exists in catalog, use catalog level
+        if (!hierarchyLevel && position) {
+          const posNorm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+          const posCatalog: { name: string; level: number }[] = tenant?.settings?.positions || [];
+          const match = posCatalog.find(p => posNorm(p.name) === posNorm(position));
+          if (match) hierarchyLevel = match.level;
+        }
+
+        const savedUser = await this.userRepository.save(
           this.userRepository.create({
             tenantId,
             email,
@@ -574,11 +590,16 @@ export class UsersService {
             rut: parsedRut,
             department: department || undefined,
             position: position || undefined,
+            hierarchyLevel: hierarchyLevel || undefined,
             hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
             isActive: true,
             mustChangePassword: true,
           }),
         );
+        // Auto-add custom position to catalog
+        if (position && hierarchyLevel) {
+          this.autoAddPositionToCatalog(tenantId, position, hierarchyLevel).catch(() => {});
+        }
         successCount++;
       } catch (err) {
         errors.push({ row: rowNum, message: `Error: ${(err as Error).message}` });
