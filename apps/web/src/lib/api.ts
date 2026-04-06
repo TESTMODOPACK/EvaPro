@@ -236,6 +236,8 @@ export const api = {
     // Positions catalog
     getPositionsCatalog: (token: string) =>
       request<{ name: string; level: number }[]>("/tenants/me/positions", {}, token),
+    getPositionsAll: (token: string) =>
+      request<{ name: string; level: number }[]>("/tenants/me/positions/all", {}, token),
     setPositionsCatalog: (token: string, positions: { name: string; level: number }[]) =>
       request<{ name: string; level: number }[]>("/tenants/me/positions", {
         method: "PUT",

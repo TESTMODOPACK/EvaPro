@@ -53,6 +53,29 @@ export class UsersService {
     return tenant?.settings?.departments ?? UsersService.DEFAULT_DEPARTMENTS;
   }
 
+  /** Auto-add custom position to tenant catalog if not already there */
+  private async autoAddPositionToCatalog(tenantId: string, position: string | undefined, hierarchyLevel: number | null | undefined): Promise<void> {
+    if (!position?.trim() || hierarchyLevel == null || hierarchyLevel < 1) return;
+    try {
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      if (!tenant) return;
+      const DEFAULT_POSITIONS = [
+        { name: 'Gerente General', level: 1 }, { name: 'Gerente de Área', level: 2 },
+        { name: 'Subgerente', level: 3 }, { name: 'Jefe de Área', level: 4 },
+        { name: 'Coordinador', level: 5 }, { name: 'Analista', level: 6 }, { name: 'Asistente', level: 7 },
+      ];
+      const current: { name: string; level: number }[] = Array.isArray(tenant.settings?.positions) && tenant.settings.positions.length > 0
+        ? [...tenant.settings.positions]
+        : [...DEFAULT_POSITIONS];
+      const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (current.some(p => norm(p.name) === norm(position.trim()))) return;
+      current.push({ name: position.trim(), level: hierarchyLevel });
+      current.sort((a, b) => a.level - b.level);
+      tenant.settings = { ...(tenant.settings || {}), positions: current };
+      await this.tenantRepo.save(tenant);
+    } catch { /* fire-and-forget: don't block user creation */ }
+  }
+
   private validateDepartment(department: string | undefined, configuredDepts: string[]): void {
     if (!department) return; // null/undefined is OK
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -206,6 +229,8 @@ export class UsersService {
 
     const saved = await this.userRepository.save(user);
     await this.auditService.log(tenantId, saved.id, 'user.created', 'user', saved.id);
+    // Auto-add custom position to catalog
+    this.autoAddPositionToCatalog(tenantId, saved.position, saved.hierarchyLevel).catch(() => {});
     return saved;
   }
 
@@ -277,7 +302,12 @@ export class UsersService {
     if (dto.workLocation !== undefined) user.workLocation = dto.workLocation;
     if (dto.language !== undefined) user.language = dto.language;
 
-    return this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    // Auto-add custom position to catalog if position/level changed
+    if (dto.position !== undefined || dto.hierarchyLevel !== undefined) {
+      this.autoAddPositionToCatalog(user.tenantId, saved.position, saved.hierarchyLevel).catch(() => {});
+    }
+    return saved;
   }
 
   async remove(id: string, tenantId: string, callerRole?: string): Promise<void> {

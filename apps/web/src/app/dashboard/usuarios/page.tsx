@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
 import { useQueryClient } from '@tanstack/react-query';
+import { useInvalidatePositions } from '@/hooks/usePositions';
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 import { api } from '@/lib/api';
@@ -86,6 +87,7 @@ export default function UsuariosPage() {
   const { data: allUsersPag } = useUsers(1, 200);
 
   const queryClient = useQueryClient();
+  const invalidatePositions = useInvalidatePositions();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const removeUser = useRemoveUser();
@@ -179,7 +181,12 @@ export default function UsuariosPage() {
   const handleCreate = async () => {
     if (!form.email || !form.firstName || !form.lastName || (!editingId && !form.password)) return;
     if (form.rut && !validateRut(form.rut)) {
-      setErrorMsg('RUT invalido. Verifica el formato (ej: 12.345.678-9)');
+      setErrorMsg('RUT inválido. Verifica el formato (ej: 12.345.678-9)');
+      return;
+    }
+    // Validate: custom position requires hierarchy level
+    if (form.position && positionCatalog.length > 0 && !positionCatalog.some(p => p.name === form.position) && !form.hierarchyLevel) {
+      setErrorMsg('El nivel jerárquico es obligatorio para cargos personalizados. Indica un nivel (1=más alto).');
       return;
     }
     setErrorMsg('');
@@ -224,6 +231,8 @@ export default function UsuariosPage() {
       setForm(emptyForm);
       setShowCreateForm(false);
       setEditingId(null);
+      // Invalidate positions cache in case a custom position was added
+      invalidatePositions();
     } catch (err: any) {
       setErrorMsg(err.message || 'Error al guardar usuario');
     } finally {
@@ -859,7 +868,6 @@ export default function UsuariosPage() {
                         const catalogItem = positionCatalog.find(p => p.name === val);
                         updateField('position', val);
                         updateField('hierarchyLevel', catalogItem?.level != null ? String(catalogItem.level) : '');
-                        // Clear managerId if current manager's level is no longer superior
                         if (catalogItem?.level && form.managerId) {
                           const currentManager = allUsers.find((u: any) => u.id === form.managerId) as any;
                           if (currentManager?.hierarchyLevel && currentManager.hierarchyLevel >= catalogItem.level) {
@@ -875,14 +883,22 @@ export default function UsuariosPage() {
                     ))}
                     <option value="__custom__">Otro (personalizado)...</option>
                   </select>
-                  {!positionCatalog.some(p => p.name === form.position) && form.position !== '' && (
-                    <input style={{ ...inputStyle, marginTop: '0.35rem' }} placeholder="Cargo personalizado"
-                      value={form.position} onChange={(e) => { updateField('position', e.target.value); updateField('hierarchyLevel', ''); }} />
+                  {/* Custom position: name + hierarchy level */}
+                  {!positionCatalog.some(p => p.name === form.position) && (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.35rem' }}>
+                      <input style={{ ...inputStyle, flex: 1 }} placeholder="Nombre del cargo personalizado"
+                        value={form.position} onChange={(e) => updateField('position', e.target.value)} />
+                      <div style={{ width: '120px' }}>
+                        <input style={inputStyle} type="number" min={1} max={20} placeholder="Nivel *"
+                          value={form.hierarchyLevel} onChange={(e) => updateField('hierarchyLevel', e.target.value)}
+                          title="Nivel jerárquico (1=más alto, 7+=operativo)" />
+                      </div>
+                    </div>
                   )}
-                  {/* Show custom input when __custom__ selected and position is empty */}
-                  {!positionCatalog.some(p => p.name === form.position) && form.position === '' && (
-                    <input style={{ ...inputStyle, marginTop: '0.35rem' }} placeholder="Escribir cargo personalizado"
-                      value="" onChange={(e) => { updateField('position', e.target.value); updateField('hierarchyLevel', ''); }} />
+                  {!positionCatalog.some(p => p.name === form.position) && form.position && (
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0.2rem 0 0' }}>
+                      El cargo se agregará automáticamente al catálogo con el nivel indicado. Nivel 1 = más alto (ej: Gerente General), nivel 7+ = operativo.
+                    </p>
                   )}
                 </>
               ) : (

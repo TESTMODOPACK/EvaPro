@@ -534,6 +534,45 @@ export class TenantsService {
     return { inUse: count > 0, count };
   }
 
+  /**
+   * Adds a position to the catalog if it doesn't already exist (case-insensitive).
+   * Used when creating/updating users with custom positions.
+   */
+  async addPositionIfNew(tenantId: string, name: string, level: number): Promise<void> {
+    if (!name?.trim() || !Number.isInteger(level) || level < 1) return;
+    const tenant = await this.findById(tenantId);
+    const current: { name: string; level: number }[] = Array.isArray(tenant.settings?.positions) && tenant.settings.positions.length > 0
+      ? tenant.settings.positions
+      : [...TenantsService.DEFAULT_POSITIONS];
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const exists = current.some(p => norm(p.name) === norm(name.trim()));
+    if (exists) return; // Already in catalog
+    current.push({ name: name.trim(), level });
+    current.sort((a, b) => a.level - b.level);
+    tenant.settings = { ...(tenant.settings || {}), positions: current };
+    await this.tenantRepository.save(tenant);
+  }
+
+  /** Returns all positions from catalog + any custom positions assigned to users */
+  async getPositionsWithInUse(tenantId: string): Promise<{ name: string; level: number }[]> {
+    const catalog = await this.getPositionsCatalog(tenantId);
+    const catalogNames = new Set(catalog.map(p => p.name.toLowerCase()));
+    // Find positions assigned to users that aren't in catalog
+    const users = await this.userRepository.find({
+      where: { tenantId },
+      select: ['position', 'hierarchyLevel'],
+    });
+    const extras: { name: string; level: number }[] = [];
+    const seen = new Set<string>();
+    for (const u of users) {
+      if (u.position && !catalogNames.has(u.position.toLowerCase()) && !seen.has(u.position.toLowerCase())) {
+        seen.add(u.position.toLowerCase());
+        extras.push({ name: u.position, level: u.hierarchyLevel || 99 });
+      }
+    }
+    return [...catalog, ...extras].sort((a, b) => a.level - b.level);
+  }
+
   // ─── Bulk Onboarding (from Excel data) ─────────────────────────────
 
   async bulkOnboard(data: {

@@ -73,6 +73,12 @@ export class TenantsController {
     return this.tenantsService.setPositionsCatalog(req.user.tenantId, positions);
   }
 
+  @Get('me/positions/all')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getPositionsWithInUse(@Request() req: any) {
+    return this.tenantsService.getPositionsWithInUse(req.user.tenantId);
+  }
+
   @Get('me/positions/check-usage')
   @Roles('super_admin', 'tenant_admin')
   checkPositionUsage(@Request() req: any, @Query('name') name: string) {
