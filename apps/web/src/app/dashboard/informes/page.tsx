@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
-import { useCompetencyRadar, useSelfVsOthers, useHeatmap } from '@/hooks/useReports';
+import { useCompetencyRadar, useSelfVsOthers } from '@/hooks/useReports';
 import { useCycles } from '@/hooks/useCycles';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useUsers } from '@/hooks/useUsers';
@@ -15,6 +15,8 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -22,6 +24,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
 
 function Spinner() {
   return (
@@ -303,114 +306,6 @@ function SelfVsOthersSection({ cycleId, userId }: { cycleId: string; userId: str
   );
 }
 
-/* ─── Heatmap Section — REMOVED (moved to Resumen Ejecutivo por Ciclo) ─── */
-/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
-function _HeatmapSection_REMOVED({ cycleId }: { cycleId: string }) {
-  const { data, isLoading } = useHeatmap(cycleId);
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  if (isLoading) return <Spinner />;
-  if (!data || !data.heatmap || data.heatmap.length === 0) {
-    return (
-      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{'Sin datos para el heatmap'}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-      <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-        {'Mapa de Calor por Departamento'}
-      </h2>
-      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-        {'Distribuci\u00f3n de colaboradores por nivel de desempe\u00f1o en cada departamento'}
-      </p>
-
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', fontSize: '0.72rem' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--danger)', display: 'inline-block' }} /> {'Bajo (<4)'}
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--warning)', display: 'inline-block' }} /> {'Medio (4-7)'}
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--success)', display: 'inline-block' }} /> {'Alto (\u22657)'}
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {data.heatmap.map((dept: any) => {
-          const total = dept.total || 1;
-          return (
-            <div key={dept.department}>
-              <div
-                className="card"
-                style={{ padding: '0.75rem 1rem', cursor: 'pointer' }}
-                onClick={() => setExpanded(expanded === dept.department ? null : dept.department)}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{dept.department}</span>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: scoreColor(dept.avgScore) }}>
-                      {dept.avgScore.toFixed(1)}
-                    </span>
-                    <span className={`badge ${dept.avgScore >= 7 ? 'badge-success' : dept.avgScore >= 4 ? 'badge-warning' : 'badge-danger'}`} style={{ fontSize: '0.65rem' }}>
-                      {scoreLabel(dept.avgScore)}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    {dept.total} {dept.total === 1 ? 'persona' : 'personas'}
-                    {' '}{expanded === dept.department ? '\u25BC' : '\u25B6'}
-                  </span>
-                </div>
-
-                {/* Stacked bar */}
-                <div style={{ display: 'flex', height: '16px', borderRadius: '8px', overflow: 'hidden', background: 'var(--border)' }}>
-                  {dept.low > 0 && (
-                    <div style={{ width: `${(dept.low / total) * 100}%`, background: 'var(--danger)', transition: 'width 0.3s' }} title={`Bajo: ${dept.low}`} />
-                  )}
-                  {dept.mid > 0 && (
-                    <div style={{ width: `${(dept.mid / total) * 100}%`, background: 'var(--warning)', transition: 'width 0.3s' }} title={`Medio: ${dept.mid}`} />
-                  )}
-                  {dept.high > 0 && (
-                    <div style={{ width: `${(dept.high / total) * 100}%`, background: 'var(--success)', transition: 'width 0.3s' }} title={`Alto: ${dept.high}`} />
-                  )}
-                </div>
-              </div>
-
-              {/* Expanded user list */}
-              {expanded === dept.department && (
-                <div style={{ padding: '0.5rem 1rem', marginTop: '-0.25rem' }}>
-                  {dept.privacyRestricted ? (
-                    <div style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.82rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm, 6px)' }}>
-                      Detalle individual no disponible — se requieren al menos 5 personas en el departamento para garantizar privacidad
-                    </div>
-                  ) : dept.users && dept.users.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      {dept.users.map((u: any, i: number) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.8rem' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>{u.name}</span>
-                          <span style={{ fontWeight: 700, color: scoreColor(u.score) }}>{u.score.toFixed(1)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                      Sin detalle disponible
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 export default function InformesPage() {
@@ -468,11 +363,7 @@ export default function InformesPage() {
   // Use configured departments from Mantenedores
   const { departments } = useDepartments();
   const sortedCycles = cycles
-    ? [...cycles].sort((a: any, b: any) => {
-        if (a.status === 'closed' && b.status !== 'closed') return -1;
-        if (a.status !== 'closed' && b.status === 'closed') return 1;
-        return 0;
-      })
+    ? cycles.filter((c: any) => c.status === 'closed')
     : [];
 
   return (
@@ -482,7 +373,7 @@ export default function InformesPage() {
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Informes por Colaborador</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Mapa de calor por departamento, análisis individual y exportación de informes
+            Análisis individual, evolución entre ciclos y exportación de informes
           </p>
         </div>
         {selectedCycleId && (
@@ -509,21 +400,22 @@ export default function InformesPage() {
               Guía de uso: Informes por Colaborador
             </h3>
 
-            {/* Section A */}
+            {/* Section A — Evolución */}
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '1rem' }}>📊</span>
+                <span style={{ fontSize: '1rem' }}>📈</span>
                 <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
-                  Vista General — visión global del ciclo por departamento
+                  Evolución entre Ciclos — compara el desempeño a lo largo del tiempo
                 </span>
               </div>
               <ul style={{ margin: 0, paddingLeft: '1.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
                 <li>
-                  <strong>Mapa de Calor por Departamento:</strong>{' '}
-                  Vista global de todos los departamentos con barra rojo/amarillo/verde mostrando
-                  cuántos colaboradores están en nivel bajo, medio o alto.
-                  Haz clic en un departamento para ver el detalle individual con el nombre y puntaje de cada persona.
-                  Siempre muestra todos los departamentos del ciclo (sin filtros).
+                  <strong>Tabla comparativa:</strong>{' '}
+                  Muestra los puntajes del colaborador en todos los ciclos cerrados: autoevaluación, jefatura, pares y promedio general, con indicadores de tendencia (▲▼).
+                </li>
+                <li>
+                  <strong>Gráfico de evolución:</strong>{' '}
+                  Línea de tendencia del puntaje general a través de los ciclos, permitiendo visualizar mejoras o retrocesos en el tiempo.
                 </li>
               </ul>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem', paddingLeft: '1.4rem' }}>
@@ -579,10 +471,11 @@ export default function InformesPage() {
             <select style={selectStyle} value={selectedCycleId || ''} onChange={(e) => setSelectedCycleId(e.target.value || null)}>
               <option value="">{'Selecciona un ciclo'}</option>
               {sortedCycles.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status})</option>
+                <option key={c.id} value={c.id}>{c.name} (Cerrado)</option>
               ))}
             </select>
           )}
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>Solo ciclos cerrados con datos completos</span>
         </div>
 
         {/* Dept filter + Collaborator selector — same row */}
@@ -661,10 +554,177 @@ export default function InformesPage() {
             )}
           </div>
 
-          {/* Mapa de Calor movido a Resumen Ejecutivo por Ciclo */}
+          {/* ── SECCIÓN EVOLUCIÓN ENTRE CICLOS ──────────────────── */}
+          {selectedUserId && <EvolutionSection userId={selectedUserId} />}
 
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─── Evolution Section Component ────────────────────────────────────── */
+function EvolutionSection({ userId }: { userId: string }) {
+  const { data, isLoading } = usePerformanceHistory(userId);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const history = data?.history || [];
+  if (isLoading) return <Spinner />;
+  if (history.length === 0) return null;
+
+  const fmtScore = (v: number | null) => v != null ? Number(v).toFixed(1) : '—';
+  const delta = (curr: number | null | undefined, prev: number | null | undefined) => {
+    if (curr == null || prev == null) return null;
+    return Number(curr) - Number(prev);
+  };
+
+  const first = history.find((h: any) => h.avgOverall != null);
+  const last = history.length > 0 ? history[history.length - 1] : null;
+  const totalDelta = first && last && first.avgOverall != null && last.avgOverall != null
+    ? (Number(last.avgOverall) - Number(first.avgOverall)).toFixed(1)
+    : null;
+
+  const chartData = history
+    .filter((h: any) => h.avgOverall != null)
+    .map((h: any) => ({ name: h.cycleName, general: Number(h.avgOverall), auto: h.avgSelf != null ? Number(h.avgSelf) : null, jefatura: h.avgManager != null ? Number(h.avgManager) : null, pares: h.avgPeer != null ? Number(h.avgPeer) : null }));
+
+  const handleExportEvolution = async (format: string) => {
+    setExporting(format);
+    try {
+      const esc = (v: string) => { const s = v ?? ''; return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s; };
+      const headers = ['Ciclo', 'Tipo', 'Período', 'Autoevaluación', 'Jefatura', 'Pares', 'General'];
+      const rows = history.map((h: any) => [
+        esc(h.cycleName || ''), esc(h.cycleType || ''),
+        esc(h.startDate ? new Date(h.startDate).toLocaleDateString('es-CL') : ''),
+        fmtScore(h.avgSelf), fmtScore(h.avgManager), fmtScore(h.avgPeer), fmtScore(h.avgOverall),
+      ]);
+
+      if (format === 'csv') {
+        const csv = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv; charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `evolucion-colaborador.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      } else if (format === 'xlsx') {
+        const XLSX = await import('xlsx/dist/xlsx.mini.min');
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        ws['!cols'] = headers.map(() => ({ wch: 18 }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Evolución');
+        XLSX.writeFile(wb, 'evolucion-colaborador.xlsx');
+      } else {
+        // PDF/PPTX: fallback to CSV download with note
+        const csv = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv; charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `evolucion-colaborador.${format === 'pdf' ? 'csv' : 'csv'}`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+    } catch { /* ignore */ }
+    setExporting(null);
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <span style={{ fontSize: '1.1rem' }}>📈</span>
+          <div>
+            <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Evolución entre Ciclos</h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+              Comparativa de puntajes a lo largo de {history.length} ciclo{history.length !== 1 ? 's' : ''}
+              {totalDelta && Number(totalDelta) !== 0 && (
+                <span style={{ marginLeft: '0.5rem', fontWeight: 700, color: Number(totalDelta) > 0 ? 'var(--success)' : 'var(--danger)' }}>
+                  {Number(totalDelta) > 0 ? '▲' : '▼'} {totalDelta} puntos
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.35rem' }}>
+          {(['xlsx', 'pdf', 'pptx', 'csv'] as const).map(fmt => (
+            <button key={fmt} className="btn-ghost" onClick={() => handleExportEvolution(fmt)} disabled={!!exporting}
+              style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}>
+              {exporting === fmt ? '...' : fmt.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Evolution chart */}
+      {chartData.length >= 2 && (
+        <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+              <YAxis domain={[0, 10]} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.82rem' }} />
+              <Legend wrapperStyle={{ fontSize: '0.78rem' }} />
+              <Line type="monotone" dataKey="general" stroke="#6366f1" strokeWidth={3} dot={{ r: 5 }} name="General" />
+              <Line type="monotone" dataKey="auto" stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 3 }} name="Auto" connectNulls />
+              <Line type="monotone" dataKey="jefatura" stroke="#10b981" strokeWidth={1.5} dot={{ r: 3 }} name="Jefatura" connectNulls />
+              <Line type="monotone" dataKey="pares" stroke="#8b5cf6" strokeWidth={1.5} dot={{ r: 3 }} name="Pares" connectNulls />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Evolution table */}
+      <div className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-wrapper" style={{ margin: 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr>
+                {['Ciclo', 'Tipo', 'Período', 'Auto', 'Jefatura', 'Pares', 'General'].map((h) => (
+                  <th key={h} style={{ textAlign: h === 'Ciclo' || h === 'Tipo' || h === 'Período' ? 'left' : 'center', padding: '0.6rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--border)' }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h: any, i: number) => {
+                const prev = i > 0 ? history[i - 1] : null;
+                const renderDelta = (curr: number | null | undefined, prevVal: number | null | undefined) => {
+                  const d = delta(curr, prevVal);
+                  if (d == null || d === 0) return null;
+                  return (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, marginLeft: '0.25rem', color: d > 0 ? 'var(--success)' : 'var(--danger)' }}>
+                      {d > 0 ? '▲' : '▼'}{Math.abs(d).toFixed(1)}
+                    </span>
+                  );
+                };
+                return (
+                  <tr key={h.cycleId || i} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{h.cycleName}</td>
+                    <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{h.cycleType || '—'}</td>
+                    <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {h.startDate ? new Date(h.startDate).toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }) : '—'}
+                    </td>
+                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: '#f59e0b', fontWeight: 600 }}>
+                      {fmtScore(h.avgSelf)}{renderDelta(h.avgSelf, prev?.avgSelf)}
+                    </td>
+                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: '#10b981', fontWeight: 600 }}>
+                      {fmtScore(h.avgManager)}{renderDelta(h.avgManager, prev?.avgManager)}
+                    </td>
+                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: '#8b5cf6', fontWeight: 600 }}>
+                      {fmtScore(h.avgPeer)}{renderDelta(h.avgPeer, prev?.avgPeer)}
+                    </td>
+                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', fontWeight: 800, color: 'var(--accent)' }}>
+                      {fmtScore(h.avgOverall)}{renderDelta(h.avgOverall, prev?.avgOverall)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
