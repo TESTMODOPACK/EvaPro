@@ -36,7 +36,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 
 type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned' | 'at_risk';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
-type CommentType = 'comentario' | 'felicitacion' | 'seguimiento' | 'adjunto';
+type CommentType = 'seguimiento' | 'felicitacion' | 'bloqueo' | 'decision' | 'comentario' | 'adjunto';
 
 const typeBadge: Record<string, string> = {
   OKR: 'badge-accent',
@@ -57,17 +57,21 @@ const statusBadge: Record<string, string> = {
 // filterPills is now built inside the component using t() — see ObjetivosPage
 
 const commentTypeBadge: Record<string, string> = {
-  comentario: 'badge-accent',
-  felicitacion: 'badge-success',
   seguimiento: 'badge-warning',
-  adjunto: 'badge-accent',
+  felicitacion: 'badge-success',
+  bloqueo: 'badge-danger',
+  decision: 'badge-accent',
+  comentario: 'badge-accent',
+  adjunto: 'badge-ghost',
 };
 
 const commentTypeLabel: Record<string, string> = {
-  comentario: 'Comentario',
-  felicitacion: 'Felicitación',
-  seguimiento: 'Seguimiento',
-  adjunto: 'Adjunto',
+  seguimiento: '📋 Seguimiento',
+  felicitacion: '🎉 Felicitación',
+  bloqueo: '🚫 Bloqueo',
+  decision: '📌 Decisión',
+  comentario: '💬 Comentario',
+  adjunto: '📎 Adjunto',
 };
 
 /** Returns days until target date. Negative = overdue */
@@ -261,10 +265,12 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
             onChange={(e) => setType(e.target.value as CommentType)}
             style={{ fontSize: '0.78rem', padding: '0.3rem 0.5rem', width: 'auto' }}
           >
-            <option value="comentario">Comentario</option>
-            <option value="felicitacion">Felicitación</option>
-            <option value="seguimiento">Seguimiento</option>
-            <option value="adjunto">Adjunto</option>
+            <option value="seguimiento">📋 Seguimiento</option>
+            <option value="felicitacion">🎉 Felicitación</option>
+            <option value="bloqueo">🚫 Bloqueo</option>
+            <option value="decision">📌 Decisión</option>
+            <option value="comentario">💬 Comentario</option>
+            <option value="adjunto">📎 Adjunto</option>
           </select>
           {type === 'adjunto' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '180px' }}>
@@ -2091,8 +2097,12 @@ function ObjetivosPageContent() {
                 {isExpanded && (() => {
                   const isOwnObjective = (obj.userId || obj.user?.id) === userId;
                   const isOverrideByAdmin = (isAdmin || isManager) && !isOwnObjective;
-                  const noteRequired = isOverrideByAdmin;
-                  const canSaveProgress = !noteRequired || progressForm.notes.trim().length > 0;
+                  // Notes are ALWAYS required for progress updates
+                  const noteRequired = true;
+                  const canSaveProgress = progressForm.notes.trim().length > 0;
+                  // OKR with KRs: manual progress is blocked
+                  const hasKRs = obj.type === 'OKR' && Array.isArray(obj.keyResults) && obj.keyResults.length > 0;
+                  const progressBlocked = hasKRs;
                   return (
                   <>
                     {/* Approval history */}
@@ -2120,69 +2130,79 @@ function ObjetivosPageContent() {
 
                     {/* Progress update */}
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
-                      {/* Warning banner for admin/manager updating someone else's objective */}
-                      {isOverrideByAdmin && (
-                        <div style={{
-                          display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
-                          padding: '0.6rem 0.75rem', marginBottom: '0.75rem',
-                          background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
-                          borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--warning)', lineHeight: 1.5,
-                        }}>
-                          <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
-                          <span>
-                            Estás modificando el progreso de <strong>{assignedName}</strong>.
-                            Debes indicar el motivo en la nota — quedará registrado en el historial.
-                          </span>
+                      {/* OKR with KRs: progress is automatic */}
+                      {progressBlocked ? (
+                        <div style={{ padding: '0.6rem 0.75rem', marginBottom: '0.5rem', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                          {'📊'} El progreso de este objetivo OKR se calcula automáticamente a partir de los <strong>Resultados Clave</strong>. Actualice los KRs para modificar el progreso.
                         </div>
-                      )}
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                          Progreso: {progressForm.value}%
-                        </label>
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          value={progressForm.value}
-                          onChange={(e) => setProgressForm({ ...progressForm, value: Number(e.target.value) })}
-                          style={{ width: '100%', accentColor: 'var(--accent)' }}
-                        />
-                      </div>
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <label style={{ fontSize: '0.72rem', color: noteRequired ? 'var(--warning)' : 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
-                          {isOverrideByAdmin ? t('objetivos.form.updateReason') : t('objetivos.form.notes')}
-                        </label>
-                        <textarea
-                          className="input"
-                          rows={2}
-                          placeholder={isOverrideByAdmin ? 'Ej: Actualizado en reunión de seguimiento del 27/03...' : t('objetivos.form.notesPlaceholder')}
-                          value={progressForm.notes}
-                          onChange={(e) => setProgressForm({ ...progressForm, notes: e.target.value })}
-                          style={{
-                            width: '100%', resize: 'vertical', fontSize: '0.8rem',
-                            borderColor: noteRequired && !progressForm.notes.trim() ? 'var(--warning)' : undefined,
-                          }}
-                        />
-                        {noteRequired && !progressForm.notes.trim() && (
-                          <p style={{ fontSize: '0.72rem', color: 'var(--warning)', marginTop: '0.2rem' }}>
-                            {t('objetivos.form.progressNote')}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        className="btn-primary"
-                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}
-                        onClick={() => handleProgress(obj.id)}
-                        disabled={addProgress.isPending || !canSaveProgress}
-                      >
-                        {addProgress.isPending ? 'Guardando...' : 'Guardar progreso'}
-                      </button>
-                      {progressError && expandedId === obj.id && (
-                        <p style={{ color: 'var(--danger)', fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
-                          {progressError}
-                        </p>
+                      ) : (
+                        <>
+                          {/* Warning banner for admin/manager updating someone else's objective */}
+                          {isOverrideByAdmin && (
+                            <div style={{
+                              display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+                              padding: '0.6rem 0.75rem', marginBottom: '0.75rem',
+                              background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
+                              borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--warning)', lineHeight: 1.5,
+                            }}>
+                              <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
+                              <span>Estás modificando el progreso de <strong>{assignedName}</strong>.</span>
+                            </div>
+                          )}
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                              Progreso: {progressForm.value}%
+                            </label>
+                            <input type="range" min={0} max={100} value={progressForm.value}
+                              onChange={(e) => setProgressForm({ ...progressForm, value: Number(e.target.value) })}
+                              style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                          </div>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.72rem', color: 'var(--danger)', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>
+                              ¿Qué avance realizó? * (obligatorio)
+                            </label>
+                            <textarea className="input" rows={2}
+                              placeholder="Describa el avance realizado, qué tareas completó..."
+                              value={progressForm.notes}
+                              onChange={(e) => setProgressForm({ ...progressForm, notes: e.target.value })}
+                              style={{ width: '100%', resize: 'vertical', fontSize: '0.8rem', borderColor: !progressForm.notes.trim() ? 'rgba(239,68,68,0.4)' : undefined }} />
+                            {!progressForm.notes.trim() && (
+                              <p style={{ fontSize: '0.72rem', color: 'var(--danger)', marginTop: '0.2rem' }}>Debe indicar el avance para guardar el progreso</p>
+                            )}
+                          </div>
+                          <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}
+                            onClick={() => handleProgress(obj.id)}
+                            disabled={addProgress.isPending || !canSaveProgress}>
+                            {addProgress.isPending ? 'Guardando...' : 'Guardar progreso'}
+                          </button>
+                          {progressError && expandedId === obj.id && (
+                            <p style={{ color: 'var(--danger)', fontSize: '0.75rem', margin: '0.25rem 0 0' }}>{progressError}</p>
+                          )}
+                        </>
                       )}
                     </div>
+
+                    {/* Progress history timeline */}
+                    {Array.isArray(obj.updates) && obj.updates.length > 0 && (
+                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                          {'📋'} Historial de progreso ({obj.updates.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '200px', overflowY: 'auto' }}>
+                          {[...obj.updates].reverse().map((u: any, i: number) => (
+                            <div key={u.id || i} style={{ display: 'flex', gap: '0.5rem', fontSize: '0.78rem', padding: '0.35rem 0.5rem', background: i === 0 ? 'rgba(201,147,58,0.04)' : 'transparent', borderRadius: 'var(--radius-sm)' }}>
+                              <span style={{ color: 'var(--text-muted)', minWidth: '75px', flexShrink: 0, fontSize: '0.72rem' }}>
+                                {new Date(u.createdAt).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}
+                              </span>
+                              <span style={{ fontWeight: 700, color: 'var(--accent)', minWidth: '35px' }}>{u.progressValue}%</span>
+                              <span style={{ color: 'var(--text-secondary)', flex: 1 }}>
+                                {u.creator ? `${u.creator.firstName} ${u.creator.lastName}` : ''}{u.notes ? ` — ${u.notes}` : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Key Results section — only for OKR type, create only for admin/manager */}
                     {obj.type === 'OKR' && (

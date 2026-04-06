@@ -95,4 +95,11 @@ export class Objective {
 
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt: Date;
+
+  // Progress history and key results (eager: false, loaded via explicit relations)
+  @OneToMany('ObjectiveUpdate', 'objective')
+  updates: any[];
+
+  @OneToMany('KeyResult', 'objective')
+  keyResults: any[];
 }

@@ -43,7 +43,7 @@ export class ObjectiveComment {
   content: string;
 
   @Column({ type: 'varchar', length: 30, default: 'comentario' })
-  type: string; // comentario | felicitacion | seguimiento | adjunto
+  type: string; // seguimiento | felicitacion | bloqueo | decision | comentario | adjunto
 
   @Column({ type: 'varchar', length: 500, name: 'attachment_url', nullable: true })
   attachmentUrl: string | null;

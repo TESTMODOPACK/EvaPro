@@ -103,7 +103,7 @@ export class ObjectivesService {
     if (filterUserId) where.userId = filterUserId;
     return this.objectiveRepo.find({
       where,
-      relations: ['user'],
+      relations: ['user', 'updates', 'updates.creator', 'keyResults'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -119,7 +119,7 @@ export class ObjectivesService {
 
     return this.objectiveRepo.find({
       where: { tenantId, userId: In(userIds) },
-      relations: ['user'],
+      relations: ['user', 'updates', 'updates.creator', 'keyResults'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -128,7 +128,7 @@ export class ObjectivesService {
   async findByUser(tenantId: string, userId: string): Promise<Objective[]> {
     return this.objectiveRepo.find({
       where: { tenantId, userId },
-      relations: ['user'],
+      relations: ['user', 'updates', 'updates.creator', 'keyResults'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -370,17 +370,41 @@ export class ObjectivesService {
     objectiveId: string,
     dto: CreateObjectiveUpdateDto,
   ): Promise<ObjectiveUpdate> {
+    // Validate notes FIRST (no DB operation needed)
+    if (!dto.notes || dto.notes.trim().length === 0) {
+      throw new BadRequestException('Debe indicar qué avance realizó para actualizar el progreso.');
+    }
+
     const obj = await this.findById(tenantId, objectiveId);
-    // B7.4: Cannot update progress on completed objectives
     if (obj.status === ObjectiveStatus.COMPLETED) {
       throw new BadRequestException('Este objetivo ya está completado. No se puede actualizar el progreso');
     }
-    // B7.5: Cannot update progress on abandoned objectives
     if (obj.status === ObjectiveStatus.ABANDONED) {
       throw new BadRequestException('No se puede actualizar el progreso de un objetivo abandonado');
     }
+
+    // OKR with Key Results: progress is calculated automatically from KRs
+    const krs = await this.keyResultRepo.find({ where: { objectiveId } });
+    if (obj.type === 'OKR' && krs.length > 0) {
+      throw new BadRequestException(
+        'Este objetivo OKR tiene Resultados Clave. El progreso se calcula automáticamente al actualizar los KRs. Use la sección "Resultados Clave" para registrar avances.',
+      );
+    }
+
     obj.progress = dto.progressValue;
     if (dto.progressValue >= 100) {
+      // OKR: must have KRs defined and all completed
+      if (obj.type === 'OKR') {
+        if (krs.length === 0) {
+          throw new BadRequestException('No se puede completar un OKR sin Resultados Clave definidos. Agregue al menos un KR.');
+        }
+        const incompleteKrs = krs.filter((kr: any) => kr.status !== 'completed');
+        if (incompleteKrs.length > 0) {
+          throw new BadRequestException(
+            `No se puede completar: tiene ${incompleteKrs.length} Resultado(s) Clave pendiente(s). Complete los KRs primero.`,
+          );
+        }
+      }
       obj.status = ObjectiveStatus.COMPLETED;
     } else if (obj.status === ObjectiveStatus.DRAFT) {
       obj.status = ObjectiveStatus.ACTIVE;
