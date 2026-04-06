@@ -303,9 +303,9 @@ function SelfVsOthersSection({ cycleId, userId }: { cycleId: string; userId: str
   );
 }
 
-/* ─── Heatmap Section ──────────────────────────────────────────────── */
-
-function HeatmapSection({ cycleId }: { cycleId: string }) {
+/* ─── Heatmap Section — REMOVED (moved to Resumen Ejecutivo por Ciclo) ─── */
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+function _HeatmapSection_REMOVED({ cycleId }: { cycleId: string }) {
   const { data, isLoading } = useHeatmap(cycleId);
   const [expanded, setExpanded] = useState<string | null>(null);
 
