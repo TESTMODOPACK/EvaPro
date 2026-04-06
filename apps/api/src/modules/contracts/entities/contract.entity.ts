@@ -54,6 +54,18 @@ export class Contract {
   @Column({ type: 'uuid', name: 'parent_contract_id', nullable: true, comment: 'For amendments — references the original contract' })
   parentContractId: string | null;
 
+  @Column({ type: 'text', name: 'rejection_reason', nullable: true, comment: 'Reason provided when contract was rejected by tenant admin' })
+  rejectionReason: string | null;
+
+  @Column({ type: 'timestamptz', name: 'rejected_at', nullable: true })
+  rejectedAt: Date | null;
+
+  @Column({ type: 'uuid', name: 'rejected_by', nullable: true })
+  rejectedBy: string | null;
+
+  @Column({ type: 'jsonb', name: 'status_history', nullable: true, default: '[]', comment: 'Array of {status, date, userId, reason?}' })
+  statusHistory: Array<{ status: string; date: string; userId?: string; reason?: string }>;
+
   @Column({ type: 'uuid', name: 'created_by' })
   createdBy: string;
 

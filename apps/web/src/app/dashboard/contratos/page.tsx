@@ -45,6 +45,10 @@ export default function ContratosPage() {
   const [queryModal, setQueryModal] = useState<{ contractId: string; contractTitle: string } | null>(null);
   const [queryForm, setQueryForm] = useState({ type: 'question', message: '' });
   const [querySubmitting, setQuerySubmitting] = useState(false);
+  // Reject state
+  const [rejectModal, setRejectModal] = useState<{ contractId: string; contractTitle: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
   const [createForm, setCreateForm] = useState({
     tenantId: '', type: 'service_agreement', title: '', description: '', content: '', effectiveDate: new Date().toISOString().split('T')[0],
   });
@@ -339,12 +343,50 @@ export default function ContratosPage() {
                       </div>
                     )}
 
-                    {/* Sign button — tenant_admin */}
+                    {/* Rejection info — show if contract was previously rejected */}
+                    {c.rejectionReason && (
+                      <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(239,68,68,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.15)', marginBottom: '0.75rem', fontSize: '0.8rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: '0.2rem' }}>Contrato rechazado</div>
+                        <div style={{ color: 'var(--text-secondary)' }}>{c.rejectionReason}</div>
+                        {c.rejectedAt && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{new Date(c.rejectedAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</div>}
+                      </div>
+                    )}
+
+                    {/* Status history timeline */}
+                    {Array.isArray(c.statusHistory) && c.statusHistory.length > 0 && (
+                      <details style={{ marginBottom: '0.75rem', fontSize: '0.78rem' }}>
+                        <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontWeight: 600 }}>Historial de estados ({c.statusHistory.length})</summary>
+                        <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          {c.statusHistory.map((h: any, idx: number) => (
+                            <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', padding: '0.15rem 0', borderBottom: '1px solid var(--border)' }}>
+                              <span style={{
+                                fontSize: '0.7rem', fontWeight: 600, padding: '1px 6px', borderRadius: 3,
+                                background: h.status === 'rejected' ? 'rgba(239,68,68,0.1)' : h.status === 'active' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                                color: h.status === 'rejected' ? 'var(--danger)' : h.status === 'active' ? 'var(--success)' : 'var(--warning)',
+                              }}>
+                                {h.status === 'pending_signature' ? 'Enviado a firma' : h.status === 'rejected' ? 'Rechazado' : h.status === 'active' ? 'Firmado' : h.status}
+                              </span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{new Date(h.date).toLocaleDateString('es-CL')}</span>
+                              {h.reason && <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontStyle: 'italic' }}>— {h.reason}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+
+                    {/* Sign + Reject buttons — tenant_admin */}
                     {canSign && sigs.length === 0 && (
-                      <button className="btn-primary" onClick={() => setSignModal({ documentType: 'contract', documentId: c.id, documentName: c.title })}
-                        style={{ fontSize: '0.85rem' }}>
-                        {t('contracts.signContract')}
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                        <button className="btn-primary" onClick={() => setSignModal({ documentType: 'contract', documentId: c.id, documentName: c.title })}
+                          style={{ fontSize: '0.85rem' }}>
+                          {t('contracts.signContract')}
+                        </button>
+                        <button
+                          onClick={() => { setRejectModal({ contractId: c.id, contractTitle: c.title }); setRejectReason(''); }}
+                          style={{ background: 'none', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm, 6px)', padding: '0.35rem 0.75rem', fontSize: '0.82rem', color: 'var(--danger)', cursor: 'pointer' }}>
+                          Rechazar
+                        </button>
+                      </div>
                     )}
 
                     {/* Download PDF */}
@@ -447,6 +489,52 @@ export default function ContratosPage() {
                   setQuerySubmitting(false);
                 }}>
                 {querySubmitting ? 'Enviando...' : 'Enviar consulta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Reject Modal */}
+      {rejectModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}>
+          <div className="card" style={{ padding: '1.5rem', maxWidth: '500px', width: '90%' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--danger)' }}>
+              Rechazar contrato
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+              <strong>{rejectModal.contractTitle}</strong>
+            </p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+              Al rechazar, el contrato volverá al estado borrador y se notificará al administrador del sistema para que realice los cambios necesarios.
+            </p>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
+                Motivo del rechazo *
+              </label>
+              <textarea className="input" rows={3} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Explique el motivo del rechazo o los cambios que solicita..." style={{ resize: 'vertical', fontSize: '0.82rem' }} />
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                disabled={rejecting || !rejectReason.trim()}
+                onClick={async () => {
+                  if (!token || !rejectReason.trim()) return;
+                  setRejecting(true);
+                  try {
+                    await api.contracts.reject(token, rejectModal.contractId, rejectReason.trim());
+                    toast('Contrato rechazado. Se notificó al administrador del sistema.', 'success');
+                    setRejectModal(null);
+                    loadData();
+                  } catch (e: any) {
+                    toast(e.message || 'Error al rechazar', 'error');
+                  }
+                  setRejecting(false);
+                }}
+                style={{ background: 'var(--danger)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm, 6px)', padding: '0.45rem 1rem', fontSize: '0.82rem', cursor: rejecting ? 'wait' : 'pointer', opacity: rejecting || !rejectReason.trim() ? 0.5 : 1 }}>
+                {rejecting ? 'Rechazando...' : 'Confirmar rechazo'}
+              </button>
+              <button className="btn-ghost" onClick={() => setRejectModal(null)} style={{ fontSize: '0.82rem' }}>
+                Cancelar
               </button>
             </div>
           </div>

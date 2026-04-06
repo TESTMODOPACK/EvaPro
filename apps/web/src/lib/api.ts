@@ -937,6 +937,8 @@ export const api = {
     getTemplates: (token: string) => request<any[]>("/contracts/templates", {}, token),
     bulkCreate: (token: string, tenantId: string) => request<any>(`/contracts/bulk-create/${tenantId}`, { method: "POST" }, token),
     remove: (token: string, id: string) => request<void>(`/contracts/${id}`, { method: "DELETE" }, token),
+    reject: (token: string, id: string, reason: string) =>
+      request<any>(`/contracts/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }, token),
     submitQuery: (token: string, id: string, data: { type: string; message: string }) =>
       request<{ sent: boolean }>(`/contracts/${id}/query`, { method: "POST", body: JSON.stringify(data) }, token),
     downloadPdfUrl: (token: string, id: string) =>

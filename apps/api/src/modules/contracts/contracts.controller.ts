@@ -93,6 +93,17 @@ export class ContractsController {
     return this.contractsService.sendForSignature(id, req.user.userId);
   }
 
+  /** Tenant admin rejects a contract — returns to draft */
+  @Post(':id/reject')
+  @Roles('tenant_admin')
+  rejectContract(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { reason: string },
+  ) {
+    return this.contractsService.rejectContract(id, req.user.tenantId, req.user.userId, dto.reason);
+  }
+
   /** Admin sends a query/request about a contract to super_admin */
   @Post(':id/query')
   @Roles('tenant_admin')

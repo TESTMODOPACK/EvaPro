@@ -171,6 +171,10 @@ export class ContractsService {
     // ─── Fin validaciones ────────────────────────────────────────────
 
     contract.status = 'pending_signature';
+    // Log to status history
+    const history = Array.isArray(contract.statusHistory) ? [...contract.statusHistory] : [];
+    history.push({ status: 'pending_signature', date: new Date().toISOString(), userId });
+    contract.statusHistory = history;
     await this.contractRepo.save(contract);
     if (tenant) {
       const admins = await this.userRepo.find({ where: { tenantId: contract.tenantId, role: 'tenant_admin', isActive: true }, select: ['id', 'email', 'firstName'] });
@@ -225,10 +229,55 @@ export class ContractsService {
     return { created: created.length, contracts: created };
   }
 
+  /** Tenant admin rejects a contract — returns to draft with reason */
+  async rejectContract(id: string, tenantId: string, userId: string, reason: string): Promise<Contract> {
+    const contract = await this.findById(id, tenantId);
+    if (contract.status !== 'pending_signature') {
+      throw new BadRequestException('Solo se pueden rechazar contratos en estado pendiente de firma');
+    }
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('Debe indicar un motivo de rechazo');
+    }
+
+    contract.status = 'draft';
+    contract.rejectionReason = reason.trim();
+    contract.rejectedAt = new Date();
+    contract.rejectedBy = userId;
+
+    // Log to status history
+    const history = Array.isArray(contract.statusHistory) ? [...contract.statusHistory] : [];
+    history.push({ status: 'rejected', date: new Date().toISOString(), userId, reason: reason.trim() });
+    contract.statusHistory = history;
+
+    await this.contractRepo.save(contract);
+
+    // Notify all super_admins about the rejection
+    const superAdmins = await this.userRepo.find({ where: { role: 'super_admin', isActive: true }, select: ['id'] });
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['firstName', 'lastName'] });
+    const rejectorName = user ? `${user.firstName} ${user.lastName}` : 'Administrador';
+    for (const sa of superAdmins) {
+      await this.notificationsService.create({
+        tenantId: contract.tenantId,
+        userId: sa.id,
+        type: NotificationType.GENERAL,
+        title: `Contrato rechazado: ${contract.title}`,
+        message: `${rejectorName} rechazó el contrato. Motivo: ${reason.trim()}`,
+      }).catch(() => {});
+    }
+
+    await this.auditService.log(contract.tenantId, userId, 'contract.rejected', 'contract', id, { title: contract.title, reason: reason.trim() }).catch(() => {});
+
+    return contract;
+  }
+
   async activateAfterSignature(id: string): Promise<void> {
     const contract = await this.findById(id);
     if (contract.status === 'pending_signature') {
       contract.status = 'active';
+      // Log to status history
+      const history = Array.isArray(contract.statusHistory) ? [...contract.statusHistory] : [];
+      history.push({ status: 'active', date: new Date().toISOString() });
+      contract.statusHistory = history;
       await this.contractRepo.save(contract);
     }
   }
