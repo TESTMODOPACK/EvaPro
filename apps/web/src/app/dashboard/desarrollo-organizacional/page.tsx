@@ -430,19 +430,15 @@ function DesarrolloOrganizacionalPageContent() {
               <li><strong>Flujo:</strong> 1) Crear un plan. 2) Agregar iniciativas al plan. 3) Asignar responsables. 4) Actualizar progreso periódicamente. 5) Marcar como completada al finalizar.</li>
               <li><strong>Estadísticas:</strong> Progreso promedio, cantidad de iniciativas por estado, departamentos involucrados.</li>
             </ul>
-            <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginTop: '0.75rem' }}>
+              <strong style={{ color: 'var(--accent)' }}>Estructura: Empresa → Departamento → Acción.</strong>{' '}
+              Cada plan anual contiene iniciativas por departamento (o para toda la empresa). Los colaboradores pueden vincular sus PDIs individuales a estas iniciativas para mostrar la contribución de su desarrollo a los objetivos organizacionales.
+            </div>
+            <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
               <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Administradores crean y gestionan planes. Encargados pueden ver planes de su área. Colaboradores no tienen acceso.
             </div>
           </div>
         )}
-
-        {/* Info card */}
-        <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
-          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-            <strong>Empresa → Departamento → Acción.</strong>{' '}
-            Cada plan anual contiene iniciativas por departamento (o para toda la empresa). Los colaboradores pueden vincular sus PDIs individuales a estas iniciativas para mostrar la contribución de su desarrollo a los objetivos organizacionales.
-          </p>
-        </div>
 
         {/* Mensajes */}
         {error && (

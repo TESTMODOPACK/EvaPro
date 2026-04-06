@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
+import { useDepartments } from '@/hooks/useDepartments';
 import ConfirmModal from '@/components/ConfirmModal';
 import SignatureModal, { SignatureBadge } from '@/components/SignatureModal';
 
@@ -102,10 +103,18 @@ function DesarrolloPageContent() {
   const isAdmin = role === 'tenant_admin';
   const isManager = role === 'manager';
   const canCreate = isAdmin || isManager;
+  const { departments: availableDepts } = useDepartments();
 
   // Pagination
   const [pdiPage, setPdiPage] = useState(1);
   const PDI_PAGE_SIZE = 15;
+
+  // Filters
+  const [filterDept, setFilterDept] = useState('');
+  const [filterYear, setFilterYear] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
+  const [groupByUser, setGroupByUser] = useState(true);
 
   // Signatures
   const [signModal, setSignModal] = useState<{ documentType: string; documentId: string; documentName: string } | null>(null);
@@ -522,6 +531,57 @@ function DesarrolloPageContent() {
         </div>
       )}
 
+      {/* Filters bar */}
+      <div className="card animate-fade-up" style={{ padding: '0.85rem 1.25rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Departamento</label>
+            <select className="input" style={{ fontSize: '0.82rem', padding: '0.35rem 0.6rem', minWidth: '150px' }} value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setPdiPage(1); }}>
+              <option value="">Todos</option>
+              {availableDepts.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Año</label>
+            <select className="input" style={{ fontSize: '0.82rem', padding: '0.35rem 0.6rem', minWidth: '100px' }} value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setPdiPage(1); }}>
+              <option value="">Todos</option>
+              {Array.from(new Set(plans.map((p: any) => p.targetDate ? new Date(p.targetDate).getFullYear().toString() : '').filter(Boolean))).sort().reverse().map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Estado</label>
+            <select className="input" style={{ fontSize: '0.82rem', padding: '0.35rem 0.6rem', minWidth: '130px' }} value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPdiPage(1); }}>
+              <option value="">Todos</option>
+              <option value="borrador">Borrador</option>
+              <option value="activo">Activo</option>
+              <option value="en_revision">En Revisión</option>
+              <option value="completado">Completado</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Prioridad</label>
+            <select className="input" style={{ fontSize: '0.82rem', padding: '0.35rem 0.6rem', minWidth: '110px' }} value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); setPdiPage(1); }}>
+              <option value="">Todas</option>
+              <option value="alta">Alta</option>
+              <option value="media">Media</option>
+              <option value="baja">Baja</option>
+            </select>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)', cursor: 'pointer', paddingBottom: '0.35rem' }}>
+            <input type="checkbox" checked={groupByUser} onChange={(e) => setGroupByUser(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+            Agrupar por colaborador
+          </label>
+          {(filterDept || filterYear || filterStatus || filterPriority) && (
+            <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }} onClick={() => { setFilterDept(''); setFilterYear(''); setFilterStatus(''); setFilterPriority(''); setPdiPage(1); }}>
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Create form */}
       {showCreate && canCreate && (
         <div className="card animate-fade-up" style={{ padding: '1.75rem', borderLeft: '4px solid var(--accent)' }}>
@@ -748,121 +808,186 @@ function DesarrolloPageContent() {
         </div>
       )}
 
-      {/* Plans list — managers only see their team's plans */}
+      {/* Plans list — with filters and grouping */}
       {(() => {
-        const allVisible = isManager
+        // 1. Role-based visibility
+        let allVisible = isManager
           ? plans.filter((p: any) => {
               const planUser = users.find((u: any) => u.id === p.userId);
               return planUser?.managerId === user?.userId || p.userId === user?.userId;
             })
           : plans;
+
+        // 2. Apply filters
+        if (filterDept) {
+          allVisible = allVisible.filter((p: any) => {
+            const pu = p.user || users.find((u: any) => u.id === p.userId);
+            return pu?.department === filterDept;
+          });
+        }
+        if (filterYear) {
+          allVisible = allVisible.filter((p: any) => p.targetDate && new Date(p.targetDate).getFullYear().toString() === filterYear);
+        }
+        if (filterStatus) {
+          allVisible = allVisible.filter((p: any) => p.status === filterStatus);
+        }
+        if (filterPriority) {
+          allVisible = allVisible.filter((p: any) => p.priority === filterPriority);
+        }
+
+        // 3. Pagination
         const pdiTotalPages = Math.max(1, Math.ceil(allVisible.length / PDI_PAGE_SIZE));
         const safePdiPage = Math.min(pdiPage, pdiTotalPages);
         const visiblePlans = allVisible.slice((safePdiPage - 1) * PDI_PAGE_SIZE, safePdiPage * PDI_PAGE_SIZE);
-        return allVisible.length === 0 && !loading ? (
-        <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          {t('desarrollo.emptyPlans')}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {visiblePlans.map((plan: any) => {
-            const progress = plan.progress ?? 0;
-            const planUser = plan.user || users.find((u: any) => u.id === plan.userId);
-            const userName = planUser ? `${planUser.firstName} ${planUser.lastName}` : getUserName(plan.userId);
-            const userPosition = planUser?.position || '';
-            return (
-              <div key={plan.id} className="card animate-fade-up" style={{ cursor: 'pointer', padding: 0, overflow: 'hidden' }} onClick={() => openDetail(plan)}>
-                {/* Card header with user info */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--border)', background: 'rgba(99,102,241,0.03)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.82rem', flexShrink: 0 }}>
-                      {userName.split(' ').map((n: string) => n[0]).slice(0, 2).join('')}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>{userName}</div>
-                      {userPosition && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{userPosition}</div>}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <span className={STATUS_BADGE[plan.status] || 'badge'}>
-                      {t(STATUS_LABEL_KEYS[plan.status] || plan.status, { defaultValue: plan.status })}
-                    </span>
-                    <span className={PRIORITY_BADGE[plan.priority] || 'badge'}>
-                      {t(PRIORITY_LABEL_KEYS[plan.priority] || plan.priority, { defaultValue: plan.priority })}
-                    </span>
-                  </div>
-                </div>
-                {/* Card body */}
-                <div style={{ padding: '1rem 1.25rem' }}>
-                  <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
-                    {plan.title}
-                  </div>
-                  {plan.description && (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                      {plan.description}
-                    </div>
-                  )}
-                  {/* Progress bar */}
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
-                      <span>{t('desarrollo.progress')}</span>
-                      <span style={{ fontWeight: 700 }}>{progress}%</span>
-                    </div>
-                    <div style={{ height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${progress}%`, background: progress >= 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '4px', transition: 'width 0.3s' }} />
-                    </div>
-                  </div>
-                  {/* Footer info */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      {plan.targetDate && <span>{`Fecha l\u00edmite: ${new Date(plan.targetDate).toLocaleDateString('es-CL')}`}</span>}
-                      {plan.actions && <span>{`${plan.actions.length} acci\u00f3n${plan.actions.length !== 1 ? 'es' : ''}`}</span>}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
-                      {pdiSignatures[plan.id] ? (
-                        <SignatureBadge signatures={pdiSignatures[plan.id]} />
-                      ) : (plan.status === 'activo' || plan.status === 'completado') ? (
-                        <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                          onClick={() => setSignModal({ documentType: 'development_plan', documentId: plan.id, documentName: plan.title || 'Plan de desarrollo' })}>
-                          ✍️ Firmar
-                        </button>
-                      ) : null}
-                      {plan.status === 'borrador' && canCreate && (
-                        <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} onClick={() => handleActivate(plan.id)}>
-                          {t('desarrollo.activate')}
-                        </button>
-                      )}
-                      {plan.status === 'activo' && canCreate && (
-                        <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} onClick={() => handleCompletePlan(plan.id)}>
-                          {t('desarrollo.complete')}
-                        </button>
-                      )}
-                      <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }} onClick={() => openDetail(plan)}>
-                        {t('desarrollo.viewDetail')}
-                      </button>
-                    </div>
-                  </div>
+
+        if (allVisible.length === 0 && !loading) {
+          return (
+            <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+              {(filterDept || filterYear || filterStatus || filterPriority) ? 'No hay planes que coincidan con los filtros seleccionados' : t('desarrollo.emptyPlans')}
+            </div>
+          );
+        }
+
+        // 4. Group by user if enabled
+        const renderPlanCard = (plan: any) => {
+          const progress = plan.progress ?? 0;
+          return (
+            <div key={plan.id} className="card" style={{ cursor: 'pointer', padding: '0.85rem 1.25rem', borderLeft: `3px solid ${plan.status === 'completado' ? 'var(--success)' : plan.status === 'activo' ? 'var(--accent)' : 'var(--border)'}` }} onClick={() => openDetail(plan)}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>{plan.title}</div>
+                <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexShrink: 0 }}>
+                  <span className={STATUS_BADGE[plan.status] || 'badge'} style={{ fontSize: '0.68rem' }}>
+                    {t(STATUS_LABEL_KEYS[plan.status] || plan.status, { defaultValue: plan.status })}
+                  </span>
+                  <span className={PRIORITY_BADGE[plan.priority] || 'badge'} style={{ fontSize: '0.68rem' }}>
+                    {t(PRIORITY_LABEL_KEYS[plan.priority] || plan.priority, { defaultValue: plan.priority })}
+                  </span>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      );
-      })()}
+              {plan.description && <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>{plan.description}</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ flex: 1, maxWidth: '200px' }}>
+                  <div style={{ height: '6px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${progress}%`, background: progress >= 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '999px' }} />
+                  </div>
+                </div>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{progress}%</span>
+                {plan.targetDate && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Límite: {new Date(plan.targetDate).toLocaleDateString('es-CL')}</span>}
+                {plan.actions && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{plan.actions.length} acción{plan.actions.length !== 1 ? 'es' : ''}</span>}
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem' }} onClick={(e) => e.stopPropagation()}>
+                  {plan.status === 'borrador' && canCreate && (
+                    <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} onClick={() => handleActivate(plan.id)}>{t('desarrollo.activate')}</button>
+                  )}
+                  {plan.status === 'activo' && canCreate && (
+                    <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} onClick={() => handleCompletePlan(plan.id)}>{t('desarrollo.complete')}</button>
+                  )}
+                  <button className="btn-primary" style={{ fontSize: '0.72rem', padding: '0.2rem 0.6rem' }} onClick={() => openDetail(plan)}>{t('desarrollo.viewDetail')}</button>
+                </div>
+              </div>
+            </div>
+          );
+        };
 
-      {/* Pagination */}
-      {(() => {
-        const allVisible = isManager
-          ? plans.filter((p: any) => { const pu = users.find((u: any) => u.id === p.userId); return pu?.managerId === user?.userId || p.userId === user?.userId; })
-          : plans;
-        const tp = Math.max(1, Math.ceil(allVisible.length / PDI_PAGE_SIZE));
-        return tp > 1 ? (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
-            <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pdiPage <= 1} onClick={() => setPdiPage(p => p - 1)}>Anterior</button>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {Math.min(pdiPage, tp)} de {tp} ({allVisible.length} planes)</span>
-            <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pdiPage >= tp} onClick={() => setPdiPage(p => p + 1)}>Siguiente</button>
-          </div>
-        ) : null;
+        if (groupByUser) {
+          // Group plans by userId
+          const grouped: Record<string, any[]> = {};
+          for (const p of visiblePlans) {
+            const key = p.userId || 'unknown';
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(p);
+          }
+
+          return (
+            <>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                {allVisible.length} plan{allVisible.length !== 1 ? 'es' : ''} encontrado{allVisible.length !== 1 ? 's' : ''}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {Object.entries(grouped).map(([uid, userPlans]) => {
+                  const pu = (userPlans[0] as any).user || users.find((u: any) => u.id === uid);
+                  const uName = pu ? `${pu.firstName} ${pu.lastName}` : getUserName(uid);
+                  const uPos = pu?.position || '';
+                  const uDept = pu?.department || '';
+                  return (
+                    <div key={uid}>
+                      {/* User header */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem', paddingBottom: '0.4rem', borderBottom: '2px solid var(--border)' }}>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.75rem', flexShrink: 0 }}>
+                          {uName.split(' ').map((n: string) => n[0]).slice(0, 2).join('')}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>{uName}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {[uPos, uDept].filter(Boolean).join(' · ')} · {userPlans.length} plan{userPlans.length !== 1 ? 'es' : ''}
+                          </div>
+                        </div>
+                      </div>
+                      {/* User's plans */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {userPlans.map(renderPlanCard)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Pagination */}
+              {pdiTotalPages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                  <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pdiPage <= 1} onClick={() => setPdiPage(p => p - 1)}>Anterior</button>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {safePdiPage} de {pdiTotalPages} ({allVisible.length} planes)</span>
+                  <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pdiPage >= pdiTotalPages} onClick={() => setPdiPage(p => p + 1)}>Siguiente</button>
+                </div>
+              )}
+            </>
+          );
+        }
+
+        // Flat list (no grouping)
+        return (
+          <>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+              {allVisible.length} plan{allVisible.length !== 1 ? 'es' : ''} encontrado{allVisible.length !== 1 ? 's' : ''}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {visiblePlans.map((plan: any) => {
+                const planUser = plan.user || users.find((u: any) => u.id === plan.userId);
+                const userName = planUser ? `${planUser.firstName} ${planUser.lastName}` : getUserName(plan.userId);
+                return (
+                  <div key={plan.id} className="card" style={{ cursor: 'pointer', padding: 0, overflow: 'hidden' }} onClick={() => openDetail(plan)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 1rem', borderBottom: '1px solid var(--border)', background: 'rgba(99,102,241,0.03)' }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{userName}</span>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <span className={STATUS_BADGE[plan.status] || 'badge'} style={{ fontSize: '0.68rem' }}>
+                          {t(STATUS_LABEL_KEYS[plan.status] || plan.status, { defaultValue: plan.status })}
+                        </span>
+                        <span className={PRIORITY_BADGE[plan.priority] || 'badge'} style={{ fontSize: '0.68rem' }}>
+                          {t(PRIORITY_LABEL_KEYS[plan.priority] || plan.priority, { defaultValue: plan.priority })}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ padding: '0.75rem 1rem' }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, marginBottom: '0.3rem' }}>{plan.title}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ flex: 1, maxWidth: '150px', height: '6px', background: 'var(--border)', borderRadius: '999px' }}>
+                          <div style={{ height: '100%', width: `${plan.progress ?? 0}%`, background: (plan.progress ?? 0) >= 100 ? 'var(--success)' : 'var(--accent)', borderRadius: '999px' }} />
+                        </div>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>{plan.progress ?? 0}%</span>
+                        {plan.targetDate && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Límite: {new Date(plan.targetDate).toLocaleDateString('es-CL')}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {pdiTotalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pdiPage <= 1} onClick={() => setPdiPage(p => p - 1)}>Anterior</button>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {safePdiPage} de {pdiTotalPages} ({allVisible.length} planes)</span>
+                <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pdiPage >= pdiTotalPages} onClick={() => setPdiPage(p => p + 1)}>Siguiente</button>
+              </div>
+            )}
+          </>
+        );
       })()}
 
       {/* Plan detail modal */}
