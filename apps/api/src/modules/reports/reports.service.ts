@@ -307,9 +307,11 @@ export class ReportsService {
     return { managerId, cycleId, team: results };
   }
 
-  async exportCsv(cycleId: string, tenantId: string): Promise<string> {
+  async exportCsv(cycleId: string, tenantId: string, userId?: string): Promise<string> {
+    const where: any = { cycleId, tenantId, status: AssignmentStatus.COMPLETED };
+    if (userId) where.evaluateeId = userId;
     const assignments = await this.assignmentRepo.find({
-      where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED },
+      where,
       relations: ['evaluatee', 'evaluator'],
     });
 
@@ -344,10 +346,12 @@ export class ReportsService {
     return '\uFEFF' + rows.join('\n');
   }
 
-  async exportPdf(cycleId: string, tenantId: string): Promise<Buffer> {
+  async exportPdf(cycleId: string, tenantId: string, userId?: string): Promise<Buffer> {
     const summary = await this.cycleSummary(cycleId, tenantId);
+    const where: any = { cycleId, tenantId, status: AssignmentStatus.COMPLETED };
+    if (userId) where.evaluateeId = userId;
     const assignments = await this.assignmentRepo.find({
-      where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED },
+      where,
       relations: ['evaluatee', 'evaluator'],
     });
 
@@ -472,12 +476,14 @@ export class ReportsService {
 
   // ─── Export Excel (.xlsx) ───────────────────────────────────────────────
 
-  async exportXlsx(cycleId: string, tenantId: string): Promise<Buffer> {
+  async exportXlsx(cycleId: string, tenantId: string, userId?: string): Promise<Buffer> {
     const ExcelJS = (await import('exceljs')).default;
 
     const summary = await this.cycleSummary(cycleId, tenantId);
+    const where: any = { cycleId, tenantId, status: AssignmentStatus.COMPLETED };
+    if (userId) where.evaluateeId = userId;
     const assignments = await this.assignmentRepo.find({
-      where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED },
+      where,
       relations: ['evaluatee', 'evaluator'],
     });
 
@@ -1488,7 +1494,7 @@ export class ReportsService {
 
   // ─── Export PowerPoint ──────────────────────────────────────────────────
 
-  async exportPptx(cycleId: string, tenantId: string): Promise<Buffer> {
+  async exportPptx(cycleId: string, tenantId: string, userId?: string): Promise<Buffer> {
     const PptxGenJS = (await import('pptxgenjs')).default;
 
     // Gather data

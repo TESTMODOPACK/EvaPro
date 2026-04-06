@@ -320,10 +320,11 @@ export default function InformesPage() {
   const [exporting, setExporting] = useState<string | null>(null);
 
   const handleExport = useCallback(async (format: 'pdf' | 'xlsx' | 'pptx' | 'csv') => {
-    if (!token || !selectedCycleId) return;
+    if (!token || !selectedCycleId || !selectedUserId) return;
     setExporting(format);
     try {
-      const res = await fetch(`${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=${format}`, {
+      const userParam = `&userId=${selectedUserId}`;
+      const res = await fetch(`${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=${format}${userParam}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Error al exportar');
@@ -331,7 +332,9 @@ export default function InformesPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `reporte-${selectedCycleId}.${format}`;
+      const selectedUser = users.find((u: any) => u.id === selectedUserId);
+      const userName = selectedUser ? `${selectedUser.firstName}-${selectedUser.lastName}` : selectedUserId;
+      a.download = `informe-${userName}.${format}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
@@ -376,16 +379,7 @@ export default function InformesPage() {
             Análisis individual, evolución entre ciclos y exportación de informes
           </p>
         </div>
-        {selectedCycleId && (
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {(['pdf', 'xlsx', 'pptx', 'csv'] as const).map((fmt) => (
-              <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
-                style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-                {exporting === fmt ? '...' : fmt.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Export buttons only visible when collaborator is selected */}
       </div>
 
       {/* Guide */}
@@ -532,12 +526,24 @@ export default function InformesPage() {
 
           {/* ── SECCIÓN INDIVIDUAL (primero, más relevante) ────────── */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)' }}>
-              <span style={{ fontSize: '1.1rem' }}>{'👤'}</span>
-              <div>
-                <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Vista Individual</h2>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Puntaje por sección y comparativa de evaluadores</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>{'👤'}</span>
+                <div>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Vista Individual</h2>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Puntaje por sección y comparativa de evaluadores</p>
+                </div>
               </div>
+              {selectedUserId && (
+                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                  {(['pdf', 'xlsx', 'pptx', 'csv'] as const).map((fmt) => (
+                    <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}>
+                      {exporting === fmt ? '...' : fmt.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {selectedUserId ? (

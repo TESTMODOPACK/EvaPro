@@ -310,37 +310,41 @@ export class ReportsController {
   async exportResults(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Query('format') format: string,
+    @Query('userId') userId: string,
     @Request() req: any,
     @Res() res: Response,
   ) {
     this.auditService
-      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', cycleId, { format: format || 'csv' })
+      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', cycleId, { format: format || 'csv', userId: userId || 'all' })
       .catch(() => {});
 
+    const filterUserId = userId || undefined;
+    const filePrefix = filterUserId ? 'informe-individual' : 'reporte';
+
     if (format === 'pdf') {
-      const pdfBuffer = await this.reportsService.exportPdf(cycleId, req.user.tenantId);
+      const pdfBuffer = await this.reportsService.exportPdf(cycleId, req.user.tenantId, filterUserId);
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.pdf`);
+      res.setHeader('Content-Disposition', `attachment; filename=${filePrefix}-${cycleId}.pdf`);
       return res.send(pdfBuffer);
     }
 
     if (format === 'pptx') {
-      const pptxBuffer = await this.reportsService.exportPptx(cycleId, req.user.tenantId);
+      const pptxBuffer = await this.reportsService.exportPptx(cycleId, req.user.tenantId, filterUserId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-      res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.pptx`);
+      res.setHeader('Content-Disposition', `attachment; filename=${filePrefix}-${cycleId}.pptx`);
       return res.send(pptxBuffer);
     }
 
     if (format === 'xlsx') {
-      const xlsxBuffer = await this.reportsService.exportXlsx(cycleId, req.user.tenantId);
+      const xlsxBuffer = await this.reportsService.exportXlsx(cycleId, req.user.tenantId, filterUserId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.xlsx`);
+      res.setHeader('Content-Disposition', `attachment; filename=${filePrefix}-${cycleId}.xlsx`);
       return res.send(xlsxBuffer);
     }
 
-    const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId);
+    const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId, filterUserId);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename=reporte-${cycleId}.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename=${filePrefix}-${cycleId}.csv`);
     return res.send(csv);
   }
 
