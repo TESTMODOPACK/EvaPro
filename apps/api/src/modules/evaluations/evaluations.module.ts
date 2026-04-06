@@ -14,6 +14,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { Objective } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
+import { AuditLog } from '../audit/entities/audit-log.entity';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { KeyResult } from '../objectives/entities/key-result.entity';
       User,
       Objective,
       KeyResult,
+      AuditLog,
     ]),
     AuditModule,
     SubscriptionsModule,

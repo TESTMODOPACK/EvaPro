@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { EvaluationCycle, CycleType, CycleStatus, CyclePeriod } from './entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus, RelationType } from './entities/evaluation-assignment.entity';
 import { EvaluationResponse } from './entities/evaluation-response.entity';
@@ -17,6 +17,7 @@ import { CreateCycleDto, UpdateCycleDto } from './dto/cycle.dto';
 import { SaveResponseDto, SubmitResponseDto } from './dto/response.dto';
 import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignment.dto';
 import { AuditService } from '../audit/audit.service';
+import { AuditLog } from '../audit/entities/audit-log.entity';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { EmailService } from '../notifications/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -46,6 +47,8 @@ export class EvaluationsService {
     private readonly objectiveRepo: Repository<Objective>,
     @InjectRepository(KeyResult)
     private readonly keyResultRepo: Repository<KeyResult>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepo: Repository<AuditLog>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
@@ -318,13 +321,27 @@ export class EvaluationsService {
     }
   }
 
-  async updateCycle(id: string, tenantId: string, dto: UpdateCycleDto): Promise<EvaluationCycle> {
+  async updateCycle(id: string, tenantId: string, dto: UpdateCycleDto, userId?: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     const effectiveStart = dto.startDate ? new Date(dto.startDate) : cycle.startDate;
     const effectiveEnd = dto.endDate ? new Date(dto.endDate) : cycle.endDate;
     if (effectiveStart >= effectiveEnd) {
       throw new BadRequestException('La fecha de inicio debe ser anterior a la fecha de fin');
     }
+
+    // Capture before values for audit trail
+    const changes: Record<string, { before: any; after: any }> = {};
+    const trackFields = ['name', 'type', 'period', 'startDate', 'endDate', 'description', 'status', 'templateId'] as const;
+    for (const field of trackFields) {
+      if (dto[field] !== undefined) {
+        const before = field === 'startDate' || field === 'endDate' ? cycle[field]?.toISOString?.()?.split('T')[0] || cycle[field] : cycle[field];
+        const after = dto[field];
+        if (String(before) !== String(after)) {
+          changes[field] = { before, after };
+        }
+      }
+    }
+
     Object.assign(cycle, {
       ...(dto.name !== undefined && { name: dto.name }),
       ...(dto.type !== undefined && { type: dto.type }),
@@ -336,7 +353,33 @@ export class EvaluationsService {
       ...(dto.templateId !== undefined && { templateId: dto.templateId }),
       ...(dto.settings !== undefined && { settings: dto.settings }),
     });
-    return this.cycleRepo.save(cycle);
+    const saved = await this.cycleRepo.save(cycle);
+
+    // Audit log with change details
+    if (Object.keys(changes).length > 0 && userId) {
+      this.auditService.log(tenantId, userId, 'cycle.updated', 'cycle', id, { changes, cycleName: saved.name }).catch(() => {});
+    }
+
+    return saved;
+  }
+
+  async getCycleHistory(id: string, tenantId: string): Promise<any[]> {
+    const logs = await this.auditLogRepo.find({
+      where: { tenantId, entityType: 'cycle', entityId: id },
+      order: { createdAt: 'DESC' },
+    });
+    // Enrich with user names
+    const userIds = [...new Set(logs.map(l => l.userId).filter(Boolean))] as string[];
+    const users = userIds.length > 0 ? await this.userRepo.find({ where: { id: In(userIds) }, select: ['id', 'firstName', 'lastName'] }) : [];
+    const userMap = new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+
+    return logs.map(l => ({
+      id: l.id,
+      action: l.action,
+      userName: l.userId ? userMap.get(l.userId) || 'Sistema' : 'Sistema',
+      metadata: l.metadata,
+      createdAt: l.createdAt,
+    }));
   }
 
   async deleteCycle(id: string, tenantId: string): Promise<void> {
@@ -1150,7 +1193,7 @@ export class EvaluationsService {
     if (numericValues.length === 0) return null;
 
     const avg = numericValues.reduce((sum, v) => sum + v, 0) / numericValues.length;
-    // Normalize to 0-10 scale (scale questions are 1-5)
+    // Normalize to 0-10 scale (scale questions may be 1-5)
     const normalized = (avg / 5) * 10;
     return Math.round(normalized * 100) / 100;
   }

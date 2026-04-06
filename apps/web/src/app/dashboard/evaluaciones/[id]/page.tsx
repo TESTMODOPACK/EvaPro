@@ -87,6 +87,7 @@ export default function CycleDetailPage() {
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoGenResult, setAutoGenResult] = useState<{ created: number } | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [cycleHistory, setCycleHistory] = useState<any[]>([]);
 
   // ── Departments from Mantenedores ────────────────────────────────────────
   const { departments: deptOptions } = useDepartments();
@@ -112,6 +113,15 @@ export default function CycleDetailPage() {
       if (rels.length > 0 && !peerRelationType) setPeerRelationType(rels[0].value);
     }).catch(() => {});
   }, [cycle?.id, cycle?.status, cycle?.type, token]);
+
+  // Fetch cycle change history
+  useEffect(() => {
+    if (!token || !cycle?.id) return;
+    const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+    fetch(`${API}/evaluations/evaluation-cycles/${cycle.id}/history`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.ok ? r.json() : []).then(setCycleHistory).catch(() => {});
+  }, [token, cycle?.id]);
 
   const handleAutoGenerate = async () => {
     if (!token) return;
@@ -689,24 +699,74 @@ export default function CycleDetailPage() {
         </div>
       )}
 
-      {/* Guide toggle */}
-      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
-        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
-        </button>
-      </div>
-      {showGuide && (
-        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('evaluaciones.detail.guideTitle')}</h3>
-          <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
-            <li>{t('evaluaciones.detail.guideManage')}</li>
-            <li>{t('evaluaciones.detail.guideStates')}</li>
-            <li>{t('evaluaciones.detail.guideAutoAssign')}</li>
-            <li>{t('evaluaciones.detail.guidePeers')}</li>
-            <li>{t('evaluaciones.detail.guideLaunch')}</li>
-          </ul>
-          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            {t('evaluaciones.detail.guidePermissions')}
+      {/* Guide toggle — only for draft cycles (before assignments are generated) */}
+      {cycle.status === 'draft' && (
+        <>
+          <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+            <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
+              {showGuide ? t('common.hideGuide') : t('common.showGuide')}
+            </button>
+          </div>
+          {showGuide && (
+            <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('evaluaciones.detail.guideTitle')}</h3>
+              <ul style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.2rem', margin: '0 0 1rem' }}>
+                <li>{t('evaluaciones.detail.guideManage')}</li>
+                <li>{t('evaluaciones.detail.guideStates')}</li>
+                <li>{t('evaluaciones.detail.guideAutoAssign')}</li>
+                <li>{t('evaluaciones.detail.guidePeers')}</li>
+                <li>{t('evaluaciones.detail.guideLaunch')}</li>
+              </ul>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                {t('evaluaciones.detail.guidePermissions')}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Change history */}
+      {cycleHistory.length > 0 && (
+        <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Historial de cambios</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto' }}>
+            {cycleHistory.map((entry: any) => {
+              const actionLabels: Record<string, string> = {
+                'cycle.created': 'Ciclo creado',
+                'cycle.updated': 'Ciclo editado',
+                'cycle.launched': 'Ciclo lanzado',
+                'cycle.closed': 'Ciclo cerrado',
+                'cycle.paused': 'Ciclo pausado',
+                'cycle.resumed': 'Ciclo reanudado',
+                'cycle.stage_advanced': 'Etapa avanzada',
+              };
+              const fieldLabels: Record<string, string> = {
+                name: 'Nombre', description: 'Descripción', startDate: 'Fecha inicio',
+                endDate: 'Fecha fin', type: 'Tipo', status: 'Estado', period: 'Período', templateId: 'Plantilla',
+              };
+              const changes = entry.metadata?.changes;
+              const date = new Date(entry.createdAt).toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              return (
+                <div key={entry.id} style={{ padding: '0.5rem 0.75rem', borderLeft: `3px solid ${entry.action === 'cycle.updated' ? 'var(--accent)' : entry.action === 'cycle.created' ? 'var(--success)' : 'var(--border)'}`, background: 'var(--bg-base)', borderRadius: '0 var(--radius-sm) var(--radius-sm) 0', fontSize: '0.78rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: changes ? '0.3rem' : 0 }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{actionLabels[entry.action] || entry.action}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{entry.userName} · {date}</span>
+                  </div>
+                  {changes && Object.keys(changes).length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                      {Object.entries(changes).map(([field, vals]: [string, any]) => (
+                        <div key={field} style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                          <strong>{fieldLabels[field] || field}:</strong>{' '}
+                          <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)' }}>{vals.before || '—'}</span>
+                          {' → '}
+                          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{vals.after || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

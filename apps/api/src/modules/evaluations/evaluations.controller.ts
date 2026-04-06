@@ -54,7 +54,16 @@ export class EvaluationsController {
     @Request() req: any,
     @Body() dto: UpdateCycleDto,
   ) {
-    return this.evaluationsService.updateCycle(id, req.user.tenantId, dto);
+    return this.evaluationsService.updateCycle(id, req.user.tenantId, dto, req.user.userId);
+  }
+
+  @Get('evaluation-cycles/:id/history')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getCycleHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.evaluationsService.getCycleHistory(id, req.user.tenantId);
   }
 
   @Delete('evaluation-cycles/:id')
