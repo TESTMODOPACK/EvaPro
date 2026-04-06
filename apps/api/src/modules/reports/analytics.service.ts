@@ -564,6 +564,112 @@ export class AnalyticsService {
     return Buffer.from(buf);
   }
 
+  // ─── System Usage PDF Export ────────────────────────────────────────────
+
+  async exportSystemUsagePdf(data: any): Promise<Buffer> {
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    // Header
+    doc.setFillColor(26, 18, 6);
+    doc.rect(0, 0, pageW, 30, 'F');
+    doc.setTextColor(245, 228, 168);
+    doc.setFontSize(16);
+    doc.text('Adopción y Uso del Sistema', margin, 16);
+    doc.setFontSize(9);
+    doc.setTextColor(201, 147, 58);
+    doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+
+    let y = 38;
+
+    // KPIs
+    const kpis = [
+      { label: 'Usuarios Totales', value: `${data.totalUsers || 0}` },
+      { label: 'Activos Mes (MAU)', value: `${data.mau || 0}` },
+      { label: 'Activos Semana (WAU)', value: `${data.wau || 0}` },
+      { label: 'Tasa Adopción', value: `${data.adoptionRate || 0}%` },
+    ];
+    const kpiW = (pageW - 2 * margin - 3 * 4) / 4;
+    kpis.forEach((kpi, i) => {
+      const x = margin + i * (kpiW + 4);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, kpiW, 18, 2, 2, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(kpi.label, x + kpiW / 2, y + 7, { align: 'center' });
+      doc.setFontSize(12);
+      doc.setTextColor(26, 18, 6);
+      doc.text(kpi.value, x + kpiW / 2, y + 15, { align: 'center' });
+    });
+    y += 26;
+
+    // Module usage table
+    if (data.moduleUsage?.length) {
+      doc.setFontSize(10);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Uso por Módulo', margin, y + 4);
+      y += 8;
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: pageW / 2 + 10 },
+        head: [['Módulo', 'Acciones']],
+        body: data.moduleUsage.map((m: any) => [m.module, m.count]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    // Top actions table
+    if (data.topActions?.length) {
+      const rightX = pageW / 2 + 20;
+      doc.setFontSize(10);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Acciones Más Frecuentes', rightX, y - 4);
+      autoTable(doc, {
+        startY: y,
+        margin: { left: rightX, right: margin },
+        head: [['Acción', 'Cantidad']],
+        body: data.topActions.slice(0, 10).map((a: any) => [a.action, a.count]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    // Daily activity table on new page
+    if (data.dailyActivity?.length) {
+      doc.addPage();
+      doc.setFontSize(10);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Actividad Diaria (Últimos 30 días)', margin, 16);
+      autoTable(doc, {
+        startY: 22,
+        margin: { left: margin, right: margin },
+        head: [['Fecha', 'Acciones', 'Usuarios Únicos']],
+        body: data.dailyActivity.map((d: any) => [d.date, d.actions, d.users]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`, margin, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
+  }
+
   // ─── Cycle Comparison Export ────────────────────────────────────────────
 
   exportCycleComparisonCsv(data: any): string {
@@ -750,5 +856,157 @@ export class AnalyticsService {
 
     const buf = await wb.xlsx.writeBuffer();
     return Buffer.from(buf);
+  }
+
+  // ─── Turnover PDF Export ──────────────────────────────────────────────
+
+  async exportTurnoverPdf(data: any): Promise<Buffer> {
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    // Header
+    doc.setFillColor(26, 18, 6);
+    doc.rect(0, 0, pageW, 30, 'F');
+    doc.setTextColor(245, 228, 168);
+    doc.setFontSize(16);
+    doc.text('Análisis de Dotación', margin, 16);
+    doc.setFontSize(9);
+    doc.setTextColor(201, 147, 58);
+    doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+
+    let y = 38;
+
+    // KPIs
+    const kpis = [
+      { label: 'Activos', value: `${data.activeUsers || 0}` },
+      { label: 'Inactivos', value: `${data.inactiveUsers || 0}` },
+      { label: 'Bajas 12m', value: `${data.totalDeactivations12m || 0}` },
+      { label: 'Tasa Rotación', value: `${data.turnoverRate || 0}%` },
+      { label: 'Voluntarias', value: `${data.voluntary || 0}` },
+      { label: 'Involuntarias', value: `${data.involuntary || 0}` },
+    ];
+    const kpiW = (pageW - 2 * margin - 5 * 4) / 6;
+    kpis.forEach((kpi, i) => {
+      const x = margin + i * (kpiW + 4);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, kpiW, 18, 2, 2, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(kpi.label, x + kpiW / 2, y + 7, { align: 'center' });
+      doc.setFontSize(12);
+      doc.setTextColor(26, 18, 6);
+      doc.text(kpi.value, x + kpiW / 2, y + 15, { align: 'center' });
+    });
+    y += 26;
+
+    // By Type table
+    if (data.byType?.length) {
+      doc.setFontSize(10);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Salidas por Tipo', margin, y + 4);
+      y += 8;
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: pageW / 2 + 10 },
+        head: [['Tipo', 'Cantidad']],
+        body: data.byType.map((t: any) => [t.type, t.count]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    // By Reason table
+    if (data.byReason?.length) {
+      const rightX = pageW / 2 + 20;
+      doc.setFontSize(10);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Salidas por Motivo', rightX, y - 4);
+      autoTable(doc, {
+        startY: y,
+        margin: { left: rightX, right: margin },
+        head: [['Motivo', 'Cantidad']],
+        body: data.byReason.map((r: any) => [r.reason, r.count]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    // Page 2: Monthly + Department + Tenure
+    doc.addPage();
+    let y2 = 16;
+
+    if (data.byMonth?.length) {
+      doc.setFontSize(10);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Bajas por Mes (Últimos 12 meses)', margin, y2);
+      y2 += 4;
+      autoTable(doc, {
+        startY: y2,
+        margin: { left: margin, right: pageW * 0.65 },
+        head: [['Mes', 'Bajas']],
+        body: data.byMonth.map((m: any) => [m.month, m.count]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    if (data.byDepartment?.length) {
+      const colX = pageW * 0.38;
+      doc.setFontSize(10);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Bajas por Departamento', colX, y2 - 4);
+      autoTable(doc, {
+        startY: y2,
+        margin: { left: colX, right: pageW * 0.3 },
+        head: [['Departamento', 'Bajas']],
+        body: data.byDepartment.map((d: any) => [d.department, d.count]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    if (data.byTenure?.length) {
+      const colX = pageW * 0.72;
+      doc.setFontSize(10);
+      doc.setTextColor(26, 18, 6);
+      doc.text('Antigüedad al Salir', colX, y2 - 4);
+      autoTable(doc, {
+        startY: y2,
+        margin: { left: colX, right: margin },
+        head: [['Rango', 'Cantidad']],
+        body: data.byTenure.map((t: any) => [t.range, t.count]),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    // Would rehire stats
+    if (data.wouldRehire) {
+      const wr = data.wouldRehire;
+      const lastY = (doc as any).lastAutoTable?.finalY || y2 + 40;
+      doc.setFontSize(9);
+      doc.setTextColor(26, 18, 6);
+      doc.text(`Recontrataría: Sí ${wr.yes || 0} | No ${wr.no || 0} | Sin dato ${wr.noAnswer || 0}`, margin, lastY + 10);
+    }
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`, margin, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
   }
 }

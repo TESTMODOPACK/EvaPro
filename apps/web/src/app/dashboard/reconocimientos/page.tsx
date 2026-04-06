@@ -191,6 +191,13 @@ function ReconocimientosPageContent() {
   const [itemForm, setItemForm] = useState({ name: '', description: '', pointsCost: 100, category: '', stock: -1, terms: '', maxRedeemPerUser: -1 });
   const [editingChallengeId, setEditingChallengeId] = useState<string | null>(null);
   const [itemSaving, setItemSaving] = useState(false);
+  // Expandable histories (admin)
+  const [expandedChallengeId, setExpandedChallengeId] = useState<string | null>(null);
+  const [challengeParticipants, setChallengeParticipants] = useState<any[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [itemRedemptions, setItemRedemptions] = useState<any[]>([]);
+  const [loadingRedemptions, setLoadingRedemptions] = useState(false);
   // Budget
   const [budget, setBudget] = useState<any>(null);
   // Approvals
@@ -636,6 +643,66 @@ function ReconocimientosPageContent() {
                     <span>{ch.currentValue} / {ch.criteriaThreshold}</span>
                     {ch.endDate && <span>{t('reconocimientos.challengeEnds')}: {new Date(ch.endDate).toLocaleDateString('es-CL')}</span>}
                   </div>
+                  {/* Admin: expandable participants */}
+                  {isAdmin && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        onClick={async () => {
+                          if (expandedChallengeId === ch.id) {
+                            setExpandedChallengeId(null);
+                            return;
+                          }
+                          setExpandedChallengeId(ch.id);
+                          setChallengeParticipants([]);
+                          setLoadingParticipants(true);
+                          try {
+                            const parts = await api.recognition.challengeParticipants(token!, ch.id);
+                            setChallengeParticipants(parts);
+                          } catch { setChallengeParticipants([]); }
+                          setLoadingParticipants(false);
+                        }}
+                      >
+                        {expandedChallengeId === ch.id ? '▲ Ocultar participantes' : '▼ Ver participantes'}
+                      </button>
+                      {expandedChallengeId === ch.id && (
+                        <div style={{ marginTop: '0.4rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', padding: '0.5rem 0.75rem', border: '1px solid var(--border)' }}>
+                          {loadingParticipants ? (
+                            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Cargando...</p>
+                          ) : challengeParticipants.length === 0 ? (
+                            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sin participantes aun.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
+                                <span>Colaborador</span>
+                                <span style={{ display: 'flex', gap: '1.5rem' }}>
+                                  <span style={{ width: 80, textAlign: 'right' }}>Progreso</span>
+                                  <span style={{ width: 70, textAlign: 'center' }}>Estado</span>
+                                </span>
+                              </div>
+                              {challengeParticipants.map((p: any) => (
+                                <div key={p.userId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0', fontSize: '0.78rem', borderBottom: '1px solid var(--border)' }}>
+                                  <div>
+                                    <span style={{ fontWeight: 600 }}>{p.userName}</span>
+                                    {p.department && <span style={{ color: 'var(--text-muted)', marginLeft: '0.35rem' }}>· {p.department}</span>}
+                                  </div>
+                                  <span style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                                    <span style={{ width: 80, textAlign: 'right', fontWeight: 600 }}>{p.currentValue}/{ch.criteriaThreshold}</span>
+                                    <span style={{ width: 70, textAlign: 'center' }}>
+                                      {p.completed
+                                        ? <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>Completado</span>
+                                        : <span className="badge badge-ghost" style={{ fontSize: '0.65rem' }}>En progreso</span>}
+                                    </span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -943,6 +1010,57 @@ function ReconocimientosPageContent() {
                       {item.stock !== -1 && <span>Stock: {item.stock}</span>}
                       {item.maxRedeemPerUser > 0 && <span>Máx {item.maxRedeemPerUser}/persona</span>}
                     </div>
+                    {/* Admin: expandable redemptions history */}
+                    {isAdmin && (
+                      <div style={{ marginTop: '0.4rem' }}>
+                        <button
+                          className="btn-ghost"
+                          style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}
+                          onClick={async () => {
+                            if (expandedItemId === item.id) {
+                              setExpandedItemId(null);
+                              return;
+                            }
+                            setExpandedItemId(item.id);
+                            setItemRedemptions([]);
+                            setLoadingRedemptions(true);
+                            try {
+                              const reds = await api.recognition.itemRedemptions(token!, item.id);
+                              setItemRedemptions(reds);
+                            } catch { setItemRedemptions([]); }
+                            setLoadingRedemptions(false);
+                          }}
+                        >
+                          {expandedItemId === item.id ? '▲ Ocultar canjes' : '▼ Ver canjes'}
+                        </button>
+                        {expandedItemId === item.id && (
+                          <div style={{ marginTop: '0.3rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', padding: '0.4rem 0.6rem', border: '1px solid var(--border)' }}>
+                            {loadingRedemptions ? (
+                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cargando...</p>
+                            ) : itemRedemptions.length === 0 ? (
+                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sin canjes aun.</p>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                                {itemRedemptions.map((r: any) => (
+                                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', padding: '0.2rem 0', borderBottom: '1px solid var(--border)' }}>
+                                    <span style={{ fontWeight: 600 }}>{r.userName}</span>
+                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                      <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.7rem' }}>-{r.pointsSpent} pts</span>
+                                      <span className={`badge ${r.status === 'delivered' ? 'badge-success' : r.status === 'cancelled' ? 'badge-danger' : 'badge-accent'}`} style={{ fontSize: '0.62rem' }}>
+                                        {r.status === 'delivered' ? 'Entregado' : r.status === 'cancelled' ? 'Cancelado' : 'Pendiente'}
+                                      </span>
+                                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                                        {new Date(r.createdAt).toLocaleDateString('es-CL')}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

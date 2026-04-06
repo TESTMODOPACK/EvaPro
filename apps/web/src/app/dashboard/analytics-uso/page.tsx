@@ -153,7 +153,7 @@ function SystemUsagePageContent() {
     }).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, [token]);
 
-  const handleExport = async (format: 'csv' | 'xlsx') => {
+  const handleExport = async (format: 'pdf' | 'xlsx') => {
     if (!token) return;
     setExporting(format);
     try {
@@ -190,6 +190,9 @@ function SystemUsagePageContent() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('analyticsUso.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn-ghost" onClick={() => handleExport('pdf')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
+            {exporting === 'pdf' ? t('common.exporting') : t('common.exportPdf')}
+          </button>
           <button className="btn-ghost" onClick={() => handleExport('xlsx')} disabled={!!exporting} style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
             {exporting === 'xlsx' ? t('common.exporting') : t('common.exportExcel')}
           </button>

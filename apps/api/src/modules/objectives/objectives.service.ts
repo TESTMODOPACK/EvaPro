@@ -978,4 +978,160 @@ export class ObjectivesService {
 
     return Buffer.from(doc.output('arraybuffer'));
   }
+
+  // ─── Tree Export (hierarchical view) ─────────────────────────────────
+
+  private flattenTree(nodes: any[], depth = 0): any[] {
+    const result: any[] = [];
+    for (const node of nodes) {
+      result.push({ ...node, depth });
+      if (node.children?.length) {
+        result.push(...this.flattenTree(node.children, depth + 1));
+      }
+    }
+    return result;
+  }
+
+  async exportObjectivesTreeXlsx(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
+    const tree = await this.getObjectiveTree(tenantId, role, userId);
+    const flat = this.flattenTree(tree);
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const accent = { argb: 'FFC9933A' };
+    const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+
+    // Sheet 1: Resumen
+    const ws1 = wb.addWorksheet('Resumen');
+    ws1.columns = [{ width: 25 }, { width: 15 }];
+    ws1.addRow(['Objetivos / OKRs — Vista Árbol']).font = { bold: true, size: 14 };
+    ws1.addRow([]);
+    const total = flat.length;
+    const active = flat.filter(o => o.status === 'active').length;
+    const completed = flat.filter(o => o.status === 'completed').length;
+    const roots = tree.length;
+    ws1.addRow(['Total objetivos', total]);
+    ws1.addRow(['Objetivos raíz', roots]);
+    ws1.addRow(['Activos', active]);
+    ws1.addRow(['Completados', completed]);
+    ws1.addRow(['Fecha exportación', new Date().toLocaleDateString('es-CL')]);
+
+    // Sheet 2: Árbol
+    const ws2 = wb.addWorksheet('Árbol de Objetivos');
+    ws2.columns = [
+      { width: 6 }, { width: 40 }, { width: 10 }, { width: 14 }, { width: 12 },
+      { width: 10 }, { width: 14 }, { width: 22 },
+    ];
+    const h2 = ws2.addRow(['Nivel', 'Título', 'Tipo', 'Estado', 'Progreso %', 'Peso', 'Fecha Meta', 'Responsable']);
+    h2.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    for (const obj of flat) {
+      const indent = '  '.repeat(obj.depth);
+      const prefix = obj.depth > 0 ? '└ ' : '';
+      const row = ws2.addRow([
+        obj.depth, `${indent}${prefix}${obj.title}`,
+        obj.type || 'OKR', statusLabels[obj.status] || obj.status,
+        obj.progress, obj.weight || 0,
+        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
+        obj.userName || '',
+      ]);
+      if (obj.depth > 0) {
+        row.getCell(2).font = { italic: true, color: { argb: 'FF6B7280' } };
+      }
+    }
+
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  async exportObjectivesTreePdf(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
+    const tree = await this.getObjectiveTree(tenantId, role, userId);
+    const flat = this.flattenTree(tree);
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    // Header
+    doc.setFillColor(26, 18, 6);
+    doc.rect(0, 0, pageW, 30, 'F');
+    doc.setTextColor(245, 228, 168);
+    doc.setFontSize(16);
+    doc.text('Objetivos / OKRs — Vista Árbol', margin, 16);
+    doc.setFontSize(9);
+    doc.setTextColor(201, 147, 58);
+    doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+
+    let y = 38;
+
+    // KPIs
+    const total = flat.length;
+    const active = flat.filter(o => o.status === 'active').length;
+    const completedCount = flat.filter(o => o.status === 'completed').length;
+    const roots = tree.length;
+
+    const kpis = [
+      { label: 'Total', value: `${total}` },
+      { label: 'Raíz', value: `${roots}` },
+      { label: 'Activos', value: `${active}` },
+      { label: 'Completados', value: `${completedCount}` },
+    ];
+    const kpiW = (pageW - 2 * margin - 3 * 4) / 4;
+    kpis.forEach((kpi, i) => {
+      const x = margin + i * (kpiW + 4);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, kpiW, 18, 2, 2, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(kpi.label, x + kpiW / 2, y + 7, { align: 'center' });
+      doc.setFontSize(12);
+      doc.setTextColor(26, 18, 6);
+      doc.text(kpi.value, x + kpiW / 2, y + 15, { align: 'center' });
+    });
+    y += 26;
+
+    // Table with indentation
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [['Título', 'Tipo', 'Estado', 'Progreso', 'Peso', 'Fecha Meta', 'Responsable']],
+      body: flat.map((o: any) => {
+        const indent = '  '.repeat(o.depth);
+        const prefix = o.depth > 0 ? '└ ' : '';
+        return [
+          `${indent}${prefix}${o.title}`, o.type || 'OKR', statusLabels[o.status] || o.status,
+          `${o.progress}%`, o.weight || 0,
+          o.targetDate ? new Date(o.targetDate).toLocaleDateString('es-CL') : '-',
+          o.userName || '',
+        ];
+      }),
+      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      bodyStyles: { fontSize: 7 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      didParseCell: (data: any) => {
+        // Bold root objectives
+        if (data.section === 'body' && data.column.index === 0) {
+          const rowFlat = flat[data.row.index];
+          if (rowFlat && rowFlat.depth === 0) {
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      },
+    });
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`, margin, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
+  }
 }

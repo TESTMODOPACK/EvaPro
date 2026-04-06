@@ -87,30 +87,38 @@ export class ObjectivesController {
     return this.objectivesService.getObjectiveTree(req.user.tenantId, req.user.role, req.user.userId);
   }
 
-  /** Export objectives in CSV, XLSX, or PDF format */
+  /** Export objectives in XLSX or PDF format — view=tree includes hierarchy */
   @Get('export')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   async exportObjectives(
     @Request() req: any,
     @Query('format') format: string,
+    @Query('view') view: string,
     @Res() res: Response,
   ) {
     const { tenantId, userId, role } = req.user;
-    const ext = format?.toLowerCase() || 'csv';
+    const ext = format?.toLowerCase() || 'xlsx';
+    const isTree = view === 'tree';
+    const suffix = isTree ? 'arbol' : 'lista';
 
     if (ext === 'xlsx') {
-      const buffer = await this.objectivesService.exportObjectivesXlsx(tenantId, userId, role);
-      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename=objetivos.xlsx` });
+      const buffer = isTree
+        ? await this.objectivesService.exportObjectivesTreeXlsx(tenantId, role, userId)
+        : await this.objectivesService.exportObjectivesXlsx(tenantId, userId, role);
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename=objetivos-${suffix}.xlsx` });
       return res.send(buffer);
     }
     if (ext === 'pdf') {
-      const buffer = await this.objectivesService.exportObjectivesPdf(tenantId, userId, role);
-      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename=objetivos.pdf` });
+      const buffer = isTree
+        ? await this.objectivesService.exportObjectivesTreePdf(tenantId, role, userId)
+        : await this.objectivesService.exportObjectivesPdf(tenantId, userId, role);
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename=objetivos-${suffix}.pdf` });
       return res.send(buffer);
     }
-    const csv = await this.objectivesService.exportObjectivesCsv(tenantId, userId, role);
-    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename=objetivos.csv` });
-    return res.send(csv);
+    // Default: xlsx list
+    const buffer = await this.objectivesService.exportObjectivesXlsx(tenantId, userId, role);
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename=objetivos-lista.xlsx` });
+    return res.send(buffer);
   }
 
   @Get('history-by-period')

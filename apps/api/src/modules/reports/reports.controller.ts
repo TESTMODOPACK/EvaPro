@@ -500,6 +500,12 @@ export class ReportsController {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     const data = await this.analyticsService.getSystemUsage(tenantId);
     await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'system-usage', format }).catch(() => {});
+    if (format === 'pdf') {
+      const buffer = await this.analyticsService.exportSystemUsagePdf(data);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename=adopcion-uso.pdf');
+      return res.send(buffer);
+    }
     if (format === 'xlsx') {
       const buffer = await this.analyticsService.exportSystemUsageXlsx(data);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -566,6 +572,12 @@ export class ReportsController {
       .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'turnover', format })
       .catch(() => {});
 
+    if (format === 'pdf') {
+      const buffer = await this.analyticsService.exportTurnoverPdf(data);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename=analisis-dotacion.pdf');
+      return res.send(buffer);
+    }
     if (format === 'xlsx') {
       const buffer = await this.analyticsService.exportTurnoverXlsx(data);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

@@ -73,7 +73,7 @@ function TurnoverPageContent() {
     }).catch((e) => setError(e.message || 'Error al cargar los datos')).finally(() => setLoading(false));
   }, [token]);
 
-  const handleExport = async (format: 'xlsx') => {
+  const handleExport = async (format: 'pdf' | 'xlsx') => {
     if (!token) return;
     setExporting(format);
     try {
@@ -81,11 +81,12 @@ function TurnoverPageContent() {
         `${API}/reports/analytics/turnover/export?format=${format}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
+      if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `analisis-rotacion.${format}`;
+      a.download = `analisis-dotacion.${format}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch { /* ignore */ }
@@ -140,6 +141,14 @@ function TurnoverPageContent() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('analyticsRotacion.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            className="btn-ghost"
+            onClick={() => handleExport('pdf')}
+            disabled={!!exporting}
+            style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}
+          >
+            {exporting === 'pdf' ? t('common.exporting') : t('common.exportPdf')}
+          </button>
           <button
             className="btn-ghost"
             onClick={() => handleExport('xlsx')}
