@@ -187,7 +187,9 @@ function ReconocimientosPageContent() {
   const [catalog, setCatalog] = useState<any[]>([]);
   const [myRedemptions, setMyRedemptions] = useState<any[]>([]);
   const [showCreateItem, setShowCreateItem] = useState(false);
-  const [itemForm, setItemForm] = useState({ name: '', description: '', pointsCost: 100, category: '', stock: -1 });
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemForm, setItemForm] = useState({ name: '', description: '', pointsCost: 100, category: '', stock: -1, terms: '', maxRedeemPerUser: -1 });
+  const [editingChallengeId, setEditingChallengeId] = useState<string | null>(null);
   const [itemSaving, setItemSaving] = useState(false);
   // Budget
   const [budget, setBudget] = useState<any>(null);
@@ -525,8 +527,11 @@ function ReconocimientosPageContent() {
           {/* Admin: Create challenge */}
           {isAdmin && (
             <div style={{ marginBottom: '1rem' }}>
-              <button className="btn-primary" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }} onClick={() => setShowCreateChallenge(!showCreateChallenge)}>
-                {showCreateChallenge ? t('common.cancel') : t('reconocimientos.createChallenge')}
+              <button className="btn-primary" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }} onClick={() => {
+                if (showCreateChallenge) { setEditingChallengeId(null); setChallengeForm({ name: '', description: '', criteriaType: 'recognitions_received', criteriaThreshold: 10, pointsReward: 50, startDate: '', endDate: '' }); }
+                setShowCreateChallenge(!showCreateChallenge);
+              }}>
+                {showCreateChallenge ? t('common.cancel') : editingChallengeId ? 'Editando Desafío' : t('reconocimientos.createChallenge')}
               </button>
               {showCreateChallenge && (
                 <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
@@ -565,7 +570,12 @@ function ReconocimientosPageContent() {
                       if (!token) return;
                       setChallengeSaving(true);
                       try {
-                        await api.recognition.createChallenge(token, challengeForm);
+                        if (editingChallengeId) {
+                          await api.recognition.updateChallenge(token, editingChallengeId, challengeForm);
+                          setEditingChallengeId(null);
+                        } else {
+                          await api.recognition.createChallenge(token, challengeForm);
+                        }
                         const updated = await api.recognition.myChallenges(token);
                         setMyChallenges(updated);
                         setChallengeForm({ name: '', description: '', criteriaType: 'recognitions_received', criteriaThreshold: 10, pointsReward: 50, startDate: '', endDate: '' });
@@ -573,7 +583,7 @@ function ReconocimientosPageContent() {
                       } catch {}
                       setChallengeSaving(false);
                     }}>
-                    {challengeSaving ? t('common.saving') : t('reconocimientos.createChallenge')}
+                    {challengeSaving ? t('common.saving') : editingChallengeId ? 'Actualizar Desafío' : t('reconocimientos.createChallenge')}
                   </button>
                 </div>
               )}
@@ -598,9 +608,21 @@ function ReconocimientosPageContent() {
                       </div>
                       {ch.description && <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>{ch.description}</p>}
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 700, color: ch.completed ? 'var(--success)' : 'var(--accent)' }}>{ch.progress}%</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{ch.pointsReward} pts</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', flexShrink: 0 }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 700, color: ch.completed ? 'var(--success)' : 'var(--accent)' }}>{ch.progress}%</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{ch.pointsReward} pts</div>
+                      </div>
+                      {isAdmin && (
+                        <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}
+                          onClick={() => {
+                            setChallengeForm({ name: ch.name, description: ch.description || '', criteriaType: ch.criteriaType, criteriaThreshold: ch.criteriaThreshold, pointsReward: ch.pointsReward, startDate: ch.startDate ? ch.startDate.slice(0, 10) : '', endDate: ch.endDate ? ch.endDate.slice(0, 10) : '' });
+                            setEditingChallengeId(ch.id);
+                            setShowCreateChallenge(true);
+                          }}>
+                          Editar
+                        </button>
+                      )}
                     </div>
                   </div>
                   {/* Progress bar */}
@@ -798,8 +820,11 @@ function ReconocimientosPageContent() {
           {/* Admin: Create catalog item */}
           {isAdmin && (
             <div style={{ marginBottom: '1rem' }}>
-              <button className="btn-primary" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }} onClick={() => setShowCreateItem(!showCreateItem)}>
-                {showCreateItem ? t('common.cancel') : t('reconocimientos.createItem')}
+              <button className="btn-primary" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }} onClick={() => {
+                if (showCreateItem) { setEditingItemId(null); setItemForm({ name: '', description: '', pointsCost: 100, category: '', stock: -1, terms: '', maxRedeemPerUser: -1 }); }
+                setShowCreateItem(!showCreateItem);
+              }}>
+                {showCreateItem ? t('common.cancel') : editingItemId ? 'Editando Beneficio' : t('reconocimientos.createItem')}
               </button>
               {showCreateItem && (
                 <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
@@ -830,19 +855,41 @@ function ReconocimientosPageContent() {
                       <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>-1 = {t('reconocimientos.unlimited')}</span>
                     </div>
                   </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>Canjes por colaborador</label>
+                      <input className="input" type="number" min={-1} value={itemForm.maxRedeemPerUser} onChange={e => setItemForm({ ...itemForm, maxRedeemPerUser: parseInt(e.target.value) })} style={{ fontSize: '0.82rem' }} />
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>-1 = ilimitado</span>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>Descripción</label>
+                      <input className="input" value={itemForm.description} onChange={e => setItemForm({ ...itemForm, description: e.target.value })} placeholder="Descripción breve del beneficio" style={{ fontSize: '0.82rem' }} />
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' }}>Condiciones de canje</label>
+                    <textarea className="input" rows={2} value={itemForm.terms} onChange={e => setItemForm({ ...itemForm, terms: e.target.value })} placeholder="Reglas, condiciones de uso, restricciones... (opcional)" style={{ fontSize: '0.82rem', resize: 'vertical' }} />
+                  </div>
                   <button className="btn-primary" style={{ fontSize: '0.82rem' }} disabled={itemSaving || !itemForm.name.trim()}
                     onClick={async () => {
                       if (!token) return;
                       setItemSaving(true);
                       try {
-                        const created = await api.recognition.createCatalogItem(token, itemForm);
-                        setCatalog(prev => [...prev, created]);
-                        setItemForm({ name: '', description: '', pointsCost: 100, category: '', stock: -1 });
+                        if (editingItemId) {
+                          await api.recognition.updateCatalogItem(token, editingItemId, itemForm);
+                          const updated = await api.recognition.catalog(token);
+                          setCatalog(updated);
+                          setEditingItemId(null);
+                        } else {
+                          const created = await api.recognition.createCatalogItem(token, itemForm);
+                          setCatalog(prev => [...prev, created]);
+                        }
+                        setItemForm({ name: '', description: '', pointsCost: 100, category: '', stock: -1, terms: '', maxRedeemPerUser: -1 });
                         setShowCreateItem(false);
                       } catch {}
                       setItemSaving(false);
                     }}>
-                    {itemSaving ? t('common.saving') : t('reconocimientos.saveItem', 'Guardar Beneficio')}
+                    {itemSaving ? t('common.saving') : editingItemId ? 'Actualizar Beneficio' : 'Guardar Beneficio'}
                   </button>
                 </div>
               )}
@@ -855,30 +902,48 @@ function ReconocimientosPageContent() {
               {catalog.map((item: any) => (
                 <div key={item.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem' }}>{item.name}</div>
-                    {item.description && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.5rem' }}>{item.description}</p>}
-                    {item.category && <span className="badge badge-ghost" style={{ fontSize: '0.68rem', marginBottom: '0.5rem' }}>{item.category}</span>}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem' }}>{item.name}</div>
+                      {isAdmin && (
+                        <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}
+                          onClick={() => {
+                            setItemForm({ name: item.name, description: item.description || '', pointsCost: item.pointsCost, category: item.category || '', stock: item.stock, terms: item.terms || '', maxRedeemPerUser: item.maxRedeemPerUser ?? -1 });
+                            setEditingItemId(item.id);
+                            setShowCreateItem(true);
+                          }}>
+                          Editar
+                        </button>
+                      )}
+                    </div>
+                    {item.description && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.3rem' }}>{item.description}</p>}
+                    {item.category && <span className="badge badge-ghost" style={{ fontSize: '0.68rem', marginBottom: '0.3rem', display: 'inline-block' }}>{item.category}</span>}
+                    {item.terms && <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.3rem 0', padding: '0.35rem 0.5rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', lineHeight: 1.4 }}>{item.terms}</p>}
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                    <span style={{ fontWeight: 700, color: 'var(--accent)', fontSize: '1rem' }}>{item.pointsCost} pts</span>
-                    <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
-                      disabled={(myPoints?.totalPoints || 0) < item.pointsCost}
-                      onClick={async () => {
-                        if (!token) return;
-                        try {
-                          await api.recognition.redeem(token, item.id);
-                          const [updatedRedemptions, updatedBudget] = await Promise.all([
-                            api.recognition.myRedemptions(token),
-                            api.recognition.budget(token),
-                          ]);
-                          setMyRedemptions(updatedRedemptions);
-                          setBudget(updatedBudget);
-                        } catch {}
-                      }}>
-                      {t('reconocimientos.redeem')}
-                    </button>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--accent)', fontSize: '1rem' }}>{item.pointsCost} pts</span>
+                      <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
+                        disabled={(myPoints?.totalPoints || 0) < item.pointsCost}
+                        onClick={async () => {
+                          if (!token) return;
+                          try {
+                            await api.recognition.redeem(token, item.id);
+                            const [updatedRedemptions, updatedBudget] = await Promise.all([
+                              api.recognition.myRedemptions(token),
+                              api.recognition.budget(token),
+                            ]);
+                            setMyRedemptions(updatedRedemptions);
+                            setBudget(updatedBudget);
+                          } catch (err: any) { alert(err.message || 'Error al canjear'); }
+                        }}>
+                        {t('reconocimientos.redeem')}
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                      {item.stock !== -1 && <span>Stock: {item.stock}</span>}
+                      {item.maxRedeemPerUser > 0 && <span>Máx {item.maxRedeemPerUser}/persona</span>}
+                    </div>
                   </div>
-                  {item.stock !== -1 && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>{t('reconocimientos.stockLeft')}: {item.stock}</div>}
                 </div>
               ))}
             </div>

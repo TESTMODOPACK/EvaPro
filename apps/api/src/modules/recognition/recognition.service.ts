@@ -39,6 +39,20 @@ export class RecognitionService {
     private readonly emailService: EmailService,
   ) {}
 
+  /** Send in-app notification to all active users in tenant */
+  private async notifyAllUsers(tenantId: string, message: string): Promise<void> {
+    const users = await this.userRepo.find({ where: { tenantId, isActive: true }, select: ['id'] });
+    for (const u of users) {
+      this.notificationsService.create({
+        tenantId,
+        userId: u.id,
+        type: 'recognition' as any,
+        title: 'Reconocimientos',
+        message,
+      }).catch(() => {});
+    }
+  }
+
   // ─── Recognition Wall (Social Feed) ─────────────────────────────────
 
   async getWall(tenantId: string, page = 1, limit = 20) {
@@ -537,7 +551,7 @@ export class RecognitionService {
   }
 
   async createRedemptionItem(tenantId: string, dto: {
-    name: string; description?: string; pointsCost: number; category?: string; stock?: number;
+    name: string; description?: string; pointsCost: number; category?: string; stock?: number; terms?: string; maxRedeemPerUser?: number;
   }) {
     const item = this.redemptionItemRepo.create({
       tenantId,
@@ -546,8 +560,15 @@ export class RecognitionService {
       pointsCost: dto.pointsCost,
       category: dto.category || null,
       stock: dto.stock ?? -1,
+      terms: dto.terms || null,
+      maxRedeemPerUser: dto.maxRedeemPerUser ?? -1,
     });
-    return this.redemptionItemRepo.save(item);
+    const saved = await this.redemptionItemRepo.save(item);
+
+    // Notify all active users about new benefit
+    this.notifyAllUsers(tenantId, `Nuevo beneficio en la tienda: ${dto.name} (${dto.pointsCost} puntos). ¡Revísalo!`).catch(() => {});
+
+    return saved;
   }
 
   async updateRedemptionItem(tenantId: string, id: string, dto: any) {
@@ -649,7 +670,12 @@ export class RecognitionService {
       startDate: dto.startDate ? new Date(dto.startDate) : null,
       endDate: dto.endDate ? new Date(dto.endDate) : null,
     });
-    return this.challengeRepo.save(challenge);
+    const saved = await this.challengeRepo.save(challenge);
+
+    // Notify all active users about new challenge
+    this.notifyAllUsers(tenantId, `Nuevo desafío disponible: ${dto.name}. ¡Participa y gana ${dto.pointsReward ?? 50} puntos!`).catch(() => {});
+
+    return saved;
   }
 
   async getChallengeParticipants(tenantId: string, challengeId: string) {
