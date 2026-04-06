@@ -29,7 +29,7 @@ export interface ReportFilters {
  * Privacy threshold: reports with fewer than this many people
  * will not return individual-level data to prevent identification.
  */
-const PRIVACY_MIN_PEOPLE = 3;
+const PRIVACY_MIN_PEOPLE = 1;
 
 @Injectable()
 export class ReportsService {

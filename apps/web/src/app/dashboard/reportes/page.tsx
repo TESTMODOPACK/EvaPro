@@ -145,10 +145,11 @@ export default function ReportesPage() {
             <div>
               <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>Tab Evaluación de Desempeño</p>
               <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <li>Promedio global, tasa de completitud, desglose por departamento</li>
-                <li>Mapa de calor: distribución de desempeño por departamento</li>
-                <li>Objetivos: estado de cumplimiento organizacional</li>
-                <li>Comparativa de Ciclos: delta entre ciclo actual y otro ciclo cerrado</li>
+                <li>KPIs: promedio global, tasa de completitud, evaluaciones, departamentos</li>
+                <li>Desempeño por departamento: ranking con barras de progreso</li>
+                <li>Mapa de calor: distribución de desempeño por departamento y colaborador</li>
+                <li>Análisis rápido: interpretación automática del ciclo</li>
+                <li>Comparativa de Ciclos: delta entre ciclo actual y otro cerrado</li>
               </ul>
             </div>
             <div>
@@ -266,38 +267,28 @@ export default function ReportesPage() {
               {/* Heatmap */}
               <div style={{ marginBottom: '1.5rem' }}><PerformanceHeatmap cycleId={selectedCycleId} /></div>
 
-              {/* Objetivos */}
-              {execData?.objectives && (
-                <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Objetivos de la Organización</h3>
-                  <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
-                    {[
-                      { label: 'Total', value: execData.objectives.total, color: 'var(--text-primary)' },
-                      { label: 'Completados', value: execData.objectives.completed, color: '#10b981' },
-                      { label: 'En progreso', value: execData.objectives.inProgress, color: '#6366f1' },
-                      { label: 'Cumplimiento', value: `${execData.objectives.completionPct || 0}%`, color: (execData.objectives.completionPct || 0) >= 70 ? '#10b981' : '#f59e0b' },
-                    ].map((m, i) => (
-                      <div key={i} style={{ textAlign: 'center', padding: '0.5rem' }}>
-                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: m.color }}>{m.value}</div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.label}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Análisis Rápido */}
+              {/* Análisis Rápido — solo datos del ciclo de evaluación */}
               {summary.averageScore && (
                 <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: `4px solid ${getScoreColor(Number(summary.averageScore))}` }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Análisis Rápido</h3>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Análisis Rápido del Ciclo</h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                     <p><strong>Desempeño:</strong> Promedio global de <strong style={{ color: getScoreColor(Number(summary.averageScore)) }}>{Number(summary.averageScore).toFixed(1)}</strong> ({getScoreLabel(Number(summary.averageScore))})
-                      {Number(summary.averageScore) >= 7 ? ' — buen nivel.' : Number(summary.averageScore) >= 5 ? ' — aceptable, con oportunidad de mejora.' : ' — requiere atención.'}
+                      {Number(summary.averageScore) >= 7 ? ' — buen nivel de desempeño general.' : Number(summary.averageScore) >= 5 ? ' — aceptable, con oportunidad de mejora.' : ' — requiere atención y planes de acción.'}
                     </p>
-                    <p><strong>Participación:</strong> {summary.completionRate}% de completitud{(summary.completionRate || 0) >= 90 ? ' — excelente.' : (summary.completionRate || 0) >= 70 ? ' — buena.' : ' — reforzar comunicación.'}</p>
-                    {execData?.objectives?.total > 0 && (
-                      <p><strong>Objetivos:</strong> {execData.objectives.completionPct}% de cumplimiento ({execData.objectives.completed} de {execData.objectives.total}).</p>
-                    )}
+                    <p><strong>Participación:</strong> {summary.completionRate}% de completitud ({summary.completedAssignments} de {summary.totalAssignments} evaluaciones).
+                      {(summary.completionRate || 0) >= 90 ? ' Excelente nivel de participación.' : (summary.completionRate || 0) >= 70 ? ' Buena participación.' : ' Se recomienda reforzar la comunicación para aumentar la participación.'}
+                    </p>
+                    {summary.departmentBreakdown?.length >= 2 && (() => {
+                      const sorted = [...summary.departmentBreakdown].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+                      const best = sorted[0];
+                      const worst = sorted[sorted.length - 1];
+                      const gap = (Number(best.avgScore) - Number(worst.avgScore)).toFixed(1);
+                      return (
+                        <p><strong>Brecha departamental:</strong> {best.department} ({Number(best.avgScore).toFixed(1)}) vs {worst.department} ({Number(worst.avgScore).toFixed(1)}) — diferencia de {gap} puntos.
+                          {Number(gap) > 2 ? ' Brecha significativa, revisar condiciones en departamentos con menor puntaje.' : ' Brecha moderada, buena consistencia.'}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
