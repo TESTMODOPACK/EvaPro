@@ -177,7 +177,7 @@ function ReconocimientosPageContent() {
   const [badgeForm, setBadgeForm] = useState({ name: '', description: '', icon: 'star', color: '#c9933a', criteriaType: '', criteriaThreshold: 10, pointsReward: 50 });
   const [badgeSaving, setBadgeSaving] = useState(false);
   const [page, setPage] = useState(1);
-  const [period, setPeriod] = useState<string>('month');
+  const [period, setPeriod] = useState<string>('year');
   const [rankingView, setRankingView] = useState<'team' | 'general'>(isManager ? 'team' : 'general');
   // Challenge admin
   const [showCreateChallenge, setShowCreateChallenge] = useState(false);
@@ -302,6 +302,21 @@ function ReconocimientosPageContent() {
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Ranking y Puntos por Año</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Puntos del año:</strong> Los puntos se acumulan por año calendario (1 de enero al 31 de diciembre). El 1 de enero se reinician a 0 para el nuevo año.
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Puntos acumulados:</strong> Los puntos de años anteriores se mantienen como &quot;Puntos acumulados históricos&quot; y se muestran por separado. No se pierden.
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <strong>Filtros del ranking:</strong> &quot;Esta semana&quot; muestra puntos desde el lunes actual. &quot;Este mes&quot; muestra el mes calendario en curso. &quot;Este año&quot; muestra todo el año actual. &quot;Histórico&quot; muestra todos los años acumulados.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Secciones</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
@@ -349,14 +364,15 @@ function ReconocimientosPageContent() {
       {/* Stats Cards */}
       <div className="animate-fade-up" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
         {[
-          { value: myPoints?.totalPoints || 0, label: t('reconocimientos.myPoints') },
-          { value: budget ? `${budget.remaining}/${budget.allocated}` : '—', label: t('reconocimientos.monthlyBudget') },
-          { value: (myBadges as any)?.length || 0, label: t('reconocimientos.myBadges') },
-          { value: stats?.totalRecognitions || 0, label: t('reconocimientos.totalRecognitions') },
-          { value: stats?.monthlyRecognitions || 0, label: t('reconocimientos.thisMonth') },
+          { value: myPoints?.totalPoints || 0, label: `Puntos ${new Date().getFullYear()}`, color: 'var(--accent)' },
+          { value: myPoints?.historicalPoints || 0, label: 'Puntos acumulados', color: 'var(--text-muted)' },
+          { value: budget ? `${budget.remaining}/${budget.allocated}` : '—', label: t('reconocimientos.monthlyBudget'), color: '#6366f1' },
+          { value: (myBadges as any)?.length || 0, label: t('reconocimientos.myBadges'), color: '#f59e0b' },
+          { value: stats?.totalRecognitions || 0, label: t('reconocimientos.totalRecognitions'), color: 'var(--text-secondary)' },
+          { value: stats?.monthlyRecognitions || 0, label: t('reconocimientos.thisMonth'), color: '#10b981' },
         ].map((card) => (
           <div key={card.label} className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>{card.value}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: (card as any).color || 'var(--accent)' }}>{card.value}</div>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{card.label}</div>
           </div>
         ))}
@@ -449,8 +465,8 @@ function ReconocimientosPageContent() {
           )}
           <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem' }}>
             {[
-              { val: 'week', label: t('reconocimientos.week') }, { val: 'month', label: t('reconocimientos.month') },
-              { val: 'quarter', label: t('reconocimientos.quarter') }, { val: 'all', label: t('reconocimientos.allTime') },
+              { val: 'week', label: 'Esta semana' }, { val: 'month', label: 'Este mes' },
+              { val: 'year', label: `Año ${new Date().getFullYear()}` }, { val: 'all', label: 'Todo el tiempo' },
             ].map((p) => (
               <button key={p.val} onClick={() => setPeriod(p.val)}
                 className={period === p.val ? 'btn-primary' : 'btn-ghost'}

@@ -114,9 +114,14 @@ export class RecognitionController {
     @Query('period') period: string,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    const validPeriods = ['week', 'month', 'quarter', 'all'];
-    const safePeriod = validPeriods.includes(period) ? period as any : 'month';
+    const validPeriods = ['week', 'month', 'year', 'all'];
+    const safePeriod = validPeriods.includes(period) ? period as any : 'year';
     return this.service.getLeaderboard(req.user.tenantId, safePeriod, Math.min(limit, 50));
+  }
+
+  @Get('leaderboard/historical')
+  getHistoricalRanking(@Request() req: any) {
+    return this.service.getHistoricalRanking(req.user.tenantId);
   }
 
   // ─── Stats ──────────────────────────────────────────────────────
@@ -222,8 +227,8 @@ export class RecognitionController {
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('department') department: string,
   ) {
-    const validPeriods = ['week', 'month', 'quarter', 'all'];
-    const safePeriod = validPeriods.includes(period) ? period : 'month';
+    const validPeriods = ['week', 'month', 'year', 'all'];
+    const safePeriod = validPeriods.includes(period) ? period : 'year';
     return this.service.getLeaderboardOptIn(req.user.tenantId, safePeriod, Math.min(limit, 50), department || undefined);
   }
 

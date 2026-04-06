@@ -844,8 +844,10 @@ export const api = {
     awardBadge: (token: string, data: { userId: string; badgeId: string }) =>
       request<any>("/recognition/badges/award", { method: "POST", body: JSON.stringify(data) }, token),
     myPoints: (token: string) => request<any>("/recognition/points/mine", {}, token),
-    leaderboard: (token: string, period = 'month', limit = 20) =>
+    leaderboard: (token: string, period = 'year', limit = 20) =>
       request<any[]>(`/recognition/leaderboard?period=${period}&limit=${limit}`, {}, token),
+    leaderboardHistorical: (token: string) =>
+      request<any[]>("/recognition/leaderboard/historical", {}, token),
     stats: (token: string) => request<any>("/recognition/stats", {}, token),
     budget: (token: string) => request<any>("/recognition/budget/mine", {}, token),
     pendingApprovals: (token: string) => request<any[]>("/recognition/approvals/pending", {}, token),

@@ -64,7 +64,7 @@ export function useMyPoints() {
   });
 }
 
-export function useLeaderboard(period = 'month') {
+export function useLeaderboard(period = 'year') {
   const token = useAuthStore((s) => s.token);
   return useQuery({
     queryKey: ['recognition', 'leaderboard', period],

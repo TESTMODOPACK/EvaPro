@@ -300,15 +300,34 @@ export class RecognitionService {
   }
 
   async getUserPoints(tenantId: string, userId: string) {
-    const result = await this.pointsRepo.createQueryBuilder('p')
+    const now = new Date();
+    const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)); // Jan 1st UTC
+
+    // Points for current year
+    const yearResult = await this.pointsRepo.createQueryBuilder('p')
       .where('p.tenant_id = :tenantId', { tenantId })
       .andWhere('p.user_id = :userId', { userId })
+      .andWhere('p.created_at >= :yearStart', { yearStart })
       .select('COALESCE(SUM(p.points), 0)', 'total')
       .getRawOne();
-    return { userId, totalPoints: parseInt(result.total) };
+
+    // Historical points (all previous years)
+    const histResult = await this.pointsRepo.createQueryBuilder('p')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .andWhere('p.user_id = :userId', { userId })
+      .andWhere('p.created_at < :yearStart', { yearStart })
+      .select('COALESCE(SUM(p.points), 0)', 'total')
+      .getRawOne();
+
+    return {
+      userId,
+      totalPoints: parseInt(yearResult.total), // Current year points (active)
+      historicalPoints: parseInt(histResult.total), // Previous years (accumulated)
+      year: now.getFullYear(),
+    };
   }
 
-  async getLeaderboard(tenantId: string, period?: 'week' | 'month' | 'quarter' | 'all', limit = 20) {
+  async getLeaderboard(tenantId: string, period?: 'week' | 'month' | 'year' | 'all', limit = 20) {
     const qb = this.pointsRepo.createQueryBuilder('p')
       .innerJoin(User, 'u', 'u.id = p.user_id')
       .where('p.tenant_id = :tenantId', { tenantId })
@@ -327,10 +346,23 @@ export class RecognitionService {
       .limit(limit);
 
     if (period && period !== 'all') {
-      const cutoff = new Date();
-      if (period === 'week') cutoff.setDate(cutoff.getDate() - 7);
-      else if (period === 'month') cutoff.setMonth(cutoff.getMonth() - 1);
-      else if (period === 'quarter') cutoff.setMonth(cutoff.getMonth() - 3);
+      const now = new Date();
+      let cutoff: Date;
+      if (period === 'week') {
+        // Current week (Monday to now) — UTC
+        cutoff = new Date(now);
+        const day = now.getUTCDay();
+        cutoff.setUTCDate(now.getUTCDate() - day + (day === 0 ? -6 : 1));
+        cutoff.setUTCHours(0, 0, 0, 0);
+      } else if (period === 'month') {
+        // Current calendar month (1st to now) — UTC
+        cutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      } else if (period === 'year') {
+        // Current year (Jan 1st to now) — UTC
+        cutoff = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+      } else {
+        cutoff = new Date(0); // all time
+      }
       qb.andWhere('p.created_at >= :cutoff', { cutoff });
     }
 
@@ -344,6 +376,56 @@ export class RecognitionService {
       totalPoints: parseInt(r.totalPoints),
       transactions: parseInt(r.transactions),
     }));
+  }
+
+  // Historical ranking — top 10 per year
+  async getHistoricalRanking(tenantId: string, limit = 10) {
+    // Get distinct years with points
+    const yearsResult = await this.pointsRepo.createQueryBuilder('p')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .select("EXTRACT(YEAR FROM p.created_at)", 'year')
+      .groupBy("EXTRACT(YEAR FROM p.created_at)")
+      .orderBy("EXTRACT(YEAR FROM p.created_at)", 'DESC')
+      .getRawMany();
+
+    const currentYear = new Date().getFullYear();
+    const years = yearsResult.map((r: any) => parseInt(r.year)).filter(y => y < currentYear);
+
+    const result: any[] = [];
+    for (const year of years) {
+      const yearStart = new Date(year, 0, 1);
+      const yearEnd = new Date(year + 1, 0, 1);
+
+      const rows = await this.pointsRepo.createQueryBuilder('p')
+        .innerJoin(User, 'u', 'u.id = p.user_id')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('p.created_at >= :yearStart', { yearStart })
+        .andWhere('p.created_at < :yearEnd', { yearEnd })
+        .select('p.user_id', 'userId')
+        .addSelect("u.first_name || ' ' || u.last_name", 'userName')
+        .addSelect('u.department', 'department')
+        .addSelect('SUM(p.points)', 'totalPoints')
+        .groupBy('p.user_id')
+        .addGroupBy('u.first_name')
+        .addGroupBy('u.last_name')
+        .addGroupBy('u.department')
+        .orderBy('SUM(p.points)', 'DESC')
+        .limit(limit)
+        .getRawMany();
+
+      result.push({
+        year,
+        ranking: rows.map((r: any, i: number) => ({
+          rank: i + 1,
+          userId: r.userId,
+          userName: r.userName,
+          department: r.department,
+          totalPoints: parseInt(r.totalPoints),
+        })),
+      });
+    }
+
+    return result;
   }
 
   // ─── Stats ─────────────────────────────────────────────────────────
