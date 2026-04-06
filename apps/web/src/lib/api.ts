@@ -643,6 +643,10 @@ export const api = {
   reports: {
     executiveDashboard: (token: string, cycleId?: string) =>
       request<any>(`/reports/executive-dashboard${cycleId ? `?cycleId=${cycleId}` : ''}`, {}, token),
+    closedSurveys: (token: string) =>
+      request<any[]>("/reports/executive-dashboard/surveys", {}, token),
+    enpsBySurvey: (token: string, surveyId: string) =>
+      request<any>(`/reports/executive-dashboard/enps?surveyId=${surveyId}`, {}, token),
     crossAnalysis: (token: string, cycleIds?: string[], surveyId?: string) => {
       const params = new URLSearchParams();
       if (cycleIds?.length) params.set('cycleIds', cycleIds.join(','));

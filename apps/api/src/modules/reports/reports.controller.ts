@@ -50,6 +50,18 @@ export class ReportsController {
 
   // ─── Executive Dashboard ─────────────────────────────────────────────
 
+  @Get('executive-dashboard/surveys')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getClosedSurveys(@Request() req: any) {
+    return this.executiveDashboardService.getClosedSurveys(req.user.tenantId);
+  }
+
+  @Get('executive-dashboard/enps')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getENPSBySurvey(@Query('surveyId') surveyId: string, @Request() req: any) {
+    return this.executiveDashboardService.getENPSBySurveyId(req.user.tenantId, surveyId);
+  }
+
   @Get('executive-dashboard')
   @Roles('super_admin', 'tenant_admin', 'manager')
   executiveDashboard(@Query('cycleId') cycleId: string, @Request() req: any) {

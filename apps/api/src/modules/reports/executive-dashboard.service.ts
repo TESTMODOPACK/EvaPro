@@ -144,6 +144,63 @@ export class ExecutiveDashboardService {
     };
   }
 
+  // ─── Public eNPS methods for API ──────────────────────────────────────
+
+  async getClosedSurveys(tenantId: string): Promise<any[]> {
+    const surveys = await this.surveyRepo.find({
+      where: { tenantId, status: 'closed' },
+      order: { endDate: 'DESC' },
+      select: ['id', 'title', 'startDate', 'endDate', 'status'],
+    });
+    return surveys;
+  }
+
+  async getENPSBySurveyId(tenantId: string, surveyId: string): Promise<any> {
+    const survey = await this.surveyRepo.findOne({
+      where: { id: surveyId, tenantId, status: 'closed' },
+    });
+    if (!survey) return null;
+
+    const npsQuestions = await this.surveyQuestionRepo.find({
+      where: { surveyId: survey.id, questionType: 'nps' },
+    });
+    if (npsQuestions.length === 0) return null;
+
+    const responses = await this.surveyResponseRepo.find({
+      where: { surveyId: survey.id, tenantId, isComplete: true },
+    });
+
+    let promoters = 0, passives = 0, detractors = 0;
+    const npsQuestionIds = new Set(npsQuestions.map((q) => q.id));
+
+    for (const r of responses) {
+      const npsScores: number[] = [];
+      for (const ans of r.answers) {
+        if (!npsQuestionIds.has(ans.questionId)) continue;
+        const score = typeof ans.value === 'number' ? ans.value : parseInt(ans.value as string);
+        if (!isNaN(score)) npsScores.push(score);
+      }
+      if (npsScores.length === 0) continue;
+      const avg = npsScores.reduce((a, b) => a + b, 0) / npsScores.length;
+      if (avg >= 9) promoters++;
+      else if (avg >= 7) passives++;
+      else detractors++;
+    }
+
+    const total = promoters + passives + detractors;
+    const enpsScore = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+
+    return {
+      score: enpsScore,
+      surveyName: survey.title,
+      surveyId: survey.id,
+      total,
+      promoters,
+      passives,
+      detractors,
+    };
+  }
+
   // ─── Performance ──────────────────────────────────────────────────────
 
   private async getPerformanceSummary(
