@@ -915,18 +915,18 @@ function ObjetivosPageContent() {
   const token = useAuthStore((s) => s.token);
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
-  const handleExport = async (format: 'pdf' | 'xlsx') => {
+  const handleExport = async (format: 'pdf' | 'xlsx', view: 'list' | 'tree' = 'list') => {
     if (!token) return;
     setExporting(format);
     try {
-      const res = await fetch(`${BASE_URL}/objectives/export?format=${format}`, {
+      const res = await fetch(`${BASE_URL}/objectives/export?format=${format}&view=${view}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `objetivos.${format}`;
+      link.download = `objetivos-${view}.${format}`;
       link.click();
       URL.revokeObjectURL(link.href);
     } catch {
@@ -1507,7 +1507,7 @@ function ObjetivosPageContent() {
         <div>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             {(['pdf', 'xlsx'] as const).map((fmt) => (
-              <button key={fmt} type="button" disabled={!!exporting} onClick={() => handleExport(fmt)}
+              <button key={fmt} type="button" disabled={!!exporting} onClick={() => handleExport(fmt, 'tree')}
                 style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', fontWeight: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)', color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer' }}>
                 {exporting === fmt ? '...' : fmt.toUpperCase()}
               </button>

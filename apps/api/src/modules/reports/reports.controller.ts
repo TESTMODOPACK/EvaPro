@@ -484,6 +484,12 @@ export class ReportsController {
     return this.analyticsService.getPdiCompliance(req.user.tenantId, managerId);
   }
 
+  @Get('analytics/pdi-historical')
+  @Roles('tenant_admin', 'manager')
+  getPdiHistorical(@Request() req: any) {
+    return this.analyticsService.getPdiHistorical(req.user.tenantId);
+  }
+
   @Get('analytics/system-usage/export')
   @Roles('super_admin', 'tenant_admin')
   async exportSystemUsage(

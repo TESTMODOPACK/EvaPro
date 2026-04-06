@@ -140,6 +140,8 @@ function PdiCompliancePageContent() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [activeTab, setActiveTab] = useState<'current' | 'historical'>('current');
+  const [historicalData, setHistoricalData] = useState<any>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -150,6 +152,10 @@ function PdiCompliancePageContent() {
       if (!r.ok) throw new Error('Error al cargar los datos');
       return r.json();
     }).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    // Load historical data
+    fetch(`${API}/reports/analytics/pdi-historical`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.ok ? r.json() : null).then(setHistoricalData).catch(() => {});
   }, [token]);
 
   const handleExport = async (format: 'csv' | 'xlsx') => {
@@ -225,6 +231,24 @@ function PdiCompliancePageContent() {
           </div>
         </div>
       )}
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: '1.5rem' }}>
+        {[
+          { key: 'current' as const, label: 'Planes Vigentes' },
+          { key: 'historical' as const, label: 'Histórico' },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+            padding: '0.6rem 1.25rem', fontSize: '0.85rem', fontWeight: activeTab === tab.key ? 700 : 500,
+            color: activeTab === tab.key ? 'var(--accent)' : 'var(--text-muted)',
+            borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
+            background: 'none', border: 'none', cursor: 'pointer',
+          }}>{tab.label}</button>
+        ))}
+      </div>
+
+      {/* ═══ TAB: PLANES VIGENTES ═══ */}
+      {activeTab === 'current' && <>
 
       {/* KPIs */}
       <div className="animate-fade-up-delay-1 mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -302,6 +326,97 @@ function PdiCompliancePageContent() {
           )}
         </div>
       </div>
+
+      </>}
+
+      {/* ═══ TAB: HISTÓRICO ═══ */}
+      {activeTab === 'historical' && (
+        <div>
+          {!historicalData ? (
+            <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>
+          ) : (
+            <>
+              {/* Historical KPIs */}
+              <div className="animate-fade-up mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Total Planes (histórico)</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{historicalData.totalPlansAllTime}</div>
+                </div>
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>% Completados</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)' }}>{historicalData.completedPct}%</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{historicalData.completedAllTime} planes</div>
+                </div>
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>% Cancelados</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--danger)' }}>{historicalData.cancelledPct}%</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{historicalData.cancelledAllTime} planes</div>
+                </div>
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Duración promedio</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>{historicalData.avgDurationDays}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>días</div>
+                </div>
+              </div>
+
+              {/* Actions summary */}
+              <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+                <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Acciones de Desarrollo (todos los tiempos)</h3>
+                <div style={{ display: 'flex', gap: '2rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  <div>Total: <strong>{historicalData.totalActions}</strong></div>
+                  <div>Completadas: <strong style={{ color: 'var(--success)' }}>{historicalData.completedActions}</strong></div>
+                  <div>Tasa: <strong>{historicalData.actionCompletionPct}%</strong></div>
+                </div>
+              </div>
+
+              {/* Top departments */}
+              {historicalData.topDepartments?.length > 0 && (
+                <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Top Departamentos con Planes Completados</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {historicalData.topDepartments.map((d: any, i: number) => (
+                      <div key={d.department} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, minWidth: '25px', color: 'var(--accent)' }}>#{i + 1}</span>
+                        <span style={{ fontSize: '0.82rem', flex: 1 }}>{d.department}</span>
+                        <span style={{ fontWeight: 700, color: 'var(--success)' }}>{d.completed} completados</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* By year */}
+              {historicalData.byYear?.length > 0 && (
+                <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Planes por Año</h3>
+                  <div className="table-wrapper" style={{ margin: 0 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>Año</th>
+                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>Total</th>
+                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>Completados</th>
+                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>% Completitud</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historicalData.byYear.map((y: any) => (
+                          <tr key={y.year} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600 }}>{y.year}</td>
+                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>{y.total}</td>
+                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--success)', fontWeight: 600 }}>{y.completed}</td>
+                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>{y.total > 0 ? Math.round((y.completed / y.total) * 100) : 0}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

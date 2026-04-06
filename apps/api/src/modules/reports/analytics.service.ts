@@ -104,6 +104,66 @@ export class AnalyticsService {
     };
   }
 
+  // ─── 1b. PDI Historical ─────────────────────────────────────────────
+
+  async getPdiHistorical(tenantId: string): Promise<any> {
+    const allPlans = await this.planRepo.find({ where: { tenantId }, relations: ['user', 'actions'] });
+
+    const total = allPlans.length;
+    const completed = allPlans.filter(p => p.status === 'completado').length;
+    const cancelled = allPlans.filter(p => p.status === 'cancelado').length;
+    const completedPct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const cancelledPct = total > 0 ? Math.round((cancelled / total) * 100) : 0;
+
+    // Average duration of completed plans (days)
+    const completedPlans = allPlans.filter(p => p.status === 'completado' && p.completedAt && p.startDate);
+    const avgDurationDays = completedPlans.length > 0
+      ? Math.round(completedPlans.reduce((sum, p) => sum + (new Date(p.completedAt!).getTime() - new Date(p.startDate).getTime()) / (1000 * 60 * 60 * 24), 0) / completedPlans.length)
+      : 0;
+
+    // Total actions across all plans
+    let totalActions = 0, completedActions = 0;
+    for (const p of allPlans) {
+      const actions = p.actions || [];
+      totalActions += actions.length;
+      completedActions += actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+    }
+
+    // Top departments by completed plans
+    const deptCompleted: Record<string, number> = {};
+    for (const p of allPlans.filter(pl => pl.status === 'completado')) {
+      const dept = (p.user as any)?.department || 'Sin departamento';
+      deptCompleted[dept] = (deptCompleted[dept] || 0) + 1;
+    }
+    const topDepartments = Object.entries(deptCompleted)
+      .map(([dept, count]) => ({ department: dept, completed: count }))
+      .sort((a, b) => b.completed - a.completed)
+      .slice(0, 10);
+
+    // Plans by year
+    const byYear: Record<string, { total: number; completed: number }> = {};
+    for (const p of allPlans) {
+      const year = p.startDate ? new Date(p.startDate).getFullYear().toString() : 'Sin fecha';
+      if (!byYear[year]) byYear[year] = { total: 0, completed: 0 };
+      byYear[year].total++;
+      if (p.status === 'completado') byYear[year].completed++;
+    }
+
+    return {
+      totalPlansAllTime: total,
+      completedAllTime: completed,
+      cancelledAllTime: cancelled,
+      completedPct,
+      cancelledPct,
+      avgDurationDays,
+      totalActions,
+      completedActions,
+      actionCompletionPct: totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0,
+      topDepartments,
+      byYear: Object.entries(byYear).map(([year, d]) => ({ year, ...d })).sort((a, b) => b.year.localeCompare(a.year)),
+    };
+  }
+
   // ─── 2. Uso del Sistema ─────────────────────────────────────────────
 
   async getSystemUsage(tenantId?: string): Promise<any> {
