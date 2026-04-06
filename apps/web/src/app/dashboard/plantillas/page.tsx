@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToastStore } from '@/store/toast.store';
 import {
@@ -36,6 +36,7 @@ interface Question {
 interface Section {
   id: string;
   title: string;
+  competencyId?: string | null;
   questions: Question[];
   condition?: Condition | null;
 }
@@ -203,6 +204,29 @@ export default function PlantillasPage() {
   const [historyTemplateName, setHistoryTemplateName] = useState('');
   const { data: versionData, isLoading: versionLoading } = useVersionHistory(historyTemplateId);
   const restoreVersion = useRestoreVersion();
+
+  // Competencies for section builder
+  const [competencies, setCompetencies] = useState<any[]>([]);
+  const [generatingSamples, setGeneratingSamples] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    api.development.competencies.list(token).then((data) => setCompetencies(Array.isArray(data) ? data : [])).catch(() => setCompetencies([]));
+  }, [token]);
+
+  const handleGenerateSamples = async () => {
+    if (!token) return;
+    setGeneratingSamples(true);
+    try {
+      await api.templates.generateSamples(token);
+      toast.success('Plantillas de muestra generadas exitosamente');
+      reloadTemplates();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al generar plantillas');
+    } finally {
+      setGeneratingSamples(false);
+    }
+  };
 
   // CSV Import
   const [showImport, setShowImport] = useState(false);
@@ -568,12 +592,52 @@ export default function PlantillasPage() {
               )}
             </div>
 
-            <input
-              style={{ ...inputStyle, fontWeight: 600 }}
-              value={sec.title}
-              onChange={(e) => updateSection(si, 'title', e.target.value)}
-              placeholder={t('plantillas.sectionTitle')}
-            />
+            {/* Section title — select from competency catalog or custom */}
+            {(() => {
+              const usedCompIds = new Set(sections.filter((_, idx) => idx !== si).map(s => s.competencyId).filter(Boolean));
+              const availableComps = competencies.filter((c: any) => !usedCompIds.has(c.id));
+              const isCustomSection = !sec.competencyId;
+              // Determine select value: competency ID, __custom__ for custom, or empty
+              const selectValue = sec.competencyId ? sec.competencyId : (sec.title || isCustomSection ? '__custom__' : '');
+              return (
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                  <select
+                    style={{ ...inputStyle, fontWeight: 600, flex: 1 }}
+                    value={selectValue}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '__custom__') {
+                        setSections(prev => prev.map((s, i) => i === si ? { ...s, competencyId: undefined, title: s.title || '' } : s));
+                      } else if (val) {
+                        const comp = competencies.find((c: any) => c.id === val);
+                        if (comp) {
+                          setSections(prev => prev.map((s, i) => i === si ? { ...s, competencyId: comp.id, title: comp.name } : s));
+                        }
+                      } else {
+                        setSections(prev => prev.map((s, i) => i === si ? { ...s, competencyId: undefined, title: '' } : s));
+                      }
+                    }}
+                  >
+                    <option value="">— Seleccionar competencia —</option>
+                    {sec.competencyId && !availableComps.some((c: any) => c.id === sec.competencyId) && (
+                      <option value={sec.competencyId}>{sec.title} (ya no disponible)</option>
+                    )}
+                    {availableComps.map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.category || 'General'})</option>
+                    ))}
+                    <option value="__custom__">— Sección personalizada (texto libre) —</option>
+                  </select>
+                  {isCustomSection && (
+                    <input
+                      style={{ ...inputStyle, fontWeight: 600, flex: 1 }}
+                      value={sec.title}
+                      onChange={(e) => updateSection(si, 'title', e.target.value)}
+                      placeholder="Nombre de la sección personalizada"
+                    />
+                  )}
+                </div>
+              );
+            })()}
             <ConditionBuilder
               condition={sec.condition}
               onChange={(c) => updateSection(si, 'condition', c)}
@@ -845,8 +909,21 @@ export default function PlantillasPage() {
               <polyline points="14 2 14 8 20 8" />
             </svg>
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>{t('plantillas.noTemplates')}</p>
-          <button className="btn-primary" onClick={handleNew}>Crear primera plantilla</button>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>Tu organización aún no tiene plantillas de evaluación.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+            Genera plantillas de muestra basadas en tu catálogo de competencias, o crea una desde cero.
+          </p>
+          {competencies.length < 3 && (
+            <p style={{ color: 'var(--warning)', fontSize: '0.82rem', marginBottom: '0.75rem', fontWeight: 500 }}>
+              Se requieren al menos 3 competencias activas para generar plantillas. Actualmente tienes {competencies.length}. Ve a <strong>Catálogo de Competencias</strong> para agregar más.
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button className="btn-primary" onClick={handleGenerateSamples} disabled={generatingSamples || competencies.length < 3}>
+              {generatingSamples ? 'Generando plantillas...' : `Generar plantillas de muestra (${competencies.length} competencias)`}
+            </button>
+            <button className="btn-ghost" onClick={handleNew}>Crear plantilla desde cero</button>
+          </div>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>

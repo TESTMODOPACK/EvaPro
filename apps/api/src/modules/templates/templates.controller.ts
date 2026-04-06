@@ -45,6 +45,12 @@ export class TemplatesController {
     return this.templatesService.findPending(req.user.tenantId);
   }
 
+  @Post('generate-samples')
+  @Roles('super_admin', 'tenant_admin')
+  generateSamples(@Request() req: any) {
+    return this.templatesService.generateSampleTemplates(req.user.tenantId, req.user.userId);
+  }
+
   // ─── Parameterized routes ───────────────────────────────────────────
 
   @Get(':id/preview')

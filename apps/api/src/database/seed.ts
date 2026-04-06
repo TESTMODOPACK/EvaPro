@@ -632,7 +632,9 @@ async function seed() {
       console.log('\u2705  Default template created: Competencias Generales');
     }
 
-    /* ── System Templates (available per tenant) ─────────────────────── */
+    /* ── System Templates — DISABLED: organizations now generate their own from competency catalog ── */
+    /* Each organization uses "Generar plantillas de muestra" button to create templates
+       based on their own competency catalog instead of generic system templates.
     for (const tpl of SYSTEM_TEMPLATES) {
       const exists = await templateRepo.findOne({ where: { name: tpl.name, tenantId: tenant.id } });
       if (!exists) {
@@ -658,6 +660,7 @@ async function seed() {
         }
       }
     }
+    */
 
     /* ── Competencias por defecto ─────────────────────────────────────────── */
     const existingComps = await compRepo.count({ where: { tenantId: tenant.id } });

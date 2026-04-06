@@ -523,6 +523,8 @@ export const api = {
       request<void>(`/templates/${id}`, { method: "DELETE" }, token),
     duplicate: (token: string, id: string) =>
       request<TemplateData>(`/templates/${id}/duplicate`, { method: "POST" }, token),
+    generateSamples: (token: string) =>
+      request<TemplateData[]>("/templates/generate-samples", { method: "POST" }, token),
     importCsv: (token: string, data: { name: string; description?: string; csvData: string }) =>
       request<TemplateData>(`/templates/import-csv`, { method: "POST", body: JSON.stringify(data) }, token),
     preview: (token: string, id: string) =>

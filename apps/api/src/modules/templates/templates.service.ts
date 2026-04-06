@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { FormTemplate } from './entities/form-template.entity';
+import { Competency } from '../development/entities/competency.entity';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 
@@ -10,6 +11,8 @@ export class TemplatesService {
   constructor(
     @InjectRepository(FormTemplate)
     private readonly templateRepo: Repository<FormTemplate>,
+    @InjectRepository(Competency)
+    private readonly competencyRepo: Repository<Competency>,
   ) {}
 
   async findAll(tenantId: string, includeAll = false): Promise<FormTemplate[]> {
@@ -42,7 +45,21 @@ export class TemplatesService {
     return template;
   }
 
+  // Validate no duplicate competencyIds across sections
+  private validateSectionCompetencies(sections: any[]): void {
+    const compIds = new Set<string>();
+    for (const sec of sections) {
+      if (sec.competencyId) {
+        if (compIds.has(sec.competencyId)) {
+          throw new BadRequestException(`La competencia ya está asignada a otra sección en esta plantilla`);
+        }
+        compIds.add(sec.competencyId);
+      }
+    }
+  }
+
   async create(tenantId: string, userId: string, dto: CreateTemplateDto): Promise<FormTemplate> {
+    if (dto.sections) this.validateSectionCompetencies(dto.sections);
     const template = this.templateRepo.create({
       tenantId,
       name: dto.name,
@@ -69,6 +86,8 @@ export class TemplatesService {
     if (template.tenantId === null) {
       throw new NotFoundException('No se pueden editar plantillas globales');
     }
+
+    if (dto.sections) this.validateSectionCompetencies(dto.sections);
 
     // If sections changed, snapshot current version before overwriting
     const sectionsChanged = dto.sections !== undefined &&
@@ -393,5 +412,116 @@ export class TemplatesService {
     template.reviewNote = note.trim();
     template.reviewedAt = new Date();
     return this.templateRepo.save(template);
+  }
+
+  // ─── Generate Sample Templates from Org Competencies ─────────────────
+
+  async generateSampleTemplates(tenantId: string, userId: string): Promise<FormTemplate[]> {
+    const competencies = await this.competencyRepo.find({
+      where: { tenantId, isActive: true, status: 'approved' as any },
+      order: { category: 'ASC', name: 'ASC' },
+    });
+    if (competencies.length < 3) {
+      throw new BadRequestException('Se requieren al menos 3 competencias activas en el catálogo para generar plantillas de muestra. Actualmente hay ' + competencies.length + '.');
+    }
+
+    const scale = { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } };
+
+    // Question banks per evaluation type perspective
+    const supervisorQuestions = (name: string) => [
+      { text: `El colaborador demuestra dominio en ${name}`, type: 'scale', scale, required: true },
+      { text: `Aplica ${name} de manera consistente en sus tareas diarias`, type: 'scale', scale, required: true },
+      { text: `Ha demostrado mejora en ${name} durante el período evaluado`, type: 'scale', scale, required: true },
+      { text: `Cumple con los estándares esperados en ${name}`, type: 'scale', scale, required: true },
+      { text: `Contribuye al equipo a través de su competencia en ${name}`, type: 'scale', scale, required: true },
+    ];
+    const selfQuestions = (name: string) => [
+      { text: `Considero que mi desempeño en ${name} es adecuado para mi cargo`, type: 'scale', scale, required: true },
+    ];
+    const peerQuestions = (name: string) => [
+      { text: `Este compañero demuestra ${name} en la colaboración con el equipo`, type: 'scale', scale, required: true },
+    ];
+    const reportQuestions = (name: string) => [
+      { text: `Mi encargado me brinda orientación efectiva en ${name}`, type: 'scale', scale, required: true },
+    ];
+
+    // Feedback section (common)
+    const feedbackSection = {
+      id: `sec-feedback`,
+      title: 'Retroalimentación General',
+      competencyId: null,
+      questions: [
+        { id: `q-fb-1`, text: '¿Cuáles son las principales fortalezas de esta persona?', type: 'text', required: true },
+        { id: `q-fb-2`, text: '¿En qué áreas podría mejorar?', type: 'text', required: true },
+        { id: `q-fb-3`, text: '¿Tiene algún comentario adicional sobre el desempeño general?', type: 'text', required: false },
+      ],
+    };
+
+    const types = [
+      { type: '90', name: 'Evaluación 90° — Jefatura', desc: 'Evaluación directa del supervisor. Mide desempeño observable desde la perspectiva del encargado.' },
+      { type: '180', name: 'Evaluación 180° — Jefatura + Autoevaluación', desc: 'Combina la evaluación del supervisor con la autoevaluación del colaborador.' },
+      { type: '270', name: 'Evaluación 270° — Jefatura + Auto + Pares', desc: 'Incluye la perspectiva del supervisor, autoevaluación y evaluación de pares.' },
+      { type: '360', name: 'Evaluación 360° — Completa', desc: 'Evaluación integral: supervisor, autoevaluación, pares y reportes directos.' },
+    ];
+
+    const templates: FormTemplate[] = [];
+
+    for (const evalType of types) {
+      const sections: any[] = [];
+      let qIdx = 0;
+
+      for (const comp of competencies) {
+        const secId = `sec-${comp.id.slice(0, 8)}`;
+        const questions: any[] = [];
+
+        // Supervisor questions (all types)
+        for (const q of supervisorQuestions(comp.name)) {
+          questions.push({ id: `q-${++qIdx}`, ...q });
+        }
+        // Self-evaluation questions (180+)
+        if (['180', '270', '360'].includes(evalType.type)) {
+          for (const q of selfQuestions(comp.name)) {
+            questions.push({ id: `q-${++qIdx}`, ...q });
+          }
+        }
+        // Peer questions (270+)
+        if (['270', '360'].includes(evalType.type)) {
+          for (const q of peerQuestions(comp.name)) {
+            questions.push({ id: `q-${++qIdx}`, ...q });
+          }
+        }
+        // Direct report questions (360 only)
+        if (evalType.type === '360') {
+          for (const q of reportQuestions(comp.name)) {
+            questions.push({ id: `q-${++qIdx}`, ...q });
+          }
+        }
+
+        sections.push({
+          id: secId,
+          title: comp.name,
+          competencyId: comp.id,
+          description: comp.description || `Evaluación de la competencia: ${comp.name}`,
+          questions,
+        });
+      }
+
+      // Add feedback section
+      sections.push({ ...feedbackSection, id: `sec-feedback-${evalType.type}`, questions: feedbackSection.questions.map((q, i) => ({ ...q, id: `q-fb-${evalType.type}-${i}` })) });
+
+      const template = this.templateRepo.create({
+        tenantId,
+        name: evalType.name,
+        description: evalType.desc,
+        sections,
+        status: 'published',
+        language: 'es',
+        createdBy: userId,
+        isDefault: false,
+      });
+      templates.push(await this.templateRepo.save(template));
+    }
+
+    return templates;
   }
 }
