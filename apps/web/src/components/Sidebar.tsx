@@ -241,7 +241,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       title: t('nav.continuous', 'Gestión Continua'),
       items: [
         { href: '/dashboard/objetivos', label: t('nav.objectives', 'Objetivos y Metas'), icon: icons.objectives },
-        { href: '/dashboard/feedback', label: t('nav.feedback', 'Feedback'), icon: icons.feedback },
+        { href: '/dashboard/feedback', label: t('nav.feedback', 'Retroalimentación Continua'), icon: icons.feedback },
         { href: '/dashboard/reconocimientos', label: t('nav.recognitions', 'Reconocimientos'), icon: icons.competencies },
         { href: '/dashboard/encuestas-clima', label: t('nav.surveys', 'Encuestas de Clima'), icon: icons.calibration },
       ],

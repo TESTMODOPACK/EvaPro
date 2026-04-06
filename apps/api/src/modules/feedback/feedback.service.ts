@@ -93,9 +93,11 @@ export class FeedbackService {
     if (!ci) throw new NotFoundException('Check-in no encontrado');
     if (dto.topic !== undefined) ci.topic = dto.topic;
     if (dto.notes !== undefined) ci.notes = dto.notes;
+    if (dto.scheduledDate !== undefined) ci.scheduledDate = new Date(dto.scheduledDate) as any;
     if (dto.scheduledTime !== undefined) ci.scheduledTime = dto.scheduledTime;
     if (dto.locationId !== undefined) ci.locationId = dto.locationId;
     if (dto.actionItems !== undefined) ci.actionItems = dto.actionItems;
+    if (dto.status !== undefined) ci.status = dto.status as any;
     return this.checkInRepo.save(ci);
   }
 

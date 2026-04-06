@@ -4,7 +4,7 @@ import { PlanGate } from '@/components/PlanGate';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ConfirmModal from '@/components/ConfirmModal';
-import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useDeleteCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
+import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
@@ -37,7 +37,15 @@ function Spinner() {
   );
 }
 
-function formatDate(d: string) {
+function formatDate(d: string | null | undefined) {
+  if (!d) return '—';
+  // Extract only the date part (handle both "2026-04-08" and "2026-04-08T10:30:00.000Z")
+  const dateOnly = d.length > 10 ? d.slice(0, 10) : d;
+  const parts = dateOnly.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const local = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return local.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
   return new Date(d).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
@@ -68,7 +76,7 @@ function CheckInsTab() {
   const createCheckIn = useCreateCheckIn();
   const completeCheckIn = useCompleteCheckIn();
   const rejectCheckIn = useRejectCheckIn();
-  const deleteCheckIn = useDeleteCheckIn();
+  const cancelCheckIn = useCancelCheckIn();
   const requestCheckIn = useRequestCheckIn();
   const acceptCheckIn = useAcceptCheckIn();
   const isEmployee = role === 'employee';
@@ -478,30 +486,43 @@ function CheckInsTab() {
                       {acceptCheckIn.isPending ? '...' : '✓ Aceptar'}
                     </button>
                   )}
-                  {ci.status === 'scheduled' && canCreateCheckIn && (
-                    <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
-                      onClick={() => {
-                        setCompleteModal({ id: ci.id, topic: ci.topic, employee: userName(ci.employee) });
-                        setCompleteForm({ notes: '', rating: 0, actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
-                      }}>
-                      {t('feedback.complete')}
-                    </button>
-                  )}
+                  {ci.status === 'scheduled' && canCreateCheckIn && (() => {
+                    // Only allow completion after scheduled date/time has passed
+                    const parts = ci.scheduledDate?.split('-') || [];
+                    const schedDate = parts.length === 3 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])) : new Date(ci.scheduledDate);
+                    if (ci.scheduledTime) {
+                      const [hh, mm] = ci.scheduledTime.split(':').map(Number);
+                      schedDate.setHours(hh || 0, mm || 0);
+                    } else {
+                      schedDate.setHours(23, 59); // If no time, allow at end of day
+                    }
+                    const canComplete = new Date() >= schedDate;
+                    return (
+                      <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', opacity: canComplete ? 1 : 0.5 }}
+                        disabled={!canComplete}
+                        title={canComplete ? 'Completar reunión' : 'Solo se puede completar después de la fecha y hora programada'}
+                        onClick={() => {
+                          setCompleteModal({ id: ci.id, topic: ci.topic, employee: userName(ci.employee) });
+                          setCompleteForm({ notes: '', rating: 0, actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
+                        }}>
+                        {t('feedback.complete')}
+                      </button>
+                    );
+                  })()}
                   {ci.status === 'scheduled' && ci.employeeId === currentUserId && (
                     <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => setRejectModal({ id: ci.id, topic: ci.topic })}>
                       {t('feedback.reject')}
                     </button>
                   )}
-                  {ci.status !== 'completed' && canCreateCheckIn && (ci.managerId === currentUserId || role === 'tenant_admin' || role === 'super_admin') && (
-                    <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--text-muted)' }}
+                  {ci.status === 'scheduled' && canCreateCheckIn && (ci.managerId === currentUserId || role === 'tenant_admin' || role === 'super_admin') && (
+                    <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--danger)' }}
                       onClick={() => {
-                        if (confirm(`¿Eliminar el check-in "${ci.topic}"? Esta acción no se puede deshacer.`)) {
-                          deleteCheckIn.mutate(ci.id);
+                        if (confirm(`¿Anular el check-in "${ci.topic}"? El registro se mantendrá con estado "Anulada".`)) {
+                          cancelCheckIn.mutate(ci.id);
                         }
                       }}
-                      disabled={deleteCheckIn.isPending}
-                      title="Eliminar check-in">
-                      🗑
+                      disabled={cancelCheckIn.isPending}>
+                      Anular
                     </button>
                   )}
                 </div>

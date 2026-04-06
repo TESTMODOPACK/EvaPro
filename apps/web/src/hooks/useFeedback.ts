@@ -70,6 +70,15 @@ export function useDeleteCheckIn() {
   });
 }
 
+export function useCancelCheckIn() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.feedback.updateCheckIn(token!, id, { status: 'cancelled' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] }),
+  });
+}
+
 export function useReceivedFeedback() {
   const token = useAuthStore((s) => s.token);
   return useQuery({
