@@ -889,10 +889,10 @@
   },
   "insights": {
     "title": "Informes con Inteligencia Artificial",
-    "subtitle": "Análisis inteligente basado en datos de desempeño",
+    "subtitle": "Resumen ejecutivo con IA, sugerencias de desarrollo y predicción de desempeño para cada colaborador",
     "flightRiskError": "No se pudo cargar el análisis de riesgo de fuga. Puede que no haya suficientes datos.",
     "scoreNote": "Puntuación algorítmica basada en: desempeño (30%), objetivos y metas (25%), feedback (20%), objetivos en riesgo (15%), 9-box (10%) • Solo visible para administradores",
-    "selectUserForPrediction": "Selecciona un colaborador en la sección superior para ver su predicción de desempeño.",
+    "selectUserForPrediction": "Selecciona un colaborador para obtener sus informes con IA.",
     "predictionNotAvailable": "Predicción no disponible",
     "historyAvailable": "Historial disponible",
     "predictionTitle": "Predicción de Desempeño",

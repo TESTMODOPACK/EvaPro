@@ -73,7 +73,7 @@ function TurnoverPageContent() {
     }).catch((e) => setError(e.message || 'Error al cargar los datos')).finally(() => setLoading(false));
   }, [token]);
 
-  const handleExport = async (format: 'csv' | 'xlsx') => {
+  const handleExport = async (format: 'xlsx') => {
     if (!token) return;
     setExporting(format);
     try {

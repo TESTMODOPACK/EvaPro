@@ -608,30 +608,21 @@ function InsightsPageContent() {
 
       {/* Tabs — separated into IA (requires generation) and Algorithmic (instant) */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        {/* IA Section */}
-        {selectedCycleId && (
-          <div style={{ marginBottom: '0.5rem' }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>
-              Análisis con IA (requiere generación)
-            </div>
+        {/* IA + Predicciones Section */}
+        {selectedCycleId && selectedUserId && (
+          <div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               {tabBtn('summary', '🤖 Resumen IA')}
               {tabBtn('suggestions', '💡 Sugerencias de Desarrollo')}
+              {tabBtn('prediction', '📈 Predicción de Desempeño')}
             </div>
           </div>
         )}
-        {/* Algorithmic Section */}
-        <div>
-          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>
-            Análisis algorítmico (datos en tiempo real)
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {tabBtn('prediction', '📈 Predicciones')}
-          </div>
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-            Riesgo de Fuga y Retención se encuentran en <strong>Análisis de Dotación</strong>.
+        {selectedCycleId && !selectedUserId && (
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '0.5rem 0' }}>
+            Selecciona un colaborador para ver los informes disponibles.
           </p>
-        </div>
+        )}
       </div>
 
       {/* Context banner — show selected user/cycle for IA tabs */}
@@ -662,7 +653,7 @@ function InsightsPageContent() {
       })()}
 
       {/* Content */}
-      {!selectedCycleId && !['flight-risk', 'prediction', 'retention'].includes(activeTab) && (
+      {!selectedCycleId && activeTab !== 'prediction' && (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
             {'Selecciona un ciclo de evaluaci\u00f3n para comenzar el an\u00e1lisis con IA'}

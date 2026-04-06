@@ -45,17 +45,7 @@ function AnalisisIntegradoContent() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  // Auto-load analysis with defaults on first render
-  useEffect(() => {
-    if (!token || availableCycles.length === 0 && availableSurveys.length === 0) return;
-    if (data) return; // already loaded
-    setLoadingAnalysis(true);
-    fetch(`${API}/reports/cross-analysis`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoadingAnalysis(false));
-  }, [token, availableCycles, availableSurveys]);
+  // No auto-load — user must select survey + cycles and click Analyze
 
   const handleAnalyze = async () => {
     if (!token) return;
@@ -115,14 +105,16 @@ function AnalisisIntegradoContent() {
               {data?.surveyTitle && <> · Encuesta: <strong>{data.surveyTitle}</strong></>}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {(['pdf', 'xlsx'] as const).map(fmt => (
-              <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
-                style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
-                {exporting === fmt ? '...' : fmt.toUpperCase()}
-              </button>
-            ))}
-          </div>
+          {data && !data.error && (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {(['pdf', 'xlsx'] as const).map(fmt => (
+                <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
+                  style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
+                  {exporting === fmt ? '...' : fmt.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -189,52 +181,72 @@ function AnalisisIntegradoContent() {
           {/* Survey selector */}
           <div style={{ flex: '1 1 250px' }}>
             <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Encuesta de Clima</label>
-            <select value={selectedSurveyId} onChange={(e) => setSelectedSurveyId(e.target.value)}
+            <select value={selectedSurveyId} onChange={(e) => { setSelectedSurveyId(e.target.value); setSelectedCycleIds(new Set()); setData(null); }}
               style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}>
-              <option value="">Última cerrada (auto)</option>
+              <option value="">Seleccionar encuesta...</option>
               {availableSurveys.map((s: any) => (
                 <option key={s.id} value={s.id}>{s.title} ({s.endDate ? new Date(s.endDate).toLocaleDateString('es-CL') : ''})</option>
               ))}
             </select>
           </div>
-          {/* Cycles multi-select */}
-          <div style={{ flex: '2 1 350px' }}>
-            <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
-              Ciclos de Evaluación <span style={{ fontWeight: 400, textTransform: 'none' }}>(seleccione 1 o más)</span>
-            </label>
-            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-              {availableCycles.length === 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sin ciclos cerrados</span>}
-              {availableCycles.map((c: any) => {
-                const sel = selectedCycleIds.has(c.id);
-                return (
-                  <button key={c.id} type="button"
-                    onClick={() => setSelectedCycleIds(prev => {
-                      const next = new Set(prev);
-                      if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
-                      return next;
-                    })}
-                    style={{
-                      padding: '0.35rem 0.65rem', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem',
-                      border: sel ? '2px solid var(--accent)' : '1px solid var(--border)',
-                      background: sel ? 'rgba(201,147,58,0.1)' : 'var(--bg-surface)',
-                      color: sel ? 'var(--accent)' : 'var(--text-primary)',
-                      fontWeight: sel ? 700 : 400, cursor: 'pointer',
-                    }}>
-                    {c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status})
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Cycles multi-select — filtered by ±1 year from survey end date */}
+          {selectedSurveyId && (() => {
+            const survey = availableSurveys.find((s: any) => s.id === selectedSurveyId);
+            const surveyEnd = survey?.endDate ? new Date(survey.endDate).getTime() : 0;
+            const oneYear = 365 * 24 * 60 * 60 * 1000;
+            const filteredCycles = surveyEnd ? availableCycles.filter((c: any) => {
+              const cycleEnd = c.endDate ? new Date(c.endDate).getTime() : 0;
+              return cycleEnd > 0 && Math.abs(cycleEnd - surveyEnd) <= oneYear;
+            }) : availableCycles;
+            return (
+              <div style={{ flex: '2 1 350px' }}>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                  Ciclos de Evaluación <span style={{ fontWeight: 400, textTransform: 'none' }}>(±1 año de la encuesta, seleccione 1 o más)</span>
+                </label>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  {filteredCycles.length === 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sin ciclos en el rango de ±1 año</span>}
+                  {filteredCycles.map((c: any) => {
+                    const sel = selectedCycleIds.has(c.id);
+                    const startStr = c.startDate ? new Date(c.startDate).toLocaleDateString('es-CL') : '';
+                    const endStr = c.endDate ? new Date(c.endDate).toLocaleDateString('es-CL') : '';
+                    return (
+                      <button key={c.id} type="button"
+                        onClick={() => setSelectedCycleIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
+                          return next;
+                        })}
+                        style={{
+                          padding: '0.35rem 0.65rem', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem',
+                          border: sel ? '2px solid var(--accent)' : '1px solid var(--border)',
+                          background: sel ? 'rgba(201,147,58,0.1)' : 'var(--bg-surface)',
+                          color: sel ? 'var(--accent)' : 'var(--text-primary)',
+                          fontWeight: sel ? 700 : 400, cursor: 'pointer',
+                        }}>
+                        {c.name} ({startStr} — {endStr})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
           {/* Analyze button */}
-          <button className="btn-primary" onClick={handleAnalyze} disabled={loadingAnalysis}
+          <button className="btn-primary" onClick={handleAnalyze} disabled={loadingAnalysis || !selectedSurveyId || selectedCycleIds.size === 0}
             style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
             {loadingAnalysis ? 'Analizando...' : 'Analizar'}
           </button>
         </div>
-        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem', margin: '0.5rem 0 0' }}>
-          Si no selecciona, se usan los datos más recientes. Puede comparar 1 encuesta de clima con múltiples ciclos de evaluación del mismo período (máximo 1 año de diferencia).
-        </p>
+        {!selectedSurveyId && (
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+            Selecciona una encuesta de clima para ver los ciclos de evaluación compatibles (±1 año de diferencia).
+          </p>
+        )}
+        {selectedSurveyId && selectedCycleIds.size === 0 && (
+          <p style={{ fontSize: '0.78rem', color: 'var(--warning)', marginTop: '0.5rem' }}>
+            Selecciona al menos 1 ciclo de evaluación para activar el análisis.
+          </p>
+        )}
       </div>
 
       {/* Error */}
