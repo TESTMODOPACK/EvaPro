@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { Contract } from './entities/contract.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 
@@ -28,6 +30,7 @@ export class ContractsService {
     private readonly tenantRepo: Repository<Tenant>,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   getContractTypes() {
@@ -63,6 +66,7 @@ export class ContractsService {
     });
     const saved = await this.contractRepo.save(contract);
     await this.auditService.log(dto.tenantId, createdBy, 'contract.created', 'contract', saved.id, { type: dto.type, title: dto.title }).catch(() => {});
+    this.notifyAdminOnContractChange(saved.id, 'created').catch(() => {});
     return saved;
   }
 
@@ -107,7 +111,9 @@ export class ContractsService {
     if (dto.effectiveDate) contract.effectiveDate = new Date(dto.effectiveDate);
     if (dto.expirationDate) contract.expirationDate = new Date(dto.expirationDate);
     await this.auditService.log(contract.tenantId, userId, 'contract.updated', 'contract', id).catch(() => {});
-    return this.contractRepo.save(contract);
+    const saved = await this.contractRepo.save(contract);
+    this.notifyAdminOnContractChange(id, 'updated').catch(() => {});
+    return saved;
   }
 
   async remove(id: string, userId: string): Promise<void> {
@@ -116,6 +122,7 @@ export class ContractsService {
       throw new BadRequestException('Solo se pueden eliminar contratos en estado borrador');
     }
     await this.auditService.log(contract.tenantId, userId, 'contract.deleted', 'contract', id, { title: contract.title }).catch(() => {});
+    this.notifyAdminOnContractChange(id, 'deleted').catch(() => {});
     await this.contractRepo.remove(contract);
   }
 
@@ -173,6 +180,7 @@ export class ContractsService {
     }
 
     await this.auditService.log(contract.tenantId, userId, 'contract.sent_for_signature', 'contract', id, { title: contract.title }).catch(() => {});
+    this.notifyAdminOnContractChange(id, 'sent').catch(() => {});
     return contract;
   }
 
@@ -406,5 +414,79 @@ Vigencia: 2 años desde la terminación del contrato de servicio.
 Excepciones: información pública, obtenida independientemente, o requerida por autoridad competente.`,
       },
     ];
+  }
+
+  // ─── Contract Queries (admin → super_admin) ──────────────────────────
+
+  async submitContractQuery(
+    contractId: string, tenantId: string, userId: string,
+    dto: { type: string; message: string },
+  ) {
+    const contract = await this.contractRepo.findOne({ where: { id: contractId, tenantId }, relations: ['tenant'] });
+    if (!contract) throw new NotFoundException('Contrato no encontrado');
+
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'firstName', 'lastName', 'email'] });
+    const userName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
+    const orgName = contract.tenant?.name || tenantId;
+
+    const queryTypes: Record<string, string> = {
+      modification: 'Solicitud de modificación',
+      question: 'Consulta',
+      renewal: 'Solicitud de renovación',
+      cancellation: 'Solicitud de cancelación',
+    };
+
+    // Notify ALL super_admins
+    const superAdmins = await this.userRepo.find({ where: { role: 'super_admin', isActive: true }, select: ['id'] });
+    for (const sa of superAdmins) {
+      await this.notificationsService.create({
+        tenantId,
+        userId: sa.id,
+        type: NotificationType.GENERAL,
+        title: `${queryTypes[dto.type] || 'Consulta'} de contrato — ${orgName}`,
+        message: `${userName} (${orgName}) ha enviado una ${(queryTypes[dto.type] || 'consulta').toLowerCase()} sobre el contrato "${contract.title}": ${dto.message}`,
+        metadata: { contractId, queryType: dto.type, fromUserId: userId, fromUserEmail: user?.email },
+      }).catch(() => {});
+    }
+
+    this.auditService.log(tenantId, userId, 'contract.query_submitted', 'contract', contractId, {
+      type: dto.type, message: dto.message, contractTitle: contract.title,
+    }).catch(() => {});
+
+    return { sent: true, message: 'Consulta enviada al administrador del sistema.' };
+  }
+
+  async getPendingQueries() {
+    // Return recent contract-related notifications for super_admins
+    // This uses the notification system — queries show up as notifications
+    return { message: 'Las consultas de contratos se muestran como notificaciones del sistema.' };
+  }
+
+  // ─── Notifications: SA → Admin on contract changes ───────────────────
+
+  async notifyAdminOnContractChange(contractId: string, action: string) {
+    const contract = await this.contractRepo.findOne({ where: { id: contractId }, relations: ['tenant'] });
+    if (!contract) return;
+
+    const actionLabels: Record<string, string> = {
+      created: 'creado', updated: 'actualizado', sent: 'enviado a firma', deleted: 'eliminado',
+    };
+
+    // Notify all tenant_admins of the organization
+    const admins = await this.userRepo.find({
+      where: { tenantId: contract.tenantId, role: 'tenant_admin', isActive: true },
+      select: ['id'],
+    });
+
+    for (const admin of admins) {
+      await this.notificationsService.create({
+        tenantId: contract.tenantId,
+        userId: admin.id,
+        type: NotificationType.GENERAL,
+        title: `Contrato ${actionLabels[action] || action}`,
+        message: `El contrato "${contract.title}" ha sido ${actionLabels[action] || action} por el administrador del sistema.`,
+        metadata: { contractId, action },
+      }).catch(() => {});
+    }
   }
 }

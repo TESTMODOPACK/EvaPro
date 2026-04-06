@@ -39,20 +39,27 @@ export default function ContratosPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [orgFilter, setOrgFilter] = useState('');
+  const [queryModal, setQueryModal] = useState<{ contractId: string; contractTitle: string } | null>(null);
+  const [queryForm, setQueryForm] = useState({ type: 'question', message: '' });
+  const [querySubmitting, setQuerySubmitting] = useState(false);
   const [createForm, setCreateForm] = useState({
     tenantId: '', type: 'service_agreement', title: '', description: '', content: '', effectiveDate: new Date().toISOString().split('T')[0],
   });
 
   const loadData = () => {
     if (!token) return;
-    api.contracts.list(token).then(setContracts).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    const listCall = isSuperAdmin && orgFilter
+      ? api.contracts.listByTenant(token, orgFilter)
+      : api.contracts.list(token);
+    listCall.then(setContracts).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
     if (isSuperAdmin) {
       api.contracts.getTemplates(token).then(setTemplates).catch(() => {});
       api.tenants.list(token).then(setTenants).catch(() => {});
     }
   };
 
-  useEffect(() => { loadData(); }, [token]);
+  useEffect(() => { loadData(); }, [token, orgFilter]);
 
   // Load signatures for each contract
   useEffect(() => {
@@ -95,6 +102,17 @@ export default function ContratosPage() {
           </button>
         )}
       </div>
+
+      {/* SA: Organization filter */}
+      {isSuperAdmin && tenants.length > 0 && (
+        <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+          <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}
+            style={{ maxWidth: '350px', fontSize: '0.85rem' }}>
+            <option value="">Todas las organizaciones ({contracts.length} contratos)</option>
+            {tenants.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Guide */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
@@ -327,6 +345,14 @@ export default function ContratosPage() {
                       </button>
                     )}
 
+                    {/* Admin: Query/request button */}
+                    {role === 'tenant_admin' && (
+                      <button className="btn-ghost" style={{ fontSize: '0.82rem', marginTop: '0.5rem' }}
+                        onClick={() => { setQueryModal({ contractId: c.id, contractTitle: c.title }); setQueryForm({ type: 'question', message: '' }); }}>
+                        {'💬'} Enviar consulta o solicitud
+                      </button>
+                    )}
+
                     {/* Contract metadata */}
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                       {c.effectiveDate && <span>{t('contracts.effectiveDate')}: {new Date(c.effectiveDate).toLocaleDateString('es-CL')}</span>}
@@ -356,6 +382,54 @@ export default function ContratosPage() {
             }
           }}
         />
+      )}
+
+      {/* Admin: Query modal */}
+      {queryModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ padding: '1.5rem', maxWidth: '500px', width: '95%' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.5rem' }}>Enviar consulta sobre contrato</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              <strong>{queryModal.contractTitle}</strong>
+            </p>
+
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Tipo de solicitud</label>
+              <select className="input" value={queryForm.type} onChange={(e) => setQueryForm({ ...queryForm, type: e.target.value })} style={{ width: '100%' }}>
+                <option value="question">Consulta general</option>
+                <option value="modification">Solicitud de modificación</option>
+                <option value="renewal">Solicitud de renovación</option>
+                <option value="cancellation">Solicitud de cancelación</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Mensaje</label>
+              <textarea className="input" rows={4} placeholder="Describa su consulta o solicitud..."
+                value={queryForm.message} onChange={(e) => setQueryForm({ ...queryForm, message: e.target.value })}
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button className="btn-ghost" onClick={() => setQueryModal(null)}>Cancelar</button>
+              <button className="btn-primary" disabled={!queryForm.message.trim() || querySubmitting}
+                onClick={async () => {
+                  if (!token || !queryForm.message.trim()) return;
+                  setQuerySubmitting(true);
+                  try {
+                    await api.contracts.submitQuery(token, queryModal.contractId, { type: queryForm.type, message: queryForm.message.trim() });
+                    setQueryModal(null);
+                    alert('Consulta enviada correctamente. El administrador del sistema la recibirá como notificación.');
+                  } catch (e: any) {
+                    alert(e.message || 'Error al enviar consulta');
+                  }
+                  setQuerySubmitting(false);
+                }}>
+                {querySubmitting ? 'Enviando...' : 'Enviar consulta'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

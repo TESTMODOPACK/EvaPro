@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, ParseUUIDPipe, HttpCode, HttpStatus,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, ParseUUIDPipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -24,8 +24,13 @@ export class ContractsController {
 
   @Get()
   @Roles('super_admin', 'tenant_admin')
-  list(@Request() req: any) {
-    if (req.user.role === 'super_admin') return this.contractsService.findAll();
+  list(@Request() req: any, @Query('tenantId') filterTenantId?: string) {
+    if (req.user.role === 'super_admin') {
+      // SA can filter by org or see all
+      return filterTenantId
+        ? this.contractsService.findByTenant(filterTenantId)
+        : this.contractsService.findAll();
+    }
     return this.contractsService.findByTenant(req.user.tenantId);
   }
 
@@ -65,5 +70,23 @@ export class ContractsController {
   @Roles('super_admin')
   sendForSignature(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.contractsService.sendForSignature(id, req.user.userId);
+  }
+
+  /** Admin sends a query/request about a contract to super_admin */
+  @Post(':id/query')
+  @Roles('tenant_admin')
+  submitQuery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { type: string; message: string },
+  ) {
+    return this.contractsService.submitContractQuery(id, req.user.tenantId, req.user.userId, dto);
+  }
+
+  /** SA gets queries for contracts */
+  @Get('queries/pending')
+  @Roles('super_admin')
+  getPendingQueries() {
+    return this.contractsService.getPendingQueries();
   }
 }
