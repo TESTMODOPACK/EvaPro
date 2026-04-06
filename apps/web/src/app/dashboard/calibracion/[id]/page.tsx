@@ -72,6 +72,16 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   }>>({});
   const [savingEntry, setSavingEntry] = useState<string | null>(null);
 
+  // Preview & selection before populate
+  const [previewUsers, setPreviewUsers] = useState<any[] | null>(null);
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  // Add entry after populate
+  const [showAddEntry, setShowAddEntry] = useState(false);
+  const [addEntrySearch, setAddEntrySearch] = useState('');
+  const [addingEntryId, setAddingEntryId] = useState<string | null>(null);
+
   // Distribution analysis
   const [distribution, setDistribution] = useState<any>(null);
 
@@ -136,14 +146,47 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
       .then((resolved) => fetchSession(resolved));
   }, [token, params.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function handleLoadPreview() {
+    if (!token) return;
+    setLoadingPreview(true);
+    try {
+      const users = await api.talent.calibration.preview(token, params.id);
+      setPreviewUsers(users);
+      setExcludedIds(new Set());
+    } catch { setPreviewUsers([]); }
+    setLoadingPreview(false);
+  }
+
   async function handlePopulate() {
     if (!token) return;
     setPopulating(true);
     try {
-      await api.talent.calibration.populate(token, params.id);
+      const excluded = Array.from(excludedIds);
+      await api.talent.calibration.populate(token, params.id, excluded.length > 0 ? excluded : undefined);
+      setPreviewUsers(null);
       await fetchSession();
     } catch { /* ignore */ }
     setPopulating(false);
+  }
+
+  async function handleAddEntry(userId: string) {
+    if (!token) return;
+    setAddingEntryId(userId);
+    try {
+      await api.talent.calibration.addEntry(token, params.id, userId);
+      setAddEntrySearch('');
+      setShowAddEntry(false);
+      await fetchSession();
+    } catch { /* ignore */ }
+    setAddingEntryId(null);
+  }
+
+  async function handleRemoveEntry(entryId: string, name: string) {
+    if (!token || !confirm(`¿Quitar a ${name} de esta sesión de calibración?`)) return;
+    try {
+      await api.talent.calibration.removeEntry(token, entryId);
+      await fetchSession();
+    } catch { /* ignore */ }
   }
 
   async function handleSaveEntry(entryId: string) {
@@ -304,15 +347,78 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
         </div>
       )}
 
-      {/* Empty state */}
-      {entries.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('calibracionDetalle.emptyState')}</p>
-          {!isReadOnly && (
-            <button className="btn-primary" onClick={handlePopulate} disabled={populating}>
-              {populating ? t('calibracionDetalle.loadingParticipants') : t('calibracionDetalle.loadParticipants')}
-            </button>
+      {/* Empty state — preview & select before populating */}
+      {entries.length === 0 && !isReadOnly && (
+        <div className="card" style={{ padding: '1.5rem' }}>
+          {!previewUsers ? (
+            // Step 1: Show button to load preview
+            <div style={{ textAlign: 'center', padding: '1.5rem' }}>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('calibracionDetalle.emptyState')}</p>
+              <button className="btn-primary" onClick={handleLoadPreview} disabled={loadingPreview}>
+                {loadingPreview ? 'Cargando...' : 'Ver colaboradores disponibles'}
+              </button>
+            </div>
+          ) : previewUsers.length === 0 ? (
+            // No users available
+            <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>
+              No hay colaboradores con evaluación de talento para este ciclo. Primero genere las evaluaciones en la sección de Talento.
+            </div>
+          ) : (
+            // Step 2: Preview with selection
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>Seleccionar colaboradores a calibrar</h3>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.2rem 0 0' }}>
+                    {previewUsers.length} disponible{previewUsers.length !== 1 ? 's' : ''} · {previewUsers.length - excludedIds.size} seleccionado{previewUsers.length - excludedIds.size !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setExcludedIds(new Set())}>
+                    Seleccionar todos
+                  </button>
+                  <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setExcludedIds(new Set(previewUsers.map((u: any) => u.userId)))}>
+                    Deseleccionar todos
+                  </button>
+                </div>
+              </div>
+              <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }}>
+                {previewUsers.map((u: any) => {
+                  const excluded = excludedIds.has(u.userId);
+                  return (
+                    <label key={u.userId} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid var(--border)', background: excluded ? 'transparent' : 'rgba(99,102,241,0.05)' }}>
+                      <input type="checkbox" checked={!excluded} style={{ accentColor: 'var(--accent)' }}
+                        onChange={() => {
+                          const next = new Set(excludedIds);
+                          if (excluded) next.delete(u.userId); else next.add(u.userId);
+                          setExcludedIds(next);
+                        }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: excluded ? 400 : 600, color: excluded ? 'var(--text-muted)' : 'var(--text-primary)' }}>
+                          {u.firstName} {u.lastName}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          {[u.position, u.department].filter(Boolean).join(' · ')}{u.performanceScore != null ? ` · Puntaje: ${Number(u.performanceScore).toFixed(1)}` : ''}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button className="btn-ghost" onClick={() => setPreviewUsers(null)}>Cancelar</button>
+                <button className="btn-primary" onClick={handlePopulate} disabled={populating || previewUsers.length - excludedIds.size === 0}>
+                  {populating ? 'Cargando...' : `Cargar ${previewUsers.length - excludedIds.size} colaborador${previewUsers.length - excludedIds.size !== 1 ? 'es' : ''}`}
+                </button>
+              </div>
+            </div>
           )}
+        </div>
+      )}
+      {entries.length === 0 && isReadOnly && (
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+          Esta sesión no tiene participantes.
         </div>
       )}
 
@@ -355,6 +461,43 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
               {t('calibracionDetalle.collapseAll')}
             </button>
           </div>
+          {/* Add collaborator button */}
+          {!isReadOnly && (
+            <button className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }} onClick={() => setShowAddEntry(!showAddEntry)}>
+              {showAddEntry ? 'Cerrar' : '+ Agregar colaborador'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Add entry search */}
+      {showAddEntry && !isReadOnly && entries.length > 0 && (
+        <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+          <p style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Buscar colaborador para agregar a la sesión:</p>
+          <input className="input" placeholder="Buscar por nombre..." value={addEntrySearch} onChange={(e) => setAddEntrySearch(e.target.value)} style={{ fontSize: '0.82rem', marginBottom: '0.4rem' }} />
+          {addEntrySearch.trim() && (() => {
+            const q = addEntrySearch.toLowerCase();
+            const existingIds = new Set(entries.map((e: any) => e.userId));
+            // Search all users from session data (we don't have a full user list here, but we can use preview)
+            return (
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={async () => {
+                  if (!token) return;
+                  try {
+                    const preview = await api.talent.calibration.preview(token, params.id);
+                    const filtered = preview.filter((u: any) => !existingIds.has(u.userId) && `${u.firstName} ${u.lastName}`.toLowerCase().includes(q));
+                    if (filtered.length === 0) { alert('No se encontraron colaboradores disponibles con ese nombre'); return; }
+                    if (filtered.length === 1) { await handleAddEntry(filtered[0].userId); return; }
+                    const names = filtered.map((u: any) => `${u.firstName} ${u.lastName} (${u.department || 'Sin depto.'})`).join('\n');
+                    const idx = prompt(`Se encontraron ${filtered.length} resultados:\n${names}\n\nEscribe el número (1-${filtered.length}) para agregar:`);
+                    if (idx && filtered[Number(idx) - 1]) { await handleAddEntry(filtered[Number(idx) - 1].userId); }
+                  } catch { alert('Error al buscar'); }
+                }}>
+                  Buscar y agregar
+                </button>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -507,14 +650,26 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                               {/* Acción */}
                               {!isReadOnly && (
                                 <td>
-                                  <button
-                                    className="btn-primary"
-                                    onClick={() => handleSaveEntry(entry.id)}
-                                    disabled={isSaving}
-                                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap' }}
-                                  >
-                                    {isSaving ? '...' : 'Guardar'}
-                                  </button>
+                                  <div style={{ display: 'flex', gap: '0.35rem' }}>
+                                    <button
+                                      className="btn-primary"
+                                      onClick={() => handleSaveEntry(entry.id)}
+                                      disabled={isSaving}
+                                      style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap' }}
+                                    >
+                                      {isSaving ? '...' : 'Guardar'}
+                                    </button>
+                                    {entry.status === 'pending' && (
+                                      <button
+                                        className="btn-ghost"
+                                        onClick={() => handleRemoveEntry(entry.id, `${u.firstName} ${u.lastName}`)}
+                                        style={{ fontSize: '0.72rem', padding: '0.25rem 0.4rem', color: 'var(--danger)' }}
+                                        title="Quitar de esta sesión"
+                                      >
+                                        ✕
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               )}
                             </tr>

@@ -361,8 +361,14 @@ export const api = {
         request<any>("/talent/calibration", { method: "POST", body: JSON.stringify(data) }, token),
       detail: (token: string, id: string) =>
         request<any>(`/talent/calibration/${id}`, {}, token),
-      populate: (token: string, id: string) =>
-        request<any[]>(`/talent/calibration/${id}/populate`, { method: "POST" }, token),
+      preview: (token: string, id: string) =>
+        request<any[]>(`/talent/calibration/${id}/preview`, {}, token),
+      populate: (token: string, id: string, excludeUserIds?: string[]) =>
+        request<any[]>(`/talent/calibration/${id}/populate`, { method: "POST", body: JSON.stringify({ excludeUserIds }) }, token),
+      addEntry: (token: string, id: string, userId: string) =>
+        request<any>(`/talent/calibration/${id}/add-entry`, { method: "POST", body: JSON.stringify({ userId }) }, token),
+      removeEntry: (token: string, entryId: string) =>
+        request<any>(`/talent/calibration/entry/${entryId}`, { method: "DELETE" }, token),
       updateEntry: (token: string, entryId: string, data: any) =>
         request<any>(`/talent/calibration/entry/${entryId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       complete: (token: string, id: string) =>

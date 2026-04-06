@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Request,
@@ -129,6 +130,12 @@ export class TalentController {
     return this.talentService.findSessions(req.user.tenantId, cycleId);
   }
 
+  @Get('calibration/:id/preview')
+  @Roles('super_admin', 'tenant_admin')
+  previewEntries(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.talentService.previewEntries(id, req.user.tenantId);
+  }
+
   @Get('calibration/:id')
   getSessionDetail(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.talentService.getSessionDetail(id, req.user.tenantId);
@@ -136,8 +143,20 @@ export class TalentController {
 
   @Post('calibration/:id/populate')
   @Roles('super_admin', 'tenant_admin')
-  populateEntries(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.talentService.populateEntries(id, req.user.tenantId);
+  populateEntries(@Param('id', ParseUUIDPipe) id: string, @Request() req: any, @Body() body?: { excludeUserIds?: string[] }) {
+    return this.talentService.populateEntries(id, req.user.tenantId, body?.excludeUserIds);
+  }
+
+  @Post('calibration/:id/add-entry')
+  @Roles('super_admin', 'tenant_admin')
+  addEntry(@Param('id', ParseUUIDPipe) id: string, @Request() req: any, @Body() body: { userId: string }) {
+    return this.talentService.addSingleEntry(id, req.user.tenantId, body.userId);
+  }
+
+  @Delete('calibration/entry/:entryId')
+  @Roles('super_admin', 'tenant_admin')
+  removeEntry(@Param('entryId', ParseUUIDPipe) entryId: string, @Request() req: any) {
+    return this.talentService.removeEntry(entryId, req.user.tenantId);
   }
 
   @Patch('calibration/entry/:entryId')

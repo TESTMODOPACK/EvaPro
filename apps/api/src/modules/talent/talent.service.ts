@@ -289,13 +289,12 @@ export class TalentService {
     return { ...session, entries };
   }
 
-  async populateEntries(sessionId: string, tenantId?: string): Promise<CalibrationEntry[]> {
-    const whereClause: any = { id: sessionId };
-    if (tenantId) whereClause.tenantId = tenantId;
+  // Preview which users would be loaded without creating entries
+  async previewEntries(sessionId: string, tenantId: string): Promise<any[]> {
+    const whereClause: any = { id: sessionId, tenantId };
     const session = await this.sessionRepo.findOne({ where: whereClause });
     if (!session) throw new NotFoundException('Sesión no encontrada');
 
-    // Get assessments for this cycle (filtered by department if set)
     const qb = this.assessmentRepo.createQueryBuilder('ta')
       .leftJoinAndSelect('ta.user', 'u')
       .where('ta.tenant_id = :tenantId', { tenantId: session.tenantId })
@@ -306,9 +305,39 @@ export class TalentService {
     }
 
     const assessments = await qb.getMany();
+    return assessments.map(a => ({
+      userId: a.userId,
+      firstName: (a.user as any)?.firstName || '',
+      lastName: (a.user as any)?.lastName || '',
+      department: (a.user as any)?.department || '',
+      position: (a.user as any)?.position || '',
+      performanceScore: a.performanceScore,
+    }));
+  }
+
+  async populateEntries(sessionId: string, tenantId?: string, excludeUserIds?: string[]): Promise<CalibrationEntry[]> {
+    const whereClause: any = { id: sessionId };
+    if (tenantId) whereClause.tenantId = tenantId;
+    const session = await this.sessionRepo.findOne({ where: whereClause });
+    if (!session) throw new NotFoundException('Sesión no encontrada');
+
+    const qb = this.assessmentRepo.createQueryBuilder('ta')
+      .leftJoinAndSelect('ta.user', 'u')
+      .where('ta.tenant_id = :tenantId', { tenantId: session.tenantId })
+      .andWhere('ta.cycle_id = :cycleId', { cycleId: session.cycleId });
+
+    if (session.department) {
+      qb.andWhere('u.department = :dept', { dept: session.department });
+    }
+
+    const assessments = await qb.getMany();
+    const excludeSet = new Set(excludeUserIds || []);
 
     const entries: CalibrationEntry[] = [];
     for (const a of assessments) {
+      // Skip excluded users
+      if (excludeSet.has(a.userId)) continue;
+
       // Skip if entry already exists
       const existing = await this.entryRepo.findOne({
         where: { sessionId, userId: a.userId },
@@ -328,11 +357,43 @@ export class TalentService {
       entries.push(await this.entryRepo.save(entry));
     }
 
-    // Update session status
     session.status = 'in_progress';
     await this.sessionRepo.save(session);
 
     return entries;
+  }
+
+  // Add a single user to an existing session
+  async addSingleEntry(sessionId: string, tenantId: string, userId: string): Promise<CalibrationEntry> {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId, tenantId } });
+    if (!session) throw new NotFoundException('Sesión no encontrada');
+    if (session.status === 'completed') throw new BadRequestException('La sesión ya está completada');
+    if (session.status !== 'draft' && session.status !== 'in_progress') throw new BadRequestException('La sesión no está en un estado válido para agregar participantes');
+
+    const existing = await this.entryRepo.findOne({ where: { sessionId, userId } });
+    if (existing) return existing;
+
+    const assessment = await this.assessmentRepo.findOne({ where: { userId, cycleId: session.cycleId, tenantId } });
+    if (!assessment) throw new NotFoundException('No se encontró evaluación de talento para este colaborador en el ciclo seleccionado');
+
+    const entry = this.entryRepo.create({
+      sessionId,
+      userId,
+      originalScore: assessment.performanceScore,
+      originalPotential: assessment.potentialScore,
+      status: 'pending',
+    });
+    return this.entryRepo.save(entry);
+  }
+
+  // Remove a single entry from a session (with tenant verification)
+  async removeEntry(entryId: string, tenantId?: string): Promise<{ deleted: boolean }> {
+    const entry = await this.entryRepo.findOne({ where: { id: entryId }, relations: ['session'] });
+    if (!entry) throw new NotFoundException('Entrada no encontrada');
+    if (tenantId && (entry as any).session?.tenantId !== tenantId) throw new NotFoundException('Entrada no encontrada');
+    if (entry.status !== 'pending') throw new BadRequestException('Solo se pueden eliminar entradas pendientes (no discutidas ni aprobadas)');
+    await this.entryRepo.remove(entry);
+    return { deleted: true };
   }
 
   async updateEntry(entryId: string, dto: any, discussedBy: string): Promise<CalibrationEntry> {
