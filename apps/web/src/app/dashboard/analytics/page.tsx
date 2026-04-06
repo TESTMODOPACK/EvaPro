@@ -65,17 +65,9 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
   };
 
   if (isLoading && !data) return <Spinner />;
-  if (!data || !data.grid || data.grid.length === 0) {
-    return (
-      <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          {(data as any)?.message || 'Sin datos de competencias para este ciclo'}
-        </p>
-      </div>
-    );
-  }
 
-  const { departments, grid, privacyThreshold } = data;
+  const isEmpty = !data || !data.grid || data.grid.length === 0;
+  const { departments, grid, privacyThreshold } = isEmpty ? { departments: [], grid: [], privacyThreshold: 3 } : data;
 
   // Sort rows: most-needs-improvement (lowest org avg) first when enabled
   const displayGrid = sortByAvg
@@ -148,8 +140,15 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
         )}
       </div>
 
+      {/* Empty state — shown after filters so user can change selection */}
+      {isEmpty && (
+        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          {(data as any)?.message || 'Sin datos de competencias para este ciclo. Seleccione otro departamento o ciclo.'}
+        </div>
+      )}
+
       {/* Heatmap table */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '600px' }}>
+      {!isEmpty && <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '600px' }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
             <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', minWidth: '160px' }}>
@@ -213,9 +212,9 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
             );
           })}
         </tbody>
-      </table>
+      </table>}
 
-      {hasPrivacyRows && (
+      {!isEmpty && hasPrivacyRows && (
         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
           {'\uD83D\uDD12 Se ocultan departamentos con menos de '}{privacyThreshold}{' evaluados para proteger la privacidad'}
         </p>
@@ -410,13 +409,9 @@ function AnalyticsPageContent() {
   const { data: analytics, isLoading: loadingAnalytics } = useAnalytics(selectedCycleId);
   const [showGuide, setShowGuide] = useState(false);
 
-  // Prefer closed cycles, sort them first
+  // Only show closed cycles (analysis requires completed data)
   const sortedCycles = cycles
-    ? [...cycles].sort((a: any, b: any) => {
-        if (a.status === 'closed' && b.status !== 'closed') return -1;
-        if (a.status !== 'closed' && b.status === 'closed') return 1;
-        return 0;
-      })
+    ? cycles.filter((c: any) => c.status === 'closed')
     : [];
 
   const customTooltip = ({ active, payload, label }: any) => {
@@ -451,10 +446,8 @@ function AnalyticsPageContent() {
 
       {/* Guide toggle */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
-        <button
-          onClick={() => setShowGuide(!showGuide)}
-          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}
-        >
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ transition: 'transform 0.2s', transform: showGuide ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
           {showGuide ? t('analytics.hideGuide') : t('analytics.showGuide')}
         </button>
 
@@ -518,6 +511,9 @@ function AnalyticsPageContent() {
                 </option>
               ))}
             </select>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+              Solo ciclos cerrados con datos completos
+            </span>
           </div>
         )}
       </div>
@@ -604,7 +600,7 @@ function AnalyticsPageContent() {
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr>
-                          {['Encargado de Equipo', 'Puntaje Promedio', 'Tama\u00f1o Equipo'].map((h) => (
+                          {['Encargado de Equipo', 'Departamento', 'Puntaje Promedio', 'Tamaño Equipo'].map((h) => (
                             <th
                               key={h}
                               style={{
@@ -633,6 +629,9 @@ function AnalyticsPageContent() {
                               <tr key={i}>
                                 <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>
                                   {tb.managerName || tb.managerId}
+                                </td>
+                                <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
+                                  {tb.department || '—'}
                                 </td>
                                 <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', fontWeight: 700, color: scoreColor, borderBottom: '1px solid var(--border)' }}>
                                   {score.toFixed(1)}

@@ -38,6 +38,10 @@ export default function CycleDetailPage() {
   const launchCycle = useLaunchCycle();
   const closeCycle = useCloseCycle();
 
+  // Template data
+  const [template, setTemplate] = useState<any>(null);
+  const [showTemplate, setShowTemplate] = useState(false);
+
   // Peer assignment hooks
   const { data: peerAssignments } = usePeerAssignments(id);
   const addPeer = useAddPeerAssignment();
@@ -52,6 +56,12 @@ export default function CycleDetailPage() {
     confirmLabel?: string;
     onConfirm: () => void;
   } | null>(null);
+
+  // Load template when cycle has templateId
+  useEffect(() => {
+    if (!cycle?.templateId || !token) return;
+    api.templates.getById(token, cycle.templateId).then(setTemplate).catch(() => {});
+  }, [cycle?.templateId, token]);
 
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState('');
@@ -622,6 +632,60 @@ export default function CycleDetailPage() {
               }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Template section */}
+      {template && (
+        <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showTemplate ? '0.75rem' : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '1rem' }}>{'📋'}</span>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>Plantilla: {template.name}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>
+                  {template.sections?.length || 0} secciones · {template.sections?.reduce((sum: number, s: any) => sum + (s.questions?.length || 0), 0) || 0} preguntas
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowTemplate(!showTemplate)}>
+                {showTemplate ? 'Ocultar' : 'Ver plantilla'}
+              </button>
+              {cycle?.status === 'draft' && (
+                <Link href="/dashboard/plantillas" className="btn-ghost" style={{ fontSize: '0.78rem', textDecoration: 'none' }}>
+                  Editar plantilla
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {showTemplate && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {(template.sections || []).map((sec: any, si: number) => (
+                <div key={sec.id || si} style={{ padding: '0.75rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--accent)' }}>
+                    {si + 1}. {sec.title}
+                  </div>
+                  {sec.description && (
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{sec.description}</p>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {(sec.questions || []).map((q: any, qi: number) => (
+                      <div key={q.id || qi} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.3rem 0', fontSize: '0.8rem' }}>
+                        <span style={{ color: 'var(--text-muted)', minWidth: '20px', fontSize: '0.72rem' }}>{qi + 1}.</span>
+                        <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{q.text}</span>
+                        <span className="badge badge-ghost" style={{ fontSize: '0.65rem', flexShrink: 0 }}>
+                          {q.type === 'scale' ? `Escala ${q.scale?.min || 1}-${q.scale?.max || 10}` : q.type === 'text' ? 'Texto' : q.type === 'multi' ? 'Opción múltiple' : q.type}
+                        </span>
+                        {q.required && <span style={{ color: 'var(--danger)', fontSize: '0.7rem' }}>*</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

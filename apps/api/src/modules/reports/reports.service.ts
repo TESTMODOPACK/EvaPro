@@ -29,7 +29,7 @@ export interface ReportFilters {
  * Privacy threshold: reports with fewer than this many people
  * will not return individual-level data to prevent identification.
  */
-const PRIVACY_MIN_PEOPLE = 5;
+const PRIVACY_MIN_PEOPLE = 3;
 
 @Injectable()
 export class ReportsService {
@@ -851,11 +851,13 @@ export class ReportsService {
       .andWhere('r.overall_score IS NOT NULL')
       .select('m.id', 'managerId')
       .addSelect("m.first_name || ' ' || m.last_name", 'managerName')
+      .addSelect('m.department', 'department')
       .addSelect('AVG(r.overall_score)', 'avgScore')
       .addSelect('COUNT(DISTINCT u.id)', 'teamSize')
       .groupBy('m.id')
       .addGroupBy('m.first_name')
       .addGroupBy('m.last_name')
+      .addGroupBy('m.department')
       .orderBy('AVG(r.overall_score)', 'DESC')
       .getRawMany();
 
@@ -866,9 +868,10 @@ export class ReportsService {
         avgScore: parseFloat(d.avgScore).toFixed(1),
         count: parseInt(d.count),
       })),
-      teamBenchmarks: teamBenchmarks.map((t) => ({
+      teamBenchmarks: teamBenchmarks.map((t: any) => ({
         managerId: t.managerId,
         managerName: t.managerName,
+        department: t.department || null,
         avgScore: parseFloat(t.avgScore).toFixed(1),
         teamSize: parseInt(t.teamSize),
       })),
