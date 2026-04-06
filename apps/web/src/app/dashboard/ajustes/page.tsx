@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useCurrentUser, useUpdateUser } from '@/hooks/useUsers';
 import { getRoleLabel } from '@/lib/roles';
 import { useMySubscription } from '@/hooks/useSubscription';
-import { formatRut } from '@/lib/rut';
+import { formatRut, formatRutInput } from '@/lib/rut';
 import { useLocaleStore, SupportedLocale } from '@/store/locale.store';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
@@ -106,7 +106,7 @@ export default function AjustesPage() {
         setIndustry(t.industry || '');
         setEmployeeRange(t.employeeRange || '');
         setLegalRepName(t.legalRepName || '');
-        setLegalRepRut(t.legalRepRut || '');
+        setLegalRepRut(t.legalRepRut ? formatRut(t.legalRepRut) : '');
         const s = t.settings || {};
         setTenantSettings(s);
         setTenantTimezone(s.timezone || '');
@@ -424,7 +424,7 @@ export default function AjustesPage() {
                 <div>
                   <label style={labelStyle}>RUT</label>
                   <input className="input" type="text" placeholder="Ej: 12.345.678-9" maxLength={12}
-                    value={legalRepRut} onChange={(e) => setLegalRepRut(e.target.value.replace(/[^0-9kK.\-]/g, ''))} />
+                    value={legalRepRut} onChange={(e) => setLegalRepRut(formatRutInput(e.target.value))} />
                 </div>
               </div>
               <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>

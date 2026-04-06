@@ -242,7 +242,7 @@ export default function TenantsPage() {
       employeeRange: t.employeeRange || '',
       commercialAddress: t.commercialAddress || '',
       legalRepName: t.legalRepName || '',
-      legalRepRut: t.legalRepRut || '',
+      legalRepRut: t.legalRepRut ? formatRut(t.legalRepRut) : '',
       planId: sub?.planId || '',
       billingPeriod: sub?.billingPeriod?.toLowerCase() || 'monthly',
       adminEmail: '',
@@ -584,7 +584,7 @@ export default function TenantsPage() {
               </div>
               <div>
                 <label style={labelStyle}>RUT representante legal</label>
-                <input style={inputStyle} placeholder="Ej: 12.345.678-9" value={form.legalRepRut} onChange={(e) => setForm({ ...form, legalRepRut: e.target.value.replace(/[^0-9kK.\-]/g, '') })} />
+                <input style={inputStyle} placeholder="Ej: 12.345.678-9" value={form.legalRepRut} onChange={(e) => setForm({ ...form, legalRepRut: formatRutInput(e.target.value) })} maxLength={12} />
               </div>
             </div>
             <div>
