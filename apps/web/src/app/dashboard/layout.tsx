@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
@@ -87,6 +87,78 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.replace('/login');
     }
   }, [_hasHydrated, isAuthenticated, token, router, logout]);
+
+  // ─── Silent token refresh based on user activity ─────────────────────
+  const lastActivityRef = useRef(Date.now());
+  const refreshingRef = useRef(false);
+  const CHECK_INTERVAL = 2 * 60 * 1000; // Check every 2 minutes
+  const REFRESH_MARGIN = 5 * 60 * 1000; // Refresh 5 min before expiration
+  const INACTIVITY_LIMIT = 60 * 60 * 1000; // Logout after 60 min of inactivity
+
+  const updateActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+  }, []);
+
+  // Track user activity
+  useEffect(() => {
+    let lastUpdate = 0;
+    const throttled = () => { const now = Date.now(); if (now - lastUpdate > 1000) { lastUpdate = now; updateActivity(); } };
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'] as const;
+    events.forEach((e) => window.addEventListener(e, throttled, { passive: true }));
+    return () => events.forEach((e) => window.removeEventListener(e, throttled));
+  }, [updateActivity]);
+
+  // Periodic check: refresh token if about to expire and user is active
+  useEffect(() => {
+    if (!token || !isAuthenticated) return;
+    const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+    // Decode token expiration
+    const getTokenExp = (): number => {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return (payload.exp || 0) * 1000; // Convert to ms
+      } catch { return Date.now() + 30 * 60 * 1000; } // Fallback 30min
+    };
+
+    const interval = setInterval(async () => {
+      const idleTime = Date.now() - lastActivityRef.current;
+
+      // Inactive too long → logout
+      if (idleTime > INACTIVITY_LIMIT) {
+        clearInterval(interval);
+        logout();
+        router.replace('/login');
+        return;
+      }
+
+      // Token about to expire and user is active → refresh
+      const expMs = getTokenExp();
+      const timeLeft = expMs - Date.now();
+
+      if (timeLeft < REFRESH_MARGIN && !refreshingRef.current) {
+        refreshingRef.current = true;
+        try {
+          const res = await fetch(`${API}/auth/refresh`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.access_token && user) {
+              useAuthStore.getState().setAuth(data.access_token, user);
+            }
+          }
+        } catch {
+          // Network error — skip this refresh cycle
+        } finally {
+          refreshingRef.current = false;
+        }
+      }
+    }, CHECK_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [token, isAuthenticated, user, logout, router]);
 
   // Onboarding banner disabled — configuration is now handled in Ajustes (Settings)
   // The onboarding page still exists for manual access if needed.

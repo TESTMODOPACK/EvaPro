@@ -146,6 +146,13 @@ export class AuthController {
     };
   }
 
+  @Post('refresh')
+  @UseGuards(AuthGuard('jwt-refresh'))
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Request() req: any) {
+    return this.authService.refreshToken(req.user.userId, req.user.tenantId);
+  }
+
   @Post('request-reset')
   @HttpCode(HttpStatus.OK)
   async requestReset(@Body() dto: RequestResetDto) {

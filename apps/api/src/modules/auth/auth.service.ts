@@ -65,7 +65,7 @@ export class AuthService {
     );
 
     // B11.1: Per-tenant session timeout (falls back to global JWT_EXPIRATION)
-    let expiresIn = this.configService.get('JWT_EXPIRATION', '15m');
+    let expiresIn = this.configService.get('JWT_EXPIRATION', '30m');
     if (user.tenantId) {
       try {
         const tenant = await this.tenantRepo.findOne({
@@ -78,6 +78,45 @@ export class AuthService {
         }
       } catch {
         // Fallback to global timeout on any error
+      }
+    }
+
+    return {
+      access_token: this.jwtService.sign(payload, { expiresIn }),
+    };
+  }
+
+  // ─── Token Refresh ──────────────────────────────────────────────────
+
+  async refreshToken(userId: string, tenantId: string | null): Promise<{ access_token: string }> {
+    const user = await this.usersService.findById(userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Usuario inactivo o no encontrado');
+    }
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      tenantId: user.tenantId,
+      role: user.role,
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+    };
+
+    // Same per-tenant timeout logic as login
+    let expiresIn = this.configService.get('JWT_EXPIRATION', '30m');
+    if (user.tenantId) {
+      try {
+        const tenant = await this.tenantRepo.findOne({
+          where: { id: user.tenantId },
+          select: ['id', 'settings'],
+        });
+        const timeout = tenant?.settings?.sessionTimeoutMinutes;
+        if (typeof timeout === 'number' && timeout > 0) {
+          expiresIn = `${timeout}m`;
+        }
+      } catch {
+        // Fallback to global timeout
       }
     }
 
