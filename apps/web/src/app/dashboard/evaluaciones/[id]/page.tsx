@@ -652,8 +652,8 @@ export default function CycleDetailPage() {
               <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowTemplate(!showTemplate)}>
                 {showTemplate ? 'Ocultar' : 'Ver plantilla'}
               </button>
-              {cycle?.status === 'draft' && (
-                <Link href="/dashboard/plantillas" className="btn-ghost" style={{ fontSize: '0.78rem', textDecoration: 'none' }}>
+              {cycle?.status === 'draft' && template?.id && (
+                <Link href={`/dashboard/plantillas?edit=${template.id}`} className="btn-ghost" style={{ fontSize: '0.78rem', textDecoration: 'none' }}>
                   Editar plantilla
                 </Link>
               )}
