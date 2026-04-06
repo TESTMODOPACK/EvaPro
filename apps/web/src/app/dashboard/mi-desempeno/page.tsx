@@ -250,6 +250,9 @@ export default function MiDesempenoPage() {
           <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
             <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Cada colaborador ve únicamente su propia información. No se muestra información de otros usuarios.
           </div>
+          <div style={{ marginTop: '1rem' }}>
+            <ScaleLegend />
+          </div>
         </div>
       )}
 
@@ -310,11 +313,6 @@ export default function MiDesempenoPage() {
         </div>
       </div>
 
-      {/* Scale legend */}
-      <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.5rem' }}>
-        <ScaleLegend />
-      </div>
-
       {/* Tab navigation */}
       <div className="animate-fade-up-delay-2 mobile-scroll-tabs" style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '1.5rem', overflowX: 'auto' }}>
         <button style={tabStyle(activeTab === 'evaluaciones')} onClick={() => setActiveTab('evaluaciones')}>
@@ -368,7 +366,7 @@ export default function MiDesempenoPage() {
                   <tbody>
                     {completed.map((ev: any, i: number) => {
                       const evaluateeName = ev.evaluatee ? `${ev.evaluatee.firstName || ''} ${ev.evaluatee.lastName || ''}`.trim() : '--';
-                      const relLabel: Record<string, string> = { self: 'Autoevaluacion', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
+                      const relLabel: Record<string, string> = { self: 'Autoevaluación', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
                       const respId = ev.response?.id || ev.responseId;
                       const sigs = respId ? signatureMap[respId] : null;
                       return (
@@ -419,8 +417,8 @@ export default function MiDesempenoPage() {
             {cycles.length === 0 ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 {completed.length > 0
-                  ? 'Las evaluaciones se reflejaran aqui al cerrar el ciclo'
-                  : 'Aun no tienes evaluaciones completadas'
+                  ? 'Las evaluaciones se reflejarán aquí al cerrar el ciclo'
+                  : 'Aún no tienes evaluaciones completadas'
                 }
               </div>
             ) : (
@@ -463,7 +461,7 @@ export default function MiDesempenoPage() {
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
                 {[
-                  { label: 'Autoevaluacion', value: latestScore.avgSelf },
+                  { label: 'Autoevaluación', value: latestScore.avgSelf },
                   { label: 'Jefatura', value: latestScore.avgManager },
                   { label: 'Pares', value: latestScore.avgPeer },
                   { label: 'General', value: latestScore.avgOverall },
@@ -494,7 +492,7 @@ export default function MiDesempenoPage() {
                 >
                   <option value="">{'Seleccionar ciclo\u2026'}</option>
                   {closedCycles.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                    <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status})</option>
                   ))}
                 </select>
               </div>
@@ -526,7 +524,7 @@ export default function MiDesempenoPage() {
             </h2>
             {feedbackReceived.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
-                Aun no has recibido feedback
+                Aún no has recibido feedback
               </p>
             ) : (
               <>
@@ -798,7 +796,7 @@ export default function MiDesempenoPage() {
               </div>
               {myBadges.length === 0 ? (
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  Aun no has ganado insignias. Sigue participando para desbloquearlas.
+                  Aún no has ganado insignias. Sigue participando para desbloquearlas.
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -839,7 +837,7 @@ export default function MiDesempenoPage() {
             </h2>
             {recognitionsReceived.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
-                Aun no has recibido reconocimientos
+                Aún no has recibido reconocimientos
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

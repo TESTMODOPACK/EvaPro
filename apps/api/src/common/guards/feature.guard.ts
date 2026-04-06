@@ -10,7 +10,7 @@ const FEATURE_LABELS: Record<string, string> = {
   EVAL_360: 'Evaluaciones 360°',
   BASIC_REPORTS: 'Reportes básicos',
   ADVANCED_REPORTS: 'Reportes avanzados',
-  OKR: 'Objetivos y OKRs',
+  OKR: 'Objetivos y Metas',
   FEEDBACK: 'Feedback continuo',
   CHECKINS: 'Check-ins 1:1',
   TEMPLATES_CUSTOM: 'Plantillas personalizadas',

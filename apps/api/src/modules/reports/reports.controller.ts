@@ -344,6 +344,43 @@ export class ReportsController {
     return res.send(csv);
   }
 
+  // ─── Analytics Cycle Export ──────────────────────────────────────────
+
+  @Get('analytics/cycle/:cycleId/export')
+  @Feature(PlanFeature.ADVANCED_REPORTS)
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  async exportAnalyticsCycle(
+    @Param('cycleId', ParseUUIDPipe) cycleId: string,
+    @Query('format') format: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    await this.auditService
+      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', cycleId, { report: 'analytics-cycle', format })
+      .catch(() => {});
+
+    if (format === 'pdf') {
+      const buffer = await this.reportsService.exportAnalyticsCyclePdf(cycleId, req.user.tenantId, managerId);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=analisis-ciclo-${cycleId}.pdf`);
+      return res.send(buffer);
+    }
+
+    if (format === 'pptx') {
+      const buffer = await this.reportsService.exportAnalyticsCyclePptx(cycleId, req.user.tenantId, managerId);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+      res.setHeader('Content-Disposition', `attachment; filename=analisis-ciclo-${cycleId}.pptx`);
+      return res.send(buffer);
+    }
+
+    // Default: xlsx
+    const buffer = await this.reportsService.exportAnalyticsCycleXlsx(cycleId, req.user.tenantId, managerId);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=analisis-ciclo-${cycleId}.xlsx`);
+    return res.send(buffer);
+  }
+
   // ─── Cross Analysis (Clima × Desempeño) ─────────────────────────────
 
   @Get('cross-analysis/export')
@@ -526,5 +563,12 @@ export class ReportsController {
   @Roles('tenant_admin')
   getTurnover(@Request() req: any) {
     return this.analyticsService.getTurnoverAnalysis(req.user.tenantId);
+  }
+
+  /** Movimientos Internos — tenant_admin + manager */
+  @Get('analytics/movements')
+  @Roles('tenant_admin', 'manager')
+  getInternalMovements(@Request() req: any) {
+    return this.analyticsService.getInternalMovementAnalysis(req.user.tenantId);
   }
 }

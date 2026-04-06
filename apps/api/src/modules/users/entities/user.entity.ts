@@ -53,6 +53,9 @@ export class User {
   @Column({ type: 'date', nullable: true, name: 'hire_date' })
   hireDate: Date;
 
+  @Column({ type: 'date', nullable: true, name: 'departure_date', comment: 'Fecha efectiva de salida de la empresa' })
+  departureDate: Date | null;
+
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 

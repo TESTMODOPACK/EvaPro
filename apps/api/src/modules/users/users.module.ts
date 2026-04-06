@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { UserNote } from './entities/user-note.entity';
+import { UserDeparture } from './entities/user-departure.entity';
+import { UserMovement } from './entities/user-movement.entity';
 import { BulkImport } from './entities/bulk-import.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { UsersService } from './users.service';
@@ -12,7 +14,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, UserNote, BulkImport, Tenant]),
+    TypeOrmModule.forFeature([User, UserNote, UserDeparture, UserMovement, BulkImport, Tenant]),
     AuditModule,
     SubscriptionsModule,
     NotificationsModule,

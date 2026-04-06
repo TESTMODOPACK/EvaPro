@@ -1,12 +1,136 @@
 'use client';
+import React from 'react';
 import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
+const DEPT_PAGE_SIZE = 5;
+
+function DepartmentSection({ departments, statusLabels, t }: { departments: any[]; statusLabels: Record<string, string>; t: any }) {
+  const [expandedDept, setExpandedDept] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+
+  if (!departments.length) return null;
+
+  const totalPages = Math.ceil(departments.length / DEPT_PAGE_SIZE);
+  const paginated = departments.slice(page * DEPT_PAGE_SIZE, (page + 1) * DEPT_PAGE_SIZE);
+
+  return (
+    <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>{t('analyticsPdi.byDepartment')}</h2>
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.78rem' }}>
+            <button
+              className="btn-ghost"
+              disabled={page === 0}
+              onClick={() => setPage(p => p - 1)}
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem', opacity: page === 0 ? 0.4 : 1 }}
+            >
+              ← Anterior
+            </button>
+            <span style={{ color: 'var(--text-muted)' }}>{page + 1} / {totalPages}</span>
+            <button
+              className="btn-ghost"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage(p => p + 1)}
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem', opacity: page >= totalPages - 1 ? 0.4 : 1 }}
+            >
+              Siguiente →
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="table-wrapper">
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid var(--border)' }}>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, width: '30px' }}></th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.department')}</th>
+              <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.total')}</th>
+              <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analyticsPdi.completed')}</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analyticsPdi.avgProgress')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.map((d: any) => {
+              const isExpanded = expandedDept === d.department;
+              return (
+                <React.Fragment key={d.department}>
+                  <tr
+                    style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                    onClick={() => setExpandedDept(isExpanded ? null : d.department)}
+                  >
+                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <span style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
+                    </td>
+                    <td style={{ padding: '0.6rem 0.75rem', fontWeight: 500 }}>{d.department}</td>
+                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>{d.total}</td>
+                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>{d.completed}</td>
+                    <td style={{ padding: '0.6rem 0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ flex: 1, maxWidth: '100px', height: '6px', borderRadius: '999px', background: 'var(--border)' }}>
+                          <div style={{ height: '100%', width: `${d.avgProgress}%`, borderRadius: '999px', background: d.avgProgress >= 70 ? 'var(--success)' : d.avgProgress >= 40 ? 'var(--warning)' : 'var(--danger)' }} />
+                        </div>
+                        <span style={{ fontWeight: 600, fontSize: '0.78rem' }}>{d.avgProgress}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                  {/* Expanded plans */}
+                  {isExpanded && d.plans && d.plans.length > 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: 0 }}>
+                        <div style={{ padding: '0.75rem 1rem 0.75rem 2.5rem', background: 'var(--bg-base)', borderBottom: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
+                            Planes de desarrollo ({d.plans.length})
+                          </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Colaborador</th>
+                                <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Plan</th>
+                                <th style={{ textAlign: 'center', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Estado</th>
+                                <th style={{ textAlign: 'center', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Progreso</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {d.plans.map((p: any, i: number) => (
+                                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                                  <td style={{ padding: '0.35rem 0.5rem' }}>{p.userName}</td>
+                                  <td style={{ padding: '0.35rem 0.5rem' }}>{p.planTitle}</td>
+                                  <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center' }}>
+                                    <span className="badge badge-ghost" style={{ fontSize: '0.7rem' }}>{statusLabels[p.status] || p.status}</span>
+                                  </td>
+                                  <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', fontWeight: 600 }}>{p.progress}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {isExpanded && (!d.plans || d.plans.length === 0) && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: '0.75rem 2.5rem', background: 'var(--bg-base)', color: 'var(--text-muted)', fontSize: '0.78rem', borderBottom: '1px solid var(--border)' }}>
+                        Sin planes de desarrollo en este departamento
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function PdiCompliancePageContent() {
   const { t } = useTranslation();
@@ -57,7 +181,7 @@ function PdiCompliancePageContent() {
   );
   if (!data) return <div style={{ padding: '2rem 2.5rem' }}><p style={{ color: 'var(--text-muted)' }}>No se pudo cargar el reporte.</p></div>;
 
-  const statusLabels: Record<string, string> = { borrador: 'Borrador', activo: 'Activo', completado: 'Completado', cancelado: 'Cancelado', pendiente_aprobacion: 'Pend. Aprobación', en_revision: 'En Revisión', aprobado: 'Aprobado' };
+  const statusLabels: Record<string, string> = { borrador: 'Borrador', activo: 'Activo', completado: 'Completado', cancelado: 'Cancelado', en_revision: 'En Revisión' };
 
   // Analysis helpers
   const completionLevel = data.completionRate >= 70 ? 'bueno' : data.completionRate >= 40 ? 'moderado' : 'bajo';
@@ -126,54 +250,30 @@ function PdiCompliancePageContent() {
         </div>
       </div>
 
-      {/* Status breakdown */}
+      {/* Status breakdown — large cards */}
       <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
         <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsPdi.statusDistribution')}</h2>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          {Object.entries(data.byStatus || {}).map(([status, count]) => (
-            <div key={status} style={{ padding: '0.5rem 1rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.82rem' }}>
-              <span style={{ fontWeight: 600, marginRight: '0.5rem' }}>{count as number}</span>
-              <span style={{ color: 'var(--text-muted)' }}>{statusLabels[status] || status}</span>
-            </div>
-          ))}
+        <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+          {Object.entries(data.byStatus || {}).map(([status, count]) => {
+            const colorMap: Record<string, string> = {
+              borrador: 'var(--text-muted)', activo: '#6366f1', completado: 'var(--success)',
+              cancelado: 'var(--danger)', en_revision: '#f59e0b',
+            };
+            const color = colorMap[status] || 'var(--text-secondary)';
+            return (
+              <div key={status} className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 800, color }}>{count as number}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginTop: '0.2rem' }}>
+                  {statusLabels[status] || status}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* By Department */}
-      {data.byDepartment?.length > 0 && (
-        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('analyticsPdi.byDepartment')}</h2>
-          <div className="table-wrapper">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.department')}</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.total')}</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analyticsPdi.completed')}</th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analyticsPdi.avgProgress')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data.byDepartment || []).map((d: any) => (
-                  <tr key={d.department} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '0.6rem 0.75rem', fontWeight: 500 }}>{d.department}</td>
-                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>{d.total}</td>
-                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>{d.completed}</td>
-                    <td style={{ padding: '0.6rem 0.75rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ flex: 1, maxWidth: '100px', height: '6px', borderRadius: '999px', background: 'var(--border)' }}>
-                          <div style={{ height: '100%', width: `${d.avgProgress}%`, borderRadius: '999px', background: d.avgProgress >= 70 ? 'var(--success)' : d.avgProgress >= 40 ? 'var(--warning)' : 'var(--danger)' }} />
-                        </div>
-                        <span style={{ fontWeight: 600, fontSize: '0.78rem' }}>{d.avgProgress}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* By Department — collapsible + paginated */}
+      <DepartmentSection departments={data.byDepartment || []} statusLabels={statusLabels} t={t} />
 
       {/* Analysis Section */}
       <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: `4px solid ${completionLevel === 'bueno' ? 'var(--success)' : completionLevel === 'moderado' ? 'var(--warning)' : 'var(--danger)'}` }}>

@@ -450,7 +450,6 @@ export default function InformesPage() {
 
   // Advanced filters
   const [filterDepartment, setFilterDepartment] = useState('');
-  const [filterPosition, setFilterPosition] = useState('');
 
   const allUsers = usersPage?.data || [];
   // Managers only see their direct reports; admins see all
@@ -458,8 +457,8 @@ export default function InformesPage() {
     ? allUsers.filter((u: any) => u.managerId === currentUserId)
     : allUsers;
 
-  // Reset user selection when filters change
-  const filterKey = `${filterDepartment}|${filterPosition}`;
+  // Reset user selection when department filter changes
+  const filterKey = filterDepartment;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -468,9 +467,6 @@ export default function InformesPage() {
 
   // Use configured departments from Mantenedores
   const { departments } = useDepartments();
-  // Positions filtered by selected department (dependency: department → positions)
-  const usersForPositions = filterDepartment ? users.filter((u: any) => u.department === filterDepartment) : users;
-  const positions = Array.from(new Set(usersForPositions.map((u: any) => u.position).filter(Boolean))).sort() as string[];
   const sortedCycles = cycles
     ? [...cycles].sort((a: any, b: any) => {
         if (a.status === 'closed' && b.status !== 'closed') return -1;
@@ -561,7 +557,7 @@ export default function InformesPage() {
               </ul>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem', paddingLeft: '1.4rem' }}>
                 Selecciona un colaborador en el selector de abajo.
-                Usa <em>Departamento</em> y <em>Cargo</em> para filtrar la lista.
+                Usa <em>Departamento</em> para filtrar la lista de colaboradores.
               </p>
             </div>
 
@@ -589,33 +585,40 @@ export default function InformesPage() {
           )}
         </div>
 
-        {/* Dept + Cargo filters — affect collaborator list */}
+        {/* Dept filter + Collaborator selector — same row */}
         {selectedCycleId && (
           <div style={{ padding: '0.85rem 1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
             <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.65rem' }}>
-              Filtros &mdash; lista de colaboradores
+              Selección de colaborador
             </p>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Departamento</label>
-                <select style={{ ...selectStyle, minWidth: '180px' }} value={filterDepartment} onChange={(e) => { setFilterDepartment(e.target.value); setFilterPosition(''); }}>
+                <select style={{ ...selectStyle, minWidth: '180px' }} value={filterDepartment} onChange={(e) => { setFilterDepartment(e.target.value); }}>
                   <option value="">Todos</option>
                   {departments.map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Cargo</label>
-                <select style={{ ...selectStyle, minWidth: '180px' }} value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)}>
-                  <option value="">Todos</option>
-                  {positions.map((p) => <option key={p} value={p}>{p}</option>)}
+              <div style={{ flex: 1, minWidth: '250px' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Colaborador</label>
+                <select style={{ ...selectStyle, width: '100%' }} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
+                  <option value="">Selecciona un colaborador...</option>
+                  {users
+                    .filter((u: any) => !filterDepartment || u.department === filterDepartment)
+                    .map((u: any) => (
+                      <option key={u.id} value={u.id}>
+                        {u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}
+                      </option>
+                    ))
+                  }
                 </select>
               </div>
-              {(filterDepartment || filterPosition) && (
+              {filterDepartment && (
                 <button
-                  onClick={() => { setFilterDepartment(''); setFilterPosition(''); }}
+                  onClick={() => { setFilterDepartment(''); }}
                   style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, padding: '0.45rem 0', alignSelf: 'flex-end' }}
                 >
-                  Limpiar filtros
+                  Limpiar filtro
                 </button>
               )}
             </div>
@@ -642,26 +645,6 @@ export default function InformesPage() {
                 <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Vista Individual</h2>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Puntaje por sección y comparativa de evaluadores</p>
               </div>
-            </div>
-
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Colaborador</label>
-              <select style={selectStyle} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
-                <option value="">Selecciona un colaborador...</option>
-                {users
-                  .filter((u: any) => (!filterDepartment || u.department === filterDepartment) && (!filterPosition || u.position === filterPosition))
-                  .map((u: any) => (
-                    <option key={u.id} value={u.id}>
-                      {u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}
-                    </option>
-                  ))
-                }
-              </select>
-              {(filterDepartment || filterPosition) && (
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                  Filtrado por: {[filterDepartment, filterPosition].filter(Boolean).join(' / ')}
-                </p>
-              )}
             </div>
 
             {selectedUserId ? (

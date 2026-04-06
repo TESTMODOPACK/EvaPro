@@ -94,7 +94,7 @@ function AnalisisIntegradoContent() {
 
   if (loading) return <PageSkeleton cards={4} tableRows={6} />;
 
-  const { summary, departments, quadrants, categoryCorrelation, insights } = data;
+  const { summary, departments, quadrants, categoryCorrelation, insights } = data || {} as any;
 
   // Scatter data for quadrant chart
   const scatterData = (departments || []).filter((d: any) => d.performance != null && d.engagement != null)
@@ -111,8 +111,8 @@ function AnalisisIntegradoContent() {
             <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('crossAnalysis.title')}</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
               {t('crossAnalysis.subtitle')}
-              {data.cycleName && <> · Ciclo: <strong>{data.cycleName}</strong></>}
-              {data.surveyTitle && <> · Encuesta: <strong>{data.surveyTitle}</strong></>}
+              {data?.cycleName && <> · Ciclo: <strong>{data.cycleName}</strong></>}
+              {data?.surveyTitle && <> · Encuesta: <strong>{data.surveyTitle}</strong></>}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -352,7 +352,7 @@ function AnalisisIntegradoContent() {
                 </tr>
               </thead>
               <tbody>
-                {departments.map((d: any) => {
+                {(departments || []).map((d: any) => {
                   const q = QUADRANT_CONFIG[d.quadrant];
                   return (
                     <tr key={d.department} style={{ borderBottom: '1px solid var(--border)' }}>

@@ -16,7 +16,7 @@
     "orgDev": "Plan Organizacional",
     "applicants": "Evaluación Postulantes",
     "continuous": "Seguimiento Continuo",
-    "objectives": "Objetivos / OKR",
+    "objectives": "Objetivos y Metas",
     "feedback": "Feedback y Check-ins",
     "recognitions": "Reconocimientos",
     "dei": "DEI / Diversidad",
@@ -654,7 +654,7 @@
     }
   },
   "objetivos": {
-    "title": "Objetivos / OKR",
+    "title": "Objetivos y Metas",
     "subtitle": "Define metas medibles alineadas con la estrategia de tu organización",
     "newObjective": "Nuevo Objetivo",
     "orgObjectives": "Objetivos de la organización",
@@ -672,12 +672,14 @@
       "title": "Guía de uso: Objetivos",
       "desc": "Los objetivos permiten definir metas medibles para cada colaborador, alineadas con la estrategia de la organización. Se pueden vincular a ciclos de evaluación para medir el cumplimiento en las revisiones de desempeño.",
       "draftNote": "Los objetivos que propongas quedarán en estado 'Borrador' hasta que tu encargado los apruebe.",
-      "typeOkr": "KR — Resultado Clave",
-      "typeOkrDesc": "Define qué quieres lograr (el objetivo) y cómo sabrás que lo lograste (los resultados clave).",
-      "typeKpi": "KPI — Indicador numérico",
-      "typeKpiDesc": "Es un número que se mide de forma continua para saber si el trabajo va bien. Se actualiza periódicamente y permite detectar tendencias.",
-      "typeSmart": "SMART — Tarea con fecha límite",
-      "typeSmartDesc": "Es un objetivo específico, medible, alcanzable, relevante y con plazo definido.",
+      "typeOkr": "OKR — Objetivos y Resultados Clave",
+      "typeOkrDesc": "Define qué quieres lograr (el objetivo) y cómo sabrás que lo lograste (los resultados clave medibles). Ejemplo: Objetivo → 'Mejorar satisfacción del cliente', Resultado Clave → 'Aumentar NPS de 45 a 70'.",
+      "typeKpi": "KPI — Indicador Clave de Rendimiento",
+      "typeKpiDesc": "Es un número que se mide de forma continua para saber si el trabajo va bien. Se actualiza periódicamente y permite detectar tendencias. Ejemplo: 'Tasa de retención de clientes ≥ 90%'.",
+      "typeSmart": "SMART — Meta Específica con Plazo",
+      "typeSmartDesc": "Es un objetivo eSpecífico, Medible, Alcanzable, Relevante y con Tiempo definido. Ejemplo: 'Completar la certificación PMP antes del 30 de junio'.",
+      "pdiVsOkr": "¿Cuál es la diferencia entre Objetivos y Plan de Desarrollo (PDI)?",
+      "pdiVsOkrDesc": "Los Objetivos/OKR miden resultados del negocio — qué debe lograr el colaborador (ej: aumentar ventas 30%). El PDI desarrolla competencias de la persona — en qué debe mejorar profesionalmente (ej: curso de liderazgo). Ambos se nutren de la evaluación de desempeño pero apuntan a cosas distintas: uno mide rendimiento, el otro impulsa crecimiento.",
       "permissions": "Qué puede hacer cada perfil",
       "flow": "Flujo: Crear / Proponer → Borrador → Aprobar → En curso → Completar"
     },
@@ -889,7 +891,7 @@
     "title": "Informes con Inteligencia Artificial",
     "subtitle": "Análisis inteligente basado en datos de desempeño",
     "flightRiskError": "No se pudo cargar el análisis de riesgo de fuga. Puede que no haya suficientes datos.",
-    "scoreNote": "Puntuación algorítmica basada en: desempeño (30%), OKRs (25%), feedback (20%), objetivos en riesgo (15%), 9-box (10%) • Solo visible para administradores",
+    "scoreNote": "Puntuación algorítmica basada en: desempeño (30%), objetivos y metas (25%), feedback (20%), objetivos en riesgo (15%), 9-box (10%) • Solo visible para administradores",
     "selectUserForPrediction": "Selecciona un colaborador en la sección superior para ver su predicción de desempeño.",
     "predictionNotAvailable": "Predicción no disponible",
     "historyAvailable": "Historial disponible",
@@ -1009,7 +1011,9 @@
       "flowStep4": "Completar plan — Solo el Administrador o Encargado marca el plan como finalizado",
       "permissions": "Permisos",
       "permAdmin": "Administrador / Encargado: Crean planes, agregan acciones, activan y completan",
-      "permEmployee": "Colaborador: Ve su plan, completa acciones individuales, agrega comentarios"
+      "permEmployee": "Colaborador: Ve su plan, completa acciones individuales, agrega comentarios",
+      "pdiVsOkr": "¿Cuál es la diferencia entre PDI y Objetivos?",
+      "pdiVsOkrDesc": "El PDI desarrolla competencias — en qué debe mejorar el colaborador como profesional (ej: curso de liderazgo, mentoría). Los Objetivos/Metas miden resultados del negocio — qué debe lograr numéricamente (ej: aumentar ventas 30%). El PDI nace de las brechas detectadas en la evaluación de desempeño; los Objetivos nacen de la estrategia organizacional."
     },
     "form": {
       "collaborator": "Colaborador",

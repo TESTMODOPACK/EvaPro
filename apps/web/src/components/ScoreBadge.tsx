@@ -61,7 +61,7 @@ export function ScaleLegend({ compact = false }: { compact?: boolean }) {
       border: '1px solid var(--border)',
     }}>
       <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-        Escala de desempeno
+        Escala de desempeño
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {PERFORMANCE_SCALE.map((level) => (

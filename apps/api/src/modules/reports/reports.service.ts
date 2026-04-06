@@ -1719,4 +1719,493 @@ export class ReportsService {
     const arrayBuffer = await pptx.write({ outputType: 'arraybuffer' }) as ArrayBuffer;
     return Buffer.from(arrayBuffer);
   }
+
+  // ─── Analytics Cycle Export (Bell Curve + Competency Heatmap + Team Benchmarks) ───
+
+  async exportAnalyticsCycleXlsx(cycleId: string, tenantId: string, managerId?: string): Promise<Buffer> {
+    const ExcelJS = (await import('exceljs')).default;
+
+    const analytics = await this.getAnalytics(tenantId, cycleId, managerId);
+    const mgrFilter = managerId ? { managerId } : undefined;
+    const bellData = await this.bellCurve(cycleId, tenantId, mgrFilter);
+    const heatmapData = await this.competencyHeatmap(cycleId, tenantId, mgrFilter);
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Eva360';
+    wb.created = new Date();
+
+    const ACCENT = { argb: 'FF6366F1' };
+    const HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Calibri', size: 11 };
+    const TITLE_FONT = { bold: true, name: 'Calibri', size: 13, color: { argb: 'FF1E1E3C' } };
+
+    const styleHeader = (row: ExcelJS.Row) => {
+      row.eachCell((cell: ExcelJS.Cell) => {
+        cell.font = HEADER_FONT;
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: ACCENT };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+      });
+      row.height = 22;
+    };
+
+    // ── Sheet 1: Curva de Bell ───────────────────────────────────────
+    const wsBell = wb.addWorksheet('Curva de Bell');
+    const titleRow = wsBell.addRow([`Análisis de Ciclo — ${cycle?.name || cycleId}`]);
+    titleRow.getCell('A').font = { bold: true, name: 'Calibri', size: 15, color: ACCENT };
+    titleRow.height = 30;
+    wsBell.addRow([]);
+
+    if (bellData && !bellData.privacyRestricted && bellData.count > 0) {
+      wsBell.addRow(['Estadísticas']).getCell('A').font = TITLE_FONT;
+      wsBell.addRow(['Media', bellData.mean?.toFixed(2)]);
+      wsBell.addRow(['Desviación Estándar', bellData.stddev?.toFixed(2)]);
+      wsBell.addRow(['Total evaluaciones', bellData.count]);
+      wsBell.addRow([]);
+
+      const histTitle = wsBell.addRow(['Distribución por Rango']);
+      histTitle.getCell('A').font = TITLE_FONT;
+      const histHeader = wsBell.addRow(['Rango', 'Cantidad', 'Curva Normal']);
+      styleHeader(histHeader);
+      for (const b of (bellData.histogram || [])) {
+        if (b.count > 0 || b.normalY > 0) {
+          wsBell.addRow([b.rangeLabel || b.range, b.count, b.normalY?.toFixed(1) || '']);
+        }
+      }
+    } else {
+      wsBell.addRow(['Sin datos de curva de bell para este ciclo']);
+    }
+    wsBell.columns = [{ width: 25 }, { width: 15 }, { width: 15 }];
+
+    // ── Sheet 2: Comparación por Departamento ────────────────────────
+    if (analytics.departmentComparison && analytics.departmentComparison.length > 0) {
+      const wsDept = wb.addWorksheet('Departamentos');
+      const deptTitle = wsDept.addRow(['Comparación por Departamento']);
+      deptTitle.getCell('A').font = TITLE_FONT;
+      deptTitle.height = 26;
+      wsDept.addRow([]);
+      const deptHeader = wsDept.addRow(['Departamento', 'Puntaje Promedio', 'Evaluados']);
+      styleHeader(deptHeader);
+      for (const d of analytics.departmentComparison) {
+        wsDept.addRow([d.department || 'Sin depto.', Number(d.avgScore), d.count]);
+      }
+      wsDept.columns = [{ width: 30 }, { width: 20 }, { width: 15 }];
+    }
+
+    // ── Sheet 3: Mapa de Competencias ────────────────────────────────
+    if (heatmapData && heatmapData.grid && heatmapData.grid.length > 0 && heatmapData.departments && (heatmapData.departments as string[]).length > 0) {
+      const wsComp = wb.addWorksheet('Mapa Competencias');
+      const compTitle = wsComp.addRow(['Mapa de Competencias por Departamento (Escala 1-10)']);
+      compTitle.getCell('A').font = TITLE_FONT;
+      compTitle.height = 26;
+      wsComp.addRow([]);
+
+      const depts = heatmapData.departments as string[];
+      const compHeader = wsComp.addRow(['Sección / Competencia', ...depts, 'Promedio Org.']);
+      styleHeader(compHeader);
+
+      for (const row of heatmapData.grid as any[]) {
+        const vals = depts.map((dept) => {
+          const cell = (row.values as any[]).find((v: any) => v.department === dept);
+          if (!cell || cell.privacyRestricted) return 'N/D';
+          return cell.avg !== null ? Number(cell.avg).toFixed(1) : '—';
+        });
+        const nonNull = (row.values as any[])
+          .filter((v: any) => v.avg !== null && !v.privacyRestricted)
+          .map((v: any) => v.avg as number);
+        const orgAvg = nonNull.length > 0 ? (nonNull.reduce((a: number, b: number) => a + b, 0) / nonNull.length).toFixed(1) : '—';
+        wsComp.addRow([row.section, ...vals, orgAvg]);
+      }
+      wsComp.columns = [{ width: 30 }, ...depts.map(() => ({ width: 16 })), { width: 16 }];
+    }
+
+    // ── Sheet 4: Rendimiento por Equipo ──────────────────────────────
+    if (analytics.teamBenchmarks && analytics.teamBenchmarks.length > 0) {
+      const wsTeam = wb.addWorksheet('Rendimiento Equipo');
+      const teamTitle = wsTeam.addRow(['Rendimiento por Equipo']);
+      teamTitle.getCell('A').font = TITLE_FONT;
+      teamTitle.height = 26;
+      wsTeam.addRow([]);
+      const teamHeader = wsTeam.addRow(['Encargado de Equipo', 'Departamento', 'Puntaje Promedio', 'Tamaño Equipo']);
+      styleHeader(teamHeader);
+      const sorted = [...analytics.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+      for (const tb of sorted) {
+        wsTeam.addRow([tb.managerName || tb.managerId, tb.department || '—', Number(tb.avgScore), tb.teamSize]);
+      }
+      wsTeam.columns = [{ width: 30 }, { width: 25 }, { width: 20 }, { width: 18 }];
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
+
+  async exportAnalyticsCyclePdf(cycleId: string, tenantId: string, managerId?: string): Promise<Buffer> {
+    const analytics = await this.getAnalytics(tenantId, cycleId, managerId);
+    const mgrFilter = managerId ? { managerId } : undefined;
+    const bellData = await this.bellCurve(cycleId, tenantId, mgrFilter);
+    const heatmapData = await this.competencyHeatmap(cycleId, tenantId, mgrFilter);
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+    const accent = [99, 102, 241];
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // ─── Header ───
+    doc.setFillColor(accent[0], accent[1], accent[2]);
+    doc.rect(0, 0, pageWidth, 28, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Análisis de Ciclo', 14, 13);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(cycle?.name || cycleId, 14, 20);
+    doc.text(`Generado: ${new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })}`, 14, 25);
+
+    let y = 36;
+    doc.setTextColor(30, 30, 60);
+
+    // ─── Bell Curve Stats ───
+    if (bellData && !bellData.privacyRestricted && bellData.count > 0) {
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Distribución de Puntajes (Curva de Bell)', 14, y);
+      y += 6;
+
+      const bellKpis = [
+        { label: 'Media', value: bellData.mean?.toFixed(2) || '0' },
+        { label: 'Desv. Estándar', value: bellData.stddev?.toFixed(2) || '0' },
+        { label: 'Total', value: String(bellData.count) },
+      ];
+      const kpiW = (pageWidth - 28 - 20) / 3;
+      bellKpis.forEach((kpi, i) => {
+        const x = 14 + i * (kpiW + 10);
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(x, y, kpiW, 16, 2, 2, 'FD');
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(accent[0], accent[1], accent[2]);
+        doc.text(kpi.value, x + kpiW / 2, y + 7, { align: 'center' });
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text(kpi.label, x + kpiW / 2, y + 13, { align: 'center' });
+      });
+      y += 24;
+
+      // Histogram table
+      const histBuckets = (bellData.histogram || []).filter((b: any) => b.count > 0);
+      if (histBuckets.length > 0) {
+        doc.setTextColor(51, 65, 85);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Distribución por rango', 14, y);
+        y += 2;
+        autoTable(doc, {
+          startY: y,
+          head: [['Rango', 'Cantidad']],
+          body: histBuckets.map((b: any) => [b.rangeLabel || b.range, String(b.count)]),
+          margin: { left: 14, right: 14 },
+          headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 8 },
+          bodyStyles: { fontSize: 8, textColor: [30, 30, 60] },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+          styles: { cellPadding: 2.5, lineColor: [226, 232, 240], lineWidth: 0.25 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 8;
+      }
+    }
+
+    // ─── Department Comparison ───
+    if (analytics.departmentComparison && analytics.departmentComparison.length > 0) {
+      if (y > 220) { doc.addPage(); y = 20; }
+      doc.setTextColor(51, 65, 85);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Comparación por Departamento', 14, y);
+      y += 2;
+      autoTable(doc, {
+        startY: y,
+        head: [['Departamento', 'Promedio', 'Evaluados']],
+        body: analytics.departmentComparison.map((d: any) => [d.department || 'Sin depto.', d.avgScore, String(d.count)]),
+        margin: { left: 14, right: 14 },
+        headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 8, textColor: [30, 30, 60] },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        styles: { cellPadding: 2.5, lineColor: [226, 232, 240], lineWidth: 0.25 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+    }
+
+    // ─── Competency Heatmap ───
+    if (heatmapData && heatmapData.grid && heatmapData.grid.length > 0 && heatmapData.departments && (heatmapData.departments as string[]).length > 0) {
+      if (y > 180) { doc.addPage(); y = 20; }
+      doc.setTextColor(51, 65, 85);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Mapa de Competencias por Departamento (Escala 1-10)', 14, y);
+      y += 2;
+
+      const depts = heatmapData.departments as string[];
+      const headRow = ['Competencia', ...depts.map((d: string) => d.length > 12 ? d.slice(0, 11) + '…' : d), 'Org.'];
+      const bodyRows = (heatmapData.grid as any[]).map((row: any) => {
+        const vals = depts.map((dept) => {
+          const cell = (row.values as any[]).find((v: any) => v.department === dept);
+          if (!cell || cell.privacyRestricted) return 'N/D';
+          return cell.avg !== null ? Number(cell.avg).toFixed(1) : '—';
+        });
+        const nonNull = (row.values as any[]).filter((v: any) => v.avg !== null && !v.privacyRestricted).map((v: any) => v.avg as number);
+        const orgAvg = nonNull.length > 0 ? (nonNull.reduce((a: number, b: number) => a + b, 0) / nonNull.length).toFixed(1) : '—';
+        return [row.section.length > 20 ? row.section.slice(0, 19) + '…' : row.section, ...vals, orgAvg];
+      });
+
+      autoTable(doc, {
+        startY: y,
+        head: [headRow],
+        body: bodyRows,
+        margin: { left: 14, right: 14 },
+        headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7, textColor: [30, 30, 60] },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        styles: { cellPadding: 2, lineColor: [226, 232, 240], lineWidth: 0.25 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+    }
+
+    // ─── Team Benchmarks ───
+    if (analytics.teamBenchmarks && analytics.teamBenchmarks.length > 0) {
+      if (y > 200) { doc.addPage(); y = 20; }
+      doc.setTextColor(51, 65, 85);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Rendimiento por Equipo', 14, y);
+      y += 2;
+      const sorted = [...analytics.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+      autoTable(doc, {
+        startY: y,
+        head: [['Encargado', 'Departamento', 'Promedio', 'Tamaño Equipo']],
+        body: sorted.map((tb: any) => [tb.managerName || tb.managerId, tb.department || '—', tb.avgScore, String(tb.teamSize)]),
+        margin: { left: 14, right: 14 },
+        headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 8, textColor: [30, 30, 60] },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        styles: { cellPadding: 2.5, lineColor: [226, 232, 240], lineWidth: 0.25 },
+        columnStyles: { 2: { halign: 'center' }, 3: { halign: 'center' } },
+      });
+    }
+
+    // ─── Footer ───
+    const pageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      const footerY = doc.internal.pageSize.getHeight() - 8;
+      doc.text(`Generado por Eva360 — ${new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })}`, 14, footerY);
+      doc.text(`Página ${p} de ${pageCount}`, pageWidth - 14, footerY, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
+  }
+
+  async exportAnalyticsCyclePptx(cycleId: string, tenantId: string, managerId?: string): Promise<Buffer> {
+    const PptxGenJS = (await import('pptxgenjs')).default;
+
+    const analytics = await this.getAnalytics(tenantId, cycleId, managerId);
+    const mgrFilter = managerId ? { managerId } : undefined;
+    const bellData = await this.bellCurve(cycleId, tenantId, mgrFilter);
+    const heatmapData = await this.competencyHeatmap(cycleId, tenantId, mgrFilter);
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+
+    const pptx = new PptxGenJS();
+    pptx.author = 'Eva360';
+    pptx.title = `Análisis de Ciclo - ${cycle?.name || cycleId}`;
+    pptx.subject = 'Análisis de Ciclo de Evaluación';
+
+    const GOLD = 'C9933A';
+    const GOLD_LIGHT = 'E8C97A';
+    const DARK = '1a1206';
+    const GRAY = '5a4a2e';
+    const LIGHT_BG = 'F5F5F0';
+
+    // ─── Slide 1: Title ─────────────────────────────────────────
+    const slide1 = pptx.addSlide();
+    slide1.background = { color: DARK };
+    slide1.addText('Eva360', {
+      x: 0.8, y: 1.0, w: 8.4, h: 0.6,
+      fontSize: 14, color: GOLD_LIGHT, fontFace: 'Arial',
+    });
+    slide1.addText(`Análisis de Ciclo`, {
+      x: 0.8, y: 1.8, w: 8.4, h: 0.7,
+      fontSize: 28, bold: true, color: 'FFFFFF', fontFace: 'Arial',
+    });
+    slide1.addText(cycle?.name || cycleId, {
+      x: 0.8, y: 2.6, w: 8.4, h: 0.5,
+      fontSize: 18, color: GOLD, fontFace: 'Arial',
+    });
+    slide1.addText(`Generado: ${new Date().toLocaleDateString('es-CL')}`, {
+      x: 0.8, y: 4.5, w: 8.4, h: 0.3,
+      fontSize: 10, color: '888888', fontFace: 'Arial',
+    });
+
+    // ─── Slide 2: Bell Curve Stats ──────────────────────────────
+    if (bellData && !bellData.privacyRestricted && bellData.count > 0) {
+      const slide2 = pptx.addSlide();
+      slide2.background = { color: LIGHT_BG };
+      slide2.addText('Distribución de Puntajes (Curva de Bell)', {
+        x: 0.5, y: 0.3, w: 9, h: 0.5,
+        fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
+      });
+
+      const bellKpis = [
+        { label: 'Media', value: bellData.mean?.toFixed(2) || '0' },
+        { label: 'Desv. Estándar', value: bellData.stddev?.toFixed(2) || '0' },
+        { label: 'Total respuestas', value: String(bellData.count) },
+      ];
+      bellKpis.forEach((kpi, i) => {
+        slide2.addShape(pptx.ShapeType.roundRect, {
+          x: 0.5 + i * 3.0, y: 1.0, w: 2.5, h: 1.2,
+          fill: { color: 'FFFFFF' }, line: { color: GOLD, width: 1 },
+          rectRadius: 0.1,
+        });
+        slide2.addText(kpi.value, {
+          x: 0.5 + i * 3.0, y: 1.1, w: 2.5, h: 0.6,
+          fontSize: 24, bold: true, color: GOLD, align: 'center', fontFace: 'Arial',
+        });
+        slide2.addText(kpi.label, {
+          x: 0.5 + i * 3.0, y: 1.7, w: 2.5, h: 0.35,
+          fontSize: 10, color: GRAY, align: 'center', fontFace: 'Arial',
+        });
+      });
+
+      // Histogram
+      const histBuckets = (bellData.histogram || []).filter((b: any) => b.count > 0);
+      if (histBuckets.length > 0) {
+        slide2.addText('Distribución por rango', {
+          x: 0.5, y: 2.6, w: 9, h: 0.4,
+          fontSize: 12, bold: true, color: DARK, fontFace: 'Arial',
+        });
+        const histRows: any[][] = [[
+          { text: 'Rango', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+          { text: 'Cantidad', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        ]];
+        for (const b of histBuckets.slice(0, 15)) {
+          histRows.push([b.rangeLabel || b.range, String(b.count)]);
+        }
+        slide2.addTable(histRows, {
+          x: 0.5, y: 3.1, w: 6,
+          fontSize: 9, fontFace: 'Arial',
+          border: { color: 'DDDDDD', pt: 0.5 },
+          colW: [3, 3],
+        });
+      }
+    }
+
+    // ─── Slide 3: Department Comparison ─────────────────────────
+    if (analytics.departmentComparison && analytics.departmentComparison.length > 0) {
+      const slide3 = pptx.addSlide();
+      slide3.background = { color: LIGHT_BG };
+      slide3.addText('Comparación por Departamento', {
+        x: 0.5, y: 0.3, w: 9, h: 0.5,
+        fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
+      });
+      const deptRows: any[][] = [[
+        { text: 'Departamento', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Puntaje Promedio', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Evaluados', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+      ]];
+      for (const d of analytics.departmentComparison) {
+        deptRows.push([d.department || 'Sin depto.', d.avgScore, String(d.count)]);
+      }
+      slide3.addTable(deptRows, {
+        x: 0.5, y: 1.0, w: 9,
+        fontSize: 11, fontFace: 'Arial',
+        border: { color: 'DDDDDD', pt: 0.5 },
+        colW: [4, 2.5, 2.5],
+      });
+    }
+
+    // ─── Slide 4: Competency Heatmap ────────────────────────────
+    if (heatmapData && heatmapData.grid && heatmapData.grid.length > 0 && heatmapData.departments && (heatmapData.departments as string[]).length > 0) {
+      const slide4 = pptx.addSlide();
+      slide4.background = { color: LIGHT_BG };
+      slide4.addText('Mapa de Competencias por Departamento (Escala 1-10)', {
+        x: 0.5, y: 0.3, w: 9, h: 0.5,
+        fontSize: 20, bold: true, color: DARK, fontFace: 'Arial',
+      });
+
+      const depts = heatmapData.departments as string[];
+      const colCount = depts.length + 2; // section + depts + org avg
+      const colW = [2.5, ...depts.map(() => Math.min(1.5, 6.5 / depts.length)), 1.2];
+
+      const heatHead: any[] = [
+        { text: 'Competencia', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        ...depts.map((d) => ({ text: d.length > 10 ? d.slice(0, 9) + '…' : d, options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } })),
+        { text: 'Org.', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+      ];
+      const heatRows: any[][] = [heatHead];
+      for (const row of heatmapData.grid as any[]) {
+        const vals = depts.map((dept) => {
+          const cell = (row.values as any[]).find((v: any) => v.department === dept);
+          if (!cell || cell.privacyRestricted) return 'N/D';
+          return cell.avg !== null ? Number(cell.avg).toFixed(1) : '—';
+        });
+        const nonNull = (row.values as any[]).filter((v: any) => v.avg !== null && !v.privacyRestricted).map((v: any) => v.avg as number);
+        const orgAvg = nonNull.length > 0 ? (nonNull.reduce((a: number, b: number) => a + b, 0) / nonNull.length).toFixed(1) : '—';
+        heatRows.push([row.section.length > 18 ? row.section.slice(0, 17) + '…' : row.section, ...vals, orgAvg]);
+      }
+      slide4.addTable(heatRows, {
+        x: 0.3, y: 1.0, w: 9.4,
+        fontSize: 8, fontFace: 'Arial',
+        border: { color: 'DDDDDD', pt: 0.5 },
+        colW,
+      });
+    }
+
+    // ─── Slide 5: Team Benchmarks ───────────────────────────────
+    if (analytics.teamBenchmarks && analytics.teamBenchmarks.length > 0) {
+      const slide5 = pptx.addSlide();
+      slide5.background = { color: LIGHT_BG };
+      slide5.addText('Rendimiento por Equipo', {
+        x: 0.5, y: 0.3, w: 9, h: 0.5,
+        fontSize: 22, bold: true, color: DARK, fontFace: 'Arial',
+      });
+
+      const teamRows: any[][] = [[
+        { text: 'Encargado', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Departamento', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Promedio', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+        { text: 'Tamaño Equipo', options: { bold: true, color: 'FFFFFF', fill: { color: GOLD } } },
+      ]];
+      const sorted = [...analytics.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+      for (const tb of sorted) {
+        teamRows.push([tb.managerName || tb.managerId, tb.department || '—', tb.avgScore, String(tb.teamSize)]);
+      }
+      slide5.addTable(teamRows, {
+        x: 0.5, y: 1.0, w: 9,
+        fontSize: 10, fontFace: 'Arial',
+        border: { color: 'DDDDDD', pt: 0.5 },
+        colW: [3, 2.5, 1.75, 1.75],
+      });
+    }
+
+    // ─── Slide 6: Closing ───────────────────────────────────────
+    const slideEnd = pptx.addSlide();
+    slideEnd.background = { color: DARK };
+    slideEnd.addText('Eva360', {
+      x: 0.5, y: 2.0, w: 9, h: 0.8,
+      fontSize: 28, bold: true, color: GOLD_LIGHT, align: 'center', fontFace: 'Arial',
+    });
+    slideEnd.addText('Análisis de Ciclo — Reporte generado automáticamente', {
+      x: 0.5, y: 3.0, w: 9, h: 0.4,
+      fontSize: 12, color: '888888', align: 'center', fontFace: 'Arial',
+    });
+    slideEnd.addText(`${new Date().toLocaleDateString('es-CL')} — Confidencial`, {
+      x: 0.5, y: 3.5, w: 9, h: 0.3,
+      fontSize: 10, color: '666666', align: 'center', fontFace: 'Arial',
+    });
+
+    const arrayBuffer = await pptx.write({ outputType: 'arraybuffer' }) as ArrayBuffer;
+    return Buffer.from(arrayBuffer);
+  }
 }

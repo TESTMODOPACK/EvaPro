@@ -10,10 +10,14 @@ import { Repository, IsNull } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { UserNote } from './entities/user-note.entity';
+import { UserDeparture } from './entities/user-departure.entity';
+import { UserMovement, MovementType } from './entities/user-movement.entity';
 import { BulkImport, ImportStatus } from './entities/bulk-import.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { CreateDepartureDto } from './dto/create-departure.dto';
+import { CreateMovementDto } from './dto/create-movement.dto';
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -28,6 +32,10 @@ export class UsersService {
     private readonly noteRepo: Repository<UserNote>,
     @InjectRepository(BulkImport)
     private readonly bulkImportRepo: Repository<BulkImport>,
+    @InjectRepository(UserDeparture)
+    private readonly departureRepo: Repository<UserDeparture>,
+    @InjectRepository(UserMovement)
+    private readonly movementRepo: Repository<UserMovement>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly auditService: AuditService,
@@ -226,8 +234,36 @@ export class UsersService {
       // Silently ignore role changes from unauthorized users
     }
     if (dto.managerId !== undefined) user.managerId = dto.managerId;
+
+    // Track department/position changes as internal movements
+    const prevDept = user.department;
+    const prevPos = user.position;
     if (dto.department !== undefined) user.department = dto.department;
     if (dto.position !== undefined) user.position = dto.position;
+
+    // Auto-create movement records for dept/position changes
+    const deptChanged = dto.department !== undefined && dto.department !== prevDept;
+    const posChanged = dto.position !== undefined && dto.position !== prevPos;
+    if (deptChanged || posChanged) {
+      const mType = deptChanged && posChanged ? MovementType.LATERAL_TRANSFER
+        : deptChanged ? MovementType.DEPARTMENT_CHANGE
+        : MovementType.POSITION_CHANGE;
+      this.movementRepo.save(this.movementRepo.create({
+        tenantId: user.tenantId,
+        userId: user.id,
+        movementType: mType,
+        effectiveDate: new Date(),
+        fromDepartment: prevDept || null,
+        toDepartment: dto.department || user.department || null,
+        fromPosition: prevPos || null,
+        toPosition: dto.position || user.position || null,
+      })).catch(() => {}); // fire-and-forget, don't block update
+      this.auditService.log(user.tenantId, user.id, deptChanged ? 'user.department_changed' : 'user.position_changed', 'user', user.id, {
+        from: { department: prevDept, position: prevPos },
+        to: { department: user.department, position: user.position },
+      }).catch(() => {});
+    }
+
     if (dto.hierarchyLevel !== undefined) user.hierarchyLevel = dto.hierarchyLevel;
     if (dto.hireDate !== undefined) user.hireDate = new Date(dto.hireDate);
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
@@ -251,6 +287,101 @@ export class UsersService {
     }
     user.isActive = false;
     await this.userRepository.save(user);
+    this.auditService.log(tenantId, id, 'user.deactivated', 'user', id).catch(() => {});
+  }
+
+  // ─── Departure Tracking ────────────────────────────────────────────────
+
+  async registerDeparture(
+    userId: string,
+    tenantId: string,
+    dto: CreateDepartureDto,
+    processedById: string,
+  ): Promise<UserDeparture> {
+    const user = await this.findById(userId);
+    if (user.tenantId !== tenantId) throw new NotFoundException('Usuario no encontrado');
+    if (!user.isActive) throw new BadRequestException('El usuario ya está inactivo');
+
+    // Create departure record
+    const departure = this.departureRepo.create({
+      tenantId,
+      userId,
+      departureDate: new Date(dto.departureDate),
+      departureType: dto.departureType,
+      isVoluntary: dto.isVoluntary,
+      reasonCategory: dto.reasonCategory || null,
+      reasonDetail: dto.reasonDetail || null,
+      lastDepartment: user.department || null,
+      lastPosition: user.position || null,
+      wouldRehire: dto.wouldRehire ?? null,
+      processedBy: processedById,
+    });
+    const saved = await this.departureRepo.save(departure);
+
+    // Deactivate user
+    user.isActive = false;
+    user.departureDate = new Date(dto.departureDate);
+    await this.userRepository.save(user);
+
+    // Audit
+    await this.auditService.log(tenantId, processedById, 'user.departed', 'user', userId, {
+      departureType: dto.departureType,
+      isVoluntary: dto.isVoluntary,
+      reasonCategory: dto.reasonCategory,
+      lastDepartment: user.department,
+      lastPosition: user.position,
+    }).catch(() => {});
+
+    return saved;
+  }
+
+  async getUserDepartures(userId: string, tenantId: string): Promise<UserDeparture[]> {
+    return this.departureRepo.find({
+      where: { userId, tenantId },
+      order: { departureDate: 'DESC' },
+    });
+  }
+
+  // ─── Internal Movement Tracking ────────────────────────────────────────
+
+  async registerMovement(
+    userId: string,
+    tenantId: string,
+    dto: CreateMovementDto,
+    approvedById?: string,
+  ): Promise<UserMovement> {
+    const user = await this.findById(userId);
+    if (user.tenantId !== tenantId) throw new NotFoundException('Usuario no encontrado');
+
+    const movement = this.movementRepo.create({
+      tenantId,
+      userId,
+      movementType: dto.movementType,
+      effectiveDate: new Date(dto.effectiveDate),
+      fromDepartment: dto.fromDepartment || user.department || null,
+      toDepartment: dto.toDepartment || null,
+      fromPosition: dto.fromPosition || user.position || null,
+      toPosition: dto.toPosition || null,
+      reason: dto.reason || null,
+      approvedBy: approvedById || null,
+    });
+    const saved = await this.movementRepo.save(movement);
+
+    this.auditService.log(tenantId, userId, 'user.movement_registered', 'user', userId, {
+      movementType: dto.movementType,
+      from: { department: movement.fromDepartment, position: movement.fromPosition },
+      to: { department: movement.toDepartment, position: movement.toPosition },
+    }).catch(() => {});
+
+    return saved;
+  }
+
+  async getUserMovements(userId: string, tenantId: string): Promise<UserMovement[]> {
+    return this.movementRepo.find({
+      where: { userId, tenantId },
+      order: { effectiveDate: 'DESC' },
+      relations: ['user'],
+    });
   }
 
   // ─── Bulk Import ──────────────────────────────────────────────────────────

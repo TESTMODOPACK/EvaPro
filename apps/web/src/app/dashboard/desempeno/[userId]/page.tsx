@@ -144,7 +144,7 @@ export default function DesempenoPage() {
                 <Line
                   type="monotone"
                   dataKey="self"
-                  name="Autoevaluacion"
+                  name="Autoevaluación"
                   stroke="#6366f1"
                   strokeWidth={2}
                   dot={{ fill: '#6366f1', r: 4 }}
@@ -186,7 +186,7 @@ export default function DesempenoPage() {
           {closedCycles.length > 0 && (
             <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <h2 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>Analisis por Ciclo</h2>
+                <h2 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>Análisis por Ciclo</h2>
                 <select
                   className="input"
                   value={selectedCycleId}
@@ -195,7 +195,7 @@ export default function DesempenoPage() {
                 >
                   <option value="">Seleccionar ciclo...</option>
                   {closedCycles.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                    <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status})</option>
                   ))}
                 </select>
               </div>

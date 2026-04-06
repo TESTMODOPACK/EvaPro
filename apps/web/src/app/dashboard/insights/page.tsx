@@ -524,13 +524,26 @@ function InsightsPageContent() {
           <div style={{ marginBottom: '1rem' }}>
             <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>{'Funcionalidades disponibles:'}</p>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              <li><strong>{'Resumen IA:'}</strong>{' Sintetiza todas las evaluaciones de un colaborador en un resumen ejecutivo con fortalezas, áreas de mejora y recomendaciones'}</li>
-              <li><strong>{'Sugerencias de Desarrollo:'}</strong>{' Genera acciones concretas de mejora vinculadas a competencias, basadas en evaluación, feedback y Nine Box'}</li>
+              <li><strong>{'Resumen IA:'}</strong>{' Sintetiza todas las evaluaciones de un colaborador en un resumen ejecutivo con fortalezas, áreas de mejora y recomendaciones.'}</li>
+              <li><strong>{'Sugerencias de Desarrollo:'}</strong>{' Genera acciones concretas de mejora vinculadas a competencias, basadas en evaluación, feedback y Nine Box.'}</li>
               <li style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{'La Detección de Sesgos se encuentra en Análisis de Ciclos, ya que es un análisis a nivel de ciclo completo.'}</li>
             </ul>
           </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>{'Análisis algorítmico (datos en tiempo real):'}</p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <li><strong>{'Predicciones:'}</strong>{' Utiliza regresión lineal sobre el historial de puntajes del colaborador en múltiples ciclos para proyectar su próximo puntaje. Requiere al menos 2 ciclos completados con evaluaciones para el usuario seleccionado. A mayor cantidad de ciclos, mayor precisión.'}</li>
+              <li><strong>{'Riesgo de Fuga:'}</strong>{' Combina factores como puntaje de evaluación, antigüedad, tendencia de desempeño y satisfacción para estimar la probabilidad de salida del colaborador. Disponible solo para administradores.'}</li>
+              <li><strong>{'Retención:'}</strong>{' Genera recomendaciones de retención basadas en el perfil, rendimiento e historial del colaborador, priorizando acciones según nivel de riesgo. Disponible solo para administradores.'}</li>
+            </ul>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem', paddingLeft: '1.25rem' }}>
+              {'Estos análisis NO dependen del ciclo seleccionado — utilizan datos históricos de todos los ciclos disponibles. No requieren generación con IA ni consumen créditos.'}
+            </p>
+          </div>
+
           <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            <strong style={{ color: 'var(--accent)' }}>{'Importante:'}</strong>{' Los resultados se generan con IA y se almacenan en cach\u00e9 por 7 d\u00edas. Esta funcionalidad est\u00e1 disponible solo para el plan Enterprise.'}
+            <strong style={{ color: 'var(--accent)' }}>{'Importante:'}</strong>{' Los resultados de IA se generan bajo demanda y se almacenan en caché por 7 días. Esta funcionalidad está disponible solo para el plan Enterprise. Los análisis algorítmicos están disponibles para todos los planes.'}
           </div>
         </div>
       )}

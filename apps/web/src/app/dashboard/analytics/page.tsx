@@ -7,6 +7,8 @@ import { useAnalytics } from '@/hooks/usePerformanceHistory';
 import { useCycles } from '@/hooks/useCycles';
 import { useCompetencyHeatmap, useBellCurve } from '@/hooks/useReports';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useAuthStore } from '@/store/auth.store';
+import { useToastStore } from '@/store/toast.store';
 import {
   BarChart,
   Bar,
@@ -402,12 +404,41 @@ const selectStyle: React.CSSProperties = {
   minWidth: '250px',
 };
 
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  'https://evaluacion-desempeno-api.onrender.com';
+
 function AnalyticsPageContent() {
   const { t } = useTranslation();
+  const token = useAuthStore((s) => s.token);
+  const toast = useToastStore();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const { data: analytics, isLoading: loadingAnalytics } = useAnalytics(selectedCycleId);
   const [showGuide, setShowGuide] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleExport = async (format: 'xlsx' | 'pdf' | 'pptx') => {
+    if (!selectedCycleId || !token) return;
+    setExporting(format);
+    try {
+      const url = `${BASE_URL}/reports/analytics/cycle/${selectedCycleId}/export?format=${format}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error al exportar');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `analisis-ciclo-${selectedCycleId}.${format}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al exportar');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   // Only show closed cycles (analysis requires completed data)
   const sortedCycles = cycles
@@ -495,7 +526,7 @@ function AnalyticsPageContent() {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{'No hay ciclos disponibles'}</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
               Ciclo:
             </label>
@@ -514,6 +545,32 @@ function AnalyticsPageContent() {
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
               Solo ciclos cerrados con datos completos
             </span>
+
+            {/* Export buttons */}
+            {selectedCycleId && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+                {(['xlsx', 'pdf', 'pptx'] as const).map((fmt) => (
+                  <button
+                    key={fmt}
+                    className="btn-ghost"
+                    onClick={() => handleExport(fmt)}
+                    disabled={!!exporting}
+                    style={{
+                      fontSize: '0.82rem',
+                      padding: '0.4rem 0.85rem',
+                      opacity: exporting ? 0.5 : 1,
+                      cursor: exporting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {exporting === fmt
+                      ? t('common.exporting')
+                      : fmt === 'xlsx' ? t('common.exportExcel')
+                      : fmt === 'pdf' ? t('common.exportPdf')
+                      : t('common.exportPptx')}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

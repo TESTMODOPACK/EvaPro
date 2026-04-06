@@ -4,6 +4,8 @@ import { Repository, MoreThan, LessThan, In, IsNull, Not } from 'typeorm';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
 import { User } from '../users/entities/user.entity';
+import { UserDeparture } from '../users/entities/user-departure.entity';
+import { UserMovement } from '../users/entities/user-movement.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
@@ -19,6 +21,10 @@ export class AnalyticsService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
+    @InjectRepository(UserDeparture)
+    private readonly departureRepo: Repository<UserDeparture>,
+    @InjectRepository(UserMovement)
+    private readonly movementRepo: Repository<UserMovement>,
     @InjectRepository(EvaluationCycle)
     private readonly cycleRepo: Repository<EvaluationCycle>,
     @InjectRepository(EvaluationAssignment)
@@ -45,7 +51,7 @@ export class AnalyticsService {
     let totalActions = 0;
     let completedActions = 0;
     let overdueActions = 0;
-    const byDepartment: Record<string, { total: number; completed: number; avgProgress: number }> = {};
+    const byDepartment: Record<string, { total: number; completed: number; avgProgress: number; plans: any[] }> = {};
     const now = new Date();
 
     for (const plan of filtered) {
@@ -58,11 +64,19 @@ export class AnalyticsService {
       }
 
       const dept = (plan.user as any)?.department || 'Sin departamento';
-      if (!byDepartment[dept]) byDepartment[dept] = { total: 0, completed: 0, avgProgress: 0 };
+      if (!byDepartment[dept]) byDepartment[dept] = { total: 0, completed: 0, avgProgress: 0, plans: [] };
       byDepartment[dept].total++;
       if (plan.status === 'completado') byDepartment[dept].completed++;
       const progress = actions.length > 0 ? Math.round(actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length / actions.length * 100) : 0;
       byDepartment[dept].avgProgress += progress;
+      const rawName = (plan.user as any) ? `${(plan.user as any).firstName || ''} ${(plan.user as any).lastName || ''}`.trim() : '';
+      const userName = rawName || 'N/A';
+      byDepartment[dept].plans.push({
+        userName,
+        planTitle: plan.title || 'Sin título',
+        status: plan.status,
+        progress,
+      });
     }
 
     // Finalize department averages
@@ -223,54 +237,70 @@ export class AnalyticsService {
   // ─── 4. Análisis de Rotación ────────────────────────────────────────
 
   async getTurnoverAnalysis(tenantId: string): Promise<any> {
-    // Active users
     const activeUsers = await this.userRepo.count({ where: { tenantId, isActive: true } });
     const inactiveUsers = await this.userRepo.count({ where: { tenantId, isActive: false } });
 
-    // Deactivation events from audit log (last 12 months)
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
-    const deactivations = await this.auditRepo.find({
-      where: {
-        tenantId,
-        action: In(['user.deactivated', 'user.deleted']),
-        createdAt: MoreThan(twelveMonthsAgo),
-      },
-      order: { createdAt: 'DESC' },
+    // ── Primary source: user_departures table ──
+    const departures = await this.departureRepo.find({
+      where: { tenantId, departureDate: MoreThan(twelveMonthsAgo) },
+      relations: ['user'],
+      order: { departureDate: 'DESC' },
     });
 
-    // Group by month
+    // ── Fallback: audit logs for old deactivations without departure record ──
+    const departureUserIds = new Set(departures.map(d => d.userId));
+    const auditDeactivations = await this.auditRepo.find({
+      where: { tenantId, action: In(['user.deactivated', 'user.deleted', 'user.departed']), createdAt: MoreThan(twelveMonthsAgo) },
+    });
+    const legacyCount = auditDeactivations.filter(a => a.userId && !departureUserIds.has(a.userId)).length;
+
+    const totalDepartures = departures.length + legacyCount;
+
+    // By month
     const byMonth: Record<string, number> = {};
-    for (const d of deactivations) {
-      const month = new Date(d.createdAt).toISOString().slice(0, 7); // YYYY-MM
+    for (const d of departures) {
+      const month = new Date(d.departureDate).toISOString().slice(0, 7);
       byMonth[month] = (byMonth[month] || 0) + 1;
     }
 
-    // Get user details for deactivated users (department, hire date, last score)
-    const deactivatedUserIds = deactivations
-      .map(d => d.userId)
-      .filter(Boolean) as string[];
-
-    const deactivatedUsers = deactivatedUserIds.length > 0
-      ? await this.userRepo.find({
-          where: deactivatedUserIds.map(id => ({ id })),
-          select: ['id', 'firstName', 'lastName', 'department', 'hireDate', 'isActive'],
-        })
-      : [];
-
-    // Group by department
+    // By department
     const byDepartment: Record<string, number> = {};
-    for (const u of deactivatedUsers) {
-      const dept = u.department || 'Sin departamento';
+    for (const d of departures) {
+      const dept = d.lastDepartment || (d.user as any)?.department || 'Sin departamento';
       byDepartment[dept] = (byDepartment[dept] || 0) + 1;
     }
 
-    // Tenure analysis (months at company)
+    // By departure type
+    const byType: Record<string, number> = {};
+    for (const d of departures) {
+      byType[d.departureType] = (byType[d.departureType] || 0) + 1;
+    }
+
+    // By reason category
+    const byReason: Record<string, number> = {};
+    for (const d of departures) {
+      if (d.reasonCategory) {
+        byReason[d.reasonCategory] = (byReason[d.reasonCategory] || 0) + 1;
+      }
+    }
+
+    // Voluntary vs involuntary
+    const voluntary = departures.filter(d => d.isVoluntary).length;
+    const involuntary = departures.filter(d => !d.isVoluntary).length;
+
+    // Would rehire stats
+    const wouldRehireYes = departures.filter(d => d.wouldRehire === true).length;
+    const wouldRehireNo = departures.filter(d => d.wouldRehire === false).length;
+
+    // Tenure at departure (using actual departure date, not now)
     const tenureGroups = { '<6m': 0, '6-12m': 0, '1-2a': 0, '2-5a': 0, '>5a': 0 };
-    for (const u of deactivatedUsers) {
-      if (!u.hireDate) continue;
-      const months = Math.floor((Date.now() - new Date(u.hireDate).getTime()) / (1000 * 60 * 60 * 24 * 30));
+    for (const d of departures) {
+      const hireDate = (d.user as any)?.hireDate;
+      if (!hireDate) continue;
+      const months = Math.floor((new Date(d.departureDate).getTime() - new Date(hireDate).getTime()) / (1000 * 60 * 60 * 24 * 30));
       if (months < 6) tenureGroups['<6m']++;
       else if (months < 12) tenureGroups['6-12m']++;
       else if (months < 24) tenureGroups['1-2a']++;
@@ -278,17 +308,81 @@ export class AnalyticsService {
       else tenureGroups['>5a']++;
     }
 
-    const totalAtStart = activeUsers + deactivations.length;
-    const turnoverRate = totalAtStart > 0 ? Math.round((deactivations.length / totalAtStart) * 100) : 0;
+    const totalAtStart = activeUsers + totalDepartures;
+    const turnoverRate = totalAtStart > 0 ? Math.round((totalDepartures / totalAtStart) * 100) : 0;
 
     return {
       activeUsers,
       inactiveUsers,
-      totalDeactivations12m: deactivations.length,
+      totalDeactivations12m: totalDepartures,
       turnoverRate,
+      voluntary,
+      involuntary,
+      wouldRehire: { yes: wouldRehireYes, no: wouldRehireNo, noAnswer: departures.length - wouldRehireYes - wouldRehireNo },
       byMonth: Object.entries(byMonth).map(([month, count]) => ({ month, count })).sort((a, b) => a.month.localeCompare(b.month)),
       byDepartment: Object.entries(byDepartment).map(([dept, count]) => ({ department: dept, count })).sort((a, b) => b.count - a.count),
+      byType: Object.entries(byType).map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
+      byReason: Object.entries(byReason).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
       byTenure: Object.entries(tenureGroups).map(([range, count]) => ({ range, count })),
+    };
+  }
+
+  // ─── 4b. Análisis de Movimientos Internos ──────────────────────────
+
+  async getInternalMovementAnalysis(tenantId: string): Promise<any> {
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+    const movements = await this.movementRepo.find({
+      where: { tenantId, effectiveDate: MoreThan(twelveMonthsAgo) },
+      relations: ['user'],
+      order: { effectiveDate: 'DESC' },
+    });
+
+    // By type
+    const byType: Record<string, number> = {};
+    for (const m of movements) {
+      byType[m.movementType] = (byType[m.movementType] || 0) + 1;
+    }
+
+    // By month
+    const byMonth: Record<string, number> = {};
+    for (const m of movements) {
+      const month = new Date(m.effectiveDate).toISOString().slice(0, 7);
+      byMonth[month] = (byMonth[month] || 0) + 1;
+    }
+
+    // Department flow (from → to)
+    const flows: Record<string, number> = {};
+    for (const m of movements) {
+      if (m.fromDepartment && m.toDepartment && m.fromDepartment !== m.toDepartment) {
+        const key = `${m.fromDepartment} → ${m.toDepartment}`;
+        flows[key] = (flows[key] || 0) + 1;
+      }
+    }
+
+    // Recent movements (last 10)
+    const recent = movements.slice(0, 10).map(m => ({
+      userName: m.user ? `${(m.user as any).firstName || ''} ${(m.user as any).lastName || ''}`.trim() || 'N/A' : 'N/A',
+      movementType: m.movementType,
+      effectiveDate: m.effectiveDate,
+      fromDepartment: m.fromDepartment,
+      toDepartment: m.toDepartment,
+      fromPosition: m.fromPosition,
+      toPosition: m.toPosition,
+      reason: m.reason,
+    }));
+
+    return {
+      totalMovements: movements.length,
+      promotions: movements.filter(m => m.movementType === 'promotion').length,
+      lateralTransfers: movements.filter(m => m.movementType === 'lateral_transfer' || m.movementType === 'department_change').length,
+      positionChanges: movements.filter(m => m.movementType === 'position_change').length,
+      demotions: movements.filter(m => m.movementType === 'demotion').length,
+      byType: Object.entries(byType).map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
+      byMonth: Object.entries(byMonth).map(([month, count]) => ({ month, count })).sort((a, b) => a.month.localeCompare(b.month)),
+      departmentFlows: Object.entries(flows).map(([flow, count]) => ({ flow, count })).sort((a, b) => b.count - a.count),
+      recent,
     };
   }
 

@@ -6,7 +6,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
-const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#fb7185'];
 
 const tenureLabels: Record<string, string> = {
   '<6m': 'Menos de 6 meses',
@@ -16,19 +16,59 @@ const tenureLabels: Record<string, string> = {
   '>5a': 'Más de 5 años',
 };
 
+const departureTypeLabels: Record<string, string> = {
+  resignation: 'Renuncia voluntaria',
+  termination: 'Despido',
+  retirement: 'Jubilación',
+  contract_end: 'Fin de contrato',
+  abandonment: 'Abandono',
+  mutual_agreement: 'Mutuo acuerdo',
+};
+
+const reasonCategoryLabels: Record<string, string> = {
+  better_offer: 'Mejor oferta laboral',
+  work_climate: 'Clima laboral',
+  performance: 'Desempeño',
+  restructuring: 'Reestructuración',
+  personal: 'Motivos personales',
+  relocation: 'Reubicación',
+  career_growth: 'Crecimiento profesional',
+  compensation: 'Compensación/beneficios',
+  health: 'Salud',
+  other: 'Otro',
+};
+
+const movementTypeLabels: Record<string, string> = {
+  department_change: 'Cambio de departamento',
+  position_change: 'Cambio de cargo',
+  promotion: 'Promoción',
+  demotion: 'Democión',
+  lateral_transfer: 'Transferencia lateral',
+};
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+
 function TurnoverPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
+  const [movData, setMovData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [activeSection, setActiveSection] = useState<'departures' | 'movements'>('departures');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/reports/analytics/turnover`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(r => r.json()).then(setData).catch(() => {}).finally(() => setLoading(false));
+    setError(null);
+    Promise.all([
+      fetch(`${API}/reports/analytics/turnover`, { headers: { Authorization: `Bearer ${token}` } }).then(r => { if (!r.ok) throw new Error('Error al cargar rotación'); return r.json(); }),
+      fetch(`${API}/reports/analytics/movements`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+    ]).then(([turnover, movements]) => {
+      setData(turnover);
+      setMovData(movements);
+    }).catch((e) => setError(e.message || 'Error al cargar los datos')).finally(() => setLoading(false));
   }, [token]);
 
   const handleExport = async (format: 'csv' | 'xlsx') => {
@@ -36,7 +76,7 @@ function TurnoverPageContent() {
     setExporting(format);
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/reports/analytics/turnover/export?format=${format}`,
+        `${API}/reports/analytics/turnover/export?format=${format}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const blob = await res.blob();
@@ -51,6 +91,14 @@ function TurnoverPageContent() {
   };
 
   if (loading) return <PageSkeleton cards={4} tableRows={5} />;
+  if (error) return (
+    <div style={{ padding: '2rem 2.5rem' }}>
+      <div className="card" style={{ padding: '2rem', textAlign: 'center', borderLeft: '4px solid var(--danger)' }}>
+        <p style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '0.5rem' }}>Error al cargar</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{error}</p>
+      </div>
+    </div>
+  );
   if (!data) return <div style={{ padding: '2rem 2.5rem' }}><p style={{ color: 'var(--text-muted)' }}>No se pudo cargar el reporte.</p></div>;
 
   // Analysis logic
@@ -119,7 +167,7 @@ function TurnoverPageContent() {
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('analyticsRotacion.guide.title')}</h3>
           <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <p><strong>¿Qué muestra?</strong> Análisis de bajas (desactivaciones) en los últimos 12 meses — tasa de rotación, tendencias y distribución.</p>
+            <p><strong>¿Qué muestra?</strong> Análisis de salidas de la empresa y movimientos internos en los últimos 12 meses — tipo de salida, motivo, voluntaria/involuntaria, y movimientos de personal entre áreas.</p>
             <p><strong>Indicadores:</strong> Usuarios activos, bajas en 12 meses, tasa de rotación (bajas/total al inicio del período × 100), inactivos totales.</p>
             <p><strong>Rangos de rotación:</strong> Saludable (&lt;8%), Moderada (8-15%), Alta (15-20%), Crítica (&gt;20%).</p>
             <p><strong>Bajas por mes:</strong> Gráfico de barras mostrando los últimos 12 meses (incluye meses sin bajas con valor 0).</p>
@@ -134,8 +182,32 @@ function TurnoverPageContent() {
         </div>
       )}
 
+      {/* Section tabs */}
+      <div className="animate-fade-up" style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: '1.5rem' }}>
+        {[
+          { key: 'departures' as const, label: `Salidas de la Empresa (${data.totalDeactivations12m || 0})` },
+          { key: 'movements' as const, label: `Movimientos Internos (${movData?.totalMovements || 0})` },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveSection(tab.key)}
+            style={{
+              padding: '0.6rem 1.25rem', fontSize: '0.85rem', fontWeight: activeSection === tab.key ? 700 : 500,
+              color: activeSection === tab.key ? 'var(--accent)' : 'var(--text-muted)',
+              borderBottom: activeSection === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
+              background: 'none', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ═══════════ DEPARTURES SECTION ═══════════ */}
+      {activeSection === 'departures' && <>
+
       {/* KPIs */}
-      <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div className="animate-fade-up-delay-1 mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsRotacion.active')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)' }}>{data.activeUsers}</div>
@@ -150,10 +222,68 @@ function TurnoverPageContent() {
           <div style={{ fontSize: '0.72rem', color: rateColorMap[rateLevel], fontWeight: 600, marginTop: '0.15rem' }}>{rateLabelMap[rateLevel]}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('analyticsRotacion.inactive')}</div>
-          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-muted)' }}>{data.inactiveUsers}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Voluntaria</div>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f59e0b' }}>{data.voluntary || 0}</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Involuntaria</div>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--danger)' }}>{data.involuntary || 0}</div>
         </div>
       </div>
+
+      {/* By Type + By Reason */}
+      {hasDeactivations && data.byType?.length > 0 && (
+        <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+          <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Por Tipo de Salida</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {data.byType.map((t: any) => {
+                const pct = data.totalDeactivations12m > 0 ? Math.round((t.count / data.totalDeactivations12m) * 100) : 0;
+                return (
+                  <div key={t.type} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ minWidth: '140px', fontSize: '0.82rem', fontWeight: 500 }}>{departureTypeLabels[t.type] || t.type}</div>
+                    <div style={{ flex: 1, height: '8px', background: 'var(--border)', borderRadius: '999px' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: '#ef4444', borderRadius: '999px', minWidth: pct > 0 ? '4px' : 0 }} />
+                    </div>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, minWidth: '45px', textAlign: 'right' }}>{t.count} ({pct}%)</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {data.byReason?.length > 0 && (
+            <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
+              <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Por Categoría de Motivo</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {data.byReason.map((r: any) => {
+                  const pct = data.totalDeactivations12m > 0 ? Math.round((r.count / data.totalDeactivations12m) * 100) : 0;
+                  return (
+                    <div key={r.reason} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ minWidth: '140px', fontSize: '0.82rem', fontWeight: 500 }}>{reasonCategoryLabels[r.reason] || r.reason}</div>
+                      <div style={{ flex: 1, height: '8px', background: 'var(--border)', borderRadius: '999px' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: '#6366f1', borderRadius: '999px', minWidth: pct > 0 ? '4px' : 0 }} />
+                      </div>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, minWidth: '45px', textAlign: 'right' }}>{r.count} ({pct}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Would Rehire indicator */}
+      {hasDeactivations && data.wouldRehire && (data.wouldRehire.yes > 0 || data.wouldRehire.no > 0) && (
+        <div className="card animate-fade-up" style={{ padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', gap: '2rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <h3 style={{ fontSize: '0.85rem', fontWeight: 700, margin: 0 }}>¿Recontratarías?</h3>
+          <div style={{ display: 'flex', gap: '1.5rem' }}>
+            <span style={{ fontSize: '0.85rem' }}><strong style={{ color: 'var(--success)' }}>{data.wouldRehire.yes}</strong> Sí</span>
+            <span style={{ fontSize: '0.85rem' }}><strong style={{ color: 'var(--danger)' }}>{data.wouldRehire.no}</strong> No</span>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{data.wouldRehire.noAnswer} Sin respuesta</span>
+          </div>
+        </div>
+      )}
 
       {/* Charts row */}
       <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
@@ -336,6 +466,133 @@ function TurnoverPageContent() {
           )}
         </div>
       </div>
+
+      </>}
+
+      {/* ═══════════ MOVEMENTS SECTION ═══════════ */}
+      {activeSection === 'movements' && (
+        <div>
+          {!movData ? (
+            <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No se pudieron cargar los datos de movimientos internos.</p>
+            </div>
+          ) : (
+            <>
+              {/* Movement KPIs */}
+              <div className="animate-fade-up mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Total Movimientos</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{movData.totalMovements}</div>
+                </div>
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Promociones</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)' }}>{movData.promotions}</div>
+                </div>
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Transferencias</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>{movData.lateralTransfers}</div>
+                </div>
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Cambios de Cargo</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f59e0b' }}>{movData.positionChanges}</div>
+                </div>
+              </div>
+
+              {/* By Type distribution */}
+              {movData.byType?.length > 0 && (
+                <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+                  <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Distribución por Tipo de Movimiento</h2>
+                  <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+                    {movData.byType.map((t: any) => {
+                      const colorMap: Record<string, string> = {
+                        promotion: 'var(--success)', demotion: 'var(--danger)',
+                        department_change: '#6366f1', position_change: '#f59e0b', lateral_transfer: '#14b8a6',
+                      };
+                      return (
+                        <div key={t.type} className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: colorMap[t.type] || 'var(--accent)' }}>{t.count}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: '0.2rem' }}>
+                            {movementTypeLabels[t.type] || t.type}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Department Flows */}
+              {movData.departmentFlows?.length > 0 && (
+                <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+                  <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Flujo entre Departamentos</h2>
+                  <div className="table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Flujo</th>
+                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Cantidad</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {movData.departmentFlows.map((f: any) => (
+                          <tr key={f.flow} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '0.6rem 0.75rem', fontWeight: 500 }}>{f.flow}</td>
+                            <td style={{ padding: '0.6rem 0.75rem', fontWeight: 700, textAlign: 'center', color: 'var(--accent)' }}>{f.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Movements */}
+              {movData.recent?.length > 0 && (
+                <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+                  <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Movimientos Recientes</h2>
+                  <div className="table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Colaborador</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tipo</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>De → A</th>
+                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Fecha</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {movData.recent.map((m: any, i: number) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '0.6rem 0.75rem', fontWeight: 500 }}>{m.userName}</td>
+                            <td style={{ padding: '0.6rem 0.75rem' }}>
+                              <span className="badge badge-ghost" style={{ fontSize: '0.72rem' }}>{movementTypeLabels[m.movementType] || m.movementType}</span>
+                            </td>
+                            <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.8rem' }}>
+                              {m.fromDepartment || m.fromPosition || '—'} → {m.toDepartment || m.toPosition || '—'}
+                            </td>
+                            <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              {m.effectiveDate ? new Date(m.effectiveDate).toLocaleDateString('es-CL') : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {movData.totalMovements === 0 && (
+                <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                    No se han registrado movimientos internos en los últimos 12 meses. Los movimientos se registran automáticamente al cambiar departamento o cargo de un colaborador.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 import { api } from '@/lib/api';
@@ -84,6 +85,7 @@ export default function UsuariosPage() {
   // Load ALL users (no filters) once for departments/positions dropdowns
   const { data: allUsersPag } = useUsers(1, 200);
 
+  const queryClient = useQueryClient();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const removeUser = useRemoveUser();
@@ -92,6 +94,18 @@ export default function UsuariosPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+
+  // Departure modal state
+  const [departureUser, setDepartureUser] = useState<{ id: string; name: string } | null>(null);
+  const [departureForm, setDepartureForm] = useState({
+    departureType: 'resignation',
+    departureDate: new Date().toISOString().split('T')[0],
+    isVoluntary: true,
+    reasonCategory: '',
+    reasonDetail: '',
+    wouldRehire: '' as '' | 'true' | 'false',
+  });
+  const [departureSubmitting, setDepartureSubmitting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -234,12 +248,55 @@ export default function UsuariosPage() {
     setShowCreateForm(true);
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`¿Eliminar a ${name}?`)) return;
+  const handleDelete = (id: string, name: string) => {
+    setDepartureUser({ id, name });
+    setDepartureForm({
+      departureType: 'resignation',
+      departureDate: new Date().toISOString().split('T')[0],
+      isVoluntary: true,
+      reasonCategory: '',
+      reasonDetail: '',
+      wouldRehire: '',
+    });
+  };
+
+  const handleDepartureSubmit = async () => {
+    if (!departureUser || !token) return;
+    setDepartureSubmitting(true);
+    try {
+      const body = {
+        departureType: departureForm.departureType,
+        departureDate: departureForm.departureDate,
+        isVoluntary: departureForm.isVoluntary,
+        reasonCategory: departureForm.reasonCategory || null,
+        reasonDetail: departureForm.reasonDetail || null,
+        wouldRehire: departureForm.wouldRehire === 'true' ? true : departureForm.wouldRehire === 'false' ? false : null,
+      };
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/users/${departureUser.id}/departure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Error desconocido' }));
+        throw new Error(err.message || 'Error al registrar salida');
+      }
+      toast.success(`Salida de ${departureUser.name} registrada correctamente`);
+      setDepartureUser(null);
+      // Refresh users list (user was already deactivated by the departure endpoint)
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al registrar salida');
+    } finally {
+      setDepartureSubmitting(false);
+    }
+  };
+
+  const handleQuickDeactivate = async (id: string) => {
     try {
       await removeUser.mutateAsync(id);
     } catch (err: any) {
-      toast.error(err.message || 'Error al eliminar usuario');
+      toast.error(err.message || 'Error al desactivar usuario');
     }
   };
 
@@ -1389,6 +1446,145 @@ export default function UsuariosPage() {
                 disabled={page >= totalPages}
               >
                 {'»'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ DEPARTURE MODAL ═══════════ */}
+      {departureUser && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="card" style={{ padding: '2rem', maxWidth: '550px', width: '100%', maxHeight: '85vh', overflow: 'auto' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.25rem' }}>Registrar Salida</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+              Colaborador: <strong>{departureUser.name}</strong>
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Departure Type */}
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Tipo de salida *</label>
+                <select
+                  className="input"
+                  value={departureForm.departureType}
+                  onChange={(e) => {
+                    const type = e.target.value;
+                    setDepartureForm(f => ({
+                      ...f,
+                      departureType: type,
+                      isVoluntary: ['resignation', 'retirement', 'mutual_agreement'].includes(type),
+                    }));
+                  }}
+                >
+                  <option value="resignation">Renuncia voluntaria</option>
+                  <option value="termination">Despido</option>
+                  <option value="retirement">Jubilación</option>
+                  <option value="contract_end">Fin de contrato</option>
+                  <option value="abandonment">Abandono</option>
+                  <option value="mutual_agreement">Mutuo acuerdo</option>
+                </select>
+              </div>
+
+              {/* Date */}
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Fecha de salida *</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={departureForm.departureDate}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setDepartureForm(f => ({ ...f, departureDate: e.target.value }))}
+                />
+              </div>
+
+              {/* Voluntary */}
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Naturaleza</label>
+                <div style={{ display: 'flex', gap: '1.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                    <input type="radio" name="voluntary" checked={departureForm.isVoluntary} onChange={() => setDepartureForm(f => ({ ...f, isVoluntary: true }))} />
+                    Voluntaria
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                    <input type="radio" name="voluntary" checked={!departureForm.isVoluntary} onChange={() => setDepartureForm(f => ({ ...f, isVoluntary: false }))} />
+                    Involuntaria
+                  </label>
+                </div>
+              </div>
+
+              {/* Reason Category */}
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Categoría del motivo</label>
+                <select
+                  className="input"
+                  value={departureForm.reasonCategory}
+                  onChange={(e) => setDepartureForm(f => ({ ...f, reasonCategory: e.target.value }))}
+                >
+                  <option value="">Sin especificar</option>
+                  <option value="better_offer">Mejor oferta laboral</option>
+                  <option value="work_climate">Clima laboral</option>
+                  <option value="performance">Desempeño</option>
+                  <option value="restructuring">Reestructuración</option>
+                  <option value="personal">Motivos personales</option>
+                  <option value="relocation">Reubicación</option>
+                  <option value="career_growth">Crecimiento profesional</option>
+                  <option value="compensation">Compensación/beneficios</option>
+                  <option value="health">Salud</option>
+                  <option value="other">Otro</option>
+                </select>
+              </div>
+
+              {/* Reason Detail */}
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Detalle / Observaciones</label>
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={departureForm.reasonDetail}
+                  onChange={(e) => setDepartureForm(f => ({ ...f, reasonDetail: e.target.value }))}
+                  placeholder="Información adicional sobre la salida..."
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              {/* Would Rehire */}
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>¿Recontratarías a esta persona?</label>
+                <div style={{ display: 'flex', gap: '1.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                    <input type="radio" name="rehire" checked={departureForm.wouldRehire === 'true'} onChange={() => setDepartureForm(f => ({ ...f, wouldRehire: 'true' }))} />
+                    Sí
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                    <input type="radio" name="rehire" checked={departureForm.wouldRehire === 'false'} onChange={() => setDepartureForm(f => ({ ...f, wouldRehire: 'false' }))} />
+                    No
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                    <input type="radio" name="rehire" checked={departureForm.wouldRehire === ''} onChange={() => setDepartureForm(f => ({ ...f, wouldRehire: '' }))} />
+                    Sin respuesta
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+              <button
+                className="btn-ghost"
+                onClick={() => setDepartureUser(null)}
+                disabled={departureSubmitting}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleDepartureSubmit}
+                disabled={departureSubmitting || !departureForm.departureDate || !departureForm.departureType}
+                style={{ padding: '0.5rem 1.5rem' }}
+              >
+                {departureSubmitting ? 'Registrando...' : 'Registrar Salida'}
               </button>
             </div>
           </div>

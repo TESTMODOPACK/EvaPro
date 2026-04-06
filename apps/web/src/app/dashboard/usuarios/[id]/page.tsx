@@ -25,6 +25,19 @@ function fmtDate(d: string | null): string {
   return new Date(d).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+const MOVEMENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  department_change: { label: 'Cambio de Departamento', color: '#6366f1' },
+  position_change: { label: 'Cambio de Cargo', color: '#f59e0b' },
+  promotion: { label: 'Promoción', color: '#10b981' },
+  demotion: { label: 'Democión', color: '#ef4444' },
+  lateral_transfer: { label: 'Transferencia Lateral', color: '#14b8a6' },
+};
+
+const DEPARTURE_TYPE_LABELS: Record<string, string> = {
+  resignation: 'Renuncia', termination: 'Despido', retirement: 'Jubilación',
+  contract_end: 'Fin de contrato', abandonment: 'Abandono', mutual_agreement: 'Mutuo acuerdo',
+};
+
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   general: { label: 'General', color: '#64748b' },
   performance: { label: 'Desempeño', color: '#6366f1' },
@@ -89,8 +102,17 @@ export default function UserProfilePage() {
   const [noteForm, setNoteForm] = useState({ title: '', content: '', category: 'general', isConfidential: false });
   const [savingNote, setSavingNote] = useState(false);
 
+  // Movement tracking
+  const [movements, setMovements] = useState<any[]>([]);
+  const [departures, setDepartures] = useState<any[]>([]);
+  const [showMovementForm, setShowMovementForm] = useState(false);
+  const [movForm, setMovForm] = useState({ movementType: 'department_change', effectiveDate: new Date().toISOString().split('T')[0], fromDepartment: '', toDepartment: '', fromPosition: '', toPosition: '', reason: '' });
+  const [savingMovement, setSavingMovement] = useState(false);
+
   const isAdmin = currentUser?.role === 'tenant_admin' || currentUser?.role === 'super_admin';
   const isManager = currentUser?.role === 'manager' || isAdmin;
+
+  const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
   const loadData = useCallback(async () => {
     if (!token || !userId) return;
@@ -107,6 +129,14 @@ export default function UserProfilePage() {
 
       if (userData.managerId) {
         api.users.getById(token, userData.managerId).then(setManager).catch(() => {});
+      }
+
+      // Load movements & departures
+      if (isManager) {
+        Promise.all([
+          fetch(`${API}/users/${userId}/movements`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+          fetch(`${API}/users/${userId}/departures`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+        ]).then(([movs, deps]) => { setMovements(movs); setDepartures(deps); }).catch(() => {});
       }
     } catch (err) {
       console.error(err);
@@ -140,6 +170,29 @@ export default function UserProfilePage() {
       setNotes(notes.filter((n) => n.id !== noteId));
     } catch (err: any) {
       toast.error(err.message || 'Error al eliminar');
+    }
+  };
+
+  const handleCreateMovement = async () => {
+    if (!token || !movForm.effectiveDate) return;
+    setSavingMovement(true);
+    try {
+      const res = await fetch(`${API}/users/${userId}/movement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(movForm),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Error'); }
+      setShowMovementForm(false);
+      setMovForm({ movementType: 'department_change', effectiveDate: new Date().toISOString().split('T')[0], fromDepartment: '', toDepartment: '', fromPosition: '', toPosition: '', reason: '' });
+      // Reload
+      const movs = await fetch(`${API}/users/${userId}/movements`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => []);
+      setMovements(movs);
+      toast.success('Movimiento registrado');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al registrar movimiento');
+    } finally {
+      setSavingMovement(false);
     }
   };
 
@@ -438,6 +491,122 @@ export default function UserProfilePage() {
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                       {note.content}
                     </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Historial de Movimientos ─────────────────────────────────────── */}
+      {isManager && (
+        <div className="animate-fade-up-delay-2" style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div>
+              <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.15rem' }}>Historial de Movimientos</h2>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Movimientos internos y salidas registradas
+              </p>
+            </div>
+            <button className="btn-primary" onClick={() => setShowMovementForm(!showMovementForm)}>
+              {showMovementForm ? 'Cancelar' : '+ Registrar Movimiento'}
+            </button>
+          </div>
+
+          {/* Create movement form */}
+          {showMovementForm && (
+            <div style={{ background: 'var(--bg-main, #fafafa)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', padding: '1.25rem', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Tipo de movimiento</label>
+                  <select style={inputStyle} value={movForm.movementType} onChange={(e) => setMovForm({ ...movForm, movementType: e.target.value })}>
+                    <option value="department_change">Cambio de Departamento</option>
+                    <option value="position_change">Cambio de Cargo</option>
+                    <option value="promotion">Promoción</option>
+                    <option value="demotion">Democión</option>
+                    <option value="lateral_transfer">Transferencia Lateral</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Fecha efectiva</label>
+                  <input type="date" style={inputStyle} value={movForm.effectiveDate} onChange={(e) => setMovForm({ ...movForm, effectiveDate: e.target.value })} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Desde Departamento</label>
+                  <input style={inputStyle} placeholder={user?.department || '—'} value={movForm.fromDepartment} onChange={(e) => setMovForm({ ...movForm, fromDepartment: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Hacia Departamento</label>
+                  <input style={inputStyle} placeholder="Nuevo departamento" value={movForm.toDepartment} onChange={(e) => setMovForm({ ...movForm, toDepartment: e.target.value })} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Desde Cargo</label>
+                  <input style={inputStyle} placeholder={user?.position || '—'} value={movForm.fromPosition} onChange={(e) => setMovForm({ ...movForm, fromPosition: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Hacia Cargo</label>
+                  <input style={inputStyle} placeholder="Nuevo cargo" value={movForm.toPosition} onChange={(e) => setMovForm({ ...movForm, toPosition: e.target.value })} />
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>Motivo</label>
+                <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} placeholder="Motivo del movimiento..." value={movForm.reason} onChange={(e) => setMovForm({ ...movForm, reason: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn-primary" onClick={handleCreateMovement} disabled={savingMovement || !movForm.effectiveDate}>
+                  {savingMovement ? 'Guardando...' : 'Registrar'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Timeline */}
+          {movements.length === 0 && departures.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem' }}>
+              Sin movimientos registrados
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {/* Departures */}
+              {departures.map((d: any) => (
+                <div key={d.id} style={{ padding: '0.85rem 1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', borderLeft: '3px solid #ef4444' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>Salida de la empresa</span>
+                      <span style={badgeStyle('#ef4444')}>{DEPARTURE_TYPE_LABELS[d.departureType] || d.departureType}</span>
+                      <span style={badgeStyle(d.isVoluntary ? '#f59e0b' : '#ef4444')}>{d.isVoluntary ? 'Voluntaria' : 'Involuntaria'}</span>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{fmtDate(d.departureDate)}</span>
+                  </div>
+                  {d.reasonDetail && <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>{d.reasonDetail}</p>}
+                </div>
+              ))}
+
+              {/* Movements */}
+              {movements.map((m: any) => {
+                const mInfo = MOVEMENT_TYPE_LABELS[m.movementType] || { label: m.movementType, color: '#64748b' };
+                return (
+                  <div key={m.id} style={{ padding: '0.85rem 1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', borderLeft: `3px solid ${mInfo.color}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{mInfo.label}</span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{fmtDate(m.effectiveDate)}</span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                      {m.fromDepartment && m.toDepartment && m.fromDepartment !== m.toDepartment && (
+                        <span>Depto: {m.fromDepartment} → {m.toDepartment}</span>
+                      )}
+                      {m.fromPosition && m.toPosition && m.fromPosition !== m.toPosition && (
+                        <span>{m.fromDepartment && m.toDepartment ? ' · ' : ''}Cargo: {m.fromPosition} → {m.toPosition}</span>
+                      )}
+                    </div>
+                    {m.reason && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>{m.reason}</p>}
                   </div>
                 );
               })}

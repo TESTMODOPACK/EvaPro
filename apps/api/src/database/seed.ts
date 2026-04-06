@@ -32,6 +32,8 @@ import { KeyResult } from '../modules/objectives/entities/key-result.entity';
 
 // ── Phase 3 ────────────────────────────────────────────────────────────────
 import { UserNote } from '../modules/users/entities/user-note.entity';
+import { UserDeparture } from '../modules/users/entities/user-departure.entity';
+import { UserMovement } from '../modules/users/entities/user-movement.entity';
 import { SubscriptionPlan } from '../modules/subscriptions/entities/subscription-plan.entity';
 import { Subscription } from '../modules/subscriptions/entities/subscription.entity';
 
@@ -87,7 +89,7 @@ const dataSource = new DataSource({
     CheckIn, QuickFeedback, MeetingLocation,
     Objective, ObjectiveUpdate, ObjectiveComment, KeyResult,
     // Phase 3
-    UserNote, SubscriptionPlan, Subscription,
+    UserNote, UserDeparture, UserMovement, SubscriptionPlan, Subscription,
     // Phase 4
     TalentAssessment, CalibrationSession, CalibrationEntry,
     // Phase 5

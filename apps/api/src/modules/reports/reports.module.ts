@@ -27,6 +27,8 @@ import { OrgDevelopmentInitiative } from '../org-development/entities/org-develo
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
+import { UserDeparture } from '../users/entities/user-departure.entity';
+import { UserMovement } from '../users/entities/user-movement.entity';
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { AuditLog } from '../audit/entities/audit-log.entity';
       DevelopmentPlan,
       DevelopmentAction,
       AuditLog,
+      UserDeparture,
+      UserMovement,
     ]),
   ],
   controllers: [ReportsController],

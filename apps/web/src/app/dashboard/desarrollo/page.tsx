@@ -499,6 +499,26 @@ function DesarrolloPageContent() {
               </div>
             </div>
           </div>
+
+          {/* PDI vs OKR */}
+          <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--accent)' }}>{t('desarrollo.guide.pdiVsOkr')}</div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              {t('desarrollo.guide.pdiVsOkrDesc')}
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.75rem', fontSize: '0.78rem' }}>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 700, color: '#10b981', marginBottom: '0.25rem' }}>Plan de Desarrollo (PDI)</div>
+                <div style={{ color: 'var(--text-muted)' }}>¿En qué debe mejorar como profesional?</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '0.2rem' }}>Ej: Curso de liderazgo, mentoría con director</div>
+              </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: '0.25rem' }}>Objetivos / Metas</div>
+                <div style={{ color: 'var(--text-muted)' }}>¿Qué resultados debe lograr?</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '0.2rem' }}>Ej: Aumentar ventas 30%, reducir tiempos 20%</div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

@@ -19,6 +19,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { CreateDepartureDto } from './dto/create-departure.dto';
+import { CreateMovementDto } from './dto/create-movement.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -150,6 +152,52 @@ export class UsersController {
     @Request() req: any,
   ) {
     return this.usersService.remove(id, req.user.tenantId, req.user.role);
+  }
+
+  // ─── Departure Tracking ────────────────────────────────────────────────────
+
+  /** POST /users/:id/departure — Register departure with reason/type */
+  @Post(':id/departure')
+  @Roles('super_admin', 'tenant_admin')
+  registerDeparture(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: CreateDepartureDto,
+  ) {
+    return this.usersService.registerDeparture(id, req.user.tenantId, dto, req.user.userId);
+  }
+
+  /** GET /users/:id/departures — Departure history */
+  @Get(':id/departures')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getUserDepartures(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.usersService.getUserDepartures(id, req.user.tenantId);
+  }
+
+  // ─── Internal Movement Tracking ───────────────────────────────────────────
+
+  /** POST /users/:id/movement — Register manual internal movement */
+  @Post(':id/movement')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  registerMovement(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: CreateMovementDto,
+  ) {
+    return this.usersService.registerMovement(id, req.user.tenantId, dto, req.user.userId);
+  }
+
+  /** GET /users/:id/movements — Movement history */
+  @Get(':id/movements')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getUserMovements(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.usersService.getUserMovements(id, req.user.tenantId);
   }
 
   // ─── User Notes (HR Reports) ───────────────────────────────────────────────
