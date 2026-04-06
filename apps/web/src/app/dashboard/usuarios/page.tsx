@@ -978,10 +978,23 @@ export default function UsuariosPage() {
                       </div>
                     </div>
                   )}
-                  {!positionCatalog.some(p => p.name === form.position) && form.position && (
-                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0.2rem 0 0' }}>
-                      El cargo se agregará automáticamente al catálogo con el nivel indicado. Nivel 1 = más alto (ej: Gerente General), nivel 7+ = operativo.
-                    </p>
+                  {!positionCatalog.some(p => p.name === form.position) && (
+                    <div style={{ marginTop: '0.35rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                      <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: 'var(--accent)' }}>Referencia de niveles configurados</div>
+                      <p style={{ margin: '0 0 0.3rem', lineHeight: 1.4 }}>
+                        Nivel 1 = más alto (ej: Gerente General), nivel 7+ = operativo. El cargo se agregará automáticamente al catálogo.
+                      </p>
+                      {positionCatalog.length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
+                          {[...positionCatalog].sort((a, b) => a.level - b.level).map((p) => (
+                            <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.1rem 0', borderBottom: '1px solid var(--border)' }}>
+                              <span>{p.name}</span>
+                              <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Nv.{p.level}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </>
               ) : (

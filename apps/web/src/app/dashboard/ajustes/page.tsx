@@ -2,11 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCurrentUser, useUpdateUser } from '@/hooks/useUsers';
-import { getRoleLabel } from '@/lib/roles';
+import { useCurrentUser } from '@/hooks/useUsers';
 import { useMySubscription } from '@/hooks/useSubscription';
 import { formatRut, formatRutInput } from '@/lib/rut';
-import { useLocaleStore, SupportedLocale } from '@/store/locale.store';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 
@@ -16,7 +14,7 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.05em',
 };
 
-type SettingsTab = 'perfil' | 'organizacion' | 'notificaciones';
+type SettingsTab = 'organizacion' | 'notificaciones';
 
 function Toggle({ value, onChange, size = 'md' }: { value: boolean; onChange: () => void; size?: 'sm' | 'md' }) {
   const w = size === 'sm' ? 38 : 44;
@@ -42,26 +40,17 @@ function Toggle({ value, onChange, size = 'md' }: { value: boolean; onChange: ()
 export default function AjustesPage() {
   const { t } = useTranslation();
   const { data: user, isLoading } = useCurrentUser();
-  const updateUser = useUpdateUser();
   const { data: sub } = useMySubscription();
   const isTenantAdmin = user?.role === 'tenant_admin';
   const orgName = sub?.tenant?.name || '';
   const orgRut = sub?.tenant?.rut ? formatRut(sub.tenant.rut) : '';
 
-  const { locale, setLocale } = useLocaleStore();
   const token = useAuthStore((s) => s.token);
-  const [langSaved, setLangSaved] = useState(false);
   const [tenantSettings, setTenantSettings] = useState<Record<string, any>>({});
   const [tenantName, setTenantName] = useState('');
   const [tenantRut, setTenantRut] = useState('');
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [position, setPosition] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [saved, setSaved] = useState(false);
-  const [passwordSaved, setPasswordSaved] = useState(false);
+  // Profile fields removed — now in /dashboard/perfil
 
   const [tenantTimezone, setTenantTimezone] = useState('');
   const [tenantSessionTimeout, setTenantSessionTimeout] = useState('');
@@ -86,15 +75,9 @@ export default function AjustesPage() {
   const [notifAi, setNotifAi] = useState(true);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('perfil');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('organizacion');
 
-  useEffect(() => {
-    if (user) {
-      setFirstName(user.firstName || '');
-      setLastName(user.lastName || '');
-      setPosition(user.position || '');
-    }
-  }, [user]);
+  // Profile useEffect removed — now in /dashboard/perfil
 
   useEffect(() => {
     if (!token || !isTenantAdmin) return;
@@ -130,14 +113,7 @@ export default function AjustesPage() {
       .catch(() => {});
   }, [token, isTenantAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleLanguageChange = async (lang: SupportedLocale) => {
-    setLocale(lang);
-    if (user?.id && token) {
-      try { await api.users.update(token, user.id, { language: lang }); } catch {}
-    }
-    setLangSaved(true);
-    setTimeout(() => setLangSaved(false), 2000);
-  };
+  // handleLanguageChange removed — now in /dashboard/perfil
 
   const handleSaveOrgSettings = async () => {
     if (!token) return;
@@ -174,35 +150,7 @@ export default function AjustesPage() {
     setSettingsSaving(false);
   };
 
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user?.id) return;
-    try {
-      await updateUser.mutateAsync({ id: user.id, data: { position } });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {}
-  };
-
-  const [passwordError, setPasswordError] = useState('');
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordError('');
-    if (!user?.id || !newPassword) return;
-    if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-      setPasswordError('Debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.');
-      return;
-    }
-    try {
-      await updateUser.mutateAsync({ id: user.id, data: { currentPassword, newPassword } });
-      setPasswordSaved(true);
-      setCurrentPassword('');
-      setNewPassword('');
-      setTimeout(() => setPasswordSaved(false), 3000);
-    } catch (err: any) {
-      setPasswordError(err.message || 'Error al cambiar contraseña');
-    }
-  };
+  // handleSaveProfile + handleChangePassword removed — now in /dashboard/perfil
 
   if (isLoading) {
     return (
@@ -212,12 +160,9 @@ export default function AjustesPage() {
     );
   }
 
-  const tabs: Array<{ id: SettingsTab; label: string; icon: string; adminOnly?: boolean }> = [
-    { id: 'perfil', label: 'Mi perfil', icon: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z' },
-    ...(isTenantAdmin ? [
-      { id: 'organizacion' as SettingsTab, label: 'Organización', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', adminOnly: true },
-      { id: 'notificaciones' as SettingsTab, label: 'Notificaciones', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0', adminOnly: true },
-    ] : []),
+  const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
+    { id: 'organizacion', label: 'Organización', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+    { id: 'notificaciones', label: 'Notificaciones', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0' },
   ];
 
   return (
@@ -258,124 +203,6 @@ export default function AjustesPage() {
           </button>
         ))}
       </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* TAB: Mi Perfil                                                     */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'perfil' && (
-        <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-
-          {/* Language */}
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>
-              {t('settings.language.title')}
-            </h2>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              {(['es', 'en', 'pt'] as SupportedLocale[]).map((lang) => (
-                <button
-                  key={lang}
-                  type="button"
-                  onClick={() => handleLanguageChange(lang)}
-                  style={{
-                    padding: '0.45rem 1.1rem', borderRadius: '20px',
-                    border: locale === lang ? '2px solid var(--accent)' : '1px solid var(--border)',
-                    background: locale === lang ? 'rgba(201,147,58,0.1)' : 'transparent',
-                    color: locale === lang ? 'var(--accent)' : 'var(--text-secondary)',
-                    fontWeight: locale === lang ? 700 : 400,
-                    cursor: 'pointer', fontSize: '0.82rem', transition: 'all 0.15s ease',
-                  }}
-                >
-                  {{ es: '🇨🇱 Español', en: '🇺🇸 English', pt: '🇧🇷 Português' }[lang]}
-                </button>
-              ))}
-            </div>
-            {langSaved && (
-              <p style={{ color: 'var(--success)', fontSize: '0.78rem', marginTop: '0.4rem', fontWeight: 600 }}>
-                ✓ {t('settings.language.saved')}
-              </p>
-            )}
-          </div>
-
-          {/* Profile info */}
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>
-              {t('settings.profile.title')}
-            </h2>
-            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={labelStyle}>Nombres</label>
-                  <input className="input" type="text" value={firstName} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Apellidos</label>
-                  <input className="input" type="text" value={lastName} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
-                </div>
-                <div>
-                  <label style={labelStyle}>{t('settings.profile.email')}</label>
-                  <input className="input" type="email" value={user?.email || ''} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
-                </div>
-                <div>
-                  <label style={labelStyle}>RUT</label>
-                  <input className="input" type="text" value={(user as any)?.rut || 'No registrado'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed', fontFamily: 'monospace' }} />
-                </div>
-                <div>
-                  <label style={labelStyle}>{t('settings.profile.role')}</label>
-                  <input className="input" type="text" value={user?.role ? getRoleLabel(user.role) : ''} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Cargo</label>
-                  <input className="input" type="text" placeholder="Tu cargo" value={position}
-                    onChange={(e) => setPosition(e.target.value)}
-                    disabled={user?.role === 'employee'}
-                    style={user?.role === 'employee' ? { background: 'var(--bg-secondary)', color: 'var(--text-muted)', cursor: 'not-allowed' } : undefined}
-                  />
-                  {user?.role === 'employee' && (
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>El cargo es gestionado por el administrador</span>
-                  )}
-                </div>
-              </div>
-              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-                Los datos personales (nombres, apellidos, RUT) son gestionados por el administrador de tu organización.
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <button type="submit" className="btn-primary" disabled={updateUser.isPending} style={{ opacity: updateUser.isPending ? 0.6 : 1 }}>
-                  {updateUser.isPending ? t('common.saving') : t('common.save')}
-                </button>
-                {saved && <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>{t('settings.profile.saved')}</span>}
-                {updateUser.isError && !saved && <span style={{ color: 'var(--danger)', fontSize: '0.82rem', fontWeight: 600 }}>{t('settings.profile.saveError')}</span>}
-              </div>
-            </form>
-          </div>
-
-          {/* Change password */}
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-              {t('settings.security.title')}
-            </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
-              {t('settings.security.subtitle')}
-            </p>
-            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '400px' }}>
-              <div>
-                <label style={labelStyle}>{t('settings.security.currentPassword')}</label>
-                <input className="input" type="password" placeholder="••••••••" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-              </div>
-              <div>
-                <label style={labelStyle}>{t('settings.security.newPassword')}</label>
-                <input className="input" type="password" placeholder="••••••••" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <button type="submit" className="btn-primary" disabled={!currentPassword || !newPassword} style={{ opacity: !currentPassword || !newPassword ? 0.5 : 1 }}>
-                  {t('settings.security.changePassword')}
-                </button>
-                {passwordSaved && <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>{t('settings.security.passwordSaved')}</span>}
-                {passwordError && <span style={{ color: 'var(--danger)', fontSize: '0.82rem', fontWeight: 600 }}>{passwordError}</span>}
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* TAB: Organización (tenant_admin only)                               */}

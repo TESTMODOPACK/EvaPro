@@ -293,7 +293,10 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         ...(isAdmin ? [
           { href: '/dashboard/contratos', label: 'Contratos', icon: icons.log },
         ] : []),
-        { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },
+        { href: '/dashboard/perfil', label: 'Mi Perfil', icon: icons.users },
+        ...(isAdmin ? [
+          { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },
+        ] : []),
       ],
     },
   ];

@@ -183,8 +183,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Show subscription block screen
   if (subStatus === 'none' || subStatus === 'suspended') {
-    // Allow access to ajustes so user can see their profile
-    const allowedPaths = ['/dashboard/ajustes'];
+    // Allow access to perfil and ajustes even with suspended subscription
+    const allowedPaths = ['/dashboard/perfil', '/dashboard/ajustes'];
     const isAllowed = allowedPaths.some((p) => pathname.startsWith(p));
 
     if (!isAllowed) {
