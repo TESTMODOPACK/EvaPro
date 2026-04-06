@@ -7,6 +7,24 @@ import { useCycles } from '@/hooks/useCycles';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 
+// ─── Group label maps ──────────────────────────────────────────
+const SENIORITY_LABELS: Record<string, string> = {
+  junior: 'Junior', mid: 'Nivel Medio', senior: 'Senior',
+  lead: 'Lead / Líder', director: 'Director(a)', executive: 'Ejecutivo(a)',
+};
+
+/** Capitalize first letter of each word */
+const capitalize = (s: string) =>
+  s?.replace(/\b\w/g, (c) => c.toUpperCase()) || s;
+
+/** Format group name to a human-readable label */
+const formatGroupLabel = (group: string, dimension: string): string => {
+  if (!group) return 'Sin dato';
+  if (dimension === 'seniority') return SENIORITY_LABELS[group.toLowerCase()] || capitalize(group);
+  // gender, nationality, department — just capitalize
+  return capitalize(group);
+};
+
 // Brand-aligned warm palette (gold, earth tones matching Ascenda theme)
 const BAR_COLORS = [
   'var(--accent)',        // gold
@@ -19,13 +37,14 @@ const BAR_COLORS = [
   '#c9933a',             // brand gold
 ];
 
-function DistributionBar({ items }: { items: Array<{ group: string; count: number; percentage: number }> }) {
+function DistributionBar({ items, dimension }: { items: Array<{ group: string; count: number; percentage: number }>; dimension?: string }) {
   if (!items || items.length === 0) return <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin datos</span>;
+  const label = (g: string) => formatGroupLabel(g, dimension || '');
   return (
     <div>
       <div style={{ display: 'flex', height: 20, borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: '0.35rem' }}>
         {items.map((item, i) => (
-          <div key={item.group} title={`${item.group}: ${item.count} (${item.percentage}%)`}
+          <div key={item.group} title={`${label(item.group)}: ${item.count} (${item.percentage}%)`}
             style={{ width: `${item.percentage}%`, background: BAR_COLORS[i % BAR_COLORS.length], minWidth: item.percentage > 0 ? 2 : 0, opacity: 0.85 }} />
         ))}
       </div>
@@ -33,7 +52,7 @@ function DistributionBar({ items }: { items: Array<{ group: string; count: numbe
         {items.map((item, i) => (
           <span key={item.group} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, background: BAR_COLORS[i % BAR_COLORS.length], display: 'inline-block', opacity: 0.85 }} />
-            {item.group}: {item.count} ({item.percentage}%)
+            {label(item.group)}: {item.count} ({item.percentage}%)
           </span>
         ))}
       </div>
@@ -229,16 +248,16 @@ export default function DeiPage() {
           {/* Demographic Distributions */}
           <div className="animate-fade-up" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
             {[
-              { title: t('dei.distGender'), data: demo.gender },
-              { title: t('dei.distSeniority'), data: demo.seniority },
-              { title: t('dei.distAge'), data: demo.ageRanges },
-              { title: t('dei.distTenure'), data: demo.tenureRanges },
-              { title: t('dei.distContract'), data: demo.contractType },
-              { title: t('dei.distLocation'), data: demo.workLocation },
+              { title: t('dei.distGender'), data: demo.gender, dim: 'gender' },
+              { title: t('dei.distSeniority'), data: demo.seniority, dim: 'seniority' },
+              { title: t('dei.distAge'), data: demo.ageRanges, dim: '' },
+              { title: t('dei.distTenure'), data: demo.tenureRanges, dim: '' },
+              { title: t('dei.distContract'), data: demo.contractType, dim: '' },
+              { title: t('dei.distLocation'), data: demo.workLocation, dim: '' },
             ].map((dist) => (
               <div key={dist.title} className="card" style={{ padding: '1.25rem' }}>
                 <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.88rem', fontWeight: 700 }}>{dist.title}</h4>
-                <DistributionBar items={dist.data} />
+                <DistributionBar items={dist.data} dimension={dist.dim} />
               </div>
             ))}
           </div>
@@ -317,7 +336,7 @@ export default function DeiPage() {
                         <tbody>
                           {gap.groups.map((g: any) => (
                             <tr key={g.group}>
-                              <td style={{ fontWeight: 600 }}>{g.group}</td>
+                              <td style={{ fontWeight: 600 }}>{formatGroupLabel(g.group, dimension)}</td>
                               <td style={{ textAlign: 'right' }}>{g.avgScore}</td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{g.minScore}</td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{g.maxScore}</td>
