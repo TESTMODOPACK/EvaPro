@@ -113,6 +113,8 @@ function DesarrolloOrganizacionalPageContent() {
     participantIds: [] as string[],
   });
   const [participantSearch, setParticipantSearch] = useState('');
+  const [participantPage, setParticipantPage] = useState(1);
+  const PARTICIPANT_PAGE_SIZE = 10;
   const [savingInit, setSavingInit] = useState(false);
 
   // ── Acciones de iniciativa ─────────────────────────────────────────────
@@ -249,7 +251,7 @@ function DesarrolloOrganizacionalPageContent() {
       setShowInitForm(false);
       setEditingInitId(null);
       setParticipantSearch('');
-      setInitForm({ title: '', description: '', department: '', targetDate: '', responsibleId: '', progress: 0, budget: '', currency: 'UF', participantIds: [] });
+      setInitForm({ title: '', description: '', department: '', targetDate: '', responsibleId: '', progress: 0, budget: '', currency: 'UF', participantIds: [] }); setParticipantPage(1); setParticipantSearch('');
       // Reload initiatives
       const data = await api.orgDevelopment.initiatives.listByPlan(token, selectedPlanId);
       setInitiatives(data ?? []);
@@ -602,7 +604,7 @@ function DesarrolloOrganizacionalPageContent() {
                     onClick={() => {
                       setEditingInitId(null);
                       setParticipantSearch('');
-                      setInitForm({ title: '', description: '', department: '', targetDate: '', responsibleId: '', progress: 0, budget: '', currency: 'UF', participantIds: [] });
+                      setInitForm({ title: '', description: '', department: '', targetDate: '', responsibleId: '', progress: 0, budget: '', currency: 'UF', participantIds: [] }); setParticipantPage(1); setParticipantSearch('');
                       setShowInitForm(true);
                       setError('');
                     }}
@@ -635,7 +637,7 @@ function DesarrolloOrganizacionalPageContent() {
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
                       {t('orgDesarrollo.form.department')}
                     </label>
-                    <select className="input" value={initForm.department} onChange={(e) => setInitForm({ ...initForm, department: e.target.value })}>
+                    <select className="input" value={initForm.department} onChange={(e) => { setInitForm({ ...initForm, department: e.target.value }); setParticipantPage(1); setParticipantSearch(''); }}>
                       <option value="">{t('orgDesarrollo.allCompany')}</option>
                       {departments.map((d) => (
                         <option key={d} value={d}>{d}</option>
@@ -718,128 +720,191 @@ function DesarrolloOrganizacionalPageContent() {
                     />
                   </div>
 
-                  {/* Participantes — colaboradores involucrados en la iniciativa */}
+                  {/* ── Participantes ──────────────────────────────────────── */}
                   <div style={{ gridColumn: 'span 2' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                       <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        {t('orgDesarrollo.form.participants', 'Participantes')} (colaboradores involucrados)
+                        {t('orgDesarrollo.form.participants', 'Participantes')}
                         {initForm.participantIds.length > 0 && (
                           <span style={{ marginLeft: '0.5rem', background: 'var(--accent)', color: '#fff', borderRadius: '999px', padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>
-                            {initForm.participantIds.length}
+                            {initForm.participantIds.length} seleccionado{initForm.participantIds.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </label>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={(() => {
-                              const deptUsers = users.filter((u: any) => u.isActive !== false && (!initForm.department || u.department === initForm.department));
-                              return deptUsers.length > 0 && deptUsers.every((u: any) => initForm.participantIds.includes(u.id));
-                            })()}
-                            onChange={(e) => {
-                              const deptUsers = users.filter((u: any) => u.isActive !== false && (!initForm.department || u.department === initForm.department));
-                              const deptIds = new Set(deptUsers.map((u: any) => u.id));
-                              if (e.target.checked) {
-                                // Agregar todos del departamento, preservando selecciones de otros deptos
-                                const merged = Array.from(new Set([...initForm.participantIds, ...Array.from(deptIds)]));
-                                setInitForm({ ...initForm, participantIds: merged });
-                              } else {
-                                // Quitar solo los del departamento, preservar los de otros deptos
-                                setInitForm({ ...initForm, participantIds: initForm.participantIds.filter((id) => !deptIds.has(id)) });
-                              }
-                            }}
-                          />
-                          {t('common.selectAll', 'Seleccionar todos')}
-                        </label>
-                        {initForm.participantIds.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setInitForm({ ...initForm, participantIds: [] })}
-                            style={{ fontSize: '0.72rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                          >
-                            {t('common.clear', 'Limpiar')}
-                          </button>
-                        )}
-                      </div>
+                      {initForm.participantIds.length > 0 && (
+                        <button type="button" onClick={() => setInitForm({ ...initForm, participantIds: [] })}
+                          style={{ fontSize: '0.72rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                          Quitar todos
+                        </button>
+                      )}
                     </div>
-                    <input
-                      className="input"
-                      placeholder={t('orgDesarrollo.form.searchParticipant')}
-                      value={participantSearch}
-                      onChange={(e) => setParticipantSearch(e.target.value)}
-                      style={{ marginBottom: '0.4rem', fontSize: '0.82rem' }}
-                    />
-                    {initForm.department && !participantSearch.trim() && (
-                      <p style={{ fontSize: '0.72rem', color: 'var(--accent)', margin: '0 0 0.4rem', fontWeight: 600 }}>
-                        Mostrando colaboradores de {initForm.department}. Usa el buscador para encontrar colaboradores de otros departamentos.
-                      </p>
+
+                    {/* ─ CASO 1: Toda la empresa (sin departamento) ─ */}
+                    {!initForm.department && (
+                      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '1rem', background: 'var(--bg-surface)' }}>
+                        <button
+                          type="button"
+                          className={initForm.participantIds.length === users.filter((u: any) => u.isActive !== false).length ? 'btn-primary' : 'btn-ghost'}
+                          style={{ fontSize: '0.82rem', padding: '0.45rem 1rem', marginBottom: '0.75rem' }}
+                          onClick={() => {
+                            const allActive = users.filter((u: any) => u.isActive !== false).map((u: any) => u.id);
+                            const allSelected = allActive.length > 0 && allActive.every((id: string) => initForm.participantIds.includes(id));
+                            setInitForm({ ...initForm, participantIds: allSelected ? [] : allActive });
+                          }}
+                        >
+                          {(() => {
+                            const allActive = users.filter((u: any) => u.isActive !== false);
+                            const allSelected = allActive.length > 0 && allActive.every((u: any) => initForm.participantIds.includes(u.id));
+                            return allSelected ? `✓ Toda la empresa seleccionada (${allActive.length})` : `Seleccionar toda la empresa (${allActive.length} colaboradores)`;
+                          })()}
+                        </button>
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0 0 0.5rem' }}>
+                          O busca colaboradores específicos para agregar individualmente:
+                        </p>
+                        <input
+                          className="input"
+                          placeholder="Buscar por nombre, departamento o cargo..."
+                          value={participantSearch}
+                          onChange={(e) => { setParticipantSearch(e.target.value); setParticipantPage(1); }}
+                          style={{ marginBottom: '0.4rem', fontSize: '0.82rem' }}
+                        />
+                        {participantSearch.trim() && (() => {
+                          const q = participantSearch.toLowerCase();
+                          const results = users.filter((u: any) => u.isActive !== false && (
+                            `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+                            (u.department || '').toLowerCase().includes(q) ||
+                            (u.position || '').toLowerCase().includes(q)
+                          ));
+                          return results.length === 0 ? (
+                            <div style={{ padding: '0.5rem', color: 'var(--text-muted)', fontSize: '0.82rem' }}>{t('common.noResults')}</div>
+                          ) : (
+                            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', maxHeight: '200px', overflowY: 'auto' }}>
+                              {results.slice(0, 20).map((u: any) => {
+                                const checked = initForm.participantIds.includes(u.id);
+                                return (
+                                  <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.75rem', cursor: 'pointer', background: checked ? 'rgba(99,102,241,0.07)' : 'transparent', borderBottom: '1px solid var(--border)' }}>
+                                    <input type="checkbox" checked={checked} onChange={(e) => {
+                                      const ids = e.target.checked ? [...initForm.participantIds, u.id] : initForm.participantIds.filter((id) => id !== u.id);
+                                      setInitForm({ ...initForm, participantIds: ids });
+                                    }} />
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: '0.85rem', fontWeight: checked ? 600 : 400 }}>{u.firstName} {u.lastName}</div>
+                                      {(u.department || u.position) && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{[u.position, u.department].filter(Boolean).join(' · ')}</div>}
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                              {results.length > 20 && <div style={{ padding: '0.4rem 0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>Mostrando 20 de {results.length} resultados. Refina tu búsqueda.</div>}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     )}
-                    <div style={{
-                      maxHeight: '180px', overflowY: 'auto',
-                      border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                      background: 'var(--bg-surface)',
-                    }}>
-                      {(() => {
-                        const active = users.filter((u: any) => u.isActive !== false);
-                        const selectedSet = new Set(initForm.participantIds);
-                        const filtered = active.filter((u: any) => {
-                          // Already selected? Always show
-                          if (selectedSet.has(u.id)) return true;
-                          // Search active? Search across all
-                          if (participantSearch.trim()) {
-                            const q = participantSearch.toLowerCase();
-                            return `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
-                              (u.department || '').toLowerCase().includes(q) ||
-                              (u.position || '').toLowerCase().includes(q);
-                          }
-                          // Department filter (no search)
-                          if (initForm.department) return u.department === initForm.department;
-                          // No filter
-                          return true;
-                        });
-                        return filtered.length === 0 ? (
-                          <div style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                            {participantSearch ? t('common.noResults') : initForm.department ? `No hay colaboradores en ${initForm.department}` : t('common.noResults')}
-                          </div>
-                        ) : filtered.map((u: any) => {
-                          const checked = initForm.participantIds.includes(u.id);
-                          return (
-                            <label
-                              key={u.id}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: '0.6rem',
-                                padding: '0.45rem 0.75rem', cursor: 'pointer',
-                                background: checked ? 'rgba(99,102,241,0.07)' : 'transparent',
-                                borderBottom: '1px solid var(--border)',
-                                transition: 'background 0.1s',
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
+
+                    {/* ─ CASO 2: Departamento específico ─ */}
+                    {initForm.department && (() => {
+                      const deptUsers = users.filter((u: any) => u.isActive !== false && u.department === initForm.department);
+                      const totalPages = Math.max(1, Math.ceil(deptUsers.length / PARTICIPANT_PAGE_SIZE));
+                      const safePage = Math.min(participantPage, totalPages);
+                      const pageUsers = deptUsers.slice((safePage - 1) * PARTICIPANT_PAGE_SIZE, safePage * PARTICIPANT_PAGE_SIZE);
+                      const allDeptSelected = deptUsers.length > 0 && deptUsers.every((u: any) => initForm.participantIds.includes(u.id));
+                      return (
+                        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)' }}>
+                          {/* Header: select all dept + count */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', borderBottom: '1px solid var(--border)', background: 'var(--bg-base)' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                              <input type="checkbox" checked={allDeptSelected} style={{ accentColor: 'var(--accent)' }}
                                 onChange={(e) => {
-                                  const ids = e.target.checked
-                                    ? [...initForm.participantIds, u.id]
-                                    : initForm.participantIds.filter((id) => id !== u.id);
-                                  setInitForm({ ...initForm, participantIds: ids });
+                                  const deptIds = deptUsers.map((u: any) => u.id);
+                                  if (e.target.checked) {
+                                    const merged = Array.from(new Set([...initForm.participantIds, ...deptIds]));
+                                    setInitForm({ ...initForm, participantIds: merged });
+                                  } else {
+                                    const deptSet = new Set(deptIds);
+                                    setInitForm({ ...initForm, participantIds: initForm.participantIds.filter((id) => !deptSet.has(id)) });
+                                  }
                                 }}
                               />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.85rem', fontWeight: checked ? 600 : 400, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {u.firstName} {u.lastName}
-                                </div>
-                                {(u.department || u.position) && (
-                                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                    {[u.position, u.department].filter(Boolean).join(' · ')}
-                                  </div>
-                                )}
-                              </div>
+                              Seleccionar todo {initForm.department} ({deptUsers.length})
                             </label>
-                          );
-                        });
-                      })()}
-                    </div>
+                            {totalPages > 1 && (
+                              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                <button type="button" className="btn-ghost" disabled={safePage <= 1} onClick={() => setParticipantPage(p => p - 1)} style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem' }}>←</button>
+                                <span>{safePage}/{totalPages}</span>
+                                <button type="button" className="btn-ghost" disabled={safePage >= totalPages} onClick={() => setParticipantPage(p => p + 1)} style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem' }}>→</button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* User list — paginated */}
+                          {deptUsers.length === 0 ? (
+                            <div style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                              No hay colaboradores en {initForm.department}
+                            </div>
+                          ) : pageUsers.map((u: any) => {
+                            const checked = initForm.participantIds.includes(u.id);
+                            return (
+                              <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0.75rem', cursor: 'pointer', background: checked ? 'rgba(99,102,241,0.07)' : 'transparent', borderBottom: '1px solid var(--border)' }}>
+                                <input type="checkbox" checked={checked} style={{ accentColor: 'var(--accent)' }}
+                                  onChange={(e) => {
+                                    const ids = e.target.checked ? [...initForm.participantIds, u.id] : initForm.participantIds.filter((id) => id !== u.id);
+                                    setInitForm({ ...initForm, participantIds: ids });
+                                  }}
+                                />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: checked ? 600 : 400, color: 'var(--text-primary)' }}>{u.firstName} {u.lastName}</div>
+                                  {u.position && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{u.position}</div>}
+                                </div>
+                              </label>
+                            );
+                          })}
+
+                          {/* Search for other departments */}
+                          <div style={{ padding: '0.5rem 0.75rem', borderTop: '1px solid var(--border)', background: 'var(--bg-base)' }}>
+                            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0 0 0.35rem' }}>
+                              Agregar colaborador de otro departamento:
+                            </p>
+                            <input
+                              className="input"
+                              placeholder="Buscar por nombre..."
+                              value={participantSearch}
+                              onChange={(e) => setParticipantSearch(e.target.value)}
+                              style={{ fontSize: '0.82rem' }}
+                            />
+                            {participantSearch.trim() && (() => {
+                              const q = participantSearch.toLowerCase();
+                              const results = users.filter((u: any) => u.isActive !== false && u.department !== initForm.department && (
+                                `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+                                (u.department || '').toLowerCase().includes(q) ||
+                                (u.position || '').toLowerCase().includes(q)
+                              ));
+                              return results.length === 0 ? (
+                                <div style={{ padding: '0.4rem 0', color: 'var(--text-muted)', fontSize: '0.78rem' }}>Sin resultados</div>
+                              ) : (
+                                <div style={{ maxHeight: '120px', overflowY: 'auto', marginTop: '0.3rem' }}>
+                                  {results.slice(0, 10).map((u: any) => {
+                                    const checked = initForm.participantIds.includes(u.id);
+                                    return (
+                                      <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.5rem', cursor: 'pointer', fontSize: '0.82rem', background: checked ? 'rgba(99,102,241,0.07)' : 'transparent', borderRadius: 'var(--radius-sm)' }}>
+                                        <input type="checkbox" checked={checked} style={{ accentColor: 'var(--accent)' }}
+                                          onChange={(e) => {
+                                            const ids = e.target.checked ? [...initForm.participantIds, u.id] : initForm.participantIds.filter((id) => id !== u.id);
+                                            setInitForm({ ...initForm, participantIds: ids });
+                                          }}
+                                        />
+                                        <span style={{ fontWeight: checked ? 600 : 400 }}>{u.firstName} {u.lastName}</span>
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{u.department || ''}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem', marginBottom: 0 }}>
                       Los participantes seleccionados recibirán un correo cuando la iniciativa pase a estado &quot;En curso&quot;. Pueden vincular sus PDI individuales a esta iniciativa.
                     </p>
