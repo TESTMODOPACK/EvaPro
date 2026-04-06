@@ -77,7 +77,7 @@ if (!DATABASE_URL) {
 const dataSource = new DataSource({
   type: 'postgres',
   url: DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: process.env.NODE_ENV === 'production' && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
   entities: [
     // Phase 1
     Tenant, User, FormTemplate,

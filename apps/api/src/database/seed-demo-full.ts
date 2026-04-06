@@ -69,7 +69,7 @@ if (!DATABASE_URL) { console.error('❌ DATABASE_URL not set'); process.exit(1);
 
 const ds = new DataSource({
   type: 'postgres', url: DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: process.env.NODE_ENV === 'production' && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
   entities: [
     Tenant, User, FormTemplate, EvaluationCycle, EvaluationAssignment, EvaluationResponse,
     BulkImport, AuditLog, PeerAssignment, CycleStage,

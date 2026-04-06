@@ -26,7 +26,7 @@ if (!DATABASE_URL) {
 async function runMigration() {
   const client = new Client({
     connectionString: DATABASE_URL,
-    ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+    ssl: isProduction && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
   });
 
   try {

@@ -73,7 +73,7 @@ async function runSchemaSync() {
   // ── Step 1: drop ALL tables with raw pg to avoid TypeORM ALTER conflicts ──
   const pgClient = new Client({
     connectionString: DATABASE_URL,
-    ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+    ssl: isProduction && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
   });
 
   try {
@@ -147,7 +147,7 @@ async function runSchemaSync() {
   const dataSource = new DataSource({
     type: 'postgres',
     url: DATABASE_URL,
-    ssl: isProduction ? { rejectUnauthorized: false } : false,
+    ssl: isProduction && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
     entities: [
       // Phase 1
       Tenant, User, FormTemplate,

@@ -15,8 +15,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
           autoLoadEntities: true,
           // DB_SYNC=true on first deploy to create tables; remove after initial setup
           synchronize: !isProduction || process.env.DB_SYNC === 'true',
-          // Render PostgreSQL requires SSL
-          ssl: isProduction ? { rejectUnauthorized: false } : false,
+          // SSL: enabled for Render, disabled for Docker (DB_SSL=false)
+          ssl: isProduction && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
         };
       },
     }),

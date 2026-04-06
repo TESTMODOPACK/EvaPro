@@ -40,7 +40,9 @@ COPY --from=builder /app/apps/web/next.config.mjs apps/web/
 COPY --from=builder /app/node_modules node_modules
 COPY --from=builder /app/apps/web/node_modules apps/web/node_modules
 
+WORKDIR /app/apps/web
 EXPOSE 3001
 ENV PORT=3001
+ENV HOSTNAME=0.0.0.0
 
-CMD ["pnpm", "--filter", "web", "start", "--", "-p", "3001"]
+CMD ["npx", "next", "start", "-p", "3001"]
