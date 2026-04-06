@@ -25,6 +25,7 @@ export default function DashboardEjecutivoPage() {
   const [selectedCycleId, setSelectedCycleId] = useState<string>('');
   const [summary, setSummary] = useState<any>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Phase 2: Chart data
   const [analytics, setAnalytics] = useState<any>(null);
@@ -143,8 +144,50 @@ export default function DashboardEjecutivoPage() {
         </div>
       </div>
 
+      {/* Guide toggle */}
+      <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ transition: 'transform 0.2s', transform: showGuide ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
+          {showGuide ? 'Ocultar guía' : 'Cómo funciona'}
+        </button>
+      </div>
+
+      {showGuide && (
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Dashboard Ejecutivo</h3>
+          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <p><strong>¿Qué muestra?</strong> Vista estratégica consolidada de la organización con indicadores clave de desempeño, clima laboral, objetivos y desarrollo.</p>
+            <p><strong>Cómo usar:</strong> Seleccione un ciclo de evaluación en el desplegable superior para cargar los indicadores asociados. Sin ciclo seleccionado, no se muestran datos.</p>
+            <p><strong>Indicadores:</strong></p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
+              <li><strong>Colaboradores:</strong> Total de usuarios activos en la organización</li>
+              <li><strong>Clima Laboral (eNPS):</strong> Índice de satisfacción basado en encuestas de clima. Rango -100 a +100</li>
+              <li><strong>Desempeño Promedio:</strong> Puntaje promedio de evaluaciones del ciclo seleccionado (escala 1-10)</li>
+              <li><strong>Objetivos %:</strong> Porcentaje de OKRs completados vs definidos</li>
+              <li><strong>Completitud Evaluaciones:</strong> Porcentaje de evaluaciones completadas vs asignadas</li>
+              <li><strong>Iniciativas Activas:</strong> Planes de desarrollo organizacional en progreso</li>
+            </ul>
+            <p><strong>Gráficos:</strong> Desempeño por departamento, tendencia de eNPS, objetivos en riesgo, reconocimientos y más.</p>
+          </div>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo visible para el administrador de la organización.
+          </div>
+        </div>
+      )}
+
+      {/* No cycle selected — show prompt */}
+      {!selectedCycleId && (
+        <div className="card animate-fade-up" style={{ padding: '3rem', textAlign: 'center', marginBottom: '2rem' }}>
+          <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{'📊'}</p>
+          <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Seleccione un ciclo de evaluación</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            Utilice el desplegable superior para seleccionar un ciclo y visualizar los indicadores estratégicos de la organización.
+          </p>
+        </div>
+      )}
+
       {/* ─── KPI Cards ─── */}
-      <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+      {selectedCycleId && (<><div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <KPICard label="Colaboradores" value={summary?.headcount?.active ?? '--'} color="#6366f1"
           tooltip="Total de colaboradores activos en la organización" />
         <KPICard label="Clima Laboral" value={summary?.enps ? `${summary.enps.score > 0 ? '+' : ''}${summary.enps.score}` : '--'} color="#10b981" subtitle={summary?.enps?.surveyName}
@@ -354,6 +397,7 @@ export default function DashboardEjecutivoPage() {
           ) : <EmptyChart message="Sin datos de reconocimiento" />}
         </div>
       </div>
+      </>)}
     </div>
   );
 }

@@ -823,7 +823,7 @@ export default function MiSuscripcionPage() {
             <div className="card animate-fade-up-delay-3" style={{ padding: '1.75rem' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Características incluidas</h2>
               <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                {plan.features.map((f: string, i: number) => (
+                {[...plan.features].sort((a: string, b: string) => (featureLabels[a] || a).localeCompare(featureLabels[b] || b, 'es')).map((f: string, i: number) => (
                   <span key={i} className="badge badge-accent" style={{ fontSize: '0.8rem', padding: '0.3rem 0.7rem' }}>
                     {featureLabels[f] || f}
                   </span>

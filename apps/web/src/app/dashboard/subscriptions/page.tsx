@@ -682,7 +682,11 @@ export default function SubscriptionsPage() {
                             background: 'var(--bg-surface)',
                           }}>
                             {Array.isArray(plan.features) && plan.features.length > 0
-                              ? plan.features.map((f: string) => {
+                              ? [...plan.features].sort((a: string, b: string) => {
+                                  const la = FEATURE_OPTIONS.find((fo) => fo.key === a)?.label || a;
+                                  const lb = FEATURE_OPTIONS.find((fo) => fo.key === b)?.label || b;
+                                  return la.localeCompare(lb, 'es');
+                                }).map((f: string) => {
                                   const label = FEATURE_OPTIONS.find((fo) => fo.key === f)?.label || f;
                                   return (
                                     <div key={f} style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', padding: '0.1rem 0', whiteSpace: 'nowrap' }}>

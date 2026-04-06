@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { getScoreLabel, getScoreColor } from '@/lib/scales';
 import { useToastStore } from '@/store/toast.store';
+import PerformanceHeatmap from '@/components/PerformanceHeatmap';
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -246,6 +247,13 @@ export default function ReportesPage() {
                         );
                       })}
                   </div>
+                </div>
+              )}
+
+              {/* ─── Mapa de Calor por Departamento ─── */}
+              {selectedCycleId && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <PerformanceHeatmap cycleId={selectedCycleId} />
                 </div>
               )}
 
