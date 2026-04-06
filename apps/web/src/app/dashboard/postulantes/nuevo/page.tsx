@@ -6,6 +6,7 @@ import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useDepartments } from '@/hooks/useDepartments';
+import { usePositions } from '@/hooks/usePositions';
 
 const REQUIREMENT_CATEGORIES = [
   {
@@ -58,6 +59,11 @@ export default function NuevoProcesoPage() {
   const toast = useToastStore((s) => s.toast);
   const router = useRouter();
   const { departments: configuredDepartments } = useDepartments();
+  const { positions: positionCatalog } = usePositions();
+  const [showNewPosition, setShowNewPosition] = useState(false);
+  const [newPosName, setNewPosName] = useState('');
+  const [newPosLevel, setNewPosLevel] = useState(6);
+  const [collapsedReqCats, setCollapsedReqCats] = useState<Set<string>>(new Set(REQUIREMENT_CATEGORIES.map(c => c.key)));
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -210,7 +216,35 @@ export default function NuevoProcesoPage() {
                 </div>
                 <div>
                   <label style={labelStyle}>Cargo *</label>
-                  <input className="input" value={position} onChange={(e) => setPosition(e.target.value)} placeholder="Ej: Analista de Datos" required />
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <select className="input" style={{ flex: 1 }} value={positionCatalog.some(p => p.name === position) ? position : (position ? '__custom__' : '')}
+                      onChange={(e) => { if (e.target.value === '__new__') { setShowNewPosition(true); } else if (e.target.value === '__custom__') { setPosition(''); } else { setPosition(e.target.value); } }}>
+                      <option value="">Seleccionar cargo...</option>
+                      {positionCatalog.map(p => <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>)}
+                      {position && !positionCatalog.some(p => p.name === position) && <option value="__custom__">{position} (personalizado)</option>}
+                      <option value="__new__">+ Crear nuevo cargo</option>
+                    </select>
+                  </div>
+                  {showNewPosition && (
+                    <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <input className="input" placeholder="Nombre del cargo" value={newPosName} onChange={(e) => setNewPosName(e.target.value)} style={{ flex: 1, fontSize: '0.82rem' }} />
+                        <input className="input" type="number" min={1} max={20} value={newPosLevel} onChange={(e) => setNewPosLevel(Number(e.target.value) || 6)} style={{ width: '80px', fontSize: '0.82rem' }} placeholder="Nivel" />
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button className="btn-primary" style={{ fontSize: '0.78rem' }} disabled={!newPosName.trim()} onClick={async () => {
+                          if (!token || !newPosName.trim()) return;
+                          try {
+                            const current = [...positionCatalog, { name: newPosName.trim(), level: newPosLevel }].sort((a, b) => a.level - b.level);
+                            await api.tenants.setPositionsCatalog(token, current);
+                            setPosition(newPosName.trim());
+                            setNewPosName(''); setShowNewPosition(false);
+                          } catch {}
+                        }}>Crear</button>
+                        <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowNewPosition(false)}>Cancelar</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
@@ -242,35 +276,48 @@ export default function NuevoProcesoPage() {
               <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
                 Selecciona los requisitos agrupados por categoría. Puedes agregar personalizados.
               </p>
-              {reqCategories.map((cat) => (
-                <div key={cat.key} style={{ marginBottom: '1rem' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
-                    {cat.label} ({requirements.filter((r) => r.category === cat.key).length})
+              {reqCategories.map((cat) => {
+                const isCollapsed = collapsedReqCats.has(cat.key);
+                const catCount = requirements.filter((r) => r.category === cat.key).length;
+                return (
+                  <div key={cat.key} style={{ marginBottom: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+                    <button type="button" onClick={() => {
+                      setCollapsedReqCats(prev => { const next = new Set(prev); if (next.has(cat.key)) next.delete(cat.key); else next.add(cat.key); return next; });
+                    }} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', background: 'var(--bg-base)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                        {isCollapsed ? '▶' : '▼'} {cat.label}
+                      </span>
+                      {catCount > 0 && <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>{catCount}</span>}
+                    </button>
+                    {!isCollapsed && (
+                      <div style={{ padding: '0.5rem 0.75rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                          {cat.defaults.map((text) => {
+                            const checked = isReqSelected(cat.key, text);
+                            return (
+                              <label key={text} style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem',
+                                cursor: 'pointer', padding: '0.3rem 0.5rem', borderRadius: 'var(--radius-sm)',
+                                background: checked ? 'rgba(201,147,58,0.08)' : 'transparent',
+                              }}>
+                                <input type="checkbox" checked={checked} onChange={() => toggleReq(cat.key, text)} style={{ accentColor: 'var(--accent)' }} />
+                                <span style={{ fontWeight: checked ? 600 : 400 }}>{text}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <input className="input" style={{ flex: 1, fontSize: '0.82rem' }}
+                            value={customReq[cat.key] || ''} onChange={(e) => setCustomReq((p) => ({ ...p, [cat.key]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomReq(cat.key); } }}
+                            placeholder={`Agregar requisito de ${cat.label.toLowerCase()}...`} />
+                          <button type="button" className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => addCustomReq(cat.key)} disabled={!(customReq[cat.key] || '').trim()}>+</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginBottom: '0.5rem' }}>
-                    {cat.defaults.map((text) => {
-                      const checked = isReqSelected(cat.key, text);
-                      return (
-                        <label key={text} style={{
-                          display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem',
-                          cursor: 'pointer', padding: '0.3rem 0.5rem', borderRadius: 'var(--radius-sm)',
-                          background: checked ? 'rgba(201,147,58,0.08)' : 'transparent',
-                        }}>
-                          <input type="checkbox" checked={checked} onChange={() => toggleReq(cat.key, text)} style={{ accentColor: 'var(--accent)' }} />
-                          <span style={{ fontWeight: checked ? 600 : 400 }}>{text}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input className="input" style={{ flex: 1, fontSize: '0.82rem' }}
-                      value={customReq[cat.key] || ''} onChange={(e) => setCustomReq((p) => ({ ...p, [cat.key]: e.target.value }))}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomReq(cat.key); } }}
-                      placeholder={`Agregar requisito de ${cat.label.toLowerCase()}...`} />
-                    <button type="button" className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => addCustomReq(cat.key)} disabled={!(customReq[cat.key] || '').trim()}>+</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {requirements.length > 0 && (
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                   {requirements.length} requisito{requirements.length !== 1 ? 's' : ''} selecciónado{requirements.length !== 1 ? 's' : ''}

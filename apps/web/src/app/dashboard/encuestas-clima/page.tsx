@@ -87,10 +87,40 @@ function EncuestasClimaPageContent() {
     targetDepartments: [] as string[],
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-    questions: [...TEMPLATE_QUESTIONS] as any[],
+    questions: [] as any[],
   });
 
   const { departments } = useDepartments();
+  const [competencies, setCompetencies] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!token) return;
+    api.development.competencies.list(token).then((data) => setCompetencies(Array.isArray(data) ? data : [])).catch(() => {});
+  }, [token]);
+
+  const generateTemplateQuestions = (level: 1 | 2 | 3) => {
+    const questions: any[] = [];
+    const qBanks = [
+      (name: string) => `¿Cómo evalúas la competencia de ${name} en tu equipo/organización?`,
+      (name: string) => `¿Tu encargado demuestra ${name} en su gestión diaria?`,
+      (name: string) => `¿La organización fomenta activamente el desarrollo de ${name}?`,
+    ];
+    for (const comp of competencies) {
+      for (let i = 0; i < level; i++) {
+        questions.push({ category: comp.category || comp.name, questionText: qBanks[i](comp.name), questionType: 'likert_5', isRequired: true });
+      }
+    }
+    // NPS
+    questions.push({ category: 'NPS', questionText: 'Del 0 al 10, ¿qué tan probable es que recomiendes esta organización como lugar de trabajo?', questionType: 'nps', isRequired: true });
+    if (level >= 3) questions.push({ category: 'NPS', questionText: 'Del 0 al 10, ¿qué tan satisfecho/a estás con tu experiencia laboral actual?', questionType: 'nps', isRequired: true });
+    // Open text
+    questions.push({ category: 'General', questionText: '¿Qué es lo que más valoras de trabajar en esta organización?', questionType: 'open_text', isRequired: false });
+    if (level >= 2) questions.push({ category: 'General', questionText: '¿Qué cambio concreto mejoraría tu experiencia laboral?', questionType: 'open_text', isRequired: false });
+    if (level >= 3) {
+      questions.push({ category: 'General', questionText: '¿Qué sugerencia tienes para mejorar el clima laboral?', questionType: 'open_text', isRequired: false });
+    }
+    return questions;
+  };
 
   const loadData = async () => {
     if (!token) return;
@@ -174,14 +204,14 @@ function EncuestasClimaPageContent() {
       title: '', description: '', isAnonymous: true, targetAudience: 'all',
       targetDepartments: [], startDate: new Date().toISOString().split('T')[0],
       endDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-      questions: [...TEMPLATE_QUESTIONS],
+      questions: [],
     });
   };
 
   const addQuestion = () => {
     setForm((f) => ({
       ...f,
-      questions: [...f.questions, { category: 'General', questionText: '', questionType: 'likert_5', isRequired: true, options: null }],
+      questions: [{ category: 'General', questionText: '', questionType: 'likert_5', isRequired: true, options: null }, ...f.questions],
     }));
   };
 
@@ -357,14 +387,52 @@ function EncuestasClimaPageContent() {
             )}
           </div>
 
+          {/* Create button — positioned after general fields for visibility */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem', marginBottom: '1rem' }}>
+            <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => { setShowCreate(false); resetForm(); }}>{t('common.cancel')}</button>
+            <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={handleCreate} disabled={creating || !form.title.trim() || form.questions.length === 0}>
+              {creating ? t('surveys.creating') : t('surveys.createSurvey')}
+            </button>
+          </div>
+
+          {/* Template buttons — generate questions from org competencies */}
+          {form.questions.length === 0 && (
+            <div style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+              <p style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                Genera preguntas automáticamente a partir de las competencias de tu organización ({competencies.length} competencias):
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {([
+                  { level: 1 as const, icon: '📋', name: 'Encuesta Rápida', desc: '1 pregunta por competencia' },
+                  { level: 2 as const, icon: '📊', name: 'Encuesta Completa', desc: '2 preguntas por competencia' },
+                  { level: 3 as const, icon: '📈', name: 'Encuesta Exhaustiva', desc: '3 preguntas por competencia' },
+                ]).map(tpl => {
+                  const count = competencies.length * tpl.level + (tpl.level >= 3 ? 2 : 1) + tpl.level;
+                  return (
+                    <button key={tpl.level} className="btn-ghost" disabled={competencies.length === 0}
+                      style={{ flex: '1 1 150px', padding: '0.75rem', textAlign: 'center', border: '2px solid var(--border)', borderRadius: 'var(--radius-sm)' }}
+                      onClick={() => setForm(f => ({ ...f, questions: generateTemplateQuestions(tpl.level) }))}>
+                      <div style={{ fontSize: '1.5rem', marginBottom: '0.3rem' }}>{tpl.icon}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{tpl.name}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{tpl.desc}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600, marginTop: '0.2rem' }}>{count} preguntas</div>
+                    </button>
+                  );
+                })}
+              </div>
+              {competencies.length === 0 && (
+                <p style={{ fontSize: '0.78rem', color: 'var(--warning)', marginTop: '0.5rem' }}>
+                  No hay competencias registradas. Ve a Catálogo de Competencias para agregar.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Questions builder */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
               <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>{t('surveys.questionsCount', { count: form.questions.length })}</h4>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setForm((f) => ({ ...f, questions: [...TEMPLATE_QUESTIONS] }))}>
-                  {t('surveys.useTemplate')}
-                </button>
                 <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={addQuestion}>
                   {t('surveys.addQuestion')}
                 </button>
@@ -401,13 +469,14 @@ function EncuestasClimaPageContent() {
             </div>
           </div>
 
-          {/* Actions */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-            <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => { setShowCreate(false); resetForm(); }}>{t('common.cancel')}</button>
-            <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={handleCreate} disabled={creating || !form.title.trim()}>
-              {creating ? t('surveys.creating') : t('surveys.createSurvey')}
-            </button>
-          </div>
+          {/* Bottom create button (duplicate for convenience after scrolling through questions) */}
+          {form.questions.length > 3 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+              <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={handleCreate} disabled={creating || !form.title.trim() || form.questions.length === 0}>
+                {creating ? t('surveys.creating') : t('surveys.createSurvey')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
