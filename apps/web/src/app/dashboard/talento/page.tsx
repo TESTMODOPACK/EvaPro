@@ -258,10 +258,11 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
           }}
         >
           <option value="">Seleccionar ciclo...</option>
-          {cycles.map((c: any) => (
-            <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status === 'draft' ? 'Borrador' : c.status})</option>
+          {cycles.filter((c: any) => c.status === 'closed').map((c: any) => (
+            <option key={c.id} value={c.id}>{c.name} (Cerrado)</option>
           ))}
         </select>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Solo ciclos cerrados con evaluaciones completadas</span>
 
         {selectedCycleId && isAdmin && (
           <button className="btn-primary" onClick={handleGenerate} disabled={generating}>
@@ -345,12 +346,14 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
           {/* Hint to click on quadrants */}
           {selectedBox === null && (
             <div style={{
-              textAlign: 'center', marginTop: '0.75rem', padding: '0.5rem',
-              fontSize: '0.82rem', color: 'var(--text-muted)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+              textAlign: 'center', marginTop: '1rem', padding: '0.65rem 1rem',
+              fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 600,
+              background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)',
+              border: '1px solid rgba(99,102,241,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
             }}>
-              <span style={{ fontSize: '1rem' }}>{'👆'}</span>
-              Haz clic en un cuadrante para ver los colaboradores clasificados
+              <span style={{ fontSize: '1.1rem' }}>{'👆'}</span>
+              Presiona sobre un cuadrante para ver el detalle de los colaboradores clasificados en esa posición
             </div>
           )}
 
@@ -718,7 +721,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
       </div>
 
       {/* Cycle selector */}
-      <div style={{ marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <select
           className="input"
           value={selectedCycleId}
@@ -726,75 +729,91 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
           style={{ minWidth: '220px', fontSize: '.875rem' }}
         >
           <option value="">Seleccionar ciclo...</option>
-          {cycles.map((c: any) => (
-            <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status === 'draft' ? 'Borrador' : c.status})</option>
+          {cycles.filter((c: any) => c.status === 'closed').map((c: any) => (
+            <option key={c.id} value={c.id}>{c.name} (Cerrado)</option>
           ))}
         </select>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Solo ciclos cerrados</span>
       </div>
 
       {loading && <Spinner />}
 
       {!loading && selectedCycleId && (
         <>
-          {/* Pool summary cards */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.6rem', marginBottom: '1.5rem' }}>
-            {POOLS_ORDER.filter((p) => (poolCounts[p] || 0) > 0).map((pool) => (
-              <button
-                key={pool}
-                onClick={() => setFilterPool(filterPool === pool ? 'all' : pool)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '.6rem',
-                  padding: '.5rem .9rem',
-                  borderRadius: 'var(--radius)',
-                  border: `2px solid ${filterPool === pool ? POOL_ACCENT[pool] : 'var(--border)'}`,
-                  background: filterPool === pool ? `${POOL_ACCENT[pool]}18` : 'var(--bg-elevated)',
-                  cursor: 'pointer', transition: 'var(--transition)',
-                }}
-              >
-                <span style={{
-                  width: '26px', height: '26px', borderRadius: '50%',
-                  background: POOL_ACCENT[pool] || 'var(--accent)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 800, fontSize: '.8rem', flexShrink: 0,
-                }}>
-                  {poolCounts[pool] || 0}
-                </span>
-                <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                  {POOL_LABEL_KEY[pool] ? t(POOL_LABEL_KEY[pool]) : pool}
-                </span>
-              </button>
-            ))}
+          {/* Classification (Pool) filter */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Clasificación del colaborador
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem' }}>
+              {POOLS_ORDER.filter((p) => (poolCounts[p] || 0) > 0).map((pool) => (
+                <button
+                  key={pool}
+                  onClick={() => setFilterPool(filterPool === pool ? 'all' : pool)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '.5rem',
+                    padding: '.4rem .75rem',
+                    borderRadius: 'var(--radius)',
+                    border: `2px solid ${filterPool === pool ? POOL_ACCENT[pool] : 'var(--border)'}`,
+                    background: filterPool === pool ? `${POOL_ACCENT[pool]}18` : 'var(--bg-elevated)',
+                    cursor: 'pointer', transition: 'var(--transition)',
+                  }}
+                >
+                  <span style={{
+                    width: '22px', height: '22px', borderRadius: '50%',
+                    background: POOL_ACCENT[pool] || 'var(--accent)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontWeight: 800, fontSize: '.72rem', flexShrink: 0,
+                  }}>
+                    {poolCounts[pool] || 0}
+                  </span>
+                  <span style={{ fontSize: '.78rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    {POOL_LABEL_KEY[pool] ? t(POOL_LABEL_KEY[pool]) : pool}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Search + filter bar */}
+          {/* Search + Department filter — same row */}
           {assessments.length > 0 && (
-            <div style={{ display: 'flex', gap: '.75rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                className="input"
-                type="text"
-                placeholder="Buscar por nombre, cargo o departamento..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ minWidth: '200px', flex: 1, fontSize: '.875rem' }}
-              />
-              {segDepts.length > 1 && (
-                <select
+            <div style={{ display: 'flex', gap: '.75rem', marginBottom: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Nombre
+                </label>
+                <input
                   className="input"
-                  value={segDeptFilter}
-                  onChange={(e) => setSegDeptFilter(e.target.value)}
-                  style={{ fontSize: '0.82rem', padding: '0.35rem 0.5rem' }}
-                >
-                  <option value="">Todos los deptos.</option>
-                  {segDepts.map((d: string) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
+                  type="text"
+                  placeholder="Buscar por nombre, cargo..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{ width: '100%', fontSize: '.875rem' }}
+                />
+              </div>
+              {segDepts.length > 1 && (
+                <div style={{ minWidth: '160px' }}>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Departamento
+                  </label>
+                  <select
+                    className="input"
+                    value={segDeptFilter}
+                    onChange={(e) => setSegDeptFilter(e.target.value)}
+                    style={{ width: '100%', fontSize: '0.82rem' }}
+                  >
+                    <option value="">Todos</option>
+                    {segDepts.map((d: string) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
               )}
-              <span style={{ fontSize: '.82rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: '.82rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', paddingBottom: '0.35rem' }}>
                 {filtered.length} de {assessments.length}
               </span>
               {(search || filterPool !== 'all' || segDeptFilter) && (
-                <button className="btn-ghost" style={{ fontSize: '.82rem' }} onClick={() => { setSearch(''); setFilterPool('all'); setSegDeptFilter(''); }}>
+                <button className="btn-ghost" style={{ fontSize: '.82rem', paddingBottom: '0.35rem' }} onClick={() => { setSearch(''); setFilterPool('all'); setSegDeptFilter(''); }}>
                   Limpiar filtros
                 </button>
               )}
@@ -1053,61 +1072,6 @@ function TalentoPageContent() {
           </div>
         </div>
       )}
-
-      {/* Info card */}
-      <div className="card" style={{ background: 'rgba(99,102,241,0.05)', borderLeft: '4px solid var(--accent)', marginBottom: '1.5rem' }}>
-        <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-          {t('talento.guide.title')}
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', alignItems: 'start' }}>
-          {/* Column 1 — axes explanation */}
-          <div>
-            <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {t('talento.guide.nineBoxTitle')}
-            </p>
-            <ul style={{ margin: '0 0 .75rem', paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li>{t('talento.guide.nineBoxDesc')}</li>
-            </ul>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '.25rem', fontSize: '.7rem' }}>
-              {([
-                { label: 'Enigma', bg: 'rgba(245,158,11,0.2)', color: '#b45309' },
-                { label: 'Alto rend.', bg: 'rgba(16,185,129,0.15)', color: '#047857' },
-                { label: '⭐ Estrella', bg: 'rgba(16,185,129,0.3)', color: '#047857' },
-                { label: 'Riesgo', bg: 'rgba(239,68,68,0.15)', color: '#b91c1c' },
-                { label: 'Prof. clave', bg: 'rgba(99,102,241,0.15)', color: '#4338ca' },
-                { label: 'Alto pot.', bg: 'rgba(16,185,129,0.15)', color: '#047857' },
-                { label: 'Bajo rend.', bg: 'rgba(239,68,68,0.2)', color: '#b91c1c' },
-                { label: 'Bajo+pot.', bg: 'rgba(239,68,68,0.1)', color: '#b91c1c' },
-                { label: 'Inconsist.', bg: 'rgba(245,158,11,0.12)', color: '#b45309' },
-              ] as {label:string;bg:string;color:string}[]).map((c, i) => (
-                <div key={i} style={{ background: c.bg, borderRadius: '4px', padding: '.3rem .35rem', textAlign: 'center', fontWeight: 700, color: c.color, lineHeight: 1.2 }}>
-                  {c.label}
-                </div>
-              ))}
-            </div>
-            <p style={{ margin: '.4rem 0 0', fontSize: '.67rem', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>
-              {'Fila sup.=Alto Desempeño · Fila inf.=Bajo Desempeño · Col.izq.=Bajo Potencial · Col.der.=Alto Potencial'}
-            </p>
-          </div>
-          {/* Column 2 — segmentation + data sources */}
-          <div>
-            <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {t('talento.guide.segmentationTitle')}
-            </p>
-            <ul style={{ margin: '0 0 .75rem', paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li>{t('talento.guide.segmentationDesc')}</li>
-            </ul>
-            <p style={{ margin: '0 0 0.4rem', fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 700 }}>
-              {t('talento.guide.dataSourceTitle')}
-            </p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              <li>{t('talento.guide.dataPerformance')}</li>
-              <li>{t('talento.guide.dataPotential')}</li>
-              <li>{t('talento.guide.dataReadiness')}</li>
-            </ul>
-          </div>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '1.5rem', borderBottom: '2px solid var(--border)' }}>
