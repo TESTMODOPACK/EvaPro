@@ -9,6 +9,7 @@ import { UserMovement } from '../users/entities/user-movement.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
+import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 
 @Injectable()
 export class AnalyticsService {
@@ -27,6 +28,8 @@ export class AnalyticsService {
     private readonly movementRepo: Repository<UserMovement>,
     @InjectRepository(EvaluationCycle)
     private readonly cycleRepo: Repository<EvaluationCycle>,
+    @InjectRepository(EvaluationResponse)
+    private readonly responseRepo: Repository<EvaluationResponse>,
     @InjectRepository(EvaluationAssignment)
     private readonly assignmentRepo: Repository<EvaluationAssignment>,
   ) {}
@@ -183,11 +186,17 @@ export class AnalyticsService {
     const result: any[] = [];
 
     for (const cycle of closedCycles) {
-      const assignmentWhere: any = { cycleId: cycle.id, tenantId };
       const assignments = await this.assignmentRepo.find({
-        where: assignmentWhere,
+        where: { cycleId: cycle.id, tenantId },
         relations: ['evaluatee'],
       });
+
+      // Load responses for these assignments
+      const assignmentIds = assignments.map(a => a.id);
+      const responses = assignmentIds.length > 0
+        ? await this.responseRepo.find({ where: { assignmentId: In(assignmentIds) } })
+        : [];
+      const responseByAssignment = new Map(responses.map(r => [r.assignmentId, r]));
 
       // If manager, filter to direct reports
       let filtered = assignments;
@@ -198,18 +207,26 @@ export class AnalyticsService {
         filtered = assignments.filter(a => ids.has(a.evaluateeId));
       }
 
-      const withScores = filtered.filter((a: any) => a.response?.overallScore != null);
-      const scores = withScores.map((a: any) => Number(a.response.overallScore));
+      // Match responses with assignments
+      const withScores: { assignment: any; score: number }[] = [];
+      for (const a of filtered) {
+        const resp = responseByAssignment.get(a.id);
+        if (resp?.overallScore != null) {
+          withScores.push({ assignment: a, score: Number(resp.overallScore) });
+        }
+      }
+
+      const scores = withScores.map(w => w.score);
       const avg = scores.length > 0 ? Number((scores.reduce((s, v) => s + v, 0) / scores.length).toFixed(2)) : null;
       const min = scores.length > 0 ? Math.min(...scores) : null;
       const max = scores.length > 0 ? Math.max(...scores) : null;
 
       // Department breakdown
       const deptScores: Record<string, number[]> = {};
-      for (const a of withScores) {
-        const dept = (a.evaluatee as any)?.department || 'Sin departamento';
+      for (const w of withScores) {
+        const dept = (w.assignment.evaluatee as any)?.department || 'Sin departamento';
         if (!deptScores[dept]) deptScores[dept] = [];
-        deptScores[dept].push(Number((a as any).response.overallScore));
+        deptScores[dept].push(w.score);
       }
 
       result.push({

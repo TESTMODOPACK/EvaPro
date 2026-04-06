@@ -212,15 +212,35 @@ function CycleComparisonPageContent() {
                   transition: 'all 0.15s',
                 }}
               >
-                <div>{c.cycleName}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span>{c.cycleName}</span>
+                  <span className="badge badge-ghost" style={{ fontSize: '0.62rem', padding: '1px 5px' }}>{c.cycleType}°</span>
+                </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
-                  {c.avgScore ? `Prom: ${c.avgScore}` : 'Sin puntajes'} · {c.withScores} eval.
+                  {c.avgScore ? `Prom: ${c.avgScore}` : `${c.totalEvaluated} evaluados · sin puntajes`} {c.avgScore ? `· ${c.withScores} eval.` : ''}
                 </div>
               </button>
             );
           })}
         </div>
       </div>
+
+      {/* Mixed cycle types warning */}
+      {(() => {
+        const selectedCycles = cycles.filter((c: any) => selected.has(c.cycleId));
+        const types = new Set(selectedCycles.map((c: any) => c.cycleType));
+        if (types.size > 1 && selectedCycles.length >= 2) {
+          const typeList = Array.from(types).map((t: any) => `${t}°`).join(', ');
+          return (
+            <div className="card animate-fade-up" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)', background: 'rgba(245,158,11,0.06)' }}>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                <strong style={{ color: 'var(--warning)' }}>Tipos de evaluación diferentes:</strong> Has seleccionado ciclos de tipo {typeList}. Los puntajes pueden diferir significativamente entre tipos de evaluación (un 360° incluye más evaluadores que un 90°), por lo que la comparación debe interpretarse con precaución.
+              </p>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* AI Quota Bar */}
       <AiQuotaBar />
