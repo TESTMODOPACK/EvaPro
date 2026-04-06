@@ -1,28 +1,98 @@
+# ══════════════════════════════════════════════════════════════════════
+# Eva360 — Docker Compose para producción (Hostinger VPS)
+# ══════════════════════════════════════════════════════════════════════
+#
+# Uso:
+#   1. Copiar .env.example → .env y completar los valores
+#   2. docker compose up -d --build
+#   3. La app estará en http://tu-dominio (nginx reverse proxy)
+#
+# Servicios:
+#   - db:    PostgreSQL 16 (datos persistentes en volumen)
+#   - api:   NestJS API (puerto 3000 interno)
+#   - web:   Next.js frontend (puerto 3001 interno)
+#   - nginx: Reverse proxy (puertos 80/443)
+#
+# ══════════════════════════════════════════════════════════════════════
+
 version: '3.8'
 
 services:
+  # ── PostgreSQL Database ────────────────────────────────────────────
   db:
-    image: postgres:15-alpine
-    container_name: ascenda_db
+    image: postgres:16-alpine
+    container_name: eva360_db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: ascenda
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: ascenda_perf
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${DB_NAME:-eva360}
+      POSTGRES_USER: ${DB_USER:-eva360}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Debe definir DB_PASSWORD en .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: ascenda_redis
     ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-eva360}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API (NestJS) ───────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: eva360_api
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${DB_USER:-eva360}:${DB_PASSWORD}@db:5432/${DB_NAME:-eva360}
+      DB_SYNC: "true"
+      JWT_SECRET: ${JWT_SECRET:?Debe definir JWT_SECRET en .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Eva360 <onboarding@resend.dev>}
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost}
+      FRONTEND_URL: ${APP_URL:-http://localhost}
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  # ── Web (Next.js) ──────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost/api}
+    container_name: eva360_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost/api}
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  # ── Nginx Reverse Proxy ────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: eva360_nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
 
 volumes:
   postgres_data:
-  redis_data:
+    driver: local
