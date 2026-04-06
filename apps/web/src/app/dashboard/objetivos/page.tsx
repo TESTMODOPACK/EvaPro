@@ -34,7 +34,7 @@ import { useCycles } from '@/hooks/useCycles';
 import { getRoleLabel } from '@/lib/roles';
 import { useDepartments } from '@/hooks/useDepartments';
 
-type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned';
+type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned' | 'at_risk';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
 type CommentType = 'comentario' | 'felicitacion' | 'seguimiento' | 'adjunto';
 
@@ -885,6 +885,7 @@ function ObjetivosPageContent() {
     { key: 'active', label: t('objetivos.objStatus.in_progress') },
     { key: 'completed', label: t('objetivos.objStatus.completed') },
     { key: 'abandoned', label: t('objetivos.objStatus.cancelled') },
+    { key: 'at_risk', label: '⚠️ En riesgo' },
   ];
 
   const isAdmin = userRole === 'tenant_admin';
@@ -967,6 +968,7 @@ function ObjetivosPageContent() {
   // Item 13: At-risk objectives count
   const { data: atRiskData } = useAtRiskObjectives();
   const atRiskCount = atRiskData?.length || 0;
+  const atRiskIds = new Set((atRiskData || []).map((o: any) => o.id));
 
   // Item 10: Weight total calculation
   const myObjectives = objectives?.filter((o: any) => {
@@ -996,7 +998,8 @@ function ObjetivosPageContent() {
   // Filter objectives
   const filtered = objectives
     ? objectives.filter((o: any) => {
-        if (filter !== 'all' && o.status !== filter) return false;
+        if (filter === 'at_risk') { if (!atRiskIds.has(o.id)) return false; }
+        else if (filter !== 'all' && o.status !== filter) return false;
         if (userFilter !== 'all') {
           const uid = o.userId || o.user?.id;
           if (uid !== userFilter) return false;
@@ -1320,6 +1323,34 @@ function ObjetivosPageContent() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* At-risk + Cancelled explanation */}
+          <div style={{ marginTop: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Estados especiales</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                  <span className="badge badge-danger" style={{ fontSize: '0.7rem' }}>⚠️ EN RIESGO</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                  Un objetivo se marca <strong>en riesgo</strong> cuando su progreso está por debajo de lo esperado según el tiempo transcurrido.
+                  Por ejemplo, si ya pasó el 70% del plazo pero el progreso es solo del 40%, el sistema lo detecta automáticamente.
+                  También se consideran en riesgo los objetivos activos con progreso menor al 40% sin fecha límite definida.
+                  Use el filtro <strong>&quot;⚠️ En riesgo&quot;</strong> para ver solo estos objetivos y tomar acción.
+                </p>
+              </div>
+              <div style={{ padding: '0.75rem', background: 'rgba(107,114,128,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(107,114,128,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                  <span className="badge badge-ghost" style={{ fontSize: '0.7rem' }}>CANCELADO</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                  Un objetivo cancelado queda registrado en el historial pero no se contabiliza en los indicadores de cumplimiento.
+                  Se usa cuando un objetivo deja de ser relevante por cambios en la estrategia, reestructuraciones, o decisiones del negocio.
+                  No se puede reactivar — se debe crear uno nuevo si es necesario.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -1929,6 +1960,9 @@ function ObjetivosPageContent() {
                     <span className={`badge ${statusBadge[obj.status] || 'badge-accent'}`}>
                       {statusLabel[obj.status] || obj.status}
                     </span>
+                    {atRiskIds.has(obj.id) && (
+                      <span className="badge badge-danger" style={{ fontSize: '0.65rem' }}>⚠️ EN RIESGO</span>
+                    )}
                   </div>
                 </div>
 
