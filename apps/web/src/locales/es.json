@@ -812,8 +812,8 @@
   "analytics": {
     "title": "Análisis del Ciclo",
     "subtitle": "Distribución estadística, mapa de competencias y rendimiento por equipo",
-    "showGuide": "▶ ¿Qué muestra esta página?",
-    "hideGuide": "▼ Ocultar guía",
+    "showGuide": "Cómo funciona",
+    "hideGuide": "Ocultar guía",
     "guide": {
       "title": "Guía de uso: Análisis del Ciclo",
       "desc": "Esta página presenta estadísticas organizacionales de los resultados de evaluación por ciclo. Selecciona un ciclo para ver las métricas. Los datos provienen de las evaluaciones completadas.",

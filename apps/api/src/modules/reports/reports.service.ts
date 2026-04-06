@@ -1266,7 +1266,7 @@ export class ReportsService {
 
     const heatmapGrid = sectionMeta.map((sec: any) => ({
       section: sec.title,
-      maxScale: sec.maxScale,
+      maxScale: 10, // Always normalize to scale 1-10 for consistency
       values: departments.map((dept) => {
         const cell = grid[sec.id]?.[dept];
         const deptUserCount = deptEvaluateeCount.get(dept) || 0;
@@ -1275,9 +1275,12 @@ export class ReportsService {
           return { department: dept, avg: null, count: 0, privacyRestricted: true };
         }
         if (!cell || cell.count === 0) return { department: dept, avg: null, count: 0 };
+        // Normalize to scale 1-10 (if original scale is 1-5, multiply by 2)
+        const rawAvg = cell.sum / cell.count;
+        const normalizedAvg = sec.maxScale < 10 ? (rawAvg / sec.maxScale) * 10 : rawAvg;
         return {
           department: dept,
-          avg: Math.round((cell.sum / cell.count) * 100) / 100,
+          avg: Math.round(normalizedAvg * 100) / 100,
           count: cell.count,
         };
       }),
