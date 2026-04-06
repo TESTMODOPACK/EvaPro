@@ -519,6 +519,9 @@ function ReconocimientosPageContent() {
       {/* Challenges Tab */}
       {tab === 'challenges' && (
         <div className="animate-fade-up">
+          <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--accent)' }}>¿Qué son los desafíos?</strong> Metas colectivas que se evalúan automáticamente. Todos los colaboradores participan y su progreso se actualiza al enviar/recibir reconocimientos. Al completar un desafío se otorgan puntos bonus.
+          </div>
           {/* Admin: Create challenge */}
           {isAdmin && (
             <div style={{ marginBottom: '1rem' }}>
@@ -621,6 +624,9 @@ function ReconocimientosPageContent() {
       {/* Badges Tab */}
       {tab === 'badges' && (
         <div className="animate-fade-up">
+          <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--accent)' }}>¿Qué son las insignias?</strong> Logros que se otorgan automáticamente al alcanzar hitos (ej: 10 reconocimientos recibidos) o manualmente por un administrador. Cada insignia otorga puntos bonus.
+          </div>
           {/* Top values */}
           {(stats?.topValues || []).length > 0 && (
             <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
@@ -768,6 +774,9 @@ function ReconocimientosPageContent() {
       {/* Store Tab */}
       {tab === 'store' && (
         <div className="animate-fade-up">
+          <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--accent)' }}>Tienda de Beneficios:</strong> Canjea tus puntos acumulados por beneficios. El canje es inmediato y los puntos se descuentan automáticamente. Revisa las condiciones de cada beneficio antes de canjear.
+          </div>
           {/* My redemption history */}
           {myRedemptions.length > 0 && (
             <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>

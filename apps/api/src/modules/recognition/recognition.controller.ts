@@ -167,6 +167,12 @@ export class RecognitionController {
     return this.service.createRedemptionItem(req.user.tenantId, dto);
   }
 
+  @Get('catalog/:id/redemptions')
+  @Roles('super_admin', 'tenant_admin')
+  getItemRedemptions(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.service.getItemRedemptions(req.user.tenantId, id);
+  }
+
   @Patch('catalog/:id')
   @Roles('super_admin', 'tenant_admin')
   updateCatalogItem(
@@ -206,6 +212,12 @@ export class RecognitionController {
   @Roles('super_admin', 'tenant_admin')
   createChallenge(@Request() req: any, @Body() dto: any) {
     return this.service.createChallenge(req.user.tenantId, dto);
+  }
+
+  @Get('challenges/:id/participants')
+  @Roles('super_admin', 'tenant_admin')
+  getChallengeParticipants(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.service.getChallengeParticipants(req.user.tenantId, id);
   }
 
   @Patch('challenges/:id')

@@ -38,6 +38,12 @@ export class RedemptionItem {
   @Column({ type: 'int', default: -1, comment: '-1 = unlimited stock' })
   stock: number;
 
+  @Column({ type: 'text', nullable: true, comment: 'Terms, conditions, and rules for redemption' })
+  terms: string | null;
+
+  @Column({ type: 'int', default: -1, name: 'max_redeem_per_user', comment: '-1 = unlimited per user' })
+  maxRedeemPerUser: number;
+
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 

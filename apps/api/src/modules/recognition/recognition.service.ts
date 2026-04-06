@@ -570,6 +570,14 @@ export class RecognitionService {
       throw new BadRequestException('Este item está agotado');
     }
 
+    // Check per-user redemption limit
+    if (item.maxRedeemPerUser > 0) {
+      const userRedemptions = await this.redemptionTxRepo.count({ where: { userId, itemId } });
+      if (userRedemptions >= item.maxRedeemPerUser) {
+        throw new BadRequestException(`Has alcanzado el máximo de canjes para este beneficio (${item.maxRedeemPerUser})`);
+      }
+    }
+
     // Use transaction for atomicity (balance check + deduction must be atomic)
     return this.dataSource.transaction(async (manager) => {
       // Check balance inside transaction to prevent double-spend
@@ -640,6 +648,37 @@ export class RecognitionService {
       endDate: dto.endDate ? new Date(dto.endDate) : null,
     });
     return this.challengeRepo.save(challenge);
+  }
+
+  async getChallengeParticipants(tenantId: string, challengeId: string) {
+    const progress = await this.progressRepo.find({
+      where: { challengeId },
+      relations: ['user'],
+      order: { currentValue: 'DESC' },
+    });
+    return progress.map((p: any) => ({
+      userId: p.userId,
+      userName: p.user ? `${p.user.firstName} ${p.user.lastName}` : 'N/A',
+      department: p.user?.department || '',
+      currentValue: p.currentValue,
+      completed: p.completed,
+      completedAt: p.completedAt,
+    }));
+  }
+
+  async getItemRedemptions(tenantId: string, itemId: string) {
+    const txs = await this.redemptionTxRepo.find({
+      where: { itemId },
+      relations: ['user'],
+      order: { createdAt: 'DESC' },
+    });
+    return txs.map((tx: any) => ({
+      id: tx.id,
+      userName: tx.user ? `${tx.user.firstName} ${tx.user.lastName}` : 'N/A',
+      pointsSpent: tx.pointsSpent,
+      status: tx.status,
+      createdAt: tx.createdAt,
+    }));
   }
 
   async updateChallenge(tenantId: string, id: string, dto: any) {
