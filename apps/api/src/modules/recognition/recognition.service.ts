@@ -558,6 +558,8 @@ export class RecognitionService {
     if (dto.pointsCost !== undefined) item.pointsCost = dto.pointsCost;
     if (dto.category !== undefined) item.category = dto.category;
     if (dto.stock !== undefined) item.stock = dto.stock;
+    if (dto.terms !== undefined) item.terms = dto.terms;
+    if (dto.maxRedeemPerUser !== undefined) item.maxRedeemPerUser = dto.maxRedeemPerUser;
     if (dto.isActive !== undefined) item.isActive = dto.isActive;
     return this.redemptionItemRepo.save(item);
   }
@@ -652,7 +654,7 @@ export class RecognitionService {
 
   async getChallengeParticipants(tenantId: string, challengeId: string) {
     const progress = await this.progressRepo.find({
-      where: { challengeId },
+      where: { challengeId, tenantId },
       relations: ['user'],
       order: { currentValue: 'DESC' },
     });
@@ -668,7 +670,7 @@ export class RecognitionService {
 
   async getItemRedemptions(tenantId: string, itemId: string) {
     const txs = await this.redemptionTxRepo.find({
-      where: { itemId },
+      where: { itemId, tenantId },
       relations: ['user'],
       order: { createdAt: 'DESC' },
     });
