@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import { useToastStore } from '@/store/toast.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import SignatureModal, { SignatureBadge } from '@/components/SignatureModal';
 
@@ -26,6 +27,7 @@ export default function ContratosPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [signModal, setSignModal] = useState<{ documentType: string; documentId: string; documentName: string } | null>(null);
   const [signatureMap, setSignatureMap] = useState<Record<string, any[]>>({});
+  const toast = useToastStore((s) => s.toast);
   const isSuperAdmin = role === 'super_admin';
 
   // Super admin: create contract form
@@ -345,6 +347,28 @@ export default function ContratosPage() {
                       </button>
                     )}
 
+                    {/* Download PDF */}
+                    {c.content && (
+                      <button className="btn-ghost" style={{ fontSize: '0.82rem', marginTop: '0.5rem' }}
+                        onClick={async () => {
+                          if (!token) return;
+                          try {
+                            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/contracts/${c.id}/pdf`, {
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            if (!res.ok) throw new Error('Error al generar PDF');
+                            const blob = await res.blob();
+                            const a = document.createElement('a');
+                            a.href = URL.createObjectURL(blob);
+                            a.download = `contrato-${c.title?.replace(/[^a-zA-Z0-9]/g, '-') || c.id.slice(0, 8)}.pdf`;
+                            a.click();
+                            URL.revokeObjectURL(a.href);
+                          } catch (e: any) { toast(e.message || 'Error al descargar', 'error'); }
+                        }}>
+                        {'📄'} Descargar PDF
+                      </button>
+                    )}
+
                     {/* Admin: Query/request button */}
                     {role === 'tenant_admin' && (
                       <button className="btn-ghost" style={{ fontSize: '0.82rem', marginTop: '0.5rem' }}
@@ -376,10 +400,7 @@ export default function ContratosPage() {
           onCancel={() => setSignModal(null)}
           onSigned={() => {
             setSignModal(null);
-            // Reload contracts and signatures
-            if (token) {
-              api.contracts.list(token).then(setContracts).catch(() => {});
-            }
+            loadData(); // Respects orgFilter
           }}
         />
       )}
@@ -419,9 +440,9 @@ export default function ContratosPage() {
                   try {
                     await api.contracts.submitQuery(token, queryModal.contractId, { type: queryForm.type, message: queryForm.message.trim() });
                     setQueryModal(null);
-                    alert('Consulta enviada correctamente. El administrador del sistema la recibirá como notificación.');
+                    toast('Consulta enviada al administrador del sistema', 'success');
                   } catch (e: any) {
-                    alert(e.message || 'Error al enviar consulta');
+                    toast(e.message || 'Error al enviar consulta', 'error');
                   }
                   setQuerySubmitting(false);
                 }}>

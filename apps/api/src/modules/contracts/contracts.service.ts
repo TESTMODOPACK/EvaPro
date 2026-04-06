@@ -416,6 +416,70 @@ Excepciones: información pública, obtenida independientemente, o requerida por
     ];
   }
 
+  // ─── PDF Generation ───────────────────────────────────────────────────
+
+  async generatePdf(contractId: string, tenantId?: string): Promise<Buffer> {
+    const contract = await this.findById(contractId, tenantId);
+
+    // Dynamic import jsPDF
+    const { default: jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    const maxW = pageW - margin * 2;
+    let y = 20;
+
+    // Header
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text('Eva360 by Ascenda — Documento contractual', margin, 10);
+    doc.setDrawColor(201, 147, 58);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 13, pageW - margin, 13);
+
+    // Title
+    doc.setFontSize(14);
+    doc.setTextColor(30);
+    doc.setFont('helvetica', 'bold');
+    doc.text(contract.title || 'Contrato', margin, y);
+    y += 8;
+
+    // Status + dates
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100);
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador', pending_signature: 'Pendiente de firma', active: 'Activo', expired: 'Expirado',
+    };
+    doc.text(`Estado: ${statusLabels[contract.status] || contract.status}`, margin, y);
+    if (contract.effectiveDate) doc.text(`Vigencia: ${new Date(contract.effectiveDate).toLocaleDateString('es-CL')}`, margin + 60, y);
+    y += 6;
+    if (contract.tenant?.name) {
+      doc.text(`Organización: ${contract.tenant.name}`, margin, y);
+      y += 6;
+    }
+    y += 4;
+
+    // Content
+    doc.setFontSize(10);
+    doc.setTextColor(30);
+    const content = (contract.content || contract.description || 'Sin contenido').replace(/<[^>]*>/g, ''); // Strip HTML
+    const lines = doc.splitTextToSize(content, maxW);
+    for (const line of lines) {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(line, margin, y);
+      y += 5;
+    }
+
+    // Footer
+    y = doc.internal.pageSize.getHeight() - 10;
+    doc.setFontSize(7);
+    doc.setTextColor(150);
+    doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360 by Ascenda`, margin, y);
+
+    return Buffer.from(doc.output('arraybuffer'));
+  }
+
   // ─── Contract Queries (admin → super_admin) ──────────────────────────
 
   async submitContractQuery(

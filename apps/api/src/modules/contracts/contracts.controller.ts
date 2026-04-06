@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, ParseUUIDPipe, HttpCode, HttpStatus,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards, Request, ParseUUIDPipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -20,6 +20,13 @@ export class ContractsController {
   @Roles('super_admin')
   getDefaultTemplates() {
     return this.contractsService.getDefaultTemplates();
+  }
+
+  /** SA gets queries for contracts — must be before :id route */
+  @Get('queries/pending')
+  @Roles('super_admin')
+  getPendingQueries() {
+    return this.contractsService.getPendingQueries();
   }
 
   @Get()
@@ -66,6 +73,20 @@ export class ContractsController {
     return this.contractsService.remove(id, req.user.userId);
   }
 
+  @Get(':id/pdf')
+  @Roles('super_admin', 'tenant_admin')
+  async downloadPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Res() res: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const pdf = await this.contractsService.generatePdf(id, tenantId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=contrato-${id.slice(0, 8)}.pdf`);
+    res.send(pdf);
+  }
+
   @Post(':id/send')
   @Roles('super_admin')
   sendForSignature(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
@@ -83,10 +104,4 @@ export class ContractsController {
     return this.contractsService.submitContractQuery(id, req.user.tenantId, req.user.userId, dto);
   }
 
-  /** SA gets queries for contracts */
-  @Get('queries/pending')
-  @Roles('super_admin')
-  getPendingQueries() {
-    return this.contractsService.getPendingQueries();
-  }
 }
