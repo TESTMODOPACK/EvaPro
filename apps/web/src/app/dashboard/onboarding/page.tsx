@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
+import { formatRutInput } from '@/lib/rut';
 import { api } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -174,7 +175,7 @@ function StepEmpresa({ state, onChange }: { state: WizardState; onChange: (k: ke
           <div>
             <label style={labelStyle}>RUT del Representante</label>
             <input className="input" type="text" placeholder="Ej: 12.345.678-9"
-              value={state.legalRepRut} onChange={(e) => onChange('legalRepRut', e.target.value)} />
+              value={state.legalRepRut} onChange={(e) => onChange('legalRepRut', formatRutInput(e.target.value))} maxLength={12} />
           </div>
         </div>
         <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Opcional — necesario para generar contratos legales.</p>
