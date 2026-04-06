@@ -72,7 +72,7 @@ function AnalisisIntegradoContent() {
     setLoadingAnalysis(false);
   };
 
-  const handleExport = async (format: 'pdf' | 'xlsx' | 'pptx') => {
+  const handleExport = async (format: 'pdf' | 'xlsx') => {
     if (!token) return;
     setExporting(format);
     try {
@@ -116,7 +116,7 @@ function AnalisisIntegradoContent() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {(['pdf', 'xlsx', 'pptx'] as const).map(fmt => (
+            {(['pdf', 'xlsx'] as const).map(fmt => (
               <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
                 style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem' }}>
                 {exporting === fmt ? '...' : fmt.toUpperCase()}

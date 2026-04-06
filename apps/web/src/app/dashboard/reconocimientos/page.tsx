@@ -229,7 +229,7 @@ function ReconocimientosPageContent() {
   const [showGuide, setShowGuide] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
-  const handleExport = async (format: 'pdf' | 'xlsx' | 'pptx') => {
+  const handleExport = async (format: 'pdf' | 'xlsx') => {
     if (!token) return;
     setExporting(format);
     try {
@@ -257,7 +257,7 @@ function ReconocimientosPageContent() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-          {isAdmin && (['pdf', 'xlsx', 'pptx'] as const).map((fmt) => (
+          {isAdmin && (['pdf', 'xlsx'] as const).map((fmt) => (
             <button key={fmt} type="button" disabled={!!exporting} onClick={() => handleExport(fmt)}
               style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', fontWeight: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)', color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer', opacity: exporting && exporting !== fmt ? 0.5 : 1 }}>
               {exporting === fmt ? '...' : fmt.toUpperCase()}

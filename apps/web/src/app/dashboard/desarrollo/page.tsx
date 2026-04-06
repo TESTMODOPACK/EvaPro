@@ -131,7 +131,7 @@ function DesarrolloPageContent() {
   const [exporting, setExporting] = useState<string | null>(null);
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
-  const handleExport = async (format: 'pdf' | 'xlsx' | 'pptx') => {
+  const handleExport = async (format: 'pdf' | 'xlsx') => {
     if (!token) return;
     setExporting(format);
     try {
@@ -447,7 +447,7 @@ function DesarrolloPageContent() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {(['pdf', 'xlsx', 'pptx'] as const).map((fmt) => (
+          {(['pdf', 'xlsx'] as const).map((fmt) => (
             <button key={fmt} type="button" disabled={!!exporting}
               onClick={() => handleExport(fmt)}
               style={{
