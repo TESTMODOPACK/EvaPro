@@ -124,6 +124,15 @@ export class TenantsService {
     return tenant;
   }
 
+  /** Validate and normalize a RUT, throwing BadRequestException if invalid */
+  private validateAndNormalizeRut(rut: string, label = 'RUT'): string {
+    const normalized = normalizeRut(rut);
+    if (!validateRut(normalized)) {
+      throw new BadRequestException(`RUT del ${label} inválido. Verifique el formato y dígito verificador.`);
+    }
+    return normalized;
+  }
+
   async findById(id: string): Promise<Tenant> {
     const tenant = await this.tenantRepository.findOne({ where: { id } });
     if (!tenant) throw new NotFoundException('Organización no encontrada');
@@ -164,7 +173,7 @@ export class TenantsService {
       employeeRange: dto.employeeRange || null,
       commercialAddress: dto.commercialAddress || null,
       legalRepName: dto.legalRepName || null,
-      legalRepRut: dto.legalRepRut || null,
+      legalRepRut: dto.legalRepRut ? this.validateAndNormalizeRut(dto.legalRepRut, 'representante legal') : null,
       settings: dto.settings || {},
     });
     const saved = await this.tenantRepository.save(tenant);
@@ -231,7 +240,9 @@ export class TenantsService {
     if (dto.employeeRange !== undefined) tenant.employeeRange = typeof dto.employeeRange === 'string' ? dto.employeeRange.trim() || null : null;
     if (dto.commercialAddress !== undefined) tenant.commercialAddress = typeof dto.commercialAddress === 'string' ? dto.commercialAddress.trim() || null : null;
     if (dto.legalRepName !== undefined) tenant.legalRepName = typeof dto.legalRepName === 'string' ? dto.legalRepName.trim() || null : null;
-    if (dto.legalRepRut !== undefined) tenant.legalRepRut = typeof dto.legalRepRut === 'string' ? dto.legalRepRut.trim() || null : null;
+    if (dto.legalRepRut !== undefined) {
+      tenant.legalRepRut = dto.legalRepRut ? this.validateAndNormalizeRut(dto.legalRepRut, 'representante legal') : null;
+    }
     if (dto.settings !== undefined) tenant.settings = dto.settings;
     return this.tenantRepository.save(tenant);
   }
@@ -450,7 +461,7 @@ export class TenantsService {
       tenant.legalRepName = typeof dto.legalRepName === 'string' ? dto.legalRepName.trim() || null : null;
     }
     if (dto.legalRepRut !== undefined) {
-      tenant.legalRepRut = typeof dto.legalRepRut === 'string' ? dto.legalRepRut.trim() || null : null;
+      tenant.legalRepRut = dto.legalRepRut ? this.validateAndNormalizeRut(dto.legalRepRut, 'representante legal') : null;
     }
 
     tenant.settings = currentSettings;
