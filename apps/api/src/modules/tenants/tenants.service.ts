@@ -227,6 +227,11 @@ export class TenantsService {
     if (dto.maxEmployees !== undefined) tenant.maxEmployees = dto.maxEmployees;
     if (dto.ownerType !== undefined) tenant.ownerType = dto.ownerType;
     if (dto.isActive !== undefined) tenant.isActive = dto.isActive;
+    if (dto.industry !== undefined) tenant.industry = typeof dto.industry === 'string' ? dto.industry.trim() || null : null;
+    if (dto.employeeRange !== undefined) tenant.employeeRange = typeof dto.employeeRange === 'string' ? dto.employeeRange.trim() || null : null;
+    if (dto.commercialAddress !== undefined) tenant.commercialAddress = typeof dto.commercialAddress === 'string' ? dto.commercialAddress.trim() || null : null;
+    if (dto.legalRepName !== undefined) tenant.legalRepName = typeof dto.legalRepName === 'string' ? dto.legalRepName.trim() || null : null;
+    if (dto.legalRepRut !== undefined) tenant.legalRepRut = typeof dto.legalRepRut === 'string' ? dto.legalRepRut.trim() || null : null;
     if (dto.settings !== undefined) tenant.settings = dto.settings;
     return this.tenantRepository.save(tenant);
   }
@@ -429,9 +434,15 @@ export class TenantsService {
       }
     }
 
-    // Commercial address (editable by tenant admin — stored on tenant column, not settings)
+    // Tenant column fields (editable by tenant admin)
     if (dto.commercialAddress !== undefined) {
       tenant.commercialAddress = typeof dto.commercialAddress === 'string' ? dto.commercialAddress.trim() || null : null;
+    }
+    if (dto.industry !== undefined) {
+      tenant.industry = typeof dto.industry === 'string' ? dto.industry.trim() || null : null;
+    }
+    if (dto.employeeRange !== undefined) {
+      tenant.employeeRange = typeof dto.employeeRange === 'string' ? dto.employeeRange.trim() || null : null;
     }
 
     // Legal representative data (for contracts)
@@ -455,6 +466,8 @@ export class TenantsService {
       defaultLanguage: currentSettings.defaultLanguage,
       emailFrom: currentSettings.emailFrom,
       commercialAddress: tenant.commercialAddress,
+      industry: tenant.industry,
+      employeeRange: tenant.employeeRange,
       legalRepName: tenant.legalRepName,
       legalRepRut: tenant.legalRepRut,
     };

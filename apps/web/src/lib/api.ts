@@ -18,6 +18,7 @@ export interface Tenant {
   id: string; name: string; slug: string; rut: string | null; plan: string;
   ownerType: string; maxEmployees: number; isActive: boolean; createdAt: string;
   industry?: string | null; employeeRange?: string | null; commercialAddress?: string | null;
+  legalRepName?: string | null; legalRepRut?: string | null;
 }
 
 export interface UserData {

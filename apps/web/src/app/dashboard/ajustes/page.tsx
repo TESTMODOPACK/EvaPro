@@ -68,6 +68,8 @@ export default function AjustesPage() {
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
   const [commercialAddress, setCommercialAddress] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [employeeRange, setEmployeeRange] = useState('');
   const [legalRepName, setLegalRepName] = useState('');
   const [legalRepRut, setLegalRepRut] = useState('');
   const [emailFrom, setEmailFrom] = useState('');
@@ -101,6 +103,8 @@ export default function AjustesPage() {
         setTenantName(t.name || '');
         setTenantRut(t.rut ? formatRut(t.rut) : '');
         setCommercialAddress(t.commercialAddress || '');
+        setIndustry(t.industry || '');
+        setEmployeeRange(t.employeeRange || '');
         setLegalRepName(t.legalRepName || '');
         setLegalRepRut(t.legalRepRut || '');
         const s = t.settings || {};
@@ -147,6 +151,8 @@ export default function AjustesPage() {
         dateFormat: dateFormat || null,
         defaultLanguage: defaultLanguage || null,
         commercialAddress: commercialAddress || null,
+        industry: industry || null,
+        employeeRange: employeeRange || null,
         legalRepName: legalRepName || null,
         legalRepRut: legalRepRut || null,
         emailFrom: emailFrom || null,
@@ -393,11 +399,11 @@ export default function AjustesPage() {
               </div>
               <div>
                 <label style={labelStyle}>Industria</label>
-                <input className="input" type="text" value={(sub?.tenant as any)?.industry || tenantSettings.industry || 'No registrada'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                <input className="input" type="text" placeholder="Ej: Tecnología, Retail, Servicios..." value={industry} onChange={(e) => setIndustry(e.target.value)} />
               </div>
               <div>
                 <label style={labelStyle}>Rango de colaboradores</label>
-                <input className="input" type="text" value={(sub?.tenant as any)?.employeeRange || tenantSettings.size || 'No registrado'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                <input className="input" type="text" placeholder="Ej: 1-15, 16-50, 51-200" value={employeeRange} onChange={(e) => setEmployeeRange(e.target.value)} />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>Dirección comercial</label>

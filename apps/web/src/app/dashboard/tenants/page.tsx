@@ -36,6 +36,8 @@ const emptyForm = {
   industry: '',
   employeeRange: '',
   commercialAddress: '',
+  legalRepName: '',
+  legalRepRut: '',
   planId: '',
   billingPeriod: 'monthly',
   adminEmail: '',
@@ -178,6 +180,8 @@ export default function TenantsPage() {
         industry: form.industry || null,
         employeeRange: form.employeeRange || null,
         commercialAddress: form.commercialAddress || null,
+        legalRepName: form.legalRepName || null,
+        legalRepRut: form.legalRepRut || null,
       });
 
       // Update or create subscription if plan changed
@@ -237,6 +241,8 @@ export default function TenantsPage() {
       industry: t.industry || '',
       employeeRange: t.employeeRange || '',
       commercialAddress: t.commercialAddress || '',
+      legalRepName: t.legalRepName || '',
+      legalRepRut: t.legalRepRut || '',
       planId: sub?.planId || '',
       billingPeriod: sub?.billingPeriod?.toLowerCase() || 'monthly',
       adminEmail: '',
@@ -570,6 +576,16 @@ export default function TenantsPage() {
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={labelStyle}>Dirección comercial</label>
               <input style={inputStyle} placeholder="Ej: Av. Providencia 1234, Santiago" value={form.commercialAddress} onChange={(e) => setForm({ ...form, commercialAddress: e.target.value })} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div>
+                <label style={labelStyle}>Nombre representante legal</label>
+                <input style={inputStyle} placeholder="Ej: Juan Pérez González" value={form.legalRepName} onChange={(e) => setForm({ ...form, legalRepName: e.target.value })} />
+              </div>
+              <div>
+                <label style={labelStyle}>RUT representante legal</label>
+                <input style={inputStyle} placeholder="Ej: 12.345.678-9" value={form.legalRepRut} onChange={(e) => setForm({ ...form, legalRepRut: e.target.value.replace(/[^0-9kK.\-]/g, '') })} />
+              </div>
             </div>
             <div>
               <label style={labelStyle}>Plan y período {!editingId && '*'}</label>

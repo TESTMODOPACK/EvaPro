@@ -108,6 +108,12 @@ async function main() {
       { table: 'evaluation_cycles', column: 'status_cancelled', sql: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'cancelled' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'evaluation_cycles_status_enum')) THEN ALTER TYPE "evaluation_cycles_status_enum" ADD VALUE IF NOT EXISTS 'cancelled'; END IF; END $$;` },
       { table: 'subscription_plans', column: 'currency', sql: `ALTER TABLE "subscription_plans" ADD COLUMN IF NOT EXISTS "currency" varchar(10) DEFAULT 'UF'` },
       { table: 'evaluation_cycles', column: 'period', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "period" varchar(20) DEFAULT 'annual'` },
+      // New columns added in recent updates
+      { table: 'tenants', column: 'legal_rep_name', sql: `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "legal_rep_name" varchar(200) NULL` },
+      { table: 'tenants', column: 'legal_rep_rut', sql: `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "legal_rep_rut" varchar(12) NULL` },
+      { table: 'subscriptions', column: 'ai_addon_used', sql: `ALTER TABLE "subscriptions" ADD COLUMN IF NOT EXISTS "ai_addon_used" int DEFAULT 0` },
+      { table: 'checkins', column: 'rating', sql: `ALTER TABLE "checkins" ADD COLUMN IF NOT EXISTS "rating" smallint NULL` },
+      { table: 'checkins', column: 'status_requested', sql: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'requested' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'checkins_status_enum')) THEN ALTER TYPE "checkins_status_enum" ADD VALUE IF NOT EXISTS 'requested'; END IF; END $$;` },
     ];
 
     for (const fix of columnFixes) {
