@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, Not, In } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { UserNote } from './entities/user-note.entity';
@@ -824,8 +824,9 @@ export class UsersService {
   // ─── Org Chart ──────────────────────────────────────────────────────
 
   async getOrgChart(tenantId: string): Promise<any[]> {
+    // Exclude super_admin — it's a system account, not part of the org hierarchy
     const users = await this.userRepository.find({
-      where: { tenantId, isActive: true },
+      where: { tenantId, isActive: true, role: Not('super_admin') },
       select: ['id', 'firstName', 'lastName', 'position', 'hierarchyLevel', 'department', 'managerId', 'role'],
       order: { firstName: 'ASC' },
     });
