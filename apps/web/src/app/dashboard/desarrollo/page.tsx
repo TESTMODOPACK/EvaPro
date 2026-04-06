@@ -874,7 +874,15 @@ function DesarrolloPageContent() {
                 <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{progress}%</span>
                 {plan.targetDate && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Límite: {new Date(plan.targetDate).toLocaleDateString('es-CL')}</span>}
                 {plan.actions && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{plan.actions.length} acción{plan.actions.length !== 1 ? 'es' : ''}</span>}
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem' }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                  {pdiSignatures[plan.id] ? (
+                    <SignatureBadge signatures={pdiSignatures[plan.id]} />
+                  ) : (plan.status === 'activo' || plan.status === 'completado') ? (
+                    <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}
+                      onClick={() => setSignModal({ documentType: 'development_plan', documentId: plan.id, documentName: plan.title || 'Plan de desarrollo' })}>
+                      ✍️
+                    </button>
+                  ) : null}
                   {plan.status === 'borrador' && canCreate && (
                     <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} onClick={() => handleActivate(plan.id)}>{t('desarrollo.activate')}</button>
                   )}
