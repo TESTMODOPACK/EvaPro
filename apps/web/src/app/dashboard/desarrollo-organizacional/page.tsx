@@ -733,13 +733,21 @@ function DesarrolloOrganizacionalPageContent() {
                         <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
                           <input
                             type="checkbox"
-                            checked={
-                              users.filter((u: any) => u.isActive !== false).length > 0 &&
-                              users.filter((u: any) => u.isActive !== false).every((u: any) => initForm.participantIds.includes(u.id))
-                            }
+                            checked={(() => {
+                              const deptUsers = users.filter((u: any) => u.isActive !== false && (!initForm.department || u.department === initForm.department));
+                              return deptUsers.length > 0 && deptUsers.every((u: any) => initForm.participantIds.includes(u.id));
+                            })()}
                             onChange={(e) => {
-                              const activeIds = users.filter((u: any) => u.isActive !== false).map((u: any) => u.id);
-                              setInitForm({ ...initForm, participantIds: e.target.checked ? activeIds : [] });
+                              const deptUsers = users.filter((u: any) => u.isActive !== false && (!initForm.department || u.department === initForm.department));
+                              const deptIds = new Set(deptUsers.map((u: any) => u.id));
+                              if (e.target.checked) {
+                                // Agregar todos del departamento, preservando selecciones de otros deptos
+                                const merged = Array.from(new Set([...initForm.participantIds, ...Array.from(deptIds)]));
+                                setInitForm({ ...initForm, participantIds: merged });
+                              } else {
+                                // Quitar solo los del departamento, preservar los de otros deptos
+                                setInitForm({ ...initForm, participantIds: initForm.participantIds.filter((id) => !deptIds.has(id)) });
+                              }
                             }}
                           />
                           {t('common.selectAll', 'Seleccionar todos')}
@@ -762,23 +770,39 @@ function DesarrolloOrganizacionalPageContent() {
                       onChange={(e) => setParticipantSearch(e.target.value)}
                       style={{ marginBottom: '0.4rem', fontSize: '0.82rem' }}
                     />
+                    {initForm.department && !participantSearch.trim() && (
+                      <p style={{ fontSize: '0.72rem', color: 'var(--accent)', margin: '0 0 0.4rem', fontWeight: 600 }}>
+                        Mostrando colaboradores de {initForm.department}. Usa el buscador para encontrar colaboradores de otros departamentos.
+                      </p>
+                    )}
                     <div style={{
                       maxHeight: '180px', overflowY: 'auto',
                       border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
                       background: 'var(--bg-surface)',
                     }}>
-                      {users
-                        .filter((u: any) => u.isActive !== false)
-                        .filter((u: any) => {
-                          if (!participantSearch.trim()) return true;
-                          const q = participantSearch.toLowerCase();
-                          return (
-                            `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
-                            (u.department || '').toLowerCase().includes(q) ||
-                            (u.position || '').toLowerCase().includes(q)
-                          );
-                        })
-                        .map((u: any) => {
+                      {(() => {
+                        const active = users.filter((u: any) => u.isActive !== false);
+                        const selectedSet = new Set(initForm.participantIds);
+                        const filtered = active.filter((u: any) => {
+                          // Already selected? Always show
+                          if (selectedSet.has(u.id)) return true;
+                          // Search active? Search across all
+                          if (participantSearch.trim()) {
+                            const q = participantSearch.toLowerCase();
+                            return `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+                              (u.department || '').toLowerCase().includes(q) ||
+                              (u.position || '').toLowerCase().includes(q);
+                          }
+                          // Department filter (no search)
+                          if (initForm.department) return u.department === initForm.department;
+                          // No filter
+                          return true;
+                        });
+                        return filtered.length === 0 ? (
+                          <div style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                            {participantSearch ? t('common.noResults') : initForm.department ? `No hay colaboradores en ${initForm.department}` : t('common.noResults')}
+                          </div>
+                        ) : filtered.map((u: any) => {
                           const checked = initForm.participantIds.includes(u.id);
                           return (
                             <label
@@ -813,17 +837,8 @@ function DesarrolloOrganizacionalPageContent() {
                               </div>
                             </label>
                           );
-                        })}
-                      {users.filter((u: any) => u.isActive !== false).filter((u: any) => {
-                        if (!participantSearch.trim()) return true;
-                        const q = participantSearch.toLowerCase();
-                        return `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
-                          (u.department || '').toLowerCase().includes(q);
-                      }).length === 0 && (
-                        <div style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                          {t('common.noResults')}
-                        </div>
-                      )}
+                        });
+                      })()}
                     </div>
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem', marginBottom: 0 }}>
                       Los participantes seleccionados recibirán un correo cuando la iniciativa pase a estado &quot;En curso&quot;. Pueden vincular sus PDI individuales a esta iniciativa.
