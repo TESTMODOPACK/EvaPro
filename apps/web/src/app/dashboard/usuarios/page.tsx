@@ -1059,13 +1059,14 @@ export default function UsuariosPage() {
                     ['contrasena', 'No', 'Si se deja vacía, se asigna: EvaPro2026!', 'MiClave123!'],
                     ['rol', 'No', 'Ver tabla de roles abajo. Default: colaborador', 'colaborador'],
                     ['departamento', 'Sí', 'Debe coincidir con departamentos configurados', 'Tecnología'],
-                    ['cargo', 'Sí', 'Debe coincidir con cargos configurados', 'Analista Senior'],
+                    ['cargo', 'Sí', 'Cargo del catálogo o uno nuevo. Si es nuevo, requiere nivel_jerarquico', 'Analista Senior'],
+                    ['nivel_jerarquico', 'Condicional', 'Obligatorio si el cargo no está en el catálogo. 1=más alto, 7+=operativo', '6'],
                     ['fecha_ingreso', 'No', 'Formato: DD-MM-AAAA', '15-01-2024'],
                     ['jefatura_directa', 'No', 'Correo del jefe directo del usuario', 'maria@empresa.cl'],
                   ].map(([col, req, desc, ej]) => (
                     <tr key={col}>
                       <td><code style={{ background: 'rgba(99,102,241,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px', fontWeight: 600 }}>{col}</code></td>
-                      <td style={{ color: req === 'Si' ? 'var(--danger)' : 'var(--text-muted)', fontWeight: req === 'Si' ? 600 : 400 }}>{req}</td>
+                      <td style={{ color: req === 'Si' || req === 'Sí' ? 'var(--danger)' : req === 'Condicional' ? 'var(--warning)' : 'var(--text-muted)', fontWeight: req === 'Si' || req === 'Sí' || req === 'Condicional' ? 600 : 400 }}>{req}</td>
                       <td style={{ color: 'var(--text-secondary)' }}>{desc}</td>
                       <td style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{ej}</td>
                     </tr>
