@@ -101,7 +101,7 @@ function ScoreBar({ value, max = 10, color }: { value: number | null; max?: numb
 /*  Nine Box Tab                                                              */
 /* ========================================================================== */
 
-function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[]; selectedCycleId: string; onCycleChange: (id: string) => void }) {
+function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { cycles: any[]; selectedCycleId: string; onCycleChange: (id: string) => void; onDataLoaded?: () => void }) {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token)!;
   const userRole = useAuthStore((s) => s.user?.role);
@@ -125,7 +125,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
     setSelectedBox(null);
     setGenerateMsg(null);
     api.talent.nineBox(token, selectedCycleId)
-      .then((d) => setNineBoxData(d))
+      .then((d) => { setNineBoxData(d); if (d) onDataLoaded?.(); })
       .catch(() => setNineBoxData(null))
       .finally(() => setLoading(false));
   }, [selectedCycleId, token]);
@@ -610,7 +610,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[];
 /*  Segmentation Tab                                                          */
 /* ========================================================================== */
 
-function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: any[]; selectedCycleId: string; onCycleChange: (id: string) => void }) {
+function SegmentationTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { cycles: any[]; selectedCycleId: string; onCycleChange: (id: string) => void; onDataLoaded?: () => void }) {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token)!;
   const [segData, setSegData] = useState<any>(null);
@@ -629,7 +629,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange }: { cycles: a
       api.talent.segmentation(token, selectedCycleId),
       api.talent.findByCycle(token, selectedCycleId),
     ])
-      .then(([seg, list]) => { setSegData(seg); setAssessments(list || []); })
+      .then(([seg, list]) => { setSegData(seg); setAssessments(list || []); if (list?.length) onDataLoaded?.(); })
       .catch(() => { setSegData(null); setAssessments([]); })
       .finally(() => setLoading(false));
   }, [selectedCycleId, token]);
@@ -917,6 +917,7 @@ function TalentoPageContent() {
   const [selectedCycleId, setSelectedCycleId] = useState('');
   const [showGuide, setShowGuide] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [hasGeneratedData, setHasGeneratedData] = useState(false);
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
   const handleExport = async (format: 'pdf' | 'xlsx') => {
@@ -926,14 +927,17 @@ function TalentoPageContent() {
       const res = await fetch(`${BASE_URL}/talent/cycle/${selectedCycleId}/export?format=${format}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error('Error');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Error al exportar' }));
+        throw new Error(err.message || 'Error al exportar');
+      }
       const blob = await res.blob();
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = `talento.${format}`;
       link.click();
       URL.revokeObjectURL(link.href);
-    } catch {} finally { setExporting(null); }
+    } catch (err: any) { alert(err.message || 'Error al exportar'); } finally { setExporting(null); }
   };
 
   useEffect(() => {
@@ -956,7 +960,7 @@ function TalentoPageContent() {
             {t('talento.subtitle')}
           </p>
         </div>
-        {selectedCycleId && (
+        {selectedCycleId && hasGeneratedData && (
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             {(['pdf', 'xlsx'] as const).map((fmt) => (
               <button key={fmt} type="button" disabled={!!exporting}
@@ -1101,10 +1105,10 @@ function TalentoPageContent() {
       ) : (
         <>
           {tab === 'ninebox' && (
-            <NineBoxTab cycles={cycles} selectedCycleId={selectedCycleId} onCycleChange={setSelectedCycleId} />
+            <NineBoxTab cycles={cycles} selectedCycleId={selectedCycleId} onCycleChange={(id) => { setSelectedCycleId(id); setHasGeneratedData(false); }} onDataLoaded={() => setHasGeneratedData(true)} />
           )}
           {tab === 'segmentation' && (
-            <SegmentationTab cycles={cycles} selectedCycleId={selectedCycleId} onCycleChange={setSelectedCycleId} />
+            <SegmentationTab cycles={cycles} selectedCycleId={selectedCycleId} onCycleChange={(id) => { setSelectedCycleId(id); setHasGeneratedData(false); }} onDataLoaded={() => setHasGeneratedData(true)} />
           )}
         </>
       )}

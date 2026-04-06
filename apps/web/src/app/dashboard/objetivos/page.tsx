@@ -1184,25 +1184,6 @@ function ObjetivosPageContent() {
           {pageSubtitle}
         </p>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {canCreate && (
-            <button className="btn-primary" onClick={() => { setShowForm(!showForm); setShowGuide(false); }} style={{ fontSize: '0.82rem' }}>
-              {showForm ? t('common.cancel') : isEmployee ? '+ Proponer' : `+ ${t('objetivos.newObjective')}`}
-            </button>
-          )}
-          {/* Export buttons */}
-          {(['pdf', 'xlsx'] as const).map((fmt) => (
-            <button key={fmt} type="button" disabled={!!exporting}
-              onClick={() => handleExport(fmt)}
-              style={{
-                padding: '0.35rem 0.65rem', fontSize: '0.72rem', fontWeight: 600,
-                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)',
-                background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)',
-                color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer',
-                opacity: exporting && exporting !== fmt ? 0.5 : 1,
-              }}>
-              {exporting === fmt ? '...' : fmt.toUpperCase()}
-            </button>
-          ))}
           <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
             {showGuide ? t('objetivos.hideGuide') : t('objetivos.howItWorks')}
           </button>
@@ -1523,11 +1504,35 @@ function ObjetivosPageContent() {
 
       {/* Tree View — admin/manager only */}
       {activeTab === 'tree' && (isAdmin || isManager) ? (
-        <ObjectiveTreeView data={treeData || []} loading={treeLoading} />
+        <div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {(['pdf', 'xlsx'] as const).map((fmt) => (
+              <button key={fmt} type="button" disabled={!!exporting} onClick={() => handleExport(fmt)}
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', fontWeight: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)', color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer' }}>
+                {exporting === fmt ? '...' : fmt.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <ObjectiveTreeView data={treeData || []} loading={treeLoading} />
+        </div>
       ) : activeTab === 'team' && isManager ? (
         <TeamSummaryView />
       ) : (
       <>
+      {/* List tab: Nuevo Objetivo + Export buttons */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {canCreate && (
+          <button className="btn-primary" onClick={() => { setShowForm(!showForm); setShowGuide(false); }} style={{ fontSize: '0.82rem' }}>
+            {showForm ? t('common.cancel') : isEmployee ? '+ Proponer' : `+ ${t('objetivos.newObjective')}`}
+          </button>
+        )}
+        {(['pdf', 'xlsx'] as const).map((fmt) => (
+          <button key={fmt} type="button" disabled={!!exporting} onClick={() => handleExport(fmt)}
+            style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', fontWeight: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', background: exporting === fmt ? 'var(--bg-hover)' : 'var(--bg-surface)', color: 'var(--text-secondary)', cursor: exporting ? 'wait' : 'pointer' }}>
+            {exporting === fmt ? '...' : fmt.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
       {/* Weight total bar — only shown when at least one objective has a weight > 0 */}
       {myObjectives.length > 0 && totalWeight > 0 && (

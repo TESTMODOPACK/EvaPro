@@ -1081,6 +1081,16 @@
     "newStrategicPlan": "Nuevo Plan Estratégico",
     "editPlan": "Editar Plan",
     "createPlan": "Crear Plan",
+    "status": {
+      "borrador": "Borrador",
+      "activo": "Activo",
+      "completado": "Completado",
+      "cancelado": "Cancelado",
+      "pendiente": "Pendiente",
+      "en_curso": "En Curso",
+      "completada": "Completada",
+      "cancelada": "Cancelada"
+    },
     "noPlans": "No hay planes organizacionales",
     "noPlansAdmin": "Crea tu primer plan estratégico para organizar las iniciativas de desarrollo.",
     "noPlansManager": "El administrador aún no ha creado planes organizacionales.",
