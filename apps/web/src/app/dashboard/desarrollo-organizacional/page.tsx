@@ -137,7 +137,7 @@ function DesarrolloOrganizacionalPageContent() {
       // BUG #5 fix: managers también pueden cargar planes (el backend lo permite ahora)
       const [pl, us] = await Promise.all([
         api.orgDevelopment.plans.list(token).catch(() => []),
-        api.users.list(token).catch(() => []),
+        api.users.list(token, 1, 500).catch(() => []),
       ]);
       setPlans(pl ?? []);
       const usersData = Array.isArray(us) ? us : (us as any)?.data ?? [];
@@ -429,6 +429,8 @@ function DesarrolloOrganizacionalPageContent() {
               <li><strong>Iniciativas:</strong> Acciones concretas dentro de un plan, con responsable, progreso (%) y fecha límite.</li>
               <li><strong>Flujo:</strong> 1) Crear un plan. 2) Agregar iniciativas al plan. 3) Asignar responsables. 4) Actualizar progreso periódicamente. 5) Marcar como completada al finalizar.</li>
               <li><strong>Estadísticas:</strong> Progreso promedio, cantidad de iniciativas por estado, departamentos involucrados.</li>
+              <li><strong>Responsable:</strong> Es la persona encargada de liderar y dar seguimiento a la iniciativa. Solo puede haber uno por iniciativa.</li>
+              <li><strong>Participantes:</strong> Son los colaboradores involucrados en la ejecución de la iniciativa. Reciben notificación por correo cuando la iniciativa inicia y pueden vincular sus Planes de Desarrollo (PDI) individuales a la iniciativa.</li>
             </ul>
             <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginTop: '0.75rem' }}>
               <strong style={{ color: 'var(--accent)' }}>Estructura: Empresa → Departamento → Acción.</strong>{' '}
@@ -653,28 +655,34 @@ function DesarrolloOrganizacionalPageContent() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      {t('orgDesarrollo.form.responsible')}
+                      Responsable (líder de la iniciativa)
                     </label>
                     <select className="input" value={initForm.responsibleId} onChange={(e) => setInitForm({ ...initForm, responsibleId: e.target.value })}>
-                      <option value="">{t('common.unassigned')}</option>
-                      {users.filter((u: any) => u.isActive !== false).map((u: any) => (
-                        <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
-                      ))}
+                      <option value="">— Seleccionar responsable —</option>
+                      {users
+                        .filter((u: any) => u.isActive !== false)
+                        .filter((u: any) => !initForm.department || u.department === initForm.department || !u.department)
+                        .map((u: any) => (
+                          <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}</option>
+                        ))}
                     </select>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                      {t('orgDesarrollo.form.progress')}
-                    </label>
-                    <input
-                      className="input"
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={initForm.progress}
-                      onChange={(e) => setInitForm({ ...initForm, progress: Number(e.target.value) })}
-                    />
-                  </div>
+                  {/* Progress only shown when editing, not creating */}
+                  {editingInitId && (
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                        {t('orgDesarrollo.form.progress')}
+                      </label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={initForm.progress}
+                        onChange={(e) => setInitForm({ ...initForm, progress: Number(e.target.value) })}
+                      />
+                    </div>
+                  )}
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
                       {t('orgDesarrollo.form.budget')}
@@ -710,11 +718,11 @@ function DesarrolloOrganizacionalPageContent() {
                     />
                   </div>
 
-                  {/* Participants multi-select */}
+                  {/* Participantes — colaboradores involucrados en la iniciativa */}
                   <div style={{ gridColumn: 'span 2' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                       <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        {t('orgDesarrollo.form.participants')}
+                        Participantes (colaboradores involucrados)
                         {initForm.participantIds.length > 0 && (
                           <span style={{ marginLeft: '0.5rem', background: 'var(--accent)', color: '#fff', borderRadius: '999px', padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>
                             {initForm.participantIds.length}
@@ -734,7 +742,7 @@ function DesarrolloOrganizacionalPageContent() {
                               setInitForm({ ...initForm, participantIds: e.target.checked ? activeIds : [] });
                             }}
                           />
-                          {t('common.selectAll')}
+                          Seleccionar todos
                         </label>
                         {initForm.participantIds.length > 0 && (
                           <button
@@ -742,7 +750,7 @@ function DesarrolloOrganizacionalPageContent() {
                             onClick={() => setInitForm({ ...initForm, participantIds: [] })}
                             style={{ fontSize: '0.72rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                           >
-                            {t('common.clear')}
+                            Limpiar
                           </button>
                         )}
                       </div>
@@ -818,7 +826,7 @@ function DesarrolloOrganizacionalPageContent() {
                       )}
                     </div>
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem', marginBottom: 0 }}>
-                      Los colaboradores seleccionados recibirán un correo cuando la iniciativa esté en curso.
+                      Los participantes seleccionados recibirán un correo cuando la iniciativa pase a estado &quot;En curso&quot;. Pueden vincular sus PDI individuales a esta iniciativa.
                     </p>
                   </div>
                 </div>
