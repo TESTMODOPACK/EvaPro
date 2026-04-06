@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
+import { useFlightRisk, useRetentionRecommendations } from '@/hooks/useAiInsights';
+import { useDepartments } from '@/hooks/useDepartments';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#fb7185'];
@@ -56,7 +58,7 @@ function TurnoverPageContent() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
-  const [activeSection, setActiveSection] = useState<'departures' | 'movements'>('departures');
+  const [activeSection, setActiveSection] = useState<'departures' | 'movements' | 'flight-risk' | 'retention'>('departures');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -167,14 +169,11 @@ function TurnoverPageContent() {
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('analyticsRotacion.guide.title')}</h3>
           <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <p><strong>¿Qué muestra?</strong> Análisis de salidas de la empresa y movimientos internos en los últimos 12 meses — tipo de salida, motivo, voluntaria/involuntaria, y movimientos de personal entre áreas.</p>
-            <p><strong>Indicadores:</strong> Usuarios activos, bajas en 12 meses, tasa de rotación (bajas/total al inicio del período × 100), inactivos totales.</p>
-            <p><strong>Rangos de rotación:</strong> Saludable (&lt;8%), Moderada (8-15%), Alta (15-20%), Crítica (&gt;20%).</p>
-            <p><strong>Bajas por mes:</strong> Gráfico de barras mostrando los últimos 12 meses (incluye meses sin bajas con valor 0).</p>
-            <p><strong>Antigüedad al salir:</strong> Distribución de cuánto tiempo llevaban los colaboradores que se fueron (&lt;6m, 6-12m, 1-2a, 2-5a, &gt;5a).</p>
-            <p><strong>Bajas por departamento:</strong> Tabla con gráfico horizontal identificando áreas más afectadas.</p>
-            <p><strong>Análisis:</strong> Interpretación detallada con recomendaciones específicas según los datos (entrevistas de salida, revisión de onboarding, etc.).</p>
-            <p><strong>Exportación:</strong> Excel (multi-hoja) y CSV.</p>
+            <p><strong>¿Qué muestra?</strong> Dashboard integral de dotación: salidas de la empresa, movimientos internos, análisis de riesgo de fuga y recomendaciones de retención.</p>
+            <p><strong>Salidas:</strong> Bajas en los últimos 12 meses con tipo (renuncia, despido, jubilación, etc.), motivo, voluntaria/involuntaria, tasa de rotación, y distribución por departamento y antigüedad.</p>
+            <p><strong>Movimientos Internos:</strong> Cambios de departamento, cargo, promociones y transferencias. Flujo entre departamentos y movimientos recientes.</p>
+            <p><strong>Riesgo de Fuga:</strong> Puntaje algorítmico (0-100) por colaborador basado en 5 factores: evaluación (30%), objetivos (25%), feedback (20%), objetivos en riesgo (15%), Nine Box (10%). Datos de todos los ciclos en tiempo real.</p>
+            <p><strong>Retención:</strong> Recomendaciones de acciones de retención para colaboradores en riesgo alto y medio: planes de desarrollo, coaching, engagement, revisión de compensación y conversaciones de retención.</p>
           </div>
           <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
             <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Solo administradores.
@@ -185,8 +184,10 @@ function TurnoverPageContent() {
       {/* Section tabs */}
       <div className="animate-fade-up" style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: '1.5rem' }}>
         {[
-          { key: 'departures' as const, label: `Salidas de la Empresa (${data.totalDeactivations12m || 0})` },
-          { key: 'movements' as const, label: `Movimientos Internos (${movData?.totalMovements || 0})` },
+          { key: 'departures' as const, label: `Salidas (${data.totalDeactivations12m || 0})` },
+          { key: 'movements' as const, label: `Movimientos (${movData?.totalMovements || 0})` },
+          { key: 'flight-risk' as const, label: 'Riesgo de Fuga' },
+          { key: 'retention' as const, label: 'Retención' },
         ].map(tab => (
           <button
             key={tab.key}
@@ -593,6 +594,198 @@ function TurnoverPageContent() {
           )}
         </div>
       )}
+      {/* ═══════════ FLIGHT RISK SECTION ═══════════ */}
+      {activeSection === 'flight-risk' && <FlightRiskTab />}
+
+      {/* ═══════════ RETENTION SECTION ═══════════ */}
+      {activeSection === 'retention' && <RetentionTab />}
+    </div>
+  );
+}
+
+/* ─── Flight Risk Tab ────────────────────────────────────────────────── */
+function FlightRiskTab() {
+  const { data, isLoading, error } = useFlightRisk();
+  const { departments } = useDepartments();
+  const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [riskFilter, setRiskFilter] = useState('');
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
+  if (error) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error al cargar datos de riesgo de fuga</div>;
+  if (!data || !data.scores) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos disponibles. Se requieren evaluaciones completadas, objetivos y feedback para calcular el riesgo.</div>;
+
+  const filtered = data.scores.filter((s: any) => {
+    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !(s.department || '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (deptFilter && s.department !== deptFilter) return false;
+    if (riskFilter && s.riskLevel !== riskFilter) return false;
+    return true;
+  });
+
+  const riskColor = (level: string) => level === 'high' ? 'var(--danger)' : level === 'medium' ? 'var(--warning)' : 'var(--success)';
+  const riskLabel = (level: string) => level === 'high' ? 'Alto' : level === 'medium' ? 'Medio' : 'Bajo';
+
+  return (
+    <div>
+      {/* KPIs */}
+      <div className="animate-fade-up mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--danger)' }}>{data.summary?.high || 0}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Riesgo Alto</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--warning)' }}>{data.summary?.medium || 0}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Riesgo Medio</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)' }}>{data.summary?.low || 0}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Riesgo Bajo</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{data.totalEmployees || 0}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Total Evaluados</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input className="input" placeholder="Buscar por nombre o departamento..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: '200px', fontSize: '0.85rem' }} />
+        <select className="input" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ minWidth: '150px', fontSize: '0.82rem' }}>
+          <option value="">Todos los deptos.</option>
+          {departments.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select className="input" value={riskFilter} onChange={(e) => setRiskFilter(e.target.value)} style={{ minWidth: '120px', fontSize: '0.82rem' }}>
+          <option value="">Todo riesgo</option>
+          <option value="high">Alto</option>
+          <option value="medium">Medio</option>
+          <option value="low">Bajo</option>
+        </select>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{filtered.length} de {data.scores.length}</span>
+      </div>
+
+      {/* Table */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1.5rem' }}>
+        <div className="table-wrapper" style={{ margin: 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr>
+                {['Colaborador', 'Departamento', 'Riesgo', 'Puntaje', 'Factores'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '0.6rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0, 30).map((s: any) => (
+                <tr key={s.userId} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{s.name}<br /><span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>{s.position || ''}</span></td>
+                  <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>{s.department || '—'}</td>
+                  <td style={{ padding: '0.6rem 0.75rem' }}><span style={{ fontWeight: 700, color: riskColor(s.riskLevel) }}>{riskLabel(s.riskLevel)}</span></td>
+                  <td style={{ padding: '0.6rem 0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ width: '60px', height: '6px', background: 'var(--border)', borderRadius: '999px' }}>
+                        <div style={{ height: '100%', width: `${s.riskScore}%`, background: riskColor(s.riskLevel), borderRadius: '999px' }} />
+                      </div>
+                      <span style={{ fontWeight: 700, fontSize: '0.78rem' }}>{s.riskScore}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    {(s.factors || []).filter((f: any) => f.impact === 'negative').map((f: any) => f.label).join(', ') || 'Sin factores negativos'}
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Analysis */}
+      <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: `4px solid ${(data.summary?.high || 0) > 3 ? 'var(--danger)' : (data.summary?.high || 0) > 0 ? 'var(--warning)' : 'var(--success)'}` }}>
+        <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Análisis de Riesgo de Fuga</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          <p><strong>Nivel general:</strong> {data.summary?.high || 0} colaboradores en riesgo alto, {data.summary?.medium || 0} en medio y {data.summary?.low || 0} en bajo de un total de {data.totalEmployees || 0}.</p>
+          {(data.summary?.high || 0) > 0 && <p><strong>Acción urgente:</strong> Los colaboradores en riesgo alto requieren atención inmediata — conversaciones de retención, revisión de condiciones laborales y planes de acción personalizados.</p>}
+          {(data.summary?.high || 0) === 0 && <p style={{ color: 'var(--success)' }}><strong>Sin riesgo alto:</strong> Ningún colaborador se encuentra en riesgo alto de fuga. Mantener las buenas prácticas de retención.</p>}
+          <p><strong>Factores evaluados:</strong> Puntaje de evaluación (30%), cumplimiento de objetivos (25%), feedback recibido en 90 días (20%), objetivos en riesgo (15%), posición Nine Box (10%). Datos calculados en tiempo real de todos los ciclos.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Retention Tab ──────────────────────────────────────────────────── */
+function RetentionTab() {
+  const { data, isLoading } = useRetentionRecommendations();
+  const [search, setSearch] = useState('');
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
+  if (!data || !data.recommendations) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos de retención. Se requiere primero el análisis de riesgo de fuga.</div>;
+
+  const filtered = data.recommendations.filter((r: any) =>
+    !search || r.name?.toLowerCase().includes(search.toLowerCase()) || (r.department || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const actionTypeLabels: Record<string, string> = { pdi: 'Plan de Desarrollo', coaching: 'Coaching', engagement: 'Engagement', retention: 'Retención', conversation: 'Conversación' };
+  const priorityColor: Record<string, string> = { alta: 'var(--danger)', media: 'var(--warning)', baja: 'var(--text-muted)' };
+
+  return (
+    <div>
+      {/* KPIs */}
+      <div className="animate-fade-up mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--danger)' }}>{data.totalHighRisk || 0}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Riesgo Alto</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--warning)' }}>{data.totalMediumRisk || 0}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Riesgo Medio</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{data.recommendations?.length || 0}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Acciones Recomendadas</div>
+        </div>
+      </div>
+
+      {/* Search */}
+      <input className="input" placeholder="Buscar por nombre o departamento..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: '1rem', fontSize: '0.85rem' }} />
+
+      {/* Recommendations */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+        {filtered.map((r: any, i: number) => (
+          <div key={i} className="card" style={{ padding: '1rem', borderLeft: `3px solid ${r.riskLevel === 'high' ? 'var(--danger)' : 'var(--warning)'}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{r.name}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{r.department || ''}</span>
+              </div>
+              <span style={{ fontWeight: 700, color: r.riskLevel === 'high' ? 'var(--danger)' : 'var(--warning)', fontSize: '0.78rem' }}>
+                Riesgo: {r.riskScore}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {(r.actions || []).map((a: any, j: number) => (
+                <div key={j} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
+                  <span className="badge badge-ghost" style={{ fontSize: '0.68rem' }}>{actionTypeLabels[a.type] || a.type}</span>
+                  <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{a.description}</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: priorityColor[a.priority] || 'var(--text-muted)' }}>{a.priority}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin recomendaciones de retención activas</div>}
+      </div>
+
+      {/* Analysis */}
+      <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
+        <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Análisis de Retención</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          <p><strong>Cobertura:</strong> Se generan recomendaciones para todos los colaboradores en riesgo alto y los 5 principales en riesgo medio.</p>
+          <p><strong>Tipos de acción:</strong> Plan de Desarrollo (mejorar competencias), Coaching (acompañamiento directo), Engagement (aumentar conexión), Retención (compensación/beneficios), Conversación (diálogo directo con jefatura).</p>
+          {(data.totalHighRisk || 0) > 0 && <p><strong>Prioridad:</strong> Los {data.totalHighRisk} colaboradores en riesgo alto deben ser atendidos con urgencia. Las acciones marcadas como "alta" prioridad requieren ejecución inmediata.</p>}
+          {(data.totalHighRisk || 0) === 0 && <p style={{ color: 'var(--success)' }}><strong>Sin urgencias:</strong> No hay colaboradores en riesgo alto. Enfocarse en acciones preventivas para los de riesgo medio.</p>}
+        </div>
+      </div>
     </div>
   );
 }

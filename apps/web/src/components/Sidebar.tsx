@@ -216,7 +216,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/analytics-ciclos', label: 'Comparativa de Ciclos', icon: icons.calibration },
         ...(isAdmin ? [
           { href: '/dashboard/analytics-uso', label: 'Adopción y Uso', icon: icons.analytics },
-          { href: '/dashboard/analytics-rotacion', label: 'Análisis de Rotación', icon: icons.users },
+          { href: '/dashboard/analytics-rotacion', label: 'Análisis de Dotación', icon: icons.users },
         ] : []),
       ],
     }] : []),

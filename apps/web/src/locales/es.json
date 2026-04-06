@@ -1697,8 +1697,8 @@
     }
   },
   "analyticsRotacion": {
-    "title": "Análisis de Rotación",
-    "subtitle": "Análisis de bajas en los últimos 12 meses",
+    "title": "Análisis de Dotación",
+    "subtitle": "Salidas, movimientos internos, riesgo de fuga y retención de talento",
     "active": "Activos",
     "departures12m": "Bajas (12m)",
     "turnoverRate": "Tasa Rotación",
