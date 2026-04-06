@@ -2,21 +2,22 @@
 FROM node:20-alpine AS builder
 
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+
+COPY package.json ./
+RUN pnpm install --no-frozen-lockfile
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
 # ── Production stage ────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 COPY --from=builder /app/package.json ./
-COPY --from=builder /app/package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts
-
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
