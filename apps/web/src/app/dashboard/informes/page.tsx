@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
@@ -317,33 +317,8 @@ export default function InformesPage() {
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const { data: usersPage } = useUsers(1, 500);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
-  const [exporting, setExporting] = useState<string | null>(null);
-
-  const handleExport = useCallback(async (format: 'pdf' | 'xlsx' | 'pptx' | 'csv') => {
-    if (!token || !selectedCycleId || !selectedUserId) return;
-    setExporting(format);
-    try {
-      const userParam = `&userId=${selectedUserId}`;
-      const res = await fetch(`${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=${format}${userParam}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('Error al exportar');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const selectedUser = users.find((u: any) => u.id === selectedUserId);
-      const userName = selectedUser ? `${selectedUser.firstName}-${selectedUser.lastName}` : selectedUserId;
-      a.download = `informe-${userName}.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      toast.error(err.message || 'Error al descargar el reporte');
-    } finally {
-      setExporting(null);
-    }
-  }, [token, selectedCycleId]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
 
   // Advanced filters
@@ -368,6 +343,30 @@ export default function InformesPage() {
   const sortedCycles = cycles
     ? cycles.filter((c: any) => c.status === 'closed')
     : [];
+
+  const handleExport = async (format: 'pdf' | 'xlsx' | 'pptx') => {
+    if (!token || !selectedCycleId || !selectedUserId) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=${format}&userId=${selectedUserId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error al exportar');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const selectedUser = users.find((u: any) => u.id === selectedUserId);
+      const userName = selectedUser ? `${selectedUser.firstName}-${selectedUser.lastName}` : selectedUserId;
+      a.download = `informe-${userName}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al descargar el reporte');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -536,7 +535,7 @@ export default function InformesPage() {
               </div>
               {selectedUserId && (
                 <div style={{ display: 'flex', gap: '0.35rem' }}>
-                  {(['pdf', 'xlsx', 'pptx', 'csv'] as const).map((fmt) => (
+                  {(['pdf', 'xlsx', 'pptx'] as const).map((fmt) => (
                     <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
                       style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}>
                       {exporting === fmt ? '...' : fmt.toUpperCase()}
@@ -652,7 +651,7 @@ function EvolutionSection({ userId }: { userId: string }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.35rem' }}>
-          {(['xlsx', 'pdf', 'pptx', 'csv'] as const).map(fmt => (
+          {(['xlsx'] as const).map(fmt => (
             <button key={fmt} className="btn-ghost" onClick={() => handleExportEvolution(fmt)} disabled={!!exporting}
               style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}>
               {exporting === fmt ? '...' : fmt.toUpperCase()}
