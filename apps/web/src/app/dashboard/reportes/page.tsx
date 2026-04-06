@@ -86,7 +86,7 @@ export default function ReportesPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Resumen Ejecutivo del Ciclo</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Resumen Ejecutivo por Ciclo</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           Vista integral del ciclo de evaluación: desempeño, objetivos, desarrollo y clima organizacional
         </p>
@@ -100,7 +100,7 @@ export default function ReportesPage() {
       </div>
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Resumen Ejecutivo del Ciclo</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Resumen Ejecutivo por Ciclo</h3>
           <div style={{ marginBottom: '1rem' }}>
             <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Qué muestra este reporte?</p>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
@@ -267,8 +267,10 @@ export default function ReportesPage() {
                     {[
                       { label: 'Total', value: execData.objectives.total, color: 'var(--text-primary)' },
                       { label: 'Completados', value: execData.objectives.completed, color: '#10b981' },
-                      { label: 'En Progreso', value: execData.objectives.inProgress, color: '#6366f1' },
+                      { label: 'En progreso', value: execData.objectives.inProgress, color: '#6366f1' },
                       { label: 'Pendientes', value: execData.objectives.pendingApproval, color: '#f59e0b' },
+                      ...(execData.objectives.draft > 0 ? [{ label: 'Borrador', value: execData.objectives.draft, color: 'var(--text-muted)' }] : []),
+                      ...(execData.objectives.abandoned > 0 ? [{ label: 'Cancelados', value: execData.objectives.abandoned, color: '#ef4444' }] : []),
                       { label: 'Cumplimiento', value: `${execData.objectives.completionPct || 0}%`, color: (execData.objectives.completionPct || 0) >= 70 ? '#10b981' : '#f59e0b' },
                     ].map((m, i) => (
                       <div key={i} className="card" style={{ padding: '1rem', textAlign: 'center' }}>

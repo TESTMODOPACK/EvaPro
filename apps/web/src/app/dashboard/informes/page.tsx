@@ -239,6 +239,66 @@ function SelfVsOthersSection({ cycleId, userId }: { cycleId: string; userId: str
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+
+      {/* Detailed analysis */}
+      <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+        <h3 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--accent)' }}>
+          {'📊'} Análisis detallado de resultados
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
+          {chartData.map((entry, i) => {
+            const level = entry.score >= 8 ? 'Destacado' : entry.score >= 6 ? 'Competente' : entry.score >= 4 ? 'En desarrollo' : 'Requiere atención';
+            const levelColor = entry.score >= 8 ? '#10b981' : entry.score >= 6 ? '#6366f1' : entry.score >= 4 ? '#f59e0b' : '#ef4444';
+            return (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.6rem', background: i === 0 ? 'rgba(99,102,241,0.04)' : 'transparent', borderRadius: 'var(--radius-sm)' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', flex: 1 }}>{entry.name}</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: entry.fill, minWidth: '40px', textAlign: 'right' }}>{entry.score.toFixed(1)}</span>
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: levelColor, minWidth: '110px', textAlign: 'right' }}>{level}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
+          {data.selfScore != null && data.othersAvg != null && (() => {
+            const gap = data.gap || 0;
+            const selfHigh = gap > 0.5;
+            const selfLow = gap < -0.5;
+            const selfLevel = data.selfScore >= 8 ? 'alto' : data.selfScore >= 6 ? 'moderado' : 'bajo';
+            const othersLevel = data.othersAvg >= 8 ? 'alto' : data.othersAvg >= 6 ? 'moderado' : 'bajo';
+            return (
+              <>
+                <p style={{ marginBottom: '0.5rem' }}>
+                  <strong>Autoevaluación ({data.selfScore.toFixed(1)}):</strong> Nivel <strong>{selfLevel}</strong>.
+                  {' '}<strong>Evaluadores ({data.othersAvg.toFixed(1)}):</strong> Nivel <strong>{othersLevel}</strong>.
+                </p>
+                {selfHigh && (
+                  <p style={{ marginBottom: '0.5rem', padding: '0.5rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)' }}>
+                    <strong style={{ color: 'var(--warning)' }}>⚠ Brecha positiva (+{gap.toFixed(2)}):</strong> Autopercepción superior a la de evaluadores. Puede indicar sobreestimación. Se recomienda retroalimentación para alinear expectativas.
+                  </p>
+                )}
+                {selfLow && (
+                  <p style={{ marginBottom: '0.5rem', padding: '0.5rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)' }}>
+                    <strong style={{ color: 'var(--success)' }}>✓ Brecha negativa ({gap.toFixed(2)}):</strong> Evaluadores reconocen un desempeño superior al auto-atribuido. Puede reflejar modestia. Se recomienda reforzar logros y autoconfianza.
+                  </p>
+                )}
+                {!selfHigh && !selfLow && (
+                  <p style={{ marginBottom: '0.5rem', padding: '0.5rem', background: 'rgba(16,185,129,0.04)', borderRadius: 'var(--radius-sm)' }}>
+                    <strong style={{ color: 'var(--success)' }}>✓ Percepción alineada:</strong> Brecha ≤ 0.5 puntos. Buena autoconsciencia y percepción realista del desempeño.
+                  </p>
+                )}
+                {Object.entries(data.byRelation || {}).length > 0 && (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                    <strong>Desglose:</strong>
+                    {Object.entries(data.byRelation || {}).map(([rel, score]: [string, any]) => (
+                      <span key={rel}> {relationLabels[rel] || rel}: <strong>{(score || 0).toFixed(1)}</strong> ·</span>
+                    ))}
+                  </p>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      </div>
     </div>
   );
 }
@@ -443,7 +503,8 @@ export default function InformesPage() {
 
       {/* Guide */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
-        <button onClick={() => setShowGuide(!showGuide)} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, padding: 0 }}>
+        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ transition: 'transform 0.2s', transform: showGuide ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
           {showGuide ? t('common.hideGuide') : t('common.showGuide')}
         </button>
         {showGuide && (
@@ -617,19 +678,7 @@ export default function InformesPage() {
             )}
           </div>
 
-          {/* ── SECCIÓN GENERAL (referencia, abajo) ────────────────── */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)' }}>
-              <span style={{ fontSize: '1.1rem' }}>{'📊'}</span>
-              <div>
-                <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Vista General</h2>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Mapa de calor por departamento — haz clic para ver el detalle</p>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <HeatmapSection cycleId={selectedCycleId} />
-            </div>
-          </div>
+          {/* Mapa de Calor movido a Resumen Ejecutivo por Ciclo */}
 
         </div>
       )}
