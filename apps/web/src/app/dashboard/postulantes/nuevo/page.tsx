@@ -142,13 +142,14 @@ export default function NuevoProcesoPage() {
       return;
     }
     // Initialize equal weights if not already set
-    const equalWeight = Math.round((100 / requirements.length) * 10) / 10;
     const hasWeights = requirements.some(r => r.weight != null && r.weight > 0);
     if (!hasWeights) {
-      const remainder = 100 - equalWeight * requirements.length;
+      const n = requirements.length;
+      const base = Math.round((100 / n) * 100) / 100;
+      const lastWeight = Number((100 - base * (n - 1)).toFixed(2));
       setRequirements(prev => prev.map((r, i) => ({
         ...r,
-        weight: i === 0 ? Number((equalWeight + remainder).toFixed(1)) : equalWeight,
+        weight: i === n - 1 ? lastWeight : base,
       })));
     }
     setStep('weights');
@@ -158,16 +159,16 @@ export default function NuevoProcesoPage() {
   const distributeEqually = () => {
     const n = requirements.length;
     if (n === 0) return;
-    const base = Math.floor((100 / n) * 10) / 10;
-    const remainder = Number((100 - base * n).toFixed(1));
+    const base = Math.round((100 / n) * 100) / 100;
+    const lastWeight = Number((100 - base * (n - 1)).toFixed(2));
     setRequirements(prev => prev.map((r, i) => ({
       ...r,
-      weight: i === 0 ? Number((base + remainder).toFixed(1)) : base,
+      weight: i === n - 1 ? lastWeight : base,
     })));
   };
 
-  const totalWeight = requirements.reduce((s, r) => s + (r.weight || 0), 0);
-  const isWeightValid = Math.abs(totalWeight - 100) < 0.5;
+  const totalWeight = Number(requirements.reduce((s, r) => s + (r.weight || 0), 0).toFixed(2));
+  const isWeightValid = Math.abs(totalWeight - 100) < 0.1;
 
   const handleSubmit = async () => {
     if (!token || !processType || !title.trim() || !position.trim()) return;

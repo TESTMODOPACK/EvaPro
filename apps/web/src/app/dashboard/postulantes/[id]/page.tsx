@@ -354,8 +354,15 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       api.recruitment.candidates.getInterviews(token, candidate.id).then((interviews) => {
         const mine = (interviews || []).find((i: any) => i.evaluatorId === userId);
         if (mine) {
+          // Merge weights from process requirements into saved checks
+          const mergedChecks = mine.requirementChecks?.length > 0
+            ? mine.requirementChecks.map((check: any) => {
+                const procReq = requirements.find((r: any) => r.category === check.category && r.text === check.text);
+                return { ...check, weight: check.weight != null ? check.weight : procReq?.weight };
+              })
+            : reqChecks;
           setInterviewForm({
-            reqChecks: mine.requirementChecks?.length > 0 ? mine.requirementChecks : reqChecks,
+            reqChecks: mergedChecks,
             comments: mine.comments || '',
             globalScore: mine.globalScore != null ? String(mine.globalScore) : '',
             manualScore: mine.manualScore != null ? String(mine.manualScore) : '',

@@ -80,12 +80,29 @@ export class RecruitmentService {
       order: { createdAt: 'DESC' },
     });
 
-    const result = [];
-    for (const p of processes) {
-      const candidateCount = await this.candidateRepo.count({ where: { processId: p.id } });
-      result.push({ ...p, candidateCount });
+    // Single query for all candidates across all processes
+    const processIds = processes.map(p => p.id);
+    const allCandidates = processIds.length > 0
+      ? await this.candidateRepo.find({ where: { processId: In(processIds) }, relations: ['user'], order: { createdAt: 'ASC' } })
+      : [];
+    const candidatesByProcess = new Map<string, any[]>();
+    for (const c of allCandidates) {
+      if (!candidatesByProcess.has(c.processId)) candidatesByProcess.set(c.processId, []);
+      candidatesByProcess.get(c.processId)!.push({
+        id: c.id,
+        firstName: c.firstName || c.user?.firstName || '',
+        lastName: c.lastName || c.user?.lastName || '',
+        candidateType: c.candidateType,
+        stage: c.stage,
+        finalScore: c.finalScore,
+        position: c.user?.position || null,
+        department: c.user?.department || null,
+      });
     }
-    return result;
+    return processes.map(p => {
+      const candidates = candidatesByProcess.get(p.id) || [];
+      return { ...p, candidateCount: candidates.length, candidates };
+    });
   }
 
   async getProcess(tenantId: string, id: string): Promise<any> {

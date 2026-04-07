@@ -160,10 +160,47 @@ function PostulantesPageContent() {
                     <span>{p.position}</span>
                     {p.department && <span>{p.department}</span>}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                     {p.candidateCount || 0} candidatos
                     {p.startDate && ` | Inicio: ${new Date(p.startDate).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`}
+                    {p.endDate && ` | Cierre: ${new Date(p.endDate).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`}
                   </div>
+                  {/* Candidate list */}
+                  {p.candidates?.length > 0 && (
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {p.candidates.slice(0, 5).map((c: any) => {
+                        const name = `${c.firstName} ${c.lastName}`.trim();
+                        const isInternal = c.candidateType === 'internal';
+                        const stageColors: Record<string, string> = {
+                          registered: 'var(--text-muted)', cv_review: '#6366f1', interviewing: 'var(--accent)',
+                          scored: '#8b5cf6', approved: 'var(--success)', rejected: 'var(--danger)', hired: 'var(--success)',
+                        };
+                        return (
+                          <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <span style={{ fontWeight: 500 }}>{name || 'Sin nombre'}</span>
+                              {isInternal && c.position && (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>
+                                  ({c.position}{c.department ? ` - ${c.department}` : ''})
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                              {c.finalScore != null && (
+                                <span style={{ fontWeight: 700, fontSize: '0.7rem', color: Number(c.finalScore) >= 7 ? 'var(--success)' : Number(c.finalScore) >= 4 ? 'var(--accent)' : 'var(--danger)' }}>
+                                  {Number(c.finalScore).toFixed(1)}
+                                </span>
+                              )}
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: stageColors[c.stage] || 'var(--text-muted)' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {p.candidates.length > 5 && (
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>+{p.candidates.length - 5} mas...</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </Link>
             );
