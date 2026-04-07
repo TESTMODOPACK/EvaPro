@@ -10,6 +10,7 @@
 import 'reflect-metadata';
 import { DataSource, In } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 
 // ── All entities ────────────────────────────────────────────────────────────
 import { Tenant } from '../modules/tenants/entities/tenant.entity';
@@ -56,6 +57,7 @@ import { PaymentHistory, BillingPeriod, PaymentStatus } from '../modules/subscri
 import { SystemChangelog, ChangelogType } from '../modules/system/entities/system-changelog.entity';
 import { Recognition } from '../modules/recognition/entities/recognition.entity';
 import { Badge } from '../modules/recognition/entities/badge.entity';
+import { DocumentSignature } from '../modules/signatures/entities/document-signature.entity';
 import { UserBadge } from '../modules/recognition/entities/user-badge.entity';
 import { UserPoints, PointsSource } from '../modules/recognition/entities/user-points.entity';
 
@@ -79,7 +81,7 @@ const ds = new DataSource({
     TalentAssessment, CalibrationSession, CalibrationEntry,
     Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
     Notification, AiInsight,
-    Recognition, Badge, UserBadge, UserPoints,
+    Recognition, Badge, UserBadge, UserPoints, DocumentSignature,
     PaymentHistory,
     SystemChangelog,
     // PDO: Org Development
@@ -1043,6 +1045,79 @@ async function seedDemoFull() {
       console.log(`✅ ${entries.length} changelog entries created`);
     } else {
       console.log(`   Changelog entries already exist (${existingCL}), skipping.`);
+    }
+
+    /* ── Document Signatures (demo data) ────────────────────────────────── */
+    const sigRepo = ds.getRepository(DocumentSignature);
+    const existingSigs = await sigRepo.count({ where: { tenantId: tid } });
+    if (existingSigs === 0) {
+      const sigUsers = allEvaluable.slice(0, 8); // first 8 users
+      const sigDocs: Array<{ type: string; id: string; name: string; content: string }> = [];
+
+      // Gather real document IDs from DB
+      if (cycle180) sigDocs.push({ type: 'evaluation_cycle', id: cycle180.id, name: cycle180.name || 'Q4 2025 - Evaluacion Semestral 180', content: JSON.stringify({ id: cycle180.id, name: cycle180.name }) });
+      if (cycle360) sigDocs.push({ type: 'evaluation_cycle', id: cycle360.id, name: (cycle360 as any).name || 'S1 2026 - Evaluacion 360 Integral', content: JSON.stringify({ id: cycle360.id, name: (cycle360 as any).name }) });
+
+      // Get some evaluation responses
+      const sampleResponses = await respRepo.find({ where: { tenantId: tid }, take: 5, order: { submittedAt: 'DESC' } });
+      for (const r of sampleResponses) {
+        sigDocs.push({ type: 'evaluation_response', id: r.id, name: `Evaluacion ${r.id.substring(0, 8)}`, content: JSON.stringify({ id: r.id, answers: r.answers, overallScore: r.overallScore }) });
+      }
+
+      // Get some dev plans
+      const samplePlans = await devPlanRepo.find({ where: { tenantId: tid }, take: 3 });
+      for (const p of samplePlans) {
+        sigDocs.push({ type: 'development_plan', id: p.id, name: (p as any).title || `Plan ${p.id.substring(0, 8)}`, content: JSON.stringify({ id: p.id, title: (p as any).title, status: p.status }) });
+      }
+
+      let sigCount = 0;
+      for (let i = 0; i < sigUsers.length && i < sigDocs.length; i++) {
+        const doc = sigDocs[i % sigDocs.length];
+        const usr = sigUsers[i];
+        const hash = crypto.createHash('sha256').update(doc.content).digest('hex');
+        const ips = ['192.168.1.' + (10 + i), '10.0.0.' + (50 + i), '172.16.0.' + (20 + i)];
+
+        await sigRepo.save(sigRepo.create({
+          tenantId: tid,
+          documentType: doc.type,
+          documentId: doc.id,
+          documentName: doc.name,
+          documentHash: hash,
+          signedBy: usr.id,
+          signerIp: ips[i % ips.length],
+          verificationMethod: 'otp_email',
+          status: 'valid',
+        }));
+        sigCount++;
+      }
+
+      // Add a few more: manager signing cycle results
+      if (cycle180) {
+        const hash = crypto.createHash('sha256').update(JSON.stringify({ id: cycle180.id, name: cycle180.name })).digest('hex');
+        await sigRepo.save(sigRepo.create({
+          tenantId: tid, documentType: 'evaluation_cycle', documentId: cycle180.id,
+          documentName: cycle180.name || 'Ciclo 180', documentHash: hash,
+          signedBy: manager.id, signerIp: '192.168.1.1',
+          verificationMethod: 'otp_email', status: 'valid',
+        }));
+        sigCount++;
+      }
+
+      // Admin signing cycle
+      if (cycle360) {
+        const hash = crypto.createHash('sha256').update(JSON.stringify({ id: cycle360.id, name: (cycle360 as any).name })).digest('hex');
+        await sigRepo.save(sigRepo.create({
+          tenantId: tid, documentType: 'evaluation_cycle', documentId: cycle360.id,
+          documentName: (cycle360 as any).name || 'Ciclo 360', documentHash: hash,
+          signedBy: admin.id, signerIp: '10.0.0.1',
+          verificationMethod: 'otp_email', status: 'valid',
+        }));
+        sigCount++;
+      }
+
+      console.log(`✅ Document signatures created: ${sigCount} demo signatures`);
+    } else {
+      console.log(`   Document signatures already exist (${existingSigs}), skipping.`);
     }
 
     /* ── Done ─────────────────────────────────────────────────────────────── */

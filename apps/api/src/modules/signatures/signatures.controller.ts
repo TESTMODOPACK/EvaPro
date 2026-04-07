@@ -37,14 +37,22 @@ export class SignaturesController {
     );
   }
 
-  /** List all signatures for the tenant (admin) */
-  @Get()
-  @Roles('super_admin', 'tenant_admin')
-  listAll(@Request() req: any) {
-    return this.signaturesService.getSignaturesByTenant(req.user.tenantId);
+  /** List my own signatures (all roles) */
+  @Get('mine')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  listMine(@Request() req: any) {
+    return this.signaturesService.getSignaturesByUser(req.user.tenantId, req.user.userId);
   }
 
-  /** Verify integrity of a signature (MUST be before :documentType/:documentId) */
+  /** List signatures of my team's members (manager only) */
+  @Get('team')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  listTeam(@Request() req: any) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.signaturesService.getSignaturesByTeam(req.user.tenantId, managerId);
+  }
+
+  /** Verify integrity of a signature (specific routes MUST be before generic GET /) */
   @Get('verify/:id')
   @Roles('super_admin', 'tenant_admin', 'manager')
   verifyIntegrity(
@@ -63,5 +71,12 @@ export class SignaturesController {
     @Request() req: any,
   ) {
     return this.signaturesService.getSignatures(req.user.tenantId, documentType, documentId);
+  }
+
+  /** List all signatures for the tenant (admin) — generic route MUST be last */
+  @Get()
+  @Roles('super_admin', 'tenant_admin')
+  listAll(@Request() req: any) {
+    return this.signaturesService.getSignaturesByTenant(req.user.tenantId);
   }
 }

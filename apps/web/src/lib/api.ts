@@ -949,6 +949,8 @@ export const api = {
     list: (token: string, documentType: string, documentId: string) =>
       request<any[]>(`/signatures/document/${documentType}/${documentId}`, {}, token),
     listAll: (token: string) => request<any[]>("/signatures", {}, token),
+    mine: (token: string) => request<any[]>("/signatures/mine", {}, token),
+    team: (token: string) => request<any[]>("/signatures/team", {}, token),
     verifyIntegrity: (token: string, id: string) =>
       request<any>(`/signatures/verify/${id}`, {}, token),
   },

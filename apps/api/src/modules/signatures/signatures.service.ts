@@ -159,6 +159,34 @@ export class SignaturesService {
     });
   }
 
+  /** Signatures created by a specific user */
+  async getSignaturesByUser(tenantId: string, userId: string) {
+    return this.signatureRepo.find({
+      where: { tenantId, signedBy: userId },
+      relations: ['signer'],
+      order: { signedAt: 'DESC' },
+    });
+  }
+
+  /** Signatures of a manager's direct reports (or all if managerId is undefined = admin) */
+  async getSignaturesByTeam(tenantId: string, managerId?: string) {
+    // Get team member IDs
+    const whereClause: any = { tenantId, isActive: true };
+    if (managerId) whereClause.managerId = managerId;
+    const teamMembers = await this.userRepo.find({ where: whereClause, select: ['id'] });
+    const memberIds = teamMembers.map(u => u.id);
+    if (memberIds.length === 0) return [];
+
+    return this.signatureRepo
+      .createQueryBuilder('sig')
+      .leftJoinAndSelect('sig.signer', 'signer')
+      .where('sig.tenantId = :tenantId', { tenantId })
+      .andWhere('sig.signedBy IN (:...memberIds)', { memberIds })
+      .orderBy('sig.signedAt', 'DESC')
+      .take(200)
+      .getMany();
+  }
+
   // ─── Verify Integrity ──────────────────────────────────────────────
 
   async verifyIntegrity(tenantId: string, signatureId: string) {
@@ -274,6 +302,7 @@ export class SignaturesService {
       calibration_session: 'Sesión de Calibración',
       development_plan: 'Plan de Desarrollo',
       evaluation_response: 'Evaluación Individual',
+      contract: 'Contrato',
     };
     return labels[type] || type;
   }
