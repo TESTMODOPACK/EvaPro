@@ -225,6 +225,9 @@ export default function NuevoProcesoPage() {
                       <option value="__new__">+ Crear nuevo cargo</option>
                     </select>
                   </div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                    Si el cargo no existe en el listado, selecciona &quot;+ Crear nuevo cargo&quot; al final de la lista para agregarlo.
+                  </p>
                   {showNewPosition && (
                     <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
