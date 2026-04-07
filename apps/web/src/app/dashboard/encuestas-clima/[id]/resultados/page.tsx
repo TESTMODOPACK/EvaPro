@@ -317,40 +317,115 @@ export default function ResultadosEncuestaPage() {
             </div>
           )}
 
-          {/* Likert Distribution */}
-          {(results.likertDistribution || []).length > 0 && (
+          {/* General Analysis */}
+          {results.overallAverage != null && (
+            <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>Análisis General de la Encuesta</h3>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                <p style={{ margin: '0 0 0.35rem' }}>
+                  <strong>Satisfacción general:</strong> El promedio global es <strong>{results.overallAverage}/5</strong>
+                  {results.overallAverage >= 4 ? ' — indica un clima laboral saludable y positivo.' : results.overallAverage >= 3 ? ' — clima aceptable con áreas de mejora identificables.' : ' — clima laboral preocupante que requiere intervención.'}
+                </p>
+                <p style={{ margin: '0 0 0.35rem' }}>
+                  <strong>Participación:</strong> {results.responseRate}% de tasa de respuesta ({results.totalResponses} de {results.totalAssigned}).
+                  {results.responseRate >= 80 ? ' Excelente participación — los resultados son altamente representativos.' : results.responseRate >= 60 ? ' Buena participación — resultados confiables.' : ' Baja participación — considerar estrategias para aumentar respuestas en futuras encuestas.'}
+                </p>
+                {enps && enps.enps !== null && (
+                  <p style={{ margin: '0 0 0.35rem' }}>
+                    <strong>eNPS:</strong> Score de {enps.enps > 0 ? '+' : ''}{enps.enps}
+                    {enps.enps >= 50 ? ' — excelente, los colaboradores son embajadores de la organización.' : enps.enps >= 30 ? ' — muy bueno, mayoría promotores.' : enps.enps >= 0 ? ' — aceptable, hay espacio para mejorar la experiencia del colaborador.' : ' — bajo, requiere atención urgente para revertir la insatisfacción.'}
+                  </p>
+                )}
+                {radarData.length >= 2 && (() => {
+                  const sorted = [...radarData].sort((a, b) => a.promedio - b.promedio);
+                  return <>
+                    <p style={{ margin: '0 0 0.35rem' }}>
+                      <strong>Categoría más fuerte:</strong> {sorted[sorted.length - 1]?.category} ({sorted[sorted.length - 1]?.promedio.toFixed(1)}/5)
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <strong>Categoría más débil:</strong> {sorted[0]?.category} ({sorted[0]?.promedio.toFixed(1)}/5)
+                      {sorted[0]?.promedio < 3 ? ' — prioridad de intervención.' : ''}
+                    </p>
+                  </>;
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Likert Distribution — with legend, labels, and analysis */}
+          {(results.likertDistribution || []).length > 0 && (() => {
+            const likertLabels: Record<number, string> = { 1: 'Muy insatisfecho', 2: 'Insatisfecho', 3: 'Neutral', 4: 'Satisfecho', 5: 'Muy satisfecho' };
+            const likertColors: Record<number, string> = { 1: '#ef4444', 2: '#f97316', 3: '#eab308', 4: '#22c55e', 5: '#16a34a' };
+            // Find weakest and strongest questions
+            const withAvg = results.likertDistribution.map((q: any) => {
+              const total = q.distribution.reduce((s: number, d: any) => s + d.count, 0);
+              const avg = total > 0 ? q.distribution.reduce((s: number, d: any) => s + d.level * d.count, 0) / total : 0;
+              return { ...q, avg: Math.round(avg * 100) / 100, total };
+            });
+            const sorted = [...withAvg].sort((a, b) => a.avg - b.avg);
+            const weakest = sorted[0];
+            const strongest = sorted[sorted.length - 1];
+
+            return (
             <div className="card" style={{ padding: '1.25rem' }}>
-              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Distribución de Respuestas</h3>
-              {results.likertDistribution.map((q: any) => (
-                <div key={q.questionId} style={{ marginBottom: '0.75rem' }}>
-                  <p style={{ fontSize: '0.85rem', margin: '0 0 0.25rem', fontWeight: 500 }}>{q.questionText}</p>
-                  <div style={{ display: 'flex', height: 20, borderRadius: 4, overflow: 'hidden', background: 'var(--border)' }}>
-                    {q.distribution.map((d: any) => {
-                      const colors = ['', '#ef4444', '#f97316', '#eab308', '#22c55e', '#16a34a'];
-                      return d.percentage > 0 ? (
-                        <div
-                          key={d.level}
-                          style={{
-                            width: `${d.percentage}%`,
-                            background: colors[d.level],
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.65rem',
-                            color: '#fff',
-                            fontWeight: 600,
-                          }}
-                          title={`Nivel ${d.level}: ${d.percentage}% (${d.count})`}
-                        >
-                          {d.percentage >= 8 ? `${d.level}` : ''}
-                        </div>
-                      ) : null;
-                    })}
+              <h3 style={{ margin: '0 0 0.25rem', fontSize: '1rem', fontWeight: 600 }}>Distribución de Respuestas por Pregunta</h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem' }}>
+                Cada barra muestra el porcentaje de respuestas en cada nivel de satisfacción (escala Likert 1-5).
+              </p>
+              {/* Legend */}
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem', padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                {[1, 2, 3, 4, 5].map(level => (
+                  <div key={level} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem' }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 2, background: likertColors[level], display: 'inline-block' }} />
+                    <span style={{ color: 'var(--text-secondary)' }}>{level} — {likertLabels[level]}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Questions */}
+              {withAvg.map((q: any) => (
+                <div key={q.questionId} style={{ marginBottom: '0.85rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                    <p style={{ fontSize: '0.82rem', margin: 0, fontWeight: 500, flex: 1 }}>{q.questionText}</p>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: q.avg >= 4 ? '#16a34a' : q.avg >= 3 ? '#eab308' : '#ef4444', marginLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                      Prom: {q.avg.toFixed(1)}/5
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', height: 24, borderRadius: 4, overflow: 'hidden', background: 'var(--border)' }}>
+                    {q.distribution.map((d: any) => d.percentage > 0 ? (
+                      <div key={d.level} style={{
+                        width: `${d.percentage}%`, background: likertColors[d.level],
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '0.68rem', color: '#fff', fontWeight: 600, minWidth: d.percentage >= 5 ? 0 : undefined,
+                      }} title={`${likertLabels[d.level]}: ${d.percentage}% (${d.count} respuestas)`}>
+                        {d.percentage >= 10 ? `${d.percentage}%` : d.percentage >= 6 ? `${d.level}` : ''}
+                      </div>
+                    ) : null)}
                   </div>
                 </div>
               ))}
+              {/* Analysis */}
+              {withAvg.length >= 2 && (
+                <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: '0.3rem' }}>Análisis de la distribución</div>
+                  <p style={{ margin: '0 0 0.25rem' }}>
+                    <strong>Punto más fuerte:</strong> "{strongest?.questionText}" con promedio {strongest?.avg.toFixed(1)}/5
+                    {strongest?.avg >= 4 ? ' — nivel destacado de satisfacción.' : strongest?.avg >= 3 ? ' — aceptable.' : ' — requiere atención.'}
+                  </p>
+                  <p style={{ margin: '0 0 0.25rem' }}>
+                    <strong>Punto más débil:</strong> "{weakest?.questionText}" con promedio {weakest?.avg.toFixed(1)}/5
+                    {weakest?.avg < 3 ? ' — área crítica que requiere intervención prioritaria.' : weakest?.avg < 4 ? ' — oportunidad de mejora.' : ' — buen nivel general.'}
+                  </p>
+                  {(() => {
+                    const globalAvg = withAvg.reduce((s: number, q: any) => s + q.avg, 0) / withAvg.length;
+                    return <p style={{ margin: 0 }}>
+                      <strong>Promedio global:</strong> {globalAvg.toFixed(1)}/5 — {globalAvg >= 4 ? 'Clima saludable.' : globalAvg >= 3 ? 'Clima aceptable con espacio de mejora.' : 'Clima requiere atención urgente.'}
+                    </p>;
+                  })()}
+                </div>
+              )}
             </div>
-          )}
+          );
+          })()}
         </div>
       )}
 
@@ -441,7 +516,7 @@ export default function ResultadosEncuestaPage() {
                       fontWeight: 700,
                       fontSize: '0.85rem',
                     }}>
-                      Health Score: {aiAnalysis.content.overallHealthScore}/100
+                      Índice de Salud Organizacional: {aiAnalysis.content.overallHealthScore}/100
                     </div>
                   )}
                 </div>
