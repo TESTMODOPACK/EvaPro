@@ -568,8 +568,8 @@ function AnalyticsPageContent() {
     }).then(r => r.ok ? r.json() : null).then(setOrgAnalytics).catch(() => {});
   }, [isManager, token, selectedCycleId]);
 
-  // For tabs: managers use org-wide data, admins use their normal analytics
-  const tabData = isManager && orgAnalytics ? orgAnalytics : analytics;
+  // Dept tab uses org data for managers (comparative); other tabs use team data
+  const deptData = isManager && orgAnalytics ? orgAnalytics : analytics;
 
   const handleExport = async (format: 'xlsx' | 'pdf' | 'pptx') => {
     if (!selectedCycleId || !token) return;
@@ -749,8 +749,8 @@ function AnalyticsPageContent() {
           ) : (
             <>
               {/* Manager KPIs (always visible above tabs) */}
-              {isManager && tabData?.teamBenchmarks && (() => {
-                const myTeam = tabData?.teamBenchmarks.find((tb: any) => tb.managerId === userId);
+              {isManager && analytics?.teamBenchmarks && (() => {
+                const myTeam = analytics?.teamBenchmarks.find((tb: any) => tb.managerId === userId);
                 return myTeam ? (
                   <div className="animate-fade-up" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
                     <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
@@ -798,8 +798,8 @@ function AnalyticsPageContent() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   {/* KPIs */}
                   {(() => {
-                    const deptData = (tabData?.departmentComparison || []);
-                    const sorted = [...deptData].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+                    const deptComps = (deptData?.departmentComparison || []);
+                    const sorted = [...deptComps].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
                     const orgAvgScore = sorted.length > 0 ? sorted.reduce((s: number, d: any) => s + Number(d.avgScore || 0), 0) / sorted.length : 0;
                     const best = sorted[0];
                     const worst = sorted[sorted.length - 1];
@@ -841,11 +841,11 @@ function AnalyticsPageContent() {
                   )}
 
                   {/* Chart */}
-                  {(tabData?.departmentComparison)?.length > 0 && (
+                  {(deptData?.departmentComparison)?.length > 0 && (
                     <div className="card" style={{ padding: '1.5rem' }}>
                       <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>Puntaje promedio por departamento</h2>
                       {(() => {
-                        const rawData = (tabData?.departmentComparison || []);
+                        const rawData = (deptData?.departmentComparison || []);
                         const chartData = rawData
                           .filter((d: any) => !isManager || !compareDept || d.department === myDepartment || d.department === compareDept)
                           .map((d: any) => ({ department: d.department || 'Sin depto.', avgScore: Number(d.avgScore) || 0, count: d.count, isMyDept: d.department === myDepartment }));
@@ -869,8 +869,8 @@ function AnalyticsPageContent() {
                   )}
 
                   {/* Manager detailed analysis */}
-                  {isManager && tabData?.departmentComparison && myDepartment && (() => {
-                    const allDepts = [...(tabData?.departmentComparison || [])].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+                  {isManager && deptData?.departmentComparison && myDepartment && (() => {
+                    const allDepts = [...(deptData?.departmentComparison || [])].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
                     const myRank = allDepts.findIndex((d: any) => d.department === myDepartment) + 1;
                     const orgAvgVal = allDepts.length > 0 ? allDepts.reduce((s: number, d: any) => s + Number(d.avgScore || 0), 0) / allDepts.length : 0;
                     const myScore = Number(allDepts.find((d: any) => d.department === myDepartment)?.avgScore || 0);
@@ -901,8 +901,8 @@ function AnalyticsPageContent() {
               {activeTab === 'teams' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   {/* KPIs */}
-                  {tabData?.teamBenchmarks && tabData?.teamBenchmarks.length > 0 && (() => {
-                    const sorted = [...tabData?.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+                  {analytics?.teamBenchmarks && analytics?.teamBenchmarks.length > 0 && (() => {
+                    const sorted = [...analytics?.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
                     const best = sorted[0];
                     const worst = sorted[sorted.length - 1];
                     const avgAll = sorted.reduce((s: number, t: any) => s + Number(t.avgScore || 0), 0) / sorted.length;
@@ -931,7 +931,7 @@ function AnalyticsPageContent() {
                   })()}
 
                   {/* Table */}
-                  {tabData?.teamBenchmarks && tabData?.teamBenchmarks.length > 0 && (
+                  {analytics?.teamBenchmarks && analytics?.teamBenchmarks.length > 0 && (
                     <div className="card" style={{ padding: '1.5rem' }}>
                       <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>
                         {isManager ? 'Tu equipo comparado con otros encargados' : 'Rendimiento promedio por Encargado de Equipo'}
@@ -940,7 +940,7 @@ function AnalyticsPageContent() {
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead><tr>{['Encargado', 'Departamento', 'Promedio', 'Equipo'].map(h => <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>{h}</th>)}</tr></thead>
                           <tbody>
-                            {[...tabData?.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore)).map((tb: any, i: number) => {
+                            {[...analytics?.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore)).map((tb: any, i: number) => {
                               const isMe = tb.managerId === userId;
                               const score = Number(tb.avgScore) || 0;
                               return (
@@ -958,7 +958,7 @@ function AnalyticsPageContent() {
                     </div>
                   )}
 
-                  {(!tabData?.teamBenchmarks || tabData?.teamBenchmarks.length === 0) && (
+                  {(!analytics?.teamBenchmarks || analytics?.teamBenchmarks.length === 0) && (
                     <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos de equipos para este ciclo</div>
                   )}
                 </div>
