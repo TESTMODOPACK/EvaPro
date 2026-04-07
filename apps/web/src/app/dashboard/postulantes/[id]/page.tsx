@@ -57,6 +57,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [extErrors, setExtErrors] = useState<Record<string, string>>({});
   const [internalSearch, setInternalSearch] = useState('');
   const [internalUsers, setInternalUsers] = useState<any[]>([]);
+  const [internalDeptFilter, setInternalDeptFilter] = useState('');
+  const [internalPosFilter, setInternalPosFilter] = useState('');
+  const { departments } = useDepartments();
 
   // Interview
   const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
@@ -134,9 +137,14 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
   // ─── Add internal candidate ─────────────────────────────────────────
   const handleSearchInternal = async () => {
-    if (!token || !internalSearch.trim()) return;
+    if (!token) return;
+    if (!internalSearch.trim() && !internalDeptFilter && !internalPosFilter) return;
     try {
-      const res = await api.users.list(token, 1, 50, { search: internalSearch });
+      const filters: any = {};
+      if (internalSearch.trim()) filters.search = internalSearch;
+      if (internalDeptFilter) filters.department = internalDeptFilter;
+      if (internalPosFilter) filters.position = internalPosFilter;
+      const res = await api.users.list(token, 1, 50, filters);
       setInternalUsers((res as any).data || res || []);
     } catch (e) {
       setInternalUsers([]);
@@ -390,11 +398,22 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               ) : (
                 <>
                   <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Buscar Colaborador</h3>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                     <input className="input" style={{ flex: 1 }} placeholder="Buscar por nombre o email..."
                       value={internalSearch} onChange={(e) => setInternalSearch(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleSearchInternal(); }} />
                     <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={handleSearchInternal}>Buscar</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                    <select className="input" style={{ flex: 1, minWidth: '160px', fontSize: '0.82rem' }}
+                      value={internalDeptFilter} onChange={(e) => setInternalDeptFilter(e.target.value)}>
+                      <option value="">Todos los departamentos</option>
+                      {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                    <input className="input" style={{ flex: 1, minWidth: '140px', fontSize: '0.82rem' }}
+                      placeholder="Filtrar por cargo..."
+                      value={internalPosFilter} onChange={(e) => setInternalPosFilter(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSearchInternal(); }} />
                   </div>
                   {internalUsers.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
