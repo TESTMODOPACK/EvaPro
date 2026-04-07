@@ -105,7 +105,7 @@ export class InvoicesService {
 
     const subtotal = lines.reduce((s, l) => s + (l.total || 0), 0);
     const taxRate = 19; // IVA Chile
-    const taxAmount = Math.round(subtotal * taxRate) / 100;
+    const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
     const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
     const invoice = this.invoiceRepo.create({
@@ -266,12 +266,13 @@ export class InvoicesService {
     await this.invoiceRepo.save(invoice);
 
     // Create payment history record
+    const sub = await this.subRepo.findOne({ where: { id: invoice.subscriptionId } });
     const payment = this.paymentRepo.create({
       tenantId: invoice.tenantId,
       subscriptionId: invoice.subscriptionId,
       amount: Number(invoice.total),
       currency: invoice.currency,
-      billingPeriod: BillingPeriod.MONTHLY,
+      billingPeriod: sub?.billingPeriod || BillingPeriod.MONTHLY,
       periodStart: invoice.periodStart,
       periodEnd: invoice.periodEnd,
       status: PaymentStatus.PAID,
@@ -286,7 +287,6 @@ export class InvoicesService {
     await this.paymentRepo.save(payment);
 
     // Update subscription billing info
-    const sub = await this.subRepo.findOne({ where: { id: invoice.subscriptionId } });
     if (sub) {
       sub.lastPaymentDate = new Date();
       sub.lastPaymentAmount = Number(invoice.total);
@@ -439,8 +439,8 @@ export class InvoicesService {
     y += 5;
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    if (invoice.tenant?.rut) doc.text(`RUT: ${invoice.tenant.rut}`, margin, y); y += 4;
-    if (invoice.tenant?.commercialAddress) doc.text(invoice.tenant.commercialAddress, margin, y); y += 4;
+    if (invoice.tenant?.rut) { doc.text(`RUT: ${invoice.tenant.rut}`, margin, y); y += 4; }
+    if (invoice.tenant?.commercialAddress) { doc.text(invoice.tenant.commercialAddress, margin, y); y += 4; }
 
     // Invoice details (right side)
     const rx = pageW - margin - 60;
