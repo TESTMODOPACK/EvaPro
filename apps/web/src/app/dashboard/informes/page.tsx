@@ -491,12 +491,14 @@ export default function InformesPage() {
               <div style={{ flex: 1, minWidth: '250px' }}>
                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Colaborador</label>
                 <select style={{ ...selectStyle, width: '100%' }} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
-                  <option value="">Selecciona un colaborador...</option>
+                  <option value="">Selecciona un colaborador... ({users.filter((u: any) => !filterDepartment || u.department === filterDepartment).length})</option>
                   {users
                     .filter((u: any) => !filterDepartment || u.department === filterDepartment)
+                    .filter((u: any) => u.role !== 'tenant_admin' && u.role !== 'super_admin')
+                    .sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
                     .map((u: any) => (
                       <option key={u.id} value={u.id}>
-                        {u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}
+                        {u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}{currentRole !== 'manager' && u.department ? ` · ${u.department}` : ''}
                       </option>
                     ))
                   }
