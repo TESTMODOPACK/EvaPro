@@ -1522,7 +1522,7 @@ function AdminDashboard() {
   const [nextActions, setNextActions] = useState<any>(null);
   const [cycleSummary, setCycleSummary] = useState<any>(null);
 
-  const closedCycles = (cycles || []).filter((c: any) => c.status === 'closed');
+  const closedCycles = (cycles || []).filter((c: any) => c.status === 'closed').sort((a: any, b: any) => new Date(b.endDate || b.createdAt).getTime() - new Date(a.endDate || a.createdAt).getTime());
   const activeCycles = (cycles || []).filter((c: any) => c.status === 'active');
   const latestClosedId = closedCycles[0]?.id;
 
@@ -1558,13 +1558,13 @@ function AdminDashboard() {
   const now = new Date();
 
   // Subscription days remaining
-  const subEndDate = subscription?.endDate ? new Date(subscription.endDate) : null;
+  const subEndDate = subscription?.nextBillingDate ? new Date(subscription.nextBillingDate) : (subscription?.endDate ? new Date(subscription.endDate) : null);
   const subDaysLeft = subEndDate ? Math.ceil((subEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
 
   // Alerts
   const alerts: Array<{ icon: string; color: string; text: string; href?: string }> = [];
   if (nextActions?.highPriority > 0) alerts.push({ icon: '🔴', color: 'var(--danger)', text: `${nextActions.highPriority} acciones urgentes pendientes`, href: '/dashboard/evaluaciones' });
-  if ((obj.total - obj.completed) > 0 && obj.completionPct < 50) alerts.push({ icon: '🟡', color: 'var(--warning)', text: `OKRs al ${obj.completionPct}% — ${obj.total - obj.completed} pendientes`, href: '/dashboard/objetivos' });
+  if (((obj.total || 0) - (obj.completed || 0)) > 0 && (obj.completionPct || 0) < 50) alerts.push({ icon: '🟡', color: 'var(--warning)', text: `OKRs al ${obj.completionPct || 0}% — ${(obj.total || 0) - (obj.completed || 0)} pendientes`, href: '/dashboard/objetivos' });
   if (pdi?.overdueActions > 0) alerts.push({ icon: '🟡', color: 'var(--warning)', text: `${pdi.overdueActions} acciones PDI vencidas`, href: '/dashboard/desarrollo' });
   if (pendingContracts > 0) alerts.push({ icon: '🔵', color: 'var(--accent)', text: `${pendingContracts} contrato(s) pendiente(s) de firma`, href: '/dashboard/contratos' });
   if (subDaysLeft != null && subDaysLeft <= 30 && subDaysLeft > 0) alerts.push({ icon: '🔵', color: 'var(--accent)', text: `Suscripción se renueva en ${subDaysLeft} días` });
@@ -1589,7 +1589,7 @@ function AdminDashboard() {
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Colaboradores</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--success)' }}>{hc.active || 0}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>activos</div></div>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Desempeño</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: Number(perf.avgScore) >= 7 ? 'var(--success)' : Number(perf.avgScore) >= 5 ? 'var(--warning)' : 'var(--danger)' }}>{Number(perf.avgScore || 0).toFixed(1)}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>promedio</div></div>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>eNPS</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: (enps?.score ?? 0) >= 30 ? 'var(--success)' : (enps?.score ?? 0) >= 0 ? 'var(--warning)' : 'var(--danger)' }}>{enps?.score ?? '—'}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>clima</div></div>
-          <div className="card" style={kpiStyle}><div style={kpiLabel}>OKRs</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: obj.completionPct >= 70 ? 'var(--success)' : obj.completionPct >= 40 ? 'var(--warning)' : 'var(--danger)' }}>{obj.completionPct || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>cumplimiento</div></div>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>OKRs</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: obj.total > 0 ? (obj.completionPct >= 70 ? 'var(--success)' : obj.completionPct >= 40 ? 'var(--warning)' : 'var(--danger)') : 'var(--text-muted)' }}>{obj.total > 0 ? `${obj.completionPct || 0}%` : '—'}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>cumplimiento</div></div>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Rotación</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: (turnover?.turnoverRate || 0) > 15 ? 'var(--danger)' : (turnover?.turnoverRate || 0) > 8 ? 'var(--warning)' : 'var(--success)' }}>{turnover?.turnoverRate || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>anual</div></div>
         </div>
       </div>
@@ -1717,7 +1717,7 @@ function AdminDashboard() {
                 <span style={{ color: 'var(--text-secondary)' }}>Estado</span>
                 <span className={`badge ${subscription.status === 'active' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.68rem' }}>{subscription.status === 'active' ? 'Activa' : subscription.status}</span>
               </div>
-              {subDaysLeft != null && (
+              {subDaysLeft != null && subDaysLeft > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Renovación</span>
                   <span style={{ fontWeight: 600, color: subDaysLeft <= 15 ? 'var(--danger)' : 'var(--text-primary)' }}>{subDaysLeft} días</span>
