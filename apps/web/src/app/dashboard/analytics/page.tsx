@@ -427,20 +427,24 @@ function AnalyticsPageContent() {
   const [myDepartment, setMyDepartment] = useState<string>('');
   const [compareDept, setCompareDept] = useState('');
 
+  // Load manager's department (only once, not per cycle)
+  useEffect(() => {
+    if (!isManager || !token || !userId) return;
+    fetch(`${BASE_URL}/users/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then((u: any) => { if (u?.department) setMyDepartment(u.department); })
+      .catch(() => {});
+  }, [isManager, token, userId]);
+
+  // Load org-wide analytics for comparative sections (resets on cycle change)
   useEffect(() => {
     if (!isManager || !token || !selectedCycleId) return;
-    // Load org-wide analytics (scope=org bypasses manager filter)
+    setOrgAnalytics(null);
+    setCompareDept('');
     fetch(`${BASE_URL}/reports/analytics?cycleId=${selectedCycleId}&scope=org`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.ok ? r.json() : null).then(setOrgAnalytics).catch(() => {});
-    // Load my department
-    if (userId) {
-      fetch(`${BASE_URL}/users/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.ok ? r.json() : null)
-        .then((u: any) => { if (u?.department) setMyDepartment(u.department); })
-        .catch(() => {});
-    }
-  }, [isManager, token, selectedCycleId, userId]);
+  }, [isManager, token, selectedCycleId]);
 
   const handleExport = async (format: 'xlsx' | 'pdf' | 'pptx') => {
     if (!selectedCycleId || !token) return;
