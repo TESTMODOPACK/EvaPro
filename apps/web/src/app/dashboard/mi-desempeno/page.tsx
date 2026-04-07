@@ -650,39 +650,53 @@ export default function MiDesempenoPage() {
               {teamCompletedEvals.length === 0 && (
                 <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin evaluaciones del equipo completadas.</div>
               )}
-              {teamCompletedEvals.length > 0 && (
-                <div className="card" style={{ padding: '1.25rem' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Evaluaciones del Equipo</h3>
-                  <div className="table-wrapper">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'left' }}>Evaluado</th>
-                          <th style={{ textAlign: 'left' }}>Evaluador</th>
-                          <th>Tipo</th>
-                          <th>Ciclo</th>
-                          <th>Puntaje</th>
-                          <th>Fecha</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {teamCompletedEvals
-                          .filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter)
-                          .map((ev: any, i: number) => (
-                          <tr key={i}>
-                            <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</td>
-                            <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{ev.evaluator ? `${ev.evaluator.firstName} ${ev.evaluator.lastName}` : '--'}</td>
-                            <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
-                            <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
-                            <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
-                            <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+              {teamCompletedEvals.length > 0 && (() => {
+                const filteredEvals = teamCompletedEvals.filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter);
+                const byEvaluatee: Record<string, { name: string; evals: any[] }> = {};
+                for (const ev of filteredEvals) {
+                  const eid = ev.evaluateeId || 'unknown';
+                  const ename = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--';
+                  if (!byEvaluatee[eid]) byEvaluatee[eid] = { name: ename, evals: [] };
+                  byEvaluatee[eid].evals.push(ev);
+                }
+                return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {Object.entries(byEvaluatee).map(([eid, { name, evals }]) => (
+                    <div key={eid} className="card" style={{ padding: '0.75rem 1rem' }}>
+                      <button onClick={() => setExpandedTeamMember(expandedTeamMember === `eval-${eid}` ? null : `eval-${eid}`)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                        <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedTeamMember === `eval-${eid}` ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                        <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{name}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{evals.length} evaluación{evals.length !== 1 ? 'es' : ''}</span>
+                      </button>
+                      {expandedTeamMember === `eval-${eid}` && (
+                        <div style={{ marginTop: '0.5rem' }}>
+                          <div className="table-wrapper">
+                            <table>
+                              <thead><tr>
+                                <th style={{ textAlign: 'left' }}>Evaluador</th>
+                                <th>Tipo</th><th>Ciclo</th><th>Puntaje</th><th>Fecha</th>
+                              </tr></thead>
+                              <tbody>
+                                {evals.map((ev: any, j: number) => (
+                                  <tr key={j}>
+                                    <td style={{ fontSize: '0.82rem' }}>{ev.evaluator ? `${ev.evaluator.firstName} ${ev.evaluator.lastName}` : '--'}</td>
+                                    <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
+                                    <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
