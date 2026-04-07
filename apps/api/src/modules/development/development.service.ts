@@ -161,6 +161,49 @@ export class DevelopmentService {
 
   // ─── Competency Profile: Actual vs Expected ─────────────────────────────
 
+  // ─── Role Competencies CRUD ──────────────────────────────────────────
+
+  async findRoleCompetencies(tenantId: string, position?: string): Promise<RoleCompetency[]> {
+    const where: any = { tenantId };
+    if (position) where.position = position;
+    return this.roleCompetencyRepo.find({ where, relations: ['competency'], order: { position: 'ASC', createdAt: 'ASC' } });
+  }
+
+  async createRoleCompetency(tenantId: string, dto: { position: string; competencyId: string; expectedLevel: number }): Promise<RoleCompetency> {
+    if (dto.expectedLevel < 1 || dto.expectedLevel > 10) throw new BadRequestException('El nivel esperado debe estar entre 1 y 10');
+    const existing = await this.roleCompetencyRepo.findOne({ where: { tenantId, position: dto.position, competencyId: dto.competencyId } });
+    if (existing) throw new ConflictException('Esta competencia ya está asignada a este cargo');
+    const rc = this.roleCompetencyRepo.create({ tenantId, position: dto.position, competencyId: dto.competencyId, expectedLevel: dto.expectedLevel });
+    return this.roleCompetencyRepo.save(rc);
+  }
+
+  async updateRoleCompetency(tenantId: string, id: string, expectedLevel: number): Promise<RoleCompetency> {
+    if (expectedLevel < 1 || expectedLevel > 10) throw new BadRequestException('El nivel esperado debe estar entre 1 y 10');
+    const rc = await this.roleCompetencyRepo.findOne({ where: { id, tenantId } });
+    if (!rc) throw new NotFoundException('Asignación no encontrada');
+    rc.expectedLevel = expectedLevel;
+    return this.roleCompetencyRepo.save(rc);
+  }
+
+  async deleteRoleCompetency(tenantId: string, id: string): Promise<void> {
+    const rc = await this.roleCompetencyRepo.findOne({ where: { id, tenantId } });
+    if (!rc) throw new NotFoundException('Asignación no encontrada');
+    await this.roleCompetencyRepo.remove(rc);
+  }
+
+  async bulkAssignCompetencies(tenantId: string, position: string, defaultLevel: number = 5): Promise<{ created: number }> {
+    const competencies = await this.competencyRepo.find({ where: { tenantId, isActive: true } });
+    let created = 0;
+    for (const comp of competencies) {
+      const exists = await this.roleCompetencyRepo.findOne({ where: { tenantId, position, competencyId: comp.id } });
+      if (!exists) {
+        await this.roleCompetencyRepo.save(this.roleCompetencyRepo.create({ tenantId, position, competencyId: comp.id, expectedLevel: defaultLevel }));
+        created++;
+      }
+    }
+    return { created };
+  }
+
   /**
    * B8.3: Returns the user's competency profile comparing actual evaluation scores
    * against the expected level for their role (position).

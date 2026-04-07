@@ -743,6 +743,18 @@ export const api = {
       approve: (token: string, id: string, note?: string) => request<any>(`/development/competencies/${id}/approve`, { method: "POST", body: JSON.stringify({ note }) }, token),
       reject: (token: string, id: string, note: string) => request<any>(`/development/competencies/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }, token),
     },
+    roleCompetencies: {
+      list: (token: string, position?: string) =>
+        request<any[]>(`/development/role-competencies${position ? `?position=${encodeURIComponent(position)}` : ''}`, {}, token),
+      create: (token: string, data: { position: string; competencyId: string; expectedLevel: number }) =>
+        request<any>("/development/role-competencies", { method: "POST", body: JSON.stringify(data) }, token),
+      update: (token: string, id: string, data: { expectedLevel: number }) =>
+        request<any>(`/development/role-competencies/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+      remove: (token: string, id: string) =>
+        request<void>(`/development/role-competencies/${id}`, { method: "DELETE" }, token),
+      bulkAssign: (token: string, data: { position: string; defaultLevel?: number }) =>
+        request<{ created: number }>("/development/role-competencies/bulk", { method: "POST", body: JSON.stringify(data) }, token),
+    },
     plans: {
       list: (token: string) => request<any[]>("/development/plans", {}, token),
       getById: (token: string, id: string) => request<any>(`/development/plans/${id}`, {}, token),

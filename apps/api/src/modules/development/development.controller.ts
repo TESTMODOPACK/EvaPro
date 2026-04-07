@@ -12,6 +12,8 @@ import {
   ParseUUIDPipe,
   UseGuards,
   ForbiddenException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
@@ -107,6 +109,55 @@ export class DevelopmentController {
       throw new ForbiddenException('Solo puedes ver tu propio perfil de competencias');
     }
     return this.developmentService.getCompetencyProfile(req.user.tenantId, userId);
+  }
+
+  // ─── Role Competencies (Competencias por Cargo) ─────────────────────────
+
+  @Get('role-competencies')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  findRoleCompetencies(
+    @Request() req: any,
+    @Query('position') position?: string,
+  ) {
+    return this.developmentService.findRoleCompetencies(req.user.tenantId, position);
+  }
+
+  @Post('role-competencies')
+  @Roles('super_admin', 'tenant_admin')
+  createRoleCompetency(
+    @Request() req: any,
+    @Body() dto: { position: string; competencyId: string; expectedLevel: number },
+  ) {
+    return this.developmentService.createRoleCompetency(req.user.tenantId, dto);
+  }
+
+  @Patch('role-competencies/:id')
+  @Roles('super_admin', 'tenant_admin')
+  updateRoleCompetency(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { expectedLevel: number },
+  ) {
+    return this.developmentService.updateRoleCompetency(req.user.tenantId, id, dto.expectedLevel);
+  }
+
+  @Delete('role-competencies/:id')
+  @Roles('super_admin', 'tenant_admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteRoleCompetency(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.developmentService.deleteRoleCompetency(req.user.tenantId, id);
+  }
+
+  @Post('role-competencies/bulk')
+  @Roles('super_admin', 'tenant_admin')
+  bulkAssignCompetencies(
+    @Request() req: any,
+    @Body() dto: { position: string; defaultLevel?: number },
+  ) {
+    return this.developmentService.bulkAssignCompetencies(req.user.tenantId, dto.position, dto.defaultLevel || 5);
   }
 
   // ─── Plans (requires PDI feature) ──────────────────────────────────────
