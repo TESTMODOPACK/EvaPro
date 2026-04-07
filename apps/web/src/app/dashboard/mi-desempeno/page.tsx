@@ -211,13 +211,15 @@ export default function MiDesempenoPage() {
   // Pending = evaluations I need to complete (as evaluator) — ALL go to personal tab
   const myPendingEvals = pending;
 
-  // Team evaluations (where I evaluated others, excluding self-evaluations of myself)
-  const teamCompletedEvals = completed.filter((e: any) => e.evaluateeId !== myUserId);
+  // Team evaluations (where I evaluated others, excluding self and admins)
+  const teamCompletedEvals = completed.filter((e: any) => e.evaluateeId !== myUserId && e.evaluatee?.role !== 'tenant_admin');
 
-  // My objectives vs team objectives
+  // My objectives vs team objectives (backend already filters by manager for managers)
   const myObjectives = objectives.filter((o: any) => o.userId === myUserId);
+  // For team: exclude self and any tenant_admin users (admins aren't team members)
+  const teamObjectivesFiltered = objectives.filter((o: any) => o.userId !== myUserId && o.user?.role !== 'tenant_admin');
   const myDevPlans = devPlans.filter((p: any) => p.userId === myUserId);
-  const teamDevPlans = devPlans.filter((p: any) => p.userId !== myUserId);
+  const teamDevPlans = devPlans.filter((p: any) => p.userId !== myUserId && p.user?.role !== 'tenant_admin');
 
   // KPIs
   const myActiveObj = myObjectives.filter((o: any) => o.status === 'active').length;
