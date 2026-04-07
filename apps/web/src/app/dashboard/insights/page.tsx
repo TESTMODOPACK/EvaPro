@@ -97,7 +97,7 @@ function SummarySection({ cycleId, userId, aiBlocked }: { cycleId: string; userI
         )}
         {generate.isError && (
           <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
-            Error al generar. El proceso puede haber tardado más de lo esperado. Recarga la página para verificar si el informe fue generado.
+            No se pudo completar la generación. El proceso puede haber tardado más de lo esperado o la cuota mensual de IA se agotó. Recarga la página para verificar si el informe fue generado.
           </p>
         )}
       </div>

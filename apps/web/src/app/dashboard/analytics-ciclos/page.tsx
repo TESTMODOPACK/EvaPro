@@ -519,7 +519,7 @@ function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocke
         )}
         {analyze.isError && (
           <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
-            Error al generar. Intente nuevamente o verifique sus créditos de IA.
+            No se pudo completar el análisis. Posibles causas: la IA tardó más de lo esperado, no hay suficientes evaluaciones completadas (mínimo 3), o se agotó la cuota mensual de IA. Intente nuevamente en unos minutos.
           </p>
         )}
       </div>
