@@ -130,13 +130,14 @@ export default function MiDesempenoPage() {
   const [objTypeFilter, setObjTypeFilter] = useState('');
   const [pdiStatusFilter, setPdiStatusFilter] = useState('');
   const [teamPdiStatusFilter, setTeamPdiStatusFilter] = useState('');
+  const [teamEvalStatusFilter, setTeamEvalStatusFilter] = useState('');
+  const [teamEvalCycleFilter, setTeamEvalCycleFilter] = useState('');
 
   // Expandables
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [expandedTeamMember, setExpandedTeamMember] = useState<string | null>(null);
   const [expandedFbRecipient, setExpandedFbRecipient] = useState<string | null>(null);
   const [signModal, setSignModal] = useState<any>(null);
-  const [showGuide, setShowGuide] = useState(false);
 
   // Cycles for filter
   const { data: allCycles } = useCycles();
@@ -172,8 +173,8 @@ export default function MiDesempenoPage() {
       setObjectives(Array.isArray(objs) ? objs : []);
       setMyPoints(pts);
       setMyBadges(Array.isArray(badges) ? badges : []);
-      const wallItems = Array.isArray(wall) ? wall : (wall as any)?.items || [];
-      setRecognitionsReceived(wallItems.filter((r: any) => r.toUserId === user.userId));
+      const wallItems = Array.isArray(wall) ? wall : (wall as any)?.data || [];
+      setRecognitionsReceived(wallItems.filter((r: any) => r.toUser?.id === user.userId || r.toUserId === user.userId));
       setMyRedemptions(Array.isArray(redemptions) ? redemptions : []);
       if (teamObj) setTeamObjectives(teamObj);
     }).finally(() => setLoading(false));
@@ -181,7 +182,7 @@ export default function MiDesempenoPage() {
 
   // Load signatures
   useEffect(() => {
-    if (!token || completed.length === 0) return;
+    if (!token || (completed.length === 0 && received.length === 0)) return;
     const loadSigs = async () => {
       const map: Record<string, any[]> = {};
       for (const ev of [...completed, ...received]) {
@@ -205,10 +206,10 @@ export default function MiDesempenoPage() {
   const latestScore = cycles.length > 0 ? cycles[cycles.length - 1] : null;
   const displayScore = latestScore?.avgOverall ?? null;
 
-  // Personal evaluations: where I'm the evaluatee (received) + my completions as evaluator for self
+  // Personal evaluations: where I'm the evaluatee (received endpoint)
   const myEvaluationsReceived = received;
-  const myPendingEvals = pending.filter((e: any) => e.evaluateeId === myUserId || e.relationType === 'self');
-  const teamPendingEvals = pending.filter((e: any) => e.evaluateeId !== myUserId && e.relationType !== 'self');
+  // Pending = evaluations I need to complete (as evaluator) — ALL go to personal tab
+  const myPendingEvals = pending;
 
   // Team evaluations (where I evaluated others, excluding self-evaluations of myself)
   const teamCompletedEvals = completed.filter((e: any) => e.evaluateeId !== myUserId);
@@ -626,7 +627,7 @@ export default function MiDesempenoPage() {
           {/* Sub-tabs */}
           <div className="animate-fade-up" style={{ display: 'flex', gap: '0.15rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
             {[
-              { id: 'evaluaciones' as const, label: `Evaluaciones (${teamCompletedEvals.length + teamPendingEvals.length})` },
+              { id: 'evaluaciones' as const, label: `Evaluaciones (${teamCompletedEvals.length})` },
               { id: 'objetivos' as const, label: `Objetivos` },
               { id: 'pdi' as const, label: `Planes de Desarrollo (${teamDevPlans.length})` },
             ].map(tab => (
@@ -638,35 +639,18 @@ export default function MiDesempenoPage() {
           {teamTab === 'evaluaciones' && (
             <div className="animate-fade-up">
               <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <select style={selectStyle} value={evalStatusFilter} onChange={(e) => setEvalStatusFilter(e.target.value)}>
-                  <option value="">Todos los estados</option>
-                  <option value="completed">Completadas</option>
-                  <option value="pending">Pendientes</option>
-                </select>
-                <select style={selectStyle} value={evalCycleFilter} onChange={(e) => setEvalCycleFilter(e.target.value)}>
+                <select style={selectStyle} value={teamEvalCycleFilter} onChange={(e) => setTeamEvalCycleFilter(e.target.value)}>
                   <option value="">Todos los ciclos</option>
                   {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{teamCompletedEvals.length} evaluaciones</span>
               </div>
 
-              {/* Pending team evals */}
-              {teamPendingEvals.length > 0 && evalStatusFilter !== 'completed' && (
-                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--warning)' }}>Pendientes del Equipo ({teamPendingEvals.length})</h3>
-                  {teamPendingEvals.map((ev: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0.5rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
-                      <div>
-                        <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
-                        <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
-                      </div>
-                      <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Pendiente</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* Completed team evals */}
-              {teamCompletedEvals.length > 0 && evalStatusFilter !== 'pending' && (
+              {teamCompletedEvals.length === 0 && (
+                <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin evaluaciones del equipo completadas.</div>
+              )}
+              {teamCompletedEvals.length > 0 && (
                 <div className="card" style={{ padding: '1.25rem' }}>
                   <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Evaluaciones del Equipo</h3>
                   <div className="table-wrapper">
@@ -683,7 +667,7 @@ export default function MiDesempenoPage() {
                       </thead>
                       <tbody>
                         {teamCompletedEvals
-                          .filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter)
+                          .filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter)
                           .map((ev: any, i: number) => (
                           <tr key={i}>
                             <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</td>
