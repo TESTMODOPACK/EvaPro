@@ -23,7 +23,7 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
   const { summary, departments, quadrants, categoryCorrelation, insights } = data || {};
   const scatterData = (departments || []).filter((d: any) => d.performance != null && d.engagement != null)
     .map((d: any) => ({ x: d.performance, y: d.engagement, name: d.department, quadrant: d.quadrant }));
-  const corrLabel = summary?.correlation >= 0.5 ? 'Fuerte positiva' : summary?.correlation >= 0.2 ? 'Moderada' : summary?.correlation >= -0.2 ? 'Débil' : 'Negativa';
+  const corrLabel = summary?.correlation == null ? '—' : summary.correlation >= 0.5 ? 'Fuerte positiva' : summary.correlation >= 0.2 ? 'Moderada' : summary.correlation >= -0.2 ? 'Débil' : 'Negativa';
 
   return (
     <div>
@@ -204,9 +204,8 @@ function AnalisisIntegradoContent() {
   // Load available data
   useEffect(() => {
     if (!token) return;
-    fetch(`${API}/reports/cross-analysis/available`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : { cycles: [], surveys: [] })
-      .then(({ cycles, surveys }) => { setAvailableCycles(cycles || []); setAvailableSurveys(surveys || []); })
+    api.reports.crossAnalysisAvailable(token)
+      .then(({ cycles, surveys }: any) => { setAvailableCycles(cycles || []); setAvailableSurveys(surveys || []); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
@@ -221,18 +220,15 @@ function AnalisisIntegradoContent() {
     const cycleIdsArr = Array.from(selectedCycleIds);
 
     try {
-      // 1. Global analysis (all cycles combined)
-      const globalRes = await api.reports.crossAnalysis(token, cycleIdsArr, selectedSurveyId);
-      setGlobalData(globalRes);
-
-      // 2. Per-cycle analysis (1 call per cycle)
+      // 1. Global + per-cycle analysis in parallel
+      const [globalRes, ...perCycleResults] = await Promise.all([
+        api.reports.crossAnalysis(token, cycleIdsArr, selectedSurveyId),
+        ...cycleIdsArr.map(cid => api.reports.crossAnalysis(token, [cid], selectedSurveyId).catch(() => null)),
+      ]);
       const perCycleMap = new Map<string, any>();
-      await Promise.all(cycleIdsArr.map(async (cid) => {
-        try {
-          const res = await api.reports.crossAnalysis(token, [cid], selectedSurveyId);
-          perCycleMap.set(cid, res);
-        } catch { perCycleMap.set(cid, null); }
-      }));
+      cycleIdsArr.forEach((cid, i) => perCycleMap.set(cid, perCycleResults[i]));
+      // Set all data at once to avoid flash of partial content
+      setGlobalData(globalRes);
       setPerCycleData(perCycleMap);
       setActiveTabCycleId(cycleIdsArr[0]);
     } catch (e: any) { setError(e.message); }
@@ -272,14 +268,14 @@ function AnalisisIntegradoContent() {
     const analyses: string[] = [];
     const entries = Array.from(perCycleData.entries()).filter(([, d]) => d?.summary);
 
-    // Best/worst correlation
-    const byCorr = entries.sort(([, a], [, b]) => (b.summary?.correlation || 0) - (a.summary?.correlation || 0));
+    // Best/worst correlation (spread to avoid mutating entries)
+    const byCorr = [...entries].sort(([, a], [, b]) => (b.summary?.correlation || 0) - (a.summary?.correlation || 0));
     if (byCorr.length >= 2) {
       analyses.push(`${cycleNameMap.get(byCorr[0][0]) || 'Ciclo'} tiene la correlación más fuerte entre desempeño y clima (r=${byCorr[0][1].summary?.correlation}), mientras que ${cycleNameMap.get(byCorr[byCorr.length - 1][0]) || 'Ciclo'} tiene la más débil (r=${byCorr[byCorr.length - 1][1].summary?.correlation}).`);
     }
 
     // eNPS comparison
-    const byEnps = entries.sort(([, a], [, b]) => (b.summary?.eNPS || 0) - (a.summary?.eNPS || 0));
+    const byEnps = [...entries].sort(([, a], [, b]) => (b.summary?.eNPS || 0) - (a.summary?.eNPS || 0));
     if (byEnps.length >= 2) {
       analyses.push(`El eNPS más alto corresponde a ${cycleNameMap.get(byEnps[0][0]) || 'Ciclo'} (${byEnps[0][1].summary?.eNPS}) y el más bajo a ${cycleNameMap.get(byEnps[byEnps.length - 1][0]) || 'Ciclo'} (${byEnps[byEnps.length - 1][1].summary?.eNPS}).`);
     }
@@ -299,7 +295,7 @@ function AnalisisIntegradoContent() {
     }
 
     // Performance trend
-    const byPerf = entries.sort(([, a], [, b]) => (b.summary?.avgPerformance || 0) - (a.summary?.avgPerformance || 0));
+    const byPerf = [...entries].sort(([, a], [, b]) => (b.summary?.avgPerformance || 0) - (a.summary?.avgPerformance || 0));
     if (byPerf.length >= 2) {
       const diff = (byPerf[0][1].summary?.avgPerformance || 0) - (byPerf[byPerf.length - 1][1].summary?.avgPerformance || 0);
       if (diff > 0.5) analyses.push(`La diferencia de desempeño promedio entre cruces es de ${diff.toFixed(1)} puntos, lo que indica variabilidad entre períodos.`);
@@ -362,7 +358,7 @@ function AnalisisIntegradoContent() {
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ flex: '1 1 250px' }}>
             <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Encuesta de Clima</label>
-            <select className="input" value={selectedSurveyId} onChange={(e) => { setSelectedSurveyId(e.target.value); setSelectedCycleIds(new Set()); setGlobalData(null); setPerCycleData(new Map()); }} style={{ fontSize: '0.82rem' }}>
+            <select className="input" value={selectedSurveyId} onChange={(e) => { setSelectedSurveyId(e.target.value); setSelectedCycleIds(new Set()); setGlobalData(null); setPerCycleData(new Map()); setActiveTabCycleId(null); }} style={{ fontSize: '0.82rem' }}>
               <option value="">Seleccionar encuesta...</option>
               {availableSurveys.map((s: any) => (
                 <option key={s.id} value={s.id}>{s.title} ({s.endDate ? new Date(s.endDate).toLocaleDateString('es-CL') : ''})</option>
