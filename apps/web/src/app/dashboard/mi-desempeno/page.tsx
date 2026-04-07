@@ -222,7 +222,7 @@ export default function MiDesempenoPage() {
   const teamCompletedEvals = completed.filter((e: any) =>
     e.evaluateeId !== myUserId &&
     e.evaluatee?.role !== 'tenant_admin' &&
-    (teamMemberIds.size === 0 || teamMemberIds.has(e.evaluateeId))
+    teamMemberIds.has(e.evaluateeId)
   );
 
   // My objectives vs team objectives (backend already filters by manager for managers)
@@ -231,7 +231,7 @@ export default function MiDesempenoPage() {
   const teamDevPlans = devPlans.filter((p: any) =>
     p.userId !== myUserId &&
     p.user?.role !== 'tenant_admin' &&
-    (teamMemberIds.size === 0 || teamMemberIds.has(p.userId))
+    teamMemberIds.has(p.userId)
   );
 
   // KPIs
