@@ -50,6 +50,30 @@ export class ReportsController {
 
   // ─── Executive Dashboard ─────────────────────────────────────────────
 
+  @Get('executive-dashboard/export')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  async exportDashboard(
+    @Query('cycleId') cycleId: string,
+    @Query('surveyId') surveyId: string,
+    @Query('format') format: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    if (!cycleId) {
+      res.status(400).json({ message: 'cycleId es requerido' });
+      return;
+    }
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'executive-dashboard', format }).catch(() => {});
+
+    const pdfBuffer = await this.executiveDashboardService.exportDashboardPdf(
+      req.user.tenantId, cycleId, surveyId || undefined, managerId,
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=dashboard-ejecutivo.pdf');
+    return res.send(pdfBuffer);
+  }
+
   @Get('executive-dashboard/surveys')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getClosedSurveys(@Request() req: any) {

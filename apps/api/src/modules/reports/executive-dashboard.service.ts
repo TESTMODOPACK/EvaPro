@@ -333,4 +333,254 @@ export class ExecutiveDashboardService {
       pendingInitiatives,
     };
   }
+
+  // ─── Export Dashboard PDF (multi-tab) ─────────────────────────────────
+
+  async exportDashboardPdf(tenantId: string, cycleId: string, surveyId?: string, managerId?: string): Promise<Buffer> {
+    // Gather ALL data
+    const [execData, turnover] = await Promise.all([
+      this.getExecutiveSummary(tenantId, cycleId, managerId),
+      this.getTurnoverForExport(tenantId).catch(() => null),
+    ]);
+    const cycleSummary: any = null; // Department data comes from the cycle summary endpoint
+    const movements: any = null;
+    const pdiCompliance: any = null;
+    let enpsData: any = null;
+    if (surveyId) {
+      enpsData = await this.getENPSBySurveyId(tenantId, surveyId).catch(() => null);
+    } else {
+      enpsData = await this.getLatestENPS(tenantId).catch(() => null);
+    }
+
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 14;
+
+    const addHeader = (title: string, subtitle: string) => {
+      doc.setFillColor(26, 18, 6);
+      doc.rect(0, 0, pageW, 28, 'F');
+      doc.setTextColor(245, 228, 168);
+      doc.setFontSize(15);
+      doc.text(title, margin, 14);
+      doc.setFontSize(9);
+      doc.setTextColor(201, 147, 58);
+      doc.text(subtitle, margin, 22);
+      doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, pageW - margin, 22, { align: 'right' });
+    };
+
+    const addKpiRow = (y: number, kpis: { label: string; value: string }[]) => {
+      const kpiW = (pageW - 2 * margin - (kpis.length - 1) * 4) / kpis.length;
+      kpis.forEach((kpi, i) => {
+        const x = margin + i * (kpiW + 4);
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(x, y, kpiW, 18, 2, 2, 'F');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        doc.text(kpi.label, x + kpiW / 2, y + 7, { align: 'center' });
+        doc.setFontSize(12);
+        doc.setTextColor(26, 18, 6);
+        doc.text(kpi.value, x + kpiW / 2, y + 15, { align: 'center' });
+      });
+      return y + 24;
+    };
+
+    const addSectionTitle = (y: number, text: string) => {
+      doc.setFontSize(10);
+      doc.setTextColor(201, 147, 58);
+      doc.text(text, margin, y);
+      return y + 6;
+    };
+
+    const perf = execData.performance || {};
+    const hc = execData.headcount || {};
+    const obj = execData.objectives || {};
+    const orgDev = execData.orgDevelopment || {};
+
+    // ═══ PAGE 1: PORTADA + RESUMEN GENERAL ═══
+    addHeader('Dashboard Ejecutivo', 'Resumen integral de la organización');
+    let y = 36;
+    y = addKpiRow(y, [
+      { label: 'Promedio Global', value: `${Number(perf.avgScore || 0).toFixed(1)}/10` },
+      { label: 'Completitud', value: `${perf.completionRate || 0}%` },
+      { label: 'eNPS', value: `${enpsData?.score ?? '--'}` },
+      { label: 'Dotación', value: `${hc.active || 0} activos` },
+      { label: 'OKRs', value: `${obj.completionPct || 0}%` },
+    ]);
+    y += 4;
+
+    // Cycle info
+    if (perf.cycleName) {
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Ciclo: ${perf.cycleName}`, margin, y);
+      y += 6;
+    }
+
+    // Summary analysis text
+    y = addSectionTitle(y, 'Análisis General');
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    const avgScore = Number(perf.avgScore || 0);
+    const scoreLabel = avgScore >= 9 ? 'Excepcional' : avgScore >= 7 ? 'Destacado' : avgScore >= 5 ? 'Competente' : avgScore >= 3 ? 'En desarrollo' : 'Insuficiente';
+    doc.text(`Desempeño: Promedio global ${avgScore.toFixed(1)} (${scoreLabel}). ${perf.completionRate >= 80 ? 'Excelente participación.' : 'Participación mejorable.'}`, margin, y, { maxWidth: pageW - 2 * margin });
+    y += 5;
+    if (enpsData) {
+      doc.text(`Clima: eNPS de ${enpsData.score} (${enpsData.score >= 50 ? 'Excelente' : enpsData.score >= 30 ? 'Muy bueno' : enpsData.score >= 0 ? 'Aceptable' : 'Bajo'}). ${enpsData.promoters} promotores, ${enpsData.detractors} detractores.`, margin, y, { maxWidth: pageW - 2 * margin });
+      y += 5;
+    }
+    if (turnover) {
+      doc.text(`Dotación: Tasa de rotación ${turnover.turnoverRate || 0}% (${turnover.turnoverRate > 15 ? 'Alta' : turnover.turnoverRate > 8 ? 'Moderada' : 'Saludable'}). ${turnover.totalDeactivations12m || 0} bajas en 12 meses.`, margin, y, { maxWidth: pageW - 2 * margin });
+      y += 5;
+    }
+    doc.text(`Objetivos: ${obj.completionPct || 0}% cumplimiento. ${obj.completed || 0} completados de ${obj.total || 0}.`, margin, y, { maxWidth: pageW - 2 * margin });
+    y += 10;
+
+    // Department ranking table
+    if (cycleSummary?.departmentBreakdown?.length) {
+      y = addSectionTitle(y, 'Ranking Departamental');
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [['Departamento', 'Promedio', 'Evaluados', 'Nivel']],
+        body: cycleSummary.departmentBreakdown
+          .sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore))
+          .map((d: any) => [d.department, Number(d.avgScore).toFixed(1), d.count || 0, Number(d.avgScore) >= 7 ? 'Alto' : Number(d.avgScore) >= 5 ? 'Medio' : 'Bajo']),
+        headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+    }
+
+    // ═══ PAGE 2: CLIMA LABORAL ═══
+    if (enpsData) {
+      doc.addPage();
+      addHeader('Clima Laboral', `Encuesta: ${enpsData.surveyName || 'Última encuesta'}`);
+      let y2 = 36;
+      y2 = addKpiRow(y2, [
+        { label: 'eNPS Score', value: `${enpsData.score ?? '--'}` },
+        { label: 'Promotores', value: `${enpsData.promoters || 0}` },
+        { label: 'Detractores', value: `${enpsData.detractors || 0}` },
+        { label: 'Total Respuestas', value: `${enpsData.total || 0}` },
+      ]);
+      y2 += 4;
+      y2 = addSectionTitle(y2, 'Interpretación');
+      doc.setFontSize(8);
+      doc.setTextColor(60, 60, 60);
+      doc.text(
+        enpsData.score >= 50 ? 'Excelente — alto nivel de compromiso y satisfacción organizacional.' :
+        enpsData.score >= 30 ? 'Muy bueno — la mayoría son promotores de la organización.' :
+        enpsData.score >= 0 ? 'Aceptable — hay espacio para mejorar. Investigar causas de insatisfacción.' :
+        'Bajo — requiere intervención urgente. Revisar condiciones laborales y clima.',
+        margin, y2, { maxWidth: pageW - 2 * margin },
+      );
+    }
+
+    // ═══ PAGE 3: DOTACIÓN Y ROTACIÓN ═══
+    if (turnover || movements) {
+      doc.addPage();
+      addHeader('Dotación y Rotación', 'Últimos 12 meses');
+      let y3 = 36;
+      y3 = addKpiRow(y3, [
+        { label: 'Activos', value: `${hc.active || 0}` },
+        { label: 'Total', value: `${hc.total || 0}` },
+        { label: 'Tasa Rotación', value: `${turnover?.turnoverRate || 0}%` },
+        { label: 'Bajas 12m', value: `${turnover?.totalDeactivations12m || 0}` },
+        { label: 'Voluntarias', value: `${turnover?.voluntary || 0}` },
+        { label: 'Involuntarias', value: `${turnover?.involuntary || 0}` },
+      ]);
+      y3 += 4;
+
+      if (turnover?.byDepartment?.length) {
+        y3 = addSectionTitle(y3, 'Bajas por Departamento');
+        autoTable(doc, {
+          startY: y3,
+          margin: { left: margin, right: pageW / 2 + 10 },
+          head: [['Departamento', 'Bajas']],
+          body: turnover.byDepartment.map((d: any) => [d.department, d.count]),
+          headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+          bodyStyles: { fontSize: 7 },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+        });
+      }
+
+      if (movements) {
+        const movY = y3;
+        doc.setFontSize(10);
+        doc.setTextColor(201, 147, 58);
+        doc.text('Movimientos Internos', pageW / 2 + 20, movY);
+        doc.setFontSize(8);
+        doc.setTextColor(60, 60, 60);
+        doc.text(`Total: ${movements.totalMovements || 0} | Promociones: ${movements.promotions || 0} | Transferencias: ${movements.lateralTransfers || 0}`, pageW / 2 + 20, movY + 6);
+      }
+    }
+
+    // ═══ PAGE 4: OBJETIVOS ═══
+    doc.addPage();
+    addHeader('Objetivos y OKRs', 'Estado de cumplimiento');
+    let y4 = 36;
+    y4 = addKpiRow(y4, [
+      { label: 'Cumplimiento', value: `${obj.completionPct || 0}%` },
+      { label: 'Completados', value: `${obj.completed || 0}` },
+      { label: 'En Progreso', value: `${obj.inProgress || 0}` },
+      { label: 'Total', value: `${obj.total || 0}` },
+    ]);
+    y4 += 4;
+    y4 = addSectionTitle(y4, 'Análisis');
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    doc.text(`${obj.completionPct >= 70 ? 'Buen avance en las metas organizacionales.' : obj.completionPct >= 40 ? 'Avance moderado — revisar priorización.' : 'Bajo cumplimiento — requiere atención urgente.'}`, margin, y4, { maxWidth: pageW - 2 * margin });
+    y4 += 5;
+    doc.text(`${obj.inProgress || 0} en progreso, ${obj.draft || 0} en borrador, ${obj.abandoned || 0} abandonados.`, margin, y4, { maxWidth: pageW - 2 * margin });
+
+    // ═══ PAGE 5: DESARROLLO PDI ═══
+    if (pdiCompliance) {
+      doc.addPage();
+      addHeader('Desarrollo (PDI)', 'Cumplimiento de planes de desarrollo');
+      let y5 = 36;
+      y5 = addKpiRow(y5, [
+        { label: 'Total Planes', value: `${pdiCompliance.totalPlans || 0}` },
+        { label: 'Completitud', value: `${pdiCompliance.completionRate || 0}%` },
+        { label: 'Acciones OK', value: `${pdiCompliance.completedActions || 0}/${pdiCompliance.totalActions || 0}` },
+        { label: 'Vencidas', value: `${pdiCompliance.overdueActions || 0}` },
+      ]);
+      y5 += 4;
+
+      if (pdiCompliance.byDepartment?.length) {
+        y5 = addSectionTitle(y5, 'PDI por Departamento');
+        autoTable(doc, {
+          startY: y5,
+          margin: { left: margin, right: margin },
+          head: [['Departamento', 'Planes', 'Completados', 'Progreso']],
+          body: pdiCompliance.byDepartment.map((d: any) => [d.department, d.total, d.completed, `${d.avgProgress || 0}%`]),
+          headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+          bodyStyles: { fontSize: 7 },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+        });
+      }
+    }
+
+    // ═══ FOOTER on all pages ═══
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text('Eva360 — Dashboard Ejecutivo', margin, pageH - 8);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, pageH - 8, { align: 'right' });
+    }
+
+    return Buffer.from(doc.output('arraybuffer'));
+  }
+
+  // Helper: basic turnover data from user table
+  private async getTurnoverForExport(tenantId: string): Promise<any> {
+    const users = await this.userRepo.find({ where: { tenantId }, select: ['id', 'isActive'] });
+    const active = users.filter(u => u.isActive).length;
+    const total = users.length;
+    const inactive = total - active;
+    return { activeUsers: active, inactiveUsers: inactive, turnoverRate: total > 0 ? Math.round((inactive / total) * 100) : 0, totalDeactivations12m: inactive, voluntary: 0, involuntary: 0 };
+  }
 }

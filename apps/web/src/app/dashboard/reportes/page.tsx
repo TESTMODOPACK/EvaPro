@@ -217,20 +217,22 @@ export default function ReportesPage() {
   }, [compareSurveyId]);
 
   // Export handler
-  const handleExport = async (format: 'pdf' | 'xlsx' | 'pptx') => {
+  const handleExport = async (format: 'pdf') => {
     if (!token || !selectedCycleId) return;
     try {
-      const res = await fetch(`${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=${format}`, {
+      const params = new URLSearchParams({ cycleId: selectedCycleId, format });
+      if (selectedSurveyId) params.set('surveyId', selectedSurveyId);
+      const res = await fetch(`${BASE_URL}/reports/executive-dashboard/export?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error('Error');
+      if (!res.ok) throw new Error('Error al generar el reporte');
       const blob = await res.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `resumen-ejecutivo.${format}`;
+      a.download = `dashboard-ejecutivo.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
-    } catch { toast('Error al exportar', 'error'); }
+    } catch (e: any) { toast(e.message || 'Error al exportar', 'error'); }
   };
 
   // Derived data
@@ -301,11 +303,9 @@ export default function ReportesPage() {
           </select>
         </div>
         {selectedCycleId && (
-          <div style={{ display: 'flex', gap: '0.35rem', marginLeft: 'auto' }}>
-            {(['pdf', 'xlsx', 'pptx'] as const).map(fmt => (
-              <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', textTransform: 'uppercase' }}>{fmt}</button>
-            ))}
-          </div>
+          <button className="btn-ghost" onClick={() => handleExport('pdf')} style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', marginLeft: 'auto' }}>
+            Exportar PDF
+          </button>
         )}
       </div>
 
