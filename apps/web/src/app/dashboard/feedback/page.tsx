@@ -3,11 +3,13 @@ import { PlanGate } from '@/components/PlanGate';
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import ConfirmModal from '@/components/ConfirmModal';
 import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 
 type ActiveTab = 'checkins' | 'quick' | 'locations';
 type QuickSubTab = 'received' | 'given';
@@ -553,6 +555,12 @@ function QuickFeedbackTab() {
   const { data: summary } = useFeedbackSummary();
   const { data: usersPage } = useUsers(1, 500);
   const sendFeedback = useSendQuickFeedback();
+  const token = useAuthStore((s) => s.token);
+  const { data: competencies } = useQuery({
+    queryKey: ['competencies-feedback'],
+    queryFn: () => api.development.competencies.list(token!),
+    enabled: !!token,
+  });
 
   const [subTab, setSubTab] = useState<QuickSubTab>('received');
   const [showForm, setShowForm] = useState(false);
@@ -759,16 +767,19 @@ function QuickFeedbackTab() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end', marginBottom: '0.75rem' }}>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                {'Categor\u00eda (opcional)'}
+                Competencia (opcional)
               </label>
-              <input
+              <select
                 className="input"
-                type="text"
-                placeholder={'Ej: Liderazgo, Comunicaci\u00f3n...'}
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 style={{ width: '100%' }}
-              />
+              >
+                <option value="">— Sin competencia asociada —</option>
+                {(Array.isArray(competencies) ? competencies : []).map((c: any) => (
+                  <option key={c.id} value={c.name}>{c.name}{c.category ? ` (${c.category})` : ''}</option>
+                ))}
+              </select>
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', paddingBottom: '0.35rem' }}>
               <input
