@@ -2,8 +2,7 @@ import type ExcelJS from 'exceljs';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// jsPDF and autoTable loaded dynamically in export methods to avoid ESM issues
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus, RelationType } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
@@ -376,7 +375,9 @@ export class ReportsService {
       ]);
     }
 
-    // Create PDF
+    // Create PDF (dynamic imports to avoid ESM issues in production)
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
     const accent = [99, 102, 241]; // #6366f1
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -1762,6 +1763,8 @@ export class ReportsService {
     const heatmapData = await this.competencyHeatmap(cycleId, tenantId, mgrFilter);
     const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
 
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
     const accent = [99, 102, 241];
     const pageWidth = doc.internal.pageSize.getWidth();
