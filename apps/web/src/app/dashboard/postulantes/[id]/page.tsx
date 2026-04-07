@@ -38,6 +38,130 @@ function categoryLabel(key: string): string {
 }
 
 
+/* ── Admin read-only evaluation view ──────────────────────────────── */
+function AdminEvaluationView({ candidate, token, onViewScorecard }: { candidate: any; token: string | null; onViewScorecard: () => void }) {
+  const [interviews, setInterviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token || !candidate?.id) return;
+    setLoading(true);
+    api.recruitment.candidates.getInterviews(token, candidate.id)
+      .then((data: any) => setInterviews(Array.isArray(data) ? data : []))
+      .catch(() => setInterviews([]))
+      .finally(() => setLoading(false));
+  }, [token, candidate?.id]);
+
+  const candidateName = candidate.firstName || candidate.user?.firstName || '';
+  const candidateLastName = candidate.lastName || candidate.user?.lastName || '';
+
+  return (
+    <div>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
+        Evaluaciones: {candidateName} {candidateLastName}
+      </h2>
+
+      {loading ? (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Cargando evaluaciones...</div>
+      ) : interviews.length === 0 ? (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          Este candidato aun no tiene evaluaciones de entrevista.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {interviews.map((iv: any) => {
+            const checks = iv.requirementChecks || [];
+            const answered = checks.filter((c: any) => c.status !== 'pendiente');
+            const cumple = checks.filter((c: any) => c.status === 'cumple').length;
+            const parcial = checks.filter((c: any) => c.status === 'parcial').length;
+            const noCumple = checks.filter((c: any) => c.status === 'no_cumple').length;
+            return (
+              <div key={iv.id} className="card" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <div>
+                    <span style={{ fontWeight: 700, fontSize: '0.92rem' }}>
+                      {iv.evaluator?.firstName} {iv.evaluator?.lastName}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+                      {iv.evaluator?.position || ''}
+                    </span>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '0.3rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                    <span style={{ fontWeight: 800, fontSize: '1.2rem', color: Number(iv.globalScore) >= 7 ? 'var(--success)' : Number(iv.globalScore) >= 4 ? 'var(--accent)' : 'var(--danger)' }}>
+                      {iv.globalScore != null ? Number(iv.globalScore).toFixed(1) : '--'}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>/10</span>
+                  </div>
+                </div>
+
+                {/* Requirement summary */}
+                {answered.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.5rem', fontSize: '0.78rem' }}>
+                    {cumple > 0 && <span style={{ color: 'var(--success)', fontWeight: 600 }}>Cumple: {cumple}</span>}
+                    {parcial > 0 && <span style={{ color: 'var(--warning, #f59e0b)', fontWeight: 600 }}>Parcial: {parcial}</span>}
+                    {noCumple > 0 && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>No cumple: {noCumple}</span>}
+                    <span style={{ color: 'var(--text-muted)' }}>({answered.length}/{checks.length} evaluados)</span>
+                  </div>
+                )}
+
+                {/* Requirement details */}
+                {checks.length > 0 && (
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Requisito</th>
+                          <th style={{ width: 110, padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Estado</th>
+                          <th style={{ padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Comentario</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {checks.map((rc: any, i: number) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '0.35rem 0.5rem' }}>
+                              <span style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 600 }}>{categoryLabel(rc.category)}</span>
+                              <br />{rc.text}
+                            </td>
+                            <td style={{
+                              padding: '0.35rem 0.5rem', fontWeight: 600, fontSize: '0.78rem',
+                              color: rc.status === 'cumple' ? 'var(--success)' : rc.status === 'no_cumple' ? 'var(--danger)' : rc.status === 'parcial' ? 'var(--warning, #f59e0b)' : 'var(--text-muted)',
+                            }}>
+                              {rc.status === 'cumple' ? 'Cumple' : rc.status === 'parcial' ? 'Parcial' : rc.status === 'no_cumple' ? 'No cumple' : 'Pendiente'}
+                            </td>
+                            <td style={{ padding: '0.35rem 0.5rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>{rc.comment || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {iv.comments && (
+                  <div style={{ padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                    <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Comentarios:</strong> {iv.comments}
+                  </div>
+                )}
+
+                {iv.createdAt && (
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
+                    Evaluado el {new Date(iv.createdAt).toLocaleDateString('es-CL')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ marginTop: '1rem' }}>
+        <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={onViewScorecard}>
+          Ver Tarjeta de Puntuacion Completa
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ProcesoDetailPage({ params }: { params: { id: string } }) {
   const token = useAuthStore((s) => s.token);
   const userId = useAuthStore((s) => s.user?.userId);
@@ -493,9 +617,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                     {/* Actions row */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                        {isEvaluatorOfProcess && (
+                        {isEvaluatorOfProcess ? (
                           <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
                             onClick={() => openInterview(c)}>Evaluar</button>
+                        ) : isAdmin && (
+                          <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem', borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                            onClick={() => { setSelectedCandidate(c); setTab('evaluacion'); }}>Ver Evaluaciones</button>
                         )}
                         <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
                           onClick={() => loadScorecard(c.id)}>Tarjeta de Puntaje</button>
@@ -705,8 +832,13 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         <div>
           {!selectedCandidate ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              Selecciona un candidato desde la pestaña Candidatos para evaluar
+              {isEvaluatorOfProcess
+                ? 'Selecciona un candidato desde la pestaña Candidatos y presiona "Evaluar"'
+                : 'Selecciona un candidato desde la pestaña Candidatos para ver sus evaluaciones'}
             </div>
+          ) : !isEvaluatorOfProcess ? (
+            /* ── Admin read-only view of evaluations ──────────────── */
+            <AdminEvaluationView candidate={selectedCandidate} token={token} onViewScorecard={() => loadScorecard(selectedCandidate.id)} />
           ) : (
             <div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
