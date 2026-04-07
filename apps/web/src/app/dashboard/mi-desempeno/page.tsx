@@ -115,6 +115,7 @@ export default function MiDesempenoPage() {
   const [recognitionsReceived, setRecognitionsReceived] = useState<any[]>([]);
   const [myRedemptions, setMyRedemptions] = useState<any[]>([]);
   const [teamObjectives, setTeamObjectives] = useState<any>(null);
+  const [teamMemberIds, setTeamMemberIds] = useState<Set<string>>(new Set());
   const [history, setHistory] = useState<any>(null);
   const [signatureMap, setSignatureMap] = useState<Record<string, any[]>>({});
 
@@ -161,7 +162,8 @@ export default function MiDesempenoPage() {
       api.recognition.wall(token, 1, 50).catch(() => []),
       api.recognition.myRedemptions(token).catch(() => []),
       ...(hasTeam ? [api.objectives.teamSummary(token).catch(() => null)] : []),
-    ]).then(([hist, comp, recv, pend, fbRecv, fbGiven, plans, objs, pts, badges, wall, redemptions, teamObj]) => {
+      ...(hasTeam ? [api.users.list(token, 1, 500).catch(() => ({ data: [] }))] : []),
+    ]).then(([hist, comp, recv, pend, fbRecv, fbGiven, plans, objs, pts, badges, wall, redemptions, teamObj, usersRes]) => {
       setHistory(hist);
       setCompleted(Array.isArray(comp) ? comp : []);
       setReceived(Array.isArray(recv) ? recv : []);
@@ -176,6 +178,12 @@ export default function MiDesempenoPage() {
       setRecognitionsReceived(wallItems.filter((r: any) => r.toUser?.id === user.userId || r.toUserId === user.userId));
       setMyRedemptions(Array.isArray(redemptions) ? redemptions : []);
       if (teamObj) setTeamObjectives(teamObj);
+      // Build team member IDs set for filtering
+      if (usersRes && hasTeam) {
+        const allU = Array.isArray(usersRes) ? usersRes : usersRes?.data || [];
+        const directReports = allU.filter((u: any) => u.managerId === user.userId && u.isActive);
+        setTeamMemberIds(new Set(directReports.map((u: any) => u.id)));
+      }
     }).finally(() => setLoading(false));
   }, [token, user?.userId]);
 
@@ -210,13 +218,21 @@ export default function MiDesempenoPage() {
   // Pending = evaluations I need to complete (as evaluator) — ALL go to personal tab
   const myPendingEvals = pending;
 
-  // Team evaluations (where I evaluated others, excluding self and admins)
-  const teamCompletedEvals = completed.filter((e: any) => e.evaluateeId !== myUserId && e.evaluatee?.role !== 'tenant_admin');
+  // Team evaluations — strictly filter by direct reports only
+  const teamCompletedEvals = completed.filter((e: any) =>
+    e.evaluateeId !== myUserId &&
+    e.evaluatee?.role !== 'tenant_admin' &&
+    (teamMemberIds.size === 0 || teamMemberIds.has(e.evaluateeId))
+  );
 
   // My objectives vs team objectives (backend already filters by manager for managers)
   const myObjectives = objectives.filter((o: any) => o.userId === myUserId);
   const myDevPlans = devPlans.filter((p: any) => p.userId === myUserId);
-  const teamDevPlans = devPlans.filter((p: any) => p.userId !== myUserId && p.user?.role !== 'tenant_admin');
+  const teamDevPlans = devPlans.filter((p: any) =>
+    p.userId !== myUserId &&
+    p.user?.role !== 'tenant_admin' &&
+    (teamMemberIds.size === 0 || teamMemberIds.has(p.userId))
+  );
 
   // KPIs
   const myActiveObj = myObjectives.filter((o: any) => o.status === 'active').length;
