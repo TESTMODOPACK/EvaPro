@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { FormTemplate } from './entities/form-template.entity';
 import { Competency } from '../development/entities/competency.entity';
+import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 
@@ -13,6 +14,8 @@ export class TemplatesService {
     private readonly templateRepo: Repository<FormTemplate>,
     @InjectRepository(Competency)
     private readonly competencyRepo: Repository<Competency>,
+    @InjectRepository(EvaluationCycle)
+    private readonly cycleRepo: Repository<EvaluationCycle>,
   ) {}
 
   async findAll(tenantId: string, includeAll = false): Promise<FormTemplate[]> {
@@ -174,8 +177,19 @@ export class TemplatesService {
   async remove(id: string, tenantId: string): Promise<void> {
     const template = await this.findById(id, tenantId);
     if (template.tenantId === null) {
-      throw new NotFoundException('No se pueden eliminar plantillas globales');
+      throw new BadRequestException('No se pueden eliminar plantillas globales');
     }
+
+    // Validate: check if any evaluation cycles are using this template
+    const cyclesUsingTemplate = await this.cycleRepo.count({
+      where: { templateId: id },
+    });
+    if (cyclesUsingTemplate > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar esta plantilla porque está siendo utilizada por ${cyclesUsingTemplate} ciclo(s) de evaluación. Desasocie la plantilla de los ciclos antes de eliminarla.`,
+      );
+    }
+
     await this.templateRepo.remove(template);
   }
 
