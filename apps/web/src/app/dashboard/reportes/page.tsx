@@ -511,8 +511,9 @@ export default function ReportesPage() {
                   {/* eNPS KPIs */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
                     <KPI label="eNPS Score" value={enpsData.score ?? '--'} color={enpsData.score >= 30 ? 'var(--success)' : enpsData.score >= 0 ? 'var(--warning)' : 'var(--danger)'} />
-                    <KPI label="Promotores" value={enpsData.promoters || 0} color="var(--success)" />
-                    <KPI label="Detractores" value={enpsData.detractors || 0} color="var(--danger)" />
+                    <KPI label="Promotores" value={enpsData.promoters || 0} color="var(--success)" sub="Puntaje 9-10" />
+                    <KPI label="Pasivos" value={(enpsData.total || 0) - (enpsData.promoters || 0) - (enpsData.detractors || 0)} color="#94a3b8" sub="Puntaje 7-8" />
+                    <KPI label="Detractores" value={enpsData.detractors || 0} color="var(--danger)" sub="Puntaje 0-6" />
                     <KPI label="Total Respuestas" value={enpsData.total || 0} />
                   </div>
 
