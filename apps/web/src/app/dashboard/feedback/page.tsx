@@ -561,6 +561,17 @@ function QuickFeedbackTab() {
     queryFn: () => api.development.competencies.list(token!),
     enabled: !!token,
   });
+  // Load feedback configuration from tenant settings
+  const { data: tenantData } = useQuery({
+    queryKey: ['tenant-feedback-config'],
+    queryFn: () => api.tenants.me(token!),
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+  const fbConfig = (tenantData as any)?.settings?.feedbackConfig || {};
+  const fbAllowAnonymous = fbConfig.allowAnonymous !== false;
+  const fbRequireCompetency = fbConfig.requireCompetency === true;
+  const fbScope = fbConfig.scope || 'all';
 
   const [subTab, setSubTab] = useState<QuickSubTab>('received');
   const [showForm, setShowForm] = useState(false);
@@ -576,29 +587,26 @@ function QuickFeedbackTab() {
   const myDepartment = currentUserData?.department || '';
   const myManagerId = currentUserData?.managerId || '';
 
-  // Filter users for recipient by role-based business rules:
-  // - employee: same department + direct manager only
-  // - manager: direct reports + same department
-  // - tenant_admin/super_admin: all users
-  const users = allUsers.filter((u: any) => {
-    if (u.id === currentUserId) return false;
-    if (!u.isActive) return false;
-
-    // Role-based scope restriction
-    if (currentRole === 'employee') {
-      // Employee: only same department (both must have one) + their direct manager
-      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
-      const isMyManager = !!(myManagerId && u.id === myManagerId);
-      if (!sameDept && !isMyManager) return false;
-    } else if (currentRole === 'manager') {
-      // Manager: direct reports + same department
-      const isDirectReport = !!(u.managerId && u.managerId === currentUserId);
-      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
-      if (!isDirectReport && !sameDept) return false;
+  // Filter users by configurable scope (from tenant settings)
+  const isAdminRole = currentRole === 'tenant_admin' || currentRole === 'super_admin';
+  const scopedUsers = allUsers.filter((u: any) => {
+    if (u.id === currentUserId || !u.isActive) return false;
+    // Admins always see everyone
+    if (isAdminRole) return true;
+    // Apply scope from config
+    if (fbScope === 'department') {
+      return !!(myDepartment && u.department && u.department === myDepartment);
     }
-    // tenant_admin / super_admin: no scope restriction
-
-    // UI filters (search + department dropdown)
+    if (fbScope === 'team') {
+      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
+      const isDirectReport = u.managerId === currentUserId;
+      const isMyManager = myManagerId === u.id;
+      return sameDept || isDirectReport || isMyManager;
+    }
+    return true; // scope === 'all'
+  });
+  // Apply UI search/department filters on top
+  const users = scopedUsers.filter((u: any) => {
     if (recipientDeptFilter && u.department !== recipientDeptFilter) return false;
     if (recipientSearch) {
       const q = recipientSearch.toLowerCase();
@@ -607,8 +615,6 @@ function QuickFeedbackTab() {
     }
     return true;
   });
-  // All active users except self — no department/team restriction
-  const scopedUsers = allUsers.filter((u: any) => u.id !== currentUserId && u.isActive);
   const recipientDepts = Array.from(new Set(scopedUsers.map((u: any) => u.department).filter(Boolean))).sort() as string[];
   const feedbackList = subTab === 'received' ? received : given;
   const isLoading = subTab === 'received' ? loadingReceived : loadingGiven;
@@ -760,7 +766,7 @@ function QuickFeedbackTab() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end', marginBottom: '0.75rem' }}>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Competencia (opcional)
+                Competencia {fbRequireCompetency ? '(obligatoria)' : '(opcional)'}
               </label>
               <select
                 className="input"
@@ -774,20 +780,22 @@ function QuickFeedbackTab() {
                 ))}
               </select>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', paddingBottom: '0.35rem' }}>
-              <input
-                type="checkbox"
-                checked={form.isAnonymous}
-                onChange={(e) => setForm({ ...form, isAnonymous: e.target.checked })}
-                style={{ accentColor: 'var(--accent)' }}
-              />
-              {'An\u00f3nimo'}
-            </label>
+            {fbAllowAnonymous && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', paddingBottom: '0.35rem' }}>
+                <input
+                  type="checkbox"
+                  checked={form.isAnonymous}
+                  onChange={(e) => setForm({ ...form, isAnonymous: e.target.checked })}
+                  style={{ accentColor: 'var(--accent)' }}
+                />
+                Anónimo
+              </label>
+            )}
           </div>
           <button
             className="btn-primary"
             onClick={handleSend}
-            disabled={sendFeedback.isPending || !form.toUserId || !form.message}
+            disabled={sendFeedback.isPending || !form.toUserId || !form.message || (fbRequireCompetency && !form.category)}
           >
             {sendFeedback.isPending ? t('common.loading') : t('feedback.sendFeedback')}
           </button>

@@ -14,7 +14,7 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.05em',
 };
 
-type SettingsTab = 'organizacion' | 'notificaciones';
+type SettingsTab = 'organizacion' | 'notificaciones' | 'feedback';
 
 function Toggle({ value, onChange, size = 'md' }: { value: boolean; onChange: () => void; size?: 'sm' | 'md' }) {
   const w = size === 'sm' ? 38 : 44;
@@ -75,6 +75,12 @@ export default function AjustesPage() {
   const [notifAi, setNotifAi] = useState(true);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  // Feedback config
+  const [fbScope, setFbScope] = useState('all');
+  const [fbAllowAnonymous, setFbAllowAnonymous] = useState(true);
+  const [fbMinLength, setFbMinLength] = useState(20);
+  const [fbAllowPeer, setFbAllowPeer] = useState(true);
+  const [fbRequireCompetency, setFbRequireCompetency] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>('organizacion');
 
   // Profile useEffect removed — now in /dashboard/perfil
@@ -109,6 +115,13 @@ export default function AjustesPage() {
         setNotifDevelopment(nt.development !== false);
         setNotifSurveys(nt.surveys !== false);
         setNotifAi(nt.ai !== false);
+        // Load feedback config
+        const fc = s.feedbackConfig || {};
+        setFbScope(fc.scope || 'all');
+        setFbAllowAnonymous(fc.allowAnonymous !== false);
+        setFbMinLength(fc.minMessageLength || 20);
+        setFbAllowPeer(fc.allowPeerFeedback !== false);
+        setFbRequireCompetency(fc.requireCompetency === true);
       })
       .catch(() => {});
   }, [token, isTenantAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -143,6 +156,13 @@ export default function AjustesPage() {
           surveys: notifSurveys,
           ai: notifAi,
         },
+        feedbackConfig: {
+          scope: fbScope,
+          allowAnonymous: fbAllowAnonymous,
+          minMessageLength: fbMinLength,
+          allowPeerFeedback: fbAllowPeer,
+          requireCompetency: fbRequireCompetency,
+        },
       });
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
@@ -163,6 +183,7 @@ export default function AjustesPage() {
   const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
     { id: 'organizacion', label: 'Organización', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
     { id: 'notificaciones', label: 'Notificaciones', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0' },
+    { id: 'feedback', label: 'Retroalimentación', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
   ];
 
   return (
@@ -490,6 +511,89 @@ export default function AjustesPage() {
                 Los emails se enviarán desde: <strong>{emailFrom}</strong>
               </div>
             )}
+          </div>
+
+          {/* Save button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button type="button" className="btn-primary" disabled={settingsSaving}
+              style={{ opacity: settingsSaving ? 0.6 : 1, padding: '0.6rem 1.5rem' }}
+              onClick={handleSaveOrgSettings}>
+              {settingsSaving ? t('common.saving') : 'Guardar cambios'}
+            </button>
+            {settingsSaved && (
+              <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>
+                {t('settings.org.saved')}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* TAB: Retroalimentación (tenant_admin only)                        */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'feedback' && isTenantAdmin && (
+        <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+              Configuración de Retroalimentación
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+              Define las reglas del módulo de feedback rápido para tu organización.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Scope */}
+              <div>
+                <label style={labelStyle}>Alcance de envío</label>
+                <select className="input" value={fbScope} onChange={(e) => setFbScope(e.target.value)} style={{ maxWidth: '350px' }}>
+                  <option value="all">Toda la organización — cualquiera puede enviar a cualquiera</option>
+                  <option value="department">Solo mismo departamento — feedback entre compañeros de área</option>
+                  <option value="team">Equipo directo + departamento — jefatura, reportes y compañeros</option>
+                </select>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  Los administradores siempre pueden enviar a cualquier colaborador independiente de esta configuración.
+                </p>
+              </div>
+
+              {/* Allow anonymous */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Permitir feedback anónimo</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Los colaboradores pueden ocultar su nombre al enviar feedback.</div>
+                </div>
+                <Toggle value={fbAllowAnonymous} onChange={() => setFbAllowAnonymous(!fbAllowAnonymous)} />
+              </div>
+
+              {/* Allow peer feedback */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Permitir feedback entre pares</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Colaboradores del mismo nivel jerárquico pueden enviarse feedback mutuamente.</div>
+                </div>
+                <Toggle value={fbAllowPeer} onChange={() => setFbAllowPeer(!fbAllowPeer)} />
+              </div>
+
+              {/* Require competency */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Requerir competencia</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Obligar a seleccionar una competencia del catálogo al enviar feedback.</div>
+                </div>
+                <Toggle value={fbRequireCompetency} onChange={() => setFbRequireCompetency(!fbRequireCompetency)} />
+              </div>
+
+              {/* Min message length */}
+              <div>
+                <label style={labelStyle}>Largo mínimo del mensaje</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input className="input" type="number" min={10} max={500} value={fbMinLength}
+                    onChange={(e) => setFbMinLength(Math.max(10, Math.min(500, parseInt(e.target.value) || 20)))}
+                    style={{ maxWidth: '100px' }} />
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>caracteres (mínimo 10, máximo 500)</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Save button */}

@@ -7,6 +7,7 @@ import { MeetingLocation } from './entities/meeting-location.entity';
 import { CreateCheckInDto, UpdateCheckInDto, RejectCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
 import { User } from '../users/entities/user.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { EmailService } from '../notifications/email.service';
@@ -23,6 +24,8 @@ export class FeedbackService {
     private readonly locationRepo: Repository<MeetingLocation>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
     private readonly auditService: AuditService,
@@ -453,11 +456,11 @@ export class FeedbackService {
     'maldito', 'desgraciado', 'miserable', 'porqueria', 'porquería',
   ];
 
-  private validateFeedbackContent(message: string): void {
+  private validateFeedbackContent(message: string, minLength: number = 20): void {
     const trimmed = message.trim();
-    if (trimmed.length < 20) {
+    if (trimmed.length < minLength) {
       throw new BadRequestException(
-        `El feedback debe tener al menos 20 caracteres (actual: ${trimmed.length}). Proporciona un mensaje más descriptivo.`,
+        `El feedback debe tener al menos ${minLength} caracteres (actual: ${trimmed.length}). Proporciona un mensaje más descriptivo.`,
       );
     }
     // Normalize: lowercase, strip accents/diacritics, remove non-alpha chars for comparison
@@ -478,13 +481,48 @@ export class FeedbackService {
   }
 
   async createQuickFeedback(tenantId: string, fromUserId: string, dto: CreateQuickFeedbackDto, role: string = 'employee'): Promise<QuickFeedback> {
-    // 1. Validate recipient exists in same tenant
-    const recipient = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id'] });
-    if (!recipient) throw new NotFoundException('Destinatario no encontrado en esta organización');
-    // No department/team restriction — any collaborator can send feedback to any other in the org
+    // 1. Load tenant feedback configuration
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+    const fbConfig = tenant?.settings?.feedbackConfig || {};
+    const scope: string = fbConfig.scope || 'all';
+    const allowAnonymous: boolean = fbConfig.allowAnonymous !== false;
+    const minLength: number = fbConfig.minMessageLength || 20;
+    const requireCompetency: boolean = fbConfig.requireCompetency === true;
 
-    // 2. Validate content
-    this.validateFeedbackContent(dto.message);
+    // 2. Validate recipient exists in same tenant
+    const recipientData = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'managerId'] });
+    if (!recipientData) throw new NotFoundException('Destinatario no encontrado en esta organización');
+
+    // 3. Apply scope restrictions (configurable by admin)
+    if (scope !== 'all' && role !== 'tenant_admin' && role !== 'super_admin') {
+      const sender = await this.userRepo.findOne({ where: { id: fromUserId, tenantId }, select: ['id', 'department', 'managerId'] });
+      if (sender) {
+        const sameDept = !!(sender.department && recipientData.department && sender.department === recipientData.department);
+        if (scope === 'department' && !sameDept) {
+          throw new ForbiddenException('La configuración de tu organización permite enviar feedback solo a miembros de tu mismo departamento.');
+        }
+        if (scope === 'team') {
+          const isDirectReport = recipientData.managerId === fromUserId;
+          const isMyManager = sender.managerId === recipientData.id;
+          if (!sameDept && !isDirectReport && !isMyManager) {
+            throw new ForbiddenException('La configuración de tu organización permite enviar feedback solo a tu equipo directo o miembros de tu departamento.');
+          }
+        }
+      }
+    }
+
+    // 4. Validate anonymous setting
+    if (!allowAnonymous && dto.isAnonymous) {
+      throw new BadRequestException('La organización no permite enviar feedback anónimo.');
+    }
+
+    // 5. Validate competency requirement
+    if (requireCompetency && !dto.category) {
+      throw new BadRequestException('Es obligatorio seleccionar una competencia al enviar feedback.');
+    }
+
+    // 6. Validate content (uses configurable min length)
+    this.validateFeedbackContent(dto.message, minLength);
 
     const qf = this.quickFeedbackRepo.create({
       tenantId,

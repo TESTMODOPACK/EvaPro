@@ -445,6 +445,18 @@ export class TenantsService {
       }
     }
 
+    // Feedback configuration
+    if (dto.feedbackConfig !== undefined && typeof dto.feedbackConfig === 'object') {
+      const fc = dto.feedbackConfig;
+      currentSettings.feedbackConfig = {
+        scope: ['all', 'department', 'team'].includes(fc.scope) ? fc.scope : 'all',
+        allowAnonymous: fc.allowAnonymous !== false,
+        minMessageLength: Math.max(10, Math.min(500, Number(fc.minMessageLength) || 20)),
+        allowPeerFeedback: fc.allowPeerFeedback !== false,
+        requireCompetency: fc.requireCompetency === true,
+      };
+    }
+
     // Tenant column fields (editable by tenant admin)
     if (dto.commercialAddress !== undefined) {
       tenant.commercialAddress = typeof dto.commercialAddress === 'string' ? dto.commercialAddress.trim() || null : null;
