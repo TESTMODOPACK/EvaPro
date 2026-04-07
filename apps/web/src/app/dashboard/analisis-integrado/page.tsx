@@ -51,6 +51,12 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
       </div>
 
       {/* Scatter Chart */}
+      {scatterData.length < 2 && (departments || []).length > 0 && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', textAlign: 'center' }}>
+          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Mapa de Cuadrantes</h4>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>No hay suficientes departamentos con datos de desempeno y clima para generar el grafico. Se requieren al menos 2 departamentos con ambos valores.</p>
+        </div>
+      )}
       {scatterData.length >= 2 && (
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
           <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Mapa de Cuadrantes</h4>
