@@ -321,7 +321,7 @@ export class ExecutiveDashboardService {
     const activePlans = plans.filter((p) => p.status === 'activo').length;
     const totalInitiatives = initiatives.length;
     const completedInitiatives = initiatives.filter((i) => i.status === 'completada').length;
-    const inProgressInitiatives = initiatives.filter((i) => i.status === 'en_progreso').length;
+    const inProgressInitiatives = initiatives.filter((i) => i.status === 'en_curso').length;
     const pendingInitiatives = initiatives.filter((i) => i.status === 'pendiente').length;
 
     return {

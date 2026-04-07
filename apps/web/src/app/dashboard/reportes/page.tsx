@@ -522,6 +522,7 @@ export default function ReportesPage() {
                     <div className="card" style={{ padding: '1.25rem' }}>
                       <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Distribución eNPS</h4>
                       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Employee Net Promoter Score: promotores (9-10), pasivos (7-8) y detractores (0-6).</p>
+                      {(enpsData.total || 0) > 0 ? (
                       <div style={{ height: 220 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -537,6 +538,7 @@ export default function ReportesPage() {
                           </PieChart>
                         </ResponsiveContainer>
                       </div>
+                      ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center', padding: '3rem 0' }}>Sin respuestas en esta encuesta.</p>}
                     </div>
 
                     {/* Headcount chart is in Tab 3 (Dotación) */}
