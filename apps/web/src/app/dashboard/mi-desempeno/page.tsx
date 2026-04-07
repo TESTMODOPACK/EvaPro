@@ -347,20 +347,35 @@ export default function MiDesempenoPage() {
                     <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedPlan === 'pending-evals' ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
                     <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--warning)' }}>Evaluaciones Pendientes ({pendingFiltered.length})</span>
                   </button>
-                  {expandedPlan === 'pending-evals' && (
-                    <div style={{ marginTop: '0.35rem' }}>
-                      {pendingFiltered.map((ev: any, i: number) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 0.5rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
-                          <div>
-                            <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
-                            <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
-                            {ev.cycle?.name && <span style={{ color: 'var(--text-muted)', marginLeft: '0.4rem', fontSize: '0.78rem' }}>{ev.cycle.name}</span>}
+                  {expandedPlan === 'pending-evals' && (() => {
+                    const byCycle: Record<string, { name: string; items: any[] }> = {};
+                    for (const ev of pendingFiltered) {
+                      const cid = ev.cycleId || 'sin-ciclo';
+                      const cname = ev.cycle?.name || 'Sin ciclo';
+                      if (!byCycle[cid]) byCycle[cid] = { name: cname, items: [] };
+                      byCycle[cid].items.push(ev);
+                    }
+                    return (
+                    <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {Object.entries(byCycle).map(([cid, { name, items }]) => (
+                        <div key={cid}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem', padding: '0.2rem 0.5rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                            {name} ({items.length})
                           </div>
-                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Pendiente</span>
+                          {items.map((ev: any, j: number) => (
+                            <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem 0.5rem 0.3rem 1rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                              <div>
+                                <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
+                                <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
+                              </div>
+                              <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Pendiente</span>
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               );
               })()}
