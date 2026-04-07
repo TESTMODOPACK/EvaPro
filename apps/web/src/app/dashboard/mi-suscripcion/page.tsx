@@ -474,10 +474,11 @@ export default function MiSuscripcionPage() {
                   <button
                     onClick={async () => {
                       if (!token) return;
-                      const hasUsed = (aiUsage?.addonRemaining ?? aiAddon.calls) < aiAddon.calls;
+                      const usedCredits = aiUsage ? (aiAddon.calls - (aiUsage.addonRemaining ?? aiAddon.calls)) : 0;
+                      const hasUsed = usedCredits > 0;
                       if (hasUsed) {
                         const ok = confirm(
-                          `Ya se han utilizado créditos del add-on en este período.\n\nAl cancelar, se cobrará la cuota completa del período actual (${aiAddon.price} UF).\n\n¿Desea continuar?`
+                          `Ha utilizado ${usedCredits} de ${aiAddon.calls} créditos del add-on en este período.\n\nAl cancelar, se cobrará la cuota completa del período actual (${aiAddon.price} UF) porque ya se consumieron créditos.\n\n¿Desea continuar?`
                         );
                         if (!ok) return;
                       }
@@ -485,9 +486,9 @@ export default function MiSuscripcionPage() {
                       try {
                         await api.subscriptions.setAiAddon(token, 'none');
                         setAiAddon({ calls: 0, price: 0, packId: null });
-                        showToast(hasUsed ? 'Add-on cancelado. Se cobrará la cuota completa del período por créditos ya utilizados.' : 'Add-on de IA eliminado');
+                        showToast(hasUsed ? `Add-on cancelado. Se cobrará ${aiAddon.price} UF por ${usedCredits} créditos utilizados.` : 'Add-on de IA eliminado sin cargos.');
                         loadAll();
-                      } catch { /* ignore */ }
+                      } catch (e: any) { showToast(e?.message || 'Error al cancelar add-on'); }
                       setAiAddonSaving(false);
                     }}
                     disabled={aiAddonSaving || !aiAddon.packId}
@@ -517,7 +518,7 @@ export default function MiSuscripcionPage() {
                             setAiAddon({ calls: pack.calls, price: pack.monthlyPrice, packId: pack.id });
                             showToast(`Add-on "${pack.name}" activado`);
                             loadAll();
-                          } catch { /* ignore */ }
+                          } catch (e: any) { showToast(e?.message || 'Error al cambiar add-on'); }
                           setAiAddonSaving(false);
                         }}
                         disabled={aiAddonSaving || isSelected}
