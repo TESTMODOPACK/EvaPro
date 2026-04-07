@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
@@ -52,7 +52,9 @@ export class RemindersService {
     private readonly checkinRepo: Repository<CheckIn>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @Inject(forwardRef(() => SubscriptionsService))
     private readonly subscriptionsService: SubscriptionsService,
+    @Inject(forwardRef(() => ReportsService))
     private readonly reportsService: ReportsService,
   ) {}
 

@@ -30,7 +30,7 @@ import { ReportsModule } from '../reports/reports.module';
       Tenant,
     ]),
     forwardRef(() => SubscriptionsModule),
-    ReportsModule,
+    forwardRef(() => ReportsModule),
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, RemindersService, EmailService],

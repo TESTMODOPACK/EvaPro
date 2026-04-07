@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
@@ -32,7 +32,7 @@ import { UserMovement } from '../users/entities/user-movement.entity';
 
 @Module({
   imports: [
-    SubscriptionsModule,
+    forwardRef(() => SubscriptionsModule),
     AuditModule,
     TypeOrmModule.forFeature([
       EvaluationCycle,
