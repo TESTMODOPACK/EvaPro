@@ -91,9 +91,97 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
         </div>
       )}
 
+      {/* Quadrant Analysis — detailed interpretation */}
+      {(departments || []).length > 0 && (() => {
+        const depts = departments || [];
+        const stars = (quadrants?.star || []);
+        const burnout = (quadrants?.burnout_risk || []);
+        const opportunity = (quadrants?.opportunity || []);
+        const critical = (quadrants?.critical || []);
+        const totalDepts = depts.length;
+        const withData = depts.filter((d: any) => d.performance != null && d.engagement != null).length;
+
+        // Best and worst
+        const sorted = [...depts].filter((d: any) => d.performance != null).sort((a: any, b: any) => b.performance - a.performance);
+        const bestPerf = sorted[0];
+        const worstPerf = sorted[sorted.length - 1];
+        const sortedClima = [...depts].filter((d: any) => d.engagement != null).sort((a: any, b: any) => b.engagement - a.engagement);
+        const bestClima = sortedClima[0];
+        const worstClima = sortedClima[sortedClima.length - 1];
+
+        // Correlation interpretation
+        const corr = summary?.correlation;
+        const corrText = corr == null ? null
+          : corr >= 0.5 ? 'Existe una correlacion positiva fuerte: los departamentos con mejor clima tienden a tener mejor desempeno. Esto sugiere que las iniciativas de bienestar impactan directamente en la productividad.'
+          : corr >= 0.2 ? 'Existe una correlacion positiva moderada: hay una tendencia a que mejor clima se asocie con mejor desempeno, aunque otros factores tambien influyen.'
+          : corr >= -0.2 ? 'La correlacion es debil o nula: el clima y el desempeno parecen ser independientes en esta medicion. Puede indicar que los equipos mantienen productividad independiente de su satisfaccion, o que los instrumentos miden aspectos diferentes.'
+          : 'Existe una correlacion negativa: algunos departamentos con buen desempeno tienen bajo clima (posible burnout) y viceversa. Esto requiere atencion inmediata.';
+
+        return (
+          <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
+            <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>Analisis del Mapa de Cuadrantes</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+
+              {/* Overview */}
+              <p style={{ margin: 0 }}>
+                <strong>Resumen:</strong> De {totalDepts} departamentos analizados, {withData} tienen datos completos de desempeno y clima.
+                {stars.length > 0 && <> <strong style={{ color: '#10b981' }}>{stars.length}</strong> se clasifican como <strong style={{ color: '#10b981' }}>Estrella</strong> (alto desempeno + buen clima).</>}
+                {burnout.length > 0 && <> <strong style={{ color: '#f59e0b' }}>{burnout.length}</strong> presentan <strong style={{ color: '#f59e0b' }}>Riesgo de Burnout</strong> (buen desempeno pero clima bajo).</>}
+                {opportunity.length > 0 && <> <strong style={{ color: '#6366f1' }}>{opportunity.length}</strong> son <strong style={{ color: '#6366f1' }}>Oportunidad</strong> (buen clima pero desempeno mejorable).</>}
+                {critical.length > 0 && <> <strong style={{ color: '#ef4444' }}>{critical.length}</strong> estan en estado <strong style={{ color: '#ef4444' }}>Critico</strong> (bajo en ambos indicadores).</>}
+              </p>
+
+              {/* Correlation */}
+              {corrText && <p style={{ margin: 0 }}><strong>Correlacion desempeno-clima:</strong> {corrText}</p>}
+
+              {/* Highlights */}
+              {bestPerf && worstPerf && bestPerf.department !== worstPerf.department && (
+                <p style={{ margin: 0 }}>
+                  <strong>Desempeno:</strong> El departamento con mayor puntaje es <strong style={{ color: '#10b981' }}>{bestPerf.department}</strong> ({bestPerf.performance}/10)
+                  y el menor es <strong style={{ color: '#ef4444' }}>{worstPerf.department}</strong> ({worstPerf.performance}/10),
+                  una brecha de {(bestPerf.performance - worstPerf.performance).toFixed(1)} puntos.
+                </p>
+              )}
+              {bestClima && worstClima && bestClima.department !== worstClima.department && (
+                <p style={{ margin: 0 }}>
+                  <strong>Clima:</strong> El mejor clima lo tiene <strong style={{ color: '#10b981' }}>{bestClima.department}</strong> ({bestClima.engagement}/5)
+                  y el mas bajo <strong style={{ color: '#ef4444' }}>{worstClima.department}</strong> ({worstClima.engagement}/5).
+                </p>
+              )}
+
+              {/* Action items per quadrant */}
+              {burnout.length > 0 && (
+                <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                  <strong style={{ color: '#f59e0b' }}>{'⚠'} Atencion — Riesgo de Burnout:</strong> {burnout.map((d: any) => d.department).join(', ')} tienen buen desempeno pero clima deteriorado. Esto puede provocar rotacion de talento clave. Se recomienda: revisar cargas de trabajo, implementar encuestas de pulso, y abrir espacios de retroalimentacion.
+                </div>
+              )}
+              {critical.length > 0 && (
+                <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                  <strong style={{ color: '#ef4444' }}>{'✕'} Alerta — Departamentos Criticos:</strong> {critical.map((d: any) => d.department).join(', ')} requieren intervencion integral. Se sugiere: diagnostico profundo de causas, reunion con lideres de area, plan de accion con metas a 30/60/90 dias.
+                </div>
+              )}
+              {opportunity.length > 0 && (
+                <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                  <strong style={{ color: '#6366f1' }}>{'↗'} Oportunidad de Desarrollo:</strong> {opportunity.map((d: any) => d.department).join(', ')} tienen equipos motivados con espacio para mejorar desempeno. Se recomienda: capacitacion tecnica, mentorias cruzadas con departamentos estrella, y definicion de OKRs claros.
+                </div>
+              )}
+              {stars.length > 0 && (
+                <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                  <strong style={{ color: '#10b981' }}>{'★'} Departamentos Estrella:</strong> {stars.map((d: any) => d.department).join(', ')} son referentes de la organizacion. Documentar sus buenas practicas y replicarlas en otras areas. Considerar reconocimiento publico al equipo.
+                </div>
+              )}
+
+              {stars.length === 0 && burnout.length === 0 && opportunity.length === 0 && critical.length === 0 && (
+                <p style={{ margin: 0, color: 'var(--text-muted)' }}>No hay departamentos clasificados en cuadrantes. Esto puede deberse a falta de datos de clima o desempeno para este cruce.</p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Quadrant Legend */}
       <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-        <h4 style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>Clasificación por Cuadrante</h4>
+        <h4 style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>Clasificacion por Cuadrante</h4>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
           {Object.entries(QUADRANT_CONFIG).filter(([k]) => k !== 'no_data').map(([key, q]) => {
             const count = (quadrants?.[key] || []).length;
