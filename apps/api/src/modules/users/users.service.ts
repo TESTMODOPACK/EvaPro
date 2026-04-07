@@ -880,6 +880,18 @@ export class UsersService {
       }
     }
 
+    // Sort roots by hierarchy level (lower number = higher rank, nulls last)
+    roots.sort((a, b) => (a.level || 999) - (b.level || 999));
+
+    // Sort children at every level by hierarchy level
+    const sortChildren = (node: any) => {
+      if (node.children?.length) {
+        node.children.sort((a: any, b: any) => (a.level || 999) - (b.level || 999));
+        node.children.forEach(sortChildren);
+      }
+    };
+    roots.forEach(sortChildren);
+
     return roots;
   }
 

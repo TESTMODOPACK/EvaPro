@@ -314,6 +314,8 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.log },
         { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: '📋' },
         { href: '/dashboard/contratos', label: 'Contratos', icon: icons.log },
+        { href: '/dashboard/perfil', label: 'Mi Perfil', icon: icons.users },
+        { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },
       ],
     },
   ];

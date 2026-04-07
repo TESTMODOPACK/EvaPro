@@ -248,8 +248,20 @@ async function seedDemoFull() {
       'Diseño': 'Gerente de Diseño',
     };
 
-    // Carlos Lopez is manager of Tecnología
+    // Carlos Lopez is the top-level manager (Nv.2, Gerente de Tecnología) — reports to no one
     deptManagerMap['Tecnología'] = manager.id;
+    // Make Carlos the top of the hierarchy — no managerId
+    if (manager.managerId) {
+      manager.managerId = null as any;
+      await userRepo.save(manager);
+    }
+
+    // Admin EvaPro (RRHH, Nv.4) reports to Carlos (highest active manager)
+    if (admin.managerId !== manager.id) {
+      admin.managerId = manager.id;
+      await userRepo.save(admin);
+      console.log(`✅ Admin EvaPro now reports to Carlos Lopez`);
+    }
 
     // For other departments, promote first employee to manager role
     for (const emp of newEmployees) {
@@ -259,7 +271,7 @@ async function seedDemoFull() {
         deptManagerMap[emp.department] = u.id;
         u.role = 'manager';
         u.position = deptLeadPositions[emp.department] || `Jefe de ${emp.department}`;
-        u.managerId = admin.id; // Department managers report to admin
+        u.managerId = manager.id; // Department managers report to Carlos (top manager)
         await userRepo.save(u);
         console.log(`✅ ${u.firstName} ${u.lastName} promoted to manager of ${emp.department}`);
       }

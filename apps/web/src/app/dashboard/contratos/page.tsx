@@ -523,7 +523,7 @@ export default function ContratosPage() {
                   try {
                     await api.contracts.reject(token, rejectModal.contractId, rejectReason.trim());
                     toast('Contrato rechazado. Se notificó al administrador del sistema.', 'success');
-                    setRejectModal(null);
+                    setRejectModal(null); setRejectReason('');
                     loadData();
                   } catch (e: any) {
                     toast(e.message || 'Error al rechazar', 'error');
