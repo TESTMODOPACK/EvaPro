@@ -642,7 +642,7 @@ export default function MiDesempenoPage() {
                   <option value="">Todos los ciclos</option>
                   {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{teamCompletedEvals.length} evaluaciones</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{teamCompletedEvals.filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter).length} evaluaciones</span>
               </div>
 
               {/* Completed team evals */}

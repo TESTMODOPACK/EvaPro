@@ -1377,8 +1377,8 @@ function DesarrolloPageContent() {
         onCancel={() => setSignModal(null)}
       />
     )}
-    {/* Matriz Competencias por Cargo (solo lectura) */}
-    <CompetencyMatrixSection />
+    {/* Matriz Competencias por Cargo (solo lectura — admin + managers) */}
+    {canCreate && <CompetencyMatrixSection />}
     </div>
   );
 }
