@@ -256,7 +256,8 @@ export class UsersService {
     if (dto.firstName !== undefined && canEditIdentity) user.firstName = dto.firstName;
     if (dto.lastName !== undefined && canEditIdentity) user.lastName = dto.lastName;
     if (dto.rut !== undefined && canEditIdentity) user.rut = dto.rut || null;
-    if (dto.email !== undefined) user.email = dto.email;
+    // Only super_admin can change email (it's the login credential)
+    if (dto.email !== undefined && callerRole === 'super_admin') user.email = dto.email;
     // Only super_admin and tenant_admin can change roles
     if (dto.role !== undefined) {
       const canChangeRole = callerRole === 'super_admin' || callerRole === 'tenant_admin';
