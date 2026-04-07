@@ -34,11 +34,7 @@ const departureTypeLabels: Record<string, string> = {
   resignation: 'Renuncia', termination: 'Despido', retirement: 'Jubilación',
   contract_end: 'Fin de contrato', abandonment: 'Abandono', mutual_agreement: 'Mutuo acuerdo',
 };
-const reasonLabels: Record<string, string> = {
-  better_offer: 'Mejor oferta', work_climate: 'Clima laboral', performance: 'Rendimiento',
-  restructuring: 'Reestructuración', personal: 'Personal', relocation: 'Reubicación',
-  health: 'Salud', studies: 'Estudios', other: 'Otro',
-};
+// reasonLabels removed — not used in executive dashboard summary view
 
 // ─── Helper Components ───────────────────────────────────────────────
 
@@ -171,34 +167,33 @@ export default function ReportesPage() {
     // Reset tab-specific data
     setLoadedTabs(new Set());
     setCycleCompData(null); setTurnoverData(null); setMovData(null);
-    setPdiData(null); setPdiHistData(null);
+    setPdiData(null); setPdiHistData(null); setCompareSummary(null); setCompareCycleId(null);
   }, [token, selectedCycleId]);
 
-  // Lazy load tab data
+  // Lazy load tab data — mark as loaded AFTER API resolves (not before)
   useEffect(() => {
     if (!token || loadedTabs.has(activeTab)) return;
     const mark = () => setLoadedTabs(prev => new Set(prev).add(activeTab));
 
     if (activeTab === 'performance' && !cycleCompData) {
-      api.reports.cycleComparison(token).then(setCycleCompData).catch(() => {});
-      mark();
+      api.reports.cycleComparison(token).then((d) => { setCycleCompData(d); mark(); }).catch(() => mark());
     }
     if (activeTab === 'climate' && selectedSurveyId && !enpsData) {
-      api.reports.enpsBySurvey(token, selectedSurveyId).then(setEnpsData).catch(() => {});
-      mark();
+      api.reports.enpsBySurvey(token, selectedSurveyId).then((d) => { setEnpsData(d); mark(); }).catch(() => mark());
     }
-    if (activeTab === 'headcount' && !turnoverData) {
-      // Turnover and movements are admin-only endpoints — silently skip for managers
-      if (isAdmin) {
-        api.reports.turnover(token).then(setTurnoverData).catch(() => {});
-        api.reports.movements(token).then(setMovData).catch(() => {});
-      }
-      mark();
+    if (activeTab === 'headcount') {
+      if (isAdmin && !turnoverData) {
+        Promise.all([
+          api.reports.turnover(token).then(setTurnoverData).catch(() => {}),
+          api.reports.movements(token).then(setMovData).catch(() => {}),
+        ]).then(() => mark());
+      } else { mark(); }
     }
     if (activeTab === 'development' && !pdiData) {
-      api.reports.pdiCompliance(token).then(setPdiData).catch(() => {});
-      api.reports.pdiHistorical(token).then(setPdiHistData).catch(() => {});
-      mark();
+      Promise.all([
+        api.reports.pdiCompliance(token).then(setPdiData).catch(() => {}),
+        api.reports.pdiHistorical(token).then(setPdiHistData).catch(() => {}),
+      ]).then(() => mark());
     }
     if (activeTab === 'risks') mark();
   }, [activeTab, token, selectedSurveyId]);
@@ -346,7 +341,7 @@ export default function ReportesPage() {
                 <>
                   {/* KPIs */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                    <KPI label="Promedio Global" value={Number(Number(summary.averageScore))?.toFixed(1) || '--'} color={getScoreColor(Number(Number(summary.averageScore)))} sub={getScoreLabel(Number(Number(summary.averageScore)))} />
+                    <KPI label="Promedio Global" value={Number(summary.averageScore || 0)?.toFixed(1) || '--'} color={getScoreColor(Number(summary.averageScore || 0))} sub={getScoreLabel(Number(summary.averageScore || 0))} />
                     <KPI label="Completitud" value={`${Number(summary.completionRate) || 0}%`} color={Number(summary.completionRate) >= 80 ? 'var(--success)' : 'var(--warning)'} />
                     <KPI label="Evaluaciones" value={`${summary.completedAssignments || 0}/${summary.totalAssignments || 0}`} />
                     <KPI label="Departamentos" value={depts.length} />
@@ -420,7 +415,7 @@ export default function ReportesPage() {
                   <PerformanceHeatmap cycleId={selectedCycleId} />
 
                   {/* Quick Analysis */}
-                  {Number(summary.averageScore) != null && (
+                  {summary.averageScore != null && (
                     <AnalysisCard title="Análisis del Ciclo" borderColor={getScoreColor(Number(summary.averageScore))}>
                       <p><strong>Desempeño:</strong> El promedio global es <strong>{Number(summary.averageScore)?.toFixed(1)}</strong> ({getScoreLabel(Number(summary.averageScore))}). {Number(summary.averageScore) >= 7 ? 'La organización muestra un desempeño sólido.' : Number(summary.averageScore) >= 5 ? 'Desempeño aceptable con espacio de mejora.' : 'Se requiere atención urgente al desempeño general.'}</p>
                       <p><strong>Participación:</strong> {Number(summary.completionRate)}% de completitud ({summary.completedAssignments}/{summary.totalAssignments} evaluaciones). {Number(summary.completionRate) >= 90 ? 'Excelente participación.' : Number(summary.completionRate) >= 70 ? 'Buena participación.' : 'Baja participación — reforzar comunicación.'}</p>
@@ -516,23 +511,7 @@ export default function ReportesPage() {
                       </div>
                     </div>
 
-                    {/* Headcount by dept */}
-                    {headcount?.byDepartment?.length > 0 && (
-                      <div className="card" style={{ padding: '1.25rem' }}>
-                        <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Dotación por Departamento</h4>
-                        <div style={{ height: 220 }}>
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={headcount.byDepartment.slice(0, 8)} layout="vertical" margin={{ left: 80 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                              <XAxis type="number" tick={{ fontSize: 10 }} />
-                              <YAxis type="category" dataKey="department" tick={{ fontSize: 10 }} width={75} />
-                              <Tooltip />
-                              <Bar dataKey="count" name="Personas" fill="#C9933A" radius={[0, 4, 4, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    )}
+                    {/* Headcount chart is in Tab 3 (Dotación) */}
                   </div>
 
                   {/* eNPS Interpretation */}
@@ -605,6 +584,24 @@ export default function ReportesPage() {
                 {isAdmin && turnoverData && <KPI label="Tasa Rotación" value={`${turnoverData.turnoverRate || 0}%`} color={turnoverData.turnoverRate > 15 ? 'var(--danger)' : turnoverData.turnoverRate > 8 ? 'var(--warning)' : 'var(--success)'} />}
                 {isAdmin && turnoverData && <KPI label="Bajas 12m" value={turnoverData.totalDeactivations12m || 0} color="var(--danger)" />}
               </div>
+
+              {/* Headcount by department */}
+              {headcount?.byDepartment?.length > 0 && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                  <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Dotación por Departamento</h4>
+                  <div style={{ height: Math.max(180, (headcount.byDepartment.length || 1) * 30) }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={headcount.byDepartment.slice(0, 10)} layout="vertical" margin={{ left: 80 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                        <XAxis type="number" tick={{ fontSize: 10 }} />
+                        <YAxis type="category" dataKey="department" tick={{ fontSize: 10 }} width={75} />
+                        <Tooltip />
+                        <Bar dataKey="count" name="Personas" fill="#C9933A" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
 
               {/* Turnover by month (admin only) */}
               {isAdmin && turnoverData?.byMonth?.length > 0 && (
@@ -692,7 +689,7 @@ export default function ReportesPage() {
           {/* ═══════════════════════════════════════════════════════════════ */}
           {activeTab === 'objectives' && (
             <div className="animate-fade-up">
-              {!objectives ? <Spinner /> : (
+              {!objectives && !execData ? <Spinner /> : !objectives ? <EmptyState msg="No hay datos de objetivos disponibles." /> : (
                 <>
                   {/* KPIs */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
@@ -709,14 +706,23 @@ export default function ReportesPage() {
                       <div style={{ height: 220 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
-                            <Pie data={[
-                              { name: 'Completados', value: objectives.completed || 0 },
-                              { name: 'En progreso', value: objectives.inProgress || 0 },
-                              { name: 'Borrador', value: objectives.draft || 0 },
-                              { name: 'Pendientes', value: objectives.pendingApproval || 0 },
-                              { name: 'Abandonados', value: objectives.abandoned || 0 },
-                            ].filter(d => d.value > 0)} innerRadius={50} outerRadius={75} paddingAngle={2} dataKey="value">
-                              <Cell fill="#10b981" /><Cell fill="#6366f1" /><Cell fill="#94a3b8" /><Cell fill="#f59e0b" /><Cell fill="#ef4444" />
+                            <Pie data={(() => {
+                              const raw = [
+                                { name: 'Completados', value: objectives.completed || 0, color: '#10b981' },
+                                { name: 'En progreso', value: objectives.inProgress || 0, color: '#6366f1' },
+                                { name: 'Borrador', value: objectives.draft || 0, color: '#94a3b8' },
+                                { name: 'Pendientes', value: objectives.pendingApproval || 0, color: '#f59e0b' },
+                                { name: 'Abandonados', value: objectives.abandoned || 0, color: '#ef4444' },
+                              ];
+                              return raw.filter(d => d.value > 0);
+                            })()} innerRadius={50} outerRadius={75} paddingAngle={2} dataKey="value">
+                              {[
+                                { name: 'Completados', value: objectives.completed || 0, color: '#10b981' },
+                                { name: 'En progreso', value: objectives.inProgress || 0, color: '#6366f1' },
+                                { name: 'Borrador', value: objectives.draft || 0, color: '#94a3b8' },
+                                { name: 'Pendientes', value: objectives.pendingApproval || 0, color: '#f59e0b' },
+                                { name: 'Abandonados', value: objectives.abandoned || 0, color: '#ef4444' },
+                              ].filter(d => d.value > 0).map((d, i) => <Cell key={i} fill={d.color} />)}
                             </Pie>
                             <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
                             <Tooltip />
@@ -757,7 +763,7 @@ export default function ReportesPage() {
           {/* ═══════════════════════════════════════════════════════════════ */}
           {activeTab === 'development' && (
             <div className="animate-fade-up">
-              {!pdiData ? <Spinner /> : (
+              {!pdiData && !loadedTabs.has('development') ? <Spinner /> : !pdiData ? <EmptyState msg="No hay datos de planes de desarrollo disponibles." /> : (
                 <>
                   {/* KPIs */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
