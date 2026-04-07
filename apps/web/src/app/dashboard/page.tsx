@@ -1505,11 +1505,268 @@ function WelcomePage() {
   );
 }
 
+// ─── Admin Dashboard (Tenant Admin — Vista Ejecutiva) ──────────────────────
+
+function AdminDashboard() {
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const { data: cycles } = useCycles();
+  const [loading, setLoading] = useState(true);
+  const [execData, setExecData] = useState<any>(null);
+  const [turnover, setTurnover] = useState<any>(null);
+  const [pdi, setPdi] = useState<any>(null);
+  const [systemUsage, setSystemUsage] = useState<any>(null);
+  const [aiQuota, setAiQuota] = useState<any>(null);
+  const [subscription, setSubscription] = useState<any>(null);
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [nextActions, setNextActions] = useState<any>(null);
+  const [cycleSummary, setCycleSummary] = useState<any>(null);
+
+  const closedCycles = (cycles || []).filter((c: any) => c.status === 'closed');
+  const activeCycles = (cycles || []).filter((c: any) => c.status === 'active');
+  const latestClosedId = closedCycles[0]?.id;
+
+  useEffect(() => {
+    if (!token) return;
+    setLoading(true);
+    Promise.all([
+      latestClosedId ? api.reports.executiveDashboard(token, latestClosedId).catch(() => null) : Promise.resolve(null),
+      api.reports.turnover(token).catch(() => null),
+      api.reports.pdiCompliance(token).catch(() => null),
+      fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/reports/analytics/system-usage`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null).catch(() => null),
+      api.ai.getUsage(token).catch(() => null),
+      api.subscriptions.mySubscription(token).catch(() => null),
+      api.contracts.list(token).catch(() => []),
+      api.dashboard.nextActions(token).catch(() => null),
+      latestClosedId ? api.reports.cycleSummary(token, latestClosedId).catch(() => null) : Promise.resolve(null),
+    ]).then(([exec, turn, pdiData, usage, quota, sub, ctrs, actions, summary]) => {
+      setExecData(exec); setTurnover(turn); setPdi(pdiData); setSystemUsage(usage);
+      setAiQuota(quota); setSubscription(sub); setContracts(Array.isArray(ctrs) ? ctrs : []);
+      setNextActions(actions); setCycleSummary(summary);
+    }).finally(() => setLoading(false));
+  }, [token, latestClosedId]);
+
+  if (loading) return <PageSkeleton cards={9} tableRows={4} />;
+
+  const hc = execData?.headcount || {};
+  const perf = execData?.performance || {};
+  const obj = execData?.objectives || {};
+  const enps = execData?.enps;
+  const depts = (cycleSummary?.departmentBreakdown || []).map((d: any) => ({ ...d, avgScore: Number(d.avgScore) || 0 })).sort((a: any, b: any) => b.avgScore - a.avgScore);
+  const plan = subscription?.plan;
+  const pendingContracts = contracts.filter((c: any) => c.status === 'pending_signature').length;
+  const now = new Date();
+
+  // Subscription days remaining
+  const subEndDate = subscription?.endDate ? new Date(subscription.endDate) : null;
+  const subDaysLeft = subEndDate ? Math.ceil((subEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+  // Alerts
+  const alerts: Array<{ icon: string; color: string; text: string; href?: string }> = [];
+  if (nextActions?.highPriority > 0) alerts.push({ icon: '🔴', color: 'var(--danger)', text: `${nextActions.highPriority} acciones urgentes pendientes`, href: '/dashboard/evaluaciones' });
+  if ((obj.total - obj.completed) > 0 && obj.completionPct < 50) alerts.push({ icon: '🟡', color: 'var(--warning)', text: `OKRs al ${obj.completionPct}% — ${obj.total - obj.completed} pendientes`, href: '/dashboard/objetivos' });
+  if (pdi?.overdueActions > 0) alerts.push({ icon: '🟡', color: 'var(--warning)', text: `${pdi.overdueActions} acciones PDI vencidas`, href: '/dashboard/desarrollo' });
+  if (pendingContracts > 0) alerts.push({ icon: '🔵', color: 'var(--accent)', text: `${pendingContracts} contrato(s) pendiente(s) de firma`, href: '/dashboard/contratos' });
+  if (subDaysLeft != null && subDaysLeft <= 30 && subDaysLeft > 0) alerts.push({ icon: '🔵', color: 'var(--accent)', text: `Suscripción se renueva en ${subDaysLeft} días` });
+
+  const kpiStyle: React.CSSProperties = { padding: '0.85rem', textAlign: 'center' };
+  const kpiLabel: React.CSSProperties = { fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '0.15rem' };
+
+  return (
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
+      {/* Header */}
+      <div className="animate-fade-up" style={{ marginBottom: '1.25rem' }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.15rem' }}>Hola, {user?.firstName}</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+          Vista ejecutiva de tu organización — {now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        </p>
+      </div>
+
+      {/* KPIs Row 1 — Principal */}
+      <div className="animate-fade-up" style={{ marginBottom: '0.5rem' }}>
+        <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>Indicadores Clave</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>Colaboradores</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--success)' }}>{hc.active || 0}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>activos</div></div>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>Desempeño</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: Number(perf.avgScore) >= 7 ? 'var(--success)' : Number(perf.avgScore) >= 5 ? 'var(--warning)' : 'var(--danger)' }}>{Number(perf.avgScore || 0).toFixed(1)}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>promedio</div></div>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>eNPS</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: (enps?.score ?? 0) >= 30 ? 'var(--success)' : (enps?.score ?? 0) >= 0 ? 'var(--warning)' : 'var(--danger)' }}>{enps?.score ?? '—'}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>clima</div></div>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>OKRs</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: obj.completionPct >= 70 ? 'var(--success)' : obj.completionPct >= 40 ? 'var(--warning)' : 'var(--danger)' }}>{obj.completionPct || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>cumplimiento</div></div>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>Rotación</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: (turnover?.turnoverRate || 0) > 15 ? 'var(--danger)' : (turnover?.turnoverRate || 0) > 8 ? 'var(--warning)' : 'var(--success)' }}>{turnover?.turnoverRate || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>anual</div></div>
+        </div>
+      </div>
+
+      {/* KPIs Row 2 — Secundarios */}
+      <div className="animate-fade-up" style={{ marginBottom: '1.25rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>PDI Completitud</div><div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{pdi?.completionRate || 0}%</div></div>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>Adopción (MAU)</div><div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{systemUsage?.adoptionRate || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{systemUsage?.mau || 0} activos/mes</div></div>
+          <div className="card" style={kpiStyle}><div style={kpiLabel}>Eval. Completitud</div><div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{perf.completionRate || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{perf.completedAssignments || 0}/{perf.totalAssignments || 0}</div></div>
+          {aiQuota && <div className="card" style={kpiStyle}><div style={kpiLabel}>IA Créditos</div><div style={{ fontSize: '1.2rem', fontWeight: 800, color: aiQuota.nearLimit ? 'var(--danger)' : 'var(--text-primary)' }}>{aiQuota.monthlyRemaining ?? '—'}/{aiQuota.monthlyLimit ?? '—'}</div></div>}
+        </div>
+      </div>
+
+      {/* Alerts */}
+      {alerts.length > 0 && (
+        <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--warning)' }}>Alertas y Acciones Urgentes</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            {alerts.map((a, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem' }}>
+                <span>{a.icon}</span>
+                <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{a.text}</span>
+                {a.href && <Link href={a.href} style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>Ver →</Link>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Two column grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+        {/* Semáforo de Áreas */}
+        <div className="card animate-fade-up" style={{ padding: '1.25rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Semáforo de Áreas</div>
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Desempeño promedio por departamento del último ciclo cerrado.</p>
+          {depts.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin datos de ciclos cerrados.</p> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              {depts.slice(0, 8).map((d: any) => {
+                const color = d.avgScore >= 7 ? 'var(--success)' : d.avgScore >= 5 ? 'var(--warning)' : 'var(--danger)';
+                return (
+                  <div key={d.department} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                    <span style={{ flex: 1 }}>{d.department}</span>
+                    <span style={{ fontWeight: 700, color }}>{d.avgScore.toFixed(1)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Actividad Reciente */}
+        <div className="card animate-fade-up" style={{ padding: '1.25rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Actividad del Sistema</div>
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Uso del sistema en los últimos días.</p>
+          {!systemUsage ? <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin datos de uso disponibles.</p> : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.75rem' }}>
+                {(systemUsage.dailyActivity || []).slice(-5).map((d: any) => (
+                  <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '0.2rem 0', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{d.date}</span>
+                    <span><strong>{d.actions}</strong> acciones · <strong>{d.users}</strong> usuarios</span>
+                  </div>
+                ))}
+              </div>
+              {(systemUsage.moduleUsage || []).length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Módulos más usados:</div>
+                  {systemUsage.moduleUsage.slice(0, 5).map((m: any) => (
+                    <div key={m.module} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.15rem 0' }}>
+                      <span>{m.module}</span><span style={{ fontWeight: 600 }}>{m.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Two column grid — processes + subscription */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+        {/* Estado de Procesos */}
+        <div className="card animate-fade-up" style={{ padding: '1.25rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Estado de Procesos</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.82rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Ciclo activo</span>
+              <span style={{ fontWeight: 600 }}>{activeCycles[0]?.name || 'Ninguno'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Completitud evaluaciones</span>
+              <span style={{ fontWeight: 600 }}>{perf.completionRate || 0}% ({perf.completedAssignments || 0}/{perf.totalAssignments || 0})</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>PDI activos</span>
+              <span style={{ fontWeight: 600 }}>{pdi?.totalPlans || 0} ({pdi?.completionRate || 0}% completados)</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Contratos pendientes</span>
+              <span style={{ fontWeight: 600, color: pendingContracts > 0 ? 'var(--warning)' : 'var(--success)' }}>{pendingContracts}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Desarrollo organizacional</span>
+              <span style={{ fontWeight: 600 }}>{execData?.orgDevelopment?.activePlans || 0} planes · {execData?.orgDevelopment?.completedInitiatives || 0}/{execData?.orgDevelopment?.totalInitiatives || 0} iniciativas</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Mi Suscripción */}
+        <div className="card animate-fade-up" style={{ padding: '1.25rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Mi Suscripción</div>
+          {!subscription ? <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin suscripción activa.</p> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.82rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Plan</span>
+                <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{plan?.name || subscription.planName || '—'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Usuarios</span>
+                <span style={{ fontWeight: 600 }}>{hc.active || 0} / {plan?.maxEmployees || '∞'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Estado</span>
+                <span className={`badge ${subscription.status === 'active' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.68rem' }}>{subscription.status === 'active' ? 'Activa' : subscription.status}</span>
+              </div>
+              {subDaysLeft != null && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Renovación</span>
+                  <span style={{ fontWeight: 600, color: subDaysLeft <= 15 ? 'var(--danger)' : 'var(--text-primary)' }}>{subDaysLeft} días</span>
+                </div>
+              )}
+              {aiQuota && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Créditos IA</span>
+                  <span style={{ fontWeight: 600 }}>{aiQuota.monthlyRemaining ?? 0} restantes de {aiQuota.monthlyLimit ?? 0}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="card animate-fade-up" style={{ padding: '1rem' }}>
+        <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Accesos Rápidos</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+          {[
+            { label: 'Usuarios', href: '/dashboard/usuarios', icon: '👥' },
+            { label: 'Evaluaciones', href: '/dashboard/evaluaciones', icon: '📋' },
+            { label: 'Reportes', href: '/dashboard/reportes', icon: '📊' },
+            { label: 'Ajustes', href: '/dashboard/ajustes', icon: '⚙️' },
+            { label: 'Objetivos', href: '/dashboard/objetivos', icon: '🎯' },
+            { label: 'Feedback', href: '/dashboard/feedback', icon: '💬' },
+            { label: 'Desarrollo', href: '/dashboard/desarrollo', icon: '📈' },
+            { label: 'Clima', href: '/dashboard/encuestas-clima', icon: '🌡️' },
+          ].map((a) => (
+            <Link key={a.href} href={a.href} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.85rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)', textDecoration: 'none', transition: 'var(--transition)' }}>
+              <span style={{ fontSize: '1rem' }}>{a.icon}</span> {a.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
 
   if (user?.role === 'super_admin') {
     return <SuperAdminDashboard />;
+  }
+
+  if (user?.role === 'tenant_admin') {
+    return <AdminDashboard />;
   }
 
   return <RegularDashboard />;
