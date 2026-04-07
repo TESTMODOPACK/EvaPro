@@ -800,17 +800,22 @@ export class SubscriptionsService {
     const previousPrice = Number(sub.aiAddonPrice) || 0;
     const addonUsed = sub.aiAddonUsed || 0;
     const hadAddon = previousCalls > 0 && previousPrice > 0;
-    const periodStart = sub.startDate || new Date();
-    const periodEnd = sub.nextBillingDate || new Date();
+
+    // Calculate current billing period (rolling from last payment or start)
+    const now = new Date();
+    const billingBase = sub.lastPaymentDate || sub.startDate || now;
+    const periodEnd = sub.nextBillingDate || now;
+
+    // Fetch tenant name once for notifications
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'name'] });
+    const orgName = tenant?.name || 'Organización';
 
     // Helper: notify super_admins
     const notifySA = async (title: string, message: string) => {
-      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'name'] });
       const superAdmins = await this.userRepo.find({ where: { role: 'super_admin', isActive: true }, select: ['id'] });
       for (const sa of superAdmins) {
         await this.notificationsService.create({ tenantId, userId: sa.id, type: NotificationType.GENERAL, title, message }).catch(() => {});
       }
-      return tenant?.name || 'Organización';
     };
 
     // ═══ CANCEL (Sin add-on) ═══
@@ -824,13 +829,13 @@ export class SubscriptionsService {
         await this.paymentRepo.save(this.paymentRepo.create({
           tenantId, subscriptionId: sub.id, amount: previousPrice, currency,
           billingPeriod: sub.billingPeriod || BillingPeriod.MONTHLY,
-          periodStart, periodEnd, status: PaymentStatus.PENDING,
+          periodStart: billingBase, periodEnd, status: PaymentStatus.PENDING,
           concept: `Add-on IA +${previousCalls}/mes (cancelado con ${addonUsed} créditos usados — cobro completo del período)`,
           isAddon: true, paidAt: null,
         }));
-        const orgName = await notifySA(
-          `Add-on IA cancelado con uso`,
-          `Organización canceló add-on IA (+${previousCalls}/mes, ${previousPrice} ${currency}). Se usaron ${addonUsed} créditos — cobro completo del período registrado.`,
+        await notifySA(
+          `Add-on IA cancelado: ${orgName}`,
+          `${orgName} canceló add-on IA (+${previousCalls}/mes, ${previousPrice} ${currency}). Se usaron ${addonUsed} créditos — cobro completo del período registrado.`,
         );
       }
       await this.subRepo.save(sub);
@@ -848,31 +853,32 @@ export class SubscriptionsService {
     const isUpgrade = hadAddon && pack.calls > previousCalls;
     const isDowngrade = hadAddon && pack.calls < previousCalls;
 
-    // Downgrade validation: can't go below credits already used
+    // Downgrade validation: can't go below credits already used THIS period
+    // (addonUsed is reset on cancel/new purchase, so it reflects current period usage)
     if (isDowngrade && addonUsed > pack.calls) {
       throw new BadRequestException(
-        `No puede reducir a +${pack.calls} créditos porque ya ha utilizado ${addonUsed} del pack actual (+${previousCalls}). Cancele el add-on actual (se cobrará la cuota completa) o espere al siguiente período.`,
+        `No puede reducir a +${pack.calls} créditos porque ya ha utilizado ${addonUsed} créditos en este período. Cancele el add-on (se cobrará la cuota completa) o espere al siguiente período.`,
       );
     }
 
-    // If upgrading with used credits, register charge for previous pack and start fresh
+    // If upgrading with used credits, register charge for previous pack and reset usage
     if (isUpgrade && addonUsed > 0) {
       await this.paymentRepo.save(this.paymentRepo.create({
         tenantId, subscriptionId: sub.id, amount: previousPrice, currency,
         billingPeriod: sub.billingPeriod || BillingPeriod.MONTHLY,
-        periodStart, periodEnd, status: PaymentStatus.PENDING,
-        concept: `Add-on IA +${previousCalls}/mes (upgrade a +${pack.calls} — ${addonUsed} créditos usados, cobro proporcional del pack anterior)`,
+        periodStart: billingBase, periodEnd, status: PaymentStatus.PENDING,
+        concept: `Add-on IA +${previousCalls}/mes → +${pack.calls}/mes (upgrade — ${addonUsed} créditos usados, cobro pack anterior)`,
         isAddon: true, paidAt: null,
       }));
     }
 
-    // Apply new pack
+    // Apply new pack — reset usage counter on upgrade (already charged) and new purchase
     sub.aiAddonCalls = pack.calls;
     sub.aiAddonPrice = pack.monthlyPrice;
-    sub.aiAddonUsed = isUpgrade ? addonUsed : (hadAddon ? addonUsed : 0); // Keep used count on upgrade, reset on new purchase
+    sub.aiAddonUsed = 0; // Always reset: upgrade already charged, new purchase starts fresh, downgrade keeps remaining
     await this.subRepo.save(sub);
 
-    const action = isUpgrade ? 'upgrade' : isDowngrade ? 'downgrade' : 'purchased';
+    const action = isUpgrade ? 'upgraded' : isDowngrade ? 'downgraded' : 'purchased';
     await this.auditService.log(tenantId, approvedBy, `subscription.ai_addon_${action}`, 'subscription', sub.id, {
       pack: pack.name, calls: pack.calls, price: pack.monthlyPrice,
       previousCalls, previousPrice, addonUsed, action,
@@ -880,8 +886,8 @@ export class SubscriptionsService {
 
     const actionLabel = isUpgrade ? 'Upgrade' : isDowngrade ? 'Downgrade' : 'Compra';
     await notifySA(
-      `${actionLabel} Add-on IA: ${tenantId.slice(0, 8)}`,
-      `Organización ${isUpgrade ? `subió de +${previousCalls} a` : isDowngrade ? `bajó de +${previousCalls} a` : 'adquirió'} "${pack.name}" (${pack.monthlyPrice} ${currency}/mes).${addonUsed > 0 ? ` ${addonUsed} créditos usados del pack anterior.` : ''}`,
+      `${actionLabel} Add-on IA: ${orgName}`,
+      `${orgName} ${isUpgrade ? `subió de +${previousCalls} a` : isDowngrade ? `bajó de +${previousCalls} a` : 'adquirió'} "${pack.name}" (${pack.monthlyPrice} ${currency}/mes).${addonUsed > 0 ? ` ${addonUsed} créditos usados del pack anterior.` : ''}`,
     );
 
     return { subscription: sub, pack };

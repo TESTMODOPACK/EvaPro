@@ -474,7 +474,7 @@ export default function MiSuscripcionPage() {
                   <button
                     onClick={async () => {
                       if (!token) return;
-                      const usedCredits = aiUsage ? (aiAddon.calls - (aiUsage.addonRemaining ?? aiAddon.calls)) : 0;
+                      const usedCredits = Math.max(0, aiUsage ? (aiAddon.calls - (aiUsage.addonRemaining ?? aiAddon.calls)) : 0);
                       const hasUsed = usedCredits > 0;
                       if (hasUsed) {
                         const ok = confirm(
