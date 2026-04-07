@@ -626,20 +626,26 @@ function QuickFeedbackTab() {
   const feedbackList = subTab === 'received' ? received : given;
   const isLoading = subTab === 'received' ? loadingReceived : loadingGiven;
 
+  const [sendError, setSendError] = useState('');
   function handleSend() {
     if (!form.toUserId || !form.message) return;
+    setSendError('');
     sendFeedback.mutate(
       {
         toUserId: form.toUserId,
         message: form.message,
         sentiment: form.sentiment,
-        category: form.category || null,
+        ...(form.category ? { category: form.category } : {}),
         isAnonymous: form.isAnonymous,
       },
       {
         onSuccess: () => {
           setForm({ toUserId: '', message: '', sentiment: 'positive', category: '', isAnonymous: false });
           setShowForm(false);
+          setSendError('');
+        },
+        onError: (err: any) => {
+          setSendError(err?.message || 'Error al enviar feedback. Verifique que el destinatario sea de su departamento o equipo directo.');
         },
       },
     );
@@ -798,6 +804,9 @@ function QuickFeedbackTab() {
           >
             {sendFeedback.isPending ? t('common.loading') : t('feedback.sendFeedback')}
           </button>
+          {sendError && (
+            <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: '0.5rem' }}>{sendError}</p>
+          )}
         </div>
       )}
 
