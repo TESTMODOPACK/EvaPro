@@ -63,6 +63,9 @@ export default function MiDesempenoPage() {
 
   // Filter state
   const [cycleTypeFilter, setCycleTypeFilter] = useState('');
+  const [evalStatusFilter, setEvalStatusFilter] = useState('');
+  const [objStatusFilter, setObjStatusFilter] = useState('');
+  const [objTypeFilter, setObjTypeFilter] = useState('');
 
   // Unified history sections
   const [feedbackReceived, setFeedbackReceived] = useState<any[]>([]);
@@ -322,7 +325,7 @@ export default function MiDesempenoPage() {
           Feedback ({feedbackReceived.length})
         </button>
         <button style={tabStyle(activeTab === 'pdi')} onClick={() => setActiveTab('pdi')}>
-          Desarrollo ({devPlans.length})
+          Planes de Desarrollo ({devPlans.length})
         </button>
         <button style={tabStyle(activeTab === 'objetivos')} onClick={() => setActiveTab('objetivos')}>
           Objetivos ({objectives.length})
@@ -335,18 +338,46 @@ export default function MiDesempenoPage() {
       {/* ─── TAB: Evaluaciones ─────────────────────────────────────────── */}
       {activeTab === 'evaluaciones' && (
         <>
-          {/* Cycle type filter */}
-          <div className="card animate-fade-up" style={{ padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Filtrar por tipo:</span>
-            <select style={selectStyle} value={cycleTypeFilter} onChange={(e) => setCycleTypeFilter(e.target.value)}>
-              {Object.entries(cycleTypeLabels).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
+          {/* Evaluation status filter */}
+          <div className="card animate-fade-up" style={{ padding: '0.75rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Estado:</span>
+            <select style={selectStyle} value={evalStatusFilter} onChange={(e) => setEvalStatusFilter(e.target.value)}>
+              <option value="">Todas</option>
+              <option value="pending">Pendientes</option>
+              <option value="completed">Completadas</option>
             </select>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+              {pending.length} pendientes · {completed.length} completadas
+            </span>
           </div>
 
+          {/* Pending evaluations */}
+          {pending.length > 0 && evalStatusFilter !== 'completed' && (
+            <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
+              <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.75rem', color: 'var(--warning)' }}>
+                Evaluaciones pendientes ({pending.length})
+              </h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {pending.map((ev: any, i: number) => {
+                  const evaluateeName = ev.evaluatee ? `${ev.evaluatee.firstName || ''} ${ev.evaluatee.lastName || ''}`.trim() : '--';
+                  const relLabel: Record<string, string> = { self: 'Autoevaluación', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                      <div>
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{evaluateeName}</span>
+                        <span className="badge badge-accent" style={{ fontSize: '0.68rem', marginLeft: '0.5rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
+                        {ev.cycle?.name && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{ev.cycle.name}</span>}
+                      </div>
+                      <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>Pendiente</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Completed evaluations table */}
-          {completed.length > 0 && (
+          {completed.length > 0 && evalStatusFilter !== 'pending' && (
             <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
               <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '1rem' }}>
                 Evaluaciones completadas
@@ -713,50 +744,51 @@ export default function MiDesempenoPage() {
       )}
 
       {/* ─── TAB: Objetivos ────────────────────────────────────────────── */}
-      {activeTab === 'objetivos' && (
+      {activeTab === 'objetivos' && (() => {
+        const statusLabels: Record<string, string> = { active: 'Activo', completed: 'Completado', draft: 'Borrador', pending_approval: 'Pendiente', abandoned: 'Abandonado' };
+        const typeLabels: Record<string, string> = { OKR: 'OKR', individual: 'Individual', team: 'Equipo', company: 'Empresa' };
+        const filteredObjs = objectives.filter((o: any) => {
+          if (objStatusFilter && o.status !== objStatusFilter) return false;
+          if (objTypeFilter && o.type !== objTypeFilter) return false;
+          return true;
+        });
+        return (
         <div className="animate-fade-up">
+          {/* Filters */}
+          <div className="card" style={{ padding: '0.75rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Filtrar:</span>
+            <select style={selectStyle} value={objStatusFilter} onChange={(e) => setObjStatusFilter(e.target.value)}>
+              <option value="">Todos los estados</option>
+              {Object.entries(statusLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <select style={selectStyle} value={objTypeFilter} onChange={(e) => setObjTypeFilter(e.target.value)}>
+              <option value="">Todos los tipos</option>
+              {Object.entries(typeLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+              {filteredObjs.length} de {objectives.length} objetivos
+            </span>
+          </div>
+
           <div className="card" style={{ padding: '1.5rem' }}>
             <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '1rem' }}>
               Mis objetivos
             </h2>
-            {objectives.length === 0 ? (
+            {filteredObjs.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
-                No tienes objetivos asignados
+                {objectives.length === 0 ? 'No tienes objetivos asignados' : 'Sin resultados con los filtros seleccionados'}
               </p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                {/* Active objectives first */}
-                {activeObjectives.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-                      Activos ({activeObjectives.length})
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      {activeObjectives.map((obj: any, i: number) => (
-                        <ObjectiveCard key={obj.id || i} obj={obj} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Other objectives */}
-                {otherObjectives.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-                      Completados / Otros ({otherObjectives.length})
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      {otherObjectives.map((obj: any, i: number) => (
-                        <ObjectiveCard key={obj.id || i} obj={obj} />
-                      ))}
-                    </div>
-                  </div>
-                )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {filteredObjs.map((obj: any, i: number) => (
+                  <ObjectiveCard key={obj.id || i} obj={obj} />
+                ))}
               </div>
             )}
           </div>
         </div>
-      )}
+      );
+      })()}
 
       {/* ─── TAB: Reconocimientos ──────────────────────────────────────── */}
       {activeTab === 'reconocimientos' && (
