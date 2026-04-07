@@ -192,7 +192,7 @@ export class DevelopmentService {
   }
 
   async bulkAssignCompetencies(tenantId: string, position: string, defaultLevel: number = 5): Promise<{ created: number }> {
-    const competencies = await this.competencyRepo.find({ where: { tenantId, isActive: true } });
+    const competencies = await this.competencyRepo.find({ where: { tenantId, isActive: true, status: CompetencyStatus.APPROVED } });
     let created = 0;
     for (const comp of competencies) {
       const exists = await this.roleCompetencyRepo.findOne({ where: { tenantId, position, competencyId: comp.id } });

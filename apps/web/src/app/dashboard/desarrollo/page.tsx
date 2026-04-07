@@ -1377,6 +1377,123 @@ function DesarrolloPageContent() {
         onCancel={() => setSignModal(null)}
       />
     )}
+    {/* Matriz Competencias por Cargo (solo lectura) */}
+    <CompetencyMatrixSection />
+    </div>
+  );
+}
+
+// ─── Matriz Competencias por Cargo (read-only) ──────────────────────────
+
+function CompetencyMatrixSection() {
+  const token = useAuthStore((s) => s.token);
+  const [expanded, setExpanded] = useState(false);
+  const [roleComps, setRoleComps] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filterCategory, setFilterCategory] = useState('');
+
+  useEffect(() => {
+    if (!expanded || !token) return;
+    setLoading(true);
+    api.development.roleCompetencies.list(token)
+      .then((data) => setRoleComps(Array.isArray(data) ? data : []))
+      .catch(() => setRoleComps([]))
+      .finally(() => setLoading(false));
+  }, [expanded, token]);
+
+  // Build matrix: positions as rows, competencies as columns
+  const positions = Array.from(new Set(roleComps.map((rc: any) => rc.position))).sort();
+  const allCompetencies = Array.from(
+    new Map(roleComps.map((rc: any) => [rc.competencyId, { id: rc.competencyId, name: rc.competency?.name || rc.competencyId, category: rc.competency?.category || '' }])).values()
+  );
+  const categories = Array.from(new Set(allCompetencies.map(c => c.category).filter(Boolean))).sort();
+  const filteredCompetencies = filterCategory ? allCompetencies.filter(c => c.category === filterCategory) : allCompetencies;
+
+  // Lookup: position+compId → level
+  const levelMap = new Map(roleComps.map((rc: any) => [`${rc.position}|${rc.competencyId}`, rc.expectedLevel]));
+
+  const levelColor = (level: number) => level >= 8 ? '#10b981' : level >= 5 ? '#f59e0b' : level >= 3 ? '#6366f1' : '#94a3b8';
+
+  return (
+    <div className="card" style={{ marginTop: '1.5rem' }}>
+      <button onClick={() => setExpanded(!expanded)} style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
+        padding: '1rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+      }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Matriz de Competencias por Cargo</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Vista de los niveles esperados de competencias para cada cargo de la organización.</div>
+        </div>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+      </button>
+
+      {expanded && (
+        <div style={{ padding: '0 1.25rem 1.25rem' }}>
+          {loading ? <div style={{ textAlign: 'center', padding: '2rem' }}><span className="spinner" /></div> : roleComps.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+              Sin competencias asignadas a cargos. El administrador debe configurar las competencias por cargo en <strong>Mantenedores</strong>.
+            </div>
+          ) : (
+            <>
+              {/* Filter by category */}
+              {categories.length > 1 && (
+                <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>Categoría:</span>
+                  <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} style={{ fontSize: '0.82rem', maxWidth: '200px' }}>
+                    <option value="">Todas ({allCompetencies.length})</option>
+                    {categories.map(c => <option key={c} value={c}>{c} ({allCompetencies.filter(comp => comp.category === c).length})</option>)}
+                  </select>
+                </div>
+              )}
+
+              {/* Legend */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#10b981', marginRight: 4 }} />Alto (8-10)</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#f59e0b', marginRight: 4 }} />Medio (5-7)</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#6366f1', marginRight: 4 }} />Básico (3-4)</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#94a3b8', marginRight: 4 }} />Inicial (1-2)</span>
+              </div>
+
+              {/* Matrix table */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.78rem' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.6rem', borderBottom: '2px solid var(--border)', fontWeight: 700, position: 'sticky', left: 0, background: 'var(--bg-base)', minWidth: 150, zIndex: 1 }}>Cargo</th>
+                      {filteredCompetencies.map(c => (
+                        <th key={c.id} style={{ padding: '0.4rem 0.5rem', borderBottom: '2px solid var(--border)', fontWeight: 600, textAlign: 'center', minWidth: 70, fontSize: '0.7rem', whiteSpace: 'nowrap' }} title={`${c.name} (${c.category})`}>
+                          {c.name.length > 12 ? c.name.slice(0, 11) + '…' : c.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {positions.map(pos => (
+                      <tr key={pos}>
+                        <td style={{ padding: '0.4rem 0.6rem', borderBottom: '1px solid var(--border)', fontWeight: 600, position: 'sticky', left: 0, background: 'var(--bg-base)', zIndex: 1 }}>{pos}</td>
+                        {filteredCompetencies.map(c => {
+                          const level = levelMap.get(`${pos}|${c.id}`);
+                          return (
+                            <td key={c.id} style={{ padding: '0.3rem 0.5rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+                              {level != null ? (
+                                <span style={{ display: 'inline-block', width: 26, height: 26, lineHeight: '26px', borderRadius: 4, fontWeight: 700, fontSize: '0.75rem', color: '#fff', background: levelColor(level) }}>{level}</span>
+                              ) : <span style={{ color: 'var(--border)' }}>—</span>}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+                {positions.length} cargos × {filteredCompetencies.length} competencias. Para editar, vaya a <strong>Mantenedores → Competencias por Cargo</strong>.
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

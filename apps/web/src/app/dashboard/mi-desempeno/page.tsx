@@ -130,7 +130,6 @@ export default function MiDesempenoPage() {
   const [objTypeFilter, setObjTypeFilter] = useState('');
   const [pdiStatusFilter, setPdiStatusFilter] = useState('');
   const [teamPdiStatusFilter, setTeamPdiStatusFilter] = useState('');
-  const [teamEvalStatusFilter, setTeamEvalStatusFilter] = useState('');
   const [teamEvalCycleFilter, setTeamEvalCycleFilter] = useState('');
 
   // Expandables
@@ -661,6 +660,9 @@ export default function MiDesempenoPage() {
                 }
                 return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {Object.entries(byEvaluatee).length === 0 && (
+                    <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin evaluaciones para el ciclo seleccionado.</div>
+                  )}
                   {Object.entries(byEvaluatee).map(([eid, { name, evals }]) => (
                     <div key={eid} className="card" style={{ padding: '0.75rem 1rem' }}>
                       <button onClick={() => setExpandedTeamMember(expandedTeamMember === `eval-${eid}` ? null : `eval-${eid}`)}
