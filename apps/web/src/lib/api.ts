@@ -698,6 +698,17 @@ export const api = {
       const qs = params.toString() ? `?${params.toString()}` : '';
       return request<any>(`/reports/cycle/${cycleId}/competency-heatmap${qs}`, {}, token);
     },
+    // Analytics endpoints for executive dashboard
+    cycleComparison: (token: string) =>
+      request<any>("/reports/analytics/cycle-comparison", {}, token),
+    turnover: (token: string) =>
+      request<any>("/reports/analytics/turnover", {}, token),
+    movements: (token: string) =>
+      request<any>("/reports/analytics/movements", {}, token),
+    pdiCompliance: (token: string) =>
+      request<any>("/reports/analytics/pdi-compliance", {}, token),
+    pdiHistorical: (token: string) =>
+      request<any>("/reports/analytics/pdi-historical", {}, token),
   },
 
   notifications: {
