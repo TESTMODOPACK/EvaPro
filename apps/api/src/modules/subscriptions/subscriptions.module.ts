@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Subscription } from './entities/subscription.entity';
 import { SubscriptionPlan } from './entities/subscription-plan.entity';
@@ -20,7 +20,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [
     TypeOrmModule.forFeature([Subscription, SubscriptionPlan, PaymentHistory, SubscriptionRequest, Invoice, InvoiceLine, Tenant, User, EvaluationCycle]),
     AuditModule,
-    NotificationsModule,
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [SubscriptionsController, InvoicesController],
   providers: [SubscriptionsService, InvoicesService],
