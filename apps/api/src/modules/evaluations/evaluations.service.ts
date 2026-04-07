@@ -928,11 +928,29 @@ export class EvaluationsService {
   async findCompletedForUser(userId: string, tenantId: string): Promise<any[]> {
     const assignments = await this.assignmentRepo.find({
       where: { evaluatorId: userId, tenantId, status: AssignmentStatus.COMPLETED },
-      relations: ['evaluatee', 'cycle'],
+      relations: ['evaluatee', 'evaluator', 'cycle'],
       order: { completedAt: 'DESC' },
     });
 
     // Load responses for each assignment to get overallScore
+    const results = [];
+    for (const a of assignments) {
+      const response = await this.responseRepo.findOne({
+        where: { assignmentId: a.id },
+        select: ['id', 'overallScore', 'submittedAt'],
+      });
+      results.push({ ...a, response: response || null });
+    }
+    return results;
+  }
+
+  /** Get evaluations where the user is the EVALUATEE (someone evaluated me) */
+  async findEvaluationsOfUser(userId: string, tenantId: string): Promise<any[]> {
+    const assignments = await this.assignmentRepo.find({
+      where: { evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
+      relations: ['evaluatee', 'evaluator', 'cycle'],
+      order: { completedAt: 'DESC' },
+    });
     const results = [];
     for (const a of assignments) {
       const response = await this.responseRepo.findOne({

@@ -5,1007 +5,808 @@ import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
-import { getScaleLevel } from '@/lib/scales';
-import { useCycles } from '@/hooks/useCycles';
 import CompetencyRadarChart from '@/components/CompetencyRadarChart';
 import SelfVsOthersChart from '@/components/SelfVsOthersChart';
 import GapAnalysisChart from '@/components/GapAnalysisChart';
-import { useGapAnalysisIndividual } from '@/hooks/useReports';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import SignatureModal, { SignatureBadge } from '@/components/SignatureModal';
+import { getScaleLevel } from '@/lib/scales';
+import { useCycles } from '@/hooks/useCycles';
+import { useGapAnalysisIndividual } from '@/hooks/useReports';
 
-function Spinner() {
+function Spinner() { return <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><span className="spinner" /></div>; }
+
+function GapSection({ cycleId, userId }: { cycleId: string; userId: string }) {
+  const { data } = useGapAnalysisIndividual(cycleId, userId);
+  if (!data) return null;
+  return <GapAnalysisChart data={data} />;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+const selectStyle: React.CSSProperties = { padding: '0.45rem 0.7rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' };
+const labelStyle: React.CSSProperties = { fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '0.15rem' };
+const relLabel: Record<string, string> = { self: 'Autoevaluación', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
+const objStatusLabels: Record<string, string> = { active: 'Activo', completed: 'Completado', draft: 'Borrador', pending_approval: 'Pendiente', abandoned: 'Abandonado' };
+const objTypeLabels: Record<string, string> = { OKR: 'OKR', individual: 'Individual', team: 'Equipo', company: 'Empresa' };
+const pdiStatusLabels: Record<string, string> = { borrador: 'Borrador', pendiente_aprobacion: 'Pendiente', aprobado: 'Aprobado', activo: 'Activo', completado: 'Completado', cancelado: 'Cancelado' };
+const pdiStatusColors: Record<string, string> = { borrador: '#94a3b8', activo: '#6366f1', completado: '#10b981', cancelado: '#ef4444', pendiente_aprobacion: '#f59e0b', aprobado: '#22c55e' };
+
+function KPI({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-      <span className="spinner" />
+    <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
+      <div style={labelStyle}>{label}</div>
+      <div style={{ fontSize: '1.3rem', fontWeight: 800, color: color || 'var(--text-primary)' }}>{value}</div>
+      {sub && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{sub}</div>}
     </div>
   );
 }
 
-const cycleTypeLabels: Record<string, string> = {
-  '': 'Todos',
-  '90': '90\u00b0',
-  '180': '180\u00b0',
-  '270': '270\u00b0',
-  '360': '360\u00b0',
-};
+// ─── Objective Card ──────────────────────────────────────────────────
 
-const selectStyle: React.CSSProperties = {
-  padding: '0.45rem 0.7rem',
-  background: 'var(--bg-surface)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-sm, 6px)',
-  color: 'var(--text-primary)',
-  fontSize: '0.82rem',
-  outline: 'none',
-};
-
-function GapSection({ cycleId, userId }: { cycleId: string; userId: string }) {
-  const { data, isLoading } = useGapAnalysisIndividual(cycleId, userId);
-  if (isLoading) return <div style={{ padding: '1rem', textAlign: 'center' }}><span className="spinner" /></div>;
-  if (!data || !data.competencies || data.competencies.length === 0) return null;
-  return <GapAnalysisChart data={data} isLoading={false} />;
+function ObjectiveCard({ obj, showDetail }: { obj: any; showDetail?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const statusColor = obj.status === 'completed' ? '#10b981' : obj.status === 'active' ? '#6366f1' : obj.status === 'abandoned' ? '#ef4444' : '#94a3b8';
+  return (
+    <div style={{ padding: '0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
+          <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{obj.title}</span>
+          <span className="badge badge-ghost" style={{ fontSize: '0.65rem' }}>{objTypeLabels[obj.type] || obj.type}</span>
+          <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '1px 6px', borderRadius: 3, background: `${statusColor}15`, color: statusColor }}>{objStatusLabels[obj.status] || obj.status}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: statusColor }}>{obj.progress || 0}%</span>
+          {showDetail !== false && (
+            <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }} onClick={() => setExpanded(!expanded)}>
+              {expanded ? 'Ocultar' : 'Ver detalle'}
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ height: 5, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${obj.progress || 0}%`, background: statusColor, borderRadius: 3 }} />
+      </div>
+      {expanded && (
+        <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          {obj.description && <p style={{ margin: '0 0 0.3rem' }}>{obj.description}</p>}
+          {obj.targetDate && <p style={{ margin: '0 0 0.3rem', color: 'var(--text-muted)' }}>Fecha meta: {new Date(obj.targetDate).toLocaleDateString('es-CL')}</p>}
+          {obj.keyResults?.length > 0 && (
+            <div style={{ marginTop: '0.3rem' }}>
+              <div style={{ fontWeight: 600, marginBottom: '0.2rem' }}>Resultados Clave:</div>
+              {obj.keyResults.map((kr: any, i: number) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.15rem' }}>
+                  <div style={{ width: 50, height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${kr.progress || 0}%`, background: '#6366f1', borderRadius: 2 }} />
+                  </div>
+                  <span style={{ fontSize: '0.75rem' }}>{kr.title || kr.description} — {kr.progress || 0}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
+
+// ─── Main Page ────────────────────────────────────────────────────────
 
 export default function MiDesempenoPage() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
-  const [history, setHistory] = useState<any>(null);
-  const [completed, setCompleted] = useState<any[]>([]);
-  const [pending, setPending] = useState<any[]>([]);
+  const role = user?.role || 'employee';
+  const isManager = role === 'manager';
+  const isAdmin = role === 'tenant_admin' || role === 'super_admin';
+  const hasTeam = isManager || isAdmin;
+
+  // Data
   const [loading, setLoading] = useState(true);
-
-  // Radar cycle selector
-  const { data: allCycles } = useCycles();
-  const [radarCycleId, setRadarCycleId] = useState('');
-  const closedCycles = (allCycles || []).filter((c: any) => c.status === 'closed' || c.status === 'active');
-
-  // Filter state
-  const [cycleTypeFilter, setCycleTypeFilter] = useState('');
-  const [evalStatusFilter, setEvalStatusFilter] = useState('');
-  const [objStatusFilter, setObjStatusFilter] = useState('');
-  const [objTypeFilter, setObjTypeFilter] = useState('');
-
-  // Unified history sections
+  const [completed, setCompleted] = useState<any[]>([]);
+  const [received, setReceived] = useState<any[]>([]);
+  const [pending, setPending] = useState<any[]>([]);
   const [feedbackReceived, setFeedbackReceived] = useState<any[]>([]);
+  const [feedbackGiven, setFeedbackGiven] = useState<any[]>([]);
   const [devPlans, setDevPlans] = useState<any[]>([]);
   const [objectives, setObjectives] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'evaluaciones' | 'feedback' | 'pdi' | 'objetivos' | 'reconocimientos'>('evaluaciones');
-
-  // Recognition data
-  const [myPoints, setMyPoints] = useState<number>(0);
+  const [myPoints, setMyPoints] = useState<any>(null);
   const [myBadges, setMyBadges] = useState<any[]>([]);
   const [recognitionsReceived, setRecognitionsReceived] = useState<any[]>([]);
-
-  // PDI expandable actions
-  const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
-
-  // Signatures
-  const [signModal, setSignModal] = useState<{ documentType: string; documentId: string; documentName: string } | null>(null);
+  const [myRedemptions, setMyRedemptions] = useState<any[]>([]);
+  const [teamObjectives, setTeamObjectives] = useState<any>(null);
+  const [history, setHistory] = useState<any>(null);
   const [signatureMap, setSignatureMap] = useState<Record<string, any[]>>({});
+
+  // Tabs
+  const [parentTab, setParentTab] = useState<'personal' | 'team'>('personal');
+  const [personalTab, setPersonalTab] = useState<'evaluaciones' | 'feedback' | 'pdi' | 'objetivos' | 'reconocimientos'>('evaluaciones');
+  const [teamTab, setTeamTab] = useState<'evaluaciones' | 'objetivos' | 'pdi'>('evaluaciones');
+
+  // Filters
+  const [evalStatusFilter, setEvalStatusFilter] = useState('');
+  const [evalCycleFilter, setEvalCycleFilter] = useState('');
+  const [objStatusFilter, setObjStatusFilter] = useState('');
+  const [objTypeFilter, setObjTypeFilter] = useState('');
+  const [pdiStatusFilter, setPdiStatusFilter] = useState('');
+  const [teamPdiStatusFilter, setTeamPdiStatusFilter] = useState('');
+
+  // Expandables
+  const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  const [expandedTeamMember, setExpandedTeamMember] = useState<string | null>(null);
+  const [expandedFbRecipient, setExpandedFbRecipient] = useState<string | null>(null);
+  const [signModal, setSignModal] = useState<any>(null);
   const [showGuide, setShowGuide] = useState(false);
 
+  // Cycles for filter
+  const { data: allCycles } = useCycles();
+  const closedCycles = (allCycles || []).filter((c: any) => c.status === 'closed' || c.status === 'active');
+  const [radarCycleId, setRadarCycleId] = useState('');
+
+  // Load data
   useEffect(() => {
     if (!token || !user?.userId) return;
     setLoading(true);
     Promise.all([
-      api.reports.performanceHistory(token, user.userId, cycleTypeFilter || undefined).catch(() => null),
+      api.reports.performanceHistory(token, user.userId).catch(() => null),
       api.evaluations.completed(token).catch(() => []),
+      api.evaluations.received(token).catch(() => []),
       api.evaluations.pending(token).catch(() => []),
       api.feedback.receivedFeedback(token).catch(() => []),
+      api.feedback.givenFeedback(token).catch(() => []),
       api.development.plans.list(token).catch(() => []),
       api.objectives.list(token).catch(() => []),
       api.recognition.myPoints(token).catch(() => ({ total: 0 })),
       api.recognition.myBadges(token).catch(() => []),
-      api.recognition.wall(token, 1, 50).catch(() => ({ data: [] })),
-    ])
-      .then(([h, c, p, fb, dp, obj, pts, badges, wall]) => {
-        setHistory(h);
-        setCompleted(Array.isArray(c) ? c : []);
-        setPending(Array.isArray(p) ? p : []);
-        setFeedbackReceived(Array.isArray(fb) ? fb : []);
-        setDevPlans(Array.isArray(dp) ? dp : (dp as any)?.data ? (dp as any).data : []);
-        setObjectives(Array.isArray(obj) ? obj : (obj as any)?.data ? (obj as any).data : []);
-        setMyPoints(pts?.total ?? pts?.points ?? 0);
-        setMyBadges(Array.isArray(badges) ? badges : []);
-        // Filter wall to only show recognitions received by current user
-        const wallData = wall?.data || (Array.isArray(wall) ? wall : []);
-        setRecognitionsReceived(wallData.filter((r: any) => r.toUserId === user.userId || r.toUser?.id === user.userId));
-      })
-      .finally(() => setLoading(false));
-  }, [token, user?.userId, cycleTypeFilter]);
+      api.recognition.wall(token, 1, 50).catch(() => []),
+      api.recognition.myRedemptions(token).catch(() => []),
+      ...(hasTeam ? [api.objectives.teamSummary(token).catch(() => null)] : []),
+    ]).then(([hist, comp, recv, pend, fbRecv, fbGiven, plans, objs, pts, badges, wall, redemptions, teamObj]) => {
+      setHistory(hist);
+      setCompleted(Array.isArray(comp) ? comp : []);
+      setReceived(Array.isArray(recv) ? recv : []);
+      setPending(Array.isArray(pend) ? pend : []);
+      setFeedbackReceived(Array.isArray(fbRecv) ? fbRecv : []);
+      setFeedbackGiven(Array.isArray(fbGiven) ? fbGiven : []);
+      setDevPlans(Array.isArray(plans) ? plans : []);
+      setObjectives(Array.isArray(objs) ? objs : []);
+      setMyPoints(pts);
+      setMyBadges(Array.isArray(badges) ? badges : []);
+      const wallItems = Array.isArray(wall) ? wall : (wall as any)?.items || [];
+      setRecognitionsReceived(wallItems.filter((r: any) => r.toUserId === user.userId));
+      setMyRedemptions(Array.isArray(redemptions) ? redemptions : []);
+      if (teamObj) setTeamObjectives(teamObj);
+    }).finally(() => setLoading(false));
+  }, [token, user?.userId]);
 
-  // Load signatures for completed evaluations
-  const loadSignatures = async () => {
-    if (!token || completed.length === 0) return;
-    const map: Record<string, any[]> = {};
-    for (const ev of completed) {
-      const respId = ev.response?.id || ev.responseId;
-      if (!respId) continue;
-      try {
-        const sigs = await api.signatures.list(token, 'evaluation_response', respId);
-        if (Array.isArray(sigs) && sigs.length > 0) map[respId] = sigs;
-      } catch {}
-    }
-    setSignatureMap(map);
-  };
-
+  // Load signatures
   useEffect(() => {
-    if (completed.length > 0 && token) loadSignatures();
-  }, [completed.length, token]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!token || completed.length === 0) return;
+    const loadSigs = async () => {
+      const map: Record<string, any[]> = {};
+      for (const ev of [...completed, ...received]) {
+        const respId = ev.response?.id || ev.responseId;
+        if (!respId || map[respId]) continue;
+        try {
+          const sigs = await api.signatures.list(token, 'evaluation_response', respId);
+          if (sigs?.length) map[respId] = sigs;
+        } catch {}
+      }
+      setSignatureMap(map);
+    };
+    loadSigs();
+  }, [completed.length, received.length, token]);
 
-  if (loading) return <PageSkeleton cards={5} tableRows={5} />;
+  if (loading) return <PageSkeleton cards={5} tableRows={6} />;
 
+  // Derived data
+  const myUserId = user?.userId;
   const cycles = history?.cycles || history?.history || [];
   const latestScore = cycles.length > 0 ? cycles[cycles.length - 1] : null;
+  const displayScore = latestScore?.avgOverall ?? null;
 
-  const completedWithScore = completed.filter((e: any) => e.response?.overallScore != null);
-  const latestCompleted = completedWithScore.length > 0 ? completedWithScore[0] : null;
-  const displayScore = latestScore?.avgOverall ?? latestCompleted?.response?.overallScore ?? null;
+  // Personal evaluations: where I'm the evaluatee (received) + my completions as evaluator for self
+  const myEvaluationsReceived = received;
+  const myPendingEvals = pending.filter((e: any) => e.evaluateeId === myUserId || e.relationType === 'self');
+  const teamPendingEvals = pending.filter((e: any) => e.evaluateeId !== myUserId && e.relationType !== 'self');
 
-  // Objectives grouped by status
-  const activeObjectives = objectives.filter((o: any) => o.status === 'active');
-  const otherObjectives = objectives.filter((o: any) => o.status !== 'active');
+  // Team evaluations (where I evaluated others, excluding self-evaluations of myself)
+  const teamCompletedEvals = completed.filter((e: any) => e.evaluateeId !== myUserId);
 
-  // Feedback grouped by type
-  const feedbackPositive = feedbackReceived.filter((fb: any) => fb.type === 'positive' || fb.type === 'recognition' || fb.sentiment === 'positive');
-  const feedbackConstructive = feedbackReceived.filter((fb: any) => fb.type === 'constructive' || fb.type === 'improvement' || fb.sentiment === 'constructive');
-  const feedbackNeutral = feedbackReceived.filter((fb: any) => !feedbackPositive.includes(fb) && !feedbackConstructive.includes(fb));
+  // My objectives vs team objectives
+  const myObjectives = objectives.filter((o: any) => o.userId === myUserId);
+  const myDevPlans = devPlans.filter((p: any) => p.userId === myUserId);
+  const teamDevPlans = devPlans.filter((p: any) => p.userId !== myUserId);
 
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: '0.5rem 1rem',
-    fontSize: '0.82rem',
-    fontWeight: active ? 700 : 500,
-    color: active ? 'var(--accent)' : 'var(--text-secondary)',
-    borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
-    cursor: 'pointer',
-    background: 'none',
-    border: 'none',
-    borderBottomWidth: '2px',
-    borderBottomStyle: 'solid',
-    borderBottomColor: active ? 'var(--accent)' : 'transparent',
+  // KPIs
+  const myActiveObj = myObjectives.filter((o: any) => o.status === 'active').length;
+  const myActiveDevPlans = myDevPlans.filter((p: any) => p.status === 'activo').length;
+  const teamMemberCount = teamObjectives?.totals?.totalMembers || teamDevPlans.length || 0;
+  const teamActiveObj = teamObjectives?.totals?.totalObjectives || 0;
+  const teamActivePdi = teamDevPlans.filter((p: any) => p.status === 'activo').length;
+
+  // Tab styles
+  const parentTabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '0.65rem 1.25rem', fontSize: '0.88rem', fontWeight: active ? 700 : 500,
+    color: active ? '#fff' : 'var(--text-secondary)',
+    background: active ? 'var(--accent)' : 'var(--bg-surface)',
+    border: active ? 'none' : '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm, 6px)', cursor: 'pointer',
+  });
+  const subTabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '0.5rem 0.85rem', fontSize: '0.8rem', fontWeight: active ? 700 : 500,
+    color: active ? 'var(--accent)' : 'var(--text-muted)',
+    background: 'none', border: 'none', cursor: 'pointer',
+    borderBottom: `2px solid ${active ? 'var(--accent)' : 'transparent'}`, marginBottom: '-1px',
   });
 
-  const sentimentIcon = (type: string) => {
-    if (type === 'positive') return { icon: '\u2B50', color: '#10b981', label: 'Positivo' };
-    if (type === 'constructive') return { icon: '\uD83D\uDCA1', color: '#f59e0b', label: 'Constructivo' };
-    return { icon: '\uD83D\uDCAC', color: 'var(--text-muted)', label: 'General' };
-  };
-
-  const handleExportCsv = () => {
-    const rows: string[] = [];
-    const esc = (v: any) => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s; };
-
-    rows.push('RESUMEN MI DESEMPEÑO');
-    rows.push(`Último puntaje,${displayScore ?? 'Sin datos'}`);
-    rows.push(`Evaluaciones pendientes,${pending.length}`);
-    rows.push(`Feedback recibido,${feedbackReceived.length}`);
-    rows.push(`Objetivos activos,${activeObjectives.length}`);
-    rows.push(`Puntos reconocimiento,${myPoints}`);
-    rows.push('');
-
-    rows.push('EVALUACIONES COMPLETADAS');
-    rows.push('Evaluado,Tipo,Ciclo,Puntaje,Fecha');
-    for (const ev of completed) {
-      const name = ev.evaluatee ? `${ev.evaluatee.firstName || ''} ${ev.evaluatee.lastName || ''}`.trim() : '';
-      rows.push([esc(name), ev.relationType, esc(ev.cycle?.name || ''), ev.response?.overallScore ?? '', ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : ''].join(','));
-    }
-    rows.push('');
-
-    rows.push('FEEDBACK RECIBIDO');
-    rows.push('De,Tipo,Sentimiento,Mensaje,Fecha');
-    for (const fb of feedbackReceived) {
-      const from = fb.isAnonymous ? 'Anónimo' : fb.fromUser ? `${fb.fromUser.firstName} ${fb.fromUser.lastName}` : 'Anónimo';
-      rows.push([esc(from), fb.type || '', fb.sentiment || '', esc(fb.message || ''), fb.createdAt ? new Date(fb.createdAt).toLocaleDateString('es-CL') : ''].join(','));
-    }
-    rows.push('');
-
-    rows.push('OBJETIVOS');
-    rows.push('Título,Tipo,Estado,Progreso %,Fecha Meta');
-    for (const obj of objectives) {
-      rows.push([esc(obj.title), obj.type || '', obj.status || '', obj.progress || 0, obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : ''].join(','));
-    }
-
-    const csv = '\uFEFF' + rows.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'mi-desempeno.csv';
-    link.click();
-    URL.revokeObjectURL(link.href);
-  };
-
   return (
-    <div style={{ padding: '2rem 2.5rem', maxWidth: '960px' }}>
-      <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-            {'Mi Desempeño'}
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {'Tu historial completo: evaluaciones, feedback, desarrollo, objetivos, reconocimientos y firmas digitales'}
-          </p>
-        </div>
-        <button type="button" onClick={handleExportCsv}
-          style={{ padding: '0.4rem 0.85rem', fontSize: '0.78rem', fontWeight: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', background: 'var(--bg-surface)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-          {t('common.exportCsv')}
-        </button>
-      </div>
-
+    <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
+      {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
-        <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
-          {showGuide ? t('common.hideGuide') : t('common.showGuide')}
-        </button>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Mi Desempeño</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+          {hasTeam ? 'Tu rendimiento individual y el de tu equipo.' : 'Tu rendimiento, feedback, objetivos y desarrollo profesional.'}
+        </p>
       </div>
 
-      {showGuide && (
-        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guía: Mi Desempeño</h3>
-          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <p><strong>¿Qué muestra?</strong> Tu historial de desempeño personal — puntajes, competencias, objetivos y feedback recibido a lo largo de los ciclos.</p>
-            <p><strong>Secciones:</strong> Puntaje global por ciclo, desglose por competencia, historial de evaluaciones, estado de objetivos personales, y feedback recibido.</p>
-            <p><strong>Puntaje:</strong> Se calcula como promedio ponderado de las evaluaciones recibidas (autoevaluación, jefe, pares, reportes directos según el tipo de ciclo).</p>
-            <p><strong>Objetivos:</strong> Muestra el estado de tus objetivos (activos, completados, en riesgo) y su progreso.</p>
-            <p><strong>Feedback:</strong> Retroalimentación rápida recibida de colegas, con indicador de sentimiento.</p>
-            <p><strong>Exportación:</strong> CSV con detalle de evaluaciones y puntajes.</p>
-          </div>
-          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Cada colaborador ve únicamente su propia información. No se muestra información de otros usuarios.
-          </div>
-          <div style={{ marginTop: '1rem' }}>
-            <ScaleLegend />
+      {/* KPI Row: Personal */}
+      <div className="animate-fade-up" style={{ marginBottom: hasTeam ? '0.75rem' : '1.25rem' }}>
+        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>Mi Resumen</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
+          <KPI label="Último puntaje" value={displayScore != null ? Number(displayScore).toFixed(1) : '--'} color={displayScore != null ? getScaleLevel(Number(displayScore))?.color : undefined} sub={displayScore != null ? getScaleLevel(Number(displayScore))?.label : undefined} />
+          <KPI label="Pendientes" value={myPendingEvals.length} color={myPendingEvals.length > 0 ? '#f59e0b' : '#10b981'} />
+          <KPI label="Feedback" value={feedbackReceived.length} />
+          <KPI label="Objetivos" value={`${myActiveObj} act.`} />
+          <KPI label="Puntos" value={myPoints?.yearPoints ?? myPoints?.total ?? 0} sub={`${myBadges.length} badges`} />
+        </div>
+      </div>
+
+      {/* KPI Row: Team (only manager/admin) */}
+      {hasTeam && (
+        <div className="animate-fade-up" style={{ marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>Mi Equipo</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
+            <KPI label="Miembros" value={teamMemberCount} />
+            <KPI label="Eval. completadas" value={teamCompletedEvals.length} />
+            <KPI label="Objetivos equipo" value={`${teamActiveObj} act.`} />
+            <KPI label="PDI equipo" value={`${teamActivePdi} act.`} />
           </div>
         </div>
       )}
 
-      {/* Summary cards */}
-      <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem' }}>
-            {'\u00DAltimo puntaje'}
-          </div>
-          {displayScore != null ? (
-            <ScoreBadge score={displayScore} size="lg" />
-          ) : (
-            <div style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>Sin datos</div>
-          )}
+      {/* Parent Tabs (only manager/admin) */}
+      {hasTeam && (
+        <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+          <button style={parentTabStyle(parentTab === 'personal')} onClick={() => setParentTab('personal')}>
+            {'👤'} Mi Desempeño
+          </button>
+          <button style={parentTabStyle(parentTab === 'team')} onClick={() => setParentTab('team')}>
+            {'👥'} Mi Equipo
+          </button>
         </div>
+      )}
 
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem' }}>
-            Pendientes
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800, color: pending.length > 0 ? '#f59e0b' : '#10b981', lineHeight: 1 }}>
-            {pending.length}
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem' }}>
-            Feedback recibido
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)', lineHeight: 1 }}>
-            {feedbackReceived.length}
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem' }}>
-            Objetivos activos
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1', lineHeight: 1 }}>
-            {activeObjectives.length}
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem' }}>
-            Puntos ganados
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
-            <span style={{ fontSize: '2rem', fontWeight: 800, color: '#c9933a', lineHeight: 1 }}>
-              {myPoints}
-            </span>
-            {myBadges.length > 0 && (
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                {myBadges.length} insignia{myBadges.length !== 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Tab navigation */}
-      <div className="animate-fade-up-delay-2 mobile-scroll-tabs" style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '1.5rem', overflowX: 'auto' }}>
-        <button style={tabStyle(activeTab === 'evaluaciones')} onClick={() => setActiveTab('evaluaciones')}>
-          Evaluaciones ({completed.length})
-        </button>
-        <button style={tabStyle(activeTab === 'feedback')} onClick={() => setActiveTab('feedback')}>
-          Feedback ({feedbackReceived.length})
-        </button>
-        <button style={tabStyle(activeTab === 'pdi')} onClick={() => setActiveTab('pdi')}>
-          Planes de Desarrollo ({devPlans.length})
-        </button>
-        <button style={tabStyle(activeTab === 'objetivos')} onClick={() => setActiveTab('objetivos')}>
-          Objetivos ({objectives.length})
-        </button>
-        <button style={tabStyle(activeTab === 'reconocimientos')} onClick={() => setActiveTab('reconocimientos')}>
-          Reconocimientos ({recognitionsReceived.length})
-        </button>
-      </div>
-
-      {/* ─── TAB: Evaluaciones ─────────────────────────────────────────── */}
-      {activeTab === 'evaluaciones' && (
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* PERSONAL TAB                                                       */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {(parentTab === 'personal' || !hasTeam) && (
         <>
-          {/* Evaluation status filter */}
-          <div className="card animate-fade-up" style={{ padding: '0.75rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Estado:</span>
-            <select style={selectStyle} value={evalStatusFilter} onChange={(e) => setEvalStatusFilter(e.target.value)}>
-              <option value="">Todas</option>
-              <option value="pending">Pendientes</option>
-              <option value="completed">Completadas</option>
-            </select>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-              {pending.length} pendientes · {completed.length} completadas
-            </span>
+          {/* Sub-tabs */}
+          <div className="animate-fade-up" style={{ display: 'flex', gap: '0.15rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
+            {[
+              { id: 'evaluaciones' as const, label: `Mis Evaluaciones (${myEvaluationsReceived.length})` },
+              { id: 'feedback' as const, label: `Mi Feedback (${feedbackReceived.length})` },
+              { id: 'pdi' as const, label: `Planes de Desarrollo (${myDevPlans.length})` },
+              { id: 'objetivos' as const, label: `Mis Objetivos (${myObjectives.length})` },
+              { id: 'reconocimientos' as const, label: `Reconocimientos` },
+            ].map(tab => (
+              <button key={tab.id} style={subTabStyle(personalTab === tab.id)} onClick={() => setPersonalTab(tab.id)}>{tab.label}</button>
+            ))}
           </div>
 
-          {/* Pending evaluations */}
-          {pending.length > 0 && evalStatusFilter !== 'completed' && (
-            <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
-              <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.75rem', color: 'var(--warning)' }}>
-                Evaluaciones pendientes ({pending.length})
-              </h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {pending.map((ev: any, i: number) => {
-                  const evaluateeName = ev.evaluatee ? `${ev.evaluatee.firstName || ''} ${ev.evaluatee.lastName || ''}`.trim() : '--';
-                  const relLabel: Record<string, string> = { self: 'Autoevaluación', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
-                  return (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                      <div>
-                        <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{evaluateeName}</span>
-                        <span className="badge badge-accent" style={{ fontSize: '0.68rem', marginLeft: '0.5rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
-                        {ev.cycle?.name && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{ev.cycle.name}</span>}
-                      </div>
-                      <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>Pendiente</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Completed evaluations table */}
-          {completed.length > 0 && evalStatusFilter !== 'pending' && (
-            <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '1rem' }}>
-                Evaluaciones completadas
-              </h2>
-              <div className="table-wrapper">
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Evaluado</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Tipo</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Ciclo</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Puntaje</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Fecha</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Firma</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {completed.map((ev: any, i: number) => {
-                      const evaluateeName = ev.evaluatee ? `${ev.evaluatee.firstName || ''} ${ev.evaluatee.lastName || ''}`.trim() : '--';
-                      const relLabel: Record<string, string> = { self: 'Autoevaluación', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
-                      const respId = ev.response?.id || ev.responseId;
-                      const sigs = respId ? signatureMap[respId] : null;
-                      return (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 500 }}>{evaluateeName}</td>
-                          <td style={{ padding: '0.6rem 0.75rem' }}>
-                            <span className="badge badge-accent">{relLabel[ev.relationType] || ev.relationType}</span>
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>{ev.cycle?.name || '--'}</td>
-                          <td style={{ padding: '0.6rem 0.75rem' }}>
-                            <ScoreBadge score={ev.response?.overallScore} size="sm" />
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>
-                            {ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem' }}>
-                            {sigs && sigs.length > 0 ? (
-                              <SignatureBadge signatures={sigs} />
-                            ) : respId ? (
-                              <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                                onClick={() => setSignModal({
-                                  documentType: 'evaluation_response',
-                                  documentId: respId,
-                                  documentName: `Evaluación ${ev.cycle?.name || ''} — ${evaluateeName}`,
-                                })}>
-                                ✍️ Firmar
-                              </button>
-                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>—</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Performance History by cycle */}
-          <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-            <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.25rem' }}>
-              {'Evoluci\u00f3n por ciclo'}
-            </h2>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-              {'Puntaje promedio en cada periodo (escala 0 - 10)'}
-            </p>
-
-            {cycles.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {completed.length > 0
-                  ? 'Las evaluaciones se reflejarán aquí al cerrar el ciclo'
-                  : 'Aún no tienes evaluaciones completadas'
-                }
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {cycles.map((c: any, i: number) => {
-                  const score = Number(c.avgOverall || 0);
-                  const level = getScaleLevel(score);
-                  const color = level?.color || 'var(--text-muted)';
-                  const typeLabel = c.cycleType ? ` (${c.cycleType}\u00b0)` : '';
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <div style={{ minWidth: '160px', fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                        {c.cycleName || `Ciclo ${i + 1}`}
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{typeLabel}</span>
-                      </div>
-                      <div style={{ flex: 1, height: '10px', background: 'var(--bg-surface)', borderRadius: '999px', overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%',
-                          width: `${(score / 10) * 100}%`,
-                          background: color,
-                          borderRadius: '999px',
-                          transition: 'width 0.6s ease',
-                        }} />
-                      </div>
-                      <div style={{ minWidth: '110px' }}>
-                        <ScoreBadge score={score} size="sm" />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Score breakdown */}
-          {latestScore && (
-            <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-              <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '1rem' }}>
-                {'Desglose \u00faltima evaluaci\u00f3n'}
-              </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
-                {[
-                  { label: 'Autoevaluación', value: latestScore.avgSelf },
-                  { label: 'Jefatura', value: latestScore.avgManager },
-                  { label: 'Pares', value: latestScore.avgPeer },
-                  { label: 'General', value: latestScore.avgOverall },
-                ].filter(s => s.value != null).map((s, i) => (
-                  <div key={i} style={{ textAlign: 'center' }}>
-                    <ScoreBadge score={s.value} size="lg" />
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                      {s.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── Radar de Competencias ─────────────────────────────────────── */}
-          {closedCycles.length > 0 && (
-            <div className="animate-fade-up" style={{ marginTop: '1.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <h2 style={{ fontWeight: 700, fontSize: '0.975rem', margin: 0 }}>
-                  {'Radar de Competencias'}
-                </h2>
-                <select
-                  className="input"
-                  value={radarCycleId}
-                  onChange={(e) => setRadarCycleId(e.target.value)}
-                  style={{ fontSize: '0.82rem', padding: '0.4rem 0.6rem', width: 'auto', minWidth: '220px' }}
-                >
-                  <option value="">{'Seleccionar ciclo\u2026'}</option>
-                  {closedCycles.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status})</option>
-                  ))}
+          {/* ─── Mis Evaluaciones ─── */}
+          {personalTab === 'evaluaciones' && (
+            <div className="animate-fade-up">
+              {/* Filters */}
+              <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select style={selectStyle} value={evalStatusFilter} onChange={(e) => setEvalStatusFilter(e.target.value)}>
+                  <option value="">Todos los estados</option>
+                  <option value="pending">Pendientes</option>
+                  <option value="completed">Completadas</option>
+                </select>
+                <select style={selectStyle} value={evalCycleFilter} onChange={(e) => setEvalCycleFilter(e.target.value)}>
+                  <option value="">Todos los ciclos</option>
+                  {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              {radarCycleId && user?.userId && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1rem' }}>
-                    <CompetencyRadarChart cycleId={radarCycleId} userId={user.userId} />
-                    <SelfVsOthersChart cycleId={radarCycleId} userId={user.userId} />
+
+              {/* Pending */}
+              {myPendingEvals.length > 0 && evalStatusFilter !== 'completed' && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--warning)' }}>Evaluaciones Pendientes ({myPendingEvals.length})</h3>
+                  {myPendingEvals.map((ev: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                      <div>
+                        <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
+                        <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
+                        {ev.cycle?.name && <span style={{ color: 'var(--text-muted)', marginLeft: '0.4rem' }}>{ev.cycle.name}</span>}
+                      </div>
+                      <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Pendiente</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Completed — evaluations where I was evaluated */}
+              {myEvaluationsReceived.length > 0 && evalStatusFilter !== 'pending' && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Evaluaciones Recibidas</h3>
+                  <div className="table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: 'left' }}>Evaluador</th>
+                          <th>Tipo</th>
+                          <th>Ciclo</th>
+                          <th>Puntaje</th>
+                          <th>Fecha</th>
+                          <th>Firma</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myEvaluationsReceived
+                          .filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter)
+                          .map((ev: any, i: number) => {
+                          const evaluatorName = ev.evaluator ? `${ev.evaluator.firstName || ''} ${ev.evaluator.lastName || ''}`.trim() : (ev.relationType === 'self' ? 'Autoevaluación' : '--');
+                          const respId = ev.response?.id || ev.responseId;
+                          const sigs = respId ? signatureMap[respId] : null;
+                          return (
+                            <tr key={i}>
+                              <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{evaluatorName}</td>
+                              <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
+                              <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
+                              <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
+                              <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}</td>
+                              <td>{sigs?.length ? <SignatureBadge signatures={sigs} /> : '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                  <GapSection cycleId={radarCycleId} userId={user.userId} />
                 </div>
               )}
-              {!radarCycleId && (
-                <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  {'Selecciona un ciclo para ver tu radar de competencias'}
+
+              {/* Evolution */}
+              {cycles.length > 0 && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Evolución por Ciclo</h3>
+                  {cycles.map((c: any, i: number) => {
+                    const score = Number(c.avgOverall || 0);
+                    const level = getScaleLevel(score);
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                        <div style={{ minWidth: 140, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{c.cycleName || c.name}</div>
+                        <div style={{ flex: 1, height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${(score / 10) * 100}%`, background: level?.color || '#94a3b8', borderRadius: 4 }} />
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: level?.color, minWidth: 40 }}>{score.toFixed(1)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
+
+              {/* Radar */}
+              {closedCycles.length > 0 && (
+                <div className="card" style={{ padding: '1.25rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Radar de Competencias</h3>
+                  <select style={selectStyle} value={radarCycleId} onChange={(e) => setRadarCycleId(e.target.value)}>
+                    <option value="">Seleccionar ciclo...</option>
+                    {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  {radarCycleId && myUserId && (
+                    <div style={{ marginTop: '1rem' }}>
+                      <CompetencyRadarChart cycleId={radarCycleId} userId={myUserId} />
+                      <SelfVsOthersChart cycleId={radarCycleId} userId={myUserId} />
+                      <GapSection cycleId={radarCycleId} userId={myUserId} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Mi Feedback ─── */}
+          {personalTab === 'feedback' && (
+            <div className="animate-fade-up">
+              {/* Received */}
+              <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>{'📩'} Feedback dirigido a mí ({feedbackReceived.length})</h3>
+                {feedbackReceived.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin feedback recibido aún.</p> : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {feedbackReceived.slice(0, 20).map((fb: any, i: number) => (
+                      <div key={i} style={{ padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', borderLeft: `3px solid ${fb.sentiment === 'positive' ? '#10b981' : fb.sentiment === 'constructive' ? '#f59e0b' : '#94a3b8'}`, fontSize: '0.82rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                          <span style={{ fontWeight: 600 }}>{fb.isAnonymous ? 'Anónimo' : fb.fromUser ? `${fb.fromUser.firstName} ${fb.fromUser.lastName}` : '--'}</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{fb.createdAt ? new Date(fb.createdAt).toLocaleDateString('es-CL') : ''}</span>
+                        </div>
+                        <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{fb.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Given — grouped by recipient */}
+              <div className="card" style={{ padding: '1.25rem' }}>
+                <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>{'📤'} Feedback que envié ({feedbackGiven.length})</h3>
+                {feedbackGiven.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No has enviado feedback aún.</p> : (() => {
+                  const byRecipient: Record<string, { name: string; items: any[] }> = {};
+                  for (const fb of feedbackGiven) {
+                    const rid = fb.toUserId || 'unknown';
+                    const rname = fb.toUser ? `${fb.toUser.firstName} ${fb.toUser.lastName}` : '--';
+                    if (!byRecipient[rid]) byRecipient[rid] = { name: rname, items: [] };
+                    byRecipient[rid].items.push(fb);
+                  }
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {Object.entries(byRecipient).map(([rid, { name, items }]) => (
+                        <div key={rid}>
+                          <button onClick={() => setExpandedFbRecipient(expandedFbRecipient === rid ? null : rid)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', width: '100%', padding: '0.4rem 0.5rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.82rem' }}>
+                            <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedFbRecipient === rid ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                            <span style={{ fontWeight: 600 }}>{name}</span>
+                            <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>{items.length} feedback{items.length !== 1 ? 's' : ''}</span>
+                          </button>
+                          {expandedFbRecipient === rid && (
+                            <div style={{ marginLeft: '1rem', borderLeft: '2px solid var(--border)', paddingLeft: '0.75rem', marginTop: '0.25rem' }}>
+                              {items.map((fb: any, j: number) => (
+                                <div key={j} style={{ padding: '0.35rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.8rem' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span className="badge badge-ghost" style={{ fontSize: '0.62rem' }}>{fb.sentiment === 'positive' ? 'Positivo' : fb.sentiment === 'constructive' ? 'Constructivo' : 'Neutral'}</span>
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{fb.createdAt ? new Date(fb.createdAt).toLocaleDateString('es-CL') : ''}</span>
+                                  </div>
+                                  <p style={{ margin: '0.15rem 0 0', color: 'var(--text-secondary)' }}>{fb.message}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Mi PDI ─── */}
+          {personalTab === 'pdi' && (
+            <div className="animate-fade-up">
+              <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <select style={selectStyle} value={pdiStatusFilter} onChange={(e) => setPdiStatusFilter(e.target.value)}>
+                  <option value="">Todos los estados</option>
+                  {Object.entries(pdiStatusLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{myDevPlans.filter((p: any) => !pdiStatusFilter || p.status === pdiStatusFilter).length} planes</span>
+              </div>
+              {myDevPlans.filter((p: any) => !pdiStatusFilter || p.status === pdiStatusFilter).length === 0 ? (
+                <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin planes de desarrollo.</div>
+              ) : myDevPlans.filter((p: any) => !pdiStatusFilter || p.status === pdiStatusFilter).map((plan: any) => {
+                const actions = plan.actions || [];
+                const completedAct = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+                return (
+                  <div key={plan.id} className="card" style={{ padding: '1rem', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{plan.title || plan.name}</span>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 600, padding: '1px 6px', borderRadius: 3, marginLeft: '0.4rem', background: `${pdiStatusColors[plan.status] || '#94a3b8'}15`, color: pdiStatusColors[plan.status] || '#94a3b8' }}>{pdiStatusLabels[plan.status] || plan.status}</span>
+                      </div>
+                      <button className="btn-ghost" style={{ fontSize: '0.72rem' }} onClick={() => setExpandedPlan(expandedPlan === plan.id ? null : plan.id)}>
+                        {expandedPlan === plan.id ? 'Ocultar' : `Ver acciones (${completedAct}/${actions.length})`}
+                      </button>
+                    </div>
+                    <div style={{ height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', marginTop: '0.4rem' }}>
+                      <div style={{ height: '100%', width: `${actions.length > 0 ? (completedAct / actions.length) * 100 : 0}%`, background: 'var(--success)', borderRadius: 3 }} />
+                    </div>
+                    {expandedPlan === plan.id && actions.length > 0 && (
+                      <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        {actions.map((a: any, j: number) => (
+                          <div key={j} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.8rem' }}>
+                            <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', background: (a.status === 'completada' || a.status === 'completed') ? 'var(--success)' : 'transparent', color: '#fff' }}>
+                              {(a.status === 'completada' || a.status === 'completed') ? '✓' : ''}
+                            </span>
+                            <span style={{ flex: 1, color: (a.status === 'completada' || a.status === 'completed') ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: (a.status === 'completada' || a.status === 'completed') ? 'line-through' : 'none' }}>{a.title || a.description}</span>
+                            {a.dueDate && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{new Date(a.dueDate).toLocaleDateString('es-CL')}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ─── Mis Objetivos ─── */}
+          {personalTab === 'objetivos' && (
+            <div className="animate-fade-up">
+              <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select style={selectStyle} value={objStatusFilter} onChange={(e) => setObjStatusFilter(e.target.value)}>
+                  <option value="">Todos los estados</option>
+                  {Object.entries(objStatusLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <select style={selectStyle} value={objTypeFilter} onChange={(e) => setObjTypeFilter(e.target.value)}>
+                  <option value="">Todos los tipos</option>
+                  {Object.entries(objTypeLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                  {myObjectives.filter((o: any) => (!objStatusFilter || o.status === objStatusFilter) && (!objTypeFilter || o.type === objTypeFilter)).length} de {myObjectives.length}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {myObjectives.filter((o: any) => (!objStatusFilter || o.status === objStatusFilter) && (!objTypeFilter || o.type === objTypeFilter)).map((obj: any) => (
+                  <ObjectiveCard key={obj.id} obj={obj} showDetail={true} />
+                ))}
+                {myObjectives.filter((o: any) => (!objStatusFilter || o.status === objStatusFilter) && (!objTypeFilter || o.type === objTypeFilter)).length === 0 && (
+                  <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin objetivos.</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Mis Reconocimientos ─── */}
+          {personalTab === 'reconocimientos' && (
+            <div className="animate-fade-up">
+              {/* Points + Badges */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div className="card" style={{ padding: '1.25rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{'⭐'} Puntos</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{myPoints?.yearPoints ?? myPoints?.total ?? 0}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Puntos del año</div>
+                </div>
+                <div className="card" style={{ padding: '1.25rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{'🏅'} Insignias</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>{myBadges.length}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Insignias obtenidas</div>
+                </div>
+              </div>
+
+              {/* Recognitions received */}
+              {recognitionsReceived.length > 0 && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Reconocimientos Recibidos ({recognitionsReceived.length})</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {recognitionsReceived.slice(0, 10).map((r: any, i: number) => (
+                      <div key={i} style={{ padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '0.82rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontWeight: 600 }}>{r.fromUser?.firstName} {r.fromUser?.lastName}</span>
+                          {r.points > 0 && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>+{r.points} pts</span>}
+                        </div>
+                        <p style={{ margin: '0.15rem 0 0', color: 'var(--text-secondary)' }}>{r.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Redemptions (NEW) */}
+              <div className="card" style={{ padding: '1.25rem' }}>
+                <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>{'🛒'} Beneficios Canjeados</h3>
+                {myRedemptions.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No has canjeado beneficios aún.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                    {myRedemptions.map((r: any) => (
+                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                        <span style={{ fontWeight: 600 }}>{r.item?.name || 'Beneficio'}</span>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>-{r.pointsSpent} pts</span>
+                          <span className={`badge ${r.status === 'delivered' ? 'badge-success' : r.status === 'cancelled' ? 'badge-danger' : 'badge-accent'}`} style={{ fontSize: '0.65rem' }}>
+                            {r.status === 'delivered' ? 'Entregado' : r.status === 'cancelled' ? 'Cancelado' : 'Pendiente'}
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{r.createdAt ? new Date(r.createdAt).toLocaleDateString('es-CL') : ''}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </>
       )}
 
-      {/* ─── TAB: Feedback ─────────────────────────────────────────────── */}
-      {activeTab === 'feedback' && (
-        <div className="animate-fade-up">
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '1rem' }}>
-              Feedback recibido
-            </h2>
-            {feedbackReceived.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
-                Aún no has recibido feedback
-              </p>
-            ) : (
-              <>
-                {/* Summary by type */}
-                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-                  {[
-                    { label: 'Positivo', count: feedbackPositive.length, color: '#10b981', icon: '\u2B50' },
-                    { label: 'Constructivo', count: feedbackConstructive.length, color: '#f59e0b', icon: '\uD83D\uDCA1' },
-                    { label: 'General', count: feedbackNeutral.length, color: 'var(--text-muted)', icon: '\uD83D\uDCAC' },
-                  ].map((s, i) => (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'center', gap: '0.5rem',
-                      padding: '0.5rem 0.85rem', background: 'var(--bg-surface)',
-                      borderRadius: 'var(--radius-sm, 6px)', border: '1px solid var(--border)',
-                      fontSize: '0.82rem',
-                    }}>
-                      <span>{s.icon}</span>
-                      <span style={{ fontWeight: 600, color: s.color }}>{s.count}</span>
-                      <span style={{ color: 'var(--text-muted)' }}>{s.label}</span>
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* TEAM TAB (only manager/admin)                                      */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {parentTab === 'team' && hasTeam && (
+        <>
+          {/* Sub-tabs */}
+          <div className="animate-fade-up" style={{ display: 'flex', gap: '0.15rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
+            {[
+              { id: 'evaluaciones' as const, label: `Evaluaciones (${teamCompletedEvals.length + teamPendingEvals.length})` },
+              { id: 'objetivos' as const, label: `Objetivos` },
+              { id: 'pdi' as const, label: `Planes de Desarrollo (${teamDevPlans.length})` },
+            ].map(tab => (
+              <button key={tab.id} style={subTabStyle(teamTab === tab.id)} onClick={() => setTeamTab(tab.id)}>{tab.label}</button>
+            ))}
+          </div>
+
+          {/* ─── Team Evaluaciones ─── */}
+          {teamTab === 'evaluaciones' && (
+            <div className="animate-fade-up">
+              <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select style={selectStyle} value={evalStatusFilter} onChange={(e) => setEvalStatusFilter(e.target.value)}>
+                  <option value="">Todos los estados</option>
+                  <option value="completed">Completadas</option>
+                  <option value="pending">Pendientes</option>
+                </select>
+                <select style={selectStyle} value={evalCycleFilter} onChange={(e) => setEvalCycleFilter(e.target.value)}>
+                  <option value="">Todos los ciclos</option>
+                  {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+
+              {/* Pending team evals */}
+              {teamPendingEvals.length > 0 && evalStatusFilter !== 'completed' && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--warning)' }}>Pendientes del Equipo ({teamPendingEvals.length})</h3>
+                  {teamPendingEvals.map((ev: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0.5rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                      <div>
+                        <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
+                        <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
+                      </div>
+                      <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Pendiente</span>
                     </div>
                   ))}
                 </div>
+              )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {feedbackReceived.slice(0, 20).map((fb: any, i: number) => {
-                    const fbType = feedbackPositive.includes(fb) ? 'positive' : feedbackConstructive.includes(fb) ? 'constructive' : 'neutral';
-                    const si = sentimentIcon(fbType);
-                    return (
-                      <div key={i} style={{
-                        padding: '1rem', background: 'var(--bg-surface)',
-                        borderRadius: 'var(--radius-sm, 6px)',
-                        border: '1px solid var(--border)',
-                        borderLeft: `3px solid ${si.color}`,
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <span>{si.icon}</span>
-                            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                              {fb.isAnonymous ? 'An\u00f3nimo' : fb.fromUser ? `${fb.fromUser.firstName} ${fb.fromUser.lastName}` : 'An\u00f3nimo'}
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                            {fb.type && <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>{fb.type}</span>}
-                            {fb.competencyName && <span className="badge badge-warning" style={{ fontSize: '0.68rem' }}>{fb.competencyName}</span>}
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                              {fb.createdAt ? new Date(fb.createdAt).toLocaleDateString('es-CL') : ''}
-                            </span>
-                          </div>
-                        </div>
-                        <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: 0 }}>{fb.message}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── TAB: PDI / Desarrollo ─────────────────────────────────────── */}
-      {activeTab === 'pdi' && (
-        <div className="animate-fade-up">
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '1rem' }}>
-              Planes de desarrollo
-            </h2>
-            {devPlans.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
-                No tienes planes de desarrollo asignados
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {devPlans.map((dp: any, i: number) => {
-                  const actions = dp.actions || [];
-                  const completedActions = actions.filter((a: any) => a.status === 'completed' || a.status === 'completada').length;
-                  const totalActions = actions.length;
-                  const progress = totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0;
-                  const statusColors: Record<string, string> = { borrador: 'var(--text-muted)', activo: 'var(--accent)', en_revision: '#f59e0b', completado: 'var(--success)', cancelado: 'var(--danger)' };
-                  const statusLabels: Record<string, string> = { borrador: 'Borrador', activo: 'Activo', en_revision: 'En revision', completado: 'Completado', cancelado: 'Cancelado' };
-                  const isActive = dp.status === 'activo';
-                  const isExpanded = expandedPlan === (dp.id || i.toString());
-                  return (
-                    <div key={dp.id || i} style={{
-                      padding: '1rem', background: 'var(--bg-surface)',
-                      borderRadius: 'var(--radius-sm, 6px)',
-                      border: isActive ? '1.5px solid var(--accent)' : '1px solid var(--border)',
-                      boxShadow: isActive ? '0 0 0 1px rgba(201,147,58,0.15)' : 'none',
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          {isActive && (
-                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', flexShrink: 0 }} />
-                          )}
-                          <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{dp.title || dp.name || `Plan #${i + 1}`}</span>
-                        </div>
-                        <span className="badge" style={{ fontSize: '0.72rem', color: statusColors[dp.status] || 'var(--text-muted)', borderColor: statusColors[dp.status] }}>
-                          {statusLabels[dp.status] || dp.status}
-                        </span>
-                      </div>
-                      {totalActions > 0 && (
-                        <div style={{ marginTop: '0.5rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                            <span>{completedActions} de {totalActions} acciones</span>
-                            <span>{progress}%</span>
-                          </div>
-                          <div style={{ height: '6px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', borderRadius: '999px', transition: 'width 0.4s ease' }} />
-                          </div>
-                        </div>
-                      )}
-                      {dp.createdAt && (
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                          Creado: {new Date(dp.createdAt).toLocaleDateString('es-CL')}
-                        </div>
-                      )}
-
-                      {/* Expandable actions */}
-                      {totalActions > 0 && (
-                        <>
-                          <button
-                            onClick={() => setExpandedPlan(isExpanded ? null : (dp.id || i.toString()))}
-                            style={{
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              color: 'var(--accent)', fontSize: '0.78rem', fontWeight: 600,
-                              padding: '0.35rem 0', marginTop: '0.5rem',
-                              display: 'flex', alignItems: 'center', gap: '0.3rem',
-                            }}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                              style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                              <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                            {isExpanded ? 'Ocultar acciones' : 'Ver acciones'}
-                          </button>
-                          {isExpanded && (
-                            <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                              {actions.map((action: any, ai: number) => {
-                                const actionStatusColors: Record<string, string> = { pendiente: 'var(--text-muted)', en_progreso: '#f59e0b', completed: 'var(--success)', completada: 'var(--success)', cancelada: 'var(--danger)' };
-                                const actionStatusLabels: Record<string, string> = { pendiente: 'Pendiente', en_progreso: 'En progreso', completed: 'Completada', completada: 'Completada', cancelada: 'Cancelada' };
-                                const isDone = action.status === 'completed' || action.status === 'completada';
-                                return (
-                                  <div key={ai} style={{
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                    padding: '0.5rem 0.75rem', background: 'var(--bg-base)',
-                                    borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.82rem',
-                                  }}>
-                                    <span style={{
-                                      width: '18px', height: '18px', borderRadius: '50%',
-                                      border: isDone ? 'none' : '2px solid var(--border)',
-                                      background: isDone ? 'var(--success)' : 'transparent',
-                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                      flexShrink: 0,
-                                    }}>
-                                      {isDone && (
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                          <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                      )}
-                                    </span>
-                                    <span style={{ flex: 1, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? 'var(--text-muted)' : 'var(--text-primary)' }}>
-                                      {action.title || action.description || `Acci\u00f3n ${ai + 1}`}
-                                    </span>
-                                    {action.dueDate && (
-                                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                        {new Date(action.dueDate).toLocaleDateString('es-CL')}
-                                      </span>
-                                    )}
-                                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: actionStatusColors[action.status] || 'var(--text-muted)' }}>
-                                      {actionStatusLabels[action.status] || action.status}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── TAB: Objetivos ────────────────────────────────────────────── */}
-      {activeTab === 'objetivos' && (() => {
-        const statusLabels: Record<string, string> = { active: 'Activo', completed: 'Completado', draft: 'Borrador', pending_approval: 'Pendiente', abandoned: 'Abandonado' };
-        const typeLabels: Record<string, string> = { OKR: 'OKR', individual: 'Individual', team: 'Equipo', company: 'Empresa' };
-        const filteredObjs = objectives.filter((o: any) => {
-          if (objStatusFilter && o.status !== objStatusFilter) return false;
-          if (objTypeFilter && o.type !== objTypeFilter) return false;
-          return true;
-        });
-        return (
-        <div className="animate-fade-up">
-          {/* Filters */}
-          <div className="card" style={{ padding: '0.75rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Filtrar:</span>
-            <select style={selectStyle} value={objStatusFilter} onChange={(e) => setObjStatusFilter(e.target.value)}>
-              <option value="">Todos los estados</option>
-              {Object.entries(statusLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <select style={selectStyle} value={objTypeFilter} onChange={(e) => setObjTypeFilter(e.target.value)}>
-              <option value="">Todos los tipos</option>
-              {Object.entries(typeLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-              {filteredObjs.length} de {objectives.length} objetivos
-            </span>
-          </div>
-
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '1rem' }}>
-              Mis objetivos
-            </h2>
-            {filteredObjs.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
-                {objectives.length === 0 ? 'No tienes objetivos asignados' : 'Sin resultados con los filtros seleccionados'}
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {filteredObjs.map((obj: any, i: number) => (
-                  <ObjectiveCard key={obj.id || i} obj={obj} />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-      })()}
-
-      {/* ─── TAB: Reconocimientos ──────────────────────────────────────── */}
-      {activeTab === 'reconocimientos' && (
-        <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-
-          {/* Points & Badges summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
-            {/* Points card */}
-            <div className="card" style={{ padding: '1.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <div style={{
-                  width: '42px', height: '42px', borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #c9933a 0%, #f5e4a8 100%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.2rem',
-                }}>
-                  {'\u2B50'}
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>
-                    Puntos acumulados
+              {/* Completed team evals */}
+              {teamCompletedEvals.length > 0 && evalStatusFilter !== 'pending' && (
+                <div className="card" style={{ padding: '1.25rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Evaluaciones del Equipo</h3>
+                  <div className="table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: 'left' }}>Evaluado</th>
+                          <th style={{ textAlign: 'left' }}>Evaluador</th>
+                          <th>Tipo</th>
+                          <th>Ciclo</th>
+                          <th>Puntaje</th>
+                          <th>Fecha</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teamCompletedEvals
+                          .filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter)
+                          .map((ev: any, i: number) => (
+                          <tr key={i}>
+                            <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</td>
+                            <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{ev.evaluator ? `${ev.evaluator.firstName} ${ev.evaluator.lastName}` : '--'}</td>
+                            <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
+                            <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
+                            <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
+                            <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#c9933a', lineHeight: 1.1 }}>
-                    {myPoints}
-                  </div>
-                </div>
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                Acumulas puntos por reconocimientos recibidos, evaluaciones completadas, feedback y logro de objetivos.
-              </div>
-            </div>
-
-            {/* Badges card */}
-            <div className="card" style={{ padding: '1.5rem' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
-                Insignias ganadas ({myBadges.length})
-              </div>
-              {myBadges.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  Aún no has ganado insignias. Sigue participando para desbloquearlas.
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  {myBadges.map((ub: any, i: number) => {
-                    const badge = ub.badge || ub;
-                    return (
-                      <div key={i} style={{
-                        display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        padding: '0.5rem 0.75rem', background: 'var(--bg-surface)',
-                        borderRadius: 'var(--radius-sm, 6px)', border: '1px solid var(--border)',
-                      }}>
-                        <span style={{
-                          width: '32px', height: '32px', borderRadius: '50%',
-                          background: badge.color || 'linear-gradient(135deg, #c9933a, #f5e4a8)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '1rem',
-                        }}>
-                          {badge.icon || '\uD83C\uDFC5'}
-                        </span>
-                        <div>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{badge.name}</div>
-                          {badge.description && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{badge.description}</div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Recognitions received */}
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '1rem' }}>
-              Reconocimientos recibidos
-            </h2>
-            {recognitionsReceived.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
-                Aún no has recibido reconocimientos
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {recognitionsReceived.map((r: any, i: number) => {
-                  const fromName = r.fromUser ? `${r.fromUser.firstName || ''} ${r.fromUser.lastName || ''}`.trim() : 'Alguien';
-                  const valueName = r.value?.name || r.competency?.name || '';
-                  const reactions = r.reactions || {};
-                  const reactionEntries = Object.entries(reactions).filter(([, count]) => (count as number) > 0);
-                  return (
-                    <div key={r.id || i} style={{
-                      padding: '1rem', background: 'var(--bg-surface)',
-                      borderRadius: 'var(--radius-sm, 6px)',
-                      border: '1px solid var(--border)',
-                      borderLeft: '3px solid #c9933a',
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontSize: '1.1rem' }}>{'\u2B50'}</span>
-                          <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{fromName}</span>
-                          {r.points > 0 && (
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#c9933a', background: 'rgba(201,147,58,0.1)', padding: '0.15rem 0.4rem', borderRadius: '999px' }}>
-                              +{r.points} pts
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                          {valueName && <span className="badge badge-warning" style={{ fontSize: '0.68rem' }}>{valueName}</span>}
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            {r.createdAt ? new Date(r.createdAt).toLocaleDateString('es-CL') : ''}
-                          </span>
-                        </div>
-                      </div>
-                      <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: '0 0 0.35rem' }}>{r.message}</p>
-                      {reactionEntries.length > 0 && (
-                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                          {reactionEntries.map(([emoji, count]) => (
-                            <span key={emoji} style={{
-                              fontSize: '0.75rem', padding: '0.15rem 0.4rem',
-                              background: 'var(--bg-base)', borderRadius: '999px',
-                              border: '1px solid var(--border)',
-                            }}>
-                              {emoji} {count as number}
-                            </span>
-                          ))}
+          {/* ─── Team Objetivos ─── */}
+          {teamTab === 'objetivos' && (
+            <div className="animate-fade-up">
+              {!teamObjectives?.members?.length ? (
+                <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos de objetivos del equipo.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {teamObjectives.members.map((m: any) => (
+                    <div key={m.userId} className="card" style={{ padding: '0.75rem 1rem' }}>
+                      <button onClick={() => setExpandedTeamMember(expandedTeamMember === m.userId ? null : m.userId)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                        <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedTeamMember === m.userId ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                        <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{m.userName}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{m.position}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{m.totalObjectives} obj. — Prom: {m.avgProgress}%</span>
+                      </button>
+                      {expandedTeamMember === m.userId && (
+                        <div style={{ marginTop: '0.5rem', marginLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          {/* Load individual objectives — for now show summary */}
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem' }}>
+                            <span>Activos: {m.activeCount}</span>
+                            <span>Completados: {m.completedCount}</span>
+                            <span>En riesgo: {m.atRiskCount}</span>
+                          </div>
                         </div>
                       )}
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Team PDI ─── */}
+          {teamTab === 'pdi' && (
+            <div className="animate-fade-up">
+              <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <select style={selectStyle} value={teamPdiStatusFilter} onChange={(e) => setTeamPdiStatusFilter(e.target.value)}>
+                  <option value="">Todos los estados</option>
+                  {Object.entries(pdiStatusLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                  {teamDevPlans.filter((p: any) => !teamPdiStatusFilter || p.status === teamPdiStatusFilter).length} planes
+                </span>
               </div>
-            )}
-          </div>
-        </div>
+              {(() => {
+                const filtered = teamDevPlans.filter((p: any) => !teamPdiStatusFilter || p.status === teamPdiStatusFilter);
+                const byUser: Record<string, { name: string; plans: any[] }> = {};
+                for (const p of filtered) {
+                  const uid = p.userId || 'unknown';
+                  const uname = p.user ? `${p.user.firstName} ${p.user.lastName}` : '--';
+                  if (!byUser[uid]) byUser[uid] = { name: uname, plans: [] };
+                  byUser[uid].plans.push(p);
+                }
+                return Object.keys(byUser).length === 0 ? (
+                  <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin planes de desarrollo del equipo.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {Object.entries(byUser).map(([uid, { name, plans }]) => (
+                      <div key={uid} className="card" style={{ padding: '0.75rem 1rem' }}>
+                        <button onClick={() => setExpandedTeamMember(expandedTeamMember === `pdi-${uid}` ? null : `pdi-${uid}`)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                          <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedTeamMember === `pdi-${uid}` ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                          <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{name}</span>
+                          <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{plans.length} plan{plans.length !== 1 ? 'es' : ''}</span>
+                        </button>
+                        {expandedTeamMember === `pdi-${uid}` && (
+                          <div style={{ marginTop: '0.5rem', marginLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {plans.map((plan: any) => {
+                              const actions = plan.actions || [];
+                              const doneAct = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+                              return (
+                                <div key={plan.id} style={{ padding: '0.5rem 0.65rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                                    <span style={{ fontWeight: 600 }}>{plan.title || plan.name}</span>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 600, padding: '1px 6px', borderRadius: 3, background: `${pdiStatusColors[plan.status] || '#94a3b8'}15`, color: pdiStatusColors[plan.status] || '#94a3b8' }}>{pdiStatusLabels[plan.status] || plan.status}</span>
+                                  </div>
+                                  <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden', marginTop: '0.3rem' }}>
+                                    <div style={{ height: '100%', width: `${actions.length > 0 ? (doneAct / actions.length) * 100 : 0}%`, background: 'var(--success)', borderRadius: 2 }} />
+                                  </div>
+                                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{doneAct}/{actions.length} acciones</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </>
       )}
+
       {/* Signature Modal */}
       {signModal && (
         <SignatureModal
           documentType={signModal.documentType}
           documentId={signModal.documentId}
           documentName={signModal.documentName}
-          onSigned={() => { setSignModal(null); loadSignatures(); }}
           onCancel={() => setSignModal(null)}
+          onSigned={() => { setSignModal(null); window.location.reload(); }}
         />
-      )}
-    </div>
-  );
-}
-
-/* ─── Objective Card Component ──────────────────────────────────────────── */
-function ObjectiveCard({ obj }: { obj: any }) {
-  const progress = obj.progress || 0;
-  const statusColors: Record<string, string> = { active: 'var(--accent)', completed: 'var(--success)', cancelled: 'var(--danger)', draft: 'var(--text-muted)' };
-  const statusLabels: Record<string, string> = { active: 'Activo', completed: 'Completado', cancelled: 'Cancelado', draft: 'Borrador' };
-  const keyResults = obj.keyResults || [];
-
-  return (
-    <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm, 6px)', border: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{obj.title}</span>
-        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-          <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>{obj.type}</span>
-          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: statusColors[obj.status] || 'var(--text-muted)' }}>
-            {statusLabels[obj.status] || obj.status}
-          </span>
-        </div>
-      </div>
-      {obj.description && (
-        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0.5rem' }}>{obj.description}</p>
-      )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-        <span>Progreso</span>
-        <span style={{ fontWeight: 600, color: progress >= 80 ? 'var(--success)' : progress < 40 ? 'var(--danger)' : 'var(--warning)' }}>{progress}%</span>
-      </div>
-      <div style={{ height: '6px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${Math.min(progress, 100)}%`, background: progress >= 80 ? 'var(--success)' : progress < 40 ? 'var(--danger)' : 'var(--warning)', borderRadius: '999px', transition: 'width 0.4s ease' }} />
-      </div>
-
-      {/* Key Results for OKR objectives */}
-      {keyResults.length > 0 && (
-        <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            Key Results ({keyResults.length})
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {keyResults.map((kr: any, ki: number) => {
-              const krProgress = kr.progress || 0;
-              return (
-                <div key={ki} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem' }}>
-                  <div style={{
-                    width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
-                    background: krProgress >= 100 ? 'var(--success)' : 'var(--bg-base)',
-                    border: krProgress >= 100 ? 'none' : '2px solid var(--border)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {krProgress >= 100 && (
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                  </div>
-                  <span style={{ flex: 1, color: 'var(--text-primary)' }}>{kr.title || kr.description || `KR ${ki + 1}`}</span>
-                  <div style={{ width: '60px', height: '4px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${Math.min(krProgress, 100)}%`, background: krProgress >= 80 ? 'var(--success)' : krProgress < 40 ? 'var(--danger)' : 'var(--warning)', borderRadius: '999px' }} />
-                  </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', minWidth: '32px', textAlign: 'right' }}>{krProgress}%</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {obj.targetDate && (
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-          Fecha objetivo: {new Date(obj.targetDate).toLocaleDateString('es-CL')}
-        </div>
       )}
     </div>
   );

@@ -232,6 +232,12 @@ export class EvaluationsController {
     return this.evaluationsService.findCompletedForUser(req.user.userId, req.user.tenantId);
   }
 
+  /** Evaluations where the current user was EVALUATED (by others) */
+  @Get('evaluations/received')
+  findEvaluationsReceived(@Request() req: any) {
+    return this.evaluationsService.findEvaluationsOfUser(req.user.userId, req.user.tenantId);
+  }
+
   @Get('evaluations/:assignmentId')
   getAssignmentDetail(
     @Param('assignmentId', ParseUUIDPipe) assignmentId: string,

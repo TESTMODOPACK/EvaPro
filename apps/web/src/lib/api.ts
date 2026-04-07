@@ -492,6 +492,8 @@ export const api = {
       request<AssignmentData[]>("/evaluations/pending", {}, token),
     completed: (token: string) =>
       request<AssignmentData[]>("/evaluations/completed", {}, token),
+    received: (token: string) =>
+      request<any[]>("/evaluations/received", {}, token),
     getDetail: (token: string, assignmentId: string) =>
       request<{ assignment: AssignmentData; template: TemplateData | null; response: ResponseData | null }>(
         `/evaluations/${assignmentId}`, {}, token,
