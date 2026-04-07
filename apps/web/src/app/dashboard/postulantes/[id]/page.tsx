@@ -346,6 +346,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     setSelectedCandidate(candidate);
     const reqChecks = requirements.map((r: any) => ({
       category: r.category, text: r.text, status: 'pendiente', comment: '',
+      weight: r.weight || undefined,
     }));
     setInterviewForm({ reqChecks, comments: '', globalScore: '', manualScore: '' });
     // Load existing interview
@@ -903,8 +904,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 const checks = interviewForm.reqChecks || [];
                 const answered = checks.filter((c: any) => c.status !== 'pendiente');
                 const scoreMap: Record<string, number> = { cumple: 10, parcial: 5, no_cumple: 0 };
+                const hasWeights = answered.some((c: any) => c.weight > 0);
+                const equalW = answered.length > 0 ? 100 / checks.length : 1;
                 const autoScore = answered.length > 0
-                  ? Number((answered.reduce((sum: number, c: any) => sum + (scoreMap[c.status] || 0), 0) / answered.length).toFixed(1))
+                  ? hasWeights
+                    ? Number((answered.reduce((sum: number, c: any) => sum + (scoreMap[c.status] || 0) * (c.weight || equalW), 0) / answered.reduce((s: number, c: any) => s + (c.weight || equalW), 0)).toFixed(1))
+                    : Number((answered.reduce((sum: number, c: any) => sum + (scoreMap[c.status] || 0), 0) / answered.length).toFixed(1))
                   : 0;
                 // Compute final globalScore: weighted 70% requirements + 30% evaluator
                 const manualScore = interviewForm.manualScore ? Number(interviewForm.manualScore) : null;
@@ -928,12 +933,17 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         const checks = interviewForm.reqChecks || [];
                         const answered = checks.filter((c: any) => c.status !== 'pendiente');
                         const scoreMap: Record<string, number> = { cumple: 10, parcial: 5, no_cumple: 0 };
-                        return answered.length > 0
-                          ? (answered.reduce((sum: number, c: any) => sum + (scoreMap[c.status] || 0), 0) / answered.length).toFixed(1)
-                          : '--';
+                        const hw = answered.some((c: any) => c.weight > 0);
+                        const eqW = checks.length > 0 ? 100 / checks.length : 1;
+                        if (answered.length === 0) return '--';
+                        return hw
+                          ? (answered.reduce((s: number, c: any) => s + (scoreMap[c.status] || 0) * (c.weight || eqW), 0) / answered.reduce((s: number, c: any) => s + (c.weight || eqW), 0)).toFixed(1)
+                          : (answered.reduce((s: number, c: any) => s + (scoreMap[c.status] || 0), 0) / answered.length).toFixed(1);
                       })()}/10
                     </div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.2rem' }}>Auto-calculado</div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.2rem' }}>
+                      {(interviewForm.reqChecks || []).some((c: any) => c.weight > 0) ? 'Ponderado por peso' : 'Auto-calculado'}
+                    </div>
                   </div>
                   {/* Manual evaluator score */}
                   <div>

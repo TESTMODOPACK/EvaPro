@@ -69,6 +69,7 @@ export default function NuevoProcesoPage() {
   const [error, setError] = useState('');
   const [users, setUsers] = useState<any[]>([]);
   const [competencies, setCompetencies] = useState<string[]>([]);
+  const [step, setStep] = useState<'form' | 'weights'>('form');
 
   // Form state
   const [processType, setProcessType] = useState('');
@@ -78,7 +79,7 @@ export default function NuevoProcesoPage() {
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [requirements, setRequirements] = useState<Array<{ category: string; text: string }>>([]);
+  const [requirements, setRequirements] = useState<Array<{ category: string; text: string; weight?: number }>>([]);
   const [evaluatorIds, setEvaluatorIds] = useState<string[]>([]);
   const [requireCvForInternal, setRequireCvForInternal] = useState(false);
   const [historyWeight, setHistoryWeight] = useState(40);
@@ -132,8 +133,43 @@ export default function NuevoProcesoPage() {
     setCustomReq((prev) => ({ ...prev, [category]: '' }));
   };
 
-  const handleSubmit = async (e: any) => {
+  const handleGoToWeights = (e: any) => {
     e.preventDefault();
+    if (!processType || !title.trim() || !position.trim()) return;
+    if (requirements.length === 0) {
+      // No requirements — save directly
+      handleSubmit();
+      return;
+    }
+    // Initialize equal weights if not already set
+    const equalWeight = Math.round((100 / requirements.length) * 10) / 10;
+    const hasWeights = requirements.some(r => r.weight != null && r.weight > 0);
+    if (!hasWeights) {
+      const remainder = 100 - equalWeight * requirements.length;
+      setRequirements(prev => prev.map((r, i) => ({
+        ...r,
+        weight: i === 0 ? Number((equalWeight + remainder).toFixed(1)) : equalWeight,
+      })));
+    }
+    setStep('weights');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const distributeEqually = () => {
+    const n = requirements.length;
+    if (n === 0) return;
+    const base = Math.floor((100 / n) * 10) / 10;
+    const remainder = Number((100 - base * n).toFixed(1));
+    setRequirements(prev => prev.map((r, i) => ({
+      ...r,
+      weight: i === 0 ? Number((base + remainder).toFixed(1)) : base,
+    })));
+  };
+
+  const totalWeight = requirements.reduce((s, r) => s + (r.weight || 0), 0);
+  const isWeightValid = Math.abs(totalWeight - 100) < 0.5;
+
+  const handleSubmit = async () => {
     if (!token || !processType || !title.trim() || !position.trim()) return;
     setSaving(true);
     setError('');
@@ -181,7 +217,92 @@ export default function NuevoProcesoPage() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Define el tipo, cargo, requisitos y evaluadores</p>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleGoToWeights}>
+        {step === 'weights' ? (
+          /* ── Paso de confirmación: Pesos por requisito ─────────── */
+          <div className="animate-fade-up">
+            <div className="card" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.25rem' }}>Confirmar Requisitos y Pesos</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+                Asigna el porcentaje de relevancia a cada requisito para el cargo de <strong>{position}</strong>. La suma debe ser 100%.
+              </p>
+
+              {/* Group by category */}
+              {Array.from(new Set(requirements.map(r => r.category))).map(cat => {
+                const catReqs = requirements.filter(r => r.category === cat);
+                const catLabel = REQUIREMENT_CATEGORIES.find(c => c.key === cat)?.label || cat;
+                return (
+                  <div key={cat} style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
+                      {catLabel}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {catReqs.map(req => {
+                        const idx = requirements.findIndex(r => r.category === req.category && r.text === req.text);
+                        return (
+                          <div key={idx} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--border)',
+                          }}>
+                            <span style={{ fontSize: '0.85rem', flex: 1 }}>{req.text}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 100 }}>
+                              <input
+                                type="number" min={0} max={100} step={0.1}
+                                className="input"
+                                value={req.weight ?? 0}
+                                onChange={(e) => {
+                                  const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                  setRequirements(prev => prev.map((r, i) => i === idx ? { ...r, weight: val } : r));
+                                }}
+                                style={{ width: 70, textAlign: 'center', fontSize: '0.9rem', fontWeight: 600, padding: '0.3rem' }}
+                              />
+                              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Total indicator */}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', marginTop: '0.5rem',
+                background: isWeightValid ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${isWeightValid ? 'var(--success)' : 'var(--danger)'}`,
+              }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                  Total: <span style={{ color: isWeightValid ? 'var(--success)' : 'var(--danger)', fontSize: '1.1rem' }}>
+                    {totalWeight.toFixed(1)}%
+                  </span>
+                  {isWeightValid ? ' ✓' : ` (faltan ${(100 - totalWeight).toFixed(1)}%)`}
+                </span>
+                <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={distributeEqually}>
+                  Distribuir equitativamente
+                </button>
+              </div>
+            </div>
+
+            {/* Error + Actions */}
+            {error && (
+              <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.85rem' }}>
+                {error}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <button type="button" className="btn-primary" disabled={saving || !isWeightValid} onClick={handleSubmit}>
+                {saving ? 'Creando...' : 'Crear Proceso'}
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => setStep('form')}>
+                {'←'} Volver al formulario
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Step 1: Type */}
         <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
           <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Tipo de Proceso *</h2>
@@ -411,11 +532,13 @@ export default function NuevoProcesoPage() {
             )}
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
               <button type="submit" className="btn-primary" disabled={saving || !title.trim() || !position.trim()}>
-                {saving ? 'Creando...' : 'Crear Proceso'}
+                {requirements.length > 0 ? 'Siguiente: Asignar Pesos' : (saving ? 'Creando...' : 'Crear Proceso')}
               </button>
               <button type="button" className="btn-ghost" onClick={() => router.back()}>Cancelar</button>
             </div>
           </>
+        )}
+        </>
         )}
       </form>
     </div>

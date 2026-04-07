@@ -47,7 +47,7 @@ export class RecruitmentProcess {
   description: string | null;
 
   @Column({ type: 'jsonb', name: 'requirements', default: () => "'[]'" })
-  requirements: Array<{ category: string; text: string }>;
+  requirements: Array<{ category: string; text: string; weight?: number }>;
 
   @Column({ type: 'boolean', name: 'require_cv_for_internal', default: false })
   requireCvForInternal: boolean;

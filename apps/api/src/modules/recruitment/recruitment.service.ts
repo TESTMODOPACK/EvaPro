@@ -439,14 +439,23 @@ export class RecruitmentService {
       ? Number((interviewScores.reduce((a, b) => a + b, 0) / interviewScores.length).toFixed(2))
       : null;
 
-    // Calculate requirement fulfillment %
+    // Calculate requirement fulfillment % (weighted if process has weights)
     const allChecks = interviews.flatMap((i) => i.requirementChecks || []);
     const totalChecks = allChecks.length;
-    const fulfilledChecks = allChecks.filter((c) => c.status === 'cumple').length;
-    const partialChecks = allChecks.filter((c) => c.status === 'parcial').length;
-    const requirementPct = totalChecks > 0
-      ? Number((((fulfilledChecks + partialChecks * 0.5) / totalChecks) * 100).toFixed(1))
-      : null;
+    const hasWeights = allChecks.some((c: any) => c.weight > 0);
+    let requirementPct: number | null = null;
+    if (totalChecks > 0) {
+      if (hasWeights) {
+        const scoreMap: Record<string, number> = { cumple: 1, parcial: 0.5, no_cumple: 0 };
+        const totalWeight = allChecks.reduce((s: number, c: any) => s + (c.weight || 0), 0);
+        const weightedScore = allChecks.reduce((s: number, c: any) => s + (scoreMap[c.status] || 0) * (c.weight || 0), 0);
+        requirementPct = totalWeight > 0 ? Number(((weightedScore / totalWeight) * 100).toFixed(1)) : null;
+      } else {
+        const fulfilledChecks = allChecks.filter((c) => c.status === 'cumple').length;
+        const partialChecks = allChecks.filter((c) => c.status === 'parcial').length;
+        requirementPct = Number((((fulfilledChecks + partialChecks * 0.5) / totalChecks) * 100).toFixed(1));
+      }
+    }
 
     // CV AI match %
     const cvMatchPct = candidate.cvAnalysis?.matchPercentage ?? null;
