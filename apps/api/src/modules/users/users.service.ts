@@ -195,10 +195,17 @@ export class UsersService {
     if (dto.managerId) {
       const manager = await this.userRepository.findOne({ where: { id: dto.managerId, tenantId } });
       if (!manager) {
-        throw new NotFoundException('Manager no encontrado en esta organizaci\u00f3n');
+        throw new NotFoundException('Manager no encontrado en esta organización');
       }
       if (manager.role !== 'manager' && manager.role !== 'tenant_admin') {
-        throw new BadRequestException('El usuario seleccionado como manager debe tener rol de manager o administrador');
+        throw new BadRequestException('El usuario seleccionado como jefatura debe tener rol de encargado de equipo o administrador');
+      }
+      // Validate hierarchy: manager must have higher level (lower number) than the user
+      const userLevel = dto.hierarchyLevel;
+      if (userLevel && manager.hierarchyLevel && manager.hierarchyLevel >= userLevel) {
+        throw new BadRequestException(
+          `La jefatura seleccionada (${manager.firstName} ${manager.lastName}, Nv.${manager.hierarchyLevel}) debe tener un nivel jerárquico superior (número menor) al colaborador (Nv.${userLevel}).`,
+        );
       }
     }
 
@@ -258,7 +265,20 @@ export class UsersService {
       }
       // Silently ignore role changes from unauthorized users
     }
-    if (dto.managerId !== undefined) user.managerId = dto.managerId;
+    if (dto.managerId !== undefined) {
+      if (dto.managerId) {
+        const mgr = await this.userRepository.findOne({ where: { id: dto.managerId, tenantId: user.tenantId } });
+        if (!mgr) throw new NotFoundException('Jefatura no encontrada en esta organización');
+        // Validate hierarchy: manager level must be lower number (higher rank)
+        const effectiveLevel = dto.hierarchyLevel ?? user.hierarchyLevel;
+        if (effectiveLevel && mgr.hierarchyLevel && mgr.hierarchyLevel >= effectiveLevel) {
+          throw new BadRequestException(
+            `La jefatura seleccionada (${mgr.firstName} ${mgr.lastName}, Nv.${mgr.hierarchyLevel}) debe tener un nivel jerárquico superior (número menor) al colaborador (Nv.${effectiveLevel}).`,
+          );
+        }
+      }
+      user.managerId = dto.managerId;
+    }
 
     // Track department/position changes as internal movements
     const prevDept = user.department;

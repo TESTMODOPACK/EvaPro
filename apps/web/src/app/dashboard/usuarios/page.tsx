@@ -50,6 +50,7 @@ const emptyForm = {
   position: '',
   hierarchyLevel: '' as string | number,
   managerId: '',
+  hireDate: '',
   gender: '',
   birthDate: '',
   nationality: '',
@@ -237,8 +238,9 @@ export default function UsuariosPage() {
 
     setCreating(true);
     try {
-      // Build demographic fields (only send non-empty values)
+      // Build additional fields (only send non-empty values)
       const demoFields: any = {};
+      if (form.hireDate) demoFields.hireDate = form.hireDate;
       if (form.gender) demoFields.gender = form.gender;
       if (form.birthDate) demoFields.birthDate = form.birthDate;
       if (form.nationality) demoFields.nationality = form.nationality;
@@ -300,6 +302,7 @@ export default function UsuariosPage() {
       position: u.position || '',
       hierarchyLevel: u.hierarchyLevel ?? '',
       managerId: u.managerId || '',
+      hireDate: u.hireDate ? u.hireDate.slice(0, 10) : '',
       gender: u.gender || '',
       birthDate: u.birthDate ? u.birthDate.slice(0, 10) : '',
       nationality: u.nationality || '',
@@ -1023,12 +1026,20 @@ export default function UsuariosPage() {
               )}
             </div>
           </div>
-          {/* Demographic fields — collapsible section */}
-          <details style={{ marginTop: '1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '0.75rem 1rem' }}>
-            <summary style={{ cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Datos demográficos (opcional — para análisis DEI)
-            </summary>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginTop: '0.75rem' }}>
+          {/* Información adicional del colaborador */}
+          <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+            <h4 style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+              Información adicional del colaborador
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={labelStyle}>Fecha de ingreso</label>
+                <input style={inputStyle} type="date" value={form.hireDate} onChange={(e) => updateField('hireDate', e.target.value)} />
+              </div>
+              <div>
+                <label style={labelStyle}>Fecha de nacimiento</label>
+                <input style={inputStyle} type="date" value={form.birthDate} onChange={(e) => updateField('birthDate', e.target.value)} />
+              </div>
               <div>
                 <label style={labelStyle}>Género</label>
                 <select style={inputStyle} value={form.gender} onChange={(e) => updateField('gender', e.target.value)}>
@@ -1036,18 +1047,8 @@ export default function UsuariosPage() {
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Fecha de nacimiento</label>
-                <input style={inputStyle} type="date" value={form.birthDate} onChange={(e) => updateField('birthDate', e.target.value)} />
-              </div>
-              <div>
                 <label style={labelStyle}>Nacionalidad</label>
                 <input style={inputStyle} placeholder="Ej: Chilena" value={form.nationality} onChange={(e) => updateField('nationality', e.target.value)} />
-              </div>
-              <div>
-                <label style={labelStyle}>Nivel de senioridad</label>
-                <select style={inputStyle} value={form.seniorityLevel} onChange={(e) => updateField('seniorityLevel', e.target.value)}>
-                  {SENIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
               </div>
               <div>
                 <label style={labelStyle}>Tipo de contrato</label>
@@ -1061,8 +1062,14 @@ export default function UsuariosPage() {
                   {LOCATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
+              <div>
+                <label style={labelStyle}>Nivel de senioridad</label>
+                <select style={inputStyle} value={form.seniorityLevel} onChange={(e) => updateField('seniorityLevel', e.target.value)}>
+                  {SENIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
             </div>
-          </details>
+          </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
             <button className="btn-primary" onClick={handleCreate} disabled={creating}>
