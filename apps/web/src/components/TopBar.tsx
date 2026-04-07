@@ -243,7 +243,7 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
               </div>
 
               <button
-                onClick={() => { setDropdownOpen(false); router.push('/dashboard/ajustes'); }}
+                onClick={() => { setDropdownOpen(false); router.push('/dashboard/perfil'); }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
                   padding: '0.5rem 0.75rem', background: 'transparent', border: 'none',
