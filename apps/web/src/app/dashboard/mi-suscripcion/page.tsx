@@ -474,11 +474,18 @@ export default function MiSuscripcionPage() {
                   <button
                     onClick={async () => {
                       if (!token) return;
+                      const hasUsed = (aiUsage?.addonRemaining ?? aiAddon.calls) < aiAddon.calls;
+                      if (hasUsed) {
+                        const ok = confirm(
+                          `Ya se han utilizado créditos del add-on en este período.\n\nAl cancelar, se cobrará la cuota completa del período actual (${aiAddon.price} UF).\n\n¿Desea continuar?`
+                        );
+                        if (!ok) return;
+                      }
                       setAiAddonSaving(true);
                       try {
                         await api.subscriptions.setAiAddon(token, 'none');
                         setAiAddon({ calls: 0, price: 0, packId: null });
-                        showToast('Add-on de IA eliminado');
+                        showToast(hasUsed ? 'Add-on cancelado. Se cobrará la cuota completa del período por créditos ya utilizados.' : 'Add-on de IA eliminado');
                         loadAll();
                       } catch { /* ignore */ }
                       setAiAddonSaving(false);

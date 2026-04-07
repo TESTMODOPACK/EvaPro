@@ -796,11 +796,52 @@ export class SubscriptionsService {
     if (!sub) throw new NotFoundException('No se encontró una suscripción activa');
 
     if (!packId || packId === 'none') {
+      // Check if addon credits were used — if so, the full period will be billed
+      const previousCalls = sub.aiAddonCalls;
+      const previousPrice = Number(sub.aiAddonPrice);
+      const addonUsed = sub.aiAddonUsed || 0;
+      const hadAddon = previousCalls > 0 && previousPrice > 0;
+
       // Remove addon
       sub.aiAddonCalls = 0;
       sub.aiAddonPrice = 0;
       await this.subRepo.save(sub);
-      await this.auditService.log(tenantId, approvedBy, 'subscription.ai_addon_removed', 'subscription', sub.id).catch(() => {});
+
+      // If credits were used, register a pending charge for the full period
+      if (hadAddon && addonUsed > 0) {
+        await this.paymentRepo.save(this.paymentRepo.create({
+          tenantId,
+          subscriptionId: sub.id,
+          amount: previousPrice,
+          currency: sub.plan?.currency || 'UF',
+          billingPeriod: sub.billingPeriod || BillingPeriod.MONTHLY,
+          periodStart: sub.lastPaymentDate || new Date(),
+          periodEnd: sub.nextBillingDate || new Date(),
+          status: PaymentStatus.PENDING,
+          concept: `Add-on IA +${previousCalls}/mes (cancelado con ${addonUsed} créditos usados — cobro completo del período)`,
+          isAddon: true,
+          paidAt: null,
+        }));
+
+        // Notify super_admins
+        const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'name'] });
+        const superAdmins = await this.userRepo.find({ where: { role: 'super_admin', isActive: true }, select: ['id'] });
+        for (const sa of superAdmins) {
+          await this.notificationsService.create({
+            tenantId,
+            userId: sa.id,
+            type: NotificationType.GENERAL,
+            title: `Add-on IA cancelado: ${tenant?.name || 'Organización'}`,
+            message: `${tenant?.name} canceló el add-on IA (+${previousCalls}/mes, ${previousPrice} UF). Se usaron ${addonUsed} créditos — se cobrará la cuota completa del período.`,
+          }).catch(() => {});
+        }
+      }
+
+      await this.auditService.log(tenantId, approvedBy, 'subscription.ai_addon_removed', 'subscription', sub.id, {
+        previousCalls, previousPrice, addonUsed,
+        chargedFull: hadAddon && addonUsed > 0,
+      }).catch(() => {});
+
       return { subscription: sub, pack: null };
     }
 
