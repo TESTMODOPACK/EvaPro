@@ -134,7 +134,7 @@ export class UsersService {
     filters?: { search?: string; department?: string; role?: string; position?: string; status?: string },
   ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
     const safePage = Math.max(1, page);
-    const safeLimit = Math.min(Math.max(1, limit), 100);
+    const safeLimit = Math.min(Math.max(1, limit), 500);
     const qb = this.userRepository.createQueryBuilder('user')
       .where('user.tenantId = :tenantId', { tenantId })
       .andWhere('user.role != :excluded', { excluded: 'super_admin' });

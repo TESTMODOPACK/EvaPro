@@ -1190,8 +1190,9 @@ export class ReportsService {
       return { cycleId, message: 'Este ciclo no tiene plantilla asignada', grid: [], sections: [], departments: [] };
     }
     const template = await this.templateRepo.findOne({ where: { id: cycle.templateId } });
-    if (!template?.sections || !Array.isArray(template.sections)) {
-      return { cycleId, message: 'La plantilla no tiene secciones definidas', grid: [], sections: [], departments: [] };
+    const templateSections = Array.isArray(template?.sections) ? template.sections : [];
+    if (templateSections.length === 0) {
+      return { cycleId, message: 'La plantilla no tiene secciones con preguntas definidas. Verifique que la plantilla del ciclo tenga al menos una sección con preguntas de tipo escala.', grid: [], sections: [], departments: [] };
     }
 
     // 2. Load all responses with evaluatee department
@@ -1212,7 +1213,7 @@ export class ReportsService {
     }
 
     // 3. Build section → questions map from template
-    const sectionMeta = template.sections.map((sec: any) => {
+    const sectionMeta = templateSections.map((sec: any) => {
       const scaleQs = (sec.questions || []).filter((q: any) => q.type === 'scale');
       return {
         id: sec.id,

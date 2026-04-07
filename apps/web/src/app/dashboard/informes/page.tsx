@@ -478,6 +478,8 @@ export default function InformesPage() {
               Selección de colaborador
             </p>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {/* Department filter — only for admins, managers see only their team */}
+              {currentRole !== 'manager' && (
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Departamento</label>
                 <select style={{ ...selectStyle, minWidth: '180px' }} value={filterDepartment} onChange={(e) => { setFilterDepartment(e.target.value); }}>
@@ -485,6 +487,7 @@ export default function InformesPage() {
                   {departments.map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
+              )}
               <div style={{ flex: 1, minWidth: '250px' }}>
                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Colaborador</label>
                 <select style={{ ...selectStyle, width: '100%' }} value={selectedUserId || ''} onChange={(e) => setSelectedUserId(e.target.value || null)}>
