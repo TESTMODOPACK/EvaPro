@@ -81,6 +81,9 @@ export default function ReportesPage() {
   const [selectedSurveyId, setSelectedSurveyId] = useState<string | null>(null);
   const [closedSurveys, setClosedSurveys] = useState<any[]>([]);
   const [orgPlans, setOrgPlans] = useState<any[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [selectedPlanData, setSelectedPlanData] = useState<any>(null);
+  const [planInitiatives, setPlanInitiatives] = useState<any[]>([]);
 
   // Tab
   const [activeTab, setActiveTab] = useState<TabKey>('performance');
@@ -148,8 +151,24 @@ export default function ReportesPage() {
       setClosedSurveys(s);
       if (s.length > 0 && !selectedSurveyId) setSelectedSurveyId(s[0].id);
     }).catch(() => {});
-    api.orgDevelopment?.plans?.list?.(token)?.then(setOrgPlans).catch(() => {});
+    api.orgDevelopment?.plans?.list?.(token)?.then((plans) => {
+      setOrgPlans(plans || []);
+      // Auto-select the most recent active plan
+      const active = (plans || []).find((p: any) => p.status === 'activo');
+      if (active && !selectedPlanId) {
+        setSelectedPlanId(active.id);
+        setSelectedPlanData(active);
+      }
+    }).catch(() => {});
   }, [token]);
+
+  // Load initiatives when plan selected
+  useEffect(() => {
+    if (!token || !selectedPlanId) { setPlanInitiatives([]); return; }
+    const plan = orgPlans.find((p: any) => p.id === selectedPlanId);
+    setSelectedPlanData(plan || null);
+    api.orgDevelopment?.initiatives?.listByPlan?.(token, selectedPlanId)?.then(setPlanInitiatives).catch(() => setPlanInitiatives([]));
+  }, [selectedPlanId, token]);
 
   // Load shared data on cycle change
   useEffect(() => {
@@ -246,9 +265,9 @@ export default function ReportesPage() {
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Dashboard Ejecutivo</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Resumen Ejecutivo Organizacional</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Vista integral del desempeño, clima, dotación, objetivos, desarrollo y riesgos de la organización.
+          Vista estratégica integral: desempeño, clima, dotación, objetivos, desarrollo y riesgos.
         </p>
       </div>
 
@@ -297,9 +316,9 @@ export default function ReportesPage() {
         </div>
         <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
           <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>Plan organizacional</label>
-          <select className="input" style={{ fontSize: '0.82rem' }}>
-            <option value="">Todos los planes</option>
-            {orgPlans.map((p: any) => <option key={p.id} value={p.id}>{p.title} ({p.year})</option>)}
+          <select className="input" value={selectedPlanId || ''} onChange={(e) => setSelectedPlanId(e.target.value || null)} style={{ fontSize: '0.82rem' }}>
+            <option value="">— Sin selección —</option>
+            {orgPlans.map((p: any) => <option key={p.id} value={p.id}>{p.title} ({p.year}) — {p.status}</option>)}
           </select>
         </div>
         {selectedCycleId && (
@@ -829,10 +848,72 @@ export default function ReportesPage() {
                     </div>
                   )}
 
+                  {/* Plan Organizacional — if selected */}
+                  {selectedPlanData && (
+                    <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '3px solid var(--accent)' }}>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                        Plan Organizacional: {selectedPlanData.title} ({selectedPlanData.year})
+                      </h4>
+                      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.82rem', marginBottom: '0.75rem' }}>
+                        <span>Estado: <strong style={{ color: selectedPlanData.status === 'activo' ? 'var(--success)' : 'var(--text-muted)' }}>{selectedPlanData.status}</strong></span>
+                        <span>Iniciativas: <strong>{planInitiatives.length}</strong></span>
+                        <span>Completadas: <strong style={{ color: 'var(--success)' }}>{planInitiatives.filter((i: any) => i.status === 'completada').length}</strong></span>
+                        <span>En curso: <strong style={{ color: 'var(--accent)' }}>{planInitiatives.filter((i: any) => i.status === 'en_curso').length}</strong></span>
+                        <span>Pendientes: <strong>{planInitiatives.filter((i: any) => i.status === 'pendiente').length}</strong></span>
+                      </div>
+                      {selectedPlanData.description && (
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem' }}>{selectedPlanData.description}</p>
+                      )}
+                      {planInitiatives.length > 0 && (
+                        <div className="table-wrapper">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: 'left' }}>Iniciativa</th>
+                                <th>Departamento</th>
+                                <th>Estado</th>
+                                <th style={{ textAlign: 'right' }}>Progreso</th>
+                                <th>Fecha meta</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {planInitiatives.map((ini: any) => (
+                                <tr key={ini.id}>
+                                  <td style={{ fontWeight: 600, fontSize: '0.8rem' }}>{ini.title}</td>
+                                  <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{ini.department || '—'}</td>
+                                  <td>
+                                    <span className={`badge ${ini.status === 'completada' ? 'badge-success' : ini.status === 'en_curso' ? 'badge-accent' : 'badge-ghost'}`} style={{ fontSize: '0.68rem' }}>
+                                      {ini.status === 'completada' ? 'Completada' : ini.status === 'en_curso' ? 'En curso' : 'Pendiente'}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'flex-end' }}>
+                                      <div style={{ width: 50, height: 5, background: 'var(--bg-secondary)', borderRadius: 3, overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${ini.progress || 0}%`, background: ini.progress >= 70 ? 'var(--success)' : 'var(--warning)', borderRadius: 3 }} />
+                                      </div>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>{ini.progress || 0}%</span>
+                                    </div>
+                                  </td>
+                                  <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ini.targetDate ? new Date(ini.targetDate).toLocaleDateString('es-CL') : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {planInitiatives.length === 0 && (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Este plan no tiene iniciativas registradas.</p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Analysis */}
                   <AnalysisCard title="Análisis de Desarrollo" borderColor={pdiData.completionRate >= 70 ? 'var(--success)' : 'var(--warning)'}>
                     <p><strong>Cumplimiento PDI:</strong> {pdiData.completionRate}% de los planes completados. {pdiData.completionRate >= 70 ? 'Buen avance en desarrollo de talento.' : 'Hay espacio para mejorar el seguimiento de los planes.'}</p>
                     <p><strong>Acciones:</strong> {pdiData.completedActions || 0} de {pdiData.totalActions || 0} completadas ({pdiData.actionCompletionRate || 0}%). {pdiData.overdueActions > 0 ? `⚠️ ${pdiData.overdueActions} acciones vencidas requieren atención.` : '✅ Sin acciones vencidas.'}</p>
+                    {selectedPlanData && planInitiatives.length > 0 && (
+                      <p><strong>Plan "{selectedPlanData.title}":</strong> {planInitiatives.filter((i: any) => i.status === 'completada').length} de {planInitiatives.length} iniciativas completadas ({planInitiatives.length > 0 ? Math.round((planInitiatives.filter((i: any) => i.status === 'completada').length / planInitiatives.length) * 100) : 0}%).</p>
+                    )}
                   </AnalysisCard>
                 </>
               )}

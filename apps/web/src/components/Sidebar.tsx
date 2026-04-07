@@ -186,9 +186,6 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       title: t('nav.mySpace', 'Mi Espacio'),
       items: [
         { href: '/dashboard', label: t('nav.dashboard', 'Dashboard'), icon: icons.dashboard },
-        ...(isAdminOrManager ? [
-          { href: '/dashboard/ejecutivo', label: t('nav.executiveDashboard', 'Dashboard Ejecutivo'), icon: icons.analytics },
-        ] : []),
         { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance', 'Mi Desempeño'), icon: icons.myPerformance },
         { href: '/dashboard/notificaciones', label: t('nav.notifications', 'Notificaciones'), icon: icons.log },
       ],
@@ -207,7 +204,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
     ...(isAdminOrManager ? [{
       title: t('nav.reportsGroup', 'Reportes y Análisis'),
       items: [
-        { href: '/dashboard/reportes', label: t('nav.reports', 'Resumen Ejecutivo del Ciclo'), icon: icons.reports },
+        { href: '/dashboard/reportes', label: 'Resumen Ejecutivo Organizacional', icon: icons.analytics },
         { href: '/dashboard/informes', label: t('nav.informes', 'Informes por Colaborador'), icon: icons.reports },
         { href: '/dashboard/analytics', label: t('nav.analytics', 'Análisis del Ciclo'), icon: icons.analytics },
         { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },
