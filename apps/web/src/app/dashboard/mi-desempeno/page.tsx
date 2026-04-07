@@ -28,7 +28,7 @@ const selectStyle: React.CSSProperties = { padding: '0.45rem 0.7rem', fontSize: 
 const labelStyle: React.CSSProperties = { fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '0.15rem' };
 const relLabel: Record<string, string> = { self: 'Autoevaluación', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
 const objStatusLabels: Record<string, string> = { active: 'Activo', completed: 'Completado', draft: 'Borrador', pending_approval: 'Pendiente', abandoned: 'Abandonado' };
-const objTypeLabels: Record<string, string> = { OKR: 'OKR', KPI: 'KPI', individual: 'Individual', team: 'Equipo', company: 'Empresa', strategic: 'Estratégico' };
+const objTypeLabels: Record<string, string> = { OKR: 'OKR', KPI: 'KPI', SMART: 'SMART' };
 const pdiStatusLabels: Record<string, string> = { borrador: 'Borrador', pendiente_aprobacion: 'Pendiente', aprobado: 'Aprobado', activo: 'Activo', completado: 'Completado', cancelado: 'Cancelado' };
 const pdiStatusColors: Record<string, string> = { borrador: '#94a3b8', activo: '#6366f1', completado: '#10b981', cancelado: '#ef4444', pendiente_aprobacion: '#f59e0b', aprobado: '#22c55e' };
 
@@ -216,8 +216,6 @@ export default function MiDesempenoPage() {
 
   // My objectives vs team objectives (backend already filters by manager for managers)
   const myObjectives = objectives.filter((o: any) => o.userId === myUserId);
-  // For team: exclude self and any tenant_admin users (admins aren't team members)
-  const teamObjectivesFiltered = objectives.filter((o: any) => o.userId !== myUserId && o.user?.role !== 'tenant_admin');
   const myDevPlans = devPlans.filter((p: any) => p.userId === myUserId);
   const teamDevPlans = devPlans.filter((p: any) => p.userId !== myUserId && p.user?.role !== 'tenant_admin');
 
