@@ -964,8 +964,8 @@ export class ReportsService {
     if (cycle.templateId) {
       template = await this.templateRepo.findOne({ where: { id: cycle.templateId } });
     }
-    if (!template || !template.sections) {
-      return { userId, cycleId, sections: [], message: 'Sin plantilla asociada al ciclo' };
+    if (!template || !Array.isArray(template.sections) || template.sections.length === 0) {
+      return { userId, cycleId, sections: [], message: 'Sin plantilla con secciones asociada al ciclo' };
     }
 
     // Fix C2: Batch load responses (no N+1)
@@ -1342,7 +1342,7 @@ export class ReportsService {
     // 5. Calculate observed scores per competency (by matching section names to competency names)
     const observedScores = new Map<string, { sum: number; count: number }>();
 
-    if (template?.sections) {
+    if (Array.isArray(template?.sections) && template.sections.length > 0) {
       for (const resp of allResponses) {
         if (!resp.answers) continue;
         for (const section of template.sections as any[]) {
