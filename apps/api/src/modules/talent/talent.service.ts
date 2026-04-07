@@ -720,7 +720,8 @@ export class TalentService {
       rows.push([
         this.escapeCsv(name), this.escapeCsv((a.user as any)?.department || ''),
         this.escapeCsv((a.user as any)?.position || ''),
-        a.performanceScore?.toFixed(1) ?? '', a.potentialScore?.toFixed(1) ?? '',
+        a.performanceScore != null ? Number(a.performanceScore).toFixed(1) : '',
+        a.potentialScore != null ? Number(a.potentialScore).toFixed(1) : '',
         a.nineBoxPosition ?? '', (a.talentPool ? this.poolLabels[a.talentPool] : '') || a.talentPool || '',
         (a.readiness ? this.readinessLabels[a.readiness] : '') || a.readiness || '',
         (a.flightRisk ? this.riskLabels[a.flightRisk] : '') || a.flightRisk || '',
@@ -770,7 +771,8 @@ export class TalentService {
       const name = a.user ? `${a.user.firstName || ''} ${a.user.lastName || ''}`.trim() : '';
       ws2.addRow([
         name, (a.user as any)?.department || '', (a.user as any)?.position || '',
-        a.performanceScore?.toFixed(1) ?? '', a.potentialScore?.toFixed(1) ?? '',
+        a.performanceScore != null ? Number(a.performanceScore).toFixed(1) : '',
+        a.potentialScore != null ? Number(a.potentialScore).toFixed(1) : '',
         a.nineBoxPosition ?? '', (a.talentPool ? this.poolLabels[a.talentPool] : '') || a.talentPool || '',
         (a.readiness ? this.readinessLabels[a.readiness] : '') || a.readiness || '',
         (a.flightRisk ? this.riskLabels[a.flightRisk] : '') || a.flightRisk || '',
@@ -830,7 +832,8 @@ export class TalentService {
         const name = a.user ? `${a.user.firstName || ''} ${a.user.lastName || ''}`.trim() : '';
         return [
           name, (a.user as any)?.department || '',
-          a.performanceScore?.toFixed(1) ?? '-', a.potentialScore?.toFixed(1) ?? '-',
+          a.performanceScore != null ? Number(a.performanceScore).toFixed(1) : '-',
+          a.potentialScore != null ? Number(a.potentialScore).toFixed(1) : '-',
           String(a.nineBoxPosition ?? '-'), (a.talentPool ? this.poolLabels[a.talentPool] : '') || a.talentPool || '-',
           (a.readiness ? this.readinessLabels[a.readiness] : '') || a.readiness || '-',
           (a.flightRisk ? this.riskLabels[a.flightRisk] : '') || a.flightRisk || '-',
