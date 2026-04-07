@@ -511,6 +511,19 @@ export class FeedbackService {
       }
     }
 
+    // 3b. Validate peer feedback restriction
+    const allowPeerFeedback: boolean = fbConfig.allowPeerFeedback !== false;
+    if (!allowPeerFeedback && role !== 'tenant_admin' && role !== 'super_admin') {
+      const sender = await this.userRepo.findOne({ where: { id: fromUserId, tenantId }, select: ['id', 'managerId'] });
+      if (sender) {
+        const isManager = recipientData.managerId === fromUserId;
+        const isSubordinate = sender.managerId === recipientData.id;
+        if (!isManager && !isSubordinate) {
+          throw new ForbiddenException('La configuración de tu organización no permite feedback entre pares. Solo puedes enviar feedback a tu jefatura directa o subordinados.');
+        }
+      }
+    }
+
     // 4. Validate anonymous setting
     if (!allowAnonymous && dto.isAnonymous) {
       throw new BadRequestException('La organización no permite enviar feedback anónimo.');

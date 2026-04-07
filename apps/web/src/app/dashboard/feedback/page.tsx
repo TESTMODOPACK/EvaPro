@@ -562,16 +562,16 @@ function QuickFeedbackTab() {
     enabled: !!token,
   });
   // Load feedback configuration from tenant settings
-  const { data: tenantData } = useQuery({
+  // Load feedback config (endpoint accessible to all roles)
+  const { data: fbConfigData } = useQuery({
     queryKey: ['tenant-feedback-config'],
-    queryFn: () => api.tenants.me(token!),
+    queryFn: () => api.tenants.feedbackConfig(token!),
     enabled: !!token,
     staleTime: 5 * 60_000,
   });
-  const fbConfig = (tenantData as any)?.settings?.feedbackConfig || {};
-  const fbAllowAnonymous = fbConfig.allowAnonymous !== false;
-  const fbRequireCompetency = fbConfig.requireCompetency === true;
-  const fbScope = fbConfig.scope || 'all';
+  const fbAllowAnonymous = (fbConfigData as any)?.allowAnonymous !== false;
+  const fbRequireCompetency = (fbConfigData as any)?.requireCompetency === true;
+  const fbScope = (fbConfigData as any)?.scope || 'all';
 
   const [subTab, setSubTab] = useState<QuickSubTab>('received');
   const [showForm, setShowForm] = useState(false);

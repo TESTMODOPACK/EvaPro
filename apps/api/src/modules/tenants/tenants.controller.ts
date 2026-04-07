@@ -25,6 +25,14 @@ import { Roles } from '../../common/decorators/roles.decorator';
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
+  /** Returns feedback configuration for any authenticated user */
+  @Get('me/feedback-config')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
+  async getFeedbackConfig(@Request() req: any) {
+    const tenant = await this.tenantsService.findById(req.user.tenantId);
+    return tenant?.settings?.feedbackConfig || {};
+  }
+
   /** Returns the current user's own tenant — accessible to tenant_admin */
   @Get('me')
   @Roles('super_admin', 'tenant_admin')
