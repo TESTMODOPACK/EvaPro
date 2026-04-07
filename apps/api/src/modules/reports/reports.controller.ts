@@ -218,12 +218,13 @@ export class ReportsController {
   @Roles('super_admin', 'tenant_admin', 'manager')
   analytics(
     @Query('cycleId') cycleId: string,
+    @Query('scope') scope: string,
     @Request() req: any,
   ) {
     const { role, userId } = req.user;
-    // Managers only see analytics for their direct reports
-    const managerId = role === 'manager' ? userId : undefined;
-    this.logAccess(req, 'analytics', { cycleId, managerId });
+    // scope=org: managers can see org-wide data for comparative analysis
+    const managerId = (role === 'manager' && scope !== 'org') ? userId : undefined;
+    this.logAccess(req, 'analytics', { cycleId, managerId, scope });
     return this.reportsService.getAnalytics(req.user.tenantId, cycleId, managerId);
   }
 

@@ -19,6 +19,7 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Area,
+  Cell,
 } from 'recharts';
 
 function Spinner() {
@@ -411,12 +412,35 @@ const BASE_URL =
 function AnalyticsPageContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.user?.role);
+  const userId = useAuthStore((s) => s.user?.userId);
+  const isManager = role === 'manager';
   const toast = useToastStore();
   const { data: cycles, isLoading: loadingCycles } = useCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const { data: analytics, isLoading: loadingAnalytics } = useAnalytics(selectedCycleId);
   const [showGuide, setShowGuide] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+
+  // Manager: org-wide analytics for comparative sections
+  const [orgAnalytics, setOrgAnalytics] = useState<any>(null);
+  const [myDepartment, setMyDepartment] = useState<string>('');
+  const [compareDept, setCompareDept] = useState('');
+
+  useEffect(() => {
+    if (!isManager || !token || !selectedCycleId) return;
+    // Load org-wide analytics (scope=org bypasses manager filter)
+    fetch(`${BASE_URL}/reports/analytics?cycleId=${selectedCycleId}&scope=org`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.ok ? r.json() : null).then(setOrgAnalytics).catch(() => {});
+    // Load my department
+    if (userId) {
+      fetch(`${BASE_URL}/users/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then((u: any) => { if (u?.department) setMyDepartment(u.department); })
+        .catch(() => {});
+    }
+  }, [isManager, token, selectedCycleId, userId]);
 
   const handleExport = async (format: 'xlsx' | 'pdf' | 'pptx') => {
     if (!selectedCycleId || !token) return;
@@ -596,11 +620,75 @@ function AnalyticsPageContent() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
+              {/* Manager: Team KPIs */}
+              {isManager && analytics.teamBenchmarks && (() => {
+                const myTeam = analytics.teamBenchmarks.find((tb: any) => tb.managerId === userId);
+                return myTeam ? (
+                  <div className="animate-fade-up" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+                    <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>Mi Equipo</div>
+                      <div style={{ fontSize: '1.3rem', fontWeight: 800 }}>{myTeam.teamSize}</div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>colaboradores</div>
+                    </div>
+                    <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>Prom. Equipo</div>
+                      <div style={{ fontSize: '1.3rem', fontWeight: 800, color: Number(myTeam.avgScore) >= 7 ? 'var(--success)' : Number(myTeam.avgScore) >= 5 ? 'var(--warning)' : 'var(--danger)' }}>{Number(myTeam.avgScore).toFixed(1)}</div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>de 10</div>
+                    </div>
+                    {myDepartment && <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>Departamento</div>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>{myDepartment}</div>
+                    </div>}
+                  </div>
+                ) : null;
+              })()}
+
               {/* 1. Bell Curve Distribution */}
               <BellCurveSection cycleId={selectedCycleId} />
 
-              {/* 2. Department Comparison */}
-              {analytics.departmentComparison && analytics.departmentComparison.length > 0 && (
+              {/* Manager: Team Benchmarks BEFORE dept comparison */}
+              {isManager && analytics.teamBenchmarks && analytics.teamBenchmarks.length > 0 && (
+                <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
+                  <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>Rendimiento por Equipo</h2>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Tu equipo comparado con otros encargados.</p>
+                  <div className="table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr>{['Encargado', 'Departamento', 'Promedio', 'Equipo'].map(h => <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {[...analytics.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore)).map((tb: any, i: number) => {
+                          const isMe = tb.managerId === userId;
+                          const score = Number(tb.avgScore) || 0;
+                          return (
+                            <tr key={i} style={{ background: isMe ? 'rgba(201,147,58,0.08)' : 'transparent' }}>
+                              <td style={{ padding: '0.5rem 0.75rem', fontWeight: isMe ? 700 : 500, fontSize: '0.85rem', borderBottom: '1px solid var(--border)', color: isMe ? 'var(--accent)' : 'var(--text-primary)' }}>{tb.managerName}{isMe ? ' (tú)' : ''}</td>
+                              <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>{tb.department || '—'}</td>
+                              <td style={{ padding: '0.5rem 0.75rem', fontWeight: 700, color: score >= 7 ? 'var(--success)' : score >= 5 ? 'var(--warning)' : 'var(--danger)', borderBottom: '1px solid var(--border)' }}>{score.toFixed(1)}</td>
+                              <td style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border)' }}>{tb.teamSize}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Manager: Comparative Section Header */}
+              {isManager && orgAnalytics && (
+                <div className="animate-fade-up" style={{ borderTop: '3px solid var(--accent)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                  <h2 style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--accent)', marginBottom: '0.25rem' }}>Análisis Comparativo: {myDepartment || 'Mi Departamento'} vs Empresa</h2>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>Compara el desempeño de tu departamento con el resto de la organización.</p>
+                  <select className="input" value={compareDept} onChange={(e) => setCompareDept(e.target.value)} style={{ fontSize: '0.82rem', maxWidth: '300px', marginBottom: '1rem' }}>
+                    <option value="">Todos los departamentos</option>
+                    {(orgAnalytics.departmentComparison || []).filter((d: any) => d.department !== myDepartment).map((d: any) => (
+                      <option key={d.department} value={d.department}>{d.department}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Department Comparison — Manager: org data with highlight; Admin: normal */}
+              {(isManager ? orgAnalytics?.departmentComparison : analytics.departmentComparison)?.length > 0 && (
                 <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
                   <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
                     {'Comparaci\u00f3n por Departamento'}
@@ -608,44 +696,57 @@ function AnalyticsPageContent() {
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
                     Puntaje promedio por departamento
                   </p>
-                  <ResponsiveContainer width="100%" height={Math.max(200, analytics.departmentComparison.length * 45)}>
-                    <BarChart
-                      data={analytics.departmentComparison.map((d: any) => ({
-                        department: d.department || 'Sin depto.',
-                        avgScore: Number(d.avgScore) || 0,
-                        count: d.count,
-                      }))}
-                      layout="vertical"
-                      margin={{ top: 5, right: 20, bottom: 5, left: 10 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                      <XAxis
-                        type="number"
-                        domain={[0, 10]}
-                        tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                        axisLine={{ stroke: 'var(--border)' }}
-                        tickLine={{ stroke: 'var(--border)' }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="department"
-                        width={120}
-                        tick={{ fill: 'var(--text-secondary)', fontSize: 12 }}
-                        axisLine={{ stroke: 'var(--border)' }}
-                        tickLine={{ stroke: 'var(--border)' }}
-                      />
-                      <Tooltip content={customTooltip} />
-                      <Bar dataKey="avgScore" name="Puntaje Promedio" fill="var(--accent)" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {(() => {
+                    const rawData = isManager ? (orgAnalytics?.departmentComparison || []) : (analytics.departmentComparison || []);
+                    const chartData = rawData
+                      .filter((d: any) => !isManager || !compareDept || d.department === myDepartment || d.department === compareDept)
+                      .map((d: any) => ({ department: d.department || 'Sin depto.', avgScore: Number(d.avgScore) || 0, count: d.count, isMyDept: d.department === myDepartment }));
+                    return (
+                    <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 45)}>
+                      <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                        <XAxis type="number" domain={[0, 10]} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
+                        <YAxis type="category" dataKey="department" width={120} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                        <Tooltip content={customTooltip} />
+                        <Bar dataKey="avgScore" name="Puntaje Promedio" radius={[0, 4, 4, 0]}>
+                          {chartData.map((d: any, idx: number) => (
+                            <Cell key={idx} fill={isManager && d.isMyDept ? '#C9933A' : '#6366f1'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    );
+                  })()}
                 </div>
               )}
 
               {/* 3. Competency Heatmap (dept × section) */}
               <CompetencyHeatmapSection cycleId={selectedCycleId} />
 
-              {/* 4. Team Benchmarks */}
-              {analytics.teamBenchmarks && analytics.teamBenchmarks.length > 0 && (
+              {/* Manager: Detailed Analysis */}
+              {isManager && orgAnalytics?.departmentComparison && myDepartment && (() => {
+                const allDepts = orgAnalytics.departmentComparison.sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+                const myDeptData = allDepts.find((d: any) => d.department === myDepartment);
+                const myRank = allDepts.findIndex((d: any) => d.department === myDepartment) + 1;
+                const orgAvg = allDepts.length > 0 ? allDepts.reduce((s: number, d: any) => s + Number(d.avgScore || 0), 0) / allDepts.length : 0;
+                const myScore = Number(myDeptData?.avgScore || 0);
+                const above = myScore >= orgAvg;
+                return (
+                  <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: `4px solid ${above ? 'var(--success)' : 'var(--warning)'}` }}>
+                    <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: above ? 'var(--success)' : 'var(--warning)', marginBottom: '0.5rem' }}>Análisis Comparativo Detallado</h3>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                      <p style={{ margin: '0 0 0.3rem' }}><strong>Posición:</strong> Tu departamento <strong>{myDepartment}</strong> ocupa la posición #{myRank} de {allDepts.length} departamentos con un promedio de <strong>{myScore.toFixed(1)}/10</strong>.</p>
+                      <p style={{ margin: '0 0 0.3rem' }}><strong>vs Organización:</strong> El promedio organizacional es {orgAvg.toFixed(1)}. Tu departamento está <strong style={{ color: above ? 'var(--success)' : 'var(--danger)' }}>{above ? 'por encima' : 'por debajo'}</strong> por {Math.abs(myScore - orgAvg).toFixed(1)} puntos.</p>
+                      {myRank === 1 && <p style={{ margin: '0 0 0.3rem' }}>{'🏆'} <strong>¡Tu departamento lidera el ranking!</strong> Mantén las buenas prácticas y compártelas con otras áreas.</p>}
+                      {myRank === allDepts.length && <p style={{ margin: '0 0 0.3rem' }}>{'⚠️'} Tu departamento está en la última posición. Revisa las áreas de mejora y considera un plan de acción.</p>}
+                      {allDepts.length >= 2 && <p style={{ margin: 0 }}><strong>Mejor depto:</strong> {allDepts[0].department} ({Number(allDepts[0].avgScore).toFixed(1)}) | <strong>Menor:</strong> {allDepts[allDepts.length - 1].department} ({Number(allDepts[allDepts.length - 1].avgScore).toFixed(1)})</p>}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 4. Team Benchmarks — only for admin (manager already has it above) */}
+              {!isManager && analytics.teamBenchmarks && analytics.teamBenchmarks.length > 0 && (
                 <div className="card animate-fade-up" style={{ padding: '1.5rem' }}>
                   <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
                     {'Rendimiento por Equipo'}
