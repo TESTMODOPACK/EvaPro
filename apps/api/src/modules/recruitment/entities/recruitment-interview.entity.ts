@@ -34,6 +34,9 @@ export class RecruitmentInterview {
   @Column({ type: 'decimal', precision: 5, scale: 2, name: 'global_score', nullable: true })
   globalScore: number | null;
 
+  @Column({ type: 'decimal', precision: 5, scale: 2, name: 'manual_score', nullable: true, comment: 'Puntuación manual del evaluador (1-10)' })
+  manualScore: number | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

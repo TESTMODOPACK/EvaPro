@@ -384,12 +384,14 @@ export class RecruitmentService {
       interview.requirementChecks = dto.requirementChecks || [];
       interview.comments = dto.comments || null;
       interview.globalScore = dto.globalScore ?? null;
+      interview.manualScore = dto.manualScore ?? null;
     } else {
       interview = this.interviewRepo.create({
         candidateId, evaluatorId,
         requirementChecks: dto.requirementChecks || [],
         comments: dto.comments || null,
         globalScore: dto.globalScore ?? null,
+        manualScore: dto.manualScore ?? null,
       });
     }
     const saved = await this.interviewRepo.save(interview);

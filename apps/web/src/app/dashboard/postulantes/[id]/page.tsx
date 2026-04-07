@@ -187,7 +187,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
   // Interview
   const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
-  const [interviewForm, setInterviewForm] = useState<{ reqChecks: any[]; comments: string; globalScore: string }>({ reqChecks: [], comments: '', globalScore: '' });
+  const [interviewForm, setInterviewForm] = useState<{ reqChecks: any[]; comments: string; globalScore: string; manualScore: string }>({ reqChecks: [], comments: '', globalScore: '', manualScore: '' });
   const [savingInterview, setSavingInterview] = useState(false);
 
   // Scorecard
@@ -347,7 +347,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     const reqChecks = requirements.map((r: any) => ({
       category: r.category, text: r.text, status: 'pendiente', comment: '',
     }));
-    setInterviewForm({ reqChecks, comments: '', globalScore: '' });
+    setInterviewForm({ reqChecks, comments: '', globalScore: '', manualScore: '' });
     // Load existing interview
     if (token) {
       api.recruitment.candidates.getInterviews(token, candidate.id).then((interviews) => {
@@ -357,6 +357,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             reqChecks: mine.requirementChecks?.length > 0 ? mine.requirementChecks : reqChecks,
             comments: mine.comments || '',
             globalScore: mine.globalScore != null ? String(mine.globalScore) : '',
+            manualScore: mine.manualScore != null ? String(mine.manualScore) : '',
           });
         }
       }).catch(() => {});
@@ -372,6 +373,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         requirementChecks: interviewForm.reqChecks,
         comments: interviewForm.comments,
         globalScore: interviewForm.globalScore ? Number(interviewForm.globalScore) : null,
+        manualScore: interviewForm.manualScore ? Number(interviewForm.manualScore) : null,
       });
       toast('Evaluación guardada', 'success');
       fetchProcess();
@@ -896,7 +898,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 </div>
               )}
 
-              {/* Score (auto-calculated) + comments */}
+              {/* Score section */}
               {(() => {
                 const checks = interviewForm.reqChecks || [];
                 const answered = checks.filter((c: any) => c.status !== 'pendiente');
@@ -904,33 +906,67 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 const autoScore = answered.length > 0
                   ? Number((answered.reduce((sum: number, c: any) => sum + (scoreMap[c.status] || 0), 0) / answered.length).toFixed(1))
                   : 0;
-                const pct = answered.length > 0
-                  ? Math.round((answered.filter((c: any) => c.status === 'cumple').length / answered.length) * 100)
-                  : 0;
+                // Compute final globalScore: weighted 70% requirements + 30% evaluator
+                const manualScore = interviewForm.manualScore ? Number(interviewForm.manualScore) : null;
+                const finalScore = manualScore != null && answered.length > 0
+                  ? Number(((autoScore * 0.7) + (manualScore * 0.3)).toFixed(1))
+                  : manualScore != null ? manualScore
+                  : answered.length > 0 ? autoScore : 0;
                 // Auto-update globalScore
-                if (String(autoScore) !== interviewForm.globalScore && answered.length > 0) {
-                  setTimeout(() => setInterviewForm((f) => ({ ...f, globalScore: String(autoScore) })), 0);
+                if (String(finalScore) !== interviewForm.globalScore) {
+                  setTimeout(() => setInterviewForm((f) => ({ ...f, globalScore: String(finalScore) })), 0);
                 }
                 return null;
               })()}
               <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '140px 140px 1fr', gap: '1rem' }}>
+                  {/* Auto score from requirements */}
                   <div>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Puntaje (auto)</label>
-                    <div style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)', padding: '0.3rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
-                      {interviewForm.globalScore || '--'}/10
+                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Puntaje Requisitos</label>
+                    <div style={{ textAlign: 'center', fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-muted)', padding: '0.3rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                      {(() => {
+                        const checks = interviewForm.reqChecks || [];
+                        const answered = checks.filter((c: any) => c.status !== 'pendiente');
+                        const scoreMap: Record<string, number> = { cumple: 10, parcial: 5, no_cumple: 0 };
+                        return answered.length > 0
+                          ? (answered.reduce((sum: number, c: any) => sum + (scoreMap[c.status] || 0), 0) / answered.length).toFixed(1)
+                          : '--';
+                      })()}/10
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.25rem' }}>
-                      Calculado desde requisitos
-                    </div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.2rem' }}>Auto-calculado</div>
                   </div>
+                  {/* Manual evaluator score */}
                   <div>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Comentarios generales</label>
-                    <textarea className="input" rows={3} value={interviewForm.comments}
-                      onChange={(e) => setInterviewForm((f) => ({ ...f, comments: e.target.value }))}
-                      style={{ resize: 'vertical', fontSize: '0.85rem' }} placeholder="Observaciones de la entrevista..." />
+                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Mi Puntuacion</label>
+                    <input className="input" type="number" min={1} max={10} step={0.1}
+                      value={interviewForm.manualScore || ''}
+                      onChange={(e) => {
+                        let val = e.target.value;
+                        if (val && Number(val) > 10) val = '10';
+                        if (val && Number(val) < 0) val = '0';
+                        setInterviewForm((f) => ({ ...f, manualScore: val }));
+                      }}
+                      placeholder="1-10"
+                      style={{ textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, padding: '0.3rem' }} />
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.2rem' }}>Tu apreciacion</div>
+                  </div>
+                  {/* Final combined score */}
+                  <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '0.5rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Puntaje Final</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent)' }}>
+                      {interviewForm.globalScore || '--'}<span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/10</span>
+                    </div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Ponderado: 70% requisitos + 30% evaluador</div>
                   </div>
                 </div>
+              </div>
+
+              {/* Comments */}
+              <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Comentarios generales</label>
+                <textarea className="input" rows={3} value={interviewForm.comments}
+                  onChange={(e) => setInterviewForm((f) => ({ ...f, comments: e.target.value }))}
+                  style={{ resize: 'vertical', fontSize: '0.85rem' }} placeholder="Observaciones de la entrevista, impresion general del candidato..." />
               </div>
 
               <button className="btn-primary" onClick={handleSaveInterview} disabled={savingInterview}>
