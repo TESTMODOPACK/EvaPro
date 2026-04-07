@@ -472,6 +472,24 @@ export default function ResultadosEncuestaPage() {
                   <Bar dataKey="average" fill="#C9933A" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+
+              {/* Department analysis */}
+              {deptResults.length >= 2 && (() => {
+                const sorted = [...deptResults].sort((a, b) => a.average - b.average);
+                const best = sorted[sorted.length - 1];
+                const worst = sorted[0];
+                const gap = (best.average - worst.average).toFixed(1);
+                const globalAvg = (deptResults.reduce((s: number, d: any) => s + d.average, 0) / deptResults.length).toFixed(1);
+                return (
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: '0.3rem' }}>Análisis por Departamento</div>
+                    <p style={{ margin: '0 0 0.25rem' }}><strong>Promedio organizacional:</strong> {globalAvg}/5 entre {deptResults.length} departamentos.</p>
+                    <p style={{ margin: '0 0 0.25rem' }}><strong>Mejor clima:</strong> {best.department} ({best.average}/5, {best.responseCount} respuestas).</p>
+                    <p style={{ margin: '0 0 0.25rem' }}><strong>Menor clima:</strong> {worst.department} ({worst.average}/5, {worst.responseCount} respuestas){worst.average < 3 ? ' — requiere intervención prioritaria.' : '.'}</p>
+                    <p style={{ margin: 0 }}><strong>Brecha entre áreas:</strong> {gap} puntos. {Number(gap) > 1 ? 'Brecha significativa — investigar causas de disparidad.' : 'Brecha moderada.'}</p>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
@@ -699,6 +717,28 @@ export default function ResultadosEncuestaPage() {
                   </div>
                 ) : null;
               })()}
+
+              {/* Trend analysis */}
+              {trends.length >= 2 && (() => {
+                const latest = trends[trends.length - 1];
+                const previous = trends[trends.length - 2];
+                const delta = (latest.overallAverage - previous.overallAverage).toFixed(2);
+                const improving = Number(delta) > 0;
+                return (
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: `3px solid ${improving ? 'var(--success)' : 'var(--danger)'}`, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    <div style={{ fontWeight: 700, color: improving ? 'var(--success)' : 'var(--danger)', marginBottom: '0.3rem' }}>Análisis de Tendencia</div>
+                    <p style={{ margin: '0 0 0.25rem' }}>
+                      <strong>Evolución:</strong> El promedio {improving ? 'subió' : 'bajó'} de {previous.overallAverage}/5 ({previous.title}) a {latest.overallAverage}/5 ({latest.title}) — {improving ? `mejora de +${delta} puntos.` : `descenso de ${delta} puntos.`}
+                    </p>
+                    <p style={{ margin: '0 0 0.25rem' }}>
+                      <strong>Tasa de respuesta:</strong> {latest.responseRate}%{previous.responseRate ? ` (anterior: ${previous.responseRate}%)` : ''}.
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      {improving ? 'La tendencia es positiva — las acciones de mejora están dando resultado.' : 'La tendencia es negativa — revisar las iniciativas implementadas y evaluar nuevas acciones.'}
+                    </p>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
@@ -769,36 +809,62 @@ function CommentsTab({ openResponses }: { openResponses: any[] }) {
         <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
           No hay comentarios en esta encuesta.
         </div>
-      ) : groups.map((g, gIdx) => (
-        <div key={gIdx} className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>{g.category}</span>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{g.question}</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {g.responses.map((resp, rIdx) => (
-              <div key={rIdx} style={{
-                display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
-                padding: '0.6rem 0.85rem', background: 'var(--bg-surface)',
-                borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-              }}>
-                <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', fontStyle: 'italic', flex: 1, lineHeight: 1.5 }}>
-                  &ldquo;{resp.text}&rdquo;
-                </p>
-                {resp.count > 1 && (
-                  <span style={{
-                    fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)',
-                    background: 'rgba(201,147,58,0.1)', padding: '0.15rem 0.5rem',
-                    borderRadius: 10, whiteSpace: 'nowrap',
-                  }}>
-                    {resp.count}x
-                  </span>
-                )}
+      ) : (
+        <>
+          {groups.map((g, gIdx) => (
+            <div key={gIdx} className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>{g.category}</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{g.question}</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{g.responses.length} temas</span>
               </div>
-            ))}
-          </div>
-        </div>
-      ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {g.responses.map((resp, rIdx) => (
+                  <div key={rIdx} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                    padding: '0.6rem 0.85rem', background: 'var(--bg-surface)',
+                    borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                  }}>
+                    <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', fontStyle: 'italic', flex: 1, lineHeight: 1.5 }}>
+                      &ldquo;{resp.text}&rdquo;
+                    </p>
+                    {resp.count > 1 && (
+                      <span style={{
+                        fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)',
+                        background: 'rgba(201,147,58,0.1)', padding: '0.15rem 0.5rem',
+                        borderRadius: 10, whiteSpace: 'nowrap',
+                      }}>
+                        {resp.count}x
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          {/* Comments analysis */}
+          {totalComments > 0 && (
+            <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: '0.3rem' }}>Análisis de Comentarios</div>
+              <p style={{ margin: '0 0 0.25rem' }}>
+                <strong>Volumen:</strong> {totalComments} comentarios recibidos con {uniqueComments} temas distintos en {groups.length} preguntas abiertas.
+              </p>
+              {(() => {
+                const repeated = groups.flatMap(g => g.responses.filter(r => r.count > 1));
+                const topRepeated = repeated.sort((a, b) => b.count - a.count).slice(0, 3);
+                return topRepeated.length > 0 ? (
+                  <p style={{ margin: '0 0 0.25rem' }}>
+                    <strong>Temas recurrentes:</strong> {topRepeated.map(r => `"${r.text.slice(0, 50)}${r.text.length > 50 ? '...' : ''}" (${r.count}x)`).join(', ')}
+                  </p>
+                ) : null;
+              })()}
+              <p style={{ margin: 0 }}>
+                {uniqueComments > totalComments * 0.7 ? 'Alta diversidad de opiniones — los colaboradores expresan experiencias variadas.' : 'Varios temas se repiten — hay consenso en ciertos aspectos de la organización.'}
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
