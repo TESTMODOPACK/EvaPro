@@ -16,6 +16,8 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle, CycleType, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 import { PlanFeature } from '../../common/constants/plan-features';
 
 @Injectable()
@@ -38,6 +40,7 @@ export class SubscriptionsService {
     @InjectRepository(EvaluationCycle)
     private readonly cycleRepo: Repository<EvaluationCycle>,
     private readonly auditService: AuditService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ─── Plans CRUD ────────────────────────────────────────────────────────
@@ -809,6 +812,19 @@ export class SubscriptionsService {
     await this.auditService.log(tenantId, approvedBy, 'subscription.ai_addon_purchased', 'subscription', sub.id, {
       pack: pack.name, calls: pack.calls, price: pack.monthlyPrice,
     }).catch(() => {});
+
+    // Notify all super_admins about the purchase
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'name'] });
+    const superAdmins = await this.userRepo.find({ where: { role: 'super_admin', isActive: true }, select: ['id'] });
+    for (const sa of superAdmins) {
+      await this.notificationsService.create({
+        tenantId,
+        userId: sa.id,
+        type: NotificationType.GENERAL,
+        title: `Compra Add-on IA: ${tenant?.name || 'Organización'}`,
+        message: `${tenant?.name || 'Una organización'} adquirió "${pack.name}" (${pack.monthlyPrice} UF/mes). Se agregará al próximo período de facturación.`,
+      }).catch(() => {});
+    }
 
     return { subscription: sub, pack };
   }

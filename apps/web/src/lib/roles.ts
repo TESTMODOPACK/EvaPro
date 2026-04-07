@@ -42,6 +42,7 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/audit-log':    ['super_admin'],
   '/dashboard/system-metrics': ['super_admin'],
   '/dashboard/subscriptions': ['super_admin'],
+  '/dashboard/facturacion':   ['super_admin'],
   // Tenant user pages (not for super_admin)
   '/dashboard/evaluaciones': ['tenant_admin', 'manager', 'employee', 'external'],
   '/dashboard/usuarios':     ['tenant_admin'],

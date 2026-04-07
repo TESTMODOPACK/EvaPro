@@ -73,6 +73,15 @@ export class PaymentHistory {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  @Column({ type: 'varchar', length: 300, nullable: true, comment: 'Concepto del cobro (ej: Plan Pro Mensual, Add-on IA +100)' })
+  concept: string | null;
+
+  @Column({ type: 'boolean', name: 'is_addon', default: false, comment: 'true si es un cargo extra (addon IA, etc)' })
+  isAddon: boolean;
+
+  @Column({ type: 'uuid', name: 'invoice_id', nullable: true })
+  invoiceId: string | null;
+
   @Column({ type: 'timestamptz', name: 'paid_at', nullable: true })
   paidAt: Date | null;
 

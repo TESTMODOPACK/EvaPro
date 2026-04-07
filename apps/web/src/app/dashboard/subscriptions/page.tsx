@@ -102,6 +102,11 @@ export default function SubscriptionsPage() {
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Subscription filters
+  const [filterSubStatus, setFilterSubStatus] = useState('');
+  const [filterSubPlan, setFilterSubPlan] = useState('');
+  const [filterSubSearch, setFilterSubSearch] = useState('');
+
   // Plan form
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -943,6 +948,26 @@ export default function SubscriptionsPage() {
             </div>
           )}
 
+          {/* Subscription filters */}
+          <div className="card animate-fade-up" style={{ padding: '0.75rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input type="text" className="input" placeholder="Buscar organización..." value={filterSubSearch} onChange={(e) => setFilterSubSearch(e.target.value)} style={{ fontSize: '0.82rem', maxWidth: '200px' }} />
+            <select className="input" value={filterSubStatus} onChange={(e) => setFilterSubStatus(e.target.value)} style={{ fontSize: '0.82rem', maxWidth: '160px' }}>
+              <option value="">Todos los estados</option>
+              <option value="active">Activa</option>
+              <option value="trial">Trial</option>
+              <option value="suspended">Suspendida</option>
+              <option value="cancelled">Cancelada</option>
+              <option value="expired">Expirada</option>
+            </select>
+            <select className="input" value={filterSubPlan} onChange={(e) => setFilterSubPlan(e.target.value)} style={{ fontSize: '0.82rem', maxWidth: '160px' }}>
+              <option value="">Todos los planes</option>
+              {plans.filter((p: any) => p.isActive).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            {(filterSubSearch || filterSubStatus || filterSubPlan) && (
+              <button className="btn-ghost" onClick={() => { setFilterSubSearch(''); setFilterSubStatus(''); setFilterSubPlan(''); }} style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>Limpiar</button>
+            )}
+          </div>
+
           {/* Subscriptions table */}
           <div className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
             {subscriptions.length === 0 ? (
@@ -965,7 +990,13 @@ export default function SubscriptionsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {subscriptions.map((sub: any) => {
+                    {subscriptions.filter((sub: any) => {
+                      const orgName = sub.tenant?.name ?? tenantMap[sub.tenantId] ?? '';
+                      if (filterSubSearch && !orgName.toLowerCase().includes(filterSubSearch.toLowerCase())) return false;
+                      if (filterSubStatus && sub.status !== filterSubStatus) return false;
+                      if (filterSubPlan && sub.planId !== filterSubPlan) return false;
+                      return true;
+                    }).map((sub: any) => {
                       const plan = planMap[sub.planId];
                       const planCode = plan?.code ?? sub.planName ?? sub.plan ?? '';
                       const planName = plan?.name ?? sub.planName ?? sub.plan ?? '-';

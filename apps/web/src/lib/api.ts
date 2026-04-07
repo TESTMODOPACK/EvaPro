@@ -946,4 +946,29 @@ export const api = {
     listByTenant: (token: string, tenantId: string) =>
       request<any[]>(`/contracts?tenantId=${tenantId}`, {}, token),
   },
+
+  invoices: {
+    list: (token: string, filters?: { status?: string; tenantId?: string; period?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set('status', filters.status);
+      if (filters?.tenantId) params.set('tenantId', filters.tenantId);
+      if (filters?.period) params.set('period', filters.period);
+      const qs = params.toString();
+      return request<any[]>(`/invoices${qs ? `?${qs}` : ''}`, {}, token);
+    },
+    stats: (token: string) => request<any>("/invoices/stats", {}, token),
+    generate: (token: string, subscriptionId: string) =>
+      request<any>(`/invoices/generate/${subscriptionId}`, { method: "POST" }, token),
+    generateBulk: (token: string) =>
+      request<any>("/invoices/generate-bulk", { method: "POST" }, token),
+    markAsPaid: (token: string, id: string, data: { paymentMethod?: string; transactionRef?: string; notes?: string }) =>
+      request<any>(`/invoices/${id}/pay`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    send: (token: string, id: string) =>
+      request<any>(`/invoices/${id}/send`, { method: "POST" }, token),
+    sendReminders: (token: string) =>
+      request<any>("/invoices/send-reminders", { method: "POST" }, token),
+    cancel: (token: string, id: string) =>
+      request<any>(`/invoices/${id}/cancel`, { method: "PATCH" }, token),
+    pdfUrl: (id: string) => `${BASE_URL}/invoices/${id}/pdf`,
+  },
 };
