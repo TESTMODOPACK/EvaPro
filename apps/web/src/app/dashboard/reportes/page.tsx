@@ -30,6 +30,11 @@ const TABS: { id: TabKey; label: string; icon: string }[] = [
   { id: 'risks', label: 'Riesgos', icon: '⚠️' },
 ];
 
+const retentionActionLabels: Record<string, string> = {
+  pdi: 'Plan de Desarrollo', coaching: 'Coaching', engagement: 'Compromiso',
+  retention: 'Retención', conversation: 'Conversación',
+};
+
 const departureTypeLabels: Record<string, string> = {
   resignation: 'Renuncia', termination: 'Despido', retirement: 'Jubilación',
   contract_end: 'Fin de contrato', abandonment: 'Abandono', mutual_agreement: 'Mutuo acuerdo',
@@ -369,7 +374,8 @@ export default function ReportesPage() {
                   {/* Department Ranking BarChart */}
                   {depts.length > 0 && (
                     <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Ranking por Departamento</h4>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Ranking por Departamento</h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Puntaje promedio de evaluación por área, ordenado de mayor a menor (escala 1-10).</p>
                       <div style={{ height: Math.max(200, depts.length * 35) }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={depts} layout="vertical" margin={{ left: 100 }}>
@@ -413,7 +419,8 @@ export default function ReportesPage() {
                   {/* Semáforo de áreas */}
                   {depts.length > 0 && (
                     <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Semáforo de Áreas</h4>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Semáforo de Áreas</h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Vista rápida del estado de cada departamento. 🟢 ≥7.0 (Alto) | 🟡 5.0-6.9 (Medio) | 🔴 &lt;5.0 (Bajo).</p>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem' }}>
                         {depts.map((d: any) => {
                           const score = Number(d.avgScore);
@@ -512,7 +519,8 @@ export default function ReportesPage() {
                   {/* eNPS Donut */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div className="card" style={{ padding: '1.25rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Distribución eNPS</h4>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Distribución eNPS</h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Employee Net Promoter Score: promotores (9-10), pasivos (7-8) y detractores (0-6).</p>
                       <div style={{ height: 220 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -625,7 +633,8 @@ export default function ReportesPage() {
               {/* Turnover by month (admin only) */}
               {isAdmin && turnoverData?.byMonth?.length > 0 && (
                 <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                  <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Tendencia de Salidas (12 meses)</h4>
+                  <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Tendencia de Salidas (12 meses)</h4>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Cantidad de desvinculaciones por mes. Permite identificar patrones estacionales o picos de rotación.</p>
                   <div style={{ height: 220 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={turnoverData.byMonth}>
@@ -645,7 +654,8 @@ export default function ReportesPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                   {turnoverData.byType?.length > 0 && (
                     <div className="card" style={{ padding: '1.25rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Por Tipo de Salida</h4>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Por Tipo de Salida</h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Distribución según motivo de la desvinculación.</p>
                       <div style={{ height: 200 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -660,7 +670,9 @@ export default function ReportesPage() {
                     </div>
                   )}
                   <div className="card" style={{ padding: '1.25rem' }}>
-                    <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Voluntario vs Involuntario</h4>
+                    <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Voluntario vs Involuntario</h4>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Proporción de salidas por decisión propia vs decisión de la empresa.</p>
+                    {(turnoverData.voluntary || 0) + (turnoverData.involuntary || 0) > 0 ? (
                     <div style={{ height: 200 }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -675,6 +687,7 @@ export default function ReportesPage() {
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
+                    ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center', padding: '2rem 0' }}>Sin datos de salidas clasificadas en el período.</p>}
                   </div>
                 </div>
               )}
@@ -926,7 +939,14 @@ export default function ReportesPage() {
           {activeTab === 'risks' && (
             <div className="animate-fade-up">
               {!flightRisk ? (
-                <EmptyState msg="Análisis de riesgo no disponible. Verifique su cuota de IA o espere a que se procesen los datos." />
+                <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+                  <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{'⚠️'}</p>
+                  <p style={{ fontWeight: 600, color: 'var(--warning)', marginBottom: '0.5rem' }}>Análisis de riesgo no disponible</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '500px', margin: '0 auto' }}>
+                    El cálculo de riesgo de fuga requiere un plan que incluya análisis de IA (Pro o Enterprise).
+                    Este análisis utiliza un algoritmo que combina datos de evaluaciones, objetivos, feedback y nine-box para generar un score de riesgo por colaborador.
+                  </p>
+                </div>
               ) : (
                 <>
                   {/* KPIs */}
@@ -940,7 +960,8 @@ export default function ReportesPage() {
                   {/* Risk distribution */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div className="card" style={{ padding: '1.25rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Distribución de Riesgo</h4>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Distribución de Riesgo de Fuga</h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Score algorítmico (0-100) basado en: evaluaciones (30%), objetivos (25%), feedback (20%), OKRs en riesgo (15%) y nine-box (10%).</p>
                       <div style={{ height: 200 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -992,7 +1013,7 @@ export default function ReportesPage() {
                             </div>
                             <div style={{ display: 'flex', gap: '0.25rem' }}>
                               {(r.actions || []).slice(0, 3).map((a: any, i: number) => (
-                                <span key={i} className={`badge ${a.priority === 'alta' ? 'badge-danger' : a.priority === 'media' ? 'badge-accent' : 'badge-ghost'}`} style={{ fontSize: '0.65rem' }}>{a.type}</span>
+                                <span key={i} className={`badge ${a.priority === 'alta' ? 'badge-danger' : a.priority === 'media' ? 'badge-accent' : 'badge-ghost'}`} style={{ fontSize: '0.65rem' }}>{retentionActionLabels[a.type] || a.type}</span>
                               ))}
                             </div>
                           </div>

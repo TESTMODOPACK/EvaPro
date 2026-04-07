@@ -613,7 +613,15 @@ function FlightRiskTab() {
   const [riskFilter, setRiskFilter] = useState('');
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
-  if (error) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error al cargar datos de riesgo de fuga</div>;
+  if (error) return (
+    <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+      <p style={{ color: 'var(--warning)', fontWeight: 600, marginBottom: '0.5rem' }}>Análisis de riesgo de fuga no disponible</p>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+        Esta funcionalidad requiere un plan que incluya análisis de IA (Pro o Enterprise).
+        El cálculo de riesgo de fuga utiliza datos de evaluaciones, objetivos y feedback para generar un score algorítmico por colaborador.
+      </p>
+    </div>
+  );
   if (!data || !data.scores) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos disponibles. Se requieren evaluaciones completadas, objetivos y feedback para calcular el riesgo.</div>;
 
   const filtered = data.scores.filter((s: any) => {
@@ -716,17 +724,23 @@ function FlightRiskTab() {
 
 /* ─── Retention Tab ──────────────────────────────────────────────────── */
 function RetentionTab() {
-  const { data, isLoading } = useRetentionRecommendations();
+  const { data, isLoading, error } = useRetentionRecommendations();
   const [search, setSearch] = useState('');
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
+  if (error) return (
+    <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+      <p style={{ color: 'var(--warning)', fontWeight: 600, marginBottom: '0.5rem' }}>Recomendaciones de retención no disponibles</p>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Esta funcionalidad requiere un plan que incluya análisis de IA (Pro o Enterprise).</p>
+    </div>
+  );
   if (!data || !data.recommendations) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos de retención. Se requiere primero el análisis de riesgo de fuga.</div>;
 
   const filtered = data.recommendations.filter((r: any) =>
     !search || r.name?.toLowerCase().includes(search.toLowerCase()) || (r.department || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  const actionTypeLabels: Record<string, string> = { pdi: 'Plan de Desarrollo', coaching: 'Coaching', engagement: 'Engagement', retention: 'Retención', conversation: 'Conversación' };
+  const actionTypeLabels: Record<string, string> = { pdi: 'Plan de Desarrollo', coaching: 'Coaching', engagement: 'Compromiso', retention: 'Retención', conversation: 'Conversación' };
   const priorityColor: Record<string, string> = { alta: 'var(--danger)', media: 'var(--warning)', baja: 'var(--text-muted)' };
 
   return (
