@@ -28,7 +28,7 @@ const selectStyle: React.CSSProperties = { padding: '0.45rem 0.7rem', fontSize: 
 const labelStyle: React.CSSProperties = { fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '0.15rem' };
 const relLabel: Record<string, string> = { self: 'Autoevaluación', manager: 'Jefatura', peer: 'Par', direct_report: 'Reporte directo' };
 const objStatusLabels: Record<string, string> = { active: 'Activo', completed: 'Completado', draft: 'Borrador', pending_approval: 'Pendiente', abandoned: 'Abandonado' };
-const objTypeLabels: Record<string, string> = { OKR: 'OKR', individual: 'Individual', team: 'Equipo', company: 'Empresa' };
+const objTypeLabels: Record<string, string> = { OKR: 'OKR', KPI: 'KPI', individual: 'Individual', team: 'Equipo', company: 'Empresa', strategic: 'Estratégico' };
 const pdiStatusLabels: Record<string, string> = { borrador: 'Borrador', pendiente_aprobacion: 'Pendiente', aprobado: 'Aprobado', activo: 'Activo', completado: 'Completado', cancelado: 'Cancelado' };
 const pdiStatusColors: Record<string, string> = { borrador: '#94a3b8', activo: '#6366f1', completado: '#10b981', cancelado: '#ef4444', pendiente_aprobacion: '#f59e0b', aprobado: '#22c55e' };
 
@@ -323,10 +323,10 @@ export default function MiDesempenoPage() {
               </div>
 
               {/* Pending */}
-              {myPendingEvals.length > 0 && evalStatusFilter !== 'completed' && (
+              {myPendingEvals.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter).length > 0 && evalStatusFilter !== 'completed' && (
                 <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--warning)' }}>Evaluaciones Pendientes ({myPendingEvals.length})</h3>
-                  {myPendingEvals.map((ev: any, i: number) => (
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--warning)' }}>Evaluaciones Pendientes ({myPendingEvals.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter).length})</h3>
+                  {myPendingEvals.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter).map((ev: any, i: number) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
                       <div>
                         <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>

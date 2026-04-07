@@ -279,6 +279,7 @@ function FlightRiskSection() {
   const { t } = useTranslation();
   const { data, isLoading, error } = useFlightRisk();
   const { departments } = useDepartments();
+  const frRole = useAuthStore((s) => s.user?.role);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [searchFR, setSearchFR] = useState('');
   const [deptFilterFR, setDeptFilterFR] = useState('');
@@ -337,11 +338,13 @@ function FlightRiskSection() {
       <div className="card" style={{ padding: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)', width: '200px' }}
           placeholder="Buscar colaborador..." value={searchFR} onChange={(e) => { setSearchFR(e.target.value); setPageFR(1); }} />
+        {frRole !== 'manager' && (
         <select style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
           value={deptFilterFR} onChange={(e) => { setDeptFilterFR(e.target.value); setPageFR(1); }}>
           <option value="">Todos los departamentos</option>
           {departments.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
+        )}
         <select style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}
           value={riskFilterFR} onChange={(e) => { setRiskFilterFR(e.target.value); setPageFR(1); }}>
           <option value="">Todos los niveles</option>
@@ -569,6 +572,7 @@ function InsightsPageContent() {
               </select>
             )}
           </div>
+          {role !== 'manager' && (
           <div>
             <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
               Departamento
@@ -585,6 +589,7 @@ function InsightsPageContent() {
               ))}
             </select>
           </div>
+          )}
           <div>
             <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
               Colaborador

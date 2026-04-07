@@ -495,6 +495,7 @@ function KeyResultsSection({ objectiveId, canEdit = false }: { objectiveId: stri
 
 function TeamSummaryView() {
   const { data, isLoading } = useTeamObjectivesSummary();
+  const { departments } = useDepartments(); // Must be before any conditional returns (hooks rules)
   const [searchName, setSearchName] = useState('');
   const [filterDept, setFilterDept] = useState('all');
   const [filterRisk, setFilterRisk] = useState<'all' | 'at_risk' | 'ok'>('all');
@@ -509,9 +510,6 @@ function TeamSummaryView() {
   }
 
   const { members, totals } = data;
-
-  // Use configured departments from Mantenedores
-  const { departments } = useDepartments();
 
   // Apply filters
   const filtered = members.filter((m: any) => {
