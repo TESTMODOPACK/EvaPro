@@ -337,22 +337,33 @@ export default function MiDesempenoPage() {
                 </select>
               </div>
 
-              {/* Pending */}
-              {myPendingEvals.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter).length > 0 && evalStatusFilter !== 'completed' && (
-                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--warning)' }}>Evaluaciones Pendientes ({myPendingEvals.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter).length})</h3>
-                  {myPendingEvals.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter).map((ev: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
-                      <div>
-                        <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
-                        <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
-                        {ev.cycle?.name && <span style={{ color: 'var(--text-muted)', marginLeft: '0.4rem' }}>{ev.cycle.name}</span>}
-                      </div>
-                      <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Pendiente</span>
+              {/* Pending — collapsible */}
+              {(() => {
+                const pendingFiltered = myPendingEvals.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter);
+                return pendingFiltered.length > 0 && evalStatusFilter !== 'completed' && (
+                <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)' }}>
+                  <button onClick={() => setExpandedPlan(expandedPlan === 'pending-evals' ? null : 'pending-evals')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem 0', textAlign: 'left' }}>
+                    <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedPlan === 'pending-evals' ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--warning)' }}>Evaluaciones Pendientes ({pendingFiltered.length})</span>
+                  </button>
+                  {expandedPlan === 'pending-evals' && (
+                    <div style={{ marginTop: '0.35rem' }}>
+                      {pendingFiltered.map((ev: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 0.5rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                          <div>
+                            <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
+                            <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
+                            {ev.cycle?.name && <span style={{ color: 'var(--text-muted)', marginLeft: '0.4rem', fontSize: '0.78rem' }}>{ev.cycle.name}</span>}
+                          </div>
+                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Pendiente</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
+              );
+              })()}
 
               {/* Completed — evaluations where I was evaluated */}
               {myEvaluationsReceived.length > 0 && evalStatusFilter !== 'pending' && (
