@@ -556,6 +556,199 @@ export default function MantenedoresPage() {
           );
         })}
       </div>
+
+      {/* ═══ Competencias por Cargo ═══ */}
+      <RoleCompetenciesSection />
+    </div>
+  );
+}
+
+// ─── Competencias por Cargo Section ────────────────────────────────────
+
+function RoleCompetenciesSection() {
+  const token = useAuthStore((s) => s.token);
+  const [expanded, setExpanded] = useState(false);
+  const [positions, setPositions] = useState<any[]>([]);
+  const [competencies, setCompetencies] = useState<any[]>([]);
+  const [roleComps, setRoleComps] = useState<any[]>([]);
+  const [selectedPosition, setSelectedPosition] = useState('');
+  const [addCompId, setAddCompId] = useState('');
+  const [addLevel, setAddLevel] = useState(5);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const loadData = async () => {
+    if (!token) return;
+    const [pos, comps, rcs] = await Promise.all([
+      api.tenants.getPositionsCatalog(token).catch(() => []),
+      api.development.competencies.list(token).catch(() => []),
+      api.development.roleCompetencies.list(token).catch(() => []),
+    ]);
+    setPositions(Array.isArray(pos) ? pos : []);
+    setCompetencies(Array.isArray(comps) ? comps : []);
+    setRoleComps(Array.isArray(rcs) ? rcs : []);
+  };
+
+  useEffect(() => { if (expanded) loadData(); }, [expanded, token]);
+
+  const filtered = selectedPosition ? roleComps.filter((rc: any) => rc.position === selectedPosition) : [];
+  const assignedCompIds = new Set(filtered.map((rc: any) => rc.competencyId));
+  const availableComps = competencies.filter((c: any) => c.isActive && !assignedCompIds.has(c.id));
+  const positionsWithComps = new Set(roleComps.map((rc: any) => rc.position));
+  const positionsWithout = positions.filter((p: any) => !positionsWithComps.has(p.name));
+
+  const handleAdd = async () => {
+    if (!token || !selectedPosition || !addCompId) return;
+    setSaving(true); setMsg('');
+    try {
+      await api.development.roleCompetencies.create(token, { position: selectedPosition, competencyId: addCompId, expectedLevel: addLevel });
+      setAddCompId(''); setAddLevel(5);
+      await loadData();
+      setMsg('Competencia asignada');
+    } catch (e: any) { setMsg(e.message || 'Error'); }
+    setSaving(false);
+  };
+
+  const handleUpdateLevel = async (id: string, level: number) => {
+    if (!token) return;
+    try {
+      await api.development.roleCompetencies.update(token, id, { expectedLevel: level });
+      await loadData();
+    } catch {}
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!token) return;
+    try {
+      await api.development.roleCompetencies.remove(token, id);
+      await loadData();
+    } catch {}
+  };
+
+  const handleBulk = async (position: string) => {
+    if (!token) return;
+    setSaving(true); setMsg('');
+    try {
+      const result = await api.development.roleCompetencies.bulkAssign(token, { position, defaultLevel: 5 });
+      await loadData();
+      setMsg(`${result.created} competencias asignadas a ${position}`);
+    } catch (e: any) { setMsg(e.message || 'Error'); }
+    setSaving(false);
+  };
+
+  const handleBulkAll = async () => {
+    if (!token) return;
+    setSaving(true); setMsg('');
+    let total = 0;
+    for (const p of positionsWithout) {
+      try {
+        const result = await api.development.roleCompetencies.bulkAssign(token, { position: p.name, defaultLevel: 5 });
+        total += result.created;
+      } catch {}
+    }
+    await loadData();
+    setMsg(`${total} competencias asignadas a ${positionsWithout.length} cargos`);
+    setSaving(false);
+  };
+
+  return (
+    <div className="card" style={{ marginTop: '1.5rem' }}>
+      <button onClick={() => setExpanded(!expanded)} style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
+        padding: '1rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+      }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Competencias por Cargo</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Define qué competencias y nivel se espera para cada cargo.</div>
+        </div>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+      </button>
+
+      {expanded && (
+        <div style={{ padding: '0 1.25rem 1.25rem' }}>
+          {/* Position selector */}
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 250px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>Cargo</label>
+              <select className="input" value={selectedPosition} onChange={(e) => setSelectedPosition(e.target.value)} style={{ width: '100%', fontSize: '0.82rem' }}>
+                <option value="">— Seleccionar cargo —</option>
+                {positions.map((p: any) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} (Nv.{p.level}){positionsWithComps.has(p.name) ? ` · ${roleComps.filter((rc: any) => rc.position === p.name).length} comp.` : ' · Sin competencias'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {positionsWithout.length > 0 && (
+              <button className="btn-ghost" disabled={saving} onClick={handleBulkAll} style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                {saving ? '...' : `Asignar a ${positionsWithout.length} cargos sin perfil`}
+              </button>
+            )}
+          </div>
+
+          {msg && <p style={{ fontSize: '0.78rem', color: 'var(--success)', marginBottom: '0.75rem' }}>{msg}</p>}
+
+          {/* Assigned competencies for selected position */}
+          {selectedPosition && (
+            <>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                Competencias de "{selectedPosition}" ({filtered.length}):
+              </div>
+
+              {filtered.length === 0 ? (
+                <div style={{ padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '0.75rem' }}>
+                  Sin competencias asignadas. Use el formulario abajo para agregar.
+                  <button className="btn-primary" style={{ display: 'block', margin: '0.5rem auto 0', fontSize: '0.78rem' }} disabled={saving}
+                    onClick={() => handleBulk(selectedPosition)}>
+                    {saving ? '...' : 'Asignar todas las competencias (nivel 5)'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.75rem' }}>
+                  {filtered.map((rc: any) => (
+                    <div key={rc.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{rc.competency?.name || rc.competencyId}</span>
+                        {rc.competency?.category && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '0.35rem' }}>({rc.competency.category})</span>}
+                      </div>
+                      <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Nivel:</label>
+                      <select className="input" value={rc.expectedLevel} onChange={(e) => handleUpdateLevel(rc.id, Number(e.target.value))} style={{ width: 60, fontSize: '0.82rem', padding: '0.2rem 0.4rem' }}>
+                        {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <button onClick={() => handleDelete(rc.id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.85rem', padding: '0.15rem 0.3rem' }} title="Eliminar">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new competency */}
+              {availableComps.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>Agregar competencia</label>
+                    <select className="input" value={addCompId} onChange={(e) => setAddCompId(e.target.value)} style={{ width: '100%', fontSize: '0.82rem' }}>
+                      <option value="">Seleccionar...</option>
+                      {availableComps.map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.category})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>Nivel</label>
+                    <select className="input" value={addLevel} onChange={(e) => setAddLevel(Number(e.target.value))} style={{ width: 60, fontSize: '0.82rem' }}>
+                      {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <button className="btn-primary" onClick={handleAdd} disabled={saving || !addCompId} style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                    {saving ? '...' : 'Agregar'}
+                  </button>
+                </div>
+              )}
+              {availableComps.length === 0 && filtered.length > 0 && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--success)', fontStyle: 'italic' }}>Todas las competencias del catálogo están asignadas a este cargo.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
