@@ -6,17 +6,11 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useAiBias, useAnalyzeBias } from '@/hooks/useAiInsights';
+// useAiBias, useAnalyzeBias moved to analytics/page.tsx
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
-const biasTypeLabel: Record<string, string> = {
-  leniency: 'Lenidad', severity: 'Severidad', halo: 'Efecto Halo',
-  central_tendency: 'Tendencia Central', contrast: 'Contraste',
-};
-const severityBadge: Record<string, string> = {
-  high: 'badge-danger', medium: 'badge-warning', low: 'badge-success',
-};
+// Bias constants moved to analytics/page.tsx
 
 function CycleComparisonPageContent() {
   const { t } = useTranslation();
@@ -33,7 +27,7 @@ function CycleComparisonPageContent() {
   const [quotaInfo, setQuotaInfo] = useState<any>(null);
   const { isBlocked: aiBlocked } = useAiQuota();
   const [showGuide, setShowGuide] = useState(false);
-  const [biasSelectedCycleId, setBiasSelectedCycleId] = useState<string | null>(null);
+  // biasSelectedCycleId removed — bias analysis moved to analytics/page.tsx
 
   useEffect(() => {
     if (!token) return;
@@ -445,193 +439,7 @@ function CycleComparisonPageContent() {
           </div>
         </div>
       )}
-      {/* ═══ Bias Detection Section — admin only ═══ */}
-      {isAdmin && <div className="animate-fade-up" style={{ marginTop: '2rem' }}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {'🔍'} Detección de Sesgos por Ciclo
-        </h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-          Analiza patrones de evaluación (lenidad, severidad, efecto halo) de todos los evaluadores de un ciclo
-        </p>
-
-        {/* Cycle selector for bias */}
-        <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-          <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-            Seleccionar ciclo para análisis de sesgos
-          </label>
-          <select
-            className="input"
-            style={{ width: '100%', maxWidth: '400px' }}
-            value={biasSelectedCycleId || ''}
-            onChange={(e) => setBiasSelectedCycleId(e.target.value || null)}
-          >
-            <option value="">Selecciona un ciclo</option>
-            {cycles.map((c: any) => (
-              <option key={c.cycleId} value={c.cycleId}>{c.cycleName} — Prom: {c.avgScore ?? '—'} ({c.withScores} eval.)</option>
-            ))}
-          </select>
-        </div>
-
-        {biasSelectedCycleId && (
-          <BiasAnalysisSection key={`bias-${biasSelectedCycleId}`} cycleId={biasSelectedCycleId} aiBlocked={aiBlocked} />
-        )}
-      </div>}
-    </div>
-  );
-}
-
-/* ─── Bias Analysis Section (inline in cycle analytics) ───────────────── */
-function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocked: boolean }) {
-  const { data: cached, isLoading } = useAiBias(cycleId);
-  const analyze = useAnalyzeBias();
-
-  if (isLoading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-        <span className="spinner" />
-      </div>
-    );
-  }
-
-  const data = cached?.content;
-
-  if (!data) {
-    return (
-      <div className="card" style={{ padding: '2.5rem', textAlign: 'center' }}>
-        <p style={{ fontSize: '1.3rem', marginBottom: '0.5rem' }}>{'🔍'}</p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '0.5rem' }}>
-          No hay análisis de sesgos para este ciclo
-        </p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '1rem' }}>
-          Cada generación consume 1 crédito de la cuota mensual de tu organización.
-        </p>
-        <button
-          className="btn-primary"
-          onClick={() => analyze.mutate(cycleId)}
-          disabled={analyze.isPending || aiBlocked}
-        >
-          {analyze.isPending ? 'Analizando sesgos...' : aiBlocked ? 'Créditos IA agotados' : 'Analizar Sesgos con IA'}
-        </button>
-        {analyze.isPending && (
-          <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Analizando patrones estadísticos del ciclo... Este proceso puede tardar hasta 30 segundos.
-          </p>
-        )}
-        {analyze.isError && (
-          <p style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
-            No se pudo completar el análisis. Posibles causas: la IA tardó más de lo esperado, no hay suficientes evaluaciones completadas (mínimo 3), o se agotó la cuota mensual de IA. Intente nuevamente en unos minutos.
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  const handleExportBias = () => {
-    if (!data) return;
-    const lines: string[] = [
-      '══════════════════════════════════════════════════════',
-      '  INFORME DE DETECCIÓN DE SESGOS — EvaPro',
-      '══════════════════════════════════════════════════════',
-      '',
-      `Fecha: ${new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-      `Confianza: ${data.confidenceLevel != null ? `${Math.round(data.confidenceLevel * 100)}%` : 'N/A'}`,
-      '',
-      '── EVALUACIÓN GENERAL ──',
-      data.overallAssessment || '',
-      '',
-    ];
-    if (data.dataQuality) {
-      lines.push('── CALIDAD DE DATOS ──', data.dataQuality, '');
-    }
-    if (data.biasesDetected?.length > 0) {
-      lines.push(`── SESGOS DETECTADOS (${data.biasesDetected.length}) ──`, '');
-      data.biasesDetected.forEach((b: any, i: number) => {
-        lines.push(`${i + 1}. ${biasTypeLabel[b.type] || b.type} — Severidad: ${b.severity === 'high' ? 'Alta' : b.severity === 'medium' ? 'Media' : 'Baja'}`);
-        lines.push(`   Evaluador: ${b.evaluatorName}`);
-        lines.push(`   Evidencia: ${b.evidence}`);
-        if (b.affectedEvaluatees) lines.push(`   Evaluados afectados: ${b.affectedEvaluatees.join(', ')}`);
-        if (b.recommendation) lines.push(`   → Recomendación: ${b.recommendation}`);
-        lines.push('');
-      });
-    } else {
-      lines.push('── No se detectaron sesgos significativos ──', '');
-    }
-    lines.push('──────────────────────────────────────────────────', 'Generado por IA (Claude) • Los resultados son orientativos');
-
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `informe-sesgos-${cycleId.slice(0, 8)}.txt`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Export button */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={handleExportBias}>
-          {'📄'} Descargar informe de sesgos
-        </button>
-      </div>
-
-      {/* Overall Assessment */}
-      <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 700 }}>Evaluación General</h3>
-          {data.confidenceLevel != null && (
-            <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>
-              Confianza: {Math.round(data.confidenceLevel * 100)}%
-            </span>
-          )}
-        </div>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{data.overallAssessment}</p>
-        {data.dataQuality && (
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{data.dataQuality}</p>
-        )}
-      </div>
-
-      {/* Biases */}
-      {data.biasesDetected && data.biasesDetected.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 700 }}>Sesgos Detectados ({data.biasesDetected.length})</h3>
-          {data.biasesDetected.map((b: any, i: number) => (
-            <div key={i} className="card" style={{ padding: '1.25rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{biasTypeLabel[b.type] || b.type}</span>
-                <span className={`badge ${severityBadge[b.severity] || 'badge-accent'}`} style={{ fontSize: '0.65rem' }}>
-                  {b.severity === 'high' ? 'Alta' : b.severity === 'medium' ? 'Media' : 'Baja'}
-                </span>
-              </div>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                <strong>Evaluador:</strong> {b.evaluatorName}
-              </p>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                <strong>Evidencia:</strong> {b.evidence}
-              </p>
-              {b.affectedEvaluatees && (
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Evaluados afectados: {b.affectedEvaluatees.join(', ')}
-                </p>
-              )}
-              {b.recommendation && (
-                <p style={{ fontSize: '0.78rem', color: 'var(--accent)', marginTop: '0.3rem', fontWeight: 600 }}>
-                  → {b.recommendation}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--success)', fontSize: '1.2rem', marginBottom: '0.25rem' }}>✅</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No se detectaron sesgos significativos en este ciclo</p>
-        </div>
-      )}
-
-      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-        Generado por IA (Claude) • Solo visible para administradores
-      </p>
+      {/* Nota: Detección de Sesgos se movió a Análisis de Ciclo individual */}
     </div>
   );
 }
