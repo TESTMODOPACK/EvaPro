@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
+import dynamic from 'next/dynamic';
+
+const SignatureModal = dynamic(() => import('@/components/SignatureModal'), { ssr: false });
 
 const docTypeLabels: Record<string, string> = {
   evaluation_response: 'Resultado de Evaluación',
@@ -190,9 +193,11 @@ function FirmasPageContent() {
   const [mySignatures, setMySignatures] = useState<any[]>([]);
   const [teamSignatures, setTeamSignatures] = useState<any[]>([]);
   const [allSignatures, setAllSignatures] = useState<any[]>([]);
+  const [pendingContracts, setPendingContracts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'mine' | 'team' | 'all'>('mine');
   const [showGuide, setShowGuide] = useState(false);
+  const [signingContract, setSigningContract] = useState<any | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -222,6 +227,18 @@ function FirmasPageContent() {
         api.signatures.listAll(token)
           .then((data: any) => setAllSignatures(Array.isArray(data) ? data : []))
           .catch(() => setAllSignatures([]))
+      );
+    }
+
+    // Admin: pending contracts to sign
+    if (isAdmin) {
+      promises.push(
+        api.contracts.list(token)
+          .then((data: any) => {
+            const all = Array.isArray(data) ? data : [];
+            setPendingContracts(all.filter((c: any) => c.status === 'pending_signature'));
+          })
+          .catch(() => setPendingContracts([]))
       );
     }
 
@@ -338,7 +355,53 @@ function FirmasPageContent() {
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Tipos de Documento</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>{docTypes.length}</div>
         </div>
+        {pendingContracts.length > 0 && (
+          <div className="card" style={{ padding: '1.25rem', textAlign: 'center', borderLeft: '3px solid var(--warning, #f59e0b)' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Pendientes de Firma</div>
+            <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--warning, #f59e0b)' }}>{pendingContracts.length}</div>
+          </div>
+        )}
       </div>
+
+      {/* Pending Contracts Section */}
+      {pendingContracts.length > 0 && (
+        <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--warning, #f59e0b)' }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--warning, #f59e0b)' }}>
+            Documentos Pendientes de Firma ({pendingContracts.length})
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {pendingContracts.map((c: any) => {
+              const contractTypeLabels: Record<string, string> = {
+                nda: 'Confidencialidad (NDA)', sla: 'Nivel de Servicio (SLA)',
+                dpa: 'Procesamiento de Datos (DPA)', service_agreement: 'Prestacion de Servicios',
+                terms_conditions: 'Terminos y Condiciones', privacy_policy: 'Politica de Privacidad',
+                amendment: 'Enmienda', other: 'Otro',
+              };
+              return (
+                <div key={c.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '0.6rem 0.85rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm, 6px)',
+                  border: '1px solid var(--border)',
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{c.title}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {contractTypeLabels[c.type] || c.type} · v{c.version || 1} · Desde {c.effectiveDate ? new Date(c.effectiveDate).toLocaleDateString('es-CL') : '—'}
+                    </div>
+                  </div>
+                  <button
+                    className="btn-primary"
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem' }}
+                    onClick={() => setSigningContract(c)}
+                  >
+                    Firmar
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Signature Table */}
       <SignatureTable
@@ -346,6 +409,30 @@ function FirmasPageContent() {
         canVerify={isAdmin || isManager}
         token={token}
       />
+
+      {/* Signature Modal */}
+      {signingContract && (
+        <SignatureModal
+          documentType="contract"
+          documentId={signingContract.id}
+          documentName={signingContract.title}
+          onSigned={() => {
+            setSigningContract(null);
+            // Refresh data
+            if (token) {
+              api.signatures.mine(token).then((d: any) => setMySignatures(Array.isArray(d) ? d : [])).catch(() => {});
+              if (isAdmin) {
+                api.signatures.listAll(token).then((d: any) => setAllSignatures(Array.isArray(d) ? d : [])).catch(() => {});
+                api.contracts.list(token).then((d: any) => {
+                  const all = Array.isArray(d) ? d : [];
+                  setPendingContracts(all.filter((c: any) => c.status === 'pending_signature'));
+                }).catch(() => {});
+              }
+            }
+          }}
+          onCancel={() => setSigningContract(null)}
+        />
+      )}
     </div>
   );
 }
