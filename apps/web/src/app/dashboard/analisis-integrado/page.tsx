@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
+import { api } from '@/lib/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, Cell, ZAxis } from 'recharts';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
@@ -16,12 +17,174 @@ const QUADRANT_CONFIG: Record<string, { label: string; color: string; icon: stri
   no_data: { label: 'Sin datos', color: '#94a3b8', icon: '?', action: 'No hay datos suficientes para clasificar' },
 };
 
+// ─── Cross Result Tab Content ─────────────────────────────────────────
+
+function CrossTabContent({ data, t }: { data: any; t: any }) {
+  const { summary, departments, quadrants, categoryCorrelation, insights } = data || {};
+  const scatterData = (departments || []).filter((d: any) => d.performance != null && d.engagement != null)
+    .map((d: any) => ({ x: d.performance, y: d.engagement, name: d.department, quadrant: d.quadrant }));
+  const corrLabel = summary?.correlation >= 0.5 ? 'Fuerte positiva' : summary?.correlation >= 0.2 ? 'Moderada' : summary?.correlation >= -0.2 ? 'Débil' : 'Negativa';
+
+  return (
+    <div>
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Desempeño Prom.</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: summary?.avgPerformance >= 7 ? '#10b981' : summary?.avgPerformance >= 5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgPerformance ?? '–'}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Escala 0-10</div>
+        </div>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Clima Prom.</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: summary?.avgEngagement >= 3.5 ? '#10b981' : summary?.avgEngagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgEngagement ?? '–'}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Escala 1-5</div>
+        </div>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>eNPS</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: (summary?.eNPS ?? 0) >= 30 ? '#10b981' : (summary?.eNPS ?? 0) >= 0 ? '#f59e0b' : '#ef4444' }}>{summary?.eNPS ?? '–'}</div>
+        </div>
+        <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Correlación</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{summary?.correlation ?? '–'}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{corrLabel}</div>
+        </div>
+      </div>
+
+      {/* Scatter Chart */}
+      {scatterData.length >= 2 && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Mapa de Cuadrantes</h4>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Cada punto es un departamento. Eje X: desempeño (0-10), Eje Y: clima (1-5). Los umbrales definen 4 cuadrantes.</p>
+          <ResponsiveContainer width="100%" height={280}>
+            <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis type="number" dataKey="x" name="Desempeño" domain={[0, 10]} tick={{ fontSize: 10 }}
+                label={{ value: 'Desempeño (0-10)', position: 'bottom', fontSize: 10, fill: '#94a3b8' }} />
+              <YAxis type="number" dataKey="y" name="Clima" domain={[1, 5]} tick={{ fontSize: 10 }}
+                label={{ value: 'Clima (1-5)', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }} />
+              <ZAxis range={[80, 80]} />
+              <Tooltip content={({ payload }: any) => {
+                if (!payload?.[0]) return null;
+                const d = payload[0].payload;
+                const q = QUADRANT_CONFIG[d.quadrant];
+                return (
+                  <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '0.5rem 0.75rem', fontSize: '0.82rem' }}>
+                    <strong>{d.name}</strong><br/>Desempeño: {d.x} | Clima: {d.y}<br/>
+                    <span style={{ color: q?.color }}>{q?.icon} {q?.label}</span>
+                  </div>
+                );
+              }} />
+              <Scatter data={scatterData} name="Departamentos">
+                {scatterData.map((d: any, i: number) => <Cell key={i} fill={QUADRANT_CONFIG[d.quadrant]?.color || '#94a3b8'} />)}
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            <span>Umbral desempeño: ≥ 7.0</span><span>Umbral clima: ≥ 3.5</span>
+          </div>
+        </div>
+      )}
+
+      {/* Quadrant Legend */}
+      <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+        <h4 style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>Clasificación por Cuadrante</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+          {Object.entries(QUADRANT_CONFIG).filter(([k]) => k !== 'no_data').map(([key, q]) => {
+            const count = (quadrants?.[key] || []).length;
+            return (
+              <div key={key} style={{ padding: '0.5rem 0.75rem', background: `${q.color}08`, borderLeft: `3px solid ${q.color}`, borderRadius: '0 6px 6px 0', fontSize: '0.78rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <strong style={{ color: q.color }}>{q.icon} {q.label}</strong>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{count} depto.</span>
+                </div>
+                {count > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{(quadrants?.[key] || []).map((d: any) => d.department).join(', ')}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Department Table */}
+      {departments?.length > 0 && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Detalle por Departamento</h4>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Puntaje de desempeño (evaluaciones) y clima (encuesta) por área, con clasificación de cuadrante.</p>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>Departamento</th>
+                  <th style={{ textAlign: 'center' }}>Desempeño</th>
+                  <th style={{ textAlign: 'center' }}>Clima</th>
+                  <th style={{ textAlign: 'center' }}>Cuadrante</th>
+                  <th style={{ textAlign: 'center' }}>Eval.</th>
+                  <th style={{ textAlign: 'center' }}>Resp.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {departments.map((d: any) => {
+                  const q = QUADRANT_CONFIG[d.quadrant];
+                  return (
+                    <tr key={d.department}>
+                      <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{d.department}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 700, color: d.performance >= 7 ? '#10b981' : d.performance >= 5 ? '#f59e0b' : '#ef4444' }}>{d.performance ?? '–'}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 700, color: d.engagement >= 3.5 ? '#10b981' : d.engagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{d.engagement ?? '–'}</td>
+                      <td style={{ textAlign: 'center' }}><span style={{ padding: '0.15rem 0.5rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: `${q?.color}15`, color: q?.color }}>{q?.icon} {q?.label}</span></td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{d.performanceCount}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{d.engagementCount}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Climate Dimensions */}
+      {categoryCorrelation?.length > 0 && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Dimensiones de Clima</h4>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Promedio de cada categoría de la encuesta de clima (escala 1-5).</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {categoryCorrelation.map((c: any) => {
+              const pct = ((c.avgScore - 1) / 4) * 100;
+              const color = c.avgScore >= 4 ? '#10b981' : c.avgScore >= 3 ? '#f59e0b' : '#ef4444';
+              return (
+                <div key={c.category} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem' }}>
+                  <span style={{ minWidth: 110, fontWeight: 500 }}>{c.category}</span>
+                  <div style={{ flex: 1, height: 7, borderRadius: 999, background: 'var(--border)' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: color, transition: 'width 0.5s' }} />
+                  </div>
+                  <span style={{ fontWeight: 700, color, minWidth: 30, textAlign: 'right' }}>{c.avgScore}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Insights */}
+      {insights?.length > 0 && (
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
+          <h4 style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>Análisis del Cruce</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            {insights.map((ins: string, i: number) => (
+              <p key={i} style={{ margin: 0, paddingLeft: '0.75rem', borderLeft: '2px solid var(--border)' }}>{ins}</p>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────
+
 function AnalisisIntegradoContent() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
-  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
 
@@ -31,33 +194,47 @@ function AnalisisIntegradoContent() {
   const [selectedCycleIds, setSelectedCycleIds] = useState<Set<string>>(new Set());
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>('');
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Results: global summary + per-cycle results
+  const [globalData, setGlobalData] = useState<any>(null);
+  const [perCycleData, setPerCycleData] = useState<Map<string, any>>(new Map());
+  const [activeTabCycleId, setActiveTabCycleId] = useState<string | null>(null);
 
   // Load available data
   useEffect(() => {
     if (!token) return;
     fetch(`${API}/reports/cross-analysis/available`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : { cycles: [], surveys: [] })
-      .then(({ cycles, surveys }) => {
-        setAvailableCycles(cycles || []);
-        setAvailableSurveys(surveys || []);
-      })
+      .then(({ cycles, surveys }) => { setAvailableCycles(cycles || []); setAvailableSurveys(surveys || []); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
 
-  // No auto-load — user must select survey + cycles and click Analyze
-
   const handleAnalyze = async () => {
-    if (!token) return;
+    if (!token || selectedCycleIds.size === 0 || !selectedSurveyId) return;
     setLoadingAnalysis(true);
     setError(null);
+    setGlobalData(null);
+    setPerCycleData(new Map());
+
+    const cycleIdsArr = Array.from(selectedCycleIds);
+
     try {
-      const params = new URLSearchParams();
-      if (selectedCycleIds.size > 0) params.set('cycleIds', Array.from(selectedCycleIds).join(','));
-      if (selectedSurveyId) params.set('surveyId', selectedSurveyId);
-      const res = await fetch(`${API}/reports/cross-analysis?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Error'); }
-      setData(await res.json());
+      // 1. Global analysis (all cycles combined)
+      const globalRes = await api.reports.crossAnalysis(token, cycleIdsArr, selectedSurveyId);
+      setGlobalData(globalRes);
+
+      // 2. Per-cycle analysis (1 call per cycle)
+      const perCycleMap = new Map<string, any>();
+      await Promise.all(cycleIdsArr.map(async (cid) => {
+        try {
+          const res = await api.reports.crossAnalysis(token, [cid], selectedSurveyId);
+          perCycleMap.set(cid, res);
+        } catch { perCycleMap.set(cid, null); }
+      }));
+      setPerCycleData(perCycleMap);
+      setActiveTabCycleId(cycleIdsArr[0]);
     } catch (e: any) { setError(e.message); }
     setLoadingAnalysis(false);
   };
@@ -72,6 +249,7 @@ function AnalisisIntegradoContent() {
       const res = await fetch(`${API}/reports/cross-analysis/export?${exportParams}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -84,13 +262,51 @@ function AnalisisIntegradoContent() {
 
   if (loading) return <PageSkeleton cards={4} tableRows={6} />;
 
-  const { summary, departments, quadrants, categoryCorrelation, insights } = data || {} as any;
+  // Build cycle name map
+  const cycleNameMap = new Map(availableCycles.map((c: any) => [c.id, c.name]));
+  const selectedSurveyName = availableSurveys.find((s: any) => s.id === selectedSurveyId)?.title || '';
 
-  // Scatter data for quadrant chart
-  const scatterData = (departments || []).filter((d: any) => d.performance != null && d.engagement != null)
-    .map((d: any) => ({ x: d.performance, y: d.engagement, name: d.department, quadrant: d.quadrant }));
+  // Generate comparative analysis
+  const generateComparativeAnalysis = (): string[] => {
+    if (perCycleData.size < 2) return [];
+    const analyses: string[] = [];
+    const entries = Array.from(perCycleData.entries()).filter(([, d]) => d?.summary);
 
-  const corrLabel = summary?.correlation >= 0.5 ? t('crossAnalysis.correlationLabels.strong') : summary?.correlation >= 0.2 ? t('crossAnalysis.correlationLabels.moderate') : summary?.correlation >= -0.2 ? t('crossAnalysis.correlationLabels.weak') : t('crossAnalysis.correlationLabels.negative');
+    // Best/worst correlation
+    const byCorr = entries.sort(([, a], [, b]) => (b.summary?.correlation || 0) - (a.summary?.correlation || 0));
+    if (byCorr.length >= 2) {
+      analyses.push(`${cycleNameMap.get(byCorr[0][0]) || 'Ciclo'} tiene la correlación más fuerte entre desempeño y clima (r=${byCorr[0][1].summary?.correlation}), mientras que ${cycleNameMap.get(byCorr[byCorr.length - 1][0]) || 'Ciclo'} tiene la más débil (r=${byCorr[byCorr.length - 1][1].summary?.correlation}).`);
+    }
+
+    // eNPS comparison
+    const byEnps = entries.sort(([, a], [, b]) => (b.summary?.eNPS || 0) - (a.summary?.eNPS || 0));
+    if (byEnps.length >= 2) {
+      analyses.push(`El eNPS más alto corresponde a ${cycleNameMap.get(byEnps[0][0]) || 'Ciclo'} (${byEnps[0][1].summary?.eNPS}) y el más bajo a ${cycleNameMap.get(byEnps[byEnps.length - 1][0]) || 'Ciclo'} (${byEnps[byEnps.length - 1][1].summary?.eNPS}).`);
+    }
+
+    // Consistent star departments
+    const allStars = entries.map(([, d]) => new Set<string>((d.quadrants?.star || []).map((dep: any) => dep.department)));
+    if (allStars.length >= 2) {
+      const consistent = Array.from(allStars[0]).filter(dept => allStars.every(s => s.has(dept)));
+      if (consistent.length > 0) analyses.push(`Departamentos "Estrella" consistentes en todos los cruces: ${consistent.join(', ')}.`);
+    }
+
+    // Consistent critical departments
+    const allCritical = entries.map(([, d]) => new Set<string>((d.quadrants?.critical || []).map((dep: any) => dep.department)));
+    if (allCritical.length >= 2) {
+      const consistent = Array.from(allCritical[0]).filter(dept => allCritical.every(s => s.has(dept)));
+      if (consistent.length > 0) analyses.push(`Departamentos en cuadrante "Crítico" en todos los cruces: ${consistent.join(', ')}. Requieren intervención urgente.`);
+    }
+
+    // Performance trend
+    const byPerf = entries.sort(([, a], [, b]) => (b.summary?.avgPerformance || 0) - (a.summary?.avgPerformance || 0));
+    if (byPerf.length >= 2) {
+      const diff = (byPerf[0][1].summary?.avgPerformance || 0) - (byPerf[byPerf.length - 1][1].summary?.avgPerformance || 0);
+      if (diff > 0.5) analyses.push(`La diferencia de desempeño promedio entre cruces es de ${diff.toFixed(1)} puntos, lo que indica variabilidad entre períodos.`);
+    }
+
+    return analyses;
+  };
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -100,12 +316,10 @@ function AnalisisIntegradoContent() {
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('crossAnalysis.title')}</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-              {t('crossAnalysis.subtitle')}
-              {data?.cycleName && <> · Ciclo: <strong>{data.cycleName}</strong></>}
-              {data?.surveyTitle && <> · Encuesta: <strong>{data.surveyTitle}</strong></>}
+              Correlación entre evaluación de desempeño y clima laboral — un tab por cada cruce ciclo↔encuesta.
             </p>
           </div>
-          {data && !data.error && (
+          {globalData && !globalData.error && (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               {(['pdf', 'xlsx'] as const).map(fmt => (
                 <button key={fmt} className="btn-ghost" onClick={() => handleExport(fmt)} disabled={!!exporting}
@@ -125,71 +339,36 @@ function AnalisisIntegradoContent() {
         </button>
       </div>
       {showGuide && (
-        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('crossAnalysis.guide.title')}</h3>
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Qué es este análisis?</p>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
-              Es un cruce estadístico entre los resultados de evaluación de desempeño y las encuestas de clima laboral. Permite identificar patrones que no se ven al analizar cada sistema por separado.
-            </p>
-          </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Por qué es relevante?</p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              <li>Organizaciones con mejor clima tienen hasta 21% más productividad (Gallup, 2023)</li>
-              <li>Permite intervenciones preventivas en vez de reactivas</li>
-              <li>Identifica departamentos donde alto desempeño coexiste con bajo bienestar (riesgo de rotación)</li>
-              <li>Alinea planes de desarrollo organizacional con datos reales de clima y desempeño</li>
-            </ul>
-          </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>Los 4 Cuadrantes</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.25rem', marginBottom: '1.25rem' }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--accent)', marginBottom: '0.75rem' }}>Guía del Análisis Integrado</h3>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            <p><strong>¿Qué es?</strong> Cruce estadístico entre evaluaciones de desempeño y encuestas de clima. Identifica patrones que no se ven al analizar cada sistema por separado.</p>
+            <p><strong>¿Cómo funciona?</strong> Seleccione 1 encuesta de clima y 1 o más ciclos de evaluación. Se generará un tab por cada cruce ciclo↔encuesta, más un resumen comparativo global.</p>
+            <p><strong>Los 4 Cuadrantes:</strong></p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem', marginBottom: '0.5rem' }}>
               {Object.entries(QUADRANT_CONFIG).filter(([k]) => k !== 'no_data').map(([key, q]) => (
-                <div key={key} style={{ padding: '0.5rem 0.75rem', background: `${q.color}10`, borderLeft: `3px solid ${q.color}`, borderRadius: '0 6px 6px 0', fontSize: '0.8rem' }}>
-                  <strong style={{ color: q.color }}>{q.icon} {q.label}:</strong>{' '}
-                  <span style={{ color: 'var(--text-secondary)' }}>{q.action}</span>
+                <div key={key} style={{ padding: '0.35rem 0.6rem', background: `${q.color}10`, borderLeft: `3px solid ${q.color}`, borderRadius: '0 4px 4px 0', fontSize: '0.78rem' }}>
+                  <strong style={{ color: q.color }}>{q.icon} {q.label}:</strong> {q.action}
                 </div>
               ))}
             </div>
-          </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Cómo seleccionar los datos?</p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              <li>Seleccione <strong>1 encuesta de clima</strong> y <strong>1 o más ciclos de evaluación</strong> del mismo período</li>
-              <li>Si no selecciona nada, se usan automáticamente los datos más recientes</li>
-              <li>Puede comparar una encuesta anual de clima con las 2 evaluaciones semestrales del mismo año</li>
-              <li><strong>Restricción:</strong> La diferencia máxima entre la encuesta y cualquier ciclo es de 1 año</li>
-              <li>Los puntajes de desempeño se promedian entre todos los ciclos seleccionados por departamento</li>
-            </ul>
-          </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>¿Qué es la correlación?</p>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
-              Un coeficiente que mide la relación lineal entre clima y desempeño a nivel departamental: 1.0 = relación perfecta positiva, 0 = sin relación, -1.0 = relación inversa. Valores sobre 0.5 indican que mejorar el clima tiene alto impacto en desempeño.
-            </p>
-          </div>
-          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Administradores ven toda la organización. Encargados de equipo ven solo los datos de su equipo directo. Los datos de clima son anónimos — no se identifica quién respondió qué.
+            <p><strong>Correlación:</strong> Coeficiente Pearson entre clima y desempeño por departamento. Valores ≥0.5 indican relación fuerte positiva.</p>
           </div>
         </div>
       )}
 
       {/* Selectors */}
-      <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
+      <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          {/* Survey selector */}
           <div style={{ flex: '1 1 250px' }}>
             <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Encuesta de Clima</label>
-            <select value={selectedSurveyId} onChange={(e) => { setSelectedSurveyId(e.target.value); setSelectedCycleIds(new Set()); setData(null); }}
-              style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)' }}>
+            <select className="input" value={selectedSurveyId} onChange={(e) => { setSelectedSurveyId(e.target.value); setSelectedCycleIds(new Set()); setGlobalData(null); setPerCycleData(new Map()); }} style={{ fontSize: '0.82rem' }}>
               <option value="">Seleccionar encuesta...</option>
               {availableSurveys.map((s: any) => (
                 <option key={s.id} value={s.id}>{s.title} ({s.endDate ? new Date(s.endDate).toLocaleDateString('es-CL') : ''})</option>
               ))}
             </select>
           </div>
-          {/* Cycles multi-select — filtered by ±1 year from survey end date */}
           {selectedSurveyId && (() => {
             const survey = availableSurveys.find((s: any) => s.id === selectedSurveyId);
             const surveyEnd = survey?.endDate ? new Date(survey.endDate).getTime() : 0;
@@ -201,235 +380,120 @@ function AnalisisIntegradoContent() {
             return (
               <div style={{ flex: '2 1 350px' }}>
                 <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
-                  Ciclos de Evaluación <span style={{ fontWeight: 400, textTransform: 'none' }}>(±1 año de la encuesta, seleccione 1 o más)</span>
+                  Ciclos de Evaluación <span style={{ fontWeight: 400, textTransform: 'none' }}>(cada ciclo genera un tab)</span>
                 </label>
                 <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                   {filteredCycles.length === 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sin ciclos en el rango de ±1 año</span>}
                   {filteredCycles.map((c: any) => {
                     const sel = selectedCycleIds.has(c.id);
-                    const startStr = c.startDate ? new Date(c.startDate).toLocaleDateString('es-CL') : '';
-                    const endStr = c.endDate ? new Date(c.endDate).toLocaleDateString('es-CL') : '';
                     return (
                       <button key={c.id} type="button"
-                        onClick={() => setSelectedCycleIds(prev => {
-                          const next = new Set(prev);
-                          if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
-                          return next;
-                        })}
+                        onClick={() => setSelectedCycleIds(prev => { const next = new Set(prev); if (next.has(c.id)) next.delete(c.id); else next.add(c.id); return next; })}
                         style={{
                           padding: '0.35rem 0.65rem', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem',
                           border: sel ? '2px solid var(--accent)' : '1px solid var(--border)',
                           background: sel ? 'rgba(201,147,58,0.1)' : 'var(--bg-surface)',
-                          color: sel ? 'var(--accent)' : 'var(--text-primary)',
-                          fontWeight: sel ? 700 : 400, cursor: 'pointer',
-                        }}>
-                        {c.name} ({startStr} — {endStr})
-                      </button>
+                          color: sel ? 'var(--accent)' : 'var(--text-primary)', fontWeight: sel ? 700 : 400, cursor: 'pointer',
+                        }}>{c.name}</button>
                     );
                   })}
                 </div>
               </div>
             );
           })()}
-          {/* Analyze button */}
           <button className="btn-primary" onClick={handleAnalyze} disabled={loadingAnalysis || !selectedSurveyId || selectedCycleIds.size === 0}
             style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-            {loadingAnalysis ? 'Analizando...' : 'Analizar'}
+            {loadingAnalysis ? 'Analizando...' : `Analizar (${selectedCycleIds.size} cruce${selectedCycleIds.size !== 1 ? 's' : ''})`}
           </button>
         </div>
-        {!selectedSurveyId && (
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            Selecciona una encuesta de clima para ver los ciclos de evaluación compatibles (±1 año de diferencia).
-          </p>
-        )}
-        {selectedSurveyId && selectedCycleIds.size === 0 && (
-          <p style={{ fontSize: '0.78rem', color: 'var(--warning)', marginTop: '0.5rem' }}>
-            Selecciona al menos 1 ciclo de evaluación para activar el análisis.
-          </p>
-        )}
       </div>
 
       {/* Error */}
-      {data?.error && (
-        <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--danger)' }}>
-          {data.error}
-        </div>
+      {error && (
+        <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--danger)' }}>{error}</div>
       )}
 
-      {/* Results — only shown when data is loaded */}
-      {data && !data.error && <>
-      {/* KPIs */}
-      <div className="animate-fade-up mobile-single-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>{t('crossAnalysis.avgPerformance')}</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: summary?.avgPerformance >= 7 ? '#10b981' : summary?.avgPerformance >= 5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgPerformance ?? '–'}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.scale010')}</div>
-        </div>
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>{t('crossAnalysis.avgEngagement')}</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: summary?.avgEngagement >= 3.5 ? '#10b981' : summary?.avgEngagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgEngagement ?? '–'}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.scale15')}</div>
-        </div>
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>eNPS</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: (summary?.eNPS ?? 0) >= 30 ? '#10b981' : (summary?.eNPS ?? 0) >= 0 ? '#f59e0b' : '#ef4444' }}>{summary?.eNPS ?? '–'}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.promotersDetractors')}</div>
-        </div>
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>{t('crossAnalysis.correlation')}</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent)' }}>{summary?.correlation ?? '–'}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{corrLabel}</div>
-        </div>
-      </div>
-
-      {/* Quadrant Chart */}
-      {scatterData.length >= 2 && (
-        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('crossAnalysis.quadrantMap')}</h2>
-          <ResponsiveContainer width="100%" height={320}>
-            <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" dataKey="x" name="Desempeño" domain={[0, 10]} tick={{ fontSize: 10 }}
-                label={{ value: 'Desempeño (0-10)', position: 'bottom', fontSize: 10, fill: '#94a3b8' }} />
-              <YAxis type="number" dataKey="y" name="Clima" domain={[1, 5]} tick={{ fontSize: 10 }}
-                label={{ value: 'Clima (1-5)', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }} />
-              <ZAxis range={[80, 80]} />
-              <Tooltip content={({ payload }: any) => {
-                if (!payload?.[0]) return null;
-                const d = payload[0].payload;
-                const q = QUADRANT_CONFIG[d.quadrant];
-                return (
-                  <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', fontSize: '0.82rem' }}>
-                    <strong>{d.name}</strong><br/>
-                    Desempeño: {d.x} | Clima: {d.y}<br/>
-                    <span style={{ color: q?.color }}>{q?.icon} {q?.label}</span>
-                  </div>
-                );
-              }} />
-              {/* Reference lines for quadrants */}
-              <Scatter data={scatterData} name="Departamentos">
-                {scatterData.map((d: any, i: number) => (
-                  <Cell key={i} fill={QUADRANT_CONFIG[d.quadrant]?.color || '#94a3b8'} />
-                ))}
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
-          {/* Threshold lines info */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            <span>{t('crossAnalysis.perfThreshold')}: ≥ 7.0</span>
-            <span>{t('crossAnalysis.engThreshold')}: ≥ 3.5</span>
-          </div>
-        </div>
-      )}
-
-      {/* Quadrant Legend (always visible) */}
-      <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
-        <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('crossAnalysis.quadrantClassification')}</h3>
-        <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-          {Object.entries(QUADRANT_CONFIG).filter(([k]) => k !== 'no_data').map(([key, q]) => {
-            const count = (quadrants?.[key] || []).length;
-            return (
-              <div key={key} style={{ padding: '0.65rem 0.85rem', background: `${q.color}08`, borderLeft: `4px solid ${q.color}`, borderRadius: '0 8px 8px 0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                  <span style={{ fontSize: '1rem' }}>{q.icon}</span>
-                  <strong style={{ color: q.color, fontSize: '0.88rem' }}>{q.label}</strong>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{count} depto.</span>
-                </div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>{q.action}</p>
-                {count > 0 && (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                    {(quadrants?.[key] || []).map((d: any) => d.department).join(', ')}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Department Table */}
-      {departments?.length > 0 && (
-        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('crossAnalysis.deptDetail')}</h2>
-          <div className="table-wrapper">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('common.department')}</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('crossAnalysis.avgPerformance')}</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('crossAnalysis.avgEngagement')}</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('crossAnalysis.quadrantClassification')}</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Eval.</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Resp.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(departments || []).map((d: any) => {
-                  const q = QUADRANT_CONFIG[d.quadrant];
-                  return (
-                    <tr key={d.department} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 500 }}>{d.department}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', fontWeight: 700, color: d.performance >= 7 ? '#10b981' : d.performance >= 5 ? '#f59e0b' : '#ef4444' }}>{d.performance ?? '–'}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', fontWeight: 700, color: d.engagement >= 3.5 ? '#10b981' : d.engagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{d.engagement ?? '–'}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>
-                        <span style={{ padding: '0.15rem 0.5rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 600, background: `${q?.color}15`, color: q?.color }}>{q?.icon} {q?.label}</span>
-                      </td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--text-muted)' }}>{d.performanceCount}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--text-muted)' }}>{d.engagementCount}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Climate Category Breakdown */}
-      {categoryCorrelation?.length > 0 && (
-        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('crossAnalysis.climateDimensions')}</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {categoryCorrelation.map((c: any) => {
-              const pct = ((c.avgScore - 1) / 4) * 100; // 1-5 → 0-100%
-              const color = c.avgScore >= 4 ? '#10b981' : c.avgScore >= 3 ? '#f59e0b' : '#ef4444';
-              return (
-                <div key={c.category} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.82rem' }}>
-                  <span style={{ minWidth: '120px', fontWeight: 500 }}>{c.category}</span>
-                  <div style={{ flex: 1, height: '8px', borderRadius: '999px', background: 'var(--border)' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: '999px', background: color, transition: 'width 0.5s' }} />
-                  </div>
-                  <span style={{ fontWeight: 700, color, minWidth: '35px', textAlign: 'right' }}>{c.avgScore}</span>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', minWidth: '80px' }}>{c.interpretation}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Insights */}
-      {insights?.length > 0 && (
-        <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>{t('crossAnalysis.insightsTitle')}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            {insights.map((ins: string, i: number) => (
-              <p key={i} style={{ margin: 0, paddingLeft: '1rem', borderLeft: '2px solid var(--border)' }}>{ins}</p>
-            ))}
-          </div>
-          <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            {t('crossAnalysis.insightsDisclaimer')}
-          </div>
-        </div>
-      )}
-      </>}
-
-      {/* Loading indicator */}
-      {loadingAnalysis && !data && (
+      {/* Loading */}
+      {loadingAnalysis && (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           <span className="spinner" style={{ marginBottom: '1rem' }} />
-          <p>Analizando datos...</p>
+          <p>Analizando {selectedCycleIds.size} cruce{selectedCycleIds.size !== 1 ? 's' : ''}...</p>
         </div>
+      )}
+
+      {/* ═══ RESULTS ═══ */}
+      {globalData && !globalData.error && !loadingAnalysis && (
+        <>
+          {/* Global Summary */}
+          <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>
+              Resumen Global — {selectedCycleIds.size} cruce{selectedCycleIds.size !== 1 ? 's' : ''} con "{selectedSurveyName}"
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Desempeño Prom.</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>{globalData.summary?.avgPerformance ?? '–'}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Clima Prom.</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>{globalData.summary?.avgEngagement ?? '–'}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>eNPS Global</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: (globalData.summary?.eNPS ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)' }}>{globalData.summary?.eNPS ?? '–'}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Correlación</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--accent)' }}>{globalData.summary?.correlation ?? '–'}</div>
+              </div>
+            </div>
+
+            {/* Comparative analysis (only if 2+ cycles) */}
+            {perCycleData.size >= 2 && (() => {
+              const analyses = generateComparativeAnalysis();
+              return analyses.length > 0 ? (
+                <div style={{ marginTop: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Análisis Comparativo entre Cruces:</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    {analyses.map((a, i) => <p key={i} style={{ margin: 0, paddingLeft: '0.75rem', borderLeft: '2px solid var(--accent)' }}>• {a}</p>)}
+                  </div>
+                </div>
+              ) : null;
+            })()}
+          </div>
+
+          {/* Dynamic Tabs — 1 per cycle */}
+          {perCycleData.size > 0 && (
+            <>
+              <div className="animate-fade-up" style={{ display: 'flex', gap: '0.15rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
+                {Array.from(selectedCycleIds).map((cid: string) => (
+                  <button key={cid} onClick={() => setActiveTabCycleId(cid)} style={{
+                    padding: '0.55rem 0.85rem', fontSize: '0.8rem', whiteSpace: 'nowrap',
+                    fontWeight: activeTabCycleId === cid ? 700 : 500,
+                    color: activeTabCycleId === cid ? 'var(--accent)' : 'var(--text-secondary)',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    borderBottom: `2px solid ${activeTabCycleId === cid ? 'var(--accent)' : 'transparent'}`,
+                    marginBottom: '-1px',
+                  }}>
+                    {cycleNameMap.get(cid) || cid.slice(0, 8)} ↔ {selectedSurveyName?.slice(0, 20) || 'Clima'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Active tab content */}
+              {activeTabCycleId && perCycleData.get(activeTabCycleId) && (
+                <div className="animate-fade-up">
+                  <CrossTabContent data={perCycleData.get(activeTabCycleId)} t={t} />
+                </div>
+              )}
+              {activeTabCycleId && !perCycleData.get(activeTabCycleId) && (
+                <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No se pudo cargar el análisis para este ciclo.
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   );
