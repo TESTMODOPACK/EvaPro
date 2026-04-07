@@ -159,6 +159,7 @@ function DesarrolloPageContent() {
   const [showGuide, setShowGuide] = useState(false);
   const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
   const [creating, setCreating] = useState(false);
+  const [createDeptFilter, setCreateDeptFilter] = useState('');
 
   // Detail view
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
@@ -201,7 +202,7 @@ function DesarrolloPageContent() {
     try {
       const promises: Promise<any>[] = [
         api.development.plans.list(token!),
-        api.users.list(token!).catch(() => []),
+        api.users.list(token!, 1, 500).catch(() => []),
         api.development.competencies.list(token!),
         api.orgDevelopment.activeInitiatives(token!).catch(() => []),
       ];
@@ -595,6 +596,19 @@ function DesarrolloPageContent() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
               <div>
                 <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                  Departamento
+                </label>
+                <select className="input" value={createDeptFilter}
+                  onChange={(e) => { setCreateDeptFilter(e.target.value); setPlanForm({ ...planForm, userId: '' }); }}
+                  style={{ width: '100%' }}>
+                  <option value="">Todos los departamentos</option>
+                  {Array.from(new Set(availableUsers.map((u: any) => u.department).filter(Boolean))).sort().map((d: any) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
                   {t('desarrollo.form.collaborator')}
                 </label>
                 <select
@@ -604,9 +618,12 @@ function DesarrolloPageContent() {
                   required
                   style={{ width: '100%' }}
                 >
-                  <option value="">{t('desarrollo.form.selectCollaborator')}</option>
-                  {availableUsers.map((u: any) => (
-                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}</option>
+                  <option value="">{t('desarrollo.form.selectCollaborator')} ({availableUsers.filter((u: any) => !createDeptFilter || u.department === createDeptFilter).length})</option>
+                  {availableUsers
+                    .filter((u: any) => !createDeptFilter || u.department === createDeptFilter)
+                    .sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
+                    .map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}{!createDeptFilter && u.department ? ` · ${u.department}` : ''}</option>
                   ))}
                 </select>
               </div>
