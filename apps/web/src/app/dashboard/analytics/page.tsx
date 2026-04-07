@@ -432,8 +432,9 @@ const severityBadge: Record<string, string> = {
 
 /* ─── Bias Analysis Section (moved from analytics-ciclos) ────────── */
 function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocked: boolean }) {
-  const { data, isLoading } = useAiBias(cycleId);
+  const { data: cached, isLoading } = useAiBias(cycleId);
   const analyze = useAnalyzeBias();
+  const data = cached?.content; // AiInsight.content holds the actual bias analysis
 
   if (isLoading) return <Spinner />;
 
