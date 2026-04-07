@@ -242,7 +242,10 @@ export default function NuevoProcesoPage() {
                             await api.tenants.setPositionsCatalog(token, current);
                             setPosition(newPosName.trim());
                             setNewPosName(''); setShowNewPosition(false);
-                          } catch {}
+                            toast('Cargo creado correctamente', 'success');
+                          } catch (err: any) {
+                            toast(err.message || 'Error al crear el cargo', 'error');
+                          }
                         }}>Crear</button>
                         <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowNewPosition(false)}>Cancelar</button>
                       </div>

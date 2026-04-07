@@ -243,7 +243,7 @@ function FirmasPageContent() {
     }
 
     Promise.all(promises).finally(() => setLoading(false));
-  }, [token, isAdmin, isManager]);
+  }, [token, role]);
 
   if (loading) return <PageSkeleton cards={3} tableRows={8} />;
 
@@ -418,9 +418,12 @@ function FirmasPageContent() {
           documentName={signingContract.title}
           onSigned={() => {
             setSigningContract(null);
-            // Refresh data
+            // Refresh all data
             if (token) {
               api.signatures.mine(token).then((d: any) => setMySignatures(Array.isArray(d) ? d : [])).catch(() => {});
+              if (isManager || isAdmin) {
+                api.signatures.team(token).then((d: any) => setTeamSignatures(Array.isArray(d) ? d : [])).catch(() => {});
+              }
               if (isAdmin) {
                 api.signatures.listAll(token).then((d: any) => setAllSignatures(Array.isArray(d) ? d : [])).catch(() => {});
                 api.contracts.list(token).then((d: any) => {
