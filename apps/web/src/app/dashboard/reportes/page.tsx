@@ -106,9 +106,34 @@ export default function ReportesPage() {
   const [compareCycleId, setCompareCycleId] = useState<string | null>(null);
   const [compareSummary, setCompareSummary] = useState<any>(null);
 
-  // Flight risk (uses react-query hook)
-  const { data: flightRisk } = useFlightRisk();
-  const { data: retentionRecs } = useRetentionRecommendations();
+  // Team members (for manager filtering)
+  const [teamUserIds, setTeamUserIds] = useState<Set<string>>(new Set());
+
+  // Flight risk (uses react-query hook) — filtered for managers
+  const { data: rawFlightRisk } = useFlightRisk();
+  const { data: rawRetentionRecs } = useRetentionRecommendations();
+
+  // Filter flight risk and retention for managers (only show their team)
+  const flightRisk = !isAdmin && rawFlightRisk && teamUserIds.size > 0
+    ? {
+        ...rawFlightRisk,
+        scores: (rawFlightRisk.scores || []).filter((s: any) => teamUserIds.has(s.userId)),
+        totalEmployees: teamUserIds.size,
+        summary: {
+          high: (rawFlightRisk.scores || []).filter((s: any) => teamUserIds.has(s.userId) && s.riskLevel === 'high').length,
+          medium: (rawFlightRisk.scores || []).filter((s: any) => teamUserIds.has(s.userId) && s.riskLevel === 'medium').length,
+          low: (rawFlightRisk.scores || []).filter((s: any) => teamUserIds.has(s.userId) && s.riskLevel === 'low').length,
+        },
+      }
+    : rawFlightRisk;
+  const retentionRecs = !isAdmin && rawRetentionRecs && teamUserIds.size > 0
+    ? {
+        ...rawRetentionRecs,
+        recommendations: (rawRetentionRecs.recommendations || []).filter((r: any) => teamUserIds.has(r.userId)),
+        totalHighRisk: (rawRetentionRecs.recommendations || []).filter((r: any) => teamUserIds.has(r.userId) && r.riskLevel === 'high').length,
+        totalMediumRisk: (rawRetentionRecs.recommendations || []).filter((r: any) => teamUserIds.has(r.userId) && r.riskLevel === 'medium').length,
+      }
+    : rawRetentionRecs;
 
   // Tab loading flags
   const [loadedTabs, setLoadedTabs] = useState<Set<TabKey>>(new Set());
@@ -134,6 +159,15 @@ export default function ReportesPage() {
   useEffect(() => {
     if (!token || !selectedCycleId) return;
     api.reports.executiveDashboard(token, selectedCycleId).then(setExecData).catch(() => {});
+    // For managers: load team members (direct reports) to filter cross-tab data
+    if (!isAdmin) {
+      api.users.list(token, 1, 500).then((res: any) => {
+        const users = Array.isArray(res) ? res : res?.data || [];
+        const myId = useAuthStore.getState().user?.userId;
+        const myTeam = users.filter((u: any) => u.managerId === myId);
+        setTeamUserIds(new Set(myTeam.map((u: any) => u.id)));
+      }).catch(() => {});
+    }
     // Reset tab-specific data
     setLoadedTabs(new Set());
     setCycleCompData(null); setTurnoverData(null); setMovData(null);
@@ -154,8 +188,11 @@ export default function ReportesPage() {
       mark();
     }
     if (activeTab === 'headcount' && !turnoverData) {
-      api.reports.turnover(token).then(setTurnoverData).catch(() => {});
-      api.reports.movements(token).then(setMovData).catch(() => {});
+      // Turnover and movements are admin-only endpoints — silently skip for managers
+      if (isAdmin) {
+        api.reports.turnover(token).then(setTurnoverData).catch(() => {});
+        api.reports.movements(token).then(setMovData).catch(() => {});
+      }
       mark();
     }
     if (activeTab === 'development' && !pdiData) {
