@@ -661,33 +661,32 @@ export default function MiDesempenoPage() {
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{teamCompletedEvals.filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter).length} evaluaciones</span>
               </div>
 
-              {/* Completed team evals */}
-              {teamCompletedEvals.length === 0 && (
-                <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin evaluaciones del equipo completadas.</div>
-              )}
-              {teamCompletedEvals.length > 0 && (() => {
-                const filteredEvals = teamCompletedEvals.filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter);
-                const byEvaluatee: Record<string, { name: string; evals: any[] }> = {};
-                for (const ev of filteredEvals) {
-                  const eid = ev.evaluateeId || 'unknown';
-                  const ename = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--';
-                  if (!byEvaluatee[eid]) byEvaluatee[eid] = { name: ename, evals: [] };
-                  byEvaluatee[eid].evals.push(ev);
-                }
-                return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {Object.entries(byEvaluatee).length === 0 && (
-                    <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin evaluaciones para el ciclo seleccionado.</div>
-                  )}
-                  {Object.entries(byEvaluatee).map(([eid, { name, evals }]) => (
+              {/* Team evals — split into Direct Reports + Other Departments */}
+              {(() => {
+                const allFiltered = completed.filter((ev: any) => ev.evaluateeId !== myUserId && ev.evaluatee?.role !== 'tenant_admin')
+                  .filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter);
+                const directEvals = allFiltered.filter((ev: any) => teamMemberIds.has(ev.evaluateeId));
+                const otherEvals = allFiltered.filter((ev: any) => !teamMemberIds.has(ev.evaluateeId));
+
+                const renderGroup = (evals: any[], prefix: string) => {
+                  const byPerson: Record<string, { name: string; dept: string; items: any[] }> = {};
+                  for (const ev of evals) {
+                    const eid = ev.evaluateeId || 'unknown';
+                    const ename = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--';
+                    const dept = ev.evaluatee?.department || '';
+                    if (!byPerson[eid]) byPerson[eid] = { name: ename, dept, items: [] };
+                    byPerson[eid].items.push(ev);
+                  }
+                  return Object.entries(byPerson).map(([eid, { name, dept, items }]) => (
                     <div key={eid} className="card" style={{ padding: '0.75rem 1rem' }}>
-                      <button onClick={() => setExpandedTeamMember(expandedTeamMember === `eval-${eid}` ? null : `eval-${eid}`)}
+                      <button onClick={() => setExpandedTeamMember(expandedTeamMember === `${prefix}-${eid}` ? null : `${prefix}-${eid}`)}
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
-                        <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedTeamMember === `eval-${eid}` ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                        <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedTeamMember === `${prefix}-${eid}` ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
                         <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{name}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{evals.length} evaluación{evals.length !== 1 ? 'es' : ''}</span>
+                        {dept && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>· {dept}</span>}
+                        <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{items.length} eval.</span>
                       </button>
-                      {expandedTeamMember === `eval-${eid}` && (
+                      {expandedTeamMember === `${prefix}-${eid}` && (
                         <div style={{ marginTop: '0.5rem' }}>
                           <div className="table-wrapper">
                             <table>
@@ -696,7 +695,7 @@ export default function MiDesempenoPage() {
                                 <th>Tipo</th><th>Ciclo</th><th>Puntaje</th><th>Fecha</th>
                               </tr></thead>
                               <tbody>
-                                {evals.map((ev: any, j: number) => (
+                                {items.map((ev: any, j: number) => (
                                   <tr key={j}>
                                     <td style={{ fontSize: '0.82rem' }}>{ev.evaluator ? `${ev.evaluator.firstName} ${ev.evaluator.lastName}` : '--'}</td>
                                     <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
@@ -711,7 +710,32 @@ export default function MiDesempenoPage() {
                         </div>
                       )}
                     </div>
-                  ))}
+                  ));
+                };
+
+                return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {/* Section 1: Mi Equipo Directo */}
+                  <div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                      Mi Equipo Directo ({directEvals.length} evaluaciones)
+                    </div>
+                    {directEvals.length === 0 ? (
+                      <div className="card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin evaluaciones de tu equipo directo.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>{renderGroup(directEvals, 'direct')}</div>
+                    )}
+                  </div>
+
+                  {/* Section 2: Otras evaluaciones de otros departamentos */}
+                  {otherEvals.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                        Otras evaluaciones realizadas ({otherEvals.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>{renderGroup(otherEvals, 'other')}</div>
+                    </div>
+                  )}
                 </div>
                 );
               })()}
