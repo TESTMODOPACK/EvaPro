@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// jsPDF and autoTable loaded dynamically in export methods to avoid ESM issues
 import { TalentAssessment } from './entities/talent-assessment.entity';
 import { CalibrationSession } from './entities/calibration-session.entity';
 import { CalibrationEntry } from './entities/calibration-entry.entity';
@@ -616,6 +615,8 @@ export class TalentService {
       order: { createdAt: 'ASC' },
     });
 
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -654,7 +655,7 @@ export class TalentService {
       e.approvalRequired ? (e.approvalStatus === 'approved' ? 'Aprobado' : e.approvalStatus === 'rejected' ? 'Rechazado' : 'Pendiente') : '—',
     ]);
 
-    (autoTable as any)(doc, {
+    autoTable(doc, {
       startY: 94,
       head: [['Evaluado', 'Score Original', 'Score Ajustado', 'Diferencia', 'Justificación', 'Aprobación']],
       body: tableData,
@@ -783,6 +784,8 @@ export class TalentService {
     const assessments = await this.findByCycle(tenantId, cycleId, managerId);
     const segmentation = await this.getSegmentation(tenantId, cycleId, managerId);
 
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF('l', 'mm', 'a4');
     const pageW = doc.internal.pageSize.getWidth();
     const margin = 14;
