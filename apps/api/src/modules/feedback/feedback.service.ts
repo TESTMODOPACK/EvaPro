@@ -478,30 +478,12 @@ export class FeedbackService {
   }
 
   async createQuickFeedback(tenantId: string, fromUserId: string, dto: CreateQuickFeedbackDto, role: string = 'employee'): Promise<QuickFeedback> {
-    // 1. Validate recipient scope by role FIRST (authorization before processing)
-    if (role !== 'tenant_admin' && role !== 'super_admin') {
-      const sender = await this.userRepo.findOne({ where: { id: fromUserId, tenantId }, select: ['id', 'department', 'managerId'] });
-      const recipient = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'managerId'] });
-      if (!sender) throw new NotFoundException('Usuario emisor no encontrado');
-      if (!recipient) throw new NotFoundException('Usuario destinatario no encontrado');
+    // 1. Validate recipient exists in same tenant
+    const recipient = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id'] });
+    if (!recipient) throw new NotFoundException('Destinatario no encontrado en esta organización');
+    // No department/team restriction — any collaborator can send feedback to any other in the org
 
-      // Same department check: both must have a non-null department and match
-      const sameDept = !!(sender.department && recipient.department && sender.department === recipient.department);
-
-      if (role === 'employee') {
-        const isMyManager = !!(sender.managerId && sender.managerId === recipient.id);
-        if (!sameDept && !isMyManager) {
-          throw new ForbiddenException('Solo puedes enviar feedback a miembros de tu departamento o tu jefatura directa.');
-        }
-      } else if (role === 'manager') {
-        const isDirectReport = !!(recipient.managerId && recipient.managerId === fromUserId);
-        if (!sameDept && !isDirectReport) {
-          throw new ForbiddenException('Solo puedes enviar feedback a tu equipo directo o miembros de tu departamento.');
-        }
-      }
-    }
-
-    // 2. Validate content (after authorization)
+    // 2. Validate content
     this.validateFeedbackContent(dto.message);
 
     const qf = this.quickFeedbackRepo.create({
@@ -535,10 +517,10 @@ export class FeedbackService {
     }).catch(() => {});
 
     // Send email to feedback recipient
-    const recipient = await this.userRepo.findOne({ where: { id: dto.toUserId }, select: ['id', 'email', 'firstName'] });
-    if (recipient?.email) {
-      this.emailService.sendFeedbackReceived(recipient.email, {
-        firstName: recipient.firstName,
+    const recipientUser = await this.userRepo.findOne({ where: { id: dto.toUserId }, select: ['id', 'email', 'firstName'] });
+    if (recipientUser?.email) {
+      this.emailService.sendFeedbackReceived(recipientUser.email, {
+        firstName: recipientUser.firstName,
         senderName,
         sentiment: dto.sentiment || 'neutral',
         message: dto.message,

@@ -607,21 +607,8 @@ function QuickFeedbackTab() {
     }
     return true;
   });
-  // Department dropdown — show only departments within the user's role scope (before search filter)
-  const scopedUsers = allUsers.filter((u: any) => {
-    if (u.id === currentUserId || !u.isActive) return false;
-    if (currentRole === 'employee') {
-      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
-      const isMyManager = !!(myManagerId && u.id === myManagerId);
-      return sameDept || isMyManager;
-    }
-    if (currentRole === 'manager') {
-      const isDirectReport = !!(u.managerId && u.managerId === currentUserId);
-      const sameDept = !!(myDepartment && u.department && u.department === myDepartment);
-      return isDirectReport || sameDept;
-    }
-    return true;
-  });
+  // All active users except self — no department/team restriction
+  const scopedUsers = allUsers.filter((u: any) => u.id !== currentUserId && u.isActive);
   const recipientDepts = Array.from(new Set(scopedUsers.map((u: any) => u.department).filter(Boolean))).sort() as string[];
   const feedbackList = subTab === 'received' ? received : given;
   const isLoading = subTab === 'received' ? loadingReceived : loadingGiven;
