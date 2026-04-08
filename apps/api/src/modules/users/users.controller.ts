@@ -47,11 +47,14 @@ export class UsersController {
     @Query('role') role?: string,
     @Query('position') position?: string,
     @Query('status') status?: string,
+    @Query('tenantId') filterTenantId?: string,
   ) {
     const filters = (search || department || role || position || status)
       ? { search, department, role, position, status }
       : undefined;
-    return this.usersService.findAll(req.user.tenantId, page, limit, filters);
+    // super_admin can query any tenant's users via ?tenantId=
+    const tenantId = (req.user.role === 'super_admin' && filterTenantId) ? filterTenantId : req.user.tenantId;
+    return this.usersService.findAll(tenantId, page, limit, filters);
   }
 
   /** GET /users/org-chart — Hierarchical org chart tree */

@@ -234,7 +234,7 @@ export default function TenantsPage() {
 
   const handleDeactivate = async (id: string, name: string) => {
     if (!token) return;
-    if (!confirm(`Desactivar la organizacion "${name}"?`)) return;
+    if (!confirm(`Desactivar la organizaci\u00f3n "${name}"?`)) return;
     try {
       await api.tenants.deactivate(token, id);
       setSuccess('Organizacion desactivada');
@@ -267,12 +267,12 @@ export default function TenantsPage() {
     setEditingId(t.id);
     setShowForm(true);
     setError('');
-    // Load tenant admin
+    // Load tenant admin by querying users of that specific tenant
     setTenantAdmin(null);
     if (token) {
-      api.users.list(token, 1, 10, { role: 'tenant_admin' }).then((res: any) => {
+      api.users.list(token, 1, 10, { role: 'tenant_admin', tenantId: t.id }).then((res: any) => {
         const users = (res as any).data || res || [];
-        const admin = users.find((u: any) => u.tenantId === t.id && u.role === 'tenant_admin');
+        const admin = users.find((u: any) => u.role === 'tenant_admin');
         if (admin) setTenantAdmin(admin);
       }).catch(() => {});
     }
@@ -303,14 +303,14 @@ export default function TenantsPage() {
       <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Organizaciones</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestión de organizaciones de la plataforma</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestión de organizaci\u00f3nes de la plataforma</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" onClick={() => { setShowUpload(!showUpload); setUploadResult(null); }}>
             {showUpload ? 'Cancelar carga' : 'Cargar desde Excel'}
           </button>
           <button className="btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
-            + Nueva organizacion
+            + Nueva organizaci\u00f3n
           </button>
         </div>
       </div>
@@ -575,7 +575,7 @@ export default function TenantsPage() {
       {showForm && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
-            {editingId ? 'Editar organizacion' : 'Nueva organizacion'}
+            {editingId ? 'Editar organizaci\u00f3n' : 'Nueva organizaci\u00f3n'}
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
@@ -660,11 +660,11 @@ export default function TenantsPage() {
           {/* Admin fields — Create: new admin / Edit: show & edit existing admin */}
           <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
             <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-              {editingId ? 'Administrador de la organizacion' : 'Admin inicial (opcional)'}
+              {editingId ? 'Administrador de la Organizaci\u00f3n' : 'Admin inicial (opcional)'}
             </p>
           </div>
           {editingId && !tenantAdmin && (
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Cargando datos del administrador...</p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Buscando administrador de la organizaci\u00f3n...</p>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
             <div>
@@ -723,7 +723,7 @@ export default function TenantsPage() {
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
             <button className="btn-primary" onClick={editingId ? handleUpdate : handleCreate} disabled={saving}>
-              {saving ? 'Guardando...' : editingId ? 'Actualizar' : 'Crear organizacion'}
+              {saving ? 'Guardando...' : editingId ? 'Actualizar' : 'Crear organizaci\u00f3n'}
             </button>
             <button className="btn-ghost" onClick={resetForm}>Cancelar</button>
           </div>
@@ -737,8 +737,8 @@ export default function TenantsPage() {
         <div className="card animate-fade-up-delay-1" style={{ padding: 0, overflow: 'hidden' }}>
           {tenants.length === 0 ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p style={{ fontWeight: 600, marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>Sin organizaciones</p>
-              <p style={{ fontSize: '0.85rem' }}>Crea la primera organizacion para comenzar</p>
+              <p style={{ fontWeight: 600, marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>Sin organizaci\u00f3nes</p>
+              <p style={{ fontSize: '0.85rem' }}>Crea la primera organizaci\u00f3n para comenzar</p>
             </div>
           ) : (
             <div className="table-wrapper">

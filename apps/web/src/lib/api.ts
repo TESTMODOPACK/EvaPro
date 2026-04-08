@@ -431,13 +431,14 @@ export const api = {
   },
 
   users: {
-    list: (token: string, page = 1, limit = 10, filters?: { search?: string; department?: string; role?: string; position?: string; status?: string }) => {
+    list: (token: string, page = 1, limit = 10, filters?: { search?: string; department?: string; role?: string; position?: string; status?: string; tenantId?: string }) => {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (filters?.search) params.set('search', filters.search);
       if (filters?.department) params.set('department', filters.department);
       if (filters?.role) params.set('role', filters.role);
       if (filters?.position) params.set('position', filters.position);
       if (filters?.status) params.set('status', filters.status);
+      if (filters?.tenantId) params.set('tenantId', filters.tenantId);
       return request<PaginatedResponse<UserData>>(`/users?${params.toString()}`, {}, token);
     },
     me: (token: string) =>
