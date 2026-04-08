@@ -528,16 +528,33 @@ export class EvaluationsService {
 
   // ─── Auto-generate assignments based on cycle type + org structure ─────
 
-  async autoGenerateAssignments(tenantId: string, cycleId: string): Promise<{ created: number; skipped: number }> {
+  async autoGenerateAssignments(
+    tenantId: string,
+    cycleId: string,
+  ): Promise<{
+    created: number;
+    skipped: number;
+    exceptions: Array<{
+      evaluateeId: string;
+      evaluateeName: string;
+      department: string | null;
+      type: string;
+      message: string;
+      relationType: string;
+      available?: number;
+      required?: number;
+    }>;
+  }> {
     const cycle = await this.findCycleById(cycleId, tenantId);
     if (cycle.status !== CycleStatus.DRAFT) {
       throw new BadRequestException('Solo se pueden generar asignaciones en ciclos en borrador');
     }
 
-    const allowedRelations = this.getAllowedRelations(cycle.type as CycleType);
+    const cycleType = cycle.type as CycleType;
+    const allowedRelations = this.getAllowedRelations(cycleType);
     const users = await this.userRepo.find({
       where: { tenantId, isActive: true },
-      select: ['id', 'managerId', 'role', 'department', 'firstName', 'lastName'],
+      select: ['id', 'managerId', 'role', 'department', 'firstName', 'lastName', 'hierarchyLevel'],
     });
 
     // Exclude super_admin and external from evaluatees
@@ -553,10 +570,21 @@ export class EvaluationsService {
     );
 
     const toCreate: Partial<PeerAssignment>[] = [];
-    let skipped = 0;
+    const exceptions: Array<{
+      evaluateeId: string;
+      evaluateeName: string;
+      department: string | null;
+      type: string;
+      message: string;
+      relationType: string;
+      available?: number;
+      required?: number;
+    }> = [];
+
+    const evalName = (u: { firstName: string; lastName: string }) => `${u.firstName} ${u.lastName}`;
 
     for (const evaluatee of evaluatees) {
-      // Self-evaluation
+      // ── Self-evaluation ──
       if (allowedRelations.includes(RelationType.SELF)) {
         const key = `${evaluatee.id}|${evaluatee.id}|${RelationType.SELF}`;
         if (!existingSet.has(key)) {
@@ -570,59 +598,148 @@ export class EvaluationsService {
         }
       }
 
-      // Manager evaluation — only if manager is in the same department
-      if (allowedRelations.includes(RelationType.MANAGER) && evaluatee.managerId) {
-        const manager = users.find((u) => u.id === evaluatee.managerId);
-        const sameDept = !!(evaluatee.department && manager?.department && evaluatee.department === manager.department);
-        if (sameDept) {
-          const key = `${evaluatee.id}|${evaluatee.managerId}|${RelationType.MANAGER}`;
-          if (!existingSet.has(key)) {
-            toCreate.push({
-              tenantId,
-              cycleId,
-              evaluateeId: evaluatee.id,
-              evaluatorId: evaluatee.managerId,
-              relationType: RelationType.MANAGER,
-            });
-          }
+      // ── Manager evaluation ──
+      if (allowedRelations.includes(RelationType.MANAGER)) {
+        if (!evaluatee.managerId) {
+          exceptions.push({
+            evaluateeId: evaluatee.id,
+            evaluateeName: evalName(evaluatee),
+            department: evaluatee.department,
+            type: 'NO_MANAGER',
+            message: 'No tiene jefe directo asignado',
+            relationType: 'manager',
+          });
         } else {
-          skipped++;
-          console.warn(`[AutoGen] Skipped: ${evaluatee.firstName} ${evaluatee.lastName} (${evaluatee.department}) — manager ${manager?.firstName} ${manager?.lastName} is in different dept (${manager?.department})`);
+          const manager = users.find((u) => u.id === evaluatee.managerId);
+          if (!evaluatee.department) {
+            exceptions.push({
+              evaluateeId: evaluatee.id,
+              evaluateeName: evalName(evaluatee),
+              department: null,
+              type: 'NO_DEPARTMENT',
+              message: 'No tiene departamento asignado',
+              relationType: 'manager',
+            });
+          } else if (!manager?.department || evaluatee.department !== manager.department) {
+            exceptions.push({
+              evaluateeId: evaluatee.id,
+              evaluateeName: evalName(evaluatee),
+              department: evaluatee.department,
+              type: 'MANAGER_DIFF_DEPT',
+              message: `Jefe ${manager ? evalName(manager) : '(no encontrado)'} está en departamento distinto (${manager?.department || 'sin depto'})`,
+              relationType: 'manager',
+            });
+          } else {
+            const key = `${evaluatee.id}|${evaluatee.managerId}|${RelationType.MANAGER}`;
+            if (!existingSet.has(key)) {
+              toCreate.push({
+                tenantId,
+                cycleId,
+                evaluateeId: evaluatee.id,
+                evaluatorId: evaluatee.managerId,
+                relationType: RelationType.MANAGER,
+              });
+            }
+          }
         }
       }
 
-      // Direct reports evaluate upward (360° only) — same department only
+      // ── Direct reports (360° only) — same department ──
       if (allowedRelations.includes(RelationType.DIRECT_REPORT)) {
         const directReports = users.filter((u) =>
           u.managerId === evaluatee.id &&
           u.role !== 'super_admin' && u.role !== 'external' &&
-          (!!(evaluatee.department && u.department && evaluatee.department === u.department))
+          !!(evaluatee.department && u.department && evaluatee.department === u.department),
         );
-        for (const dr of directReports) {
-          const key = `${evaluatee.id}|${dr.id}|${RelationType.DIRECT_REPORT}`;
-          if (!existingSet.has(key)) {
-            toCreate.push({
-              tenantId,
-              cycleId,
-              evaluateeId: evaluatee.id,
-              evaluatorId: dr.id,
-              relationType: RelationType.DIRECT_REPORT,
-            });
+        if (directReports.length === 0) {
+          exceptions.push({
+            evaluateeId: evaluatee.id,
+            evaluateeName: evalName(evaluatee),
+            department: evaluatee.department,
+            type: 'NO_DIRECT_REPORTS',
+            message: 'No tiene reportes directos en su departamento',
+            relationType: 'direct_report',
+          });
+        } else {
+          for (const dr of directReports) {
+            const key = `${evaluatee.id}|${dr.id}|${RelationType.DIRECT_REPORT}`;
+            if (!existingSet.has(key)) {
+              toCreate.push({
+                tenantId,
+                cycleId,
+                evaluateeId: evaluatee.id,
+                evaluatorId: dr.id,
+                relationType: RelationType.DIRECT_REPORT,
+              });
+            }
           }
         }
       }
+
+      // ── Peer auto-assignment (270° only — same department, min 3) ──
+      if (cycleType === CycleType.DEGREE_270 && allowedRelations.includes(RelationType.PEER)) {
+        if (!evaluatee.department) {
+          exceptions.push({
+            evaluateeId: evaluatee.id,
+            evaluateeName: evalName(evaluatee),
+            department: null,
+            type: 'NO_DEPARTMENT',
+            message: 'No tiene departamento asignado — no se pueden asignar pares',
+            relationType: 'peer',
+          });
+        } else {
+          // Candidates: same department, not self, not their manager, active, not super_admin/external
+          const peerCandidates = evaluatees.filter((u) =>
+            u.id !== evaluatee.id &&
+            u.id !== evaluatee.managerId &&
+            u.department === evaluatee.department &&
+            !existingSet.has(`${evaluatee.id}|${u.id}|${RelationType.PEER}`),
+          );
+
+          if (peerCandidates.length < 3) {
+            exceptions.push({
+              evaluateeId: evaluatee.id,
+              evaluateeName: evalName(evaluatee),
+              department: evaluatee.department,
+              type: 'INSUFFICIENT_PEERS',
+              message: `Solo ${peerCandidates.length} par(es) disponible(s) en el departamento (mínimo 3)`,
+              relationType: 'peer',
+              available: peerCandidates.length,
+              required: 3,
+            });
+          } else {
+            // Sort by hierarchy level proximity, then by name
+            const sorted = [...peerCandidates].sort((a, b) => {
+              if (evaluatee.hierarchyLevel != null) {
+                const distA = a.hierarchyLevel != null ? Math.abs(a.hierarchyLevel - evaluatee.hierarchyLevel) : 100;
+                const distB = b.hierarchyLevel != null ? Math.abs(b.hierarchyLevel - evaluatee.hierarchyLevel) : 100;
+                if (distA !== distB) return distA - distB;
+              }
+              return evalName(a).localeCompare(evalName(b));
+            });
+
+            // Assign top 3 closest peers
+            for (const peer of sorted.slice(0, 3)) {
+              toCreate.push({
+                tenantId,
+                cycleId,
+                evaluateeId: evaluatee.id,
+                evaluatorId: peer.id,
+                relationType: RelationType.PEER,
+              });
+            }
+          }
+        }
+      }
+      // Note: For 360°, PEER assignments are NOT auto-generated (admin must select peers manually)
     }
 
-    // Note: PEER assignments are NOT auto-generated (admin must select peers manually)
-
-    if (toCreate.length === 0) {
-      return { created: 0, skipped };
+    if (toCreate.length > 0) {
+      const entities = toCreate.map((pa) => this.peerAssignmentRepo.create(pa));
+      await this.peerAssignmentRepo.save(entities);
     }
 
-    const entities = toCreate.map((pa) => this.peerAssignmentRepo.create(pa));
-    await this.peerAssignmentRepo.save(entities);
-
-    return { created: toCreate.length, skipped: 0 };
+    return { created: toCreate.length, skipped: exceptions.length, exceptions };
   }
 
   async getAllowedRelationsForCycle(tenantId: string, cycleId: string) {
@@ -641,6 +758,10 @@ export class EvaluationsService {
     const evaluatee = await this.userRepo.findOne({ where: { id: evaluateeId, tenantId } });
     if (!evaluatee) return [];
 
+    // Determine cycle type to decide department filtering
+    const cycle = await this.findCycleById(cycleId, tenantId);
+    const is270 = cycle.type === CycleType.DEGREE_270;
+
     // Get already assigned peers for this evaluatee in this cycle
     const existing = await this.peerAssignmentRepo.find({
       where: { tenantId, cycleId, evaluateeId },
@@ -656,6 +777,11 @@ export class EvaluationsService {
       .andWhere('u.id != :evaluateeId', { evaluateeId })
       .andWhere("u.role NOT IN ('super_admin', 'external')")
       .select(['u.id', 'u.firstName', 'u.lastName', 'u.position', 'u.hierarchyLevel', 'u.department', 'u.managerId']);
+
+    // 270°: filter by same department only
+    if (is270 && evaluatee.department) {
+      qb.andWhere('u.department = :dept', { dept: evaluatee.department });
+    }
 
     // If evaluatee has a hierarchy level, prioritize same level
     if (evaluatee.hierarchyLevel) {

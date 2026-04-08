@@ -560,7 +560,20 @@ export const api = {
     allowedRelations: (token: string, cycleId: string) =>
       request<{ value: string; label: string }[]>(`/evaluation-cycles/${cycleId}/allowed-relations`, {}, token),
     autoGenerate: (token: string, cycleId: string) =>
-      request<{ created: number; skipped: number }>(`/evaluation-cycles/${cycleId}/auto-generate`, { method: "POST" }, token),
+      request<{
+        created: number;
+        skipped: number;
+        exceptions: Array<{
+          evaluateeId: string;
+          evaluateeName: string;
+          department: string | null;
+          type: string;
+          message: string;
+          relationType: string;
+          available?: number;
+          required?: number;
+        }>;
+      }>(`/evaluation-cycles/${cycleId}/auto-generate`, { method: "POST" }, token),
     suggestPeers: (token: string, cycleId: string, evaluateeId: string) =>
       request<any[]>(`/evaluation-cycles/${cycleId}/suggest-peers/${evaluateeId}`, {}, token),
   },

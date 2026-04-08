@@ -85,7 +85,20 @@ export default function CycleDetailPage() {
   const [excEvalDeptFilter, setExcEvalDeptFilter] = useState('');
   const [allowedRelations, setAllowedRelations] = useState<{ value: string; label: string }[]>([]);
   const [autoGenerating, setAutoGenerating] = useState(false);
-  const [autoGenResult, setAutoGenResult] = useState<{ created: number } | null>(null);
+  const [autoGenResult, setAutoGenResult] = useState<{
+    created: number;
+    skipped: number;
+    exceptions: Array<{
+      evaluateeId: string;
+      evaluateeName: string;
+      department: string | null;
+      type: string;
+      message: string;
+      relationType: string;
+      available?: number;
+      required?: number;
+    }>;
+  } | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [cycleHistory, setCycleHistory] = useState<any[]>([]);
 
@@ -136,7 +149,11 @@ export default function CycleDetailPage() {
         try {
           const result = await api.peerAssignments.autoGenerate(token, id);
           setAutoGenResult(result);
-          window.location.reload();
+          if (result.exceptions.length === 0) {
+            toast.success(`${result.created} asignaciones creadas exitosamente`);
+            window.location.reload();
+          }
+          // If there are exceptions, the report modal will show automatically
         } catch (e: any) {
           toast.error(e.message || 'Error al generar asignaciones');
         } finally {
@@ -1479,6 +1496,74 @@ export default function CycleDetailPage() {
           onConfirm={confirmState.onConfirm}
           onCancel={() => setConfirmState(null)}
         />
+      )}
+
+      {/* ── Auto-generation report modal ── */}
+      {autoGenResult && autoGenResult.exceptions.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {t('evaluaciones.detail.autoGenReportTitle')}
+              </h3>
+              <div className="mt-2 flex gap-4 text-sm">
+                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full font-medium">
+                  {autoGenResult.created} {t('evaluaciones.detail.autoGenCreated')}
+                </span>
+                <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full font-medium">
+                  {autoGenResult.exceptions.length} {t('evaluaciones.detail.autoGenExceptions')}
+                </span>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <p className="text-sm text-gray-500 mb-4">
+                {t('evaluaciones.detail.autoGenExceptionsDetail')}
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b">
+                    <th className="pb-2 font-medium">{t('evaluaciones.detail.autoGenColEmployee')}</th>
+                    <th className="pb-2 font-medium">{t('evaluaciones.detail.autoGenColDept')}</th>
+                    <th className="pb-2 font-medium">{t('evaluaciones.detail.autoGenColType')}</th>
+                    <th className="pb-2 font-medium">{t('evaluaciones.detail.autoGenColDetail')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {autoGenResult.exceptions.map((exc, i) => (
+                    <tr key={i} className="border-b last:border-0">
+                      <td className="py-2 font-medium text-gray-900">{exc.evaluateeName}</td>
+                      <td className="py-2 text-gray-600">{exc.department || '—'}</td>
+                      <td className="py-2">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          exc.type === 'INSUFFICIENT_PEERS' ? 'bg-amber-100 text-amber-800' :
+                          exc.type === 'NO_MANAGER' ? 'bg-red-100 text-red-800' :
+                          exc.type === 'MANAGER_DIFF_DEPT' ? 'bg-orange-100 text-orange-800' :
+                          exc.type === 'NO_DEPARTMENT' ? 'bg-purple-100 text-purple-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {exc.type === 'NO_MANAGER' && t('evaluaciones.detail.excNoManager')}
+                          {exc.type === 'MANAGER_DIFF_DEPT' && t('evaluaciones.detail.excManagerDiffDept')}
+                          {exc.type === 'NO_DEPARTMENT' && t('evaluaciones.detail.excNoDept')}
+                          {exc.type === 'INSUFFICIENT_PEERS' && t('evaluaciones.detail.excInsufficientPeers')}
+                          {exc.type === 'NO_DIRECT_REPORTS' && t('evaluaciones.detail.excNoDirectReports')}
+                        </span>
+                      </td>
+                      <td className="py-2 text-gray-600 text-xs">{exc.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-3">
+              <button
+                className="btn-secondary"
+                onClick={() => { setAutoGenResult(null); window.location.reload(); }}
+              >
+                {t('evaluaciones.detail.autoGenClose')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
