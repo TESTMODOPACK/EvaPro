@@ -503,8 +503,8 @@ export class SubscriptionsService {
     }
 
     const saved = await this.paymentRepo.save(payment);
-    if (changedBy) {
-      await this.auditService.log(payment.tenantId, changedBy, 'payment.updated', 'payment', saved.id, { amount: Number(saved.amount) });
+    if (changedBy && payment.tenantId) {
+      await this.auditService.log(payment.tenantId, changedBy, 'payment.updated', 'payment', saved.id, { amount: Number(saved.amount) }).catch(() => {});
     }
     return saved;
   }
@@ -513,8 +513,8 @@ export class SubscriptionsService {
     const payment = await this.paymentRepo.findOne({ where: { id: paymentId } });
     if (!payment) throw new NotFoundException('Pago no encontrado');
 
-    if (changedBy) {
-      await this.auditService.log(payment.tenantId, changedBy, 'payment.deleted', 'payment', payment.id, { amount: Number(payment.amount), transactionRef: payment.transactionRef });
+    if (changedBy && payment.tenantId) {
+      await this.auditService.log(payment.tenantId, changedBy, 'payment.deleted', 'payment', payment.id, { amount: Number(payment.amount), transactionRef: payment.transactionRef }).catch(() => {});
     }
     await this.paymentRepo.remove(payment);
   }
