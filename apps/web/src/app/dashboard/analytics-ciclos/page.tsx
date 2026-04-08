@@ -72,7 +72,7 @@ function CycleComparisonPageContent() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Error al generar análisis');
+        throw new Error(err.message || t('analyticsCiclos.errorGeneratingAnalysis'));
       }
       const result = await res.json();
       setAiAnalysis(result);
@@ -159,15 +159,15 @@ function CycleComparisonPageContent() {
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('analyticsCiclos.guide.title')}</h3>
           <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <p><strong>¿Qué muestra?</strong> Comparación entre 2 o más ciclos de evaluación cerrados, mostrando evolución de puntajes y distribución por departamento.</p>
-            <p><strong>Cómo usar:</strong> 1) Seleccionar 2+ ciclos haciendo clic en cada uno. 2) Ver gráficos comparativos automáticos. 3) Opcionalmente, generar análisis con IA.</p>
-            <p><strong>Gráficos:</strong> Tendencia de puntaje promedio/mín/máx entre ciclos, y comparativa por departamento en gráfico horizontal agrupado.</p>
-            <p><strong>Análisis IA comparativo:</strong> Genera un análisis profundo con resumen ejecutivo, tendencias, fortalezas, alertas, departamentos que mejoraron/empeoraron, y recomendaciones. Consume 1 crédito de su cuota mensual de IA.</p>
-            <p><strong>Detección de Sesgos:</strong> Identifica patrones de sesgo en evaluadores del ciclo (lenidad, severidad, efecto halo, tendencia central) con evidencia estadística y recomendaciones. Consume 1 crédito IA.</p>
-            <p><strong>Exportación:</strong> Excel y CSV con datos de todos los ciclos y desglose departamental.</p>
+            <p><strong>{t('analyticsCiclos.guide.whatTitle')}</strong> {t('analyticsCiclos.guide.whatDesc')}</p>
+            <p><strong>{t('analyticsCiclos.guide.howToTitle')}</strong> {t('analyticsCiclos.guide.howToDesc')}</p>
+            <p><strong>{t('analyticsCiclos.guide.chartsTitle')}</strong> {t('analyticsCiclos.guide.chartsDesc')}</p>
+            <p><strong>{t('analyticsCiclos.guide.aiTitle')}</strong> {t('analyticsCiclos.guide.aiDesc')}</p>
+            <p><strong>{t('analyticsCiclos.guide.biasTitle')}</strong> {t('analyticsCiclos.guide.biasDesc')}</p>
+            <p><strong>{t('analyticsCiclos.guide.exportTitle')}</strong> {t('analyticsCiclos.guide.exportDesc')}</p>
           </div>
           <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong> Administradores ven todos los ciclos. Encargados ven solo los datos de su equipo.
+            <strong style={{ color: 'var(--accent)' }}>{t('analyticsCiclos.guide.permissionsLabel')}</strong> {t('analyticsCiclos.guide.permissions')}
           </div>
         </div>
       )}
@@ -183,7 +183,7 @@ function CycleComparisonPageContent() {
             }}>
               {selected.size === cycles.length ? t('analyticsCiclos.deselectAll') : t('analyticsCiclos.selectAll')}
             </button>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{selected.size} de {cycles.length} {t('analyticsCiclos.selected')}</span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{selected.size} {t('analyticsCiclos.ofTotal')} {cycles.length} {t('analyticsCiclos.selected')}</span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -207,7 +207,7 @@ function CycleComparisonPageContent() {
                   <span className="badge badge-ghost" style={{ fontSize: '0.62rem', padding: '1px 5px' }}>{c.cycleType}°</span>
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
-                  {c.avgScore ? `Prom: ${c.avgScore}` : `${c.totalEvaluated} evaluados · sin puntajes`} {c.avgScore ? `· ${c.withScores} eval.` : ''}
+                  {c.avgScore ? t('analyticsCiclos.avgPrefix', { score: c.avgScore }) : t('analyticsCiclos.evaluatedNoScores', { count: c.totalEvaluated })} {c.avgScore ? `· ${t('analyticsCiclos.evalSuffix', { count: c.withScores })}` : ''}
                 </div>
               </button>
             );
@@ -220,11 +220,11 @@ function CycleComparisonPageContent() {
         const selectedCycles = cycles.filter((c: any) => selected.has(c.cycleId));
         const types = new Set(selectedCycles.map((c: any) => c.cycleType));
         if (types.size > 1 && selectedCycles.length >= 2) {
-          const typeList = Array.from(types).map((t: any) => `${t}°`).join(', ');
+          const typeList = Array.from(types).map((tp: any) => `${tp}°`).join(', ');
           return (
             <div className="card animate-fade-up" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)', background: 'rgba(245,158,11,0.06)' }}>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                <strong style={{ color: 'var(--warning)' }}>Tipos de evaluación diferentes:</strong> Has seleccionado ciclos de tipo {typeList}. Los puntajes pueden diferir significativamente entre tipos de evaluación (un 360° incluye más evaluadores que un 90°), por lo que la comparación debe interpretarse con precaución.
+                <strong style={{ color: 'var(--warning)' }}>{t('analyticsCiclos.mixedTypesTitle')}</strong> {t('analyticsCiclos.mixedTypesMsg', { types: typeList })}
               </p>
             </div>
           );
@@ -257,7 +257,7 @@ function CycleComparisonPageContent() {
       {chartData.length >= 2 && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
           <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>
-            {t('analyticsCiclos.trend')} {selectedCycles.length >= 2 ? '(seleccionados)' : '(todos)'}
+            {t('analyticsCiclos.trend')} {selectedCycles.length >= 2 ? t('analyticsCiclos.trendSelected') : t('analyticsCiclos.trendAll')}
           </h2>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={chartData}>
@@ -266,9 +266,9 @@ function CycleComparisonPageContent() {
               <YAxis domain={[0, 10]} tick={{ fontSize: 10 }} />
               <Tooltip />
               <Legend />
-              <Bar dataKey="promedio" fill="#C9933A" name="Promedio" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="min" fill="#10b981" name="Mínimo" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="max" fill="#6366f1" name="Máximo" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="promedio" fill="#C9933A" name={t('analyticsCiclos.chartAvg')} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="min" fill="#10b981" name={t('analyticsCiclos.chartMin')} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="max" fill="#6366f1" name={t('analyticsCiclos.chartMax')} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -304,23 +304,23 @@ function CycleComparisonPageContent() {
                 <div>
                   <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>{c.cycleName}</h3>
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    {c.cycleType} — {c.startDate ? new Date(c.startDate).toLocaleDateString('es-CL') : ''} al {c.endDate ? new Date(c.endDate).toLocaleDateString('es-CL') : ''}
+                    {c.cycleType} — {c.startDate ? new Date(c.startDate).toLocaleDateString() : ''} {t('analyticsCiclos.dateTo')} {c.endDate ? new Date(c.endDate).toLocaleDateString() : ''}
                   </span>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{c.avgScore ?? '—'}</div>
                   {delta && (
                     <span style={{ fontSize: '0.75rem', fontWeight: 600, color: Number(delta) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                      {Number(delta) >= 0 ? '▲' : '▼'} {Math.abs(Number(delta))} vs anterior
+                      {Number(delta) >= 0 ? '▲' : '▼'} {Math.abs(Number(delta))} {t('analyticsCiclos.vsPrevious')}
                     </span>
                   )}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '1rem', fontSize: '0.82rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-                <span>Evaluados: <strong>{c.totalEvaluated}</strong></span>
-                <span>Con puntaje: <strong>{c.withScores}</strong></span>
-                {c.minScore != null && <span>Mín: <strong>{c.minScore}</strong></span>}
-                {c.maxScore != null && <span>Máx: <strong>{c.maxScore}</strong></span>}
+                <span>{t('analyticsCiclos.evaluated')} <strong>{c.totalEvaluated}</strong></span>
+                <span>{t('analyticsCiclos.withScore')} <strong>{c.withScores}</strong></span>
+                {c.minScore != null && <span>{t('analyticsCiclos.minLabel')} <strong>{c.minScore}</strong></span>}
+                {c.maxScore != null && <span>{t('analyticsCiclos.maxLabel')} <strong>{c.maxScore}</strong></span>}
               </div>
               {c.byDepartment?.length > 0 && (
                 <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
@@ -349,7 +349,7 @@ function CycleComparisonPageContent() {
               </span>
             </h2>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              {aiAnalysis.generatedAt ? new Date(aiAnalysis.generatedAt).toLocaleString('es-CL') : ''} · {aiAnalysis.tokensUsed || 0} tokens
+              {aiAnalysis.generatedAt ? new Date(aiAnalysis.generatedAt).toLocaleString() : ''} · {aiAnalysis.tokensUsed || 0} tokens
             </span>
           </div>
 
@@ -419,7 +419,7 @@ function CycleComparisonPageContent() {
             {/* Recommendations */}
             {aiAnalysis.analysis.recomendaciones?.length > 0 && (
               <div style={{ padding: '0.85rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                <strong style={{ fontSize: '0.85rem' }}>Recomendaciones</strong>
+                <strong style={{ fontSize: '0.85rem' }}>{t('analyticsCiclos.recommendations')}</strong>
                 <ul style={{ margin: '0.3rem 0 0 1.25rem', padding: 0, fontSize: '0.84rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                   {aiAnalysis.analysis.recomendaciones.map((r: string, i: number) => <li key={i}>{r}</li>)}
                 </ul>

@@ -9,27 +9,6 @@ import dynamic from 'next/dynamic';
 
 const SignatureModal = dynamic(() => import('@/components/SignatureModal'), { ssr: false });
 
-const docTypeLabels: Record<string, string> = {
-  evaluation_response: 'Resultado de Evaluación',
-  evaluation_cycle: 'Ciclo de Evaluación',
-  development_plan: 'Plan de Desarrollo',
-  calibration_session: 'Sesión de Calibración',
-  service_agreement: 'Contrato de Prestación de Servicios',
-  dpa: 'Acuerdo de Procesamiento de Datos (DPA)',
-  terms_conditions: 'Términos y Condiciones de Uso',
-  privacy_policy: 'Política de Privacidad',
-  sla: 'Acuerdo de Nivel de Servicio (SLA)',
-  nda: 'Acuerdo de Confidencialidad (NDA)',
-  amendment: 'Enmienda / Addendum',
-  contract: 'Contrato',
-  acknowledgment: 'Acuse de Recibo',
-};
-
-const statusLabels: Record<string, { label: string; color: string }> = {
-  valid: { label: 'Válida', color: 'var(--success)' },
-  revoked: { label: 'Revocada', color: 'var(--danger)' },
-};
-
 /* ── Signature Table Component ────────────────────────────────────── */
 
 function SignatureTable({
@@ -41,6 +20,7 @@ function SignatureTable({
   canVerify: boolean;
   token: string | null;
 }) {
+  const { t } = useTranslation();
   const [verifying, setVerifying] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<Record<string, { valid: boolean; message: string }>>({});
   const [searchText, setSearchText] = useState('');
@@ -57,11 +37,11 @@ function SignatureTable({
         ...prev,
         [signatureId]: {
           valid: result.integrity === 'valid',
-          message: result.message || (result.integrity === 'valid' ? 'Documento integro' : 'Documento modificado'),
+          message: result.message || (result.integrity === 'valid' ? t('firmas.intact') : t('firmas.modified')),
         },
       }));
     } catch {
-      setVerifyResult(prev => ({ ...prev, [signatureId]: { valid: false, message: 'Error al verificar' } }));
+      setVerifyResult(prev => ({ ...prev, [signatureId]: { valid: false, message: t('firmas.verifyError') } }));
     }
     setVerifying(null);
   }
@@ -88,7 +68,7 @@ function SignatureTable({
       <div className="card" style={{ padding: '1rem', marginBottom: '1.25rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input
           style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', color: 'var(--text-primary)', width: '220px' }}
-          placeholder="Buscar por documento o firmante..."
+          placeholder={t('firmas.searchPlaceholder')}
           value={searchText}
           onChange={(e) => { setSearchText(e.target.value); setPage(1); }}
         />
@@ -97,43 +77,44 @@ function SignatureTable({
           value={typeFilter}
           onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
         >
-          <option value="">Todos los tipos</option>
-          {docTypes.map((t: string) => <option key={t} value={t}>{docTypeLabels[t] || t}</option>)}
+          <option value="">{t('firmas.allTypes')}</option>
+          {docTypes.map((dt: string) => <option key={dt} value={dt}>{t(`firmas.docTypeLabel.${dt}`, dt)}</option>)}
         </select>
-        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{filtered.length} firma{filtered.length !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('firmas.signatureCount', { count: filtered.length })}</span>
       </div>
 
       {/* Table */}
       <div className="card" style={{ padding: 0 }}>
         {paged.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-            {signatures.length === 0 ? 'No hay firmas registradas' : 'Sin resultados para los filtros aplicados'}
+            {signatures.length === 0 ? t('firmas.noSignatures') : t('firmas.noResults')}
           </div>
         ) : (
           <div className="table-wrapper">
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Documento</th>
-                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tipo</th>
-                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Firmante</th>
-                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Fecha</th>
-                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Estado</th>
-                  {canVerify && <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Integridad</th>}
+                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('firmas.thDocument')}</th>
+                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('firmas.thType')}</th>
+                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('firmas.thSigner')}</th>
+                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('firmas.thDate')}</th>
+                  <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('firmas.thStatus')}</th>
+                  {canVerify && <th style={{ textAlign: 'left', padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('firmas.thIntegrity')}</th>}
                 </tr>
               </thead>
               <tbody>
                 {paged.map((sig: any) => {
-                  const st = statusLabels[sig.status] || statusLabels.valid;
+                  const statusColor = sig.status === 'revoked' ? 'var(--danger)' : 'var(--success)';
+                  const statusLabel = sig.status === 'revoked' ? t('firmas.statusRevoked') : t('firmas.statusValid');
                   const vr = verifyResult[sig.id];
                   return (
                     <tr key={sig.id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '0.6rem 0.75rem' }}>
-                        <div style={{ fontWeight: 500 }}>{sig.documentName || 'Sin nombre'}</div>
+                        <div style={{ fontWeight: 500 }}>{sig.documentName || t('firmas.noName')}</div>
                         <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{sig.documentId?.substring(0, 8)}...</div>
                       </td>
                       <td style={{ padding: '0.6rem 0.75rem' }}>
-                        <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>{docTypeLabels[sig.documentType] || sig.documentType}</span>
+                        <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>{String(t(`firmas.docTypeLabel.${sig.documentType}`, { defaultValue: sig.documentType }))}</span>
                       </td>
                       <td style={{ padding: '0.6rem 0.75rem' }}>
                         {sig.signer ? `${sig.signer.firstName} ${sig.signer.lastName}` : sig.signedBy?.substring(0, 8)}
@@ -143,18 +124,18 @@ function SignatureTable({
                         {sig.signedAt ? new Date(sig.signedAt).toLocaleString('es-CL') : '\u2014'}
                       </td>
                       <td style={{ padding: '0.6rem 0.75rem' }}>
-                        <span style={{ color: st.color, fontWeight: 600, fontSize: '0.78rem' }}>{st.label}</span>
+                        <span style={{ color: statusColor, fontWeight: 600, fontSize: '0.78rem' }}>{statusLabel}</span>
                       </td>
                       {canVerify && (
                         <td style={{ padding: '0.6rem 0.75rem' }}>
                           {vr ? (
                             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: vr.valid ? 'var(--success)' : 'var(--danger)' }}>
-                              {vr.valid ? 'Integro' : 'Modificado'}
+                              {vr.valid ? t('firmas.intact') : t('firmas.modified')}
                             </span>
                           ) : (
                             <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
                               onClick={() => handleVerifyIntegrity(sig.id)} disabled={verifying === sig.id}>
-                              {verifying === sig.id ? '...' : 'Verificar'}
+                              {verifying === sig.id ? '...' : t('firmas.verifyBtn')}
                             </button>
                           )}
                         </td>
@@ -171,9 +152,9 @@ function SignatureTable({
       {/* Pagination */}
       {totalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
-          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button>
-          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Pagina {page} de {totalPages}</span>
-          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</button>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t('firmas.prevPage')}</button>
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('firmas.pageOf', { page, total: totalPages })}</span>
+          <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>{t('firmas.nextPage')}</button>
         </div>
       )}
     </>
@@ -249,13 +230,13 @@ function FirmasPageContent() {
 
   // Determine tabs
   const tabs: { key: 'mine' | 'team' | 'all'; label: string }[] = [
-    { key: 'mine', label: 'Mis Firmas' },
+    { key: 'mine', label: t('firmas.tabMine') },
   ];
   if (isManager || isAdmin) {
-    tabs.push({ key: 'team', label: 'Firmas de Mi Equipo' });
+    tabs.push({ key: 'team', label: t('firmas.tabTeam') });
   }
   if (isAdmin) {
-    tabs.push({ key: 'all', label: 'Todas las Firmas' });
+    tabs.push({ key: 'all', label: t('firmas.tabAll') });
   }
 
   // Current data
@@ -263,10 +244,10 @@ function FirmasPageContent() {
 
   // Subtitle per role
   const subtitle = isAdmin
-    ? 'Gestiona y verifica todas las firmas digitales de la organizacion'
+    ? t('firmas.subtitleAdmin')
     : isManager
-    ? 'Historial de firmas digitales propias y de tu equipo'
-    : 'Historial de tus firmas digitales';
+    ? t('firmas.subtitleManager')
+    : t('firmas.subtitleEmployee');
 
   // Stats for current view
   const totalSigs = currentData.length;
@@ -276,7 +257,7 @@ function FirmasPageContent() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Firmas Digitales</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('firmas.pageTitle')}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{subtitle}</p>
       </div>
 
@@ -288,19 +269,19 @@ function FirmasPageContent() {
 
       {showGuide && (
         <div className="card animate-fade-up" style={{ borderLeft: '4px solid var(--accent)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>Guia: Firmas Digitales</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--accent)' }}>{t('firmas.guideTitle')}</h3>
           <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <p><strong>Proceso de firma:</strong> El sistema envia un codigo OTP al correo del firmante. El firmante ingresa el codigo para validar su identidad. Se genera un hash SHA-256 del documento como evidencia.</p>
-            <p><strong>Validez:</strong> Cada firma registra: quien firmo, cuando, desde que IP, y el hash del documento al momento de la firma. Si el documento se modifica despues, el hash no coincidira.</p>
-            <p><strong>Estados:</strong> Valida (documento sin alteraciones), Revocada (firma anulada por administrador).</p>
+            <p><strong>{t('firmas.guideProcess')}</strong> {t('firmas.guideProcessText')}</p>
+            <p><strong>{t('firmas.guideValidity')}</strong> {t('firmas.guideValidityText')}</p>
+            <p><strong>{t('firmas.guideStates')}</strong> {t('firmas.guideStatesText')}</p>
           </div>
           <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-            <strong style={{ color: 'var(--accent)' }}>Permisos:</strong>
+            <strong style={{ color: 'var(--accent)' }}>{t('firmas.guidePermissions')}</strong>
             {isAdmin
-              ? ' Como administrador puedes ver todas las firmas de la organizacion y verificar su integridad.'
+              ? ` ${t('firmas.guidePermAdmin')}`
               : isManager
-              ? ' Como encargado de equipo puedes ver tus firmas y las de los miembros de tu equipo.'
-              : ' Puedes ver el historial de tus propias firmas digitales.'}
+              ? ` ${t('firmas.guidePermManager')}`
+              : ` ${t('firmas.guidePermEmployee')}`}
           </div>
         </div>
       )}
@@ -344,20 +325,20 @@ function FirmasPageContent() {
       {/* KPIs */}
       <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Total Firmas</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('firmas.kpiTotal')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{totalSigs}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Validas</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('firmas.kpiValid')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)' }}>{validSigs}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Tipos de Documento</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('firmas.kpiDocTypes')}</div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>{docTypes.length}</div>
         </div>
         {pendingContracts.length > 0 && (
           <div className="card" style={{ padding: '1.25rem', textAlign: 'center', borderLeft: '3px solid var(--warning, #f59e0b)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Pendientes de Firma</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>{t('firmas.kpiPending')}</div>
             <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--warning, #f59e0b)' }}>{pendingContracts.length}</div>
           </div>
         )}
@@ -367,16 +348,10 @@ function FirmasPageContent() {
       {pendingContracts.length > 0 && (
         <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--warning, #f59e0b)' }}>
           <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--warning, #f59e0b)' }}>
-            Documentos Pendientes de Firma ({pendingContracts.length})
+            {t('firmas.pendingTitle', { count: pendingContracts.length })}
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {pendingContracts.map((c: any) => {
-              const contractTypeLabels: Record<string, string> = {
-                nda: 'Confidencialidad (NDA)', sla: 'Nivel de Servicio (SLA)',
-                dpa: 'Procesamiento de Datos (DPA)', service_agreement: 'Prestacion de Servicios',
-                terms_conditions: 'Terminos y Condiciones', privacy_policy: 'Politica de Privacidad',
-                amendment: 'Enmienda', other: 'Otro',
-              };
               return (
                 <div key={c.id} style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -386,7 +361,7 @@ function FirmasPageContent() {
                   <div>
                     <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{c.title}</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      {contractTypeLabels[c.type] || c.type} · v{c.version || 1} · Desde {c.effectiveDate ? new Date(c.effectiveDate).toLocaleDateString('es-CL') : '—'}
+                      {t(`firmas.contractTypeLabel.${c.type}`, c.type)} · v{c.version || 1} · {t('firmas.contractSince')} {c.effectiveDate ? new Date(c.effectiveDate).toLocaleDateString('es-CL') : '—'}
                     </div>
                   </div>
                   <button
@@ -394,7 +369,7 @@ function FirmasPageContent() {
                     style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem' }}
                     onClick={() => setSigningContract(c)}
                   >
-                    Firmar
+                    {t('firmas.signAction')}
                   </button>
                 </div>
               );

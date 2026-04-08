@@ -9,12 +9,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
-const QUADRANT_CONFIG: Record<string, { label: string; color: string; icon: string; action: string }> = {
-  star: { label: 'Estrella', color: '#10b981', icon: '★', action: 'Mantener y replicar buenas prácticas en otras áreas' },
-  burnout_risk: { label: 'Riesgo de Burnout', color: '#f59e0b', icon: '⚠', action: 'Intervenir clima urgente — alto riesgo de rotación pese a buen desempeño' },
-  opportunity: { label: 'Oportunidad', color: '#6366f1', icon: '↗', action: 'Invertir en capacitación técnica y gestión — el equipo está motivado' },
-  critical: { label: 'Crítico', color: '#ef4444', icon: '✕', action: 'Plan de acción integral urgente — bajo desempeño y bajo compromiso' },
-  no_data: { label: 'Sin datos', color: '#94a3b8', icon: '?', action: 'No hay datos suficientes para clasificar' },
+const QUADRANT_STYLE: Record<string, { color: string; icon: string; labelKey: string; actionKey: string }> = {
+  star: { color: '#10b981', icon: '★', labelKey: 'crossAnalysis.quadrants.star', actionKey: 'crossAnalysis.quadrants.starAction' },
+  burnout_risk: { color: '#f59e0b', icon: '⚠', labelKey: 'crossAnalysis.quadrants.burnoutRisk', actionKey: 'crossAnalysis.quadrants.burnoutAction' },
+  opportunity: { color: '#6366f1', icon: '↗', labelKey: 'crossAnalysis.quadrants.opportunity', actionKey: 'crossAnalysis.quadrants.opportunityAction' },
+  critical: { color: '#ef4444', icon: '✕', labelKey: 'crossAnalysis.quadrants.critical', actionKey: 'crossAnalysis.quadrants.criticalAction' },
+  no_data: { color: '#94a3b8', icon: '?', labelKey: 'crossAnalysis.quadrants.noData', actionKey: 'crossAnalysis.quadrants.noDataAction' },
 };
 
 // ─── Cross Result Tab Content ─────────────────────────────────────────
@@ -23,28 +23,28 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
   const { summary, departments, quadrants, categoryCorrelation, insights } = data || {};
   const scatterData = (departments || []).filter((d: any) => d.performance != null && d.engagement != null)
     .map((d: any) => ({ x: d.performance, y: d.engagement, name: d.department, quadrant: d.quadrant }));
-  const corrLabel = summary?.correlation == null ? '—' : summary.correlation >= 0.5 ? 'Fuerte positiva' : summary.correlation >= 0.2 ? 'Moderada' : summary.correlation >= -0.2 ? 'Débil' : 'Negativa';
+  const corrLabel = summary?.correlation == null ? '—' : summary.correlation >= 0.5 ? t('crossAnalysis.correlationLabels.strong') : summary.correlation >= 0.2 ? t('crossAnalysis.correlationLabels.moderate') : summary.correlation >= -0.2 ? t('crossAnalysis.correlationLabels.weak') : t('crossAnalysis.correlationLabels.negative');
 
   return (
     <div>
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Desempeño Prom.</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('crossAnalysis.avgPerformance')}</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: summary?.avgPerformance >= 7 ? '#10b981' : summary?.avgPerformance >= 5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgPerformance ?? '–'}</div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Escala 0-10</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.scale010')}</div>
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Clima Prom.</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('crossAnalysis.avgEngagement')}</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: summary?.avgEngagement >= 3.5 ? '#10b981' : summary?.avgEngagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgEngagement ?? '–'}</div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Escala 1-5</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.scale15')}</div>
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>eNPS</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: (summary?.eNPS ?? 0) >= 30 ? '#10b981' : (summary?.eNPS ?? 0) >= 0 ? '#f59e0b' : '#ef4444' }}>{summary?.eNPS ?? '–'}</div>
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Correlación</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('crossAnalysis.correlation')}</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{summary?.correlation ?? '–'}</div>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{corrLabel}</div>
         </div>
@@ -53,40 +53,40 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
       {/* Scatter Chart */}
       {scatterData.length < 2 && (departments || []).length > 0 && (
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', textAlign: 'center' }}>
-          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Mapa de Cuadrantes</h4>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>No hay suficientes departamentos con datos de desempeno y clima para generar el grafico. Se requieren al menos 2 departamentos con ambos valores.</p>
+          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{t('crossAnalysis.quadrantMap')}</h4>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.quadrantMapNoData')}</p>
         </div>
       )}
       {scatterData.length >= 2 && (
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Mapa de Cuadrantes</h4>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Cada punto es un departamento. Eje X: desempeño (0-10), Eje Y: clima (1-5). Los umbrales definen 4 cuadrantes.</p>
+          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{t('crossAnalysis.quadrantMap')}</h4>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>{t('crossAnalysis.quadrantMapDesc')}</p>
           <ResponsiveContainer width="100%" height={280}>
             <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" dataKey="x" name="Desempeño" domain={[0, 10]} tick={{ fontSize: 10 }}
-                label={{ value: 'Desempeño (0-10)', position: 'bottom', fontSize: 10, fill: '#94a3b8' }} />
-              <YAxis type="number" dataKey="y" name="Clima" domain={[1, 5]} tick={{ fontSize: 10 }}
-                label={{ value: 'Clima (1-5)', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }} />
+              <XAxis type="number" dataKey="x" name={t('crossAnalysis.axisPerformanceShort')} domain={[0, 10]} tick={{ fontSize: 10 }}
+                label={{ value: t('crossAnalysis.axisPerformance'), position: 'bottom', fontSize: 10, fill: '#94a3b8' }} />
+              <YAxis type="number" dataKey="y" name={t('crossAnalysis.axisClimateShort')} domain={[1, 5]} tick={{ fontSize: 10 }}
+                label={{ value: t('crossAnalysis.axisClimate'), angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }} />
               <ZAxis range={[80, 80]} />
               <Tooltip content={({ payload }: any) => {
                 if (!payload?.[0]) return null;
                 const d = payload[0].payload;
-                const q = QUADRANT_CONFIG[d.quadrant];
+                const q = QUADRANT_STYLE[d.quadrant];
                 return (
                   <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '0.5rem 0.75rem', fontSize: '0.82rem' }}>
-                    <strong>{d.name}</strong><br/>Desempeño: {d.x} | Clima: {d.y}<br/>
-                    <span style={{ color: q?.color }}>{q?.icon} {q?.label}</span>
+                    <strong>{d.name}</strong><br/>{t('crossAnalysis.axisPerformanceShort')}: {d.x} | {t('crossAnalysis.axisClimateShort')}: {d.y}<br/>
+                    <span style={{ color: q?.color }}>{q?.icon} {t(q?.labelKey)}</span>
                   </div>
                 );
               }} />
               <Scatter data={scatterData} name="Departamentos">
-                {scatterData.map((d: any, i: number) => <Cell key={i} fill={QUADRANT_CONFIG[d.quadrant]?.color || '#94a3b8'} />)}
+                {scatterData.map((d: any, i: number) => <Cell key={i} fill={QUADRANT_STYLE[d.quadrant]?.color || '#94a3b8'} />)}
               </Scatter>
             </ScatterChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            <span>Umbral desempeño: ≥ 7.0</span><span>Umbral clima: ≥ 3.5</span>
+            <span>{t('crossAnalysis.perfThreshold')}: ≥ 7.0</span><span>{t('crossAnalysis.engThreshold')}: ≥ 3.5</span>
           </div>
         </div>
       )}
@@ -112,67 +112,76 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
         // Correlation interpretation
         const corr = summary?.correlation;
         const corrText = corr == null ? null
-          : corr >= 0.5 ? 'Existe una correlacion positiva fuerte: los departamentos con mejor clima tienden a tener mejor desempeno. Esto sugiere que las iniciativas de bienestar impactan directamente en la productividad.'
-          : corr >= 0.2 ? 'Existe una correlacion positiva moderada: hay una tendencia a que mejor clima se asocie con mejor desempeno, aunque otros factores tambien influyen.'
-          : corr >= -0.2 ? 'La correlacion es debil o nula: el clima y el desempeno parecen ser independientes en esta medicion. Puede indicar que los equipos mantienen productividad independiente de su satisfaccion, o que los instrumentos miden aspectos diferentes.'
-          : 'Existe una correlacion negativa: algunos departamentos con buen desempeno tienen bajo clima (posible burnout) y viceversa. Esto requiere atencion inmediata.';
+          : corr >= 0.5 ? t('crossAnalysis.correlationText.strong')
+          : corr >= 0.2 ? t('crossAnalysis.correlationText.moderate')
+          : corr >= -0.2 ? t('crossAnalysis.correlationText.weak')
+          : t('crossAnalysis.correlationText.negative');
 
         return (
           <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
-            <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>Analisis del Mapa de Cuadrantes</h4>
+            <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem', color: 'var(--accent)' }}>{t('crossAnalysis.analysis.title')}</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.65 }}>
 
               {/* Overview */}
               <p style={{ margin: 0 }}>
-                <strong>Resumen:</strong> De {totalDepts} departamentos analizados, {withData} tienen datos completos de desempeno y clima.
-                {stars.length > 0 && <> <strong style={{ color: '#10b981' }}>{stars.length}</strong> se clasifican como <strong style={{ color: '#10b981' }}>Estrella</strong> (alto desempeno + buen clima).</>}
-                {burnout.length > 0 && <> <strong style={{ color: '#f59e0b' }}>{burnout.length}</strong> presentan <strong style={{ color: '#f59e0b' }}>Riesgo de Burnout</strong> (buen desempeno pero clima bajo).</>}
-                {opportunity.length > 0 && <> <strong style={{ color: '#6366f1' }}>{opportunity.length}</strong> son <strong style={{ color: '#6366f1' }}>Oportunidad</strong> (buen clima pero desempeno mejorable).</>}
-                {critical.length > 0 && <> <strong style={{ color: '#ef4444' }}>{critical.length}</strong> estan en estado <strong style={{ color: '#ef4444' }}>Critico</strong> (bajo en ambos indicadores).</>}
+                <strong>{t('crossAnalysis.analysis.summary')}</strong> {t('crossAnalysis.analysis.deptsAnalyzed', { total: totalDepts, withData })}
+                {stars.length > 0 && <> <strong style={{ color: '#10b981' }}>{t('crossAnalysis.analysis.starsClassified', { count: stars.length })}</strong> <strong style={{ color: '#10b981' }}>{t('crossAnalysis.quadrants.star')}</strong> {t('crossAnalysis.analysis.highPerfGoodClimate')}</>}
+                {burnout.length > 0 && <> <strong style={{ color: '#f59e0b' }}>{t('crossAnalysis.analysis.burnoutPresent', { count: burnout.length })}</strong> <strong style={{ color: '#f59e0b' }}>{t('crossAnalysis.quadrants.burnoutRisk')}</strong> {t('crossAnalysis.analysis.goodPerfBadClimate')}</>}
+                {opportunity.length > 0 && <> <strong style={{ color: '#6366f1' }}>{t('crossAnalysis.analysis.opportunityAre', { count: opportunity.length })}</strong> <strong style={{ color: '#6366f1' }}>{t('crossAnalysis.quadrants.opportunity')}</strong> {t('crossAnalysis.analysis.goodClimateLowPerf')}</>}
+                {critical.length > 0 && <> <strong style={{ color: '#ef4444' }}>{t('crossAnalysis.analysis.criticalState', { count: critical.length })}</strong> <strong style={{ color: '#ef4444' }}>{t('crossAnalysis.quadrants.critical')}</strong> {t('crossAnalysis.analysis.lowBoth')}</>}
               </p>
 
               {/* Correlation */}
-              {corrText && <p style={{ margin: 0 }}><strong>Correlacion desempeno-clima:</strong> {corrText}</p>}
+              {corrText && <p style={{ margin: 0 }}><strong>{t('crossAnalysis.analysis.corrPerfClimate')}</strong> {corrText}</p>}
 
               {/* Highlights */}
               {bestPerf && worstPerf && bestPerf.department !== worstPerf.department && (
                 <p style={{ margin: 0 }}>
-                  <strong>Desempeno:</strong> El departamento con mayor puntaje es <strong style={{ color: '#10b981' }}>{bestPerf.department}</strong> ({bestPerf.performance}/10)
-                  y el menor es <strong style={{ color: '#ef4444' }}>{worstPerf.department}</strong> ({worstPerf.performance}/10),
-                  una brecha de {(bestPerf.performance - worstPerf.performance).toFixed(1)} puntos.
+                  <strong>{t('crossAnalysis.analysis.perfHighlight')}</strong>{' '}
+                  {t('crossAnalysis.analysis.perfHighlightText', { best: bestPerf.department, bestScore: bestPerf.performance, worst: worstPerf.department, worstScore: worstPerf.performance, gap: (bestPerf.performance - worstPerf.performance).toFixed(1) })
+                    .split(/<\/?(?:best|worst)>/).map((part: string, i: number) => {
+                      if (i === 1) return <strong key={i} style={{ color: '#10b981' }}>{part}</strong>;
+                      if (i === 3) return <strong key={i} style={{ color: '#ef4444' }}>{part}</strong>;
+                      return part;
+                    })}
                 </p>
               )}
               {bestClima && worstClima && bestClima.department !== worstClima.department && (
                 <p style={{ margin: 0 }}>
-                  <strong>Clima:</strong> El mejor clima lo tiene <strong style={{ color: '#10b981' }}>{bestClima.department}</strong> ({bestClima.engagement}/5)
-                  y el mas bajo <strong style={{ color: '#ef4444' }}>{worstClima.department}</strong> ({worstClima.engagement}/5).
+                  <strong>{t('crossAnalysis.analysis.climaHighlight')}</strong>{' '}
+                  {t('crossAnalysis.analysis.climaHighlightText', { best: bestClima.department, bestScore: bestClima.engagement, worst: worstClima.department, worstScore: worstClima.engagement })
+                    .split(/<\/?(?:best|worst)>/).map((part: string, i: number) => {
+                      if (i === 1) return <strong key={i} style={{ color: '#10b981' }}>{part}</strong>;
+                      if (i === 3) return <strong key={i} style={{ color: '#ef4444' }}>{part}</strong>;
+                      return part;
+                    })}
                 </p>
               )}
 
               {/* Action items per quadrant */}
               {burnout.length > 0 && (
                 <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(245,158,11,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
-                  <strong style={{ color: '#f59e0b' }}>{'⚠'} Atencion — Riesgo de Burnout:</strong> {burnout.map((d: any) => d.department).join(', ')} tienen buen desempeno pero clima deteriorado. Esto puede provocar rotacion de talento clave. Se recomienda: revisar cargas de trabajo, implementar encuestas de pulso, y abrir espacios de retroalimentacion.
+                  <strong style={{ color: '#f59e0b' }}>{'⚠'} {t('crossAnalysis.analysis.burnoutWarningTitle')}</strong> {t('crossAnalysis.analysis.burnoutWarningText', { depts: burnout.map((d: any) => d.department).join(', ') })}
                 </div>
               )}
               {critical.length > 0 && (
                 <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.15)' }}>
-                  <strong style={{ color: '#ef4444' }}>{'✕'} Alerta — Departamentos Criticos:</strong> {critical.map((d: any) => d.department).join(', ')} requieren intervencion integral. Se sugiere: diagnostico profundo de causas, reunion con lideres de area, plan de accion con metas a 30/60/90 dias.
+                  <strong style={{ color: '#ef4444' }}>{'✕'} {t('crossAnalysis.analysis.criticalAlertTitle')}</strong> {t('crossAnalysis.analysis.criticalAlertText', { depts: critical.map((d: any) => d.department).join(', ') })}
                 </div>
               )}
               {opportunity.length > 0 && (
                 <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.15)' }}>
-                  <strong style={{ color: '#6366f1' }}>{'↗'} Oportunidad de Desarrollo:</strong> {opportunity.map((d: any) => d.department).join(', ')} tienen equipos motivados con espacio para mejorar desempeno. Se recomienda: capacitacion tecnica, mentorias cruzadas con departamentos estrella, y definicion de OKRs claros.
+                  <strong style={{ color: '#6366f1' }}>{'↗'} {t('crossAnalysis.analysis.opportunityTitle')}</strong> {t('crossAnalysis.analysis.opportunityText', { depts: opportunity.map((d: any) => d.department).join(', ') })}
                 </div>
               )}
               {stars.length > 0 && (
                 <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)' }}>
-                  <strong style={{ color: '#10b981' }}>{'★'} Departamentos Estrella:</strong> {stars.map((d: any) => d.department).join(', ')} son referentes de la organizacion. Documentar sus buenas practicas y replicarlas en otras areas. Considerar reconocimiento publico al equipo.
+                  <strong style={{ color: '#10b981' }}>{'★'} {t('crossAnalysis.analysis.starsTitle')}</strong> {t('crossAnalysis.analysis.starsText', { depts: stars.map((d: any) => d.department).join(', ') })}
                 </div>
               )}
 
               {stars.length === 0 && burnout.length === 0 && opportunity.length === 0 && critical.length === 0 && (
-                <p style={{ margin: 0, color: 'var(--text-muted)' }}>No hay departamentos clasificados en cuadrantes. Esto puede deberse a falta de datos de clima o desempeno para este cruce.</p>
+                <p style={{ margin: 0, color: 'var(--text-muted)' }}>{t('crossAnalysis.analysis.noQuadrants')}</p>
               )}
             </div>
           </div>
@@ -181,15 +190,15 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
 
       {/* Quadrant Legend */}
       <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-        <h4 style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>Clasificacion por Cuadrante</h4>
+        <h4 style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>{t('crossAnalysis.quadrantClassification')}</h4>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-          {Object.entries(QUADRANT_CONFIG).filter(([k]) => k !== 'no_data').map(([key, q]) => {
+          {Object.entries(QUADRANT_STYLE).filter(([k]) => k !== 'no_data').map(([key, q]) => {
             const count = (quadrants?.[key] || []).length;
             return (
               <div key={key} style={{ padding: '0.5rem 0.75rem', background: `${q.color}08`, borderLeft: `3px solid ${q.color}`, borderRadius: '0 6px 6px 0', fontSize: '0.78rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <strong style={{ color: q.color }}>{q.icon} {q.label}</strong>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{count} depto.</span>
+                  <strong style={{ color: q.color }}>{q.icon} {t(q.labelKey)}</strong>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{count} {t('crossAnalysis.deptCount')}</span>
                 </div>
                 {count > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{(quadrants?.[key] || []).map((d: any) => d.department).join(', ')}</div>}
               </div>
@@ -217,13 +226,13 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
               </thead>
               <tbody>
                 {departments.map((d: any) => {
-                  const q = QUADRANT_CONFIG[d.quadrant];
+                  const q = QUADRANT_STYLE[d.quadrant];
                   return (
                     <tr key={d.department}>
                       <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{d.department}</td>
                       <td style={{ textAlign: 'center', fontWeight: 700, color: d.performance >= 7 ? '#10b981' : d.performance >= 5 ? '#f59e0b' : '#ef4444' }}>{d.performance ?? '–'}</td>
                       <td style={{ textAlign: 'center', fontWeight: 700, color: d.engagement >= 3.5 ? '#10b981' : d.engagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{d.engagement ?? '–'}</td>
-                      <td style={{ textAlign: 'center' }}><span style={{ padding: '0.15rem 0.5rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: `${q?.color}15`, color: q?.color }}>{q?.icon} {q?.label}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ padding: '0.15rem 0.5rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: `${q?.color}15`, color: q?.color }}>{q?.icon} {t(q?.labelKey || '')}</span></td>
                       <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{d.performanceCount}</td>
                       <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{d.engagementCount}</td>
                     </tr>
@@ -436,9 +445,9 @@ function AnalisisIntegradoContent() {
             <p><strong>¿Cómo funciona?</strong> Seleccione 1 encuesta de clima y 1 o más ciclos de evaluación. Se generará un tab por cada cruce ciclo↔encuesta, más un resumen comparativo global.</p>
             <p><strong>Los 4 Cuadrantes:</strong></p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem', marginBottom: '0.5rem' }}>
-              {Object.entries(QUADRANT_CONFIG).filter(([k]) => k !== 'no_data').map(([key, q]) => (
+              {Object.entries(QUADRANT_STYLE).filter(([k]) => k !== 'no_data').map(([key, q]) => (
                 <div key={key} style={{ padding: '0.35rem 0.6rem', background: `${q.color}10`, borderLeft: `3px solid ${q.color}`, borderRadius: '0 4px 4px 0', fontSize: '0.78rem' }}>
-                  <strong style={{ color: q.color }}>{q.icon} {q.label}:</strong> {q.action}
+                  <strong style={{ color: q.color }}>{q.icon} {t(q.labelKey)}:</strong> {t(q.actionKey)}
                 </div>
               ))}
             </div>
