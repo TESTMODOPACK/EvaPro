@@ -26,12 +26,12 @@ import {
 
 type AnalyticsTab = 'scores' | 'departments' | 'competencies' | 'teams' | 'bias';
 
-const TAB_CONFIG: Array<{ key: AnalyticsTab; label: string; adminOnly?: boolean }> = [
-  { key: 'scores', label: 'Distribucion de Puntajes' },
-  { key: 'departments', label: 'Comparacion por Departamento' },
-  { key: 'competencies', label: 'Mapa de Competencias' },
-  { key: 'teams', label: 'Rendimiento por Equipos' },
-  { key: 'bias', label: 'Sesgos de Evaluadores', adminOnly: true },
+const TAB_CONFIG: Array<{ key: AnalyticsTab; labelKey: string; adminOnly?: boolean }> = [
+  { key: 'scores', labelKey: 'analytics.tabs.scores' },
+  { key: 'departments', labelKey: 'analytics.tabs.departments' },
+  { key: 'competencies', labelKey: 'analytics.tabs.competencies' },
+  { key: 'teams', labelKey: 'analytics.tabs.teams' },
+  { key: 'bias', labelKey: 'analytics.tabs.bias', adminOnly: true },
 ];
 
 function Spinner() {
@@ -99,20 +99,20 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
         <div>
           <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
-            {'Mapa de Competencias por Departamento'}
+            {t('analytics.heatmap.title')}
           </h2>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            {'Puntaje promedio por secci\u00f3n — filas: competencias, columnas: departamentos'}
+            {t('analytics.heatmap.subtitle')}
           </p>
         </div>
         {/* Legend */}
         <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.72rem', alignItems: 'center', flexShrink: 0 }}>
           <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'rgba(16,185,129,0.25)', borderRadius: '2px', border: '1px solid var(--border)' }} />
-          <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>{'Alto (\u226575%)'}</span>
+          <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>{t('analytics.heatmap.legendHigh')}</span>
           <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'rgba(245,158,11,0.20)', borderRadius: '2px', border: '1px solid var(--border)' }} />
-          <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>{'Medio'}</span>
+          <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>{t('analytics.heatmap.legendMid')}</span>
           <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'rgba(239,68,68,0.22)', borderRadius: '2px', border: '1px solid var(--border)' }} />
-          <span style={{ color: 'var(--text-muted)' }}>{'Bajo (<55%)'}</span>
+          <span style={{ color: 'var(--text-muted)' }}>{t('analytics.heatmap.legendLow')}</span>
         </div>
       </div>
 
@@ -120,14 +120,14 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1.25rem', padding: '0.75rem 1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-            Departamento:
+            {t('analytics.heatmap.departmentLabel')}
           </label>
           <select
             value={deptFilter}
             onChange={(e) => setDeptFilter(e.target.value)}
             style={{ padding: '0.35rem 0.6rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none' }}
           >
-            <option value="">Todos</option>
+            <option value="">{t('analytics.heatmap.allDepartments')}</option>
             {availableDepts.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
@@ -141,7 +141,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
             onChange={(e) => setSortByAvg(e.target.checked)}
             style={{ accentColor: 'var(--accent)' }}
           />
-          Ordenar por menor puntaje
+          {t('analytics.heatmap.sortByLowest')}
         </label>
 
         {(deptFilter || sortByAvg) && (
@@ -150,7 +150,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
             style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', marginLeft: 'auto' }}
             onClick={() => { setDeptFilter(''); setSortByAvg(false); }}
           >
-            Limpiar filtros
+            {t('analytics.heatmap.clearFilters')}
           </button>
         )}
       </div>
@@ -158,7 +158,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
       {/* Empty state — shown after filters so user can change selection */}
       {isEmpty && (
         <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          {(data as any)?.message || 'Sin datos de competencias para este ciclo. Seleccione otro departamento o ciclo.'}
+          {(data as any)?.message || t('analytics.heatmap.emptyState')}
         </div>
       )}
 
@@ -167,7 +167,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
             <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', minWidth: '160px' }}>
-              {'Secci\u00f3n / Competencia'}
+              {t('analytics.heatmap.sectionHeader')}
             </th>
             {(departments as string[]).map((dept) => (
               <th key={dept} style={{ padding: '0.5rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', textAlign: 'center', maxWidth: '110px' }} title={dept}>
@@ -201,7 +201,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
                       color: cell.privacyRestricted ? 'var(--text-muted)' : cell.avg !== null ? 'var(--text-primary)' : 'var(--text-muted)',
                       fontSize: '0.82rem',
                     }}
-                    title={cell.privacyRestricted ? `Privacidad: se requieren al menos ${privacyThreshold} evaluados` : cell.avg !== null ? `${cell.count} respuestas · escala 1-${row.maxScale ?? 10}` : 'Sin datos'}
+                    title={cell.privacyRestricted ? t('analytics.heatmap.privacyTitle', { threshold: privacyThreshold }) : cell.avg !== null ? t('analytics.heatmap.cellTooltip', { count: cell.count, max: row.maxScale ?? 10 }) : t('analytics.heatmap.cellNoData')}
                   >
                     {cell.privacyRestricted ? '\uD83D\uDD12' : cell.avg !== null ? cell.avg.toFixed(1) : '\u2014'}
                   </td>
@@ -218,7 +218,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
                       fontSize: '0.82rem',
                       color: avg !== null ? 'var(--accent)' : 'var(--text-muted)',
                     }}
-                    title={avg !== null ? `Promedio organizacional: ${avg.toFixed(2)} / ${row.maxScale ?? 10}` : 'Sin datos suficientes'}
+                    title={avg !== null ? t('analytics.heatmap.orgAvgTitle', { avg: avg.toFixed(2), max: row.maxScale ?? 10 }) : t('analytics.heatmap.noDataTitle')}
                   >
                     {avg !== null ? avg.toFixed(1) : '\u2014'}
                   </td>
@@ -231,7 +231,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
 
       {!isEmpty && hasPrivacyRows && (
         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-          {'\uD83D\uDD12 Se ocultan departamentos con menos de '}{privacyThreshold}{' evaluados para proteger la privacidad'}
+          {'\uD83D\uDD12 '}{t('analytics.heatmap.privacyFooter', { threshold: privacyThreshold })}
         </p>
       )}
     </div>
@@ -303,12 +303,12 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
         {t('analytics.distributionTitle')}
       </h2>
       <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-        Histograma de puntajes con curva normal superpuesta
+        {t('analytics.bell.subtitle')}
       </p>
 
       <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.85rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
         <div>
-          <span style={{ color: 'var(--text-muted)' }}>Promedio: </span>
+          <span style={{ color: 'var(--text-muted)' }}>{t('analytics.bell.avgLabel')} </span>
           <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{data.mean}</span>
         </div>
         <div>
@@ -316,7 +316,7 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
           <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.stddev}</span>
         </div>
         <div>
-          <span style={{ color: 'var(--text-muted)' }}>Total evaluaciones: </span>
+          <span style={{ color: 'var(--text-muted)' }}>{t('analytics.bell.totalEvals')} </span>
           <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{data.count}</span>
         </div>
       </div>
@@ -337,15 +337,15 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
               const d = payload[0]?.payload;
               return (
                 <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.85rem', fontSize: '0.78rem' }}>
-                  <p style={{ fontWeight: 700 }}>Rango: {d?.rangeLabel}</p>
-                  <p style={{ color: '#6366f1' }}>Cantidad: {d?.count}</p>
-                  <p style={{ color: '#f59e0b' }}>Curva normal: {d?.normalY?.toFixed(1)}</p>
+                  <p style={{ fontWeight: 700 }}>{t('analytics.bell.tooltipRange')} {d?.rangeLabel}</p>
+                  <p style={{ color: '#6366f1' }}>{t('analytics.bell.tooltipCount')} {d?.count}</p>
+                  <p style={{ color: '#f59e0b' }}>{t('analytics.bell.tooltipNormal')} {d?.normalY?.toFixed(1)}</p>
                 </div>
               );
             }}
           />
-          <Bar dataKey="count" fill="#6366f1" fillOpacity={0.7} radius={[2, 2, 0, 0]} name="Evaluaciones" />
-          <Area type="monotone" dataKey="normalY" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} strokeWidth={2} name="Curva Normal" dot={false} />
+          <Bar dataKey="count" fill="#6366f1" fillOpacity={0.7} radius={[2, 2, 0, 0]} name={t('analytics.bell.barName')} />
+          <Area type="monotone" dataKey="normalY" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} strokeWidth={2} name={t('analytics.bell.areaName')} dot={false} />
         </ComposedChart>
       </ResponsiveContainer>
 
@@ -368,7 +368,7 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
               <div key={z.label} style={{ flex: '1 1 120px', padding: '0.6rem 0.85rem', background: z.bg, borderRadius: 'var(--radius-sm)', border: `1px solid ${z.color}33` }}>
                 <p style={{ fontSize: '1.3rem', fontWeight: 800, color: z.color, margin: 0 }}>{z.pct}%</p>
                 <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.1rem 0 0' }}>{z.label}</p>
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>{z.cnt} persona{z.cnt !== 1 ? 's' : ''}</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>{z.cnt} {z.cnt !== 1 ? t('analytics.bell.personsPlural') : t('analytics.bell.persons')}</p>
               </div>
             ))}
           </div>
@@ -380,7 +380,7 @@ function BellCurveSection({ cycleId }: { cycleId: string }) {
               {mean >= 6.0 ? '✅' : mean >= 4.5 ? '⚠️' : '🔴'}
             </span>
             <span style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-              <strong>Tendencia central:</strong> {meanMsg.text}
+              <strong>{t('analytics.bell.centralTrend')}</strong> {meanMsg.text}
             </span>
           </div>
 
@@ -422,9 +422,12 @@ const BASE_URL =
   'https://evaluacion-desempeno-api.onrender.com';
 
 /* ─── Bias constants ─────────────────────────────────────────────── */
-const biasTypeLabel: Record<string, string> = {
-  leniency: 'Lenidad', severity: 'Severidad', halo: 'Efecto Halo',
-  central_tendency: 'Tendencia Central', contrast: 'Contraste',
+const BIAS_TYPE_KEYS: Record<string, string> = {
+  leniency: 'analytics.bias.typeLeniency',
+  severity: 'analytics.bias.typeSeverity',
+  halo: 'analytics.bias.typeHalo',
+  central_tendency: 'analytics.bias.typeCentral',
+  contrast: 'analytics.bias.typeContrast',
 };
 const severityBadge: Record<string, string> = {
   high: 'badge-danger', medium: 'badge-warning', low: 'badge-success',
@@ -432,6 +435,7 @@ const severityBadge: Record<string, string> = {
 
 /* ─── Bias Analysis Section (moved from analytics-ciclos) ────────── */
 function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocked: boolean }) {
+  const { t } = useTranslation();
   const { data: cached, isLoading } = useAiBias(cycleId);
   const analyze = useAnalyzeBias();
   const data = cached?.content; // AiInsight.content holds the actual bias analysis
@@ -442,12 +446,12 @@ function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocke
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
         <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'🔍'}</p>
-        <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No hay analisis de sesgos para este ciclo</p>
-        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Cada generacion consume 1 credito de IA</p>
+        <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>{t('analytics.bias.noAnalysis')}</p>
+        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('analytics.bias.creditNote')}</p>
         <button className="btn-primary" style={{ fontSize: '0.85rem' }}
           disabled={analyze.isPending || aiBlocked}
           onClick={() => analyze.mutate(cycleId)}>
-          {analyze.isPending ? 'Analizando sesgos...' : 'Analizar Sesgos con IA'}
+          {analyze.isPending ? t('analytics.bias.analyzing') : t('analytics.bias.analyzeBtn')}
         </button>
         {analyze.isError && <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: '0.5rem' }}>{(analyze.error as any)?.message || 'Error'}</p>}
       </div>
@@ -457,16 +461,16 @@ function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocke
   const biases = data.biasesDetected || [];
 
   const handleExportBias = () => {
-    let txt = `INFORME DE SESGOS - Ciclo ${cycleId.slice(0, 8)}\nFecha: ${new Date().toLocaleDateString('es-CL')}\n`;
-    txt += `Confianza: ${((data.confidenceLevel || 0) * 100).toFixed(0)}%\n\n`;
-    txt += `EVALUACION GENERAL:\n${data.overallAssessment}\n\nCALIDAD DE DATOS: ${data.dataQuality}\n\n`;
+    let txt = `${t('analytics.bias.exportTitle', { cycleId: cycleId.slice(0, 8) })}\n${t('analytics.bias.exportDate')} ${new Date().toLocaleDateString()}\n`;
+    txt += `${t('analytics.bias.exportConfidence')} ${((data.confidenceLevel || 0) * 100).toFixed(0)}%\n\n`;
+    txt += `${t('analytics.bias.exportOverall')}\n${data.overallAssessment}\n\n${t('analytics.bias.exportDataQuality')} ${data.dataQuality}\n\n`;
     if (biases.length > 0) {
-      txt += `SESGOS DETECTADOS (${biases.length}):\n`;
+      txt += `${t('analytics.bias.exportDetected', { count: biases.length })}:\n`;
       biases.forEach((b: any, i: number) => {
-        txt += `\n${i + 1}. ${biasTypeLabel[b.type] || b.type} (${b.severity})\n`;
-        txt += `   Evaluador: ${b.evaluatorName}\n   Evidencia: ${b.evidence}\n`;
-        if (b.affectedEvaluatees?.length) txt += `   Afectados: ${b.affectedEvaluatees.join(', ')}\n`;
-        txt += `   Recomendacion: ${b.recommendation}\n`;
+        txt += `\n${i + 1}. ${BIAS_TYPE_KEYS[b.type] ? t(BIAS_TYPE_KEYS[b.type]) : b.type} (${b.severity})\n`;
+        txt += `   ${t('analytics.bias.exportEvaluator')} ${b.evaluatorName}\n   ${t('analytics.bias.exportEvidence')} ${b.evidence}\n`;
+        if (b.affectedEvaluatees?.length) txt += `   ${t('analytics.bias.exportAffected')} ${b.affectedEvaluatees.join(', ')}\n`;
+        txt += `   ${t('analytics.bias.exportRecommendation')} ${b.recommendation}\n`;
       });
     }
     const blob = new Blob([txt], { type: 'text/plain' });
@@ -481,15 +485,15 @@ function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocke
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Sesgos Detectados</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.bias.detected')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: biases.length > 0 ? 'var(--danger)' : 'var(--success)' }}>{biases.length}</div>
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Confianza</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.bias.confidence')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent)' }}>{((data.confidenceLevel || 0) * 100).toFixed(0)}%</div>
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Calidad Datos</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.bias.dataQuality')}</div>
           <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-secondary)' }}>{data.dataQuality || '—'}</div>
         </div>
       </div>
@@ -505,26 +509,26 @@ function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocke
           {biases.map((b: any, i: number) => (
             <div key={i} className="card" style={{ padding: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{biasTypeLabel[b.type] || b.type}</span>
+                <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{BIAS_TYPE_KEYS[b.type] ? t(BIAS_TYPE_KEYS[b.type]) : b.type}</span>
                 <span className={`badge ${severityBadge[b.severity] || 'badge-warning'}`} style={{ fontSize: '0.65rem' }}>{b.severity}</span>
               </div>
-              <p style={{ fontSize: '0.82rem', marginBottom: '0.3rem' }}><strong>Evaluador:</strong> {b.evaluatorName}</p>
+              <p style={{ fontSize: '0.82rem', marginBottom: '0.3rem' }}><strong>{t('analytics.bias.evaluator')}</strong> {b.evaluatorName}</p>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>{b.evidence}</p>
-              {b.affectedEvaluatees?.length > 0 && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Afectados: {b.affectedEvaluatees.join(', ')}</p>}
+              {b.affectedEvaluatees?.length > 0 && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('analytics.bias.affected')} {b.affectedEvaluatees.join(', ')}</p>}
               <p style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>{b.recommendation}</p>
             </div>
           ))}
         </div>
       ) : (
         <div className="card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--success)', fontWeight: 600 }}>
-          {'✅'} No se detectaron sesgos significativos en este ciclo
+          {'✅'} {t('analytics.bias.noBiasDetected')}
         </div>
       )}
 
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-        <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={handleExportBias}>Exportar informe TXT</button>
+        <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={handleExportBias}>{t('analytics.bias.exportTxt')}</button>
       </div>
-      <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>Generado por IA (Claude) - Solo visible para administradores</p>
+      <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{t('analytics.bias.footer')}</p>
     </div>
   );
 }
@@ -580,7 +584,7 @@ function AnalyticsPageContent() {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error('Error al exportar');
+      if (!res.ok) throw new Error(t('analytics.exportError'));
       const blob = await res.blob();
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -588,7 +592,7 @@ function AnalyticsPageContent() {
       link.click();
       URL.revokeObjectURL(link.href);
     } catch (err: any) {
-      toast.error(err.message || 'Error al exportar');
+      toast.error(err.message || t('analytics.exportError'));
     } finally {
       setExporting(null);
     }
@@ -677,19 +681,19 @@ function AnalyticsPageContent() {
           <Spinner />
         ) : !sortedCycles.length ? (
           <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{'No hay ciclos disponibles'}</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('analytics.noCycles')}</p>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Ciclo:
+              {t('analytics.cycleLabel')}
             </label>
             <select
               style={selectStyle}
               value={selectedCycleId || ''}
               onChange={(e) => setSelectedCycleId(e.target.value || null)}
             >
-              <option value="">Selecciona un ciclo</option>
+              <option value="">{t('analytics.selectCycle')}</option>
               {sortedCycles.map((c: any) => (
                 <option key={c.id} value={c.id}>
                   {c.name} ({c.status})
@@ -697,7 +701,7 @@ function AnalyticsPageContent() {
               ))}
             </select>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
-              Solo ciclos cerrados con datos completos
+              {t('analytics.closedCyclesOnly')}
             </span>
 
             {/* Export buttons */}
@@ -733,7 +737,7 @@ function AnalyticsPageContent() {
       {!selectedCycleId && !loadingCycles && sortedCycles.length > 0 && (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            {'Selecciona un ciclo para ver el an\u00e1lisis'}
+            {t('analytics.selectCyclePrompt')}
           </p>
         </div>
       )}
@@ -745,7 +749,7 @@ function AnalyticsPageContent() {
             <Spinner />
           ) : !analytics ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin datos de analisis para este ciclo</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('analytics.noAnalysisData')}</p>
             </div>
           ) : (
             <>
@@ -755,15 +759,15 @@ function AnalyticsPageContent() {
                 return myTeam ? (
                   <div className="animate-fade-up" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
                     <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>Mi Equipo</div>
+                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analytics.manager.myTeam')}</div>
                       <div style={{ fontSize: '1.3rem', fontWeight: 800 }}>{myTeam.teamSize}</div>
                     </div>
                     <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>Prom. Equipo</div>
+                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analytics.manager.teamAvg')}</div>
                       <div style={{ fontSize: '1.3rem', fontWeight: 800, color: Number(myTeam.avgScore) >= 7 ? 'var(--success)' : Number(myTeam.avgScore) >= 5 ? 'var(--warning)' : 'var(--danger)' }}>{Number(myTeam.avgScore).toFixed(1)}/10</div>
                     </div>
                     {myDepartment && <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>Departamento</div>
+                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>{t('analytics.manager.department')}</div>
                       <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>{myDepartment}</div>
                     </div>}
                   </div>
@@ -782,7 +786,7 @@ function AnalyticsPageContent() {
                       borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
                       marginBottom: '-2px', transition: 'all 0.2s ease',
                     }}>
-                    {tab.label}
+                    {t(tab.labelKey)}
                   </button>
                 ))}
               </div>
@@ -807,21 +811,21 @@ function AnalyticsPageContent() {
                     return sorted.length > 0 ? (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
                         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Mejor Departamento</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.dept.bestDept')}</div>
                           <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--success)' }}>{best?.department}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{Number(best?.avgScore).toFixed(1)}/10</div>
                         </div>
                         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Menor Puntaje</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.dept.worstScore')}</div>
                           <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--danger)' }}>{worst?.department}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{Number(worst?.avgScore).toFixed(1)}/10</div>
                         </div>
                         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Promedio Org.</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.dept.orgAvg')}</div>
                           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{orgAvgScore.toFixed(1)}</div>
                         </div>
                         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Departamentos</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.dept.deptCount')}</div>
                           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#6366f1' }}>{sorted.length}</div>
                         </div>
                       </div>
@@ -831,9 +835,9 @@ function AnalyticsPageContent() {
                   {/* Manager comparative header */}
                   {isManager && orgAnalytics && (
                     <div style={{ borderTop: '3px solid var(--accent)', paddingTop: '1rem' }}>
-                      <h2 style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--accent)', marginBottom: '0.25rem' }}>Analisis Comparativo: {myDepartment || 'Mi Departamento'} vs Empresa</h2>
+                      <h2 style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--accent)', marginBottom: '0.25rem' }}>{t('analytics.dept.comparativeTitle', { dept: myDepartment || t('analytics.manager.department') })}</h2>
                       <select className="input" value={compareDept} onChange={(e) => setCompareDept(e.target.value)} style={{ fontSize: '0.82rem', maxWidth: '300px', marginBottom: '1rem' }}>
-                        <option value="">Todos los departamentos</option>
+                        <option value="">{t('analytics.dept.allDepts')}</option>
                         {(orgAnalytics.departmentComparison || []).filter((d: any) => d.department !== myDepartment).map((d: any) => (
                           <option key={d.department} value={d.department}>{d.department}</option>
                         ))}
@@ -844,12 +848,12 @@ function AnalyticsPageContent() {
                   {/* Chart */}
                   {(deptData?.departmentComparison)?.length > 0 && (
                     <div className="card" style={{ padding: '1.5rem' }}>
-                      <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>Puntaje promedio por departamento</h2>
+                      <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>{t('analytics.dept.chartTitle')}</h2>
                       {(() => {
                         const rawData = (deptData?.departmentComparison || []);
                         const chartData = rawData
                           .filter((d: any) => !isManager || !compareDept || d.department === myDepartment || d.department === compareDept)
-                          .map((d: any) => ({ department: d.department || 'Sin depto.', avgScore: Number(d.avgScore) || 0, count: d.count, isMyDept: d.department === myDepartment }));
+                          .map((d: any) => ({ department: d.department || t('analytics.dept.noDept'), avgScore: Number(d.avgScore) || 0, count: d.count, isMyDept: d.department === myDepartment }));
                         return (
                           <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 45)}>
                             <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
@@ -857,7 +861,7 @@ function AnalyticsPageContent() {
                               <XAxis type="number" domain={[0, 10]} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                               <YAxis type="category" dataKey="department" width={120} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                               <Tooltip content={customTooltip} />
-                              <Bar dataKey="avgScore" name="Puntaje Promedio" radius={[0, 4, 4, 0]}>
+                              <Bar dataKey="avgScore" name={t('analytics.dept.avgScoreName')} radius={[0, 4, 4, 0]}>
                                 {chartData.map((d: any, idx: number) => (
                                   <Cell key={idx} fill={isManager && d.isMyDept ? '#C9933A' : '#6366f1'} />
                                 ))}
@@ -878,12 +882,12 @@ function AnalyticsPageContent() {
                     const above = myScore >= orgAvgVal;
                     return (
                       <div className="card" style={{ padding: '1.25rem', borderLeft: `4px solid ${above ? 'var(--success)' : 'var(--warning)'}` }}>
-                        <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: above ? 'var(--success)' : 'var(--warning)', marginBottom: '0.5rem' }}>Analisis Comparativo Detallado</h3>
+                        <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: above ? 'var(--success)' : 'var(--warning)', marginBottom: '0.5rem' }}>{t('analytics.dept.detailedTitle')}</h3>
                         <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                          <p style={{ margin: '0 0 0.3rem' }}><strong>Posicion:</strong> #{myRank} de {allDepts.length} con <strong>{myScore.toFixed(1)}/10</strong>.</p>
-                          <p style={{ margin: '0 0 0.3rem' }}><strong>vs Organizacion:</strong> Promedio org {orgAvgVal.toFixed(1)}. Tu depto esta <strong style={{ color: above ? 'var(--success)' : 'var(--danger)' }}>{above ? 'por encima' : 'por debajo'}</strong> por {Math.abs(myScore - orgAvgVal).toFixed(1)} pts.</p>
-                          {myRank === 1 && <p style={{ margin: 0 }}>{'🏆'} <strong>Tu departamento lidera el ranking!</strong></p>}
-                          {myRank === allDepts.length && <p style={{ margin: 0 }}>{'⚠️'} Ultima posicion. Revisa areas de mejora.</p>}
+                          <p style={{ margin: '0 0 0.3rem' }}><strong>{t('analytics.dept.position')}</strong> {t('analytics.dept.positionText', { rank: myRank, total: allDepts.length })} <strong>{myScore.toFixed(1)}/10</strong>.</p>
+                          <p style={{ margin: '0 0 0.3rem' }}><strong>{t('analytics.dept.vsOrg')}</strong> {t('analytics.dept.orgAvgText', { avg: orgAvgVal.toFixed(1) })} <strong style={{ color: above ? 'var(--success)' : 'var(--danger)' }}>{above ? t('analytics.dept.above') : t('analytics.dept.below')}</strong> {t('analytics.dept.byPts', { pts: Math.abs(myScore - orgAvgVal).toFixed(1) })}</p>
+                          {myRank === 1 && <p style={{ margin: 0 }}>{'🏆'} <strong>{t('analytics.dept.leadsRanking')}</strong></p>}
+                          {myRank === allDepts.length && <p style={{ margin: 0 }}>{'⚠️'} {t('analytics.dept.lastPosition')}</p>}
                         </div>
                       </div>
                     );
@@ -910,21 +914,21 @@ function AnalyticsPageContent() {
                     return (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
                         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Mejor Equipo</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.teams.bestTeam')}</div>
                           <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--success)' }}>{best?.managerName}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{Number(best?.avgScore).toFixed(1)}/10</div>
                         </div>
                         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Equipo en Riesgo</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.teams.atRisk')}</div>
                           <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--danger)' }}>{worst?.managerName}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{Number(worst?.avgScore).toFixed(1)}/10</div>
                         </div>
                         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Promedio Equipos</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.teams.teamsAvg')}</div>
                           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent)' }}>{avgAll.toFixed(1)}</div>
                         </div>
                         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>Total Equipos</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.teams.totalTeams')}</div>
                           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#6366f1' }}>{sorted.length}</div>
                         </div>
                       </div>
@@ -935,18 +939,18 @@ function AnalyticsPageContent() {
                   {analytics?.teamBenchmarks && analytics?.teamBenchmarks.length > 0 && (
                     <div className="card" style={{ padding: '1.5rem' }}>
                       <h2 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>
-                        {isManager ? 'Tu equipo comparado con otros encargados' : 'Rendimiento promedio por Encargado de Equipo'}
+                        {isManager ? t('analytics.teams.titleManager') : t('analytics.teams.titleAdmin')}
                       </h2>
                       <div className="table-wrapper">
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead><tr>{['Encargado', 'Departamento', 'Promedio', 'Equipo'].map(h => <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>{h}</th>)}</tr></thead>
+                          <thead><tr>{[t('analytics.teams.tableHeaderManager'), t('analytics.teams.tableHeaderDept'), t('analytics.teams.tableHeaderAvg'), t('analytics.teams.tableHeaderTeam')].map(h => <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>{h}</th>)}</tr></thead>
                           <tbody>
                             {[...analytics?.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore)).map((tb: any, i: number) => {
                               const isMe = tb.managerId === userId;
                               const score = Number(tb.avgScore) || 0;
                               return (
                                 <tr key={i} style={{ background: isMe ? 'rgba(201,147,58,0.08)' : 'transparent' }}>
-                                  <td style={{ padding: '0.5rem 0.75rem', fontWeight: isMe ? 700 : 500, fontSize: '0.85rem', borderBottom: '1px solid var(--border)', color: isMe ? 'var(--accent)' : 'var(--text-primary)' }}>{tb.managerName}{isMe ? ' (tu)' : ''}</td>
+                                  <td style={{ padding: '0.5rem 0.75rem', fontWeight: isMe ? 700 : 500, fontSize: '0.85rem', borderBottom: '1px solid var(--border)', color: isMe ? 'var(--accent)' : 'var(--text-primary)' }}>{tb.managerName}{isMe ? ` ${t('analytics.teams.youMarker')}` : ''}</td>
                                   <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>{tb.department || '—'}</td>
                                   <td style={{ padding: '0.5rem 0.75rem', fontWeight: 700, color: score >= 7 ? 'var(--success)' : score >= 5 ? 'var(--warning)' : 'var(--danger)', borderBottom: '1px solid var(--border)' }}>{score.toFixed(1)}</td>
                                   <td style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border)' }}>{tb.teamSize}</td>
@@ -960,7 +964,7 @@ function AnalyticsPageContent() {
                   )}
 
                   {(!analytics?.teamBenchmarks || analytics?.teamBenchmarks.length === 0) && (
-                    <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos de equipos para este ciclo</div>
+                    <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('analytics.teams.noData')}</div>
                   )}
                 </div>
               )}
