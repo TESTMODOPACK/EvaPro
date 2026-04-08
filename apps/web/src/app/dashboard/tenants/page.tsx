@@ -421,7 +421,18 @@ export default function TenantsPage() {
                   if (!ws) return '';
                   const cellRef = XLSX.utils.encode_cell({ r: row - 1, c: col - 1 });
                   const cell = ws[cellRef];
-                  return cell?.v?.toString()?.trim() || '';
+                  if (!cell) return '';
+                  // Handle hyperlinks, rich text, and other complex cell types
+                  const val = cell.w || cell.v;
+                  if (val == null) return '';
+                  if (typeof val === 'object') {
+                    // Hyperlink: { text, hyperlink } or rich text array
+                    if (val.text) return String(val.text).trim();
+                    if (val.hyperlink) return String(val.hyperlink).trim();
+                    if (Array.isArray(val)) return val.map((v: any) => v?.t || v?.text || String(v)).join('').trim();
+                    return JSON.stringify(val);
+                  }
+                  return String(val).trim();
                 };
                 const sheetName = (idx: number) => wb.SheetNames[idx] || '';
                 const s = (idx: number) => sheetName(idx);

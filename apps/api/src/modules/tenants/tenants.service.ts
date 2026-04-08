@@ -597,6 +597,17 @@ export class TenantsService {
   }): Promise<{ tenant: any; admin: any; usersCreated: number; competenciesCreated: number; summary: string[] }> {
     const summary: string[] = [];
 
+    // Validate required fields
+    if (!data.org?.name?.trim()) throw new BadRequestException('Nombre de la organización es requerido');
+    if (!data.admin?.email?.trim() || !data.admin.email.includes('@')) throw new BadRequestException('Email del administrador es requerido y debe ser válido');
+    if (!data.admin?.password?.trim()) throw new BadRequestException('Contraseña del administrador es requerida');
+    if (!data.admin?.firstName?.trim()) throw new BadRequestException('Nombre del administrador es requerido');
+    if (!data.admin?.lastName?.trim()) throw new BadRequestException('Apellido del administrador es requerido');
+
+    // Check for duplicate email
+    const existingEmail = await this.userRepository.findOne({ where: { email: data.admin.email.trim().toLowerCase() } });
+    if (existingEmail) throw new BadRequestException(`El email ${data.admin.email} ya está registrado en otra organización`);
+
     // 1. Create tenant (auto-generate unique slug)
     let slug = data.org.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
     const existingSlug = await this.tenantRepository.findOne({ where: { slug } });
