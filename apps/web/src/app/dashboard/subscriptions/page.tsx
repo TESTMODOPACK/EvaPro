@@ -134,6 +134,8 @@ export default function SubscriptionsPage() {
   // Payment history
   const [showPaymentsFor, setShowPaymentsFor] = useState<string | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+  const [editingPayment, setEditingPayment] = useState<any>(null);
+  const [deletingPayment, setDeletingPayment] = useState<string | null>(null);
 
   // ── Fetch ───────────────────────────────────────────────────────────────
 
@@ -1073,6 +1075,7 @@ export default function SubscriptionsPage() {
                                       <th style={{ padding: '0.35rem 0.5rem' }}>Método</th>
                                       <th style={{ padding: '0.35rem 0.5rem' }}>Referencia</th>
                                       <th style={{ padding: '0.35rem 0.5rem' }}>Estado</th>
+                                      <th style={{ padding: '0.35rem 0.5rem' }}>Acciones</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1093,6 +1096,82 @@ export default function SubscriptionsPage() {
                                           <span className={`badge ${p.status === 'paid' ? 'badge-success' : p.status === 'pending' ? 'badge-warning' : 'badge-danger'}`} style={{ fontSize: '0.7rem' }}>
                                             {p.status === 'paid' ? 'Pagado' : p.status === 'pending' ? 'Pendiente' : p.status === 'overdue' ? 'Vencido' : p.status}
                                           </span>
+                                        </td>
+                                        <td style={{ padding: '0.35rem 0.5rem' }}>
+                                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                            <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}
+                                              onClick={() => setEditingPayment(editingPayment?.id === p.id ? null : {
+                                                id: p.id, amount: String(p.amount), periodStart: p.periodStart?.split('T')[0] || '',
+                                                periodEnd: p.periodEnd?.split('T')[0] || '', paymentMethod: p.paymentMethod || '',
+                                                transactionRef: p.transactionRef || '', notes: p.notes || '', status: p.status || 'paid',
+                                              })}>
+                                              {editingPayment?.id === p.id ? 'Cerrar' : 'Editar'}
+                                            </button>
+                                            <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem', color: 'var(--danger)' }}
+                                              disabled={deletingPayment === p.id}
+                                              onClick={async () => {
+                                                if (!confirm('Eliminar este pago? Esta accion no se puede deshacer.')) return;
+                                                setDeletingPayment(p.id);
+                                                try {
+                                                  await api.subscriptions.deletePayment(token!, p.id);
+                                                  setPaymentHistory(prev => prev.filter(x => x.id !== p.id));
+                                                  alert('Pago eliminado');
+                                                } catch (e: any) { alert(e.message || 'Error'); }
+                                                setDeletingPayment(null);
+                                              }}>
+                                              {deletingPayment === p.id ? '...' : 'Eliminar'}
+                                            </button>
+                                          </div>
+                                          {/* Inline edit form */}
+                                          {editingPayment?.id === p.id && (
+                                            <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.4rem', marginBottom: '0.4rem' }}>
+                                                <div>
+                                                  <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Monto</label>
+                                                  <input className="input" type="number" step="0.01" value={editingPayment.amount}
+                                                    onChange={(e) => setEditingPayment((prev: any) => ({ ...prev, amount: e.target.value }))}
+                                                    style={{ fontSize: '0.78rem', padding: '0.25rem 0.4rem' }} />
+                                                </div>
+                                                <div>
+                                                  <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Metodo</label>
+                                                  <input className="input" value={editingPayment.paymentMethod}
+                                                    onChange={(e) => setEditingPayment((prev: any) => ({ ...prev, paymentMethod: e.target.value }))}
+                                                    style={{ fontSize: '0.78rem', padding: '0.25rem 0.4rem' }} />
+                                                </div>
+                                                <div>
+                                                  <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Referencia</label>
+                                                  <input className="input" value={editingPayment.transactionRef}
+                                                    onChange={(e) => setEditingPayment((prev: any) => ({ ...prev, transactionRef: e.target.value }))}
+                                                    style={{ fontSize: '0.78rem', padding: '0.25rem 0.4rem' }} />
+                                                </div>
+                                                <div>
+                                                  <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Estado</label>
+                                                  <select className="input" value={editingPayment.status}
+                                                    onChange={(e) => setEditingPayment((prev: any) => ({ ...prev, status: e.target.value }))}
+                                                    style={{ fontSize: '0.78rem', padding: '0.25rem 0.4rem' }}>
+                                                    <option value="paid">Pagado</option>
+                                                    <option value="pending">Pendiente</option>
+                                                    <option value="overdue">Vencido</option>
+                                                    <option value="refunded">Reembolsado</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <button className="btn-primary" style={{ fontSize: '0.72rem', padding: '0.2rem 0.6rem' }}
+                                                onClick={async () => {
+                                                  try {
+                                                    await api.subscriptions.updatePayment(token!, editingPayment.id, {
+                                                      amount: Number(editingPayment.amount),
+                                                      paymentMethod: editingPayment.paymentMethod,
+                                                      transactionRef: editingPayment.transactionRef,
+                                                      status: editingPayment.status,
+                                                    });
+                                                    alert('Pago actualizado');
+                                                    setEditingPayment(null);
+                                                    if (showPaymentsFor) loadPaymentHistory(showPaymentsFor);
+                                                  } catch (e: any) { alert(e.message || 'Error'); }
+                                                }}>Guardar</button>
+                                            </div>
+                                          )}
                                         </td>
                                       </tr>
                                     ))}

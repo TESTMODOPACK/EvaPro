@@ -55,11 +55,13 @@ export class InvoicesService {
       where: { id: subscriptionId },
       relations: ['plan', 'tenant'],
     });
-    if (!sub) throw new NotFoundException('Suscripción no encontrada');
+    if (!sub) throw new NotFoundException('Suscripcion no encontrada');
+    if (!sub.plan) throw new BadRequestException('La suscripcion no tiene un plan asociado. Asigne un plan antes de facturar.');
+    if (!sub.tenant) throw new BadRequestException('La suscripcion no tiene un tenant asociado.');
 
     // Calculate period
     const now = new Date();
-    const periodStart = sub.nextBillingDate || now;
+    const periodStart = sub.nextBillingDate || sub.startDate || now;
     const periodEnd = this.addBillingPeriod(new Date(periodStart), sub.billingPeriod || BillingPeriod.MONTHLY);
 
     // Check for duplicate invoice in same period

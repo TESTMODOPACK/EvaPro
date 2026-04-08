@@ -310,6 +310,10 @@ export const api = {
     getPayments: (token: string, id: string) => request<any[]>(`/subscriptions/${id}/payments`, {}, token),
     registerPayment: (token: string, id: string, data: any) =>
       request<any>(`/subscriptions/${id}/payments`, { method: "POST", body: JSON.stringify(data) }, token),
+    updatePayment: (token: string, paymentId: string, data: any) =>
+      request<any>(`/subscriptions/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    deletePayment: (token: string, paymentId: string) =>
+      request<any>(`/subscriptions/payments/${paymentId}`, { method: "DELETE" }, token),
     plans: {
       list: (token: string) => request<any[]>("/subscriptions/plans", {}, token),
       create: (token: string, data: any) =>

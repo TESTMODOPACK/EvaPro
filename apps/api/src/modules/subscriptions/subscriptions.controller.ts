@@ -213,4 +213,23 @@ export class SubscriptionsController {
   ) {
     return this.subscriptionsService.registerPayment(id, dto, req.user?.userId);
   }
+
+  @Patch('payments/:paymentId')
+  @Roles('super_admin')
+  updatePayment(
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @Body() dto: any,
+    @Request() req: any,
+  ) {
+    return this.subscriptionsService.updatePayment(paymentId, dto, req.user?.userId);
+  }
+
+  @Delete('payments/:paymentId')
+  @Roles('super_admin')
+  deletePayment(
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @Request() req: any,
+  ) {
+    return this.subscriptionsService.deletePayment(paymentId, req.user?.userId);
+  }
 }

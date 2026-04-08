@@ -487,6 +487,38 @@ export class SubscriptionsService {
     });
   }
 
+  async updatePayment(paymentId: string, dto: any, changedBy?: string): Promise<PaymentHistory> {
+    const payment = await this.paymentRepo.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Pago no encontrado');
+
+    if (dto.amount != null) payment.amount = Number(dto.amount);
+    if (dto.periodStart) payment.periodStart = new Date(dto.periodStart);
+    if (dto.periodEnd) payment.periodEnd = new Date(dto.periodEnd);
+    if (dto.paymentMethod !== undefined) payment.paymentMethod = dto.paymentMethod || null;
+    if (dto.transactionRef !== undefined) payment.transactionRef = dto.transactionRef || null;
+    if (dto.notes !== undefined) payment.notes = dto.notes || null;
+    if (dto.status) {
+      payment.status = dto.status;
+      if (dto.status === PaymentStatus.PAID && !payment.paidAt) payment.paidAt = new Date();
+    }
+
+    const saved = await this.paymentRepo.save(payment);
+    if (changedBy) {
+      await this.auditService.log(payment.tenantId, changedBy, 'payment.updated', 'payment', saved.id, { amount: Number(saved.amount) });
+    }
+    return saved;
+  }
+
+  async deletePayment(paymentId: string, changedBy?: string): Promise<void> {
+    const payment = await this.paymentRepo.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Pago no encontrado');
+
+    if (changedBy) {
+      await this.auditService.log(payment.tenantId, changedBy, 'payment.deleted', 'payment', payment.id, { amount: Number(payment.amount), transactionRef: payment.transactionRef });
+    }
+    await this.paymentRepo.remove(payment);
+  }
+
   async getPaymentsBySubscription(subscriptionId: string): Promise<PaymentHistory[]> {
     return this.paymentRepo.find({
       where: { subscriptionId },
