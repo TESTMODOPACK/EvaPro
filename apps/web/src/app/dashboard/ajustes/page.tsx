@@ -183,12 +183,12 @@ export default function AjustesPage() {
 
   const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = isSuperAdmin
     ? [
-        { id: 'organizacion', label: 'Plataforma', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
+        { id: 'organizacion', label: t('settings.tabs.platform'), icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
       ]
     : [
-        { id: 'organizacion', label: 'Organizacion', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
-        { id: 'notificaciones', label: 'Notificaciones', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0' },
-        { id: 'feedback', label: 'Retroalimentacion', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
+        { id: 'organizacion', label: t('settings.tabs.organization'), icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+        { id: 'notificaciones', label: t('settings.tabs.notifications'), icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0' },
+        { id: 'feedback', label: t('settings.tabs.feedback'), icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
       ];
 
   return (
@@ -236,92 +236,92 @@ export default function AjustesPage() {
       {activeTab === 'organizacion' && isSuperAdmin && (
         <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div className="card" style={{ padding: '1.5rem', borderLeft: '3px solid var(--accent)' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Configuracion General de la Plataforma</h2>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('settings.platform.title')}</h2>
             <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={labelStyle}>Nombre de la plataforma</label>
+                <label style={labelStyle}>{t('settings.platform.platformName')}</label>
                 <input className="input" type="text" value="Eva360" disabled style={{ opacity: 0.7 }} />
               </div>
               <div>
-                <label style={labelStyle}>Version</label>
+                <label style={labelStyle}>{t('settings.platform.version')}</label>
                 <input className="input" type="text" value="2.6.0" disabled style={{ opacity: 0.7 }} />
               </div>
               <div>
-                <label style={labelStyle}>Entorno</label>
-                <input className="input" type="text" value="Produccion" disabled style={{ opacity: 0.7 }} />
+                <label style={labelStyle}>{t('settings.platform.environment')}</label>
+                <input className="input" type="text" value={t('settings.platform.environmentValue')} disabled style={{ opacity: 0.7 }} />
               </div>
               <div>
-                <label style={labelStyle}>Dominio</label>
+                <label style={labelStyle}>{t('settings.platform.domain')}</label>
                 <input className="input" type="text" value={typeof window !== 'undefined' ? window.location.hostname : ''} disabled style={{ opacity: 0.7 }} />
               </div>
             </div>
           </div>
 
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Configuracion de IA</h2>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('settings.platform.aiTitle')}</h2>
             <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={labelStyle}>Proveedor IA</label>
+                <label style={labelStyle}>{t('settings.platform.aiProvider')}</label>
                 <input className="input" type="text" value="Anthropic (Claude)" disabled style={{ opacity: 0.7 }} />
               </div>
               <div>
-                <label style={labelStyle}>Modelo predeterminado</label>
+                <label style={labelStyle}>{t('settings.platform.aiModel')}</label>
                 <input className="input" type="text" value="claude-haiku-4-5" disabled style={{ opacity: 0.7 }} />
               </div>
             </div>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-              La clave API de Anthropic se configura en las variables de entorno del servidor (ANTHROPIC_API_KEY). Los creditos IA por organizacion se gestionan desde la seccion Suscripciones.
+              {t('settings.platform.aiNote')}
             </p>
           </div>
 
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Email y Notificaciones</h2>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('settings.platform.emailTitle')}</h2>
             <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={labelStyle}>Proveedor email</label>
+                <label style={labelStyle}>{t('settings.platform.emailProvider')}</label>
                 <input className="input" type="text" value="Resend" disabled style={{ opacity: 0.7 }} />
               </div>
               <div>
-                <label style={labelStyle}>Email remitente</label>
+                <label style={labelStyle}>{t('settings.platform.emailSender')}</label>
                 <input className="input" type="text" value="Eva360 <onboarding@resend.dev>" disabled style={{ opacity: 0.7 }} />
               </div>
             </div>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-              Las credenciales de email se configuran en variables de entorno del servidor (RESEND_API_KEY, EMAIL_FROM).
+              {t('settings.platform.emailNote')}
             </p>
           </div>
 
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Base de Datos</h2>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('settings.platform.dbTitle')}</h2>
             <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={labelStyle}>Motor</label>
+                <label style={labelStyle}>{t('settings.platform.dbEngine')}</label>
                 <input className="input" type="text" value="PostgreSQL 16" disabled style={{ opacity: 0.7 }} />
               </div>
               <div>
-                <label style={labelStyle}>Modelo multi-tenant</label>
-                <input className="input" type="text" value="Schema compartido (row-level)" disabled style={{ opacity: 0.7 }} />
+                <label style={labelStyle}>{t('settings.platform.multiTenant')}</label>
+                <input className="input" type="text" value={t('settings.platform.multiTenantValue')} disabled style={{ opacity: 0.7 }} />
               </div>
             </div>
           </div>
 
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Seguridad</h2>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('settings.platform.securityTitle')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
-                <span>Autenticacion</span><strong>JWT (Bearer Token)</strong>
+                <span>{t('settings.platform.securityAuth')}</span><strong>{t('settings.platform.securityAuthValue')}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
-                <span>Firmas digitales</span><strong>OTP por email + SHA-256</strong>
+                <span>{t('settings.platform.securitySignatures')}</span><strong>{t('settings.platform.securitySignaturesValue')}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
-                <span>Encriptacion passwords</span><strong>bcrypt (10 rounds)</strong>
+                <span>{t('settings.platform.securityEncryption')}</span><strong>{t('settings.platform.securityEncryptionValue')}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
-                <span>SSL/TLS</span><strong>Let{"'"}s Encrypt (auto-renewal)</strong>
+                <span>{t('settings.platform.securitySsl')}</span><strong>{t('settings.platform.securitySslValue')}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0' }}>
-                <span>Registro de auditoria</span><strong>Habilitado (todas las acciones)</strong>
+                <span>{t('settings.platform.securityAudit')}</span><strong>{t('settings.platform.securityAuditValue')}</strong>
               </div>
             </div>
           </div>
@@ -346,40 +346,40 @@ export default function AjustesPage() {
               </div>
               <div>
                 <label style={labelStyle}>{t('settings.company.taxId')}</label>
-                <input className="input" type="text" value={tenantRut || orgRut || 'No registrado'} readOnly style={{ opacity: 0.7, cursor: 'not-allowed', fontFamily: 'monospace' }} />
+                <input className="input" type="text" value={tenantRut || orgRut || t('settings.company.notRegistered')} readOnly style={{ opacity: 0.7, cursor: 'not-allowed', fontFamily: 'monospace' }} />
               </div>
               <div>
-                <label style={labelStyle}>Industria</label>
-                <input className="input" type="text" placeholder="Ej: Tecnología, Retail, Servicios..." value={industry} onChange={(e) => setIndustry(e.target.value)} />
+                <label style={labelStyle}>{t('settings.company.industry')}</label>
+                <input className="input" type="text" placeholder={t('settings.company.industryPlaceholder')} value={industry} onChange={(e) => setIndustry(e.target.value)} />
               </div>
               <div>
-                <label style={labelStyle}>Rango de colaboradores</label>
-                <input className="input" type="text" placeholder="Ej: 1-15, 16-50, 51-200" value={employeeRange} onChange={(e) => setEmployeeRange(e.target.value)} />
+                <label style={labelStyle}>{t('settings.company.employeeRange')}</label>
+                <input className="input" type="text" placeholder={t('settings.company.employeeRangePlaceholder')} value={employeeRange} onChange={(e) => setEmployeeRange(e.target.value)} />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={labelStyle}>Dirección comercial</label>
-                <input className="input" type="text" placeholder="Ej: Av. Providencia 1234, Santiago"
+                <label style={labelStyle}>{t('settings.company.commercialAddress')}</label>
+                <input className="input" type="text" placeholder={t('settings.company.commercialAddressPlaceholder')}
                   value={commercialAddress} onChange={(e) => setCommercialAddress(e.target.value)} />
               </div>
             </div>
 
             {/* Legal representative */}
             <div style={{ marginTop: '1.25rem' }}>
-              <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem' }}>Representante Legal</h3>
+              <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('settings.company.legalRep')}</h3>
               <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
                 <div>
-                  <label style={labelStyle}>Nombres y Apellidos</label>
-                  <input className="input" type="text" placeholder="Ej: Juan Pérez González" maxLength={200}
+                  <label style={labelStyle}>{t('settings.company.legalRepFullName')}</label>
+                  <input className="input" type="text" placeholder={t('settings.company.legalRepFullNamePlaceholder')} maxLength={200}
                     value={legalRepName} onChange={(e) => setLegalRepName(e.target.value)} />
                 </div>
                 <div>
-                  <label style={labelStyle}>RUT</label>
-                  <input className="input" type="text" placeholder="Ej: 12.345.678-9" maxLength={12}
+                  <label style={labelStyle}>{t('settings.company.legalRepRut')}</label>
+                  <input className="input" type="text" placeholder={t('settings.company.legalRepRutPlaceholder')} maxLength={12}
                     value={legalRepRut} onChange={(e) => setLegalRepRut(formatRutInput(e.target.value))} />
                 </div>
               </div>
               <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                Datos del representante legal para efectos de contratos y documentos formales.
+                {t('settings.company.legalRepNote')}
               </p>
             </div>
             {Array.isArray(tenantSettings.initialCompetencies) && tenantSettings.initialCompetencies.length > 0 && (
@@ -400,11 +400,11 @@ export default function AjustesPage() {
           {/* Logo + branding */}
           <div className="card" style={{ padding: '1.5rem' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>
-              Marca e identidad
+              {t('settings.branding.title')}
             </h2>
             <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={labelStyle}>Logo de la empresa</label>
+                <label style={labelStyle}>{t('settings.branding.companyLogo')}</label>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <div style={{
                     width: '64px', height: '64px', borderRadius: 'var(--radius-sm, 6px)',
@@ -431,12 +431,12 @@ export default function AjustesPage() {
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
                       </svg>
-                      Subir imagen
+                      {t('settings.branding.uploadImage')}
                       <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style={{ display: 'none' }}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
-                          if (file.size > 500_000) { alert('Maximo 500KB.'); return; }
+                          if (file.size > 500_000) { alert(t('settings.branding.logoMaxSize')); return; }
                           const reader = new FileReader();
                           reader.onload = () => setLogoUrl(reader.result as string);
                           reader.readAsDataURL(file);
@@ -447,22 +447,22 @@ export default function AjustesPage() {
                     {logoUrl && (
                       <button type="button" onClick={() => setLogoUrl('')}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '0.75rem', padding: 0, textAlign: 'left' }}>
-                        Eliminar logo
+                        {t('settings.branding.removeLogo')}
                       </button>
                     )}
                   </div>
                 </div>
                 <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-                  PNG, JPG, SVG o WebP. Max 500KB. Aparece en emails a colaboradores.
+                  {t('settings.branding.logoNote')}
                 </p>
               </div>
               <div>
-                <label style={labelStyle}>Idioma por defecto</label>
+                <label style={labelStyle}>{t('settings.branding.defaultLanguage')}</label>
                 <select className="input" value={defaultLanguage} onChange={(e) => setDefaultLanguage(e.target.value)}>
-                  <option value="">Segun preferencia del usuario</option>
-                  <option value="es">Español</option>
-                  <option value="en">English</option>
-                  <option value="pt">Portugues</option>
+                  <option value="">{t('settings.branding.langUserPreference')}</option>
+                  <option value="es">{t('settings.branding.langEs')}</option>
+                  <option value="en">{t('settings.branding.langEn')}</option>
+                  <option value="pt">{t('settings.branding.langPt')}</option>
                 </select>
               </div>
             </div>
@@ -496,13 +496,13 @@ export default function AjustesPage() {
                   <option value="">{t('settings.org.sessionDefault')}</option>
                   <option value="15">15 min</option>
                   <option value="30">30 min</option>
-                  <option value="60">1 hora</option>
-                  <option value="120">2 horas</option>
-                  <option value="480">8 horas</option>
+                  <option value="60">{t('settings.org.sessionHour')}</option>
+                  <option value="120">{t('settings.org.sessionHours')}</option>
+                  <option value="480">{t('settings.org.session8Hours')}</option>
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Formato de fecha</label>
+                <label style={labelStyle}>{t('settings.org.dateFormat')}</label>
                 <select className="input" value={dateFormat} onChange={(e) => setDateFormat(e.target.value)}>
                   <option value="">DD/MM/YYYY</option>
                   <option value="DD/MM/YYYY">DD/MM/YYYY</option>
@@ -518,7 +518,7 @@ export default function AjustesPage() {
             <button type="button" className="btn-primary" disabled={settingsSaving}
               style={{ opacity: settingsSaving ? 0.6 : 1, padding: '0.6rem 1.5rem' }}
               onClick={handleSaveOrgSettings}>
-              {settingsSaving ? t('common.saving') : 'Guardar cambios'}
+              {settingsSaving ? t('common.saving') : t('common.save')}
             </button>
             {settingsSaved && (
               <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>
@@ -537,10 +537,10 @@ export default function AjustesPage() {
 
           <div className="card" style={{ padding: '1.5rem' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-              Emails automáticos
+              {t('settings.notifications.title')}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
-              Controla qué tipos de email reciben los colaboradores de tu organización.
+              {t('settings.notifications.subtitle')}
             </p>
 
             {/* Master toggle */}
@@ -551,8 +551,8 @@ export default function AjustesPage() {
               marginBottom: '0.75rem',
             }}>
               <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Notificaciones por email</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Activar o desactivar todos los emails</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{t('settings.notifications.masterToggle')}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{t('settings.notifications.masterToggleDesc')}</div>
               </div>
               <Toggle value={emailNotifications} onChange={() => setEmailNotifications(!emailNotifications)} />
             </div>
@@ -561,14 +561,14 @@ export default function AjustesPage() {
             {emailNotifications && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 {[
-                  { label: 'Evaluaciones', desc: 'Ciclos lanzados, recordatorios, resultados y calibración', value: notifEvaluations, setter: setNotifEvaluations },
-                  { label: 'Feedback y check-ins', desc: 'Feedback recibido, reuniones 1:1 programadas y vencidas', value: notifFeedback, setter: setNotifFeedback },
-                  { label: 'Objetivos y OKRs', desc: 'Asignación, progreso bajo, vencimientos y completados', value: notifObjectives, setter: setNotifObjectives },
-                  { label: 'Desarrollo y PDI', desc: 'Planes de desarrollo asignados y acciones vencidas', value: notifDevelopment, setter: setNotifDevelopment },
-                  { label: 'Reconocimientos', desc: 'Reconocimientos, insignias y desafíos', value: notifRecognitions, setter: setNotifRecognitions },
-                  { label: 'Contratos y firmas', desc: 'Solicitudes de firma, códigos OTP de verificación', value: notifContracts, setter: setNotifContracts },
-                  { label: 'Encuestas de clima', desc: 'Invitaciones a encuestas y recordatorios', value: notifSurveys, setter: setNotifSurveys },
-                  { label: 'Informes de IA', desc: 'Notificaciones cuando un análisis IA está listo', value: notifAi, setter: setNotifAi },
+                  { label: t('settings.notifications.evaluations'), desc: t('settings.notifications.evaluationsDesc'), value: notifEvaluations, setter: setNotifEvaluations },
+                  { label: t('settings.notifications.feedback'), desc: t('settings.notifications.feedbackDesc'), value: notifFeedback, setter: setNotifFeedback },
+                  { label: t('settings.notifications.objectives'), desc: t('settings.notifications.objectivesDesc'), value: notifObjectives, setter: setNotifObjectives },
+                  { label: t('settings.notifications.development'), desc: t('settings.notifications.developmentDesc'), value: notifDevelopment, setter: setNotifDevelopment },
+                  { label: t('settings.notifications.recognitions'), desc: t('settings.notifications.recognitionsDesc'), value: notifRecognitions, setter: setNotifRecognitions },
+                  { label: t('settings.notifications.contracts'), desc: t('settings.notifications.contractsDesc'), value: notifContracts, setter: setNotifContracts },
+                  { label: t('settings.notifications.surveys'), desc: t('settings.notifications.surveysDesc'), value: notifSurveys, setter: setNotifSurveys },
+                  { label: t('settings.notifications.ai'), desc: t('settings.notifications.aiDesc'), value: notifAi, setter: setNotifAi },
                 ].map((item) => (
                   <div key={item.label} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -586,32 +586,32 @@ export default function AjustesPage() {
             )}
 
             <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-              Los emails del sistema (invitaciones, recuperación de contraseña) siempre se envían.
+              {t('settings.notifications.systemNote')}
             </p>
           </div>
 
           {/* Email FROM configuration */}
           <div className="card" style={{ padding: '1.5rem' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-              Remitente de emails
+              {t('settings.notifications.senderTitle')}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
-              Dirección de email corporativo desde la cual se enviarán las notificaciones de tu organización. Debe ser un dominio verificado en el proveedor de email.
+              {t('settings.notifications.senderSubtitle')}
             </p>
             <div style={{ marginBottom: '0.75rem' }}>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                Email corporativo (FROM)
+                {t('settings.notifications.senderLabel')}
               </label>
-              <input className="input" type="email" placeholder="Ej: notificaciones@miempresa.cl"
+              <input className="input" type="email" placeholder={t('settings.notifications.senderPlaceholder')}
                 value={emailFrom} onChange={(e) => setEmailFrom(e.target.value)}
                 style={{ width: '100%', maxWidth: '400px' }} />
               <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                Si no se configura, se usa el remitente por defecto del sistema. El dominio debe estar verificado en Resend para que los emails lleguen correctamente.
+                {t('settings.notifications.senderNote')}
               </p>
             </div>
             {emailFrom && (
               <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                Los emails se enviarán desde: <strong>{emailFrom}</strong>
+                {t('settings.notifications.senderPreview')} <strong>{emailFrom}</strong>
               </div>
             )}
           </div>
@@ -621,7 +621,7 @@ export default function AjustesPage() {
             <button type="button" className="btn-primary" disabled={settingsSaving}
               style={{ opacity: settingsSaving ? 0.6 : 1, padding: '0.6rem 1.5rem' }}
               onClick={handleSaveOrgSettings}>
-              {settingsSaving ? t('common.saving') : 'Guardar cambios'}
+              {settingsSaving ? t('common.saving') : t('common.save')}
             </button>
             {settingsSaved && (
               <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>
@@ -639,31 +639,31 @@ export default function AjustesPage() {
         <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div className="card" style={{ padding: '1.5rem' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-              Configuración de Retroalimentación
+              {t('settings.feedbackConfig.title')}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
-              Define las reglas del módulo de feedback rápido para tu organización.
+              {t('settings.feedbackConfig.subtitle')}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               {/* Scope */}
               <div>
-                <label style={labelStyle}>Alcance de envío</label>
+                <label style={labelStyle}>{t('settings.feedbackConfig.scopeLabel')}</label>
                 <select className="input" value={fbScope} onChange={(e) => setFbScope(e.target.value)} style={{ maxWidth: '350px' }}>
-                  <option value="all">Toda la organización — cualquiera puede enviar a cualquiera</option>
-                  <option value="department">Solo mismo departamento — feedback entre compañeros de área</option>
-                  <option value="team">Equipo directo + departamento — jefatura, reportes y compañeros</option>
+                  <option value="all">{t('settings.feedbackConfig.scopeAll')}</option>
+                  <option value="department">{t('settings.feedbackConfig.scopeDepartment')}</option>
+                  <option value="team">{t('settings.feedbackConfig.scopeTeam')}</option>
                 </select>
                 <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  Los administradores siempre pueden enviar a cualquier colaborador independiente de esta configuración.
+                  {t('settings.feedbackConfig.scopeNote')}
                 </p>
               </div>
 
               {/* Allow anonymous */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Permitir feedback anónimo</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Los colaboradores pueden ocultar su nombre al enviar feedback.</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{t('settings.feedbackConfig.allowAnonymous')}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('settings.feedbackConfig.allowAnonymousDesc')}</div>
                 </div>
                 <Toggle value={fbAllowAnonymous} onChange={() => setFbAllowAnonymous(!fbAllowAnonymous)} />
               </div>
@@ -671,8 +671,8 @@ export default function AjustesPage() {
               {/* Allow peer feedback */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Permitir feedback entre pares</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Colaboradores del mismo nivel jerárquico pueden enviarse feedback mutuamente.</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{t('settings.feedbackConfig.allowPeer')}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('settings.feedbackConfig.allowPeerDesc')}</div>
                 </div>
                 <Toggle value={fbAllowPeer} onChange={() => setFbAllowPeer(!fbAllowPeer)} />
               </div>
@@ -680,20 +680,20 @@ export default function AjustesPage() {
               {/* Require competency */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Requerir competencia</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Obligar a seleccionar una competencia del catálogo al enviar feedback.</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{t('settings.feedbackConfig.requireCompetency')}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('settings.feedbackConfig.requireCompetencyDesc')}</div>
                 </div>
                 <Toggle value={fbRequireCompetency} onChange={() => setFbRequireCompetency(!fbRequireCompetency)} />
               </div>
 
               {/* Min message length */}
               <div>
-                <label style={labelStyle}>Largo mínimo del mensaje</label>
+                <label style={labelStyle}>{t('settings.feedbackConfig.minLength')}</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <input className="input" type="number" min={10} max={500} value={fbMinLength}
                     onChange={(e) => setFbMinLength(Math.max(10, Math.min(500, parseInt(e.target.value) || 20)))}
                     style={{ maxWidth: '100px' }} />
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>caracteres (mínimo 10, máximo 500)</span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('settings.feedbackConfig.minLengthUnit')}</span>
                 </div>
               </div>
             </div>
@@ -704,7 +704,7 @@ export default function AjustesPage() {
             <button type="button" className="btn-primary" disabled={settingsSaving}
               style={{ opacity: settingsSaving ? 0.6 : 1, padding: '0.6rem 1.5rem' }}
               onClick={handleSaveOrgSettings}>
-              {settingsSaving ? t('common.saving') : 'Guardar cambios'}
+              {settingsSaving ? t('common.saving') : t('common.save')}
             </button>
             {settingsSaved && (
               <span style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>
