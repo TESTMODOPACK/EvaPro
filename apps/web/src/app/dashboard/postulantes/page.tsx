@@ -49,10 +49,10 @@ function PostulantesPageContent() {
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-            Selección de Personal
+            {t('postulantes.list.title')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Gestiona procesos de reclutamiento externo y promoción interna
+            {t('postulantes.list.subtitle')}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -65,7 +65,7 @@ function PostulantesPageContent() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                Nuevo Proceso
+                {t('postulantes.list.newProcess')}
               </button>
             </Link>
           )}
@@ -106,11 +106,11 @@ function PostulantesPageContent() {
       {/* Status filter tabs */}
       <div className="animate-fade-up-delay-1" style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)' }}>
         {[
-          { key: '', label: 'Todos' },
-          { key: 'draft', label: 'Borrador' },
-          { key: 'active', label: 'Activos' },
-          { key: 'completed', label: 'Completados' },
-          { key: 'closed', label: 'Cerrados' },
+          { key: '', label: t('postulantes.list.filterAll') },
+          { key: 'draft', label: t('postulantes.status.draft') },
+          { key: 'active', label: t('postulantes.status.active') },
+          { key: 'completed', label: t('postulantes.status.completed') },
+          { key: 'closed', label: t('postulantes.status.closed') },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -140,8 +140,8 @@ function PostulantesPageContent() {
               <polyline points="14 2 14 8 20 8" />
             </svg>
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>No hay procesos de selección</p>
-          {isAdmin && <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>Crea tu primer proceso para comenzar</p>}
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{t('postulantes.list.noProcesses')}</p>
+          {isAdmin && <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('postulantes.list.createFirst')}</p>}
         </div>
       ) : (
         <div className="animate-fade-up-delay-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
@@ -153,15 +153,15 @@ function PostulantesPageContent() {
                 <div className="card" style={{ padding: '1.25rem', cursor: 'pointer', transition: 'box-shadow 0.15s' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
                     <span style={{ fontWeight: 700, fontSize: '0.9rem', flex: 1 }}>{p.title}</span>
-                    <span className={`badge ${statusInfo.badge}`} style={{ fontSize: '0.65rem' }}>{statusInfo.label}</span>
+                    <span className={`badge ${statusInfo.badge}`} style={{ fontSize: '0.65rem' }}>{t(`postulantes.status.${p.status}`)}</span>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                    <span style={{ fontWeight: 600, color: typeInfo.color }}>{typeInfo.label}</span>
+                    <span style={{ fontWeight: 600, color: typeInfo.color }}>{t(`postulantes.type.${p.processType}`)}</span>
                     <span>{p.position}</span>
                     {p.department && <span>{p.department}</span>}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                    {p.candidateCount || 0} candidatos
+                    {p.candidateCount || 0} {t('postulantes.list.candidates')}
                     {p.startDate && ` | Inicio: ${new Date(p.startDate).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`}
                     {p.endDate && ` | Cierre: ${new Date(p.endDate).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`}
                   </div>
@@ -197,7 +197,7 @@ function PostulantesPageContent() {
                         );
                       })}
                       {p.candidates.length > 5 && (
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>+{p.candidates.length - 5} mas...</span>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>+{p.candidates.length - 5} {t('postulantes.list.more')}</span>
                       )}
                     </div>
                   )}

@@ -996,6 +996,136 @@
       "permissions": "Role permissions",
       "permAdmin": "Administrator: creates processes, adds candidates, assigns evaluators, changes statuses and configures processes.",
       "permManager": "Manager / Evaluator: evaluates candidates in assigned processes, views scorecards and comparatives."
+    },
+    "list": {
+      "title": "Recruitment",
+      "subtitle": "Manage external hiring and internal promotion processes",
+      "newProcess": "New Process",
+      "noProcesses": "No recruitment processes",
+      "createFirst": "Create your first process to get started",
+      "filterAll": "All",
+      "filterDraft": "Draft",
+      "filterActive": "Active",
+      "filterCompleted": "Completed",
+      "filterClosed": "Closed",
+      "candidates": "candidates",
+      "more": "more..."
+    },
+    "status": { "draft": "Draft", "active": "Active", "completed": "Completed", "closed": "Closed" },
+    "type": {
+      "external": "External", "internal": "Internal",
+      "externalTitle": "External Hiring", "externalDesc": "Candidates outside the organization. CV, AI analysis and interviews.",
+      "internalTitle": "Internal Promotion", "internalDesc": "Organization employees. History, comparison and AI recommendation."
+    },
+    "stages": { "registered": "Registered", "cv_review": "CV Review", "interviewing": "Interviewing", "scored": "Scored", "approved": "Approved", "rejected": "Rejected", "hired": "Hired" },
+    "new": {
+      "title": "New Recruitment Process", "subtitle": "Define type, position, requirements and evaluators",
+      "processType": "Process Type", "processInfo": "Process Information",
+      "processTitle": "Process title", "processTitlePlaceholder": "E.g.: Data Analyst Q2 2026",
+      "position": "Position", "selectPosition": "Select position...", "newPosition": "+ Create new position",
+      "positionHint": "If the position doesn't exist, select \"+ Create new position\" at the bottom of the list.",
+      "positionCreated": "Position created successfully", "positionError": "Error creating position",
+      "department": "Department", "selectDept": "Select", "startDate": "Start date", "endDate": "End date",
+      "description": "Description", "descPlaceholder": "Position context...",
+      "requirements": "Position Requirements", "requirementsDesc": "Select requirements grouped by category. You can add custom ones.",
+      "addReqPlaceholder": "Add {{category}} requirement...", "reqSelected": "{{count}} requirement(s) selected",
+      "evaluators": "Evaluators", "evalAutoAssign": "Managers from \"{{dept}}\" are auto-suggested.",
+      "evalSelect": "Select who will evaluate candidates.", "evalDeptLabel": "Department evaluators",
+      "evalOtherLabel": "Other area evaluators", "evalAvailable": "Available evaluators",
+      "evalSelected": "{{count}} evaluator(s) selected",
+      "internalConfig": "Internal Process Configuration", "requireCv": "Require CV from internal candidates",
+      "scoringWeights": "Scoring weights (history vs interviews)", "history": "History", "interviews": "Interviews",
+      "confirmWeights": "Confirm Requirements and Weights",
+      "confirmWeightsDesc": "Assign the relevance percentage to each requirement for <strong>{{position}}</strong>. The sum must be 100%.",
+      "total": "Total", "remaining": "{{value}}% remaining", "distributeEqual": "Distribute equally",
+      "creating": "Creating...", "create": "Create Process", "nextWeights": "Next: Assign Weights",
+      "backToForm": "Back to form", "cancel": "Cancel", "createBtn": "Create", "errorCreate": "Error creating process"
+    },
+    "detail": {
+      "backToList": "Processes", "evaluators": "evaluators",
+      "tabs": { "candidates": "Candidates", "evaluation": "Evaluation", "scorecard": "Scoring", "comparative": "Comparative", "config": "Configuration" },
+      "addCandidate": "+ Add Candidate", "newExternal": "New External Candidate",
+      "searchCollab": "Search Employee", "searchPlaceholder": "Search by name or email...", "search": "Search",
+      "allDepartments": "All departments", "filterPosition": "Filter by position...",
+      "add": "Add", "adding": "Adding...",
+      "candidateAdded": "Candidate added", "candidateAddError": "Error adding candidate",
+      "collabAdded": "Employee added to process", "collabAddError": "Error adding employee",
+      "noName": "No name", "availability": "Avail", "salary": "Salary", "outOf10": "out of 10", "internal": "INTERNAL",
+      "form": {
+        "firstName": "First name", "lastName": "Last name", "email": "Email", "phone": "Phone",
+        "linkedin": "LinkedIn (optional)", "availabilityLabel": "Availability",
+        "availImmediate": "Immediate", "avail15": "15 days", "avail30": "30 days", "avail60": "60 days", "avail90": "90 days", "availNegotiable": "Negotiable",
+        "salaryLabel": "Salary expectation ($)", "noSpec": "Not specified"
+      },
+      "validation": {
+        "firstNameReq": "First name required (min 2 characters)", "firstNameAlpha": "Letters and spaces only",
+        "lastNameReq": "Last name required (min 2 characters)", "emailReq": "Valid email required",
+        "phoneReq": "Phone required", "phoneInvalid": "Invalid phone number"
+      },
+      "cv": {
+        "upload": "Upload CV", "analyze": "Analyze with AI", "report": "Report",
+        "uploadDesc": "Upload candidate CV in PDF format (max 5MB)", "selectFile": "Select file", "uploading": "Uploading...",
+        "uploaded": "CV uploaded successfully", "uploadSuccess": "CV uploaded successfully", "uploadError": "Error uploading CV",
+        "pdfOnly": "Only PDF files are allowed.", "maxSize": "File exceeds 5MB limit", "readError": "Error reading file",
+        "analyzeBtn": "Analyze CV with AI", "analyzing": "Analyzing... (10-20 sec)", "noCredits": "AI credits exhausted",
+        "analysisComplete": "CV analysis completed", "analysisError": "Error analyzing CV",
+        "analysisResult": "Analysis Result", "reAnalyze": "Re-analyze", "changeCv": "Change CV",
+        "aiDesc": "AI will analyze the CV and cross-reference it with position requirements to calculate match percentage.",
+        "closeCv": "Close CV", "viewCv": "View CV", "uploadCv": "Upload CV"
+      },
+      "eval": {
+        "selectToEval": "Select a candidate from the Candidates tab and click \"Evaluate\"",
+        "selectToView": "Select a candidate from the Candidates tab to view evaluations",
+        "evalTitle": "Evaluation", "reqCompliance": "Requirement Compliance",
+        "requirement": "Requirement", "state": "Status", "comment": "Comment", "commentPlaceholder": "Comment...",
+        "pending": "Pending", "meets": "Meets", "partial": "Partially meets", "notMeet": "Does not meet",
+        "scoreReqs": "Requirements Score", "weightedByWeight": "Weighted by importance", "autoCalc": "Auto-calculated",
+        "myScore": "My Score", "yourAssessment": "Your assessment", "finalScore": "Final Score",
+        "weightFormula": "Weighted: 70% requirements + 30% evaluator",
+        "generalComments": "General comments", "commentsPlaceholder": "Interview observations, overall impression...",
+        "saving": "Saving...", "saveEval": "Save Evaluation", "evaluate": "Evaluate", "viewEvals": "View Evaluations",
+        "evalSaved": "Evaluation saved", "saveError": "Error saving evaluation"
+      },
+      "adminEval": {
+        "evalsTitle": "Evaluations", "loading": "Loading evaluations...",
+        "noEvals": "This candidate has no interview evaluations yet.",
+        "meets": "Meets", "partial": "Partial", "notMeet": "Does not meet", "evaluated": "evaluated",
+        "comments": "Comments:", "evaluatedOn": "Evaluated on", "viewFullScorecard": "View Full Scorecard"
+      },
+      "scorecard": {
+        "selectToView": "Select a candidate and click \"Score\" to view their scorecard",
+        "title": "Scorecard", "cvMatch": "AI Match (CV)", "interviewAvg": "Interview Avg.",
+        "requirements": "Requirements", "historyAvg": "Eval. History", "finalScore": "Final Score",
+        "interviewsTitle": "Interview Evaluations", "aiReport": "AI CV Report",
+        "relevantExp": "Relevant Experience", "techSkills": "Technical Skills", "softSkills": "Soft Skills",
+        "education": "Education", "alerts": "Alerts", "recommendation": "Recommendation",
+        "matchPct": "Match: {{pct}}%", "viewScorecard": "Scorecard",
+        "loadError": "Error loading scorecard"
+      },
+      "comparative": {
+        "loading": "Loading comparison...", "title": "Comparative Table",
+        "candidate": "Candidate", "interviews": "Interviews", "history": "History",
+        "seniority": "Seniority", "finalScore": "Final Score",
+        "loadError": "Error loading comparison"
+      },
+      "config": {
+        "processInfo": "Process Information", "title": "Title", "position": "Position",
+        "department": "Department", "type": "Type", "start": "Start", "end": "End",
+        "requirements": "Position Requirements", "evaluators": "Evaluators", "processStatus": "Process Status"
+      },
+      "edit": {
+        "title": "Edit candidate data", "email": "Email", "phone": "Phone", "linkedin": "LinkedIn",
+        "linkedinPlaceholder": "Profile URL", "availability": "Availability", "salary": "Salary expectation",
+        "recruiterNotes": "Recruiter notes", "notesPlaceholder": "Observations, internal comments...",
+        "saving": "Saving...", "save": "Save changes", "cancel": "Cancel", "close": "Close", "editBtn": "Edit",
+        "updated": "Data updated", "saveError": "Error saving"
+      },
+      "notFound": "Process not found",
+      "noCandidates": "No candidates in this process"
+    },
+    "reqCategories": {
+      "experiencia": "Experience", "conocimiento_tecnico": "Technical Knowledge",
+      "habilidades_blandas": "Soft Skills", "formacion": "Education", "idiomas": "Languages", "general": "General"
     }
   },
   "desarrollo": {

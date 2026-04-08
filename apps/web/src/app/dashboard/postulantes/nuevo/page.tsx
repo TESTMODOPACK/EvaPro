@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useDepartments } from '@/hooks/useDepartments';
 import { usePositions } from '@/hooks/usePositions';
+import { useTranslation } from 'react-i18next';
 
 const REQUIREMENT_CATEGORIES = [
   {
@@ -60,6 +61,7 @@ export default function NuevoProcesoPage() {
   const router = useRouter();
   const { departments: configuredDepartments } = useDepartments();
   const { positions: positionCatalog } = usePositions();
+  const { t } = useTranslation();
   const [showNewPosition, setShowNewPosition] = useState(false);
   const [newPosName, setNewPosName] = useState('');
   const [newPosLevel, setNewPosLevel] = useState(6);
@@ -188,7 +190,7 @@ export default function NuevoProcesoPage() {
       });
       router.push('/dashboard/postulantes/' + result.id);
     } catch (err: any) {
-      setError(err.message || 'Error al crear el proceso');
+      setError(err.message || t('postulantes.new.errorCreate'));
       setSaving(false);
     }
   };
@@ -214,8 +216,8 @@ export default function NuevoProcesoPage() {
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Nuevo Proceso de Selección</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Define el tipo, cargo, requisitos y evaluadores</p>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('postulantes.new.title')}</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('postulantes.new.subtitle')}</p>
       </div>
 
       <form onSubmit={handleGoToWeights}>
@@ -223,15 +225,14 @@ export default function NuevoProcesoPage() {
           /* ── Paso de confirmación: Pesos por requisito ─────────── */
           <div className="animate-fade-up">
             <div className="card" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.25rem' }}>Confirmar Requisitos y Pesos</h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
-                Asigna el porcentaje de relevancia a cada requisito para el cargo de <strong>{position}</strong>. La suma debe ser 100%.
-              </p>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.25rem' }}>{t('postulantes.new.confirmWeights')}</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1.25rem' }} dangerouslySetInnerHTML={{ __html: t('postulantes.new.confirmWeightsDesc', { position }) }} />
+
 
               {/* Group by category */}
               {Array.from(new Set(requirements.map(r => r.category))).map(cat => {
                 const catReqs = requirements.filter(r => r.category === cat);
-                const catLabel = REQUIREMENT_CATEGORIES.find(c => c.key === cat)?.label || cat;
+                const catLabel = t(`postulantes.reqCategories.${cat}`);
                 return (
                   <div key={cat} style={{ marginBottom: '1rem' }}>
                     <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
@@ -282,7 +283,7 @@ export default function NuevoProcesoPage() {
                   {isWeightValid ? ' ✓' : ` (faltan ${(100 - totalWeight).toFixed(1)}%)`}
                 </span>
                 <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={distributeEqually}>
-                  Distribuir equitativamente
+                  {t('postulantes.new.distributeEqual')}
                 </button>
               </div>
             </div>
@@ -295,10 +296,10 @@ export default function NuevoProcesoPage() {
             )}
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
               <button type="button" className="btn-primary" disabled={saving || !isWeightValid} onClick={handleSubmit}>
-                {saving ? 'Creando...' : 'Crear Proceso'}
+                {saving ? t('postulantes.new.creating') : t('postulantes.new.create')}
               </button>
               <button type="button" className="btn-ghost" onClick={() => setStep('form')}>
-                {'←'} Volver al formulario
+                {'←'} {t('postulantes.new.backToForm')}
               </button>
             </div>
           </div>
@@ -306,11 +307,11 @@ export default function NuevoProcesoPage() {
         <>
         {/* Step 1: Type */}
         <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Tipo de Proceso *</h2>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>{t('postulantes.new.processType')} *</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             {[
-              { key: 'external', icon: 'E', title: 'Contratación Externa', desc: 'Candidatos fuera de la organización. CV, análisis IA y entrevistas.' },
-              { key: 'internal', icon: 'I', title: 'Promoción Interna', desc: 'Colaboradores de la organización. Historial, comparativa y recomendación IA.' },
+              { key: 'external', icon: 'E', title: t('postulantes.type.externalTitle'), desc: t('postulantes.type.externalDesc') },
+              { key: 'internal', icon: 'I', title: t('postulantes.type.internalTitle'), desc: t('postulantes.type.internalDesc') },
             ].map((opt) => (
               <button key={opt.key} type="button" onClick={() => setProcessType(opt.key)}
                 style={{
@@ -330,25 +331,25 @@ export default function NuevoProcesoPage() {
           <>
             {/* Step 2: Basic info */}
             <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Información del Proceso</h2>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>{t('postulantes.new.processInfo')}</h2>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
-                  <label style={labelStyle}>Título del proceso *</label>
-                  <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Analista de Datos Q2 2026" required />
+                  <label style={labelStyle}>{t('postulantes.new.processTitle')} *</label>
+                  <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('postulantes.new.processTitlePlaceholder')} required />
                 </div>
                 <div>
-                  <label style={labelStyle}>Cargo *</label>
+                  <label style={labelStyle}>{t('postulantes.new.position')} *</label>
                   <div style={{ display: 'flex', gap: '0.4rem' }}>
                     <select className="input" style={{ flex: 1 }} value={positionCatalog.some(p => p.name === position) ? position : (position ? '__custom__' : '')}
                       onChange={(e) => { if (e.target.value === '__new__') { setShowNewPosition(true); } else if (e.target.value === '__custom__') { setPosition(''); } else { setPosition(e.target.value); } }}>
-                      <option value="">Seleccionar cargo...</option>
+                      <option value="">{t('postulantes.new.selectPosition')}</option>
                       {positionCatalog.map(p => <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>)}
                       {position && !positionCatalog.some(p => p.name === position) && <option value="__custom__">{position} (personalizado)</option>}
-                      <option value="__new__">+ Crear nuevo cargo</option>
+                      <option value="__new__">{t('postulantes.new.newPosition')}</option>
                     </select>
                   </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                    Si el cargo no existe en el listado, selecciona &quot;+ Crear nuevo cargo&quot; al final de la lista para agregarlo.
+                    {t('postulantes.new.positionHint')}
                   </p>
                   {showNewPosition && (
                     <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -364,12 +365,12 @@ export default function NuevoProcesoPage() {
                             await api.tenants.setPositionsCatalog(token, current);
                             setPosition(newPosName.trim());
                             setNewPosName(''); setShowNewPosition(false);
-                            toast('Cargo creado correctamente', 'success');
+                            toast(t('postulantes.new.positionCreated'), 'success');
                           } catch (err: any) {
-                            toast(err.message || 'Error al crear el cargo', 'error');
+                            toast(err.message || t('postulantes.new.positionError'), 'error');
                           }
-                        }}>Crear</button>
-                        <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowNewPosition(false)}>Cancelar</button>
+                        }}>{t('postulantes.new.createBtn')}</button>
+                        <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowNewPosition(false)}>{t('postulantes.new.cancel')}</button>
                       </div>
                     </div>
                   )}
@@ -377,32 +378,32 @@ export default function NuevoProcesoPage() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
-                  <label style={labelStyle}>Departamento</label>
+                  <label style={labelStyle}>{t('postulantes.new.department')}</label>
                   <select className="input" value={department} onChange={(e) => setDepartment(e.target.value)}>
-                    <option value="">Seleccionar</option>
+                    <option value="">{t('postulantes.new.selectDept')}</option>
                     {configuredDepartments.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Fecha inicio</label>
+                  <label style={labelStyle}>{t('postulantes.new.startDate')}</label>
                   <input className="input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Fecha fin</label>
+                  <label style={labelStyle}>{t('postulantes.new.endDate')}</label>
                   <input className="input" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>Descripción</label>
-                <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Contexto del cargo..." rows={3} style={{ resize: 'vertical' as const }} />
+                <label style={labelStyle}>{t('postulantes.new.description')}</label>
+                <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('postulantes.new.descPlaceholder')} rows={3} style={{ resize: 'vertical' as const }} />
               </div>
             </div>
 
             {/* Step 3: Requirements by category */}
             <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Requisitos del Cargo</h2>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>{t('postulantes.new.requirements')}</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-                Selecciona los requisitos agrupados por categoría. Puedes agregar personalizados.
+                {t('postulantes.new.requirementsDesc')}
               </p>
               {reqCategories.map((cat) => {
                 const isCollapsed = collapsedReqCats.has(cat.key);
@@ -413,7 +414,7 @@ export default function NuevoProcesoPage() {
                       setCollapsedReqCats(prev => { const next = new Set(prev); if (next.has(cat.key)) next.delete(cat.key); else next.add(cat.key); return next; });
                     }} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', background: 'var(--bg-base)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                       <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
-                        {isCollapsed ? '▶' : '▼'} {cat.label}
+                        {isCollapsed ? '▶' : '▼'} {t(`postulantes.reqCategories.${cat.key}`)}
                       </span>
                       {catCount > 0 && <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>{catCount}</span>}
                     </button>
@@ -438,7 +439,7 @@ export default function NuevoProcesoPage() {
                           <input className="input" style={{ flex: 1, fontSize: '0.82rem' }}
                             value={customReq[cat.key] || ''} onChange={(e) => setCustomReq((p) => ({ ...p, [cat.key]: e.target.value }))}
                             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomReq(cat.key); } }}
-                            placeholder={`Agregar requisito de ${cat.label.toLowerCase()}...`} />
+                            placeholder={t('postulantes.new.addReqPlaceholder', { category: t(`postulantes.reqCategories.${cat.key}`).toLowerCase() })} />
                           <button type="button" className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => addCustomReq(cat.key)} disabled={!(customReq[cat.key] || '').trim()}>+</button>
                         </div>
                       </div>
@@ -448,21 +449,21 @@ export default function NuevoProcesoPage() {
               })}
               {requirements.length > 0 && (
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  {requirements.length} requisito{requirements.length !== 1 ? 's' : ''} selecciónado{requirements.length !== 1 ? 's' : ''}
+                  {t('postulantes.new.reqSelected', { count: requirements.length })}
                 </div>
               )}
             </div>
 
             {/* Step 4: Evaluators */}
             <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Evaluadores</h2>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>{t('postulantes.new.evaluators')}</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
-                {department ? `Managers de "${department}" se sugieren automáticamente.` : 'Selecciona quiénes evaluarán candidatos.'}
+                {department ? t('postulantes.new.evalAutoAssign', { dept: department }) : t('postulantes.new.evalSelect')}
               </p>
               {department && deptEvaluators.length > 0 && (
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
-                    Evaluadores del departamento
+                    {t('postulantes.new.evalDeptLabel')}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.5rem' }}>
                     {deptEvaluators.map((u: any) => (
@@ -482,7 +483,7 @@ export default function NuevoProcesoPage() {
               {otherEvaluators.length > 0 && (
                 <div>
                   <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
-                    {department ? 'Evaluadores de otras areas' : 'Evaluadores disponibles'}
+                    {department ? t('postulantes.new.evalOtherLabel') : t('postulantes.new.evalAvailable')}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.5rem' }}>
                     {otherEvaluators.map((u: any) => (
@@ -501,7 +502,7 @@ export default function NuevoProcesoPage() {
               )}
               {evaluatorIds.length > 0 && (
                 <div style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  {evaluatorIds.length} evaluador(es) selecciónado(s)
+                  {t('postulantes.new.evalSelected', { count: evaluatorIds.length })}
                 </div>
               )}
             </div>
@@ -509,17 +510,17 @@ export default function NuevoProcesoPage() {
             {/* Step 5: Internal config (only for internal processes) */}
             {processType === 'internal' && (
               <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>
-                <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Configuración Proceso Interno</h2>
+                <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>{t('postulantes.new.internalConfig')}</h2>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', marginBottom: '1rem' }}>
                   <input type="checkbox" checked={requireCvForInternal} onChange={(e) => setRequireCvForInternal(e.target.checked)} />
-                  Solicitar CV a los postulantes internos
+                  {t('postulantes.new.requireCv')}
                 </label>
                 <div>
-                  <label style={labelStyle}>Pesos de puntuacion (historial vs entrevistas)</label>
+                  <label style={labelStyle}>{t('postulantes.new.scoringWeights')}</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <span style={{ fontSize: '0.82rem', minWidth: 120 }}>Historial: <strong>{historyWeight}%</strong></span>
+                    <span style={{ fontSize: '0.82rem', minWidth: 120 }}>{t('postulantes.new.history')}: <strong>{historyWeight}%</strong></span>
                     <input type="range" min={0} max={100} step={5} value={historyWeight} onChange={(e) => setHistoryWeight(Number(e.target.value))} style={{ flex: 1 }} />
-                    <span style={{ fontSize: '0.82rem', minWidth: 120 }}>Entrevistas: <strong>{100 - historyWeight}%</strong></span>
+                    <span style={{ fontSize: '0.82rem', minWidth: 120 }}>{t('postulantes.new.interviews')}: <strong>{100 - historyWeight}%</strong></span>
                   </div>
                 </div>
               </div>
@@ -533,9 +534,9 @@ export default function NuevoProcesoPage() {
             )}
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
               <button type="submit" className="btn-primary" disabled={saving || !title.trim() || !position.trim()}>
-                {requirements.length > 0 ? 'Siguiente: Asignar Pesos' : (saving ? 'Creando...' : 'Crear Proceso')}
+                {requirements.length > 0 ? t('postulantes.new.nextWeights') : (saving ? t('postulantes.new.creating') : t('postulantes.new.create'))}
               </button>
-              <button type="button" className="btn-ghost" onClick={() => router.back()}>Cancelar</button>
+              <button type="button" className="btn-ghost" onClick={() => router.back()}>{t('postulantes.new.cancel')}</button>
             </div>
           </>
         )}

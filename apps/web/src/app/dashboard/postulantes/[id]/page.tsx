@@ -7,39 +7,27 @@ import { api } from '@/lib/api';
 import Link from 'next/link';
 import { useDepartments } from '@/hooks/useDepartments';
 import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
+import { useTranslation } from 'react-i18next';
 
 const STAGES = [
-  { key: 'registered', label: 'Registrado', badge: 'badge-ghost' },
-  { key: 'cv_review', label: 'CV en revisión', badge: 'badge-accent' },
-  { key: 'interviewing', label: 'En entrevista', badge: 'badge-warning' },
-  { key: 'scored', label: 'Puntuado', badge: 'badge-info' },
-  { key: 'approved', label: 'Aprobado', badge: 'badge-success' },
-  { key: 'rejected', label: 'Rechazado', badge: 'badge-danger' },
-  { key: 'hired', label: 'Contratado', badge: 'badge-success' },
+  { key: 'registered', badge: 'badge-ghost' },
+  { key: 'cv_review', badge: 'badge-accent' },
+  { key: 'interviewing', badge: 'badge-warning' },
+  { key: 'scored', badge: 'badge-info' },
+  { key: 'approved', badge: 'badge-success' },
+  { key: 'rejected', badge: 'badge-danger' },
+  { key: 'hired', badge: 'badge-success' },
 ];
 
-const PROCESS_STATUS_LABELS: Record<string, string> = {
-  draft: 'Borrador', active: 'Activo', completed: 'Completado', closed: 'Cerrado',
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  experiencia: 'Experiencia',
-  conocimiento_tecnico: 'Conocimiento Técnico',
-  habilidades_blandas: 'Habilidades Blandas',
-  formacion: 'Formación',
-  idiomas: 'Idiomas',
-  General: 'General',
-};
-
-function categoryLabel(key: string): string {
-  // Clean brackets if present: [habilidades_blandas] -> habilidades_blandas
+function getCategoryLabel(key: string, t: (k: string) => string): string {
   const cleaned = key.replace(/^\[|\]$/g, '').trim();
-  return CATEGORY_LABELS[cleaned] || cleaned.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const translated = t(`postulantes.reqCategories.${cleaned.toLowerCase()}`);
+  return translated !== `postulantes.reqCategories.${cleaned.toLowerCase()}` ? translated : cleaned.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 
 /* ── Admin read-only evaluation view ──────────────────────────────── */
-function AdminEvaluationView({ candidate, token, onViewScorecard }: { candidate: any; token: string | null; onViewScorecard: () => void }) {
+function AdminEvaluationView({ candidate, token, onViewScorecard, t }: { candidate: any; token: string | null; onViewScorecard: () => void; t: (key: string, opts?: any) => string }) {
   const [interviews, setInterviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -58,14 +46,14 @@ function AdminEvaluationView({ candidate, token, onViewScorecard }: { candidate:
   return (
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
-        Evaluaciones: {candidateName} {candidateLastName}
+        {t('postulantes.detail.adminEval.evalsTitle')}: {candidateName} {candidateLastName}
       </h2>
 
       {loading ? (
-        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Cargando evaluaciones...</div>
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('postulantes.detail.adminEval.loading')}</div>
       ) : interviews.length === 0 ? (
         <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Este candidato aun no tiene evaluaciones de entrevista.
+          {t('postulantes.detail.adminEval.noEvals')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -97,10 +85,10 @@ function AdminEvaluationView({ candidate, token, onViewScorecard }: { candidate:
                 {/* Requirement summary */}
                 {answered.length > 0 && (
                   <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.5rem', fontSize: '0.78rem' }}>
-                    {cumple > 0 && <span style={{ color: 'var(--success)', fontWeight: 600 }}>Cumple: {cumple}</span>}
-                    {parcial > 0 && <span style={{ color: 'var(--warning, #f59e0b)', fontWeight: 600 }}>Parcial: {parcial}</span>}
-                    {noCumple > 0 && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>No cumple: {noCumple}</span>}
-                    <span style={{ color: 'var(--text-muted)' }}>({answered.length}/{checks.length} evaluados)</span>
+                    {cumple > 0 && <span style={{ color: 'var(--success)', fontWeight: 600 }}>{t('postulantes.detail.adminEval.meets')}: {cumple}</span>}
+                    {parcial > 0 && <span style={{ color: 'var(--warning, #f59e0b)', fontWeight: 600 }}>{t('postulantes.detail.adminEval.partial')}: {parcial}</span>}
+                    {noCumple > 0 && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>{t('postulantes.detail.adminEval.notMeet')}: {noCumple}</span>}
+                    <span style={{ color: 'var(--text-muted)' }}>({answered.length}/{checks.length} {t('postulantes.detail.adminEval.evaluated')})</span>
                   </div>
                 )}
 
@@ -110,23 +98,23 @@ function AdminEvaluationView({ candidate, token, onViewScorecard }: { candidate:
                     <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Requisito</th>
-                          <th style={{ width: 110, padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Estado</th>
-                          <th style={{ padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Comentario</th>
+                          <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('postulantes.detail.eval.requirement')}</th>
+                          <th style={{ width: 110, padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('postulantes.detail.eval.state')}</th>
+                          <th style={{ padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t('postulantes.detail.eval.comment')}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {checks.map((rc: any, i: number) => (
                           <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '0.35rem 0.5rem' }}>
-                              <span style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 600 }}>{categoryLabel(rc.category)}</span>
+                              <span style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 600 }}>{getCategoryLabel(rc.category, t)}</span>
                               <br />{rc.text}
                             </td>
                             <td style={{
                               padding: '0.35rem 0.5rem', fontWeight: 600, fontSize: '0.78rem',
                               color: rc.status === 'cumple' ? 'var(--success)' : rc.status === 'no_cumple' ? 'var(--danger)' : rc.status === 'parcial' ? 'var(--warning, #f59e0b)' : 'var(--text-muted)',
                             }}>
-                              {rc.status === 'cumple' ? 'Cumple' : rc.status === 'parcial' ? 'Parcial' : rc.status === 'no_cumple' ? 'No cumple' : 'Pendiente'}
+                              {rc.status === 'cumple' ? t('postulantes.detail.eval.meets') : rc.status === 'parcial' ? t('postulantes.detail.adminEval.partial') : rc.status === 'no_cumple' ? t('postulantes.detail.eval.notMeet') : t('postulantes.detail.eval.pending')}
                             </td>
                             <td style={{ padding: '0.35rem 0.5rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>{rc.comment || '—'}</td>
                           </tr>
@@ -138,13 +126,13 @@ function AdminEvaluationView({ candidate, token, onViewScorecard }: { candidate:
 
                 {iv.comments && (
                   <div style={{ padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                    <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Comentarios:</strong> {iv.comments}
+                    <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('postulantes.detail.adminEval.comments')}</strong> {iv.comments}
                   </div>
                 )}
 
                 {iv.createdAt && (
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-                    Evaluado el {new Date(iv.createdAt).toLocaleDateString('es-CL')}
+                    {t('postulantes.detail.adminEval.evaluatedOn')} {new Date(iv.createdAt).toLocaleDateString('es-CL')}
                   </div>
                 )}
               </div>
@@ -155,7 +143,7 @@ function AdminEvaluationView({ candidate, token, onViewScorecard }: { candidate:
 
       <div style={{ marginTop: '1rem' }}>
         <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={onViewScorecard}>
-          Ver Tarjeta de Puntuacion Completa
+          {t('postulantes.detail.adminEval.viewFullScorecard')}
         </button>
       </div>
     </div>
@@ -169,6 +157,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const toast = useToastStore((s) => s.toast);
   const isAdmin = role === 'tenant_admin' || role === 'super_admin';
   const { isBlocked: aiBlocked } = useAiQuota();
+  const { t } = useTranslation();
+
+  const stageLabel = (key: string) => t(`postulantes.stages.${key}`) || key;
+  const categoryLabel = (key: string) => getCategoryLabel(key, t);
 
   const [process, setProcess] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -221,7 +213,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   useEffect(() => { fetchProcess(); }, [token, params.id]);
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><span className="spinner" /></div>;
-  if (!process) return <div style={{ padding: '2rem 2.5rem', color: 'var(--text-muted)' }}>Proceso no encontrado</div>;
+  if (!process) return <div style={{ padding: '2rem 2.5rem', color: 'var(--text-muted)' }}>{t('postulantes.detail.notFound') || 'Proceso no encontrado'}</div>;
 
   const candidates = process.candidates || [];
   const evaluators = process.evaluators || [];
@@ -233,12 +225,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   // ─── Validation helpers ─────────────────────────────────────────────
   const validateExtForm = () => {
     const errors: Record<string, string> = {};
-    if (!extForm.firstName.trim() || extForm.firstName.trim().length < 2) errors.firstName = 'Nombres requerido (min 2 caracteres)';
-    if (extForm.firstName.trim() && !/^[a-zA-ZaeiouAEIOUnoN\s]+$/.test(extForm.firstName.trim())) errors.firstName = 'Solo letras y espacios';
-    if (!extForm.lastName.trim() || extForm.lastName.trim().length < 2) errors.lastName = 'Apellidos requerido (min 2 caracteres)';
-    if (!extForm.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(extForm.email)) errors.email = 'Email válido requerido';
-    if (!extForm.phone.trim()) errors.phone = 'Teléfono requerido';
-    else if (!/^\+?[\d\s()-]{7,20}$/.test(extForm.phone.trim())) errors.phone = 'Teléfono no valido';
+    if (!extForm.firstName.trim() || extForm.firstName.trim().length < 2) errors.firstName = t('postulantes.detail.validation.firstNameReq');
+    if (extForm.firstName.trim() && !/^[a-zA-ZaeiouAEIOUnoN\s]+$/.test(extForm.firstName.trim())) errors.firstName = t('postulantes.detail.validation.firstNameAlpha');
+    if (!extForm.lastName.trim() || extForm.lastName.trim().length < 2) errors.lastName = t('postulantes.detail.validation.lastNameReq');
+    if (!extForm.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(extForm.email)) errors.email = t('postulantes.detail.validation.emailReq');
+    if (!extForm.phone.trim()) errors.phone = t('postulantes.detail.validation.phoneReq');
+    else if (!/^\+?[\d\s()-]{7,20}$/.test(extForm.phone.trim())) errors.phone = t('postulantes.detail.validation.phoneInvalid');
     setExtErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -251,10 +243,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       await api.recruitment.candidates.add(token, params.id, extForm);
       setExtForm({ firstName: '', lastName: '', email: '', phone: '', linkedIn: '', availability: '', salaryExpectation: '' });
       setShowAddForm(false);
-      toast('Candidato agregado', 'success');
+      toast(t('postulantes.detail.candidateAdded'), 'success');
       fetchProcess();
     } catch (e: any) {
-      toast(e.message || 'Error al agregar candidato', 'error');
+      toast(e.message || t('postulantes.detail.candidateAddError'), 'error');
     }
     setAddingCandidate(false);
   };
@@ -280,11 +272,11 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     setAddingCandidate(true);
     try {
       await api.recruitment.candidates.add(token, params.id, { userId: uId });
-      toast('Colaborador agregado al proceso', 'success');
+      toast(t('postulantes.detail.collabAdded'), 'success');
       setShowAddForm(false);
       fetchProcess();
     } catch (e: any) {
-      toast(e.message || 'Error al agregar colaborador', 'error');
+      toast(e.message || t('postulantes.detail.collabAddError'), 'error');
     }
     setAddingCandidate(false);
   };
@@ -295,12 +287,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     if (!file || !token) return;
 
     if (file.type !== 'application/pdf') {
-      toast('Solo se permiten archivos PDF. Si tienes un documento Word, conviértelo a PDF antes de subirlo.', 'error');
+      toast(t('postulantes.detail.cv.pdfOnly'), 'error');
       e.target.value = '';
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast('El archivo excede el limite de 5MB', 'error');
+      toast(t('postulantes.detail.cv.maxSize'), 'error');
       e.target.value = '';
       return;
     }
@@ -317,10 +309,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
       // Save base64 directly as cvUrl
       await api.recruitment.candidates.uploadCv(token, candidateId, base64);
-      toast('CV subido correctamente', 'success');
+      toast(t('postulantes.detail.cv.uploadSuccess'), 'success');
       fetchProcess();
     } catch (err: any) {
-      toast(err.message || 'Error al subir CV', 'error');
+      toast(err.message || t('postulantes.detail.cv.uploadError'), 'error');
     } finally {
       e.target.value = '';
       setUploadingCv(false);
@@ -333,10 +325,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
     setAnalyzingCvId(candidateId);
     try {
       await api.recruitment.candidates.analyzeCv(token, candidateId);
-      toast('Análisis de CV completado', 'success');
+      toast(t('postulantes.detail.cv.analysisComplete'), 'success');
       fetchProcess();
     } catch (err: any) {
-      toast(err.message || 'Error al analizar CV', 'error');
+      toast(err.message || t('postulantes.detail.cv.analysisError'), 'error');
     }
     setAnalyzingCvId(null);
   };
@@ -383,10 +375,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         globalScore: interviewForm.globalScore ? Number(interviewForm.globalScore) : null,
         manualScore: interviewForm.manualScore ? Number(interviewForm.manualScore) : null,
       });
-      toast('Evaluación guardada', 'success');
+      toast(t('postulantes.detail.eval.evalSaved') || 'Evaluación guardada', 'success');
       fetchProcess();
     } catch (e: any) {
-      toast(e.message || 'Error al guardar evaluacion', 'error');
+      toast(e.message || t('postulantes.detail.eval.saveError') || 'Error al guardar evaluación', 'error');
     }
     setSavingInterview(false);
   };
@@ -399,7 +391,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       setScorecard(data);
       setTab('scorecard');
     } catch (e: any) {
-      toast(e.message || 'Error al cargar puntuación', 'error');
+      toast(e.message || t('postulantes.detail.scorecard.loadError') || 'Error al cargar puntuación', 'error');
     }
   };
 
@@ -411,17 +403,17 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       setComparative(data);
       setTab('comparativa');
     } catch (e: any) {
-      toast(e.message || 'Error al cargar comparativa', 'error');
+      toast(e.message || t('postulantes.detail.comparative.loadError') || 'Error al cargar comparativa', 'error');
     }
   };
 
   // ─── Tabs config ────────────────────────────────────────────────────
   const tabs = [
-    { key: 'candidatos', label: 'Candidatos' },
-    { key: 'evaluacion', label: 'Evaluación' },
-    { key: 'scorecard', label: 'Puntuación' },
-    ...(isInternal ? [{ key: 'comparativa', label: 'Comparativa' }] : []),
-    { key: 'configuracion', label: 'Configuración' },
+    { key: 'candidatos', label: t('postulantes.detail.tabs.candidates') },
+    { key: 'evaluacion', label: t('postulantes.detail.tabs.evaluation') },
+    { key: 'scorecard', label: t('postulantes.detail.tabs.scorecard') },
+    ...(isInternal ? [{ key: 'comparativa', label: t('postulantes.detail.tabs.comparative') }] : []),
+    { key: 'configuracion', label: t('postulantes.detail.tabs.config') },
   ];
 
   return (
@@ -431,34 +423,34 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-          <Link href="/dashboard/postulantes" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textDecoration: 'none' }}>&#8592; Procesos</Link>
+          <Link href="/dashboard/postulantes" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textDecoration: 'none' }}>&#8592; {t('postulantes.detail.backToList')}</Link>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{process.title}</h1>
           <span className={`badge ${STAGES.find((s) => s.key === process.status)?.badge || 'badge-ghost'}`} style={{ fontSize: '0.65rem' }}>
-            {STAGES.find((s) => s.key === process.status)?.label || process.status}
+            {stageLabel(process.status)}
           </span>
           <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: 10, fontWeight: 700,
             background: isInternal ? 'rgba(99,102,241,0.1)' : 'rgba(201,147,58,0.1)',
             color: isInternal ? '#6366f1' : 'var(--accent)',
-          }}>{isInternal ? 'Interno' : 'Externo'}</span>
+          }}>{isInternal ? t('postulantes.type.internal') : t('postulantes.type.external')}</span>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {process.position}{process.department ? ' — ' + process.department : ''} | {evaluators.length} evaluadores | {candidates.length} candidatos
+          {process.position}{process.department ? ' — ' + process.department : ''} | {evaluators.length} {t('postulantes.detail.evaluators')} | {candidates.length} {t('postulantes.detail.tabs.candidates').toLowerCase()}
         </p>
       </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
-        {tabs.map((t) => (
-          <button key={t.key} onClick={() => { if (t.key === 'comparativa') loadComparative(); else setTab(t.key); }}
+        {tabs.map((tb) => (
+          <button key={tb.key} onClick={() => { if (tb.key === 'comparativa') loadComparative(); else setTab(tb.key); }}
             style={{
               padding: '0.5rem 1rem', fontSize: '0.82rem',
-              fontWeight: tab === t.key ? 700 : 500,
-              color: tab === t.key ? 'var(--accent)' : 'var(--text-muted)',
+              fontWeight: tab === tb.key ? 700 : 500,
+              color: tab === tb.key ? 'var(--accent)' : 'var(--text-muted)',
               background: 'none', border: 'none',
-              borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
+              borderBottom: tab === tb.key ? '2px solid var(--accent)' : '2px solid transparent',
               cursor: 'pointer', marginBottom: '-1px',
             }}>
-            {t.label}
+            {tb.label}
           </button>
         ))}
       </div>
@@ -468,7 +460,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         <div>
           {isAdmin && (
             <button className="btn-primary" style={{ marginBottom: '1rem', fontSize: '0.85rem' }} onClick={() => setShowAddForm(!showAddForm)}>
-              + Agregar Candidato
+              {t('postulantes.detail.addCandidate')}
             </button>
           )}
 
@@ -477,16 +469,16 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             <div className="card" style={{ padding: '1.5rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
               {!isInternal ? (
                 <>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Nuevo Candidato Externo</h3>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('postulantes.detail.newExternal')}</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div>
-                      <input className="input" placeholder="Nombres *" value={extForm.firstName}
+                      <input className="input" placeholder={`${t('postulantes.detail.form.firstName')} *`} value={extForm.firstName}
                         onChange={(e) => setExtForm((f) => ({ ...f, firstName: e.target.value }))}
                         onBlur={validateExtForm} />
                       {extErrors.firstName && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{extErrors.firstName}</div>}
                     </div>
                     <div>
-                      <input className="input" placeholder="Apellidos *" value={extForm.lastName}
+                      <input className="input" placeholder={`${t('postulantes.detail.form.lastName')} *`} value={extForm.lastName}
                         onChange={(e) => setExtForm((f) => ({ ...f, lastName: e.target.value }))}
                         onBlur={validateExtForm} />
                       {extErrors.lastName && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{extErrors.lastName}</div>}
@@ -494,31 +486,31 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div>
-                      <input className="input" type="email" placeholder="Email *" value={extForm.email}
+                      <input className="input" type="email" placeholder={`${t('postulantes.detail.form.email')} *`} value={extForm.email}
                         onChange={(e) => setExtForm((f) => ({ ...f, email: e.target.value }))}
                         onBlur={validateExtForm} />
                       {extErrors.email && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{extErrors.email}</div>}
                     </div>
                     <div>
-                      <input className="input" placeholder="Teléfono *" value={extForm.phone}
+                      <input className="input" placeholder={`${t('postulantes.detail.form.phone')} *`} value={extForm.phone}
                         onChange={(e) => setExtForm((f) => ({ ...f, phone: e.target.value }))}
                         onBlur={validateExtForm} />
                       {extErrors.phone && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{extErrors.phone}</div>}
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                    <input className="input" placeholder="LinkedIn (opcional)" value={extForm.linkedIn}
+                    <input className="input" placeholder={t('postulantes.detail.form.linkedin')} value={extForm.linkedIn}
                       onChange={(e) => setExtForm((f) => ({ ...f, linkedIn: e.target.value }))} />
                     <select className="input" value={extForm.availability} onChange={(e) => setExtForm((f) => ({ ...f, availability: e.target.value }))}>
-                      <option value="">Disponibilidad</option>
-                      <option value="Inmediata">Inmediata</option>
-                      <option value="15 dias">15 dias</option>
-                      <option value="30 dias">30 dias</option>
-                      <option value="60 dias">60 dias</option>
-                      <option value="90 dias">90 dias</option>
-                      <option value="A convenir">A convenir</option>
+                      <option value="">{t('postulantes.detail.form.availabilityLabel')}</option>
+                      <option value="Inmediata">{t('postulantes.detail.form.availImmediate')}</option>
+                      <option value="15 dias">{t('postulantes.detail.form.avail15')}</option>
+                      <option value="30 dias">{t('postulantes.detail.form.avail30')}</option>
+                      <option value="60 dias">{t('postulantes.detail.form.avail60')}</option>
+                      <option value="90 dias">{t('postulantes.detail.form.avail90')}</option>
+                      <option value="A convenir">{t('postulantes.detail.form.availNegotiable')}</option>
                     </select>
-                    <input className="input" placeholder="Pretensión de renta ($)" value={extForm.salaryExpectation}
+                    <input className="input" placeholder={t('postulantes.detail.form.salaryLabel')} value={extForm.salaryExpectation}
                       onChange={(e) => {
                         const raw = e.target.value.replace(/\D/g, '');
                         const formatted = raw ? Number(raw).toLocaleString('es-CL') : '';
@@ -526,26 +518,26 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       }} />
                   </div>
                   <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={handleAddExternal} disabled={addingCandidate}>
-                    {addingCandidate ? 'Agregando...' : 'Agregar Candidato'}
+                    {addingCandidate ? t('postulantes.detail.adding') : t('postulantes.detail.addCandidate')}
                   </button>
                 </>
               ) : (
                 <>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>Buscar Colaborador</h3>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>{t('postulantes.detail.searchCollab')}</h3>
                   <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <input className="input" style={{ flex: 1 }} placeholder="Buscar por nombre o email..."
+                    <input className="input" style={{ flex: 1 }} placeholder={t('postulantes.detail.searchPlaceholder')}
                       value={internalSearch} onChange={(e) => setInternalSearch(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleSearchInternal(); }} />
-                    <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={handleSearchInternal}>Buscar</button>
+                    <button className="btn-primary" style={{ fontSize: '0.85rem' }} onClick={handleSearchInternal}>{t('postulantes.detail.search')}</button>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                     <select className="input" style={{ flex: 1, minWidth: '160px', fontSize: '0.82rem' }}
                       value={internalDeptFilter} onChange={(e) => setInternalDeptFilter(e.target.value)}>
-                      <option value="">Todos los departamentos</option>
+                      <option value="">{t('postulantes.detail.allDepartments')}</option>
                       {departments.map((d) => <option key={d} value={d}>{d}</option>)}
                     </select>
                     <input className="input" style={{ flex: 1, minWidth: '140px', fontSize: '0.82rem' }}
-                      placeholder="Filtrar por cargo..."
+                      placeholder={t('postulantes.detail.filterPosition')}
                       value={internalPosFilter} onChange={(e) => setInternalPosFilter(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleSearchInternal(); }} />
                   </div>
@@ -559,7 +551,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           </div>
                           <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.25rem 0.6rem' }}
                             onClick={() => handleAddInternal(u.id)} disabled={addingCandidate}>
-                            Agregar
+                            {t('postulantes.detail.add')}
                           </button>
                         </div>
                       ))}
@@ -572,7 +564,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
           {/* Candidates list */}
           {candidates.length === 0 ? (
-            <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No hay candidatos en este proceso</div>
+            <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('postulantes.detail.noCandidates') || 'No hay candidatos en este proceso'}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {candidates.map((c: any) => {
@@ -597,9 +589,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
                           <span style={{ fontWeight: 700, fontSize: '1rem' }}>{name}</span>
                           {c.candidateType === 'internal' && (
-                            <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.15rem 0.5rem', borderRadius: 10, fontWeight: 700 }}>INTERNO</span>
+                            <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.15rem 0.5rem', borderRadius: 10, fontWeight: 700 }}>{t('postulantes.detail.internal')}</span>
                           )}
-                          <span className={stageInfo.badge} style={{ fontSize: '0.68rem' }}>{stageInfo.label}</span>
+                          <span className={stageInfo.badge} style={{ fontSize: '0.68rem' }}>{stageLabel(stageInfo.key)}</span>
                           {cvStatus === 'analyzed' && matchPct != null && (
                             <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: 10,
                               background: matchPct >= 70 ? 'rgba(16,185,129,0.1)' : matchPct >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
@@ -610,8 +602,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                           {c.email && <span>{c.email}</span>}
                           {c.phone && <span>{c.phone}</span>}
-                          {c.availability && <span>Disp: {c.availability}</span>}
-                          {c.salaryExpectation && <span>Renta: ${(() => { const raw = String(c.salaryExpectation).replace(/\D/g, ''); return raw ? Number(raw).toLocaleString('es-CL') : c.salaryExpectation; })()}</span>}
+                          {c.availability && <span>{t('postulantes.detail.availability')}: {c.availability}</span>}
+                          {c.salaryExpectation && <span>{t('postulantes.detail.salary')}: ${(() => { const raw = String(c.salaryExpectation).replace(/\D/g, ''); return raw ? Number(raw).toLocaleString('es-CL') : c.salaryExpectation; })()}</span>}
                         </div>
                       </div>
                       {hasFinalScore && (
@@ -619,7 +611,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           <div style={{ fontWeight: 800, fontSize: '1.3rem', lineHeight: 1, color: Number(c.finalScore) >= 7 ? 'var(--success)' : Number(c.finalScore) >= 4 ? 'var(--accent)' : 'var(--danger)' }}>
                             {Number(c.finalScore).toFixed(1)}
                           </div>
-                          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>de 10</div>
+                          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{t('postulantes.detail.outOf10')}</div>
                         </div>
                       )}
                     </div>
@@ -629,17 +621,17 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
                         {isEvaluatorOfProcess ? (
                           <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
-                            onClick={() => openInterview(c)}>Evaluar</button>
+                            onClick={() => openInterview(c)}>{t('postulantes.detail.eval.evaluate')}</button>
                         ) : isAdmin && (
                           <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem', borderColor: 'var(--accent)', color: 'var(--accent)' }}
-                            onClick={() => { setSelectedCandidate(c); setTab('evaluacion'); }}>Ver Evaluaciones</button>
+                            onClick={() => { setSelectedCandidate(c); setTab('evaluacion'); }}>{t('postulantes.detail.eval.viewEvals')}</button>
                         )}
                         <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
-                          onClick={() => loadScorecard(c.id)}>Tarjeta de Puntaje</button>
+                          onClick={() => loadScorecard(c.id)}>{t('postulantes.detail.scorecard.viewScorecard')}</button>
                         {showCv && (
                           <button className="btn-ghost" onClick={() => { setExpandedCvPanel(expandedCvPanel === c.id ? null : c.id); setEditingCandidate(null); }}
                             style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}>
-                            {expandedCvPanel === c.id ? 'Cerrar CV' : (cvStatus === 'none' ? 'Subir CV' : 'Ver CV')}
+                            {expandedCvPanel === c.id ? t('postulantes.detail.cv.closeCv') : (cvStatus === 'none' ? t('postulantes.detail.cv.uploadCv') : t('postulantes.detail.cv.viewCv'))}
                           </button>
                         )}
                         {isAdmin && (
@@ -653,7 +645,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                               });
                             }
                           }} style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}>
-                            {editingCandidate === c.id ? 'Cerrar' : 'Editar'}
+                            {editingCandidate === c.id ? t('postulantes.detail.edit.close') : t('postulantes.detail.edit.editBtn')}
                           </button>
                         )}
                       </div>
@@ -663,10 +655,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         <select className="input" value={c.stage} onChange={(e) => {
                           if (token) api.recruitment.candidates.updateStage(token, c.id, e.target.value).then(() => fetchProcess());
                         }} style={{ fontSize: '0.75rem', width: 'auto', padding: '0.2rem 0.4rem' }}>
-                          <option value="scored">Puntuado</option>
-                          <option value="approved">Aprobado</option>
-                          <option value="rejected">Rechazado</option>
-                          <option value="hired">Contratado</option>
+                          <option value="scored">{stageLabel('scored')}</option>
+                          <option value="approved">{stageLabel('approved')}</option>
+                          <option value="rejected">{stageLabel('rejected')}</option>
+                          <option value="hired">{stageLabel('hired')}</option>
                         </select>
                       )}
                     </div>
@@ -678,17 +670,17 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, background: c.cvUrl ? 'var(--success)' : 'var(--border)', color: c.cvUrl ? '#fff' : 'var(--text-muted)' }}>1</span>
-                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvUrl ? 600 : 400, color: c.cvUrl ? 'var(--success)' : 'var(--text-muted)' }}>Cargar CV</span>
+                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvUrl ? 600 : 400, color: c.cvUrl ? 'var(--success)' : 'var(--text-muted)' }}>{t('postulantes.detail.cv.upload')}</span>
                           </div>
                           <div style={{ width: 30, height: 2, background: c.cvUrl ? 'var(--success)' : 'var(--border)' }} />
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, background: c.cvAnalysis ? 'var(--success)' : 'var(--border)', color: c.cvAnalysis ? '#fff' : 'var(--text-muted)' }}>2</span>
-                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvAnalysis ? 600 : 400, color: c.cvAnalysis ? 'var(--success)' : 'var(--text-muted)' }}>Analizar con IA</span>
+                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvAnalysis ? 600 : 400, color: c.cvAnalysis ? 'var(--success)' : 'var(--text-muted)' }}>{t('postulantes.detail.cv.analyze')}</span>
                           </div>
                           <div style={{ width: 30, height: 2, background: c.cvAnalysis ? 'var(--success)' : 'var(--border)' }} />
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, background: c.cvAnalysis ? 'var(--success)' : 'var(--border)', color: c.cvAnalysis ? '#fff' : 'var(--text-muted)' }}>3</span>
-                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvAnalysis ? 600 : 400, color: c.cvAnalysis ? 'var(--success)' : 'var(--text-muted)' }}>Informe</span>
+                            <span style={{ fontSize: '0.78rem', fontWeight: c.cvAnalysis ? 600 : 400, color: c.cvAnalysis ? 'var(--success)' : 'var(--text-muted)' }}>{t('postulantes.detail.cv.report')}</span>
                           </div>
                         </div>
 
@@ -696,11 +688,11 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         {!c.cvUrl ? (
                           <div style={{ textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
                             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                              Sube el CV del candidato en formato PDF (max 5MB)
+                              {t('postulantes.detail.cv.uploadDesc')}
                             </p>
                             {canManageCv && (
                               <label className="btn-primary" style={{ cursor: 'pointer', fontSize: '0.85rem' }}>
-                                {uploadingCv ? 'Subiendo...' : 'Seleccionar archivo'}
+                                {uploadingCv ? t('postulantes.detail.cv.uploading') : t('postulantes.detail.cv.selectFile')}
                                 <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
                               </label>
                             )}
@@ -709,19 +701,19 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           /* Step 2: Analyze */
                           <div style={{ textAlign: 'center', padding: '1.5rem' }}>
                             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', fontWeight: 600 }}>
-                              CV cargado correctamente
+                              {t('postulantes.detail.cv.uploaded')}
                             </p>
                             <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                              La IA analizará el CV y lo cruzará con los requisitos del cargo para calcular el porcentaje de coincidencia.
+                              {t('postulantes.detail.cv.aiDesc')}
                             </p>
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                               {canManageCv && (
                                 <>
                                   <button className="btn-primary" onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId || aiBlocked} style={{ fontSize: '0.85rem' }}>
-                                    {analyzingCvId === c.id ? 'Analizando... (10-20 seg)' : aiBlocked ? 'Créditos IA agotados' : 'Analizar CV con IA'}
+                                    {analyzingCvId === c.id ? t('postulantes.detail.cv.analyzing') : aiBlocked ? t('postulantes.detail.cv.noCredits') : t('postulantes.detail.cv.analyzeBtn')}
                                   </button>
                                   <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.82rem' }}>
-                                    Cambiar CV
+                                    {t('postulantes.detail.cv.changeCv')}
                                     <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
                                   </label>
                                 </>
@@ -732,15 +724,15 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           /* Step 3: Results summary */
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                              <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>Resultado del Análisis</span>
+                              <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>{t('postulantes.detail.cv.analysisResult')}</span>
                               {canManageCv && (
                                 <div style={{ display: 'flex', gap: '0.35rem' }}>
                                   <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
                                     onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId || aiBlocked}>
-                                    {analyzingCvId === c.id ? 'Analizando...' : aiBlocked ? 'Sin créditos' : 'Re-analizar'}
+                                    {analyzingCvId === c.id ? t('postulantes.detail.cv.analyzing') : aiBlocked ? t('postulantes.detail.cv.noCredits') : t('postulantes.detail.cv.reAnalyze')}
                                   </button>
                                   <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
-                                    Cambiar CV
+                                    {t('postulantes.detail.cv.changeCv')}
                                     <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
                                   </label>
                                 </div>
@@ -773,43 +765,43 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                     {/* Edit candidate panel */}
                     {editingCandidate === c.id && (
                       <div style={{ marginTop: '0.75rem', padding: '1rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                        <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.75rem' }}>Editar datos del candidato</h4>
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('postulantes.detail.edit.title')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.75rem' }}>
                           <div>
-                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Email</label>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{t('postulantes.detail.edit.email')}</label>
                             <input className="input" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} style={{ fontSize: '0.85rem' }} />
                           </div>
                           <div>
-                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Telefono</label>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{t('postulantes.detail.edit.phone')}</label>
                             <input className="input" value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} style={{ fontSize: '0.85rem' }} />
                           </div>
                           <div>
-                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>LinkedIn</label>
-                            <input className="input" value={editForm.linkedIn} onChange={(e) => setEditForm((f) => ({ ...f, linkedIn: e.target.value }))} placeholder="URL de perfil" style={{ fontSize: '0.85rem' }} />
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{t('postulantes.detail.edit.linkedin')}</label>
+                            <input className="input" value={editForm.linkedIn} onChange={(e) => setEditForm((f) => ({ ...f, linkedIn: e.target.value }))} placeholder={t('postulantes.detail.edit.linkedinPlaceholder')} style={{ fontSize: '0.85rem' }} />
                           </div>
                           <div>
-                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Disponibilidad</label>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{t('postulantes.detail.edit.availability')}</label>
                             <select className="input" value={editForm.availability} onChange={(e) => setEditForm((f) => ({ ...f, availability: e.target.value }))} style={{ fontSize: '0.85rem' }}>
-                              <option value="">Sin especificar</option>
-                              <option value="Inmediata">Inmediata</option>
-                              <option value="15 dias">15 dias</option>
-                              <option value="30 dias">30 dias</option>
-                              <option value="60 dias">60 dias</option>
-                              <option value="90 dias">90 dias</option>
-                              <option value="A convenir">A convenir</option>
+                              <option value="">{t('postulantes.detail.form.noSpec')}</option>
+                              <option value="Inmediata">{t('postulantes.detail.form.availImmediate')}</option>
+                              <option value="15 dias">{t('postulantes.detail.form.avail15')}</option>
+                              <option value="30 dias">{t('postulantes.detail.form.avail30')}</option>
+                              <option value="60 dias">{t('postulantes.detail.form.avail60')}</option>
+                              <option value="90 dias">{t('postulantes.detail.form.avail90')}</option>
+                              <option value="A convenir">{t('postulantes.detail.form.availNegotiable')}</option>
                             </select>
                           </div>
                           <div>
-                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Pretension de renta</label>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{t('postulantes.detail.edit.salary')}</label>
                             <input className="input" value={editForm.salaryExpectation}
                               onChange={(e) => { const raw = e.target.value.replace(/\D/g, ''); setEditForm((f) => ({ ...f, salaryExpectation: raw ? Number(raw).toLocaleString('es-CL') : '' })); }}
                               placeholder="$0" style={{ fontSize: '0.85rem' }} />
                           </div>
                         </div>
                         <div style={{ marginBottom: '0.75rem' }}>
-                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Notas del reclutador</label>
+                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{t('postulantes.detail.edit.recruiterNotes')}</label>
                           <textarea className="input" value={editForm.recruiterNotes} onChange={(e) => setEditForm((f) => ({ ...f, recruiterNotes: e.target.value }))}
-                            rows={3} placeholder="Observaciones, comentarios internos..." style={{ fontSize: '0.85rem', resize: 'vertical' as const }} />
+                            rows={3} placeholder={t('postulantes.detail.edit.notesPlaceholder')} style={{ fontSize: '0.85rem', resize: 'vertical' as const }} />
                         </div>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button className="btn-primary" style={{ fontSize: '0.82rem' }} disabled={savingEdit} onClick={async () => {
@@ -817,15 +809,15 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             setSavingEdit(true);
                             try {
                               await api.recruitment.candidates.update(token, c.id, editForm);
-                              toast('Datos actualizados', 'success');
+                              toast(t('postulantes.detail.edit.updated') || 'Datos actualizados', 'success');
                               setEditingCandidate(null);
                               fetchProcess();
-                            } catch (err: any) { toast(err.message || 'Error al guardar', 'error'); }
+                            } catch (err: any) { toast(err.message || t('postulantes.detail.edit.saveError') || 'Error al guardar', 'error'); }
                             setSavingEdit(false);
                           }}>
-                            {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                            {savingEdit ? t('postulantes.detail.edit.saving') : t('postulantes.detail.edit.save')}
                           </button>
-                          <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setEditingCandidate(null)}>Cancelar</button>
+                          <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setEditingCandidate(null)}>{t('postulantes.detail.edit.cancel')}</button>
                         </div>
                       </div>
                     )}
@@ -843,28 +835,28 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           {!selectedCandidate ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
               {isEvaluatorOfProcess
-                ? 'Selecciona un candidato desde la pestaña Candidatos y presiona "Evaluar"'
-                : 'Selecciona un candidato desde la pestaña Candidatos para ver sus evaluaciones'}
+                ? t('postulantes.detail.eval.selectToEval')
+                : t('postulantes.detail.eval.selectToView')}
             </div>
           ) : !isEvaluatorOfProcess ? (
             /* ── Admin read-only view of evaluations ──────────────── */
-            <AdminEvaluationView candidate={selectedCandidate} token={token} onViewScorecard={() => loadScorecard(selectedCandidate.id)} />
+            <AdminEvaluationView candidate={selectedCandidate} token={token} onViewScorecard={() => loadScorecard(selectedCandidate.id)} t={t} />
           ) : (
             <div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
-                Evaluación: {selectedCandidate.firstName || selectedCandidate.user?.firstName} {selectedCandidate.lastName || selectedCandidate.user?.lastName}
+                {t('postulantes.detail.eval.evalTitle')}: {selectedCandidate.firstName || selectedCandidate.user?.firstName} {selectedCandidate.lastName || selectedCandidate.user?.lastName}
               </h2>
 
               {/* Requirement checks */}
               {interviewForm.reqChecks.length > 0 && (
                 <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Cumplimiento de Requisitos</h3>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('postulantes.detail.eval.reqCompliance')}</h3>
                   <table style={{ width: '100%' }}>
                     <thead>
                       <tr>
-                        <th style={{ textAlign: 'left', fontSize: '0.78rem' }}>Requisito</th>
-                        <th style={{ width: 130, fontSize: '0.78rem' }}>Estado</th>
-                        <th style={{ fontSize: '0.78rem' }}>Comentario</th>
+                        <th style={{ textAlign: 'left', fontSize: '0.78rem' }}>{t('postulantes.detail.eval.requirement')}</th>
+                        <th style={{ width: 130, fontSize: '0.78rem' }}>{t('postulantes.detail.eval.state')}</th>
+                        <th style={{ fontSize: '0.78rem' }}>{t('postulantes.detail.eval.comment')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -884,10 +876,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                               style={{ fontSize: '0.82rem', fontWeight: 600, minWidth: 140,
                                 color: rc.status === 'cumple' ? 'var(--success)' : rc.status === 'no_cumple' ? 'var(--danger)' : rc.status === 'parcial' ? 'var(--warning)' : 'var(--text-muted)',
                               }}>
-                              <option value="pendiente">Pendiente</option>
-                              <option value="cumple">Cumple</option>
-                              <option value="parcial">Cumple parcialmente</option>
-                              <option value="no_cumple">No cumple</option>
+                              <option value="pendiente">{t('postulantes.detail.eval.pending')}</option>
+                              <option value="cumple">{t('postulantes.detail.eval.meets')}</option>
+                              <option value="parcial">{t('postulantes.detail.eval.partial')}</option>
+                              <option value="no_cumple">{t('postulantes.detail.eval.notMeet')}</option>
                             </select>
                           </td>
                           <td>
@@ -897,7 +889,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                                 checks[i] = { ...checks[i], comment: e.target.value };
                                 return { ...f, reqChecks: checks };
                               })}
-                              placeholder="Comentario..." />
+                              placeholder={t('postulantes.detail.eval.commentPlaceholder')} />
                           </td>
                         </tr>
                       ))}
@@ -934,7 +926,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 <div style={{ display: 'grid', gridTemplateColumns: '140px 140px 1fr', gap: '1rem' }}>
                   {/* Auto score from requirements */}
                   <div>
-                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Puntaje Requisitos</label>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>{t('postulantes.detail.eval.scoreReqs')}</label>
                     <div style={{ textAlign: 'center', fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-muted)', padding: '0.3rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
                       {(() => {
                         const checks = interviewForm.reqChecks || [];
@@ -949,12 +941,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       })()}/10
                     </div>
                     <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.2rem' }}>
-                      {(interviewForm.reqChecks || []).some((c: any) => c.weight > 0) ? 'Ponderado por peso' : 'Auto-calculado'}
+                      {(interviewForm.reqChecks || []).some((c: any) => c.weight > 0) ? t('postulantes.detail.eval.weightedByWeight') : t('postulantes.detail.eval.autoCalc')}
                     </div>
                   </div>
                   {/* Manual evaluator score */}
                   <div>
-                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Mi Puntuacion</label>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>{t('postulantes.detail.eval.myScore')}</label>
                     <input className="input" type="number" min={1} max={10} step={0.1}
                       value={interviewForm.manualScore || ''}
                       onChange={(e) => {
@@ -965,29 +957,29 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       }}
                       placeholder="1-10"
                       style={{ textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, padding: '0.3rem' }} />
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.2rem' }}>Tu apreciacion</div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.2rem' }}>{t('postulantes.detail.eval.yourAssessment')}</div>
                   </div>
                   {/* Final combined score */}
                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '0.5rem', background: 'rgba(201,147,58,0.06)', borderRadius: 'var(--radius-sm)' }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Puntaje Final</div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>{t('postulantes.detail.eval.finalScore')}</div>
                     <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent)' }}>
                       {interviewForm.globalScore || '--'}<span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/10</span>
                     </div>
-                    <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Ponderado: 70% requisitos + 30% evaluador</div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{t('postulantes.detail.eval.weightFormula')}</div>
                   </div>
                 </div>
               </div>
 
               {/* Comments */}
               <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Comentarios generales</label>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>{t('postulantes.detail.eval.generalComments')}</label>
                 <textarea className="input" rows={3} value={interviewForm.comments}
                   onChange={(e) => setInterviewForm((f) => ({ ...f, comments: e.target.value }))}
-                  style={{ resize: 'vertical', fontSize: '0.85rem' }} placeholder="Observaciones de la entrevista, impresion general del candidato..." />
+                  style={{ resize: 'vertical', fontSize: '0.85rem' }} placeholder={t('postulantes.detail.eval.commentsPlaceholder')} />
               </div>
 
               <button className="btn-primary" onClick={handleSaveInterview} disabled={savingInterview}>
-                {savingInterview ? 'Guardando...' : 'Guardar Evaluación'}
+                {savingInterview ? t('postulantes.detail.eval.saving') : t('postulantes.detail.eval.saveEval')}
               </button>
             </div>
           )}
@@ -999,40 +991,40 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         <div>
           {!scorecard ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              Selecciona un candidato y presiona "Puntaje" para ver su tarjeta de puntuacion
+              {t('postulantes.detail.scorecard.selectToView')}
             </div>
           ) : (
             <div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
-                Tarjeta de Puntuación: {scorecard.candidate?.firstName || scorecard.candidate?.user?.firstName} {scorecard.candidate?.lastName || scorecard.candidate?.user?.lastName}
+                {t('postulantes.detail.scorecard.title')}: {scorecard.candidate?.firstName || scorecard.candidate?.user?.firstName} {scorecard.candidate?.lastName || scorecard.candidate?.user?.lastName}
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 {scorecard.scores?.cvMatchPct != null && (
                   <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Match IA (CV)</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{t('postulantes.detail.scorecard.cvMatch')}</div>
                     <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent)' }}>{scorecard.scores.cvMatchPct}%</div>
                   </div>
                 )}
                 {scorecard.scores?.interviewAvg != null && (
                   <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Prom. Entrevistas</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{t('postulantes.detail.scorecard.interviewAvg')}</div>
                     <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{scorecard.scores.interviewAvg}/10</div>
                   </div>
                 )}
                 {scorecard.scores?.requirementPct != null && (
                   <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Requisitos</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{t('postulantes.detail.scorecard.requirements')}</div>
                     <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{scorecard.scores.requirementPct}%</div>
                   </div>
                 )}
                 {scorecard.scores?.historyAvg != null && (
                   <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Historial Eval.</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{t('postulantes.detail.scorecard.historyAvg')}</div>
                     <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>{scorecard.scores.historyAvg}/5</div>
                   </div>
                 )}
                 <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Puntaje Final</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{t('postulantes.detail.scorecard.finalScore')}</div>
                   <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--success)' }}>
                     {scorecard.scores?.finalScore != null ? Number(scorecard.scores.finalScore).toFixed(1) : '--'}/10
                   </div>
@@ -1042,7 +1034,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               {/* Interviews detail */}
               {scorecard.interviews?.length > 0 && (
                 <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Evaluaciónes de Entrevista</h3>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('postulantes.detail.scorecard.interviewsTitle')}</h3>
                   {scorecard.interviews.map((i: any) => (
                     <div key={i.id} style={{ padding: '0.75rem', marginBottom: '0.5rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
@@ -1065,19 +1057,19 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 if (!analysis) return null;
                 return (
                   <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
-                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--accent)' }}>Informe IA del CV</h3>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--accent)' }}>{t('postulantes.detail.scorecard.aiReport')}</h3>
                     {analysis.resumenEjecutivo && (
                       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '0.75rem' }}>{analysis.resumenEjecutivo}</p>
                     )}
                     {analysis.experienciaRelevante && (
                       <div style={{ marginBottom: '0.75rem' }}>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Experiencia Relevante</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>{t('postulantes.detail.scorecard.relevantExp')}</div>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>{analysis.experienciaRelevante}</p>
                       </div>
                     )}
                     {analysis.habilidadesTecnicas?.length > 0 && (
                       <div style={{ marginBottom: '0.75rem' }}>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Habilidades T&eacute;cnicas</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>{t('postulantes.detail.scorecard.techSkills')}</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                           {analysis.habilidadesTecnicas.map((h: string, i: number) => (
                             <span key={i} style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', background: 'rgba(201,147,58,0.08)', borderRadius: 10, color: 'var(--accent)' }}>{h}</span>
@@ -1087,7 +1079,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                     )}
                     {analysis.habilidadesBlandas?.length > 0 && (
                       <div style={{ marginBottom: '0.75rem' }}>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Habilidades Blandas</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>{t('postulantes.detail.scorecard.softSkills')}</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                           {analysis.habilidadesBlandas.map((h: string, i: number) => (
                             <span key={i} style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', background: 'rgba(99,102,241,0.08)', borderRadius: 10, color: '#6366f1' }}>{h}</span>
@@ -1102,7 +1094,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                     )}
                     {analysis.alertas?.length > 0 && (
                       <div style={{ marginBottom: '0.75rem' }}>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--danger)', marginBottom: '0.3rem' }}>Alertas</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--danger)', marginBottom: '0.3rem' }}>{t('postulantes.detail.scorecard.alerts')}</div>
                         {analysis.alertas.map((a: string, i: number) => (
                           <div key={i} style={{ fontSize: '0.82rem', color: 'var(--danger)', padding: '0.25rem 0', lineHeight: 1.4 }}>&#9888; {a}</div>
                         ))}
@@ -1136,19 +1128,19 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       {tab === 'comparativa' && (
         <div>
           {!comparative ? (
-            <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Cargando comparativa...</div>
+            <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('postulantes.detail.comparative.loading')}</div>
           ) : (
             <div>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>Cuadro Comparativo</h2>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>{t('postulantes.detail.comparative.title')}</h2>
               <div className="card" style={{ overflow: 'auto', marginBottom: '1rem' }}>
                 <table style={{ width: '100%' }}>
                   <thead>
                     <tr>
-                      <th style={{ textAlign: 'left' }}>Candidato</th>
-                      <th>Entrevistas</th>
-                      {isInternal && <th>Historial</th>}
-                      {isInternal && <th>Antiguedad</th>}
-                      <th>Puntaje Final</th>
+                      <th style={{ textAlign: 'left' }}>{t('postulantes.detail.comparative.candidate')}</th>
+                      <th>{t('postulantes.detail.comparative.interviews')}</th>
+                      {isInternal && <th>{t('postulantes.detail.comparative.history')}</th>}
+                      {isInternal && <th>{t('postulantes.detail.comparative.seniority')}</th>}
+                      <th>{t('postulantes.detail.comparative.finalScore')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1182,21 +1174,21 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       {tab === 'configuracion' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Información del Proceso</h3>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>{t('postulantes.detail.config.processInfo')}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.85rem' }}>
-              <div><span style={{ color: 'var(--text-muted)' }}>Titulo:</span> <strong>{process.title}</strong></div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Cargo:</span> <strong>{process.position}</strong></div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Departamento:</span> <strong>{process.department || '—'}</strong></div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Tipo:</span> <strong>{isInternal ? 'Interno' : 'Externo'}</strong></div>
-              {process.startDate && <div><span style={{ color: 'var(--text-muted)' }}>Inicio:</span> <strong>{new Date(process.startDate).toLocaleDateString('es-CL')}</strong></div>}
-              {process.endDate && <div><span style={{ color: 'var(--text-muted)' }}>Fin:</span> <strong>{new Date(process.endDate).toLocaleDateString('es-CL')}</strong></div>}
+              <div><span style={{ color: 'var(--text-muted)' }}>{t('postulantes.detail.config.title')}:</span> <strong>{process.title}</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>{t('postulantes.detail.config.position')}:</span> <strong>{process.position}</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>{t('postulantes.detail.config.department')}:</span> <strong>{process.department || '—'}</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>{t('postulantes.detail.config.type')}:</span> <strong>{isInternal ? t('postulantes.type.internal') : t('postulantes.type.external')}</strong></div>
+              {process.startDate && <div><span style={{ color: 'var(--text-muted)' }}>{t('postulantes.detail.config.start')}:</span> <strong>{new Date(process.startDate).toLocaleDateString('es-CL')}</strong></div>}
+              {process.endDate && <div><span style={{ color: 'var(--text-muted)' }}>{t('postulantes.detail.config.end')}:</span> <strong>{new Date(process.endDate).toLocaleDateString('es-CL')}</strong></div>}
             </div>
             {process.description && <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.75rem' }}>{process.description}</p>}
           </div>
 
           {requirements.length > 0 && (
             <div className="card" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>Requisitos del Cargo</h3>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('postulantes.detail.config.requirements')}</h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                 {requirements.map((r: any, i: number) => (
                   <span key={i} style={{ padding: '0.3rem 0.7rem', borderRadius: 20, fontSize: '0.78rem', background: 'rgba(201,147,58,0.08)', border: '1px solid rgba(201,147,58,0.2)', color: 'var(--accent)', fontWeight: 500 }}>
@@ -1208,7 +1200,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           )}
 
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>Evaluadores ({evaluators.length})</h3>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('postulantes.detail.config.evaluators')} ({evaluators.length})</h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
               {evaluators.map((ev: any) => (
                 <div key={ev.id} style={{ padding: '0.4rem 0.8rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
@@ -1222,7 +1214,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           {/* Status change (admin only) */}
           {isAdmin && (
             <div className="card" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>Estado del Proceso</h3>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('postulantes.detail.config.processStatus')}</h3>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 {['draft', 'active', 'completed', 'closed'].map((s) => (
                   <button key={s} onClick={() => { if (token) api.recruitment.processes.update(token, params.id, { status: s }).then(() => fetchProcess()); }}
@@ -1233,7 +1225,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       fontWeight: process.status === s ? 700 : 400,
                       color: process.status === s ? 'var(--accent)' : 'var(--text-secondary)',
                     }}>
-                    {PROCESS_STATUS_LABELS[s] || s}
+                    {t(`postulantes.status.${s}`)}
                   </button>
                 ))}
               </div>
