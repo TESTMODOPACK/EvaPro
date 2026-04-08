@@ -1671,11 +1671,24 @@ function AdminDashboard() {
               {(systemUsage.moduleUsage || []).length > 0 && (
                 <div>
                   <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Módulos más usados:</div>
-                  {systemUsage.moduleUsage.slice(0, 5).map((m: any) => (
-                    <div key={m.module} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.15rem 0' }}>
-                      <span>{m.module}</span><span style={{ fontWeight: 600 }}>{m.count}</span>
-                    </div>
-                  ))}
+                  {systemUsage.moduleUsage.slice(0, 5).map((m: any) => {
+                    const moduleLabels: Record<string, string> = {
+                      report: 'Informes', User: 'Usuarios', user: 'Usuarios',
+                      contract: 'Contratos', payment: 'Pagos', subscription: 'Suscripciones',
+                      recruitment_process: 'Reclutamiento', evaluation: 'Evaluaciones',
+                      cycle: 'Ciclos', template: 'Plantillas', feedback: 'Feedback',
+                      objective: 'Objetivos', development: 'Desarrollo', talent: 'Talento',
+                      competency: 'Competencias', signature: 'Firmas', invoice: 'Facturas',
+                      notification: 'Notificaciones', survey: 'Encuestas', recognition: 'Reconocimientos',
+                      ai: 'Inteligencia IA', checkin: 'Check-ins', calibration: 'Calibracion',
+                      audit: 'Auditoria', tenant: 'Organizaciones',
+                    };
+                    return (
+                      <div key={m.module} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.15rem 0' }}>
+                        <span>{moduleLabels[m.module] || m.module}</span><span style={{ fontWeight: 600 }}>{m.count}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -1762,6 +1775,40 @@ function AdminDashboard() {
           ].map((a) => (
             <Link key={a.href} href={a.href} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.85rem', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)', textDecoration: 'none', transition: 'var(--transition)' }}>
               <span style={{ fontSize: '1rem' }}>{a.icon}</span> {a.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Process Steps Guide */}
+      <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
+        <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '1rem' }}>{'📋'}</span> Flujo del proceso Eva360
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.6rem' }}>
+          {(ROLE_STEPS.tenant_admin || []).map((step, i) => (
+            <Link key={i} href={step.href} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <div style={{
+                padding: '0.75rem', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)', background: 'var(--bg-surface)',
+                position: 'relative', cursor: 'pointer', transition: 'border-color 0.15s',
+              }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(201,147,58,0.4)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; }}
+              >
+                <div style={{
+                  position: 'absolute', top: '6px', right: '6px',
+                  width: '18px', height: '18px', borderRadius: '50%',
+                  background: 'var(--accent)', color: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.6rem', fontWeight: 800,
+                }}>
+                  {i + 1}
+                </div>
+                <div style={{ fontSize: '1.2rem', marginBottom: '0.3rem' }}>{step.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', marginBottom: '0.15rem' }}>{step.title}</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{step.desc}</div>
+              </div>
             </Link>
           ))}
         </div>
