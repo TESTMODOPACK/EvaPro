@@ -41,7 +41,8 @@ export default function AjustesPage() {
   const { t } = useTranslation();
   const { data: user, isLoading } = useCurrentUser();
   const { data: sub } = useMySubscription();
-  const isTenantAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
+  const isTenantAdmin = user?.role === 'tenant_admin';
+  const isSuperAdmin = user?.role === 'super_admin';
   const orgName = sub?.tenant?.name || '';
   const orgRut = sub?.tenant?.rut ? formatRut(sub.tenant.rut) : '';
 
@@ -180,11 +181,15 @@ export default function AjustesPage() {
     );
   }
 
-  const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
-    { id: 'organizacion', label: 'Organización', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
-    { id: 'notificaciones', label: 'Notificaciones', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0' },
-    { id: 'feedback', label: 'Retroalimentación', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
-  ];
+  const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = isSuperAdmin
+    ? [
+        { id: 'organizacion', label: 'Plataforma', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
+      ]
+    : [
+        { id: 'organizacion', label: 'Organizacion', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+        { id: 'notificaciones', label: 'Notificaciones', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0' },
+        { id: 'feedback', label: 'Retroalimentacion', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
+      ];
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>
@@ -224,6 +229,104 @@ export default function AjustesPage() {
           </button>
         ))}
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* TAB: Plataforma (super_admin)                                       */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'organizacion' && isSuperAdmin && (
+        <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div className="card" style={{ padding: '1.5rem', borderLeft: '3px solid var(--accent)' }}>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Configuracion General de la Plataforma</h2>
+            <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={labelStyle}>Nombre de la plataforma</label>
+                <input className="input" type="text" value="Eva360" disabled style={{ opacity: 0.7 }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Version</label>
+                <input className="input" type="text" value="2.6.0" disabled style={{ opacity: 0.7 }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Entorno</label>
+                <input className="input" type="text" value="Produccion" disabled style={{ opacity: 0.7 }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Dominio</label>
+                <input className="input" type="text" value={typeof window !== 'undefined' ? window.location.hostname : ''} disabled style={{ opacity: 0.7 }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Configuracion de IA</h2>
+            <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={labelStyle}>Proveedor IA</label>
+                <input className="input" type="text" value="Anthropic (Claude)" disabled style={{ opacity: 0.7 }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Modelo predeterminado</label>
+                <input className="input" type="text" value="claude-haiku-4-5" disabled style={{ opacity: 0.7 }} />
+              </div>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+              La clave API de Anthropic se configura en las variables de entorno del servidor (ANTHROPIC_API_KEY). Los creditos IA por organizacion se gestionan desde la seccion Suscripciones.
+            </p>
+          </div>
+
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Email y Notificaciones</h2>
+            <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={labelStyle}>Proveedor email</label>
+                <input className="input" type="text" value="Resend" disabled style={{ opacity: 0.7 }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Email remitente</label>
+                <input className="input" type="text" value="Eva360 <onboarding@resend.dev>" disabled style={{ opacity: 0.7 }} />
+              </div>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+              Las credenciales de email se configuran en variables de entorno del servidor (RESEND_API_KEY, EMAIL_FROM).
+            </p>
+          </div>
+
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Base de Datos</h2>
+            <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={labelStyle}>Motor</label>
+                <input className="input" type="text" value="PostgreSQL 16" disabled style={{ opacity: 0.7 }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Modelo multi-tenant</label>
+                <input className="input" type="text" value="Schema compartido (row-level)" disabled style={{ opacity: 0.7 }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>Seguridad</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
+                <span>Autenticacion</span><strong>JWT (Bearer Token)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
+                <span>Firmas digitales</span><strong>OTP por email + SHA-256</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
+                <span>Encriptacion passwords</span><strong>bcrypt (10 rounds)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
+                <span>SSL/TLS</span><strong>Let{"'"}s Encrypt (auto-renewal)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0' }}>
+                <span>Registro de auditoria</span><strong>Habilitado (todas las acciones)</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* TAB: Organización (tenant_admin only)                               */}
