@@ -708,7 +708,11 @@
       "progressNote": "You must provide a reason in the note — it will be recorded in the history.",
       "updateReason": "Reason for update *",
       "notes": "Progress notes",
-      "notesPlaceholder": "e.g.: Updated in follow-up meeting..."
+      "notesPlaceholder": "e.g.: Updated in follow-up meeting...",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "assignTo": "Assign to",
+      "selectUser": "Select user"
     },
     "objStatus": {
       "draft": "Draft",

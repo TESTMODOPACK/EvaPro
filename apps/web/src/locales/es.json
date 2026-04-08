@@ -710,7 +710,11 @@
       "progressNote": "Debes indicar el motivo en la nota — quedará registrado en el historial.",
       "updateReason": "Motivo de la actualización *",
       "notes": "Notas sobre el avance",
-      "notesPlaceholder": "Ej: Actualizado en reunión de seguimiento..."
+      "notesPlaceholder": "Ej: Actualizado en reunión de seguimiento...",
+      "department": "Departamento",
+      "allDepartments": "Todos los departamentos",
+      "assignTo": "Asignar a",
+      "selectUser": "Seleccionar usuario"
     },
     "objStatus": {
       "draft": "Borrador",

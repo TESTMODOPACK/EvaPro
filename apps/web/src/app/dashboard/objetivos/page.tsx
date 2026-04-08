@@ -960,6 +960,7 @@ function ObjetivosPageContent() {
   const [collapsedUsers, setCollapsedUsers] = useState<Record<string, boolean>>({});
   const [progressForm, setProgressForm] = useState<{ value: number; notes: string }>({ value: 50, notes: '' });
   const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '', userId: '', parentObjectiveId: '', weight: 0, cycleId: '' });
+  const [createDeptFilter, setCreateDeptFilter] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
   const [submitApprovalError, setSubmitApprovalError] = useState<{ id: string; message: string } | null>(null);
@@ -1073,6 +1074,7 @@ function ObjetivosPageContent() {
     createObjective.mutate(payload, {
       onSuccess: () => {
         setForm({ title: '', description: '', type: 'OKR', targetDate: '', userId: '', parentObjectiveId: '', weight: 0, cycleId: '' });
+        setCreateDeptFilter('');
         setShowForm(false);
         setFormError(null);
       },
@@ -1683,24 +1685,48 @@ function ObjetivosPageContent() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {/* Assign to (admin/manager only) */}
             {(isAdmin || isManager) && (
-              <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                  Asignar a
-                </label>
-                <select
-                  className="input"
-                  value={form.userId}
-                  onChange={(e) => setForm({ ...form, userId: e.target.value })}
-                  style={{ width: '100%' }}
-                >
-                  <option value="">-- Seleccionar usuario --</option>
-                  {allUsers.map((u: any) => (
-                    <option key={u.id} value={u.id}>
-                      {u.firstName} {u.lastName}{u.position ? ` - ${u.position}` : ''}
+              <>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                    {t('objetivos.form.department')}
+                  </label>
+                  <select
+                    className="input"
+                    value={createDeptFilter}
+                    onChange={(e) => { setCreateDeptFilter(e.target.value); setForm({ ...form, userId: '' }); }}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">{t('objetivos.form.allDepartments')}</option>
+                    {deptOptions.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                    {t('objetivos.form.assignTo')}
+                  </label>
+                  <select
+                    className="input"
+                    value={form.userId}
+                    onChange={(e) => setForm({ ...form, userId: e.target.value })}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">
+                      -- {t('objetivos.form.selectUser')} ({allUsers.filter((u: any) => !createDeptFilter || u.department === createDeptFilter).length}) --
                     </option>
-                  ))}
-                </select>
-              </div>
+                    {allUsers
+                      .filter((u: any) => !createDeptFilter || u.department === createDeptFilter)
+                      .sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
+                      .map((u: any) => (
+                        <option key={u.id} value={u.id}>
+                          {u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}
+                          {!createDeptFilter && u.department ? ` · ${u.department}` : ''}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </>
             )}
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
