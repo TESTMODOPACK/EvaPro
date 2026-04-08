@@ -67,6 +67,7 @@ export default function TenantsPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
+  const [tenantAdmin, setTenantAdmin] = useState<any>(null);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -205,8 +206,21 @@ export default function TenantsPage() {
         }
       }
 
+      // Update admin user if changed
+      if (tenantAdmin?.id) {
+        const adminUpdate: any = {};
+        if (tenantAdmin.email) adminUpdate.email = tenantAdmin.email;
+        if (tenantAdmin.firstName) adminUpdate.firstName = tenantAdmin.firstName;
+        if (tenantAdmin.lastName) adminUpdate.lastName = tenantAdmin.lastName;
+        if (tenantAdmin.department !== undefined) adminUpdate.department = tenantAdmin.department || null;
+        if (tenantAdmin.position !== undefined) adminUpdate.position = tenantAdmin.position || null;
+        if (form.adminPassword?.trim()) adminUpdate.password = form.adminPassword.trim();
+        await api.users.update(token, tenantAdmin.id, adminUpdate);
+      }
+
       setSuccess('Organizacion actualizada');
       resetForm();
+      setTenantAdmin(null);
       fetchTenants();
       // Refresh subscriptions
       api.subscriptions.list(token).then(setSubscriptions).catch(() => {});
@@ -253,6 +267,15 @@ export default function TenantsPage() {
     setEditingId(t.id);
     setShowForm(true);
     setError('');
+    // Load tenant admin
+    setTenantAdmin(null);
+    if (token) {
+      api.users.list(token, 1, 10, { role: 'tenant_admin' }).then((res: any) => {
+        const users = (res as any).data || res || [];
+        const admin = users.find((u: any) => u.tenantId === t.id && u.role === 'tenant_admin');
+        if (admin) setTenantAdmin(admin);
+      }).catch(() => {});
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -634,34 +657,69 @@ export default function TenantsPage() {
             </div>
           </div>
 
-          {/* Admin fields (only for create) */}
-          {!editingId && (
-            <>
-              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                  Admin inicial (opcional)
-                </p>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={labelStyle}>Email admin</label>
-                  <input style={inputStyle} value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} placeholder="admin@empresa.com" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Password admin</label>
-                  <input style={inputStyle} type="password" value={form.adminPassword} onChange={(e) => setForm({ ...form, adminPassword: e.target.value })} placeholder="********" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Nombres</label>
-                  <input style={inputStyle} value={form.adminFirstName} onChange={(e) => setForm({ ...form, adminFirstName: e.target.value })} placeholder="Juan" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Apellidos</label>
-                  <input style={inputStyle} value={form.adminLastName} onChange={(e) => setForm({ ...form, adminLastName: e.target.value })} placeholder="Perez" />
-                </div>
-              </div>
-            </>
+          {/* Admin fields — Create: new admin / Edit: show & edit existing admin */}
+          <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+              {editingId ? 'Administrador de la organizacion' : 'Admin inicial (opcional)'}
+            </p>
+          </div>
+          {editingId && !tenantAdmin && (
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Cargando datos del administrador...</p>
           )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+            <div>
+              <label style={labelStyle}>Email admin {!editingId && '*'}</label>
+              <input style={inputStyle}
+                value={editingId ? (tenantAdmin?.email || '') : form.adminEmail}
+                onChange={(e) => {
+                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, email: e.target.value });
+                  else setForm({ ...form, adminEmail: e.target.value });
+                }}
+                placeholder="admin@empresa.com" />
+            </div>
+            <div>
+              <label style={labelStyle}>Nombres {!editingId && '*'}</label>
+              <input style={inputStyle}
+                value={editingId ? (tenantAdmin?.firstName || '') : form.adminFirstName}
+                onChange={(e) => {
+                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, firstName: e.target.value });
+                  else setForm({ ...form, adminFirstName: e.target.value });
+                }}
+                placeholder="Juan" />
+            </div>
+            <div>
+              <label style={labelStyle}>Apellidos {!editingId && '*'}</label>
+              <input style={inputStyle}
+                value={editingId ? (tenantAdmin?.lastName || '') : form.adminLastName}
+                onChange={(e) => {
+                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, lastName: e.target.value });
+                  else setForm({ ...form, adminLastName: e.target.value });
+                }}
+                placeholder="Perez" />
+            </div>
+            <div>
+              <label style={labelStyle}>{editingId ? 'Nueva contraseña (dejar vacio para no cambiar)' : 'Password admin'}</label>
+              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                <input style={{ ...inputStyle, flex: 1 }}
+                  type={form.adminPassword && form.adminPassword.length > 0 ? 'text' : 'password'}
+                  value={form.adminPassword}
+                  onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+                  placeholder={editingId ? 'Sin cambios' : '********'} />
+              </div>
+            </div>
+            {editingId && tenantAdmin && (
+              <>
+                <div>
+                  <label style={labelStyle}>Departamento</label>
+                  <input style={inputStyle} value={tenantAdmin.department || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, department: e.target.value })} placeholder="Ej: Gerencia General" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Cargo</label>
+                  <input style={inputStyle} value={tenantAdmin.position || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, position: e.target.value })} placeholder="Ej: Gerente General" />
+                </div>
+              </>
+            )}
+          </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
             <button className="btn-primary" onClick={editingId ? handleUpdate : handleCreate} disabled={saving}>
