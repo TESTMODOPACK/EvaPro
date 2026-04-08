@@ -96,7 +96,7 @@ function DetailPanel(props: { log: any; t: any }) {
     fontSize: '0.83rem',
     color: 'var(--text-secondary)',
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
     gap: '0.75rem 2rem',
   } as const;
 

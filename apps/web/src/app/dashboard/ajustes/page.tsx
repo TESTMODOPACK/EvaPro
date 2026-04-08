@@ -41,7 +41,7 @@ export default function AjustesPage() {
   const { t } = useTranslation();
   const { data: user, isLoading } = useCurrentUser();
   const { data: sub } = useMySubscription();
-  const isTenantAdmin = user?.role === 'tenant_admin';
+  const isTenantAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
   const orgName = sub?.tenant?.name || '';
   const orgRut = sub?.tenant?.rut ? formatRut(sub.tenant.rut) : '';
 
@@ -263,7 +263,7 @@ export default function AjustesPage() {
             {/* Legal representative */}
             <div style={{ marginTop: '1.25rem' }}>
               <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem' }}>Representante Legal</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
+              <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
                 <div>
                   <label style={labelStyle}>Nombres y Apellidos</label>
                   <input className="input" type="text" placeholder="Ej: Juan Pérez González" maxLength={200}
@@ -299,7 +299,7 @@ export default function AjustesPage() {
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.75rem' }}>
               Marca e identidad
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="mobile-single-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>Logo de la empresa</label>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>

@@ -538,7 +538,7 @@ export default function SubscriptionsPage() {
               <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
                 {editingPlanId ? 'Editar plan' : 'Nuevo plan'}
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                 <div>
                   <label style={labelStyle}>Nombre *</label>
                   <input style={inputStyle} value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} placeholder="Ej: Starter" />
@@ -819,7 +819,7 @@ export default function SubscriptionsPage() {
               <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
                 {editingSubId ? 'Editar suscripción' : 'Asignar plan'}
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                 <div style={{ gridColumn: 'span 2' }}>
                   <label style={labelStyle}>Plan y período *</label>
                   <select
@@ -888,7 +888,7 @@ export default function SubscriptionsPage() {
               <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
                 Registrar pago — {paymentSubName}
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                 <div>
                   <label style={labelStyle}>Monto (UF) *</label>
                   <input style={inputStyle} type="number" step="0.01" min="0" placeholder="3.50"
