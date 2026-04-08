@@ -202,18 +202,18 @@
     },
     "tabs": {
       "platform": "Plataforma",
-      "organization": "Organizacion",
+      "organization": "Organización",
       "notifications": "Notificaciones",
-      "feedback": "Retroalimentacion"
+      "feedback": "Retroalimentación"
     },
     "platform": {
-      "title": "Configuracion General de la Plataforma",
+      "title": "Configuración General de la Plataforma",
       "platformName": "Nombre de la plataforma",
       "version": "Version",
       "environment": "Entorno",
       "environmentValue": "Produccion",
       "domain": "Dominio",
-      "aiTitle": "Configuracion de IA",
+      "aiTitle": "Configuración de IA",
       "aiProvider": "Proveedor IA",
       "aiModel": "Modelo predeterminado",
       "aiNote": "La clave API de Anthropic se configura en las variables de entorno del servidor (ANTHROPIC_API_KEY). Los creditos IA por organizacion se gestionan desde la seccion Suscripciones.",

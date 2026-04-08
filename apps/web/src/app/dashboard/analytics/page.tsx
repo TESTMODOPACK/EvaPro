@@ -494,7 +494,9 @@ function BiasAnalysisSection({ cycleId, aiBlocked }: { cycleId: string; aiBlocke
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('analytics.bias.dataQuality')}</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-secondary)' }}>{data.dataQuality || '—'}</div>
+          <div title={data.dataQuality || ''} style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
+            {(data.dataQuality || '—').split('.')[0] || '—'}
+          </div>
         </div>
       </div>
 
