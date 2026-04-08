@@ -1533,6 +1533,10 @@ function AdminDashboard() {
   const [contracts, setContracts] = useState<any[]>([]);
   const [nextActions, setNextActions] = useState<any>(null);
   const [cycleSummary, setCycleSummary] = useState<any>(null);
+  const [showSteps, setShowSteps] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('eva360-hide-admin-steps') !== 'true';
+    return true;
+  });
 
   const closedCycles = (cycles || []).filter((c: any) => c.status === 'closed').sort((a: any, b: any) => new Date(b.endDate || b.createdAt).getTime() - new Date(a.endDate || a.createdAt).getTime());
   const activeCycles = (cycles || []).filter((c: any) => c.status === 'active');
@@ -1593,6 +1597,50 @@ function AdminDashboard() {
           Vista ejecutiva de tu organización — {now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       </div>
+
+      {/* Process Steps Guide — collapsible */}
+      {showSteps && (
+        <div className="card animate-fade-up" style={{ padding: '1rem 1.25rem', marginBottom: '1rem', borderLeft: '3px solid var(--accent)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+            <h3 style={{ fontSize: '0.85rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>{'📋'}</span> Flujo del proceso Eva360
+            </h3>
+            <button onClick={() => { setShowSteps(false); localStorage.setItem('eva360-hide-admin-steps', 'true'); }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+              title="Ocultar guia de pasos">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Ocultar
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: '0.5rem' }}>
+            {(ROLE_STEPS.tenant_admin || []).map((step, i) => (
+              <Link key={i} href={step.href} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div style={{
+                  padding: '0.6rem', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)', background: 'var(--bg-surface)',
+                  position: 'relative', cursor: 'pointer', transition: 'border-color 0.15s',
+                }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(201,147,58,0.4)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; }}
+                >
+                  <div style={{ position: 'absolute', top: '5px', right: '5px', width: '16px', height: '16px', borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 800 }}>{i + 1}</div>
+                  <div style={{ fontSize: '1.1rem', marginBottom: '0.2rem' }}>{step.icon}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.1rem' }}>{step.title}</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>{step.desc}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      {!showSteps && (
+        <div className="animate-fade-up" style={{ marginBottom: '0.75rem' }}>
+          <button onClick={() => { setShowSteps(true); localStorage.removeItem('eva360-hide-admin-steps'); }}
+            className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+            {'📋'} Mostrar flujo del proceso
+          </button>
+        </div>
+      )}
 
       {/* KPIs Row 1 — Principal */}
       <div className="animate-fade-up" style={{ marginBottom: '0.5rem' }}>
@@ -1780,39 +1828,7 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* Process Steps Guide */}
-      <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
-        <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '1rem' }}>{'📋'}</span> Flujo del proceso Eva360
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.6rem' }}>
-          {(ROLE_STEPS.tenant_admin || []).map((step, i) => (
-            <Link key={i} href={step.href} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div style={{
-                padding: '0.75rem', borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)', background: 'var(--bg-surface)',
-                position: 'relative', cursor: 'pointer', transition: 'border-color 0.15s',
-              }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(201,147,58,0.4)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; }}
-              >
-                <div style={{
-                  position: 'absolute', top: '6px', right: '6px',
-                  width: '18px', height: '18px', borderRadius: '50%',
-                  background: 'var(--accent)', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '0.6rem', fontWeight: 800,
-                }}>
-                  {i + 1}
-                </div>
-                <div style={{ fontSize: '1.2rem', marginBottom: '0.3rem' }}>{step.icon}</div>
-                <div style={{ fontWeight: 700, fontSize: '0.78rem', marginBottom: '0.15rem' }}>{step.title}</div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{step.desc}</div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
+      {/* Process steps moved to top of dashboard */}
     </div>
   );
 }
