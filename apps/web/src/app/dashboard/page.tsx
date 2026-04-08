@@ -1210,6 +1210,18 @@ const ROLE_STEPS: Record<string, Array<{ icon: string; title: string; desc: stri
       desc: 'Reconoce las contribuciones de tus compa\u00f1eros',
       href: '/dashboard/reconocimientos',
     },
+    {
+      icon: '\uD83D\uDCDD',
+      title: 'Encuestas de clima',
+      desc: 'Responde las encuestas de clima laboral y bienestar de tu organizaci\u00f3n',
+      href: '/dashboard/encuestas',
+    },
+    {
+      icon: '\u270D\uFE0F',
+      title: 'Firmas digitales',
+      desc: 'Revisa y firma documentos pendientes (evaluaciones, planes, contratos)',
+      href: '/dashboard/firmas',
+    },
   ],
   external: [
     {
