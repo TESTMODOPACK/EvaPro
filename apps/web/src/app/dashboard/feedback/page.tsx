@@ -8,6 +8,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
+import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 
@@ -108,7 +109,7 @@ function CheckInsTab() {
     }
     return true;
   });
-  const ciDepts = Array.from(new Set(allCiUsers.filter((u: any) => u.isActive && u.id !== currentUserId).map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  const { departments: ciDepts } = useDepartments();
 
   const [ciPage, setCiPage] = useState(1);
   const CI_PAGE_SIZE = 15;
@@ -615,7 +616,7 @@ function QuickFeedbackTab() {
     }
     return true;
   });
-  const recipientDepts = Array.from(new Set(scopedUsers.map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  const { departments: recipientDepts } = useDepartments();
   const feedbackList = subTab === 'received' ? received : given;
   const isLoading = subTab === 'received' ? loadingReceived : loadingGiven;
 

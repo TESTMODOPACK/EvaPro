@@ -8,6 +8,7 @@ import {
   useMyBadges, useMyPoints, useLeaderboard, useRecognitionStats,
 } from '@/hooks/useRecognition';
 import { useUsers } from '@/hooks/useUsers';
+import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -118,7 +119,7 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
     if (deptFilter && u.department !== deptFilter) return false;
     return true;
   });
-  const depts = Array.from(new Set((Array.isArray(allUsers) ? allUsers : []).filter((u: any) => u.id !== user?.userId).map((u: any) => u.department).filter(Boolean))).sort() as string[];
+  const { departments: depts } = useDepartments();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
