@@ -75,6 +75,8 @@ export default function TenantsPage() {
   const [adminDepts, setAdminDepts] = useState<string[]>([]);
   const [adminPositions, setAdminPositions] = useState<any[]>([]);
   const [adminSaving, setAdminSaving] = useState(false);
+  const [showNewDept, setShowNewDept] = useState(false);
+  const [showNewPos, setShowNewPos] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [adminSuccess, setAdminSuccess] = useState('');
 
@@ -256,6 +258,8 @@ export default function TenantsPage() {
     setAdminData(null);
     setAdminError('');
     setAdminSuccess('');
+    setShowNewDept(false);
+    setShowNewPos(false);
     setAdminForm({ email: '', firstName: '', lastName: '', rut: '', password: '', hireDate: '', department: '', position: '', hierarchyLevel: '' });
 
     // Load tenant departments and positions
@@ -283,6 +287,9 @@ export default function TenantsPage() {
             position: admin.position || '',
             hierarchyLevel: '',
           });
+          // If admin's department/position not in catalog, show as custom
+          if (admin.department && !depts.includes(admin.department)) setShowNewDept(true);
+          if (admin.position && !positions.some((p: any) => p.name === admin.position)) setShowNewPos(true);
         }
       } catch {}
     }
@@ -861,11 +868,11 @@ export default function TenantsPage() {
                   placeholder="12.345.678-9" maxLength={12} />
               </div>
               <div>
-                <label style={labelStyle}>{adminData ? 'Nueva contrasena' : 'Contrasena *'}</label>
+                <label style={labelStyle}>{adminData ? 'Nueva contrase\u00f1a' : 'Contrase\u00f1a *'}</label>
                 <input style={inputStyle} type="text" value={adminForm.password}
                   onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
                   placeholder={adminData ? 'Sin cambios' : '********'} />
-                {adminData && <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Dejar vacio para no cambiar</p>}
+                {adminData && <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Dejar vac&iacute;o para no cambiar</p>}
               </div>
               <div>
                 <label style={labelStyle}>Fecha de ingreso</label>
@@ -876,98 +883,98 @@ export default function TenantsPage() {
               {/* Departamento */}
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>Departamento</label>
-                {(() => {
-                  const deptInCatalog = adminForm.department ? adminDepts.includes(adminForm.department) : false;
-                  const isNew = adminForm.department !== '' && !deptInCatalog;
-                  return (
-                    <>
-                      <select style={inputStyle}
-                        value={!adminForm.department ? '' : deptInCatalog ? adminForm.department : '__new__'}
-                        onChange={(e) => {
-                          if (e.target.value === '__new__') {
-                            setAdminForm({ ...adminForm, department: '' });
-                          } else {
-                            setAdminForm({ ...adminForm, department: e.target.value });
-                          }
-                        }}>
-                        <option value="">-- Seleccionar departamento --</option>
-                        {adminDepts.map(d => <option key={d} value={d}>{d}</option>)}
-                        <option value="__new__">+ Nuevo departamento...</option>
-                      </select>
-                      {isNew && (
-                        <div style={{ marginTop: '0.3rem' }}>
-                          <input style={inputStyle}
-                            value={adminForm.department}
-                            onChange={(e) => setAdminForm({ ...adminForm, department: e.target.value })}
-                            placeholder="Nombre del nuevo departamento" />
-                          <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                            Se agregara automaticamente al catalogo de departamentos de la organizacion.
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
+                {!showNewDept ? (
+                  <select style={inputStyle}
+                    value={adminDepts.includes(adminForm.department) ? adminForm.department : ''}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setShowNewDept(true);
+                        setAdminForm({ ...adminForm, department: '' });
+                      } else {
+                        setAdminForm({ ...adminForm, department: e.target.value });
+                      }
+                    }}>
+                    <option value="">-- Seleccionar departamento --</option>
+                    {adminDepts.map(d => <option key={d} value={d}>{d}</option>)}
+                    <option value="__new__">+ Nuevo departamento...</option>
+                  </select>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input style={{ ...inputStyle, flex: 1 }}
+                        value={adminForm.department}
+                        onChange={(e) => setAdminForm({ ...adminForm, department: e.target.value })}
+                        placeholder="Nombre del nuevo departamento"
+                        autoFocus />
+                      <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                        onClick={() => { setShowNewDept(false); setAdminForm({ ...adminForm, department: '' }); }}>
+                        Cancelar
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                      Se agregar&aacute; autom&aacute;ticamente al cat&aacute;logo de departamentos de la organizaci&oacute;n.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Cargo */}
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>Cargo</label>
-                {(() => {
-                  const posInCatalog = adminForm.position ? adminPositions.some((p: any) => p.name === adminForm.position) : false;
-                  const isNew = adminForm.position !== '' && !posInCatalog;
-                  return (
-                    <>
-                      <select style={inputStyle}
-                        value={!adminForm.position ? '' : posInCatalog ? adminForm.position : '__new__'}
-                        onChange={(e) => {
-                          if (e.target.value === '__new__') {
-                            setAdminForm({ ...adminForm, position: '', hierarchyLevel: '' });
-                          } else {
-                            const match = adminPositions.find((p: any) => p.name === e.target.value);
-                            setAdminForm({ ...adminForm, position: e.target.value, hierarchyLevel: match ? String(match.level) : '' });
-                          }
-                        }}>
-                        <option value="">-- Seleccionar cargo --</option>
-                        {[...adminPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
-                          <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>
-                        ))}
-                        <option value="__new__">+ Nuevo cargo...</option>
-                      </select>
-                      {isNew && (
-                        <div style={{ marginTop: '0.3rem' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <input style={{ ...inputStyle, flex: 1 }}
-                              value={adminForm.position}
-                              onChange={(e) => setAdminForm({ ...adminForm, position: e.target.value })}
-                              placeholder="Nombre del cargo nuevo" />
-                            <input style={{ ...inputStyle, width: '80px', textAlign: 'center' as const }}
-                              type="number" min={1} max={20}
-                              value={adminForm.hierarchyLevel}
-                              onChange={(e) => setAdminForm({ ...adminForm, hierarchyLevel: e.target.value })}
-                              placeholder="Nivel *" />
-                          </div>
-                          <div style={{ marginTop: '0.35rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                            <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: 'var(--accent)' }}>Referencia de niveles jerarquicos</div>
-                            <p style={{ margin: '0 0 0.3rem', lineHeight: 1.4 }}>
-                              Nivel 1 = mas alto (ej: Gerente General), nivel 7+ = operativo. El cargo se agregara al catalogo.
-                            </p>
-                            {adminPositions.length > 0 && (
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
-                                {[...adminPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
+                {!showNewPos ? (
+                  <select style={inputStyle}
+                    value={adminPositions.some((p: any) => p.name === adminForm.position) ? adminForm.position : ''}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setShowNewPos(true);
+                        setAdminForm({ ...adminForm, position: '', hierarchyLevel: '' });
+                      } else {
+                        const match = adminPositions.find((p: any) => p.name === e.target.value);
+                        setAdminForm({ ...adminForm, position: e.target.value, hierarchyLevel: match ? String(match.level) : '' });
+                      }
+                    }}>
+                    <option value="">-- Seleccionar cargo --</option>
+                    {[...adminPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
+                      <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>
+                    ))}
+                    <option value="__new__">+ Nuevo cargo...</option>
+                  </select>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input style={{ ...inputStyle, flex: 1 }}
+                        value={adminForm.position}
+                        onChange={(e) => setAdminForm({ ...adminForm, position: e.target.value })}
+                        placeholder="Nombre del cargo nuevo"
+                        autoFocus />
+                      <input style={{ ...inputStyle, width: '80px', textAlign: 'center' as const }}
+                        type="number" min={1} max={20}
+                        value={adminForm.hierarchyLevel}
+                        onChange={(e) => setAdminForm({ ...adminForm, hierarchyLevel: e.target.value })}
+                        placeholder="Nivel *" />
+                      <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                        onClick={() => { setShowNewPos(false); setAdminForm({ ...adminForm, position: '', hierarchyLevel: '' }); }}>
+                        Cancelar
+                      </button>
+                    </div>
+                    <div style={{ marginTop: '0.35rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                      <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: 'var(--accent)' }}>Referencia de niveles jer&aacute;rquicos</div>
+                      <p style={{ margin: '0 0 0.3rem', lineHeight: 1.4 }}>
+                        Nivel 1 = m&aacute;s alto (ej: Gerente General), nivel 7+ = operativo. El cargo se agregar&aacute; al cat&aacute;logo.
+                      </p>
+                      {adminPositions.length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
+                          {[...adminPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
                                   <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.1rem 0', borderBottom: '1px solid var(--border)' }}>
                                     <span>{p.name}</span>
                                     <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Nv.{p.level}</span>
                                   </div>
                                 ))}
-                              </div>
-                            )}
-                          </div>
                         </div>
                       )}
-                    </>
-                  );
-                })()}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
