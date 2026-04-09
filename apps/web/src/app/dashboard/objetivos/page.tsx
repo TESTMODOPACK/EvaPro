@@ -566,20 +566,7 @@ function TeamSummaryView() {
             minWidth: '200px',
           }}
         />
-        {departments.length > 0 && (
-          <select
-            value={filterDept}
-            onChange={(e) => setFilterDept(e.target.value)}
-            style={{
-              padding: '0.4rem 0.75rem', fontSize: '0.82rem',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-              background: 'var(--bg-surface)', color: 'var(--text-primary)',
-            }}
-          >
-            <option value="all">Todos los departamentos</option>
-            {departments.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-        )}
+        {/* Department filter removed — team summary already scoped to manager's direct reports */}
         <select
           value={filterRisk}
           onChange={(e) => setFilterRisk(e.target.value as any)}
