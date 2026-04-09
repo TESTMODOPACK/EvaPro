@@ -356,49 +356,125 @@ export class ReportsService {
 
     const relationLabels: Record<string, string> = {
       self: 'Autoevaluaci\u00f3n',
-      manager: 'Encargado',
+      manager: 'Jefatura',
       peer: 'Par',
       direct_report: 'Reporte directo',
       external: 'Externo',
     };
 
-    // Build evaluation detail rows
+    // Build evaluation detail rows + collect scores and responses
     const evalRows: string[][] = [];
+    const scores: number[] = [];
+    const textAnswers: { evaluator: string; relation: string; answers: Record<string, any> }[] = [];
     for (const a of assignments) {
       const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      const score = resp?.overallScore != null ? Number(resp.overallScore) : null;
+      if (score != null) scores.push(score);
       evalRows.push([
-        a.evaluatee ? `${a.evaluatee.firstName} ${a.evaluatee.lastName}` : 'N/A',
         a.evaluator ? `${a.evaluator.firstName} ${a.evaluator.lastName}` : 'N/A',
         relationLabels[a.relationType] || a.relationType,
-        resp?.overallScore != null ? Number(resp.overallScore).toFixed(1) : '\u2013',
+        score != null ? score.toFixed(1) : '\u2013',
         resp?.submittedAt ? new Date(resp.submittedAt).toLocaleDateString('es-CL') : '\u2013',
       ]);
+      if (resp?.answers) {
+        textAnswers.push({
+          evaluator: a.evaluator ? `${a.evaluator.firstName} ${a.evaluator.lastName}` : 'N/A',
+          relation: relationLabels[a.relationType] || a.relationType,
+          answers: resp.answers,
+        });
+      }
     }
 
-    // Create PDF (dynamic imports to avoid ESM issues in production)
+    // Individual vs global mode
+    const isIndividual = !!userId;
+    const evaluateeName = isIndividual && assignments.length > 0 && assignments[0].evaluatee
+      ? `${assignments[0].evaluatee.firstName} ${assignments[0].evaluatee.lastName}`
+      : null;
+    const evaluateeDept = isIndividual && assignments.length > 0 ? (assignments[0].evaluatee as any)?.department : null;
+    const evaluateePos = isIndividual && assignments.length > 0 ? (assignments[0].evaluatee as any)?.position : null;
+    const individualAvg = scores.length > 0 ? (scores.reduce((s, v) => s + v, 0) / scores.length) : 0;
+
+    // Get template sections for section-level breakdown
+    let templateSections: any[] = [];
+    if (isIndividual && summary.cycle?.templateId) {
+      try {
+        const tmpl = await this.assignmentRepo.manager.getRepository('form_templates').findOne({ where: { id: summary.cycle.templateId } });
+        if (tmpl) templateSections = typeof (tmpl as any).sections === 'string' ? JSON.parse((tmpl as any).sections) : (tmpl as any).sections || [];
+      } catch {}
+    }
+
+    // Calculate section averages from responses
+    const sectionAvgs: { section: string; avg: number; count: number }[] = [];
+    if (isIndividual && templateSections.length > 0 && textAnswers.length > 0) {
+      for (const sec of templateSections) {
+        const scaleQIds = (sec.questions || []).filter((q: any) => q.type === 'scale').map((q: any) => q.id);
+        if (scaleQIds.length === 0) continue;
+        const allScores: number[] = [];
+        for (const ta of textAnswers) {
+          for (const qId of scaleQIds) {
+            const val = ta.answers[qId];
+            if (typeof val === 'number') allScores.push(val);
+          }
+        }
+        if (allScores.length > 0) {
+          const avg = allScores.reduce((s, v) => s + v, 0) / allScores.length;
+          sectionAvgs.push({ section: sec.title, avg: Math.round((avg / 5) * 10 * 100) / 100, count: allScores.length });
+        }
+      }
+    }
+
+    // Collect text comments from responses
+    const comments: { evaluator: string; relation: string; question: string; answer: string }[] = [];
+    if (isIndividual && templateSections.length > 0) {
+      for (const ta of textAnswers) {
+        for (const sec of templateSections) {
+          for (const q of (sec.questions || [])) {
+            if (q.type === 'text' && ta.answers[q.id] && typeof ta.answers[q.id] === 'string') {
+              comments.push({ evaluator: ta.evaluator, relation: ta.relation, question: q.text, answer: ta.answers[q.id] });
+            }
+          }
+        }
+      }
+    }
+
+    // Create PDF
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
-    const accent = [99, 102, 241]; // #6366f1
+    const accent = isIndividual ? [201, 147, 58] : [99, 102, 241]; // gold for individual, purple for cycle
     const pageWidth = doc.internal.pageSize.getWidth();
 
     // ─── Header ───
     doc.setFillColor(accent[0], accent[1], accent[2]);
-    doc.rect(0, 0, pageWidth, 28, 'F');
+    doc.rect(0, 0, pageWidth, isIndividual ? 34 : 28, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text('Reporte de Evaluaci\u00f3n', 14, 13);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(summary.cycle.name, 14, 20);
-    const dateRange = `${new Date(summary.cycle.startDate).toLocaleDateString('es-CL')} al ${new Date(summary.cycle.endDate).toLocaleDateString('es-CL')}`;
-    doc.text(dateRange, 14, 25);
+    doc.text(isIndividual ? `Informe Individual` : 'Reporte de Evaluaci\u00f3n', 14, 13);
+    if (isIndividual && evaluateeName) {
+      doc.setFontSize(13);
+      doc.text(evaluateeName, 14, 21);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      const infoLine = [evaluateePos, evaluateeDept].filter(Boolean).join(' \u2014 ');
+      if (infoLine) doc.text(infoLine, 14, 27);
+      doc.text(summary.cycle.name, 14, 32);
+    } else {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(summary.cycle.name, 14, 20);
+      const dateRange = `${new Date(summary.cycle.startDate).toLocaleDateString('es-CL')} al ${new Date(summary.cycle.endDate).toLocaleDateString('es-CL')}`;
+      doc.text(dateRange, 14, 25);
+    }
 
     // ─── KPIs ───
-    let y = 36;
+    let y = isIndividual ? 42 : 36;
     doc.setTextColor(30, 30, 60);
-    const kpiData = [
+    const kpiData = isIndividual ? [
+      { label: 'Puntaje Promedio', value: individualAvg > 0 ? individualAvg.toFixed(1) : '\u2013' },
+      { label: 'Evaluaciones Recibidas', value: String(assignments.length) },
+      { label: 'Promedio del Ciclo', value: summary.averageScore || '\u2013' },
+    ] : [
       { label: 'Promedio Global', value: summary.averageScore || '\u2013' },
       { label: 'Completadas', value: `${summary.completedAssignments}/${summary.totalAssignments}` },
       { label: 'Tasa Completado', value: `${summary.completionRate}%` },
@@ -420,44 +496,89 @@ export class ReportsService {
     });
     y += 26;
 
-    // ─── Department Comparison ───
-    const deptData = (summary.departmentBreakdown || []);
-    if (deptData.length > 0) {
+    // ─── Section Averages (individual only) ───
+    if (isIndividual && sectionAvgs.length > 0) {
       doc.setTextColor(51, 65, 85);
       doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.text('Promedio por Departamento', 14, y);
+      doc.text('Puntaje por Secci\u00f3n', 14, y);
       y += 2;
       autoTable(doc, {
         startY: y,
-        head: [['Departamento', 'Promedio', 'Personas']],
-        body: deptData.map((d: any) => [d.department || 'Sin depto.', d.avgScore, d.count]),
+        head: [['Secci\u00f3n / Competencia', 'Puntaje (0-10)', 'Respuestas']],
+        body: sectionAvgs.map(s => [s.section, s.avg.toFixed(1), String(s.count)]),
         margin: { left: 14, right: 14 },
-        headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 8 },
+        headStyles: { fillColor: [253, 248, 240], textColor: [166, 122, 46], fontStyle: 'bold', fontSize: 8 },
         bodyStyles: { fontSize: 8, textColor: [30, 30, 60] },
-        alternateRowStyles: { fillColor: [250, 250, 250] },
+        alternateRowStyles: { fillColor: [255, 252, 247] },
         styles: { cellPadding: 2.5, lineColor: [226, 232, 240], lineWidth: 0.25 },
+        columnStyles: { 1: { halign: 'center', fontStyle: 'bold' }, 2: { halign: 'center' } },
       });
       y = (doc as any).lastAutoTable.finalY + 8;
+    }
+
+    // ─── Department Comparison (cycle report only, not individual) ───
+    if (!isIndividual) {
+      const deptData = (summary.departmentBreakdown || []);
+      if (deptData.length > 0) {
+        doc.setTextColor(51, 65, 85);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Promedio por Departamento', 14, y);
+        y += 2;
+        autoTable(doc, {
+          startY: y,
+          head: [['Departamento', 'Promedio', 'Personas']],
+          body: deptData.map((d: any) => [d.department || 'Sin depto.', d.avgScore, d.count]),
+          margin: { left: 14, right: 14 },
+          headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 8 },
+          bodyStyles: { fontSize: 8, textColor: [30, 30, 60] },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+          styles: { cellPadding: 2.5, lineColor: [226, 232, 240], lineWidth: 0.25 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 8;
+      }
     }
 
     // ─── Evaluation Detail ───
     doc.setTextColor(51, 65, 85);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Detalle de Evaluaciones', 14, y);
+    doc.text(isIndividual ? 'Detalle de Evaluaciones Recibidas' : 'Detalle de Evaluaciones', 14, y);
     y += 2;
     autoTable(doc, {
       startY: y,
-      head: [['Evaluado', 'Evaluador', 'Relaci\u00f3n', 'Puntaje', 'Fecha']],
+      head: [isIndividual ? ['Evaluador', 'Relaci\u00f3n', 'Puntaje', 'Fecha'] : ['Evaluado', 'Evaluador', 'Relaci\u00f3n', 'Puntaje', 'Fecha']],
       body: evalRows,
       margin: { left: 14, right: 14 },
       headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 8 },
       bodyStyles: { fontSize: 8, textColor: [30, 30, 60] },
       alternateRowStyles: { fillColor: [250, 250, 250] },
       styles: { cellPadding: 2.5, lineColor: [226, 232, 240], lineWidth: 0.25 },
-      columnStyles: { 3: { halign: 'center' }, 4: { halign: 'center' } },
+      columnStyles: isIndividual ? { 2: { halign: 'center' }, 3: { halign: 'center' } } : { 3: { halign: 'center' }, 4: { halign: 'center' } },
     });
+    y = (doc as any).lastAutoTable.finalY + 8;
+
+    // ─── Comments (individual only) ───
+    if (isIndividual && comments.length > 0) {
+      if (y > 240) { doc.addPage(); y = 20; }
+      doc.setTextColor(51, 65, 85);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Comentarios y Retroalimentaci\u00f3n', 14, y);
+      y += 2;
+      autoTable(doc, {
+        startY: y,
+        head: [['Evaluador', 'Relaci\u00f3n', 'Pregunta', 'Comentario']],
+        body: comments.map(c => [c.evaluator, c.relation, c.question.slice(0, 60), c.answer]),
+        margin: { left: 14, right: 14 },
+        headStyles: { fillColor: [253, 248, 240], textColor: [166, 122, 46], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7, textColor: [30, 30, 60] },
+        alternateRowStyles: { fillColor: [255, 252, 247] },
+        styles: { cellPadding: 2, lineColor: [226, 232, 240], lineWidth: 0.25, overflow: 'linebreak' },
+        columnStyles: { 2: { cellWidth: 40 }, 3: { cellWidth: 60 } },
+      });
+    }
 
     // ─── Footer ───
     const pageCount = doc.getNumberOfPages();
