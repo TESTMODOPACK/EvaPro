@@ -89,7 +89,8 @@ async function main() {
   const admin = users.find((u: any) => u.role === 'tenant_admin');
   const managers = users.filter((u: any) => u.role === 'manager');
   const employees = users.filter((u: any) => u.role === 'employee');
-  const evaluatees = [...managers, ...employees]; // todos menos super_admin
+  const admins = users.filter((u: any) => u.role === 'tenant_admin');
+  const evaluatees = [...admins, ...managers, ...employees]; // todos menos super_admin
   console.log(`  Admin: ${admin?.email}, Managers: ${managers.length}, Employees: ${employees.length}`);
   console.log(`  Evaluatees: ${evaluatees.length}`);
 
