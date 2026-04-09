@@ -239,6 +239,12 @@ export default function MantenedoresPage() {
               </div>
             )}
             {/* Positions list */}
+            {positions.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', padding: '0 0.6rem 0.25rem', fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ width: '48px', textAlign: 'center' }}>Nivel</span>
+                <span style={{ flex: 1 }}>Nombre del cargo</span>
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
               {positions.map((p, idx) => (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.6rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.88rem' }}>
