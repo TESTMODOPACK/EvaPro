@@ -355,7 +355,7 @@ export class TenantsService {
 
   async setCustomSetting(tenantId: string, key: string, values: string[]): Promise<string[]> {
     if (!VALID_CUSTOM_KEYS.includes(key)) {
-      throw new BadRequestException(`Clave no válida: ${key}`);
+      throw new BadRequestException(`Clave no v\u00e1lida: ${key}`);
     }
     if (!Array.isArray(values) || values.length === 0) {
       throw new BadRequestException('Debe proporcionar al menos un valor');
@@ -364,17 +364,27 @@ export class TenantsService {
       .map((v) => (typeof v === 'string' ? v.trim() : ''))
       .filter((v) => v.length > 0);
     if (sanitized.length === 0) {
-      throw new BadRequestException('Debe proporcionar al menos un valor válido');
+      throw new BadRequestException('Debe proporcionar al menos un valor v\u00e1lido');
     }
+
     const tenant = await this.findById(tenantId);
 
-    // Check if any removed values are in use
-    const currentValues: string[] = Array.isArray(tenant.settings?.[key]) ? tenant.settings[key] : [];
-    const removedValues = currentValues.filter((v) => !sanitized.includes(v));
-    for (const removed of removedValues) {
-      const usage = await this.checkSettingUsage(tenantId, key, removed);
-      if (usage.inUse) {
-        throw new BadRequestException(usage.message);
+    // Only validate removals for departments (other settings don't need usage checks)
+    if (key === 'departments') {
+      const currentValues: string[] = Array.isArray(tenant.settings?.[key]) ? tenant.settings[key] : [];
+      if (currentValues.length > 0) {
+        const removedValues = currentValues.filter((v) => !sanitized.includes(v));
+        for (const removed of removedValues) {
+          try {
+            const usage = await this.checkSettingUsage(tenantId, key, removed);
+            if (usage.inUse) {
+              throw new BadRequestException(`No se puede eliminar "${removed}": ${usage.message}`);
+            }
+          } catch (e) {
+            if (e instanceof BadRequestException) throw e;
+            // Ignore check errors for non-existent repos, allow save
+          }
+        }
       }
     }
 
