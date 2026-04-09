@@ -91,15 +91,18 @@ export default function MantenedoresPage() {
     const value = customSettings[key]?.[index];
     if (!value || !token) return;
 
-    // Check if value is in use before removing
+    // For departments: check if any user has this department before allowing delete
     setRemoveError(null);
     setCheckingRemove(true);
     try {
       const usage = await api.tenants.checkSettingUsage(token, key, value);
       if (usage.inUse) {
-        setRemoveError(usage.message);
+        const msg = key === 'departments'
+          ? `No se puede eliminar "${value}" porque tiene ${usage.entity} asignado(s). Solo puede actualizar su nombre editando el campo directamente.`
+          : usage.message;
+        setRemoveError(msg);
         setCheckingRemove(false);
-        setTimeout(() => setRemoveError(null), 6000);
+        setTimeout(() => setRemoveError(null), 8000);
         return;
       }
     } catch {
