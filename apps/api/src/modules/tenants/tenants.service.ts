@@ -275,8 +275,37 @@ export class TenantsService {
 
     switch (key) {
       case 'departments': {
-        count = await this.userRepository.count({ where: { tenantId, department: value } });
-        entity = 'usuarios';
+        const usageParts: string[] = [];
+
+        const userDeptCount = await this.userRepository.count({ where: { tenantId, department: value } });
+        if (userDeptCount > 0) {
+          usageParts.push(`${userDeptCount} usuario(s)`);
+        }
+
+        // Check active recruitment processes with this department
+        const recruitRepo = this.userRepository.manager.getRepository('recruitment_processes');
+        const recruitCount = await recruitRepo.createQueryBuilder('rp')
+          .where('rp.tenant_id = :tenantId', { tenantId })
+          .andWhere('rp.department = :value', { value })
+          .andWhere('rp.status NOT IN (:...closed)', { closed: ['closed', 'cancelled'] })
+          .getCount();
+        if (recruitCount > 0) {
+          usageParts.push(`${recruitCount} proceso(s) de reclutamiento activo(s)`);
+        }
+
+        // Check active calibration sessions with this department
+        const calibrationRepo = this.userRepository.manager.getRepository('calibration_sessions');
+        const calibrationCount = await calibrationRepo.createQueryBuilder('cs')
+          .where('cs.tenant_id = :tenantId', { tenantId })
+          .andWhere('cs.department = :value', { value })
+          .andWhere('cs.status != :done', { done: 'completed' })
+          .getCount();
+        if (calibrationCount > 0) {
+          usageParts.push(`${calibrationCount} sesión(es) de calibración activa(s)`);
+        }
+
+        count = userDeptCount + recruitCount + calibrationCount;
+        entity = usageParts.length > 0 ? usageParts.join(', ') : 'usuarios';
         break;
       }
       // competencyCategories removed — categories managed via Competencias page
@@ -301,11 +330,14 @@ export class TenantsService {
     }
 
     if (count > 0) {
+      const message = key === 'departments'
+        ? `No se puede eliminar "${value}" porque está en uso en: ${entity}. Reasigna primero los registros.`
+        : `No se puede eliminar "${value}" porque está asignado a ${count} ${entity}. Reasigna primero los registros.`;
       return {
         inUse: true,
         count,
         entity,
-        message: `No se puede eliminar "${value}" porque está asignado a ${count} ${entity}. Reasigna primero los registros.`,
+        message,
       };
     }
 
@@ -534,6 +566,51 @@ export class TenantsService {
       if (!p.name?.trim()) throw new BadRequestException('El nombre del cargo no puede estar vacío');
       if (!Number.isInteger(p.level) || p.level < 1) throw new BadRequestException(`Nivel inválido para "${p.name}": debe ser un entero >= 1`);
     }
+
+    // Check for positions being removed that are in use
+    const currentPositions: { name: string; level: number }[] = Array.isArray(tenant.settings?.positions) && tenant.settings.positions.length > 0
+      ? tenant.settings.positions
+      : [...TenantsService.DEFAULT_POSITIONS];
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const newNamesNorm = new Set(positions.map(p => norm(p.name)));
+    const removedPositions = currentPositions.filter(p => !newNamesNorm.has(norm(p.name)));
+
+    if (removedPositions.length > 0) {
+      const blocked: string[] = [];
+
+      for (const removed of removedPositions) {
+        const usages: string[] = [];
+
+        // Check users with this position
+        const userCount = await this.userRepository.count({
+          where: { tenantId, position: removed.name, isActive: true },
+        });
+        if (userCount > 0) {
+          usages.push(`${userCount} usuario(s)`);
+        }
+
+        // Check RoleCompetency profiles with this position
+        const roleCompRepo = this.userRepository.manager.getRepository('role_competencies');
+        const rcCount = await roleCompRepo.createQueryBuilder('rc')
+          .where('rc.tenant_id = :tenantId', { tenantId })
+          .andWhere('rc.position = :position', { position: removed.name })
+          .getCount();
+        if (rcCount > 0) {
+          usages.push(`${rcCount} perfil(es) de competencias`);
+        }
+
+        if (usages.length > 0) {
+          blocked.push(`"${removed.name}" (en uso en ${usages.join(' y ')})`);
+        }
+      }
+
+      if (blocked.length > 0) {
+        throw new BadRequestException(
+          `No se pueden eliminar los siguientes cargos porque están en uso: ${blocked.join('; ')}. Reasigna primero los registros.`,
+        );
+      }
+    }
+
     // Sort by level ascending
     const sorted = [...positions].sort((a, b) => a.level - b.level);
     tenant.settings = { ...(tenant.settings || {}), positions: sorted };

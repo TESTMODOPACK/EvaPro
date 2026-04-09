@@ -85,6 +85,26 @@ export class DevelopmentService {
   async deactivateCompetency(tenantId: string, id: string) {
     const competency = await this.competencyRepo.findOne({ where: { id, tenantId } });
     if (!competency) throw new NotFoundException('Competencia no encontrada');
+
+    // Validate: check if competency is in use before deactivating
+    const usages: string[] = [];
+
+    const roleCompCount = await this.roleCompetencyRepo.count({ where: { competencyId: id } });
+    if (roleCompCount > 0) {
+      usages.push(`${roleCompCount} perfil(es) de cargo`);
+    }
+
+    const actionCount = await this.actionRepo.count({ where: { competencyId: id } });
+    if (actionCount > 0) {
+      usages.push(`${actionCount} acción(es) de desarrollo`);
+    }
+
+    if (usages.length > 0) {
+      throw new BadRequestException(
+        `No se puede desactivar la competencia "${competency.name}" porque está en uso en: ${usages.join(', ')}. Elimina primero las referencias.`,
+      );
+    }
+
     competency.isActive = false;
     return this.competencyRepo.save(competency);
   }

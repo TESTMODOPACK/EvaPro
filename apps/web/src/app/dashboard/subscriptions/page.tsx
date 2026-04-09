@@ -979,16 +979,16 @@ export default function SubscriptionsPage() {
               </div>
             ) : (
               <div className="table-wrapper">
-                <table>
+                <table style={{ minWidth: '800px' }}>
                   <thead>
                     <tr>
-                      <th>Organización</th>
-                      <th>Plan</th>
-                      <th>Estado</th>
-                      <th>Inicio</th>
-                      <th>Vencimiento</th>
-                      <th>Notas</th>
-                      <th>Acciones</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Organización</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Plan</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Estado</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Inicio</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Vencimiento</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Notas</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1210,16 +1210,16 @@ export default function SubscriptionsPage() {
           {pendingRequests.length > 0 && (
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               <div className="table-wrapper">
-                <table>
+                <table style={{ minWidth: '800px' }}>
                   <thead>
                     <tr>
-                      <th>Empresa</th>
-                      <th>Tipo</th>
-                      <th>Plan solicitado</th>
-                      <th>Período</th>
-                      <th>Fecha</th>
-                      <th>Notas</th>
-                      <th>Acciones</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Empresa</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Tipo</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Plan solicitado</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Período</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Fecha</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Notas</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -137,6 +137,7 @@ export default function TenantsPage() {
           adminPassword: form.adminPassword,
           adminFirstName: form.adminFirstName,
           adminLastName: form.adminLastName,
+          mustChangePassword: true,
         } : {}),
       }, token);
 

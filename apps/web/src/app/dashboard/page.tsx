@@ -1116,6 +1116,30 @@ const ROLE_STEPS: Record<string, Array<{ icon: string; title: string; desc: stri
       desc: 'Define iniciativas estrat\u00e9gicas de desarrollo a nivel empresa',
       href: '/dashboard/desarrollo-organizacional',
     },
+    {
+      icon: '\uD83C\uDF21\uFE0F',
+      title: 'Encuestas de clima',
+      desc: 'Lanza encuestas de clima laboral y analiza resultados por departamento',
+      href: '/dashboard/encuestas-clima',
+    },
+    {
+      icon: '\uD83D\uDCCA',
+      title: 'Analytics avanzado',
+      desc: 'Distribuci\u00f3n de puntajes, competencias, equipos y detecci\u00f3n de sesgos',
+      href: '/dashboard/analytics',
+    },
+    {
+      icon: '\uD83D\uDD0D',
+      title: 'Reclutamiento',
+      desc: 'Gestiona procesos de selecci\u00f3n externos e internos con IA',
+      href: '/dashboard/postulantes',
+    },
+    {
+      icon: '\u270D\uFE0F',
+      title: 'Firmas digitales',
+      desc: 'Administra firmas electr\u00f3nicas y contratos legales',
+      href: '/dashboard/firmas',
+    },
   ],
   manager: [
     {
@@ -1166,6 +1190,18 @@ const ROLE_STEPS: Record<string, Array<{ icon: string; title: string; desc: stri
       desc: 'Destaca las contribuciones y logros del equipo',
       href: '/dashboard/reconocimientos',
     },
+    {
+      icon: '\uD83D\uDCCA',
+      title: 'An\u00e1lisis de ciclo',
+      desc: 'Revisa distribuci\u00f3n de puntajes y rendimiento de tu equipo',
+      href: '/dashboard/analytics',
+    },
+    {
+      icon: '\uD83C\uDF21\uFE0F',
+      title: 'Encuestas de clima',
+      desc: 'Consulta los resultados de clima laboral de tu equipo',
+      href: '/dashboard/encuestas-clima',
+    },
   ],
   employee: [
     {
@@ -1214,7 +1250,7 @@ const ROLE_STEPS: Record<string, Array<{ icon: string; title: string; desc: stri
       icon: '\uD83D\uDCDD',
       title: 'Encuestas de clima',
       desc: 'Responde las encuestas de clima laboral y bienestar de tu organizaci\u00f3n',
-      href: '/dashboard/encuestas',
+      href: '/dashboard/encuestas-clima',
     },
     {
       icon: '\u270D\uFE0F',
