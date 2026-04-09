@@ -40,10 +40,6 @@ const emptyForm = {
   legalRepRut: '',
   planId: '',
   billingPeriod: 'monthly',
-  adminEmail: '',
-  adminPassword: '',
-  adminFirstName: '',
-  adminLastName: '',
 };
 
 // Auto-generate slug from org name
@@ -67,14 +63,20 @@ export default function TenantsPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
-  const [tenantAdmin, setTenantAdmin] = useState<any>(null);
-  const [tenantDepts, setTenantDepts] = useState<string[]>([]);
-  const [tenantPositions, setTenantPositions] = useState<any[]>([]);
-  const [adminHierarchyLevel, setAdminHierarchyLevel] = useState('');
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
+
+  // Admin modal state
+  const [adminModalTenant, setAdminModalTenant] = useState<Tenant | null>(null);
+  const [adminData, setAdminData] = useState<any>(null);
+  const [adminForm, setAdminForm] = useState({ email: '', firstName: '', lastName: '', rut: '', password: '', hireDate: '', department: '', position: '', hierarchyLevel: '' });
+  const [adminDepts, setAdminDepts] = useState<string[]>([]);
+  const [adminPositions, setAdminPositions] = useState<any[]>([]);
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [adminSuccess, setAdminSuccess] = useState('');
 
   // Fetch available subscription plans and existing subscriptions
   useEffect(() => {
@@ -124,10 +126,6 @@ export default function TenantsPage() {
       setError('Debe seleccionar un plan de suscripción');
       return;
     }
-    if (!form.adminEmail?.trim() || !form.adminPassword?.trim() || !form.adminFirstName?.trim() || !form.adminLastName?.trim()) {
-      setError('Los datos del administrador son obligatorios: email, contraseña, nombres y apellidos');
-      return;
-    }
     setSaving(true);
     setError('');
     try {
@@ -139,13 +137,6 @@ export default function TenantsPage() {
         industry: form.industry || undefined,
         employeeRange: form.employeeRange || undefined,
         commercialAddress: form.commercialAddress || undefined,
-        ...(form.adminEmail ? {
-          adminEmail: form.adminEmail,
-          adminPassword: form.adminPassword,
-          adminFirstName: form.adminFirstName,
-          adminLastName: form.adminLastName,
-          mustChangePassword: true,
-        } : {}),
       }, token);
 
       // Create subscription for the new tenant
@@ -214,53 +205,8 @@ export default function TenantsPage() {
         }
       }
 
-      // Update existing admin or create new one
-      if (tenantAdmin?.id && tenantAdmin?.tenantId === editingId) {
-        // Update existing admin
-        const adminUpdate: any = {};
-        if (tenantAdmin.email) adminUpdate.email = tenantAdmin.email;
-        if (tenantAdmin.firstName) adminUpdate.firstName = tenantAdmin.firstName;
-        if (tenantAdmin.lastName) adminUpdate.lastName = tenantAdmin.lastName;
-        if (tenantAdmin.department !== undefined) adminUpdate.department = tenantAdmin.department || null;
-        if (tenantAdmin.position !== undefined) adminUpdate.position = tenantAdmin.position || null;
-        // Send hierarchy level for new custom positions
-        if (tenantAdmin.position && !tenantPositions.some((p: any) => p.name === tenantAdmin.position) && adminHierarchyLevel) {
-          adminUpdate.hierarchyLevel = Number(adminHierarchyLevel);
-        }
-        if (form.adminPassword?.trim()) adminUpdate.password = form.adminPassword.trim();
-        await api.users.update(token, tenantAdmin.id, adminUpdate);
-      } else if (form.adminEmail?.trim()) {
-        // No tenantAdmin loaded — try to find existing admin first, then create or update
-        try {
-          const searchRes: any = await api.users.list(token, 1, 5, { role: 'tenant_admin', tenantId: editingId });
-          const existingAdmin = ((searchRes as any).data || searchRes || []).find((u: any) => u.role === 'tenant_admin');
-          if (existingAdmin) {
-            // Update existing admin
-            const upd: any = { email: form.adminEmail.trim() };
-            if (form.adminFirstName.trim()) upd.firstName = form.adminFirstName.trim();
-            if (form.adminLastName.trim()) upd.lastName = form.adminLastName.trim();
-            if (form.adminPassword?.trim()) upd.password = form.adminPassword.trim();
-            await api.users.update(token, existingAdmin.id, upd);
-          } else if (form.adminPassword?.trim()) {
-            // Create new admin
-            await api.users.create(token, {
-              tenantId: editingId,
-              email: form.adminEmail.trim(),
-              firstName: form.adminFirstName.trim() || 'Admin',
-              lastName: form.adminLastName.trim() || form.name,
-              password: form.adminPassword.trim(),
-              role: 'tenant_admin',
-              mustChangePassword: true,
-            });
-          }
-        } catch (adminErr: any) {
-          console.warn('Admin update/create:', adminErr.message);
-        }
-      }
-
       setSuccess('Organizacion actualizada');
       resetForm();
-      setTenantAdmin(null);
       fetchTenants();
       // Refresh subscriptions
       api.subscriptions.list(token).then(setSubscriptions).catch(() => {});
@@ -299,30 +245,103 @@ export default function TenantsPage() {
       legalRepRut: t.legalRepRut ? formatRut(t.legalRepRut) : '',
       planId: sub?.planId || '',
       billingPeriod: sub?.billingPeriod?.toLowerCase() || 'monthly',
-      adminEmail: '',
-      adminPassword: '',
-      adminFirstName: '',
-      adminLastName: '',
     });
     setEditingId(t.id);
     setShowForm(true);
     setError('');
-    // Load tenant departments and positions from settings
+  };
+
+  const openAdminModal = async (t: Tenant) => {
+    setAdminModalTenant(t);
+    setAdminData(null);
+    setAdminError('');
+    setAdminSuccess('');
+    setAdminForm({ email: '', firstName: '', lastName: '', rut: '', password: '', hireDate: '', department: '', position: '', hierarchyLevel: '' });
+
+    // Load tenant departments and positions
     const depts = Array.isArray(t.settings?.departments) ? t.settings.departments : [];
     const positions = Array.isArray(t.settings?.positions) ? t.settings.positions.filter((p: any) => p?.name) : [];
-    setTenantDepts(depts);
-    setTenantPositions(positions);
-    setAdminHierarchyLevel('');
+    setAdminDepts(depts);
+    setAdminPositions(positions);
 
-    // Load tenant admin by querying users of that specific tenant
-    setTenantAdmin(null);
+    // Load existing admin
     if (token) {
-      api.users.list(token, 1, 10, { role: 'tenant_admin', tenantId: t.id }).then((res: any) => {
+      try {
+        const res: any = await api.users.list(token, 1, 5, { role: 'tenant_admin', tenantId: t.id });
         const users = (res as any).data || res || [];
         const admin = users.find((u: any) => u.role === 'tenant_admin');
-        if (admin) setTenantAdmin(admin);
-      }).catch(() => {});
+        if (admin) {
+          setAdminData(admin);
+          setAdminForm({
+            email: admin.email || '',
+            firstName: admin.firstName || '',
+            lastName: admin.lastName || '',
+            rut: admin.rut ? formatRut(admin.rut) : '',
+            password: '',
+            hireDate: admin.hireDate ? admin.hireDate.slice(0, 10) : '',
+            department: admin.department || '',
+            position: admin.position || '',
+            hierarchyLevel: '',
+          });
+        }
+      } catch {}
     }
+  };
+
+  const saveAdmin = async () => {
+    if (!token || !adminModalTenant) return;
+    // Validate
+    if (!adminForm.email?.trim()) { setAdminError('Email es obligatorio'); return; }
+    if (!adminForm.firstName?.trim()) { setAdminError('Nombres es obligatorio'); return; }
+    if (!adminForm.lastName?.trim()) { setAdminError('Apellidos es obligatorio'); return; }
+    if (!adminForm.rut?.trim()) { setAdminError('RUT es obligatorio'); return; }
+    if (!validateRut(adminForm.rut)) { setAdminError('RUT invalido. Verifique el formato y digito verificador.'); return; }
+    if (!adminData && !adminForm.password?.trim()) { setAdminError('Contrasena es obligatoria para nuevo administrador'); return; }
+
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+      if (adminData?.id) {
+        // Update existing admin
+        const upd: any = {
+          email: adminForm.email.trim(),
+          firstName: adminForm.firstName.trim(),
+          lastName: adminForm.lastName.trim(),
+          rut: adminForm.rut.trim(),
+          department: adminForm.department || null,
+          position: adminForm.position || null,
+          hireDate: adminForm.hireDate || null,
+        };
+        if (adminForm.password?.trim()) upd.password = adminForm.password.trim();
+        // Send hierarchy level for new positions
+        if (adminForm.position && !adminPositions.some((p: any) => p.name === adminForm.position) && adminForm.hierarchyLevel) {
+          upd.hierarchyLevel = Number(adminForm.hierarchyLevel);
+        }
+        await api.users.update(token, adminData.id, upd);
+        setAdminSuccess('Administrador actualizado correctamente');
+      } else {
+        // Create new admin
+        await api.users.create(token, {
+          tenantId: adminModalTenant.id,
+          email: adminForm.email.trim(),
+          firstName: adminForm.firstName.trim(),
+          lastName: adminForm.lastName.trim(),
+          rut: adminForm.rut.trim(),
+          password: adminForm.password.trim(),
+          role: 'tenant_admin',
+          department: adminForm.department || null,
+          position: adminForm.position || null,
+          hireDate: adminForm.hireDate || null,
+          hierarchyLevel: adminForm.hierarchyLevel ? Number(adminForm.hierarchyLevel) : undefined,
+          mustChangePassword: true,
+        });
+        setAdminSuccess('Administrador creado correctamente');
+      }
+      setTimeout(() => { setAdminModalTenant(null); setAdminSuccess(''); }, 2000);
+    } catch (e: any) {
+      setAdminError(e.message || 'Error al guardar');
+    }
+    setAdminSaving(false);
   };
 
   const inputStyle: React.CSSProperties = {
@@ -378,8 +397,8 @@ export default function TenantsPage() {
 
               // Hoja 1: Organización (parser reads row 5=name, 6=rut, ..., 14=legalRepName, 15=legalRepRut)
               const orgData = [
-                ['PLANTILLA DE ONBOARDING â€” EVAPRO'], [''],
-                ['DATOS DE LA ORGANIZACIÃ“N'], ['Campo', 'Valor'],
+                ['PLANTILLA DE ONBOARDING - EVAPRO'], [''],
+                ['DATOS DE LA ORGANIZACIÓN'], ['Campo', 'Valor'],
                 ['Nombre de la empresa *', ''],           // row 5 â†’ getVal(s(0), 5, 2)
                 ['RUT de la empresa', ''],                // row 6
                 ['Tipo (company/consultant)', 'company'], // row 7
@@ -704,149 +723,6 @@ export default function TenantsPage() {
             </div>
           </div>
 
-          {/* Admin fields â€” Create: new admin / Edit: show & edit existing admin */}
-          <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
-            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-              {editingId ? 'Administrador de la Organización' : 'Administrador de la Organización *'}
-            </p>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-            <div>
-              <label style={labelStyle}>Email admin {!editingId && '*'}</label>
-              <input style={inputStyle}
-                value={editingId ? (tenantAdmin?.email || form.adminEmail) : form.adminEmail}
-                onChange={(e) => {
-                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, email: e.target.value });
-                  else if (editingId) setForm({ ...form, adminEmail: e.target.value });
-                  else setForm({ ...form, adminEmail: e.target.value });
-                }}
-                placeholder="admin@empresa.com" />
-            </div>
-            <div>
-              <label style={labelStyle}>Nombres {!editingId && '*'}</label>
-              <input style={inputStyle}
-                value={editingId ? (tenantAdmin?.firstName || form.adminFirstName) : form.adminFirstName}
-                onChange={(e) => {
-                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, firstName: e.target.value });
-                  else if (editingId) setForm({ ...form, adminFirstName: e.target.value });
-                  else setForm({ ...form, adminFirstName: e.target.value });
-                }}
-                placeholder="Juan" />
-            </div>
-            <div>
-              <label style={labelStyle}>Apellidos {!editingId && '*'}</label>
-              <input style={inputStyle}
-                value={editingId ? (tenantAdmin?.lastName || form.adminLastName) : form.adminLastName}
-                onChange={(e) => {
-                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, lastName: e.target.value });
-                  else if (editingId) setForm({ ...form, adminLastName: e.target.value });
-                  else setForm({ ...form, adminLastName: e.target.value });
-                }}
-                placeholder="Perez" />
-            </div>
-            <div>
-              <label style={labelStyle}>{editingId ? 'Nueva contraseña' : 'Password admin *'}</label>
-              <input style={inputStyle} type="text" value={form.adminPassword}
-                onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
-                placeholder={editingId ? 'Sin cambios' : '********'} />
-              {editingId && <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Dejar vacío para no cambiar</p>}
-            </div>
-            {editingId && (() => {
-              const deptInCatalog = tenantAdmin?.department ? tenantDepts.includes(tenantAdmin.department) : false;
-              const posInCatalog = tenantAdmin?.position ? tenantPositions.some((p: any) => p.name === tenantAdmin.position) : false;
-              const showNewDept = tenantAdmin !== null && !deptInCatalog && tenantAdmin.department !== undefined;
-              const showNewPos = tenantAdmin !== null && !posInCatalog && tenantAdmin.position !== undefined;
-              return (
-                <>
-                  {/* ── Departamento ── */}
-                  <div>
-                    <label style={labelStyle}>Departamento</label>
-                    <select style={inputStyle}
-                      value={!tenantAdmin ? '' : deptInCatalog ? tenantAdmin.department : '__new__'}
-                      onChange={(e) => {
-                        if (!tenantAdmin) return;
-                        if (e.target.value === '__new__') {
-                          setTenantAdmin({ ...tenantAdmin, department: '' });
-                        } else {
-                          setTenantAdmin({ ...tenantAdmin, department: e.target.value });
-                        }
-                      }}>
-                      <option value="">{'— Seleccionar departamento —'}</option>
-                      {tenantDepts.map(d => <option key={d} value={d}>{d}</option>)}
-                      <option value="__new__">+ Nuevo departamento...</option>
-                    </select>
-                    {showNewDept && (
-                      <div style={{ marginTop: '0.3rem' }}>
-                        <input style={inputStyle}
-                          value={tenantAdmin?.department || ''}
-                          onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: e.target.value }); }}
-                          placeholder="Nombre del nuevo departamento" />
-                        <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                          Se agregará automáticamente al catálogo de departamentos de la organización.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── Cargo ── */}
-                  <div style={{ gridColumn: editingId ? '1 / -1' : undefined }}>
-                    <label style={labelStyle}>Cargo</label>
-                    <select style={{ ...inputStyle, maxWidth: '400px' }}
-                      value={!tenantAdmin ? '' : posInCatalog ? tenantAdmin.position : '__new__'}
-                      onChange={(e) => {
-                        if (!tenantAdmin) return;
-                        if (e.target.value === '__new__') {
-                          setTenantAdmin({ ...tenantAdmin, position: '' });
-                          setAdminHierarchyLevel('');
-                        } else {
-                          setTenantAdmin({ ...tenantAdmin, position: e.target.value });
-                          const match = tenantPositions.find((p: any) => p.name === e.target.value);
-                          setAdminHierarchyLevel(match ? String(match.level) : '');
-                        }
-                      }}>
-                      <option value="">{'— Seleccionar cargo —'}</option>
-                      {[...tenantPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
-                        <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>
-                      ))}
-                      <option value="__new__">+ Nuevo cargo...</option>
-                    </select>
-                    {showNewPos && (
-                      <div style={{ marginTop: '0.3rem' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', maxWidth: '400px' }}>
-                          <input style={{ ...inputStyle, flex: 1 }}
-                            value={tenantAdmin?.position || ''}
-                            onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, position: e.target.value }); }}
-                            placeholder="Nombre del cargo nuevo" />
-                          <input style={{ ...inputStyle, width: '80px', textAlign: 'center' }}
-                            type="number" min={1} max={20}
-                            value={adminHierarchyLevel}
-                            onChange={(e) => setAdminHierarchyLevel(e.target.value)}
-                            placeholder="Nivel *" />
-                        </div>
-                        <div style={{ marginTop: '0.35rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.72rem', color: 'var(--text-secondary)', maxWidth: '400px' }}>
-                          <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: 'var(--accent)' }}>Referencia de niveles jerárquicos</div>
-                          <p style={{ margin: '0 0 0.3rem', lineHeight: 1.4 }}>
-                            Nivel 1 = más alto (ej: Gerente General), nivel 7+ = operativo. El cargo se agregará al catálogo.
-                          </p>
-                          {tenantPositions.length > 0 && (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
-                              {[...tenantPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
-                                <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.1rem 0', borderBottom: '1px solid var(--border)' }}>
-                                  <span>{p.name}</span>
-                                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Nv.{p.level}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
             <button className="btn-primary" onClick={editingId ? handleUpdate : handleCreate} disabled={saving}>
               {saving ? 'Guardando...' : editingId ? 'Actualizar' : 'Crear organización'}
@@ -915,6 +791,10 @@ export default function TenantsPage() {
                           <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }} onClick={() => startEdit(t)}>
                             Editar
                           </button>
+                          <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: 'var(--accent)' }}
+                            onClick={() => openAdminModal(t)}>
+                            Admin
+                          </button>
                           {t.isActive && (
                             <button
                               className="btn-ghost"
@@ -932,6 +812,172 @@ export default function TenantsPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Admin Modal */}
+      {adminModalTenant && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setAdminModalTenant(null); }}>
+          <div className="card" style={{ padding: '1.75rem', width: '520px', maxHeight: '85vh', overflowY: 'auto', position: 'relative' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1.25rem' }}>
+              {adminData ? `Administrador de ${adminModalTenant.name}` : `Nuevo Administrador de ${adminModalTenant.name}`}
+            </h3>
+
+            {adminError && (
+              <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+                {adminError}
+              </div>
+            )}
+            {adminSuccess && (
+              <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 'var(--radius-sm)', color: 'var(--success)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+                {adminSuccess}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Email *</label>
+                <input style={inputStyle} value={adminForm.email}
+                  onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
+                  placeholder="admin@empresa.com" />
+              </div>
+              <div>
+                <label style={labelStyle}>Nombres *</label>
+                <input style={inputStyle} value={adminForm.firstName}
+                  onChange={(e) => setAdminForm({ ...adminForm, firstName: e.target.value })}
+                  placeholder="Juan" />
+              </div>
+              <div>
+                <label style={labelStyle}>Apellidos *</label>
+                <input style={inputStyle} value={adminForm.lastName}
+                  onChange={(e) => setAdminForm({ ...adminForm, lastName: e.target.value })}
+                  placeholder="Perez" />
+              </div>
+              <div>
+                <label style={labelStyle}>RUT *</label>
+                <input style={inputStyle} value={adminForm.rut}
+                  onChange={(e) => setAdminForm({ ...adminForm, rut: formatRutInput(e.target.value) })}
+                  placeholder="12.345.678-9" maxLength={12} />
+              </div>
+              <div>
+                <label style={labelStyle}>{adminData ? 'Nueva contrasena' : 'Contrasena *'}</label>
+                <input style={inputStyle} type="text" value={adminForm.password}
+                  onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
+                  placeholder={adminData ? 'Sin cambios' : '********'} />
+                {adminData && <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Dejar vacio para no cambiar</p>}
+              </div>
+              <div>
+                <label style={labelStyle}>Fecha de ingreso</label>
+                <input style={inputStyle} type="date" value={adminForm.hireDate}
+                  onChange={(e) => setAdminForm({ ...adminForm, hireDate: e.target.value })} />
+              </div>
+
+              {/* Departamento */}
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Departamento</label>
+                {(() => {
+                  const deptInCatalog = adminForm.department ? adminDepts.includes(adminForm.department) : false;
+                  const isNew = adminForm.department !== '' && !deptInCatalog;
+                  return (
+                    <>
+                      <select style={inputStyle}
+                        value={!adminForm.department ? '' : deptInCatalog ? adminForm.department : '__new__'}
+                        onChange={(e) => {
+                          if (e.target.value === '__new__') {
+                            setAdminForm({ ...adminForm, department: '' });
+                          } else {
+                            setAdminForm({ ...adminForm, department: e.target.value });
+                          }
+                        }}>
+                        <option value="">-- Seleccionar departamento --</option>
+                        {adminDepts.map(d => <option key={d} value={d}>{d}</option>)}
+                        <option value="__new__">+ Nuevo departamento...</option>
+                      </select>
+                      {isNew && (
+                        <div style={{ marginTop: '0.3rem' }}>
+                          <input style={inputStyle}
+                            value={adminForm.department}
+                            onChange={(e) => setAdminForm({ ...adminForm, department: e.target.value })}
+                            placeholder="Nombre del nuevo departamento" />
+                          <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                            Se agregara automaticamente al catalogo de departamentos de la organizacion.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Cargo */}
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Cargo</label>
+                {(() => {
+                  const posInCatalog = adminForm.position ? adminPositions.some((p: any) => p.name === adminForm.position) : false;
+                  const isNew = adminForm.position !== '' && !posInCatalog;
+                  return (
+                    <>
+                      <select style={inputStyle}
+                        value={!adminForm.position ? '' : posInCatalog ? adminForm.position : '__new__'}
+                        onChange={(e) => {
+                          if (e.target.value === '__new__') {
+                            setAdminForm({ ...adminForm, position: '', hierarchyLevel: '' });
+                          } else {
+                            const match = adminPositions.find((p: any) => p.name === e.target.value);
+                            setAdminForm({ ...adminForm, position: e.target.value, hierarchyLevel: match ? String(match.level) : '' });
+                          }
+                        }}>
+                        <option value="">-- Seleccionar cargo --</option>
+                        {[...adminPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
+                          <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>
+                        ))}
+                        <option value="__new__">+ Nuevo cargo...</option>
+                      </select>
+                      {isNew && (
+                        <div style={{ marginTop: '0.3rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <input style={{ ...inputStyle, flex: 1 }}
+                              value={adminForm.position}
+                              onChange={(e) => setAdminForm({ ...adminForm, position: e.target.value })}
+                              placeholder="Nombre del cargo nuevo" />
+                            <input style={{ ...inputStyle, width: '80px', textAlign: 'center' as const }}
+                              type="number" min={1} max={20}
+                              value={adminForm.hierarchyLevel}
+                              onChange={(e) => setAdminForm({ ...adminForm, hierarchyLevel: e.target.value })}
+                              placeholder="Nivel *" />
+                          </div>
+                          <div style={{ marginTop: '0.35rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: 'var(--accent)' }}>Referencia de niveles jerarquicos</div>
+                            <p style={{ margin: '0 0 0.3rem', lineHeight: 1.4 }}>
+                              Nivel 1 = mas alto (ej: Gerente General), nivel 7+ = operativo. El cargo se agregara al catalogo.
+                            </p>
+                            {adminPositions.length > 0 && (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
+                                {[...adminPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
+                                  <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.1rem 0', borderBottom: '1px solid var(--border)' }}>
+                                    <span>{p.name}</span>
+                                    <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Nv.{p.level}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+              <button className="btn-primary" onClick={saveAdmin} disabled={adminSaving}>
+                {adminSaving ? 'Guardando...' : adminData ? 'Actualizar' : 'Crear administrador'}
+              </button>
+              <button className="btn-ghost" onClick={() => setAdminModalTenant(null)}>Cancelar</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
