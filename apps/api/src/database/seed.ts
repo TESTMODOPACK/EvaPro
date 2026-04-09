@@ -545,58 +545,55 @@ async function seed() {
     const resolvePosId = (name?: string) => name ? posIdMap.get(name.toLowerCase()) || null : null;
 
     /* ── Super Admin ─────────────────────────────────────────────────────── */
-    let superAdmin = await userRepo.findOne({
+    let superAdmin: any = await userRepo.findOne({
       where: { email: 'superadmin@evapro.demo', tenantId: tenant.id },
     });
     if (!superAdmin) {
       const pwHash = await bcrypt.hash('EvaPro2026!', 10);
-      superAdmin = userRepo.create({
+      superAdmin = await userRepo.save(userRepo.create({
         email: 'superadmin@evapro.demo', passwordHash: pwHash,
         firstName: 'Super', lastName: 'Admin',
         role: 'super_admin', department: 'Tecnología', departmentId: resolveDeptId('Tecnología'),
         position: 'Super Administrador', positionId: resolvePosId('Super Administrador'),
         isActive: true, tenantId: tenant.id,
-      } as any);
-      superAdmin = await userRepo.save(superAdmin);
+      } as any));
       console.log('\u2705  Super Admin created: superadmin@evapro.demo');
     }
 
     /* ── Tenant Admin ────────────────────────────────────────────────────── */
-    let admin = await userRepo.findOne({
+    let admin: any = await userRepo.findOne({
       where: { email: 'admin@evapro.demo', tenantId: tenant.id },
     });
     if (!admin) {
       const passwordHash = await bcrypt.hash('EvaPro2026!', 10);
-      admin = userRepo.create({
+      admin = await userRepo.save(userRepo.create({
         email: 'admin@evapro.demo', passwordHash,
         firstName: 'Admin', lastName: 'EvaPro',
         role: 'tenant_admin', department: 'Recursos Humanos', departmentId: resolveDeptId('Recursos Humanos'),
         position: 'Encargado del Sistema', positionId: resolvePosId('Encargado del Sistema'),
         isActive: true, tenantId: tenant.id,
-      } as any);
-      admin = await userRepo.save(admin);
+      } as any));
       console.log('\u2705  Admin created: admin@evapro.demo');
     }
 
     /* ── Manager ─────────────────────────────────────────────────────────── */
-    let manager = await userRepo.findOne({
+    let manager: any = await userRepo.findOne({
       where: { email: 'carlos.lopez@evapro.demo', tenantId: tenant.id },
     });
     if (!manager) {
       const pwHash = await bcrypt.hash('EvaPro2026!', 10);
-      manager = userRepo.create({
+      manager = await userRepo.save(userRepo.create({
         email: 'carlos.lopez@evapro.demo', passwordHash: pwHash,
         firstName: 'Carlos', lastName: 'Lopez',
         role: 'manager', department: 'Tecnología', departmentId: resolveDeptId('Tecnología'),
         position: 'Gerente de Tecnología', positionId: resolvePosId('Gerente de Tecnología'),
         hierarchyLevel: 2, isActive: true, tenantId: tenant.id, managerId: admin.id,
-      } as any);
-      manager = await userRepo.save(manager);
+      } as any));
       console.log('\u2705  Manager created: carlos.lopez@evapro.demo');
     }
 
     /* ── Test user for first-login password change ──────────────────────── */
-    let testNewUser = await userRepo.findOne({ where: { email: 'nuevo.usuario@evapro.demo', tenantId: tenant.id } });
+    let testNewUser: any = await userRepo.findOne({ where: { email: 'nuevo.usuario@evapro.demo', tenantId: tenant.id } });
     if (!testNewUser) {
       const pwHash = await bcrypt.hash('Temporal2026!', 10);
       testNewUser = await userRepo.save(userRepo.create({
@@ -612,15 +609,14 @@ async function seed() {
 
     /* ── Employees (realistic hierarchy) ───────────────────────────────── */
     const employeeDefs = [
-      // Tecnología — reports to Carlos (manager)
       { email: 'ana.martinez@evapro.demo', firstName: 'Ana', lastName: 'Martinez', department: 'Tecnología', position: 'Diseñadora UX', hierarchyLevel: 6 },
       { email: 'luis.rodriguez@evapro.demo', firstName: 'Luis', lastName: 'Rodriguez', department: 'Tecnología', position: 'Ingeniero DevOps', hierarchyLevel: 6 },
       { email: 'sandra.torres@evapro.demo', firstName: 'Sandra', lastName: 'Torres', department: 'Tecnología', position: 'Analista QA', hierarchyLevel: 6 },
     ];
 
-    const empUsers: User[] = [];
+    const empUsers: any[] = [];
     for (const emp of employeeDefs) {
-      let user = await userRepo.findOne({ where: { email: emp.email, tenantId: tenant.id } });
+      let user: any = await userRepo.findOne({ where: { email: emp.email, tenantId: tenant.id } });
       if (!user) {
         const pwHash = await bcrypt.hash('EvaPro2026!', 10);
         user = await userRepo.save(
