@@ -26,6 +26,7 @@ export default function MantenedoresPage() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [settingSaved, setSettingSaved] = useState<string | null>(null);
   const [settingError, setSettingError] = useState<string | null>(null);
+  const [settingErrorMsg, setSettingErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [normalizing, setNormalizing] = useState(false);
   const [normalizeResult, setNormalizeResult] = useState<{ mismatches: any[]; fixed: number } | null>(null);
@@ -65,9 +66,10 @@ export default function MantenedoresPage() {
       await api.tenants.updateCustomSetting(token, key, items);
       setSettingSaved(key);
       setTimeout(() => setSettingSaved(null), 3000);
-    } catch {
+    } catch (err: any) {
       setSettingError(key);
-      setTimeout(() => setSettingError(null), 3000);
+      setSettingErrorMsg(err.message || 'Error al guardar');
+      setTimeout(() => { setSettingError(null); setSettingErrorMsg(null); }, 6000);
     }
     setSavingKey(null);
   };
@@ -490,7 +492,7 @@ export default function MantenedoresPage() {
                     )}
                     {hasError && (
                       <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>
-                        {items.length === 0 ? t('mantenedores.atLeastOne') : t('mantenedores.saveError')}
+                        {items.length === 0 ? t('mantenedores.atLeastOne') : (settingErrorMsg || t('mantenedores.saveError'))}
                       </span>
                     )}
                   </div>
