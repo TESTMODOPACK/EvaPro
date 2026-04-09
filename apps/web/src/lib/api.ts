@@ -19,6 +19,7 @@ export interface Tenant {
   ownerType: string; maxEmployees: number; isActive: boolean; createdAt: string;
   industry?: string | null; employeeRange?: string | null; commercialAddress?: string | null;
   legalRepName?: string | null; legalRepRut?: string | null;
+  settings?: Record<string, any>;
 }
 
 export interface UserData {

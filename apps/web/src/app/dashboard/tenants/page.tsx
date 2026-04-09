@@ -68,6 +68,8 @@ export default function TenantsPage() {
   const [saving, setSaving] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
   const [tenantAdmin, setTenantAdmin] = useState<any>(null);
+  const [tenantDepts, setTenantDepts] = useState<string[]>([]);
+  const [tenantPositions, setTenantPositions] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -296,6 +298,10 @@ export default function TenantsPage() {
     setEditingId(t.id);
     setShowForm(true);
     setError('');
+    // Load tenant departments and positions from settings
+    setTenantDepts(Array.isArray(t.settings?.departments) ? t.settings.departments : []);
+    setTenantPositions(Array.isArray(t.settings?.positions) ? t.settings.positions : []);
+
     // Load tenant admin by querying users of that specific tenant
     setTenantAdmin(null);
     if (token) {
@@ -737,21 +743,55 @@ export default function TenantsPage() {
               <>
                 <div>
                   <label style={labelStyle}>Departamento</label>
-                  <input style={inputStyle}
-                    value={tenantAdmin?.department || ''}
+                  <select style={inputStyle}
+                    value={tenantDepts.includes(tenantAdmin?.department || '') ? (tenantAdmin?.department || '') : (tenantAdmin?.department ? '__custom__' : '')}
                     onChange={(e) => {
-                      if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: e.target.value });
-                    }}
-                    placeholder="Ej: Gerencia General" />
+                      const val = e.target.value;
+                      if (val === '__custom__') {
+                        if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: '' });
+                      } else {
+                        if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: val });
+                      }
+                    }}>
+                    <option value="">{'— Seleccionar —'}</option>
+                    {tenantDepts.map(d => <option key={d} value={d}>{d}</option>)}
+                    {tenantAdmin?.department && !tenantDepts.includes(tenantAdmin.department) && (
+                      <option value="__custom__">{tenantAdmin.department} (personalizado)</option>
+                    )}
+                    <option value="__custom__">Otro...</option>
+                  </select>
+                  {(tenantAdmin?.department === '' || (tenantAdmin?.department && !tenantDepts.includes(tenantAdmin.department))) && (
+                    <input style={{ ...inputStyle, marginTop: '0.3rem' }}
+                      value={tenantAdmin?.department || ''}
+                      onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: e.target.value }); }}
+                      placeholder="Nombre del departamento nuevo" />
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>Cargo</label>
-                  <input style={inputStyle}
-                    value={tenantAdmin?.position || ''}
+                  <select style={inputStyle}
+                    value={tenantPositions.some((p: any) => p.name === (tenantAdmin?.position || '')) ? (tenantAdmin?.position || '') : (tenantAdmin?.position ? '__custom__' : '')}
                     onChange={(e) => {
-                      if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, position: e.target.value });
-                    }}
-                    placeholder="Ej: Gerente General" />
+                      const val = e.target.value;
+                      if (val === '__custom__') {
+                        if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, position: '' });
+                      } else {
+                        if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, position: val });
+                      }
+                    }}>
+                    <option value="">{'— Seleccionar —'}</option>
+                    {tenantPositions.map((p: any) => <option key={p.name} value={p.name}>{p.name} (Nv.{p.level})</option>)}
+                    {tenantAdmin?.position && !tenantPositions.some((p: any) => p.name === tenantAdmin.position) && (
+                      <option value="__custom__">{tenantAdmin.position} (personalizado)</option>
+                    )}
+                    <option value="__custom__">Otro...</option>
+                  </select>
+                  {(tenantAdmin?.position === '' || (tenantAdmin?.position && !tenantPositions.some((p: any) => p.name === tenantAdmin.position))) && (
+                    <input style={{ ...inputStyle, marginTop: '0.3rem' }}
+                      value={tenantAdmin?.position || ''}
+                      onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, position: e.target.value }); }}
+                      placeholder="Nombre del cargo nuevo" />
+                  )}
                 </div>
               </>
             )}
