@@ -76,6 +76,21 @@ export class UsersService {
     } catch { /* fire-and-forget: don't block user creation */ }
   }
 
+  private async autoAddDepartmentToCatalog(tenantId: string, department: string | undefined): Promise<void> {
+    if (!department?.trim()) return;
+    try {
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      if (!tenant) return;
+      const depts: string[] = Array.isArray(tenant.settings?.departments) ? tenant.settings.departments : [];
+      const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      if (depts.some(d => norm(d) === norm(department.trim()))) return;
+      depts.push(department.trim());
+      depts.sort();
+      tenant.settings = { ...(tenant.settings || {}), departments: depts };
+      await this.tenantRepo.save(tenant);
+    } catch { /* fire-and-forget */ }
+  }
+
   private validateDepartment(department: string | undefined, configuredDepts: string[]): void {
     if (!department) return; // null/undefined is OK
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -236,8 +251,9 @@ export class UsersService {
 
     const saved = await this.userRepository.save(user);
     await this.auditService.log(tenantId, saved.id, 'user.created', 'user', saved.id);
-    // Auto-add custom position to catalog
+    // Auto-add custom position and department to catalog
     this.autoAddPositionToCatalog(tenantId, saved.position, saved.hierarchyLevel).catch(() => {});
+    this.autoAddDepartmentToCatalog(tenantId, saved.department).catch(() => {});
     return saved;
   }
 
@@ -327,6 +343,7 @@ export class UsersService {
     // Auto-add custom position to catalog if position/level changed
     if (dto.position !== undefined || dto.hierarchyLevel !== undefined) {
       this.autoAddPositionToCatalog(user.tenantId, saved.position, saved.hierarchyLevel).catch(() => {});
+      this.autoAddDepartmentToCatalog(user.tenantId, saved.department).catch(() => {});
     }
     return saved;
   }

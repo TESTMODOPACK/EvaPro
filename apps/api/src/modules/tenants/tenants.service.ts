@@ -174,7 +174,7 @@ export class TenantsService {
       commercialAddress: dto.commercialAddress || null,
       legalRepName: dto.legalRepName || null,
       legalRepRut: dto.legalRepRut ? this.validateAndNormalizeRut(dto.legalRepRut, 'representante legal') : null,
-      settings: dto.settings || {},
+      settings: dto.settings || { ...CUSTOM_SETTINGS_DEFAULTS },
     });
     const saved = await this.tenantRepository.save(tenant);
 
@@ -194,6 +194,15 @@ export class TenantsService {
         isActive: true,
       });
       adminUser = await this.userRepository.save(adminUser);
+
+      // Auto-add admin's department to catalog if not already there
+      if (adminUser.department) {
+        const depts: string[] = saved.settings?.departments || [];
+        if (!depts.includes(adminUser.department)) {
+          saved.settings = { ...saved.settings, departments: [...depts, adminUser.department] };
+          await this.tenantRepository.save(saved);
+        }
+      }
     }
 
     // Auto-create base contracts (draft)
