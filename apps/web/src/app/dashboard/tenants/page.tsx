@@ -663,58 +663,69 @@ export default function TenantsPage() {
               {editingId ? 'Administrador de la Organización' : 'Admin inicial (opcional)'}
             </p>
           </div>
-          {editingId && !tenantAdmin && (
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Buscando administrador de la organización...</p>
-          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-            {editingId && tenantAdmin ? (
+            <div>
+              <label style={labelStyle}>Email admin {!editingId && '*'}</label>
+              <input style={inputStyle}
+                value={editingId ? (tenantAdmin?.email || form.adminEmail) : form.adminEmail}
+                onChange={(e) => {
+                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, email: e.target.value });
+                  else if (editingId) setForm({ ...form, adminEmail: e.target.value });
+                  else setForm({ ...form, adminEmail: e.target.value });
+                }}
+                placeholder="admin@empresa.com" />
+            </div>
+            <div>
+              <label style={labelStyle}>Nombres {!editingId && '*'}</label>
+              <input style={inputStyle}
+                value={editingId ? (tenantAdmin?.firstName || form.adminFirstName) : form.adminFirstName}
+                onChange={(e) => {
+                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, firstName: e.target.value });
+                  else if (editingId) setForm({ ...form, adminFirstName: e.target.value });
+                  else setForm({ ...form, adminFirstName: e.target.value });
+                }}
+                placeholder="Juan" />
+            </div>
+            <div>
+              <label style={labelStyle}>Apellidos {!editingId && '*'}</label>
+              <input style={inputStyle}
+                value={editingId ? (tenantAdmin?.lastName || form.adminLastName) : form.adminLastName}
+                onChange={(e) => {
+                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, lastName: e.target.value });
+                  else if (editingId) setForm({ ...form, adminLastName: e.target.value });
+                  else setForm({ ...form, adminLastName: e.target.value });
+                }}
+                placeholder="Perez" />
+            </div>
+            <div>
+              <label style={labelStyle}>{editingId ? 'Nueva contraseña' : 'Password admin *'}</label>
+              <input style={inputStyle} type="text" value={form.adminPassword}
+                onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+                placeholder={editingId ? 'Sin cambios' : '********'} />
+              {editingId && <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Dejar vacío para no cambiar</p>}
+            </div>
+            {editingId && (
               <>
                 <div>
-                  <label style={labelStyle}>Email admin</label>
-                  <input style={inputStyle} value={tenantAdmin.email || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, email: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Nombres</label>
-                  <input style={inputStyle} value={tenantAdmin.firstName || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, firstName: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Apellidos</label>
-                  <input style={inputStyle} value={tenantAdmin.lastName || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, lastName: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Nueva contraseña</label>
-                  <input style={inputStyle} type="text" value={form.adminPassword} onChange={(e) => setForm({ ...form, adminPassword: e.target.value })} placeholder="Sin cambios" />
-                  <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Dejar vacío para no cambiar la contraseña actual</p>
-                </div>
-                <div>
                   <label style={labelStyle}>Departamento</label>
-                  <input style={inputStyle} value={tenantAdmin.department || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, department: e.target.value })} />
+                  <input style={inputStyle}
+                    value={tenantAdmin?.department || ''}
+                    onChange={(e) => {
+                      if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: e.target.value });
+                    }}
+                    placeholder="Ej: Gerencia General" />
                 </div>
                 <div>
                   <label style={labelStyle}>Cargo</label>
-                  <input style={inputStyle} value={tenantAdmin.position || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, position: e.target.value })} />
+                  <input style={inputStyle}
+                    value={tenantAdmin?.position || ''}
+                    onChange={(e) => {
+                      if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, position: e.target.value });
+                    }}
+                    placeholder="Ej: Gerente General" />
                 </div>
               </>
-            ) : !editingId ? (
-              <>
-                <div>
-                  <label style={labelStyle}>Email admin *</label>
-                  <input style={inputStyle} value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} placeholder="admin@empresa.com" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Nombres *</label>
-                  <input style={inputStyle} value={form.adminFirstName} onChange={(e) => setForm({ ...form, adminFirstName: e.target.value })} placeholder="Juan" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Apellidos *</label>
-                  <input style={inputStyle} value={form.adminLastName} onChange={(e) => setForm({ ...form, adminLastName: e.target.value })} placeholder="Perez" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Password admin *</label>
-                  <input style={inputStyle} type="text" value={form.adminPassword} onChange={(e) => setForm({ ...form, adminPassword: e.target.value })} placeholder="********" />
-                </div>
-              </>
-            ) : null}
+            )}
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
