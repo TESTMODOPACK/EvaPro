@@ -303,7 +303,10 @@ export default function TenantsPage() {
     if (!adminForm.lastName?.trim()) { setAdminError('Apellidos es obligatorio'); return; }
     if (!adminForm.rut?.trim()) { setAdminError('RUT es obligatorio'); return; }
     if (!validateRut(adminForm.rut)) { setAdminError('RUT invalido. Verifique el formato y digito verificador.'); return; }
-    if (!adminData && !adminForm.password?.trim()) { setAdminError('Contrasena es obligatoria para nuevo administrador'); return; }
+    if (!adminData && !adminForm.password?.trim()) { setAdminError('Contrase\u00f1a es obligatoria para nuevo administrador'); return; }
+    if (showNewDept && !adminForm.department?.trim()) { setAdminError('Nombre del departamento es obligatorio'); return; }
+    if (showNewPos && !adminForm.position?.trim()) { setAdminError('Nombre del cargo es obligatorio'); return; }
+    if (showNewPos && (!adminForm.hierarchyLevel || Number(adminForm.hierarchyLevel) < 1)) { setAdminError('Nivel jer\u00e1rquico es obligatorio para cargo nuevo (1 = m\u00e1s alto)'); return; }
 
     setAdminSaving(true);
     setAdminError('');
@@ -907,7 +910,7 @@ export default function TenantsPage() {
                         placeholder="Nombre del nuevo departamento"
                         autoFocus />
                       <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
-                        onClick={() => { setShowNewDept(false); setAdminForm({ ...adminForm, department: '' }); }}>
+                        onClick={() => { setShowNewDept(false); setAdminForm({ ...adminForm, department: adminData?.department || '' }); }}>
                         Cancelar
                       </button>
                     </div>
@@ -953,7 +956,7 @@ export default function TenantsPage() {
                         onChange={(e) => setAdminForm({ ...adminForm, hierarchyLevel: e.target.value })}
                         placeholder="Nivel *" />
                       <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
-                        onClick={() => { setShowNewPos(false); setAdminForm({ ...adminForm, position: '', hierarchyLevel: '' }); }}>
+                        onClick={() => { setShowNewPos(false); setAdminForm({ ...adminForm, position: adminData?.position || '', hierarchyLevel: '' }); }}>
                         Cancelar
                       </button>
                     </div>
