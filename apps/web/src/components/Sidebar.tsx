@@ -388,11 +388,12 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
           );
           if (visibleItems.length === 0) return null;
 
-          const isCollapsed = sIdx > 0 && collapsedSections[section.title];
           const hasActiveItem = visibleItems.some((item) =>
             currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href))
             || item.children?.some((ch) => currentPath === ch.href || currentPath.startsWith(ch.href)),
           );
+          // Default: all sections collapsed except first ("Mi Espacio") and section with active item
+          const isCollapsed = sIdx > 0 && (collapsedSections[section.title] !== undefined ? collapsedSections[section.title] : !hasActiveItem);
 
           return (
             <div key={section.title} style={{ marginBottom: '0.15rem' }}>
