@@ -70,6 +70,7 @@ export default function TenantsPage() {
   const [tenantAdmin, setTenantAdmin] = useState<any>(null);
   const [tenantDepts, setTenantDepts] = useState<string[]>([]);
   const [tenantPositions, setTenantPositions] = useState<any[]>([]);
+  const [adminHierarchyLevel, setAdminHierarchyLevel] = useState('');
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -222,6 +223,10 @@ export default function TenantsPage() {
         if (tenantAdmin.lastName) adminUpdate.lastName = tenantAdmin.lastName;
         if (tenantAdmin.department !== undefined) adminUpdate.department = tenantAdmin.department || null;
         if (tenantAdmin.position !== undefined) adminUpdate.position = tenantAdmin.position || null;
+        // Send hierarchy level for new custom positions
+        if (tenantAdmin.position && !tenantPositions.some((p: any) => p.name === tenantAdmin.position) && adminHierarchyLevel) {
+          adminUpdate.hierarchyLevel = Number(adminHierarchyLevel);
+        }
         if (form.adminPassword?.trim()) adminUpdate.password = form.adminPassword.trim();
         await api.users.update(token, tenantAdmin.id, adminUpdate);
       } else if (form.adminEmail?.trim()) {
@@ -303,8 +308,11 @@ export default function TenantsPage() {
     setShowForm(true);
     setError('');
     // Load tenant departments and positions from settings
-    setTenantDepts(Array.isArray(t.settings?.departments) ? t.settings.departments : []);
-    setTenantPositions(Array.isArray(t.settings?.positions) ? t.settings.positions : []);
+    const depts = Array.isArray(t.settings?.departments) ? t.settings.departments : [];
+    const positions = Array.isArray(t.settings?.positions) ? t.settings.positions.filter((p: any) => p?.name) : [];
+    setTenantDepts(depts);
+    setTenantPositions(positions);
+    setAdminHierarchyLevel('');
 
     // Load tenant admin by querying users of that specific tenant
     setTenantAdmin(null);
@@ -746,56 +754,92 @@ export default function TenantsPage() {
             {editingId && (() => {
               const deptInCatalog = tenantAdmin?.department ? tenantDepts.includes(tenantAdmin.department) : false;
               const posInCatalog = tenantAdmin?.position ? tenantPositions.some((p: any) => p.name === tenantAdmin.position) : false;
-              const showDeptCustom = tenantAdmin !== null && (tenantAdmin.department === '' || (tenantAdmin.department && !deptInCatalog));
-              const showPosCustom = tenantAdmin !== null && (tenantAdmin.position === '' || (tenantAdmin.position && !posInCatalog));
+              const showNewDept = tenantAdmin !== null && !deptInCatalog && tenantAdmin.department !== undefined;
+              const showNewPos = tenantAdmin !== null && !posInCatalog && tenantAdmin.position !== undefined;
               return (
                 <>
+                  {/* ── Departamento ── */}
                   <div>
                     <label style={labelStyle}>Departamento</label>
                     <select style={inputStyle}
-                      value={!tenantAdmin ? '' : deptInCatalog ? tenantAdmin.department : (tenantAdmin.department ? '__custom__' : '')}
+                      value={!tenantAdmin ? '' : deptInCatalog ? tenantAdmin.department : '__new__'}
                       onChange={(e) => {
                         if (!tenantAdmin) return;
-                        if (e.target.value === '__custom__') setTenantAdmin({ ...tenantAdmin, department: '' });
-                        else setTenantAdmin({ ...tenantAdmin, department: e.target.value });
+                        if (e.target.value === '__new__') {
+                          setTenantAdmin({ ...tenantAdmin, department: '' });
+                        } else {
+                          setTenantAdmin({ ...tenantAdmin, department: e.target.value });
+                        }
                       }}>
-                      <option value="">{'— Seleccionar —'}</option>
+                      <option value="">{'\u2014 Seleccionar departamento \u2014'}</option>
                       {tenantDepts.map(d => <option key={d} value={d}>{d}</option>)}
-                      {tenantAdmin?.department && !deptInCatalog ? (
-                        <option value="__custom__">{tenantAdmin.department} (personalizado)</option>
-                      ) : (
-                        <option value="__custom__">Otro...</option>
-                      )}
+                      <option value="__new__">+ Nuevo departamento...</option>
                     </select>
-                    {showDeptCustom && (
-                      <input style={{ ...inputStyle, marginTop: '0.3rem' }}
-                        value={tenantAdmin?.department || ''}
-                        onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: e.target.value }); }}
-                        placeholder="Nombre del departamento nuevo" />
+                    {showNewDept && (
+                      <div style={{ marginTop: '0.3rem' }}>
+                        <input style={inputStyle}
+                          value={tenantAdmin?.department || ''}
+                          onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: e.target.value }); }}
+                          placeholder="Nombre del nuevo departamento" />
+                        <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                          Se agregar\u00e1 autom\u00e1ticamente al cat\u00e1logo de departamentos de la organizaci\u00f3n.
+                        </p>
+                      </div>
                     )}
                   </div>
-                  <div>
+
+                  {/* ── Cargo ── */}
+                  <div style={{ gridColumn: editingId ? '1 / -1' : undefined }}>
                     <label style={labelStyle}>Cargo</label>
-                    <select style={inputStyle}
-                      value={!tenantAdmin ? '' : posInCatalog ? tenantAdmin.position : (tenantAdmin.position ? '__custom__' : '')}
+                    <select style={{ ...inputStyle, maxWidth: '400px' }}
+                      value={!tenantAdmin ? '' : posInCatalog ? tenantAdmin.position : '__new__'}
                       onChange={(e) => {
                         if (!tenantAdmin) return;
-                        if (e.target.value === '__custom__') setTenantAdmin({ ...tenantAdmin, position: '' });
-                        else setTenantAdmin({ ...tenantAdmin, position: e.target.value });
+                        if (e.target.value === '__new__') {
+                          setTenantAdmin({ ...tenantAdmin, position: '' });
+                          setAdminHierarchyLevel('');
+                        } else {
+                          setTenantAdmin({ ...tenantAdmin, position: e.target.value });
+                          const match = tenantPositions.find((p: any) => p.name === e.target.value);
+                          setAdminHierarchyLevel(match ? String(match.level) : '');
+                        }
                       }}>
-                      <option value="">{'— Seleccionar —'}</option>
-                      {tenantPositions.map((p: any) => <option key={p.name} value={p.name}>{p.name} (Nv.{p.level})</option>)}
-                      {tenantAdmin?.position && !posInCatalog ? (
-                        <option value="__custom__">{tenantAdmin.position} (personalizado)</option>
-                      ) : (
-                        <option value="__custom__">Otro...</option>
-                      )}
+                      <option value="">{'\u2014 Seleccionar cargo \u2014'}</option>
+                      {[...tenantPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
+                        <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>
+                      ))}
+                      <option value="__new__">+ Nuevo cargo...</option>
                     </select>
-                    {showPosCustom && (
-                      <input style={{ ...inputStyle, marginTop: '0.3rem' }}
-                        value={tenantAdmin?.position || ''}
-                        onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, position: e.target.value }); }}
-                        placeholder="Nombre del cargo nuevo" />
+                    {showNewPos && (
+                      <div style={{ marginTop: '0.3rem' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', maxWidth: '400px' }}>
+                          <input style={{ ...inputStyle, flex: 1 }}
+                            value={tenantAdmin?.position || ''}
+                            onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, position: e.target.value }); }}
+                            placeholder="Nombre del cargo nuevo" />
+                          <input style={{ ...inputStyle, width: '80px', textAlign: 'center' }}
+                            type="number" min={1} max={20}
+                            value={adminHierarchyLevel}
+                            onChange={(e) => setAdminHierarchyLevel(e.target.value)}
+                            placeholder="Nivel *" />
+                        </div>
+                        <div style={{ marginTop: '0.35rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.72rem', color: 'var(--text-secondary)', maxWidth: '400px' }}>
+                          <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: 'var(--accent)' }}>Referencia de niveles jer\u00e1rquicos</div>
+                          <p style={{ margin: '0 0 0.3rem', lineHeight: 1.4 }}>
+                            Nivel 1 = m\u00e1s alto (ej: Gerente General), nivel 7+ = operativo. El cargo se agregar\u00e1 al cat\u00e1logo.
+                          </p>
+                          {tenantPositions.length > 0 && (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
+                              {[...tenantPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
+                                <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.1rem 0', borderBottom: '1px solid var(--border)' }}>
+                                  <span>{p.name}</span>
+                                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Nv.{p.level}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </>
