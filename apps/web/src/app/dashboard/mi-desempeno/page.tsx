@@ -363,13 +363,16 @@ export default function MiDesempenoPage() {
                             {name} ({items.length})
                           </div>
                           {items.map((ev: any, j: number) => (
-                            <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem 0.5rem 0.3rem 1rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                            <a key={j} href={`/dashboard/evaluaciones/${ev.cycleId}/responder/${ev.id}`}
+                              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem 0.4rem 1rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem', textDecoration: 'none', color: 'inherit', borderRadius: '4px', transition: 'background 0.15s', cursor: 'pointer' }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-surface)')}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
                               <div>
                                 <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
                                 <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
                               </div>
-                              <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Pendiente</span>
-                            </div>
+                              <span className="btn-primary" style={{ fontSize: '0.7rem', padding: '0.2rem 0.6rem' }}>Responder</span>
+                            </a>
                           ))}
                         </div>
                       ))}
