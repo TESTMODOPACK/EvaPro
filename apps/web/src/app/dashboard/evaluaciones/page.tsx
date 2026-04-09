@@ -47,7 +47,28 @@ function EmployeeEvaluationsView() {
   const userId = useAuthStore((s) => s.user?.userId);
 
   const pending = pendingEvals || [];
-  const completed = completedEvals || [];
+  const allCompleted = completedEvals || [];
+
+  // Filters + pagination for completed
+  const [compSearch, setCompSearch] = useState('');
+  const [compCycleFilter, setCompCycleFilter] = useState('');
+  const [compPage, setCompPage] = useState(1);
+  const compPageSize = 10;
+
+  const compCycles = Array.from(new Set(allCompleted.map((e: any) => e.cycle?.name).filter(Boolean)));
+
+  const filteredCompleted = allCompleted.filter((ev: any) => {
+    if (compCycleFilter && ev.cycle?.name !== compCycleFilter) return false;
+    if (compSearch) {
+      const q = compSearch.toLowerCase();
+      const name = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}`.toLowerCase() : '';
+      if (!name.includes(q) && !(ev.cycle?.name || '').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const compTotalPages = Math.ceil(filteredCompleted.length / compPageSize);
+  const completed = filteredCompleted.slice((compPage - 1) * compPageSize, compPage * compPageSize);
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -135,44 +156,88 @@ function EmployeeEvaluationsView() {
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)', display: 'inline-block' }} />
           {t('evaluaciones.completedEvals')}
+          {allCompleted.length > 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>({filteredCompleted.length})</span>}
         </h2>
 
-        {loadingCompleted ? <Spinner /> : completed.length === 0 ? (
+        {/* Filters */}
+        {allCompleted.length > 0 && (
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <input className="input" type="text" placeholder="Buscar evaluado..." value={compSearch}
+              onChange={(e) => { setCompSearch(e.target.value); setCompPage(1); }}
+              style={{ flex: '1 1 200px', fontSize: '0.82rem', minWidth: '160px' }} />
+            <select className="input" value={compCycleFilter} onChange={(e) => { setCompCycleFilter(e.target.value); setCompPage(1); }}
+              style={{ flex: '0 1 280px', fontSize: '0.82rem' }}>
+              <option value="">Todos los ciclos</option>
+              {compCycles.map((c: any) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        )}
+
+        {loadingCompleted ? <Spinner /> : filteredCompleted.length === 0 ? (
           <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('evaluaciones.noCompletedYet')}</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              {allCompleted.length === 0 ? t('evaluaciones.noCompletedYet') : 'No se encontraron resultados con los filtros seleccionados'}
+            </p>
           </div>
         ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t('evaluaciones.evaluatedCol')}</th>
-                  <th>{t('evaluaciones.typeLabel')}</th>
-                  <th>{t('evaluaciones.cycleLabel')}</th>
-                  <th>{t('evaluaciones.score')}</th>
-                  <th>{t('evaluaciones.dateCol')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {completed.map((ev: any) => (
-                  <tr key={ev.id}>
-                    <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                      {ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}
-                      {ev.evaluateeId === userId && <span className="badge badge-accent" style={{ marginLeft: '0.4rem', fontSize: '0.6rem' }}>{t('evaluaciones.you')}</span>}
-                    </td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{relationLabels[ev.relationType] || ev.relationType}</td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{ev.cycle?.name || '--'}</td>
-                    <td>
-                      <ScoreBadge score={ev.response?.overallScore} size="sm" />
-                    </td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                      {ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-ES') : '--'}
-                    </td>
+          <>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t('evaluaciones.evaluatedCol')}</th>
+                    <th>{t('evaluaciones.typeLabel')}</th>
+                    <th>{t('evaluaciones.cycleLabel')}</th>
+                    <th>{t('evaluaciones.score')}</th>
+                    <th>{t('evaluaciones.dateCol')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {completed.map((ev: any) => (
+                    <tr key={ev.id}>
+                      <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                        {ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}
+                        {ev.evaluateeId === userId && <span className="badge badge-accent" style={{ marginLeft: '0.4rem', fontSize: '0.6rem' }}>{t('evaluaciones.you')}</span>}
+                      </td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{relationLabels[ev.relationType] || ev.relationType}</td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{ev.cycle?.name || '--'}</td>
+                      <td>
+                        <ScoreBadge score={ev.response?.overallScore} size="sm" />
+                      </td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                        {ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-ES') : '--'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Pagination */}
+            {compTotalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', padding: '0.5rem 0' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Mostrando {(compPage - 1) * compPageSize + 1}-{Math.min(compPage * compPageSize, filteredCompleted.length)} de {filteredCompleted.length}
+                </span>
+                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                  <button className="btn-ghost" disabled={compPage <= 1} onClick={() => setCompPage(p => p - 1)}
+                    style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}>Anterior</button>
+                  {Array.from({ length: Math.min(compTotalPages, 5) }, (_, i) => {
+                    const start = Math.max(1, Math.min(compPage - 2, compTotalPages - 4));
+                    const p = start + i;
+                    if (p > compTotalPages) return null;
+                    return (
+                      <button key={p} onClick={() => setCompPage(p)}
+                        style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', fontWeight: p === compPage ? 700 : 400, background: p === compPage ? 'var(--accent)' : 'transparent', color: p === compPage ? 'white' : 'var(--text-secondary)', border: p === compPage ? 'none' : '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', minWidth: '30px' }}>
+                        {p}
+                      </button>
+                    );
+                  })}
+                  <button className="btn-ghost" disabled={compPage >= compTotalPages} onClick={() => setCompPage(p => p + 1)}
+                    style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}>Siguiente</button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
