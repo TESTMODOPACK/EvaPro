@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
@@ -22,9 +22,9 @@ const planColor: Record<string, string> = {
 };
 
 const INDUSTRIES = [
-  'Tecnología', 'Retail / Comercio', 'Servicios Financieros', 'Salud', 'Educación',
-  'Manufactura', 'Construcción', 'Minería', 'Energía', 'Telecomunicaciones',
-  'Transporte y Logística', 'Agricultura', 'Gobierno', 'Consultoría', 'Otro',
+  'TecnologÃ­a', 'Retail / Comercio', 'Servicios Financieros', 'Salud', 'EducaciÃ³n',
+  'Manufactura', 'ConstrucciÃ³n', 'MinerÃ­a', 'EnergÃ­a', 'Telecomunicaciones',
+  'Transporte y LogÃ­stica', 'Agricultura', 'Gobierno', 'ConsultorÃ­a', 'Otro',
 ];
 const EMPLOYEE_RANGES = ['1-15', '16-50', '51-100', '101-200', '201-500', '501-1000', '1000+'];
 
@@ -49,8 +49,8 @@ const emptyForm = {
 // Auto-generate slug from org name
 const autoSlug = (name: string) =>
   name.toLowerCase()
-    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
-    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u').replace(/ñ/g, 'n')
+    .replace(/[Ã¡Ã Ã¤]/g, 'a').replace(/[Ã©Ã¨Ã«]/g, 'e').replace(/[Ã­Ã¬Ã¯]/g, 'i')
+    .replace(/[Ã³Ã²Ã¶]/g, 'o').replace(/[ÃºÃ¹Ã¼]/g, 'u').replace(/Ã±/g, 'n')
     .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
@@ -206,8 +206,8 @@ export default function TenantsPage() {
         }
       }
 
-      // Update admin user if changed
-      if (tenantAdmin?.id) {
+      // Update admin user if changed â€” verify tenantId matches to prevent cross-tenant updates
+      if (tenantAdmin?.id && tenantAdmin?.tenantId === editingId) {
         const adminUpdate: any = {};
         if (tenantAdmin.email) adminUpdate.email = tenantAdmin.email;
         if (tenantAdmin.firstName) adminUpdate.firstName = tenantAdmin.firstName;
@@ -234,7 +234,7 @@ export default function TenantsPage() {
 
   const handleDeactivate = async (id: string, name: string) => {
     if (!token) return;
-    if (!confirm(`Desactivar la organizaci\u00f3n "${name}"?`)) return;
+    if (!confirm(`Desactivar la organización "${name}"?`)) return;
     try {
       await api.tenants.deactivate(token, id);
       setSuccess('Organizacion desactivada');
@@ -303,14 +303,14 @@ export default function TenantsPage() {
       <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Organizaciones</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestión de organizaci\u00f3nes de la plataforma</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>GestiÃ³n de organizaciónes de la plataforma</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" onClick={() => { setShowUpload(!showUpload); setUploadResult(null); }}>
             {showUpload ? 'Cancelar carga' : 'Cargar desde Excel'}
           </button>
           <button className="btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
-            + Nueva organizaci\u00f3n
+            + Nueva organización
           </button>
         </div>
       </div>
@@ -318,9 +318,9 @@ export default function TenantsPage() {
       {/* Excel Upload Section */}
       {showUpload && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>Cargar Organización desde Excel</h3>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>Cargar OrganizaciÃ³n desde Excel</h3>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-            Suba la plantilla de onboarding para crear una organización completa con su administrador, departamentos, cargos, competencias y colaboradores.
+            Suba la plantilla de onboarding para crear una organizaciÃ³n completa con su administrador, departamentos, cargos, competencias y colaboradores.
           </p>
           <button className="btn-ghost" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }}
             onClick={async () => {
@@ -329,35 +329,35 @@ export default function TenantsPage() {
               // IMPORTANT: Row numbers must match the parser's getVal() calls exactly
               // Parser reads: org rows 5-15, admin rows 5-11, depts col2 rows 5+, positions col2 rows 5+, competencies col2 rows 5+, users row 5+
 
-              // Hoja 1: Organización (parser reads row 5=name, 6=rut, ..., 14=legalRepName, 15=legalRepRut)
+              // Hoja 1: OrganizaciÃ³n (parser reads row 5=name, 6=rut, ..., 14=legalRepName, 15=legalRepRut)
               const orgData = [
-                ['PLANTILLA DE ONBOARDING — EVAPRO'], [''],
-                ['DATOS DE LA ORGANIZACIÓN'], ['Campo', 'Valor'],
-                ['Nombre de la empresa *', ''],           // row 5 → getVal(s(0), 5, 2)
+                ['PLANTILLA DE ONBOARDING â€” EVAPRO'], [''],
+                ['DATOS DE LA ORGANIZACIÃ“N'], ['Campo', 'Valor'],
+                ['Nombre de la empresa *', ''],           // row 5 â†’ getVal(s(0), 5, 2)
                 ['RUT de la empresa', ''],                // row 6
                 ['Tipo (company/consultant)', 'company'], // row 7
                 ['Industria', ''],                        // row 8
                 ['Rango de colaboradores', ''],            // row 9
-                ['Dirección comercial', ''],               // row 10
+                ['DirecciÃ³n comercial', ''],               // row 10
                 ['Plan (starter/growth/pro/enterprise)', 'starter'], // row 11
-                ['Período facturación (monthly/quarterly/semiannual/yearly)', 'monthly'], // row 12
+                ['PerÃ­odo facturaciÃ³n (monthly/quarterly/semiannual/yearly)', 'monthly'], // row 12
                 ['Fecha de inicio (YYYY-MM-DD)', new Date().toISOString().split('T')[0]], // row 13
                 ['Nombre representante legal', ''],        // row 14
                 ['RUT representante legal', ''],            // row 15
               ];
               const ws1 = XLSX.utils.aoa_to_sheet(orgData);
               ws1['!cols'] = [{ wch: 48 }, { wch: 40 }];
-              XLSX.utils.book_append_sheet(wb, ws1, 'Organización');
+              XLSX.utils.book_append_sheet(wb, ws1, 'OrganizaciÃ³n');
 
               // Hoja 2: Administrador (parser reads rows 5-11)
               const adminData = [
                 ['ADMINISTRADOR DEL SISTEMA'], [''],
-                ['El primer usuario creado tendrá rol de Administrador'], ['Campo', 'Valor'],
+                ['El primer usuario creado tendrÃ¡ rol de Administrador'], ['Campo', 'Valor'],
                 ['Email *', ''],              // row 5
                 ['Nombres *', ''],            // row 6
                 ['Apellidos *', ''],          // row 7
                 ['RUT', ''],                  // row 8
-                ['Contraseña temporal *', 'EvaPro2026!'], // row 9
+                ['ContraseÃ±a temporal *', 'EvaPro2026!'], // row 9
                 ['Cargo', ''],                // row 10
                 ['Departamento', ''],         // row 11
               ];
@@ -369,14 +369,14 @@ export default function TenantsPage() {
               const deptData = [
                 ['DEPARTAMENTOS'], [''],
                 ['Ingrese un departamento por fila en la columna B'], ['', 'Nombre del departamento'],
-                ['', 'Tecnología'],           // row 5, col 2
+                ['', 'TecnologÃ­a'],           // row 5, col 2
                 ['', 'Ventas'],               // row 6, col 2
                 ['', 'Recursos Humanos'],
                 ['', 'Finanzas'],
                 ['', 'Operaciones'],
                 ['', 'Marketing'],
                 ['', 'Legal'],
-                ['', 'Administración'],
+                ['', 'AdministraciÃ³n'],
               ];
               const ws3 = XLSX.utils.aoa_to_sheet(deptData);
               ws3['!cols'] = [{ wch: 8 }, { wch: 30 }];
@@ -384,10 +384,10 @@ export default function TenantsPage() {
 
               // Hoja 4: Cargos (parser reads col 2=name, col 3=level starting row 5)
               const posData = [
-                ['CATÁLOGO DE CARGOS'], [''],
-                ['Nombre en col B, nivel en col C (1=más alto)'], ['', 'Nombre del cargo', 'Nivel'],
+                ['CATÃLOGO DE CARGOS'], [''],
+                ['Nombre en col B, nivel en col C (1=mÃ¡s alto)'], ['', 'Nombre del cargo', 'Nivel'],
                 ['', 'Gerente General', 1],   // row 5
-                ['', 'Gerente de Área', 2],
+                ['', 'Gerente de Ãrea', 2],
                 ['', 'Jefe de Departamento', 3],
                 ['', 'Coordinador', 4],
                 ['', 'Analista Senior', 5],
@@ -401,9 +401,9 @@ export default function TenantsPage() {
               // Hoja 5: Competencias (parser reads col 2=name, col 3=category starting row 5)
               const compData = [
                 ['COMPETENCIAS (opcional)'], [''],
-                ['Nombre en col B, categoría en col C'], ['', 'Nombre', 'Categoría', 'Descripción', 'Nivel esperado'],
+                ['Nombre en col B, categorÃ­a en col C'], ['', 'Nombre', 'CategorÃ­a', 'DescripciÃ³n', 'Nivel esperado'],
                 ['', 'Liderazgo', 'Habilidades directivas', 'Capacidad para guiar equipos', 3],
-                ['', 'Comunicación', 'Habilidades interpersonales', 'Comunicación efectiva', 3],
+                ['', 'ComunicaciÃ³n', 'Habilidades interpersonales', 'ComunicaciÃ³n efectiva', 3],
                 ['', 'Trabajo en equipo', 'Habilidades interpersonales', '', 3],
               ];
               const ws5 = XLSX.utils.aoa_to_sheet(compData);
@@ -414,15 +414,15 @@ export default function TenantsPage() {
               const usrData = [
                 ['COLABORADORES'], [''],
                 ['Complete los datos de cada colaborador desde la fila 5'],
-                ['Email *', 'Nombres *', 'Apellidos *', 'RUT', 'Contraseña *', 'Rol (manager/employee)', 'Departamento', 'Cargo', 'Fecha ingreso', 'Email jefe directo'],
-                ['ejemplo@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'EvaPro2026!', 'employee', 'Ventas', 'Ejecutivo de Ventas', '2024-01-15', 'jefe@empresa.cl'],
+                ['Email *', 'Nombres *', 'Apellidos *', 'RUT', 'ContraseÃ±a *', 'Rol (manager/employee)', 'Departamento', 'Cargo', 'Fecha ingreso', 'Email jefe directo'],
+                ['ejemplo@empresa.cl', 'Juan', 'PÃ©rez', '12345678-9', 'EvaPro2026!', 'employee', 'Ventas', 'Ejecutivo de Ventas', '2024-01-15', 'jefe@empresa.cl'],
               ];
               const ws6 = XLSX.utils.aoa_to_sheet(usrData);
               ws6['!cols'] = [{ wch: 25 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 25 }];
               XLSX.utils.book_append_sheet(wb, ws6, 'Colaboradores');
               XLSX.writeFile(wb, 'Plantilla_Onboarding_EvaPro.xlsx');
             }}>
-            {'📥'} Descargar plantilla Excel
+            {'ðŸ“¥'} Descargar plantilla Excel
           </button>
           <input
             type="file"
@@ -526,14 +526,14 @@ export default function TenantsPage() {
                 }
 
                 if (!org.name || !admin.email || !admin.password) {
-                  setError('Faltan datos obligatorios: nombre de organización, correo y contraseña del admin');
+                  setError('Faltan datos obligatorios: nombre de organizaciÃ³n, correo y contraseÃ±a del admin');
                   setUploading(false);
                   return;
                 }
 
                 const result = await api.tenants.bulkOnboard(token, { org, admin, departments, positions, competencies, users });
                 setUploadResult(result);
-                setSuccess('Organización creada exitosamente');
+                setSuccess('OrganizaciÃ³n creada exitosamente');
                 // Reload tenants list
                 api.tenants.list(token).then(setTenants).catch(() => {});
               } catch (err: any) {
@@ -548,7 +548,7 @@ export default function TenantsPage() {
 
           {uploadResult && (
             <div style={{ marginTop: '0.75rem', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--success)', marginBottom: '0.5rem' }}>Organización creada exitosamente</div>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--success)', marginBottom: '0.5rem' }}>OrganizaciÃ³n creada exitosamente</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
                 {(uploadResult.summary || []).map((s: string, i: number) => (
                   <div key={i}>{s.startsWith('ADVERTENCIA') ? <span style={{ color: 'var(--warning)' }}>{s}</span> : s}</div>
@@ -575,11 +575,11 @@ export default function TenantsPage() {
       {showForm && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
-            {editingId ? 'Editar organizaci\u00f3n' : 'Nueva organizaci\u00f3n'}
+            {editingId ? 'Editar organización' : 'Nueva organización'}
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={labelStyle}>Razón Social *</label>
+              <label style={labelStyle}>RazÃ³n Social *</label>
               <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Mi Empresa S.A." />
             </div>
             <div>
@@ -608,13 +608,13 @@ export default function TenantsPage() {
               </select>
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>Dirección comercial</label>
+              <label style={labelStyle}>DirecciÃ³n comercial</label>
               <input style={inputStyle} placeholder="Ej: Av. Providencia 1234, Santiago" value={form.commercialAddress} onChange={(e) => setForm({ ...form, commercialAddress: e.target.value })} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
               <div>
                 <label style={labelStyle}>Nombre representante legal</label>
-                <input style={inputStyle} placeholder="Ej: Juan Pérez González" value={form.legalRepName} onChange={(e) => setForm({ ...form, legalRepName: e.target.value })} />
+                <input style={inputStyle} placeholder="Ej: Juan PÃ©rez GonzÃ¡lez" value={form.legalRepName} onChange={(e) => setForm({ ...form, legalRepName: e.target.value })} />
               </div>
               <div>
                 <label style={labelStyle}>RUT representante legal</label>
@@ -622,7 +622,7 @@ export default function TenantsPage() {
               </div>
             </div>
             <div>
-              <label style={labelStyle}>Plan y período {!editingId && '*'}</label>
+              <label style={labelStyle}>Plan y perÃ­odo {!editingId && '*'}</label>
               <select
                 style={{ ...inputStyle, borderColor: !form.planId ? 'var(--warning)' : 'var(--border)' }}
                 value={form.planId ? `${form.planId}|${form.billingPeriod}` : ''}
@@ -632,7 +632,7 @@ export default function TenantsPage() {
                   setForm({ ...form, planId, billingPeriod });
                 }}
               >
-                <option value="">{editingId ? 'Sin cambio de plan' : 'Seleccionar plan y período...'}</option>
+                <option value="">{editingId ? 'Sin cambio de plan' : 'Seleccionar plan y perÃ­odo...'}</option>
                 {plans.flatMap((p: any) => {
                   const cur = p.currency || 'UF';
                   const fmt = (v: any, suffix: string) => v != null && Number(v) > 0 ? ` (${Number(v).toFixed(1)} ${cur}${suffix})` : '';
@@ -640,7 +640,7 @@ export default function TenantsPage() {
                     <option key={`${p.id}|monthly`}    value={`${p.id}|monthly`}>{p.name} &mdash; Mensual{fmt(p.monthlyPrice, '/mes')}</option>,
                     <option key={`${p.id}|quarterly`}  value={`${p.id}|quarterly`}>{p.name} &mdash; Trimestral{fmt(p.quarterlyPrice, '/trim')}</option>,
                     <option key={`${p.id}|semiannual`} value={`${p.id}|semiannual`}>{p.name} &mdash; Semestral{fmt(p.semiannualPrice, '/sem')}</option>,
-                    <option key={`${p.id}|annual`}     value={`${p.id}|annual`}>{p.name} &mdash; Anual{fmt(p.yearlyPrice, '/a\u00f1o')}</option>,
+                    <option key={`${p.id}|annual`}     value={`${p.id}|annual`}>{p.name} &mdash; Anual{fmt(p.yearlyPrice, '/año')}</option>,
                   ];
                 })}
               </select>
@@ -651,79 +651,75 @@ export default function TenantsPage() {
               )}
               {editingId && !getSubscription(editingId) && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.3rem' }}>
-                  Esta organización no tiene suscripción. Seleccione un plan para asignarla.
+                  Esta organizaciÃ³n no tiene suscripciÃ³n. Seleccione un plan para asignarla.
                 </p>
               )}
             </div>
           </div>
 
-          {/* Admin fields — Create: new admin / Edit: show & edit existing admin */}
+          {/* Admin fields â€” Create: new admin / Edit: show & edit existing admin */}
           <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
             <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-              {editingId ? 'Administrador de la Organizaci\u00f3n' : 'Admin inicial (opcional)'}
+              {editingId ? 'Administrador de la Organización' : 'Admin inicial (opcional)'}
             </p>
           </div>
           {editingId && !tenantAdmin && (
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Buscando administrador de la organizaci\u00f3n...</p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Buscando administrador de la organización...</p>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-            <div>
-              <label style={labelStyle}>Email admin {!editingId && '*'}</label>
-              <input style={inputStyle}
-                value={editingId ? (tenantAdmin?.email || '') : form.adminEmail}
-                onChange={(e) => {
-                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, email: e.target.value });
-                  else setForm({ ...form, adminEmail: e.target.value });
-                }}
-                placeholder="admin@empresa.com" />
-            </div>
-            <div>
-              <label style={labelStyle}>Nombres {!editingId && '*'}</label>
-              <input style={inputStyle}
-                value={editingId ? (tenantAdmin?.firstName || '') : form.adminFirstName}
-                onChange={(e) => {
-                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, firstName: e.target.value });
-                  else setForm({ ...form, adminFirstName: e.target.value });
-                }}
-                placeholder="Juan" />
-            </div>
-            <div>
-              <label style={labelStyle}>Apellidos {!editingId && '*'}</label>
-              <input style={inputStyle}
-                value={editingId ? (tenantAdmin?.lastName || '') : form.adminLastName}
-                onChange={(e) => {
-                  if (editingId && tenantAdmin) setTenantAdmin({ ...tenantAdmin, lastName: e.target.value });
-                  else setForm({ ...form, adminLastName: e.target.value });
-                }}
-                placeholder="Perez" />
-            </div>
-            <div>
-              <label style={labelStyle}>{editingId ? 'Nueva contraseña (dejar vacio para no cambiar)' : 'Password admin'}</label>
-              <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <input style={{ ...inputStyle, flex: 1 }}
-                  type={form.adminPassword && form.adminPassword.length > 0 ? 'text' : 'password'}
-                  value={form.adminPassword}
-                  onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
-                  placeholder={editingId ? 'Sin cambios' : '********'} />
-              </div>
-            </div>
-            {editingId && tenantAdmin && (
+            {editingId && tenantAdmin ? (
               <>
                 <div>
+                  <label style={labelStyle}>Email admin</label>
+                  <input style={inputStyle} value={tenantAdmin.email || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, email: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Nombres</label>
+                  <input style={inputStyle} value={tenantAdmin.firstName || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, firstName: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Apellidos</label>
+                  <input style={inputStyle} value={tenantAdmin.lastName || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, lastName: e.target.value })} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Nueva contraseña</label>
+                  <input style={inputStyle} type="text" value={form.adminPassword} onChange={(e) => setForm({ ...form, adminPassword: e.target.value })} placeholder="Sin cambios" />
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Dejar vacío para no cambiar la contraseña actual</p>
+                </div>
+                <div>
                   <label style={labelStyle}>Departamento</label>
-                  <input style={inputStyle} value={tenantAdmin.department || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, department: e.target.value })} placeholder="Ej: Gerencia General" />
+                  <input style={inputStyle} value={tenantAdmin.department || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, department: e.target.value })} />
                 </div>
                 <div>
                   <label style={labelStyle}>Cargo</label>
-                  <input style={inputStyle} value={tenantAdmin.position || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, position: e.target.value })} placeholder="Ej: Gerente General" />
+                  <input style={inputStyle} value={tenantAdmin.position || ''} onChange={(e) => setTenantAdmin({ ...tenantAdmin, position: e.target.value })} />
                 </div>
               </>
-            )}
+            ) : !editingId ? (
+              <>
+                <div>
+                  <label style={labelStyle}>Email admin *</label>
+                  <input style={inputStyle} value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} placeholder="admin@empresa.com" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Nombres *</label>
+                  <input style={inputStyle} value={form.adminFirstName} onChange={(e) => setForm({ ...form, adminFirstName: e.target.value })} placeholder="Juan" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Apellidos *</label>
+                  <input style={inputStyle} value={form.adminLastName} onChange={(e) => setForm({ ...form, adminLastName: e.target.value })} placeholder="Perez" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Password admin *</label>
+                  <input style={inputStyle} type="text" value={form.adminPassword} onChange={(e) => setForm({ ...form, adminPassword: e.target.value })} placeholder="********" />
+                </div>
+              </>
+            ) : null}
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
             <button className="btn-primary" onClick={editingId ? handleUpdate : handleCreate} disabled={saving}>
-              {saving ? 'Guardando...' : editingId ? 'Actualizar' : 'Crear organizaci\u00f3n'}
+              {saving ? 'Guardando...' : editingId ? 'Actualizar' : 'Crear organización'}
             </button>
             <button className="btn-ghost" onClick={resetForm}>Cancelar</button>
           </div>
@@ -737,22 +733,22 @@ export default function TenantsPage() {
         <div className="card animate-fade-up-delay-1" style={{ padding: 0, overflow: 'hidden' }}>
           {tenants.length === 0 ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p style={{ fontWeight: 600, marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>Sin organizaci\u00f3nes</p>
-              <p style={{ fontSize: '0.85rem' }}>Crea la primera organizaci\u00f3n para comenzar</p>
+              <p style={{ fontWeight: 600, marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>Sin organizaciónes</p>
+              <p style={{ fontSize: '0.85rem' }}>Crea la primera organización para comenzar</p>
             </div>
           ) : (
             <div className="table-wrapper">
-              <table>
+              <table style={{ minWidth: '750px' }}>
                 <thead>
                   <tr>
-                    <th>Nombre</th>
-                    <th>RUT</th>
-                    <th>Slug</th>
-                    <th>Plan</th>
-                    <th>Max Emp.</th>
-                    <th>Estado</th>
-                    <th>Creado</th>
-                    <th>Acciones</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Nombre</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>RUT</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Slug</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Plan</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Max Emp.</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Estado</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Creado</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -763,7 +759,7 @@ export default function TenantsPage() {
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t.slug}</td>
                       {(() => {
                         const sub = getSubscription(t.id);
-                        const pName = sub?.plan?.name || t.plan || '—';
+                        const pName = sub?.plan?.name || t.plan || 'â€”';
                         const pCode = sub?.plan?.code || t.plan || '';
                         const maxEmp = sub?.plan?.maxEmployees || t.maxEmployees;
                         return (
@@ -811,3 +807,4 @@ export default function TenantsPage() {
     </div>
   );
 }
+

@@ -581,16 +581,16 @@ function AuditoriaPageContent() {
             </div>
           ) : (
             <div className="table-wrapper">
-              <table>
+              <table style={{ minWidth: '700px' }}>
                 <thead>
                   <tr>
                     <th style={{ width: '28px' }}></th>
-                    <th>{t('audit.date')}</th>
-                    <th>{t('audit.user')}</th>
-                    <th>{t('audit.action')}</th>
-                    <th>{t('audit.entity')}</th>
-                    <th>{t('audit.detail')}</th>
-                    <th style={{ width: '36px', textAlign: 'center' }}>{t('audit.evidence')}</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>{t('audit.date')}</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>{t('audit.user')}</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>{t('audit.action')}</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>{t('audit.entity')}</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>{t('audit.detail')}</th>
+                    <th style={{ width: '36px', textAlign: 'center', whiteSpace: 'nowrap' }}>{t('audit.evidence')}</th>
                   </tr>
                 </thead>
                 <tbody>

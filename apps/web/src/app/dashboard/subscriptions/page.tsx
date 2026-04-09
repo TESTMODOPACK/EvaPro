@@ -642,20 +642,20 @@ export default function SubscriptionsPage() {
               </div>
             ) : (
               <div className="table-wrapper">
-                <table>
+                <table style={{ minWidth: '900px' }}>
                   <thead>
                     <tr>
-                      <th>Nombre</th>
-                      <th>Código</th>
-                      <th>Descripción</th>
-                      <th>Máx. empleados</th>
-                      <th>Precio mensual</th>
-                      <th>Precio trimestral</th>
-                      <th>Precio semestral</th>
-                      <th>Precio anual</th>
-                      <th>Funcionalidades</th>
-                      <th>Estado</th>
-                      <th>Acciones</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Nombre</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Código</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Descripción</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Máx. emp.</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Mensual</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Trimestral</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Semestral</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Anual</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Features</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Estado</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
