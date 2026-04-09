@@ -666,14 +666,14 @@ async function seed() {
     const existingComps = await compRepo.count({ where: { tenantId: tenant.id } });
     if (existingComps === 0) {
       const defaultCompetencies = [
-        { name: 'Liderazgo', category: 'Gestion', description: 'Capacidad de guiar, motivar e inspirar a equipos hacia el logro de objetivos' },
-        { name: 'Comunicacion', category: 'Blanda', description: 'Habilidad para transmitir ideas de forma clara, efectiva y asertiva' },
-        { name: 'Trabajo en equipo', category: 'Blanda', description: 'Capacidad de colaborar y contribuir activamente al logro colectivo' },
-        { name: 'Resolucion de problemas', category: 'Tecnica', description: 'Habilidad para analizar situaciones complejas y encontrar soluciones efectivas' },
-        { name: 'Adaptabilidad', category: 'Blanda', description: 'Flexibilidad para ajustarse a cambios y nuevas situaciones' },
-        { name: 'Orientacion a resultados', category: 'Gestion', description: 'Enfoque en cumplir objetivos y metas con calidad y eficiencia' },
-        { name: 'Conocimiento tecnico', category: 'Tecnica', description: 'Dominio de las herramientas, tecnologias y procesos del area' },
-        { name: 'Creatividad e innovacion', category: 'Blanda', description: 'Capacidad de generar ideas nuevas y proponer mejoras' },
+        { name: 'Liderazgo', category: 'Gestion', description: 'Capacidad de guiar, motivar e inspirar a equipos hacia el logro de objetivos organizacionales' },
+        { name: 'Comunicaci\u00f3n efectiva', category: 'Blanda', description: 'Habilidad para transmitir ideas de forma clara, asertiva y adaptada a la audiencia' },
+        { name: 'Trabajo en equipo', category: 'Blanda', description: 'Capacidad de colaborar y contribuir activamente al logro colectivo respetando la diversidad' },
+        { name: 'Resoluci\u00f3n de problemas', category: 'Tecnica', description: 'Habilidad para analizar situaciones complejas y encontrar soluciones efectivas y sustentables' },
+        { name: 'Adaptabilidad', category: 'Blanda', description: 'Flexibilidad para ajustarse a cambios, nuevas situaciones y ambientes de incertidumbre' },
+        { name: 'Orientaci\u00f3n a resultados', category: 'Gestion', description: 'Enfoque en cumplir objetivos y metas con calidad, eficiencia y dentro de los plazos' },
+        { name: 'Conocimiento t\u00e9cnico del \u00e1rea', category: 'Tecnica', description: 'Dominio de las herramientas, tecnolog\u00edas y procesos espec\u00edficos del \u00e1rea de trabajo' },
+        { name: 'Creatividad e innovaci\u00f3n', category: 'Blanda', description: 'Capacidad de generar ideas nuevas y proponer mejoras a procesos y productos' },
       ];
       for (const c of defaultCompetencies) {
         await compRepo.save(compRepo.create({ ...c, tenantId: tenant.id, isActive: true }));

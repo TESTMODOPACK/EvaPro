@@ -102,11 +102,15 @@ export default function CompetenciasPage() {
 
   const handleSeedDefaults = async () => {
     if (!token) return;
-    if (!confirm('Se agregarán 24 competencias base organizadas por categoría (Gestión, Blanda, Técnica, Liderazgo). Las competencias existentes con el mismo nombre no se duplicarán. ¿Continuar?')) return;
+    if (!confirm('Se cargarán 8 competencias base (Gestión, Blanda, Técnica). Las existentes con el mismo nombre se actualizarán con acentos correctos. ¿Continuar?')) return;
     setSeeding(true);
     try {
       const result = await api.development.competencies.seedDefaults(token);
-      toast.success(`Competencias base cargadas: ${result.created} nuevas, ${result.skipped} ya existían`);
+      const parts = [];
+      if (result.created > 0) parts.push(`${result.created} nuevas`);
+      if (result.updated > 0) parts.push(`${result.updated} actualizadas`);
+      if (result.skipped > 0) parts.push(`${result.skipped} ya existían`);
+      toast.success(`Competencias base: ${parts.join(', ')}`);
       loadData();
     } catch (err: any) {
       toast.error(err.message || 'Error al cargar competencias base');

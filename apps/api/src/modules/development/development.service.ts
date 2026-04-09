@@ -91,46 +91,43 @@ export class DevelopmentService {
 
   // ─── Seed Default Competencies ────────────────────────────────────────
 
-  async seedDefaultCompetencies(tenantId: string, userId?: string): Promise<{ created: number; skipped: number; total: number }> {
+  async seedDefaultCompetencies(tenantId: string, userId?: string): Promise<{ created: number; skipped: number; updated: number; total: number }> {
     const defaults: Array<{ name: string; category: string; description: string }> = [
-      // Gestión (6)
       { name: 'Liderazgo', category: 'Gestion', description: 'Capacidad de guiar, motivar e inspirar a equipos hacia el logro de objetivos organizacionales' },
-      { name: 'Orientación a resultados', category: 'Gestion', description: 'Enfoque en cumplir objetivos y metas con calidad, eficiencia y dentro de los plazos establecidos' },
-      { name: 'Toma de decisiones', category: 'Gestion', description: 'Habilidad para evaluar alternativas y elegir el mejor curso de acción con información disponible' },
-      { name: 'Planificación y organización', category: 'Gestion', description: 'Capacidad de estructurar tareas, recursos y tiempos para alcanzar metas de manera eficiente' },
-      { name: 'Gestión del cambio', category: 'Gestion', description: 'Habilidad para liderar y facilitar procesos de transformación organizacional' },
-      { name: 'Visión estratégica', category: 'Gestion', description: 'Capacidad de anticipar tendencias y alinear acciones con la estrategia de largo plazo' },
-      // Blanda (8)
       { name: 'Comunicación efectiva', category: 'Blanda', description: 'Habilidad para transmitir ideas de forma clara, asertiva y adaptada a la audiencia' },
       { name: 'Trabajo en equipo', category: 'Blanda', description: 'Capacidad de colaborar y contribuir activamente al logro colectivo respetando la diversidad' },
-      { name: 'Adaptabilidad', category: 'Blanda', description: 'Flexibilidad para ajustarse a cambios, nuevas situaciones y ambientes de incertidumbre' },
-      { name: 'Inteligencia emocional', category: 'Blanda', description: 'Capacidad de reconocer, gestionar y canalizar las emociones propias y de los demás' },
-      { name: 'Negociación', category: 'Blanda', description: 'Habilidad para alcanzar acuerdos beneficiosos para todas las partes involucradas' },
-      { name: 'Empatía', category: 'Blanda', description: 'Capacidad de comprender las perspectivas, necesidades y sentimientos de otros' },
-      { name: 'Creatividad e innovación', category: 'Blanda', description: 'Capacidad de generar ideas nuevas y proponer mejoras a procesos y productos' },
-      { name: 'Resolución de conflictos', category: 'Blanda', description: 'Habilidad para mediar y resolver desacuerdos de manera constructiva y profesional' },
-      // Técnica (6)
-      { name: 'Conocimiento técnico del área', category: 'Tecnica', description: 'Dominio de las herramientas, tecnologías y procesos específicos del área de trabajo' },
       { name: 'Resolución de problemas', category: 'Tecnica', description: 'Habilidad para analizar situaciones complejas y encontrar soluciones efectivas y sustentables' },
-      { name: 'Pensamiento analítico', category: 'Tecnica', description: 'Capacidad de descomponer problemas, interpretar datos y tomar decisiones basadas en evidencia' },
-      { name: 'Gestión de proyectos', category: 'Tecnica', description: 'Habilidad para planificar, ejecutar y controlar proyectos dentro del alcance, tiempo y presupuesto' },
-      { name: 'Mejora continua', category: 'Tecnica', description: 'Compromiso con la optimización constante de procesos, calidad y eficiencia operacional' },
-      { name: 'Conocimiento digital', category: 'Tecnica', description: 'Dominio de herramientas digitales y capacidad de adoptar nuevas tecnologías' },
-      // Liderazgo (4)
-      { name: 'Desarrollo de personas', category: 'Liderazgo', description: 'Capacidad de identificar potencial y apoyar el crecimiento profesional de los colaboradores' },
-      { name: 'Delegación efectiva', category: 'Liderazgo', description: 'Habilidad para asignar responsabilidades apropiadamente y empoderar al equipo' },
-      { name: 'Coaching y mentoring', category: 'Liderazgo', description: 'Capacidad de guiar y acompañar a otros en su desarrollo mediante retroalimentación constructiva' },
-      { name: 'Influencia y motivación', category: 'Liderazgo', description: 'Habilidad para inspirar compromiso y movilizar a otros hacia objetivos compartidos' },
+      { name: 'Adaptabilidad', category: 'Blanda', description: 'Flexibilidad para ajustarse a cambios, nuevas situaciones y ambientes de incertidumbre' },
+      { name: 'Orientación a resultados', category: 'Gestion', description: 'Enfoque en cumplir objetivos y metas con calidad, eficiencia y dentro de los plazos establecidos' },
+      { name: 'Conocimiento técnico del área', category: 'Tecnica', description: 'Dominio de las herramientas, tecnologías y procesos específicos del área de trabajo' },
+      { name: 'Creatividad e innovación', category: 'Blanda', description: 'Capacidad de generar ideas nuevas y proponer mejoras a procesos y productos' },
     ];
+
+    // Helper: normalize name for comparison (remove accents, lowercase)
+    const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+    // Load existing competencies to compare
+    const existing = await this.competencyRepo.find({ where: { tenantId } });
+    const existingNames = new Set(existing.map(c => normalize(c.name)));
 
     let created = 0;
     let skipped = 0;
+    const updated: string[] = [];
+
+    // First: update existing competencies that match by normalized name (fix accents)
+    for (const def of defaults) {
+      const match = existing.find(c => normalize(c.name) === normalize(def.name));
+      if (match && match.name !== def.name) {
+        // Update name to include proper accents
+        match.name = def.name;
+        match.description = def.description;
+        await this.competencyRepo.save(match);
+        updated.push(def.name);
+      }
+    }
 
     for (const def of defaults) {
-      const existing = await this.competencyRepo.findOne({
-        where: { tenantId, name: def.name },
-      });
-      if (existing) {
+      if (existingNames.has(normalize(def.name))) {
         skipped++;
         continue;
       }
@@ -146,10 +143,10 @@ export class DevelopmentService {
     }
 
     if (userId) {
-      await this.auditService.log(tenantId, userId, 'competencies.seeded', 'competency', undefined, { created, skipped }).catch(() => {});
+      await this.auditService.log(tenantId, userId, 'competencies.seeded', 'competency', undefined, { created, skipped, updated: updated.length }).catch(() => {});
     }
 
-    return { created, skipped, total: defaults.length };
+    return { created, skipped, updated: updated.length, total: defaults.length };
   }
 
   // ─── Competency Workflow ──────────────────────────────────────────────
