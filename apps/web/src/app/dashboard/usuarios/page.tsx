@@ -305,7 +305,7 @@ export default function UsuariosPage() {
       department: u.department || '',
       position: u.position || '',
       hierarchyLevel: u.hierarchyLevel ?? '',
-      managerId: u.managerId || '',
+      managerId: u.managerId && allUsers.some((m: any) => m.id === u.managerId) ? u.managerId : '',
       hireDate: u.hireDate ? u.hireDate.slice(0, 10) : '',
       gender: u.gender || '',
       birthDate: u.birthDate ? u.birthDate.slice(0, 10) : '',
