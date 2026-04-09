@@ -140,13 +140,26 @@ export class AnalyticsService {
       .sort((a, b) => b.completed - a.completed)
       .slice(0, 10);
 
-    // Plans by year
-    const byYear: Record<string, { total: number; completed: number }> = {};
+    // Plans by year (with plan details for collapsible list)
+    const byYear: Record<string, { total: number; completed: number; plans: any[] }> = {};
     for (const p of allPlans) {
       const year = p.startDate ? new Date(p.startDate).getFullYear().toString() : 'Sin fecha';
-      if (!byYear[year]) byYear[year] = { total: 0, completed: 0 };
+      if (!byYear[year]) byYear[year] = { total: 0, completed: 0, plans: [] };
       byYear[year].total++;
       if (p.status === 'completado') byYear[year].completed++;
+      const actions = p.actions || [];
+      const completedActs = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+      byYear[year].plans.push({
+        id: p.id,
+        title: p.title,
+        status: p.status,
+        userName: (p.user as any) ? `${(p.user as any).firstName} ${(p.user as any).lastName}` : 'Sin asignar',
+        department: (p.user as any)?.department || null,
+        progress: p.progress || 0,
+        totalActions: actions.length,
+        completedActions: completedActs,
+        startDate: p.startDate,
+      });
     }
 
     return {

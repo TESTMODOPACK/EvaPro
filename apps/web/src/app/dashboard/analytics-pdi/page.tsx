@@ -362,11 +362,15 @@ function PdiCompliancePageContent() {
               {/* Actions summary */}
               <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
                 <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Acciones de Desarrollo (todos los tiempos)</h3>
-                <div style={{ display: 'flex', gap: '2rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  <div>Total: <strong>{historicalData.totalActions}</strong></div>
+                <div style={{ display: 'flex', gap: '2rem', fontSize: '0.85rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                  <div>Total acciones: <strong>{historicalData.totalActions}</strong></div>
                   <div>Completadas: <strong style={{ color: 'var(--success)' }}>{historicalData.completedActions}</strong></div>
-                  <div>Tasa: <strong>{historicalData.actionCompletionPct}%</strong></div>
+                  <div>Pendientes: <strong style={{ color: 'var(--warning)' }}>{historicalData.totalActions - historicalData.completedActions}</strong></div>
+                  <div>Tasa cumplimiento: <strong>{historicalData.actionCompletionPct}%</strong></div>
                 </div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                  Nota: Un plan se marca como &quot;completado&quot; manualmente por la jefatura. Las acciones individuales pueden completarse antes de cerrar el plan.
+                </p>
               </div>
 
               {/* Top departments */}
@@ -385,32 +389,59 @@ function PdiCompliancePageContent() {
                 </div>
               )}
 
-              {/* By year */}
+              {/* By year — collapsible */}
               {historicalData.byYear?.length > 0 && (
-                <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem' }}>Planes por Año</h3>
-                  <div className="table-wrapper" style={{ margin: 0 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>Año</th>
-                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>Total</th>
-                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>Completados</th>
-                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>% Completitud</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {historicalData.byYear.map((y: any) => (
-                          <tr key={y.year} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600 }}>{y.year}</td>
-                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>{y.total}</td>
-                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--success)', fontWeight: 600 }}>{y.completed}</td>
-                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>{y.total > 0 ? Math.round((y.completed / y.total) * 100) : 0}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.92rem' }}>Planes por Año</h3>
+                  {historicalData.byYear.map((y: any) => {
+                    const pct = y.total > 0 ? Math.round((y.completed / y.total) * 100) : 0;
+                    const statusColors: Record<string, string> = { activo: 'var(--accent)', completado: 'var(--success)', cancelado: 'var(--danger)', borrador: 'var(--text-muted)' };
+                    const statusLabels: Record<string, string> = { activo: 'Activo', completado: 'Completado', cancelado: 'Cancelado', borrador: 'Borrador' };
+                    return (
+                      <details key={y.year} className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
+                        <summary style={{ padding: '0.85rem 1.25rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none', listStyle: 'none' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', transition: 'transform 0.2s' }}>&#9654;</span>
+                            <span style={{ fontWeight: 700, fontSize: '0.92rem' }}>{y.year}</span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{y.total} planes</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.78rem' }}>
+                            <span>Completados: <strong style={{ color: 'var(--success)' }}>{y.completed}</strong></span>
+                            <span style={{ fontWeight: 600, color: pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)' }}>{pct}%</span>
+                          </div>
+                        </summary>
+                        <div style={{ borderTop: '1px solid var(--border)', padding: '0.75rem 1.25rem' }}>
+                          {(y.plans || []).length === 0 ? (
+                            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin planes en este año</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {(y.plans || []).map((p: any) => (
+                                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.6rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.82rem' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 600 }}>{p.title || 'Sin título'}</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                                      {p.userName}{p.department ? ` — ${p.department}` : ''}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: 'center', minWidth: '70px' }}>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Acciones</div>
+                                    <div style={{ fontWeight: 600, fontSize: '0.78rem' }}>{p.completedActions}/{p.totalActions}</div>
+                                  </div>
+                                  <div style={{ textAlign: 'center', minWidth: '55px' }}>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Progreso</div>
+                                    <div style={{ fontWeight: 700, fontSize: '0.78rem', color: p.progress >= 80 ? 'var(--success)' : p.progress >= 40 ? 'var(--warning)' : 'var(--text-secondary)' }}>{p.progress}%</div>
+                                  </div>
+                                  <span style={{ padding: '0.2rem 0.5rem', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 600, background: `${statusColors[p.status] || 'var(--text-muted)'}15`, color: statusColors[p.status] || 'var(--text-muted)' }}>
+                                    {statusLabels[p.status] || p.status}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </details>
+                    );
+                  })}
                 </div>
               )}
             </>
