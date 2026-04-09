@@ -241,18 +241,23 @@ export default function MantenedoresPage() {
             {/* Positions list */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
               {positions.map((p, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.85rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.88rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>{p.level}</span>
-                    <span>{p.name}</span>
-                  </div>
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.6rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.88rem' }}>
+                  <input className="input" type="number" min={1} max={20} value={p.level}
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(20, Number(e.target.value) || 1));
+                      setPositions(prev => prev.map((pos, i) => i === idx ? { ...pos, level: val } : pos).sort((a, b) => a.level - b.level));
+                    }}
+                    style={{ width: '48px', textAlign: 'center', fontSize: '0.82rem', padding: '0.3rem', fontWeight: 700 }} />
+                  <input className="input" value={p.name}
+                    onChange={(e) => setPositions(prev => prev.map((pos, i) => i === idx ? { ...pos, name: e.target.value } : pos))}
+                    style={{ flex: 1, fontSize: '0.85rem', padding: '0.3rem 0.6rem' }} />
                   <button type="button" onClick={async () => {
                     if (!token) return;
                     const usage = await api.tenants.checkPositionUsage(token, p.name).catch(() => ({ inUse: false, count: 0 }));
                     if (usage.inUse) { setPosError(`"${p.name}" está en uso por ${usage.count} usuario(s)`); setTimeout(() => setPosError(null), 4000); return; }
                     const updated = positions.filter((_, i) => i !== idx);
                     setPositions(updated);
-                  }} title="Eliminar" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1.1rem', padding: '0 0.3rem', lineHeight: 1 }}>&times;</button>
+                  }} title="Eliminar" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1.1rem', padding: '0 0.3rem', lineHeight: 1, flexShrink: 0 }}>&times;</button>
                 </div>
               ))}
               {positions.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontStyle: 'italic' }}>Sin cargos configurados</p>}
@@ -294,7 +299,7 @@ export default function MantenedoresPage() {
                 { name: 'Subgerente', level: 3 }, { name: 'Jefe de Área', level: 4 },
                 { name: 'Coordinador', level: 5 }, { name: 'Analista', level: 6 }, { name: 'Asistente', level: 7 },
               ])} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.45rem 1rem', fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                Restaurar defaults
+                Restaurar predeterminados
               </button>
               {posSaved && <span style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600 }}>&#10003; Guardado</span>}
             </div>
@@ -368,14 +373,20 @@ export default function MantenedoresPage() {
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '0.55rem 0.85rem',
+                          gap: '0.5rem',
+                          padding: '0.4rem 0.6rem',
                           background: 'var(--bg-secondary)',
                           borderRadius: '6px',
                           fontSize: '0.88rem',
                         }}
                       >
-                        <span>{item}</span>
+                        <input className="input" value={item}
+                          onChange={(e) => {
+                            const updated = [...items];
+                            updated[idx] = e.target.value;
+                            setCustomSettings((prev: any) => ({ ...prev, [key]: updated }));
+                          }}
+                          style={{ flex: 1, fontSize: '0.85rem', padding: '0.3rem 0.6rem' }} />
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(key, idx)}
@@ -388,6 +399,7 @@ export default function MantenedoresPage() {
                             fontSize: '1.1rem',
                             padding: '0 0.3rem',
                             lineHeight: 1,
+                            flexShrink: 0,
                           }}
                         >
                           &times;
