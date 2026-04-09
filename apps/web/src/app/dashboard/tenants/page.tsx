@@ -262,9 +262,30 @@ export default function TenantsPage() {
     setShowNewPos(false);
     setAdminForm({ email: '', firstName: '', lastName: '', rut: '', password: '', hireDate: '', department: '', position: '', hierarchyLevel: '' });
 
-    // Load tenant departments and positions
-    const depts = Array.isArray(t.settings?.departments) ? t.settings.departments : [];
-    const positions = Array.isArray(t.settings?.positions) ? t.settings.positions.filter((p: any) => p?.name) : [];
+    // Load tenant departments and positions from table (with settings fallback)
+    let depts: string[] = [];
+    let positions: any[] = [];
+    if (token) {
+      try {
+        const deptRecords = await api.tenants.getDepartmentsForTenant(token, t.id);
+        if (Array.isArray(deptRecords) && deptRecords.length > 0) {
+          depts = deptRecords.filter((d: any) => d.isActive).map((d: any) => d.name);
+        }
+      } catch {}
+      try {
+        const posRecords = await api.tenants.getPositionsForTenant(token, t.id);
+        if (Array.isArray(posRecords) && posRecords.length > 0) {
+          positions = posRecords.filter((p: any) => p.isActive).map((p: any) => ({ name: p.name, level: p.level }));
+        }
+      } catch {}
+    }
+    // Fallback to settings if table endpoints fail or return empty
+    if (depts.length === 0) {
+      depts = Array.isArray(t.settings?.departments) ? t.settings.departments : [];
+    }
+    if (positions.length === 0) {
+      positions = Array.isArray(t.settings?.positions) ? t.settings.positions.filter((p: any) => p?.name) : [];
+    }
     setAdminDepts(depts);
     setAdminPositions(positions);
 

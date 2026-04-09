@@ -251,6 +251,10 @@ export const api = {
     // Departments table CRUD
     getDepartmentsTable: (token: string) =>
       request<DepartmentData[]>("/tenants/me/departments", {}, token),
+    getDepartmentsForTenant: (token: string, tenantId: string) =>
+      request<DepartmentData[]>(`/tenants/${tenantId}/departments`, {}, token),
+    getPositionsForTenant: (token: string, tenantId: string) =>
+      request<PositionData[]>(`/tenants/${tenantId}/positions`, {}, token),
     createDepartmentRecord: (token: string, data: { name: string; sortOrder?: number }) =>
       request<DepartmentData>("/tenants/me/departments", { method: "POST", body: JSON.stringify(data) }, token),
     updateDepartmentRecord: (token: string, id: string, data: { name?: string; sortOrder?: number; isActive?: boolean }) =>

@@ -167,6 +167,20 @@ export class TenantsController {
     return this.tenantsService.getSystemStats();
   }
 
+  /** Super admin: get departments for any tenant */
+  @Get(':tenantId/departments')
+  @Roles('super_admin')
+  getDepartmentsForTenant(@Param('tenantId', ParseUUIDPipe) tenantId: string) {
+    return this.tenantsService.getDepartmentsTable(tenantId);
+  }
+
+  /** Super admin: get positions for any tenant */
+  @Get(':tenantId/positions')
+  @Roles('super_admin')
+  getPositionsForTenant(@Param('tenantId', ParseUUIDPipe) tenantId: string) {
+    return this.tenantsService.getPositionsTable(tenantId);
+  }
+
   @Get('usage-metrics')
   getUsageMetrics() {
     return this.tenantsService.getUsageMetrics();
