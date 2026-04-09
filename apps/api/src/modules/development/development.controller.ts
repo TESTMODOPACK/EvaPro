@@ -55,6 +55,12 @@ export class DevelopmentController {
     return this.developmentService.updateCompetency(req.user.tenantId, id, dto);
   }
 
+  @Post('competencies/seed-defaults')
+  @Roles('super_admin', 'tenant_admin')
+  seedDefaults(@Request() req: any) {
+    return this.developmentService.seedDefaultCompetencies(req.user.tenantId, req.user.userId);
+  }
+
   @Post('competencies/propose')
   @Roles('super_admin', 'tenant_admin', 'manager')
   proposeCompetency(@Request() req: any, @Body() dto: any) {

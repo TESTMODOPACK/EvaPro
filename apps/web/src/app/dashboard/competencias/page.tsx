@@ -98,6 +98,21 @@ export default function CompetenciasPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CompetencyForm>({ name: '', category: '', description: '' });
   const [creating, setCreating] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+
+  const handleSeedDefaults = async () => {
+    if (!token) return;
+    if (!confirm('Se agregarán 24 competencias base organizadas por categoría (Gestión, Blanda, Técnica, Liderazgo). Las competencias existentes con el mismo nombre no se duplicarán. ¿Continuar?')) return;
+    setSeeding(true);
+    try {
+      const result = await api.development.competencies.seedDefaults(token);
+      toast.success(`Competencias base cargadas: ${result.created} nuevas, ${result.skipped} ya existían`);
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al cargar competencias base');
+    }
+    setSeeding(false);
+  };
 
   // Edit inline
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -209,9 +224,15 @@ export default function CompetenciasPage() {
             {'Gesti\u00f3n de competencias para planes de desarrollo'}
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowCreate(!showCreate)} disabled={planBlocked}>
-          {showCreate ? 'Cancelar' : '+ Nueva Competencia'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button className="btn-ghost" onClick={handleSeedDefaults} disabled={seeding || planBlocked}
+            style={{ fontSize: '0.82rem' }}>
+            {seeding ? 'Cargando...' : 'Cargar competencias base'}
+          </button>
+          <button className="btn-primary" onClick={() => setShowCreate(!showCreate)} disabled={planBlocked}>
+            {showCreate ? 'Cancelar' : '+ Nueva Competencia'}
+          </button>
+        </div>
       </div>
 
       {error && (

@@ -762,6 +762,7 @@ export const api = {
       pending: (token: string) => request<any[]>("/development/competencies/pending", {}, token),
       approve: (token: string, id: string, note?: string) => request<any>(`/development/competencies/${id}/approve`, { method: "POST", body: JSON.stringify({ note }) }, token),
       reject: (token: string, id: string, note: string) => request<any>(`/development/competencies/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }, token),
+      seedDefaults: (token: string) => request<any>("/development/competencies/seed-defaults", { method: "POST" }, token),
     },
     roleCompetencies: {
       list: (token: string, position?: string) =>
