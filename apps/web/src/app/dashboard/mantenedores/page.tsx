@@ -603,6 +603,16 @@ function RoleCompetenciesSection() {
 
   useEffect(() => { if (expanded) loadData(); }, [expanded, token]);
 
+  // Suggest competency level based on position hierarchy
+  const getSuggestedLevel = (positionName: string): number => {
+    const pos = positions.find((p: any) => p.name === positionName);
+    if (!pos) return 5;
+    // Map hierarchy level (1=highest) to competency level (10=highest)
+    // Level 1 (CEO) → competency 9, Level 2 → 8, Level 3 → 7, Level 4 → 6, Level 5 → 5, Level 6 → 4, Level 7+ → 3
+    const map: Record<number, number> = { 1: 9, 2: 8, 3: 7, 4: 6, 5: 5, 6: 4, 7: 3 };
+    return map[pos.level] || Math.max(2, 10 - pos.level);
+  };
+
   const filtered = selectedPosition ? roleComps.filter((rc: any) => rc.position === selectedPosition) : [];
   const assignedCompIds = new Set(filtered.map((rc: any) => rc.competencyId));
   const availableComps = competencies.filter((c: any) => c.isActive && !assignedCompIds.has(c.id));
@@ -641,9 +651,10 @@ function RoleCompetenciesSection() {
     if (!token) return;
     setSaving(true); setMsg('');
     try {
-      const result = await api.development.roleCompetencies.bulkAssign(token, { position, defaultLevel: 5 });
+      const level = getSuggestedLevel(position);
+      const result = await api.development.roleCompetencies.bulkAssign(token, { position, defaultLevel: level });
       await loadData();
-      setMsg(`${result.created} competencias asignadas a ${position}`);
+      setMsg(`${result.created} competencias asignadas a ${position} (nivel ${level})`);
     } catch (e: any) { setMsg(e.message || 'Error'); }
     setSaving(false);
   };
@@ -654,12 +665,13 @@ function RoleCompetenciesSection() {
     let total = 0;
     for (const p of positionsWithout) {
       try {
-        const result = await api.development.roleCompetencies.bulkAssign(token, { position: p.name, defaultLevel: 5 });
+        const level = getSuggestedLevel(p.name);
+        const result = await api.development.roleCompetencies.bulkAssign(token, { position: p.name, defaultLevel: level });
         total += result.created;
       } catch {}
     }
     await loadData();
-    setMsg(`${total} competencias asignadas a ${positionsWithout.length} cargos`);
+    setMsg(`${total} competencias asignadas a ${positionsWithout.length} cargos (niveles según jerarquía)`);
     setSaving(false);
   };
 
@@ -671,18 +683,33 @@ function RoleCompetenciesSection() {
       }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Competencias por Cargo</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Define qué competencias y nivel se espera para cada cargo.</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Define qué competencias y nivel de dominio se espera para cada cargo.</div>
         </div>
         <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
       </button>
 
       {expanded && (
         <div style={{ padding: '0 1.25rem 1.25rem' }}>
+          {/* Level explanation */}
+          <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.1)', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--accent)' }}>Escala de niveles de competencia (1-10):</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.25rem 1rem', marginTop: '0.35rem' }}>
+              <span><strong style={{ color: 'var(--danger)' }}>1-2</strong> Básico — Conocimiento introductorio</span>
+              <span><strong style={{ color: '#f59e0b' }}>3-4</strong> Intermedio — Aplica con supervisión</span>
+              <span><strong style={{ color: 'var(--accent)' }}>5-6</strong> Competente — Aplica de forma autónoma</span>
+              <span><strong style={{ color: '#6366f1' }}>7-8</strong> Avanzado — Referente en el área</span>
+              <span><strong style={{ color: 'var(--success)' }}>9-10</strong> Experto — Lidera y enseña a otros</span>
+            </div>
+            <p style={{ margin: '0.4rem 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              El nivel sugerido se calcula automáticamente según la jerarquía del cargo: cargos de mayor nivel jerárquico requieren mayor dominio de competencias.
+            </p>
+          </div>
+
           {/* Position selector */}
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '1rem', flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 250px' }}>
               <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>Cargo</label>
-              <select className="input" value={selectedPosition} onChange={(e) => setSelectedPosition(e.target.value)} style={{ width: '100%', fontSize: '0.82rem' }}>
+              <select className="input" value={selectedPosition} onChange={(e) => { setSelectedPosition(e.target.value); if (e.target.value) setAddLevel(getSuggestedLevel(e.target.value)); }} style={{ width: '100%', fontSize: '0.82rem' }}>
                 <option value="">— Seleccionar cargo —</option>
                 {positions.map((p: any) => (
                   <option key={p.name} value={p.name}>
@@ -712,7 +739,7 @@ function RoleCompetenciesSection() {
                   Sin competencias asignadas. Use el formulario abajo para agregar.
                   <button className="btn-primary" style={{ display: 'block', margin: '0.5rem auto 0', fontSize: '0.78rem' }} disabled={saving}
                     onClick={() => handleBulk(selectedPosition)}>
-                    {saving ? '...' : 'Asignar todas las competencias (nivel 5)'}
+                    {saving ? '...' : `Asignar todas las competencias (nivel sugerido: ${getSuggestedLevel(selectedPosition)})`}
                   </button>
                 </div>
               ) : (
