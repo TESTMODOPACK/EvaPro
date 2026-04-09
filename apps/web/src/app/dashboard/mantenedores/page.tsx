@@ -844,17 +844,25 @@ function RoleCompetenciesSection() {
       {expanded && (
         <div style={{ padding: '0 1.25rem 1.25rem' }}>
           {/* Level explanation */}
-          <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.1)', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            <strong style={{ color: 'var(--accent)' }}>Escala de niveles de competencia (1-10):</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.25rem 1rem', marginTop: '0.35rem' }}>
-              <span><strong style={{ color: 'var(--danger)' }}>1-2</strong> Básico — Conocimiento introductorio</span>
-              <span><strong style={{ color: '#f59e0b' }}>3-4</strong> Intermedio — Aplica con supervisión</span>
-              <span><strong style={{ color: 'var(--accent)' }}>5-6</strong> Competente — Aplica de forma autónoma</span>
-              <span><strong style={{ color: '#6366f1' }}>7-8</strong> Avanzado — Referente en el área</span>
-              <span><strong style={{ color: 'var(--success)' }}>9-10</strong> Experto — Lidera y enseña a otros</span>
+          <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.1)', marginBottom: '1rem' }}>
+            <strong style={{ color: 'var(--accent)', fontSize: '0.82rem', display: 'block', marginBottom: '0.6rem' }}>Escala de niveles de competencia (1-10)</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.5rem' }}>
+              {[
+                { range: '1-2', label: 'Básico', desc: 'Conocimiento introductorio', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
+                { range: '3-4', label: 'Intermedio', desc: 'Aplica con supervisión', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
+                { range: '5-6', label: 'Competente', desc: 'Aplica de forma autónoma', color: '#6366f1', bg: 'rgba(99,102,241,0.08)' },
+                { range: '7-8', label: 'Avanzado', desc: 'Referente en el área', color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)' },
+                { range: '9-10', label: 'Experto', desc: 'Lidera y enseña a otros', color: '#10b981', bg: 'rgba(16,185,129,0.08)' },
+              ].map((l) => (
+                <div key={l.range} style={{ padding: '0.5rem 0.6rem', borderRadius: '6px', background: l.bg, border: `1px solid ${l.color}20`, textAlign: 'center' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: l.color, lineHeight: 1.2 }}>{l.range}</div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: l.color, marginTop: '0.15rem' }}>{l.label}</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.2rem', lineHeight: 1.3 }}>{l.desc}</div>
+                </div>
+              ))}
             </div>
-            <p style={{ margin: '0.4rem 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              El nivel sugerido se calcula automáticamente según la jerarquía del cargo: cargos de mayor nivel jerárquico requieren mayor dominio de competencias.
+            <p style={{ margin: '0.6rem 0 0', fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.5, textAlign: 'center' }}>
+              El nivel sugerido se calcula según la jerarquía del cargo: cargos de mayor nivel requieren mayor dominio.
             </p>
           </div>
 
