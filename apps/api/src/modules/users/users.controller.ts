@@ -79,7 +79,9 @@ export class UsersController {
   @Post()
   @Roles('super_admin', 'tenant_admin')
   create(@Request() req: any, @Body() dto: CreateUserDto) {
-    return this.usersService.create(req.user.tenantId, dto);
+    // super_admin can create users in any tenant by passing tenantId in body
+    const tenantId = (req.user.role === 'super_admin' && (dto as any).tenantId) ? (dto as any).tenantId : req.user.tenantId;
+    return this.usersService.create(tenantId, dto);
   }
 
   /** POST /users/bulk-import */
