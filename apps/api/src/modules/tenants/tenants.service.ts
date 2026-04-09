@@ -289,41 +289,41 @@ export class TenantsService {
         const userDeptCount = await this.userRepository.count({ where: { tenantId, department: value } });
         if (userDeptCount > 0) {
           usageParts.push(`${userDeptCount} usuario(s)`);
+          count += userDeptCount;
         }
 
-        // Check active recruitment processes with this department
-        const recruitRepo = this.userRepository.manager.getRepository('recruitment_processes');
-        const recruitCount = await recruitRepo.createQueryBuilder('rp')
-          .where('rp.tenant_id = :tenantId', { tenantId })
-          .andWhere('rp.department = :value', { value })
-          .andWhere('rp.status NOT IN (:...closed)', { closed: ['closed', 'cancelled'] })
-          .getCount();
-        if (recruitCount > 0) {
-          usageParts.push(`${recruitCount} proceso(s) de reclutamiento activo(s)`);
-        }
+        // Check active recruitment processes (safe — ignore if table doesn't exist)
+        try {
+          const recruitCount = await this.userRepository.manager.query(
+            `SELECT COUNT(*) as cnt FROM recruitment_processes WHERE tenant_id = $1 AND department = $2 AND status NOT IN ('closed', 'cancelled')`,
+            [tenantId, value],
+          );
+          const rc = Number(recruitCount?.[0]?.cnt || 0);
+          if (rc > 0) { usageParts.push(`${rc} proceso(s) de reclutamiento`); count += rc; }
+        } catch { /* table may not exist */ }
 
-        // Check active calibration sessions with this department
-        const calibrationRepo = this.userRepository.manager.getRepository('calibration_sessions');
-        const calibrationCount = await calibrationRepo.createQueryBuilder('cs')
-          .where('cs.tenant_id = :tenantId', { tenantId })
-          .andWhere('cs.department = :value', { value })
-          .andWhere('cs.status != :done', { done: 'completed' })
-          .getCount();
-        if (calibrationCount > 0) {
-          usageParts.push(`${calibrationCount} sesión(es) de calibración activa(s)`);
-        }
+        // Check active calibration sessions (safe)
+        try {
+          const calibCount = await this.userRepository.manager.query(
+            `SELECT COUNT(*) as cnt FROM calibration_sessions WHERE tenant_id = $1 AND department = $2 AND status != 'completed'`,
+            [tenantId, value],
+          );
+          const cc = Number(calibCount?.[0]?.cnt || 0);
+          if (cc > 0) { usageParts.push(`${cc} calibraci\ón(es)`); count += cc; }
+        } catch { /* table may not exist */ }
 
-        count = userDeptCount + recruitCount + calibrationCount;
         entity = usageParts.length > 0 ? usageParts.join(', ') : 'usuarios';
         break;
       }
       // competencyCategories removed — categories managed via Competencias page
       case 'evaluationPeriods': {
-        const cycleRepo = this.userRepository.manager.getRepository('evaluation_cycles');
-        count = await cycleRepo.createQueryBuilder('c')
-          .where('c.tenant_id = :tenantId', { tenantId })
-          .andWhere('c.period = :value', { value: value.toLowerCase() })
-          .getCount();
+        try {
+          const result = await this.userRepository.manager.query(
+            `SELECT COUNT(*) as cnt FROM evaluation_cycles WHERE tenant_id = $1 AND LOWER(period) = $2`,
+            [tenantId, value.toLowerCase()],
+          );
+          count = Number(result?.[0]?.cnt || 0);
+        } catch { count = 0; }
         entity = 'ciclos de evaluación';
         break;
       }
@@ -355,7 +355,7 @@ export class TenantsService {
 
   async setCustomSetting(tenantId: string, key: string, values: string[]): Promise<string[]> {
     if (!VALID_CUSTOM_KEYS.includes(key)) {
-      throw new BadRequestException(`Clave no v\u00e1lida: ${key}`);
+      throw new BadRequestException(`Clave no v\álida: ${key}`);
     }
     if (!Array.isArray(values) || values.length === 0) {
       throw new BadRequestException('Debe proporcionar al menos un valor');
@@ -364,7 +364,7 @@ export class TenantsService {
       .map((v) => (typeof v === 'string' ? v.trim() : ''))
       .filter((v) => v.length > 0);
     if (sanitized.length === 0) {
-      throw new BadRequestException('Debe proporcionar al menos un valor v\u00e1lido');
+      throw new BadRequestException('Debe proporcionar al menos un valor v\álido');
     }
 
     const tenant = await this.findById(tenantId);
@@ -590,7 +590,7 @@ export class TenantsService {
     const currentPositions: { name: string; level: number }[] = Array.isArray(tenant.settings?.positions) && tenant.settings.positions.length > 0
       ? tenant.settings.positions
       : [...TenantsService.DEFAULT_POSITIONS];
-    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\̀-\ͯ]/g, '').trim();
     const newNamesNorm = new Set(positions.map(p => norm(p.name)));
     const removedPositions = currentPositions.filter(p => !newNamesNorm.has(norm(p.name)));
 
@@ -652,7 +652,7 @@ export class TenantsService {
     const current: { name: string; level: number }[] = Array.isArray(tenant.settings?.positions) && tenant.settings.positions.length > 0
       ? tenant.settings.positions
       : [...TenantsService.DEFAULT_POSITIONS];
-    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\̀-\ͯ]/g, '');
     const exists = current.some(p => norm(p.name) === norm(name.trim()));
     if (exists) return; // Already in catalog
     current.push({ name: name.trim(), level });

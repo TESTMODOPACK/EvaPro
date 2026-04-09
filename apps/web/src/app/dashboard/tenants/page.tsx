@@ -771,7 +771,7 @@ export default function TenantsPage() {
                           setTenantAdmin({ ...tenantAdmin, department: e.target.value });
                         }
                       }}>
-                      <option value="">{'\u2014 Seleccionar departamento \u2014'}</option>
+                      <option value="">{'— Seleccionar departamento —'}</option>
                       {tenantDepts.map(d => <option key={d} value={d}>{d}</option>)}
                       <option value="__new__">+ Nuevo departamento...</option>
                     </select>
@@ -782,7 +782,7 @@ export default function TenantsPage() {
                           onChange={(e) => { if (tenantAdmin) setTenantAdmin({ ...tenantAdmin, department: e.target.value }); }}
                           placeholder="Nombre del nuevo departamento" />
                         <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                          Se agregar\u00e1 autom\u00e1ticamente al cat\u00e1logo de departamentos de la organizaci\u00f3n.
+                          Se agregará automáticamente al catálogo de departamentos de la organización.
                         </p>
                       </div>
                     )}
@@ -804,7 +804,7 @@ export default function TenantsPage() {
                           setAdminHierarchyLevel(match ? String(match.level) : '');
                         }
                       }}>
-                      <option value="">{'\u2014 Seleccionar cargo \u2014'}</option>
+                      <option value="">{'— Seleccionar cargo —'}</option>
                       {[...tenantPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
                         <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>
                       ))}
@@ -824,9 +824,9 @@ export default function TenantsPage() {
                             placeholder="Nivel *" />
                         </div>
                         <div style={{ marginTop: '0.35rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', fontSize: '0.72rem', color: 'var(--text-secondary)', maxWidth: '400px' }}>
-                          <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: 'var(--accent)' }}>Referencia de niveles jer\u00e1rquicos</div>
+                          <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: 'var(--accent)' }}>Referencia de niveles jerárquicos</div>
                           <p style={{ margin: '0 0 0.3rem', lineHeight: 1.4 }}>
-                            Nivel 1 = m\u00e1s alto (ej: Gerente General), nivel 7+ = operativo. El cargo se agregar\u00e1 al cat\u00e1logo.
+                            Nivel 1 = más alto (ej: Gerente General), nivel 7+ = operativo. El cargo se agregará al catálogo.
                           </p>
                           {tenantPositions.length > 0 && (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
