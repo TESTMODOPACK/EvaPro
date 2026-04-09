@@ -340,9 +340,11 @@ export class UsersService {
     if (dto.language !== undefined) user.language = dto.language;
 
     const saved = await this.userRepository.save(user);
-    // Auto-add custom position to catalog if position/level changed
+    // Auto-add custom position/department to catalog if changed
     if (dto.position !== undefined || dto.hierarchyLevel !== undefined) {
       this.autoAddPositionToCatalog(user.tenantId, saved.position, saved.hierarchyLevel).catch(() => {});
+    }
+    if (dto.department !== undefined) {
       this.autoAddDepartmentToCatalog(user.tenantId, saved.department).catch(() => {});
     }
     return saved;
