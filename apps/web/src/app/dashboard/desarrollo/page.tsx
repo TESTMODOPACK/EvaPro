@@ -535,6 +535,7 @@ function DesarrolloPageContent() {
       {/* Filters bar */}
       <div className="card animate-fade-up" style={{ padding: '0.85rem 1.25rem' }}>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          {isAdmin && (
           <div>
             <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Departamento</label>
             <select className="input" style={{ fontSize: '0.82rem', padding: '0.35rem 0.6rem', minWidth: '150px' }} value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setPdiPage(1); }}>
@@ -542,6 +543,7 @@ function DesarrolloPageContent() {
               {availableDepts.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
+          )}
           <div>
             <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Año</label>
             <select className="input" style={{ fontSize: '0.82rem', padding: '0.35rem 0.6rem', minWidth: '100px' }} value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setPdiPage(1); }}>
