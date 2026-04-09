@@ -610,10 +610,34 @@ export default function AjustesPage() {
               </p>
             </div>
             {emailFrom && (
-              <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
                 {t('settings.notifications.senderPreview')} <strong>{emailFrom}</strong>
               </div>
             )}
+
+            {/* Resend configuration guide */}
+            <div style={{ padding: '1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <p style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--accent)' }}>
+                {'📧'} Cómo configurar tu dominio en Resend
+              </p>
+              <ol style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                <li>Ingresa a <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}>resend.com/domains</a> con la cuenta del sistema.</li>
+                <li>Haz clic en <strong>Add Domain</strong> e ingresa tu dominio (ej: <code>tuempresa.cl</code>).</li>
+                <li>Resend te mostrará <strong>registros DNS</strong> que debes agregar en tu proveedor de dominio:
+                  <ul style={{ margin: '0.2rem 0 0', paddingLeft: '1rem' }}>
+                    <li><strong>MX</strong> — para recibir respuestas</li>
+                    <li><strong>TXT (SPF)</strong> — autoriza a Resend a enviar en tu nombre</li>
+                    <li><strong>CNAME (DKIM)</strong> — firma criptográfica de autenticidad</li>
+                  </ul>
+                </li>
+                <li>Agrega los registros en el panel DNS de tu proveedor (ej: Hostinger, GoDaddy, Cloudflare).</li>
+                <li>Espera la <strong>verificación</strong> (puede tardar 5 min a 48 horas según el proveedor DNS).</li>
+                <li>Una vez verificado, ingresa aquí el email con tu dominio: <code>notificaciones@tuempresa.cl</code></li>
+              </ol>
+              <p style={{ margin: '0.5rem 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Si no configuras un dominio propio, los emails se envían desde el remitente por defecto del sistema (onboarding@resend.dev) y pueden llegar a spam.
+              </p>
+            </div>
           </div>
 
           {/* Save button */}
