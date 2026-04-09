@@ -44,7 +44,7 @@ export default function MantenedoresPage() {
   useEffect(() => {
     if (!token) return;
     Promise.all([
-      api.tenants.getAllCustomSettings(token).catch(() => ({ ...CUSTOM_SETTINGS_DEFAULTS })),
+      api.tenants.getAllCustomSettings(token).catch(() => ({})),
       api.tenants.getPositionsCatalog(token).catch(() => []),
     ]).then(([settings, pos]) => {
       setCustomSettings(settings);
@@ -318,7 +318,7 @@ export default function MantenedoresPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {CUSTOM_SETTINGS_KEYS.map((key) => {
           const meta = CUSTOM_SETTINGS_META[key];
-          const items = customSettings[key] || CUSTOM_SETTINGS_DEFAULTS[key];
+          const items = customSettings[key] ?? [];
           const isExpanded = expandedKey === key;
           const isSaving = savingKey === key;
           const justSaved = settingSaved === key;

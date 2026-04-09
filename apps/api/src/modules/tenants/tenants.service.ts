@@ -360,7 +360,7 @@ export class TenantsService {
     const tenant = await this.findById(tenantId);
 
     // Check if any removed values are in use
-    const currentValues: string[] = tenant.settings?.[key] || CUSTOM_SETTINGS_DEFAULTS[key] || [];
+    const currentValues: string[] = Array.isArray(tenant.settings?.[key]) ? tenant.settings[key] : [];
     const removedValues = currentValues.filter((v) => !sanitized.includes(v));
     for (const removed of removedValues) {
       const usage = await this.checkSettingUsage(tenantId, key, removed);
