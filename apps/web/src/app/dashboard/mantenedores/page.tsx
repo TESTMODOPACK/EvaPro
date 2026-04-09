@@ -245,7 +245,7 @@ export default function MantenedoresPage() {
                   <input className="input" type="number" min={1} max={20} value={p.level}
                     onChange={(e) => {
                       const val = Math.max(1, Math.min(20, Number(e.target.value) || 1));
-                      setPositions(prev => prev.map((pos, i) => i === idx ? { ...pos, level: val } : pos).sort((a, b) => a.level - b.level));
+                      setPositions(prev => prev.map((pos, i) => i === idx ? { ...pos, level: val } : pos));
                     }}
                     style={{ width: '48px', textAlign: 'center', fontSize: '0.82rem', padding: '0.3rem', fontWeight: 700 }} />
                   <input className="input" value={p.name}
@@ -610,7 +610,7 @@ function RoleCompetenciesSection() {
     // Map hierarchy level (1=highest) to competency level (10=highest)
     // Level 1 (CEO) → competency 9, Level 2 → 8, Level 3 → 7, Level 4 → 6, Level 5 → 5, Level 6 → 4, Level 7+ → 3
     const map: Record<number, number> = { 1: 9, 2: 8, 3: 7, 4: 6, 5: 5, 6: 4, 7: 3 };
-    return map[pos.level] || Math.max(2, 10 - pos.level);
+    return map[pos.level] || 2;
   };
 
   const filtered = selectedPosition ? roleComps.filter((rc: any) => rc.position === selectedPosition) : [];
@@ -693,7 +693,7 @@ function RoleCompetenciesSection() {
           {/* Level explanation */}
           <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.1)', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             <strong style={{ color: 'var(--accent)' }}>Escala de niveles de competencia (1-10):</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.25rem 1rem', marginTop: '0.35rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.25rem 1rem', marginTop: '0.35rem' }}>
               <span><strong style={{ color: 'var(--danger)' }}>1-2</strong> Básico — Conocimiento introductorio</span>
               <span><strong style={{ color: '#f59e0b' }}>3-4</strong> Intermedio — Aplica con supervisión</span>
               <span><strong style={{ color: 'var(--accent)' }}>5-6</strong> Competente — Aplica de forma autónoma</span>
