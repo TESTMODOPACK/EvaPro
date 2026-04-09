@@ -412,7 +412,7 @@ export default function UsuariosPage() {
     const positions = positionCatalog || [];
 
     // Sheet 1: Colaboradores (main data entry)
-    const usrHeaders = ['correo *', 'nombre *', 'apellido *', 'rut', 'contrasena', 'rol', 'departamento *', 'cargo *', 'nivel_jerarquico', 'fecha_ingreso (DD-MM-AAAA)', 'jefatura_directa (correo)', 'genero', 'fecha_nacimiento (DD-MM-AAAA)', 'nacionalidad', 'nivel_senioridad', 'tipo_contrato', 'modalidad_trabajo'];
+    const usrHeaders = ['correo *', 'nombre *', 'apellido *', 'rut *', 'contrasena', 'rol', 'departamento *', 'cargo *', 'nivel_jerarquico', 'fecha_ingreso (DD-MM-AAAA)', 'jefatura_directa (correo)', 'genero', 'fecha_nacimiento (DD-MM-AAAA)', 'nacionalidad', 'nivel_senioridad', 'tipo_contrato', 'modalidad_trabajo'];
     const exRow1 = ['juan.perez@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'Clave123!', 'colaborador', depts[0] || 'Tecnología', positions[0]?.name || 'Analista', positions[0]?.level || 6, '15-01-2024', 'maria@empresa.cl', 'masculino', '15-03-1990', 'Chilena', 'mid', 'indefinido', 'oficina'];
     const exRow2 = ['maria.garcia@empresa.cl', 'María', 'García', '', '', 'encargado_equipo', depts[1] || 'Ventas', positions[1]?.name || 'Gerente', positions[1]?.level || 2, '01-06-2023', '', 'femenino', '22-08-1985', 'Chilena', 'senior', 'indefinido', 'hibrido'];
     const ws1 = XLSX.utils.aoa_to_sheet([usrHeaders, exRow1, exRow2]);
@@ -443,7 +443,7 @@ export default function UsuariosPage() {
       ['correo', 'Sí', 'Correo electrónico único del usuario', 'juan@empresa.cl'],
       ['nombre', 'Sí', 'Nombres del colaborador', 'Juan'],
       ['apellido', 'Sí', 'Apellidos del colaborador', 'Pérez González'],
-      ['rut', 'No', 'RUT con formato (puntos y guión)', '12.345.678-9'],
+      ['rut', 'S\u00ed', 'RUT con formato (puntos y gui\u00f3n)', '12.345.678-9'],
       ['contrasena', 'No', 'Si se deja vacía se asigna: EvaPro2026!', 'MiClave123!'],
       ['rol', 'No', 'Valores: colaborador, encargado_equipo, encargado_sistema, asesor_externo. Default: colaborador', 'colaborador'],
       ['departamento', 'Sí', 'Debe coincidir con un departamento de la hoja "Departamentos válidos"', depts[0] || 'Tecnología'],
@@ -460,7 +460,7 @@ export default function UsuariosPage() {
       [], ['NOTAS:'],
       ['• Máximo 500 usuarios por archivo'],
       ['• Los campos marcados con * son obligatorios'],
-      ['• Los departamentos deben coincidir con los configurados en el sistema'],
+      ['• Si el departamento no existe en el cat\u00e1logo, se crea autom\u00e1ticamente'],
       ['• Los cargos pueden ser del catálogo o nuevos. Si es nuevo, debe incluir nivel_jerarquico (1=más alto)'],
       ['• Cargos nuevos se agregan automáticamente al catálogo de la organización'],
       ['• Los campos demográficos (género, nacimiento, nacionalidad, etc.) son opcionales pero necesarios para análisis DEI'],
@@ -582,16 +582,21 @@ export default function UsuariosPage() {
       }
 
       // Validate name
-      if (!cols[fnIdx]) errors.push(`Fila ${rowNum}: Nombres vacío.`);
-      if (!cols[lnIdx]) errors.push(`Fila ${rowNum}: Apellidos vacío.`);
+      if (!cols[fnIdx]) errors.push(`Fila ${rowNum}: Nombres vac\u00edo.`);
+      if (!cols[lnIdx]) errors.push(`Fila ${rowNum}: Apellidos vac\u00edo.`);
 
-      // Validate department (required)
+      // Validate RUT (required)
+      const rutIdx = mappedHeader.indexOf('rut');
+      if (rutIdx >= 0 && !cols[rutIdx]) {
+        errors.push(`Fila ${rowNum}: RUT es obligatorio.`);
+      }
+
+      // Validate department (required) — if not in catalog, it will be auto-added
       if (deptIdx >= 0) {
         if (!cols[deptIdx]) {
-          errors.push(`Fila ${rowNum}: Departamento vacío (obligatorio).`);
-        } else if (!validDepts.some((d) => deptMatch(d, cols[deptIdx]))) {
-          errors.push(`Fila ${rowNum}: Departamento no válido: "${cols[deptIdx]}". Vea hoja "Departamentos válidos".`);
+          errors.push(`Fila ${rowNum}: Departamento vac\u00edo (obligatorio).`);
         }
+        // Note: departments not in catalog will be auto-created by the backend
       }
 
       // Validate position (required) — accepts catalog or custom with hierarchy level
@@ -1195,7 +1200,7 @@ export default function UsuariosPage() {
                     ['correo', 'Si', 'Correo electrónico del usuario', 'juan@empresa.cl'],
                     ['nombre', 'Si', 'Nombres del usuario', 'Juan'],
                     ['apellido', 'Si', 'Apellidos del usuario', 'Perez'],
-                    ['rut', 'No', 'RUT del usuario (sin puntos ni guion)', '12345678-9'],
+                    ['rut', 'S\u00ed', 'RUT del usuario con formato (puntos y gui\u00f3n)', '12.345.678-9'],
                     ['contrasena', 'No', 'Si se deja vacía, se asigna: EvaPro2026!', 'MiClave123!'],
                     ['rol', 'No', 'Ver tabla de roles abajo. Default: colaborador', 'colaborador'],
                     ['departamento', 'Sí', 'Debe coincidir con departamentos configurados', 'Tecnología'],
