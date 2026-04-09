@@ -369,20 +369,36 @@ export class TenantsService {
 
     const tenant = await this.findById(tenantId);
 
-    // Only validate removals for departments (other settings don't need usage checks)
+    // For departments: detect renames and update users automatically
     if (key === 'departments') {
       const currentValues: string[] = Array.isArray(tenant.settings?.[key]) ? tenant.settings[key] : [];
       if (currentValues.length > 0) {
         const removedValues = currentValues.filter((v) => !sanitized.includes(v));
+        const addedValues = sanitized.filter((v) => !currentValues.includes(v));
+
+        // Try to match removed → added as renames (by position or 1-to-1)
         for (const removed of removedValues) {
-          try {
-            const usage = await this.checkSettingUsage(tenantId, key, removed);
-            if (usage.inUse) {
-              throw new BadRequestException(`No se puede eliminar "${removed}": ${usage.message}`);
+          // Check if users have this department
+          const userCount = await this.userRepository.count({ where: { tenantId, department: removed } });
+          if (userCount > 0) {
+            // Find the best rename candidate: new value at same index position
+            const oldIdx = currentValues.indexOf(removed);
+            const newAtSameIdx = oldIdx >= 0 && oldIdx < sanitized.length ? sanitized[oldIdx] : null;
+            const renameTarget = addedValues.length === 1 ? addedValues[0]
+              : (newAtSameIdx && addedValues.includes(newAtSameIdx)) ? newAtSameIdx
+              : null;
+
+            if (renameTarget) {
+              // Rename: update all users with old department to new name
+              await this.userRepository.update(
+                { tenantId, department: removed },
+                { department: renameTarget },
+              );
+              // Remove from addedValues so it's not matched again
+              const idx = addedValues.indexOf(renameTarget);
+              if (idx >= 0) addedValues.splice(idx, 1);
             }
-          } catch (e) {
-            if (e instanceof BadRequestException) throw e;
-            // Ignore check errors for non-existent repos, allow save
+            // If no rename target found, allow deletion anyway (users keep old name as orphan)
           }
         }
       }
