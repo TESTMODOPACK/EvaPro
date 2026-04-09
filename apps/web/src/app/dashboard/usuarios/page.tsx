@@ -195,7 +195,7 @@ export default function UsuariosPage() {
 
   const totalUsers = allUsersPag?.total || 0;
   const activeUsers = allUsers.filter((u: any) => u.isActive).length;
-  const noManagerCount = allUsers.filter((u: any) => !u.managerId && u.role !== 'tenant_admin' && u.role !== 'super_admin').length;
+  const noManagerCount = allUsers.filter((u: any) => !u.managerId && u.role !== 'tenant_admin' && u.role !== 'super_admin' && u.isActive).length;
   const inactiveUsers = totalUsers - activeUsers;
   const managersCount = allUsers.filter((u: any) => u.role === 'manager' || u.role === 'tenant_admin').length;
 

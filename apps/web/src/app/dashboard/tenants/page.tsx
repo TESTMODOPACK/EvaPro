@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
@@ -22,9 +22,9 @@ const planColor: Record<string, string> = {
 };
 
 const INDUSTRIES = [
-  'TecnologÃ­a', 'Retail / Comercio', 'Servicios Financieros', 'Salud', 'EducaciÃ³n',
-  'Manufactura', 'ConstrucciÃ³n', 'MinerÃ­a', 'EnergÃ­a', 'Telecomunicaciones',
-  'Transporte y LogÃ­stica', 'Agricultura', 'Gobierno', 'ConsultorÃ­a', 'Otro',
+  'Tecnología', 'Retail / Comercio', 'Servicios Financieros', 'Salud', 'Educación',
+  'Manufactura', 'Construcción', 'Minería', 'Energía', 'Telecomunicaciones',
+  'Transporte y Logística', 'Agricultura', 'Gobierno', 'Consultoría', 'Otro',
 ];
 const EMPLOYEE_RANGES = ['1-15', '16-50', '51-100', '101-200', '201-500', '501-1000', '1000+'];
 
@@ -49,8 +49,8 @@ const emptyForm = {
 // Auto-generate slug from org name
 const autoSlug = (name: string) =>
   name.toLowerCase()
-    .replace(/[Ã¡Ã Ã¤]/g, 'a').replace(/[Ã©Ã¨Ã«]/g, 'e').replace(/[Ã­Ã¬Ã¯]/g, 'i')
-    .replace(/[Ã³Ã²Ã¶]/g, 'o').replace(/[ÃºÃ¹Ã¼]/g, 'u').replace(/Ã±/g, 'n')
+    .replace(/[áÃ ä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u').replace(/ñ/g, 'n')
     .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
@@ -303,7 +303,7 @@ export default function TenantsPage() {
       <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Organizaciones</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>GestiÃ³n de organizaciónes de la plataforma</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Gestión de organizaciónes de la plataforma</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-ghost" onClick={() => { setShowUpload(!showUpload); setUploadResult(null); }}>
@@ -318,9 +318,9 @@ export default function TenantsPage() {
       {/* Excel Upload Section */}
       {showUpload && (
         <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>Cargar OrganizaciÃ³n desde Excel</h3>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>Cargar Organización desde Excel</h3>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-            Suba la plantilla de onboarding para crear una organizaciÃ³n completa con su administrador, departamentos, cargos, competencias y colaboradores.
+            Suba la plantilla de onboarding para crear una organización completa con su administrador, departamentos, cargos, competencias y colaboradores.
           </p>
           <button className="btn-ghost" style={{ fontSize: '0.82rem', marginBottom: '0.75rem' }}
             onClick={async () => {
@@ -329,7 +329,7 @@ export default function TenantsPage() {
               // IMPORTANT: Row numbers must match the parser's getVal() calls exactly
               // Parser reads: org rows 5-15, admin rows 5-11, depts col2 rows 5+, positions col2 rows 5+, competencies col2 rows 5+, users row 5+
 
-              // Hoja 1: OrganizaciÃ³n (parser reads row 5=name, 6=rut, ..., 14=legalRepName, 15=legalRepRut)
+              // Hoja 1: Organización (parser reads row 5=name, 6=rut, ..., 14=legalRepName, 15=legalRepRut)
               const orgData = [
                 ['PLANTILLA DE ONBOARDING â€” EVAPRO'], [''],
                 ['DATOS DE LA ORGANIZACIÃ“N'], ['Campo', 'Valor'],
@@ -338,26 +338,26 @@ export default function TenantsPage() {
                 ['Tipo (company/consultant)', 'company'], // row 7
                 ['Industria', ''],                        // row 8
                 ['Rango de colaboradores', ''],            // row 9
-                ['DirecciÃ³n comercial', ''],               // row 10
+                ['Dirección comercial', ''],               // row 10
                 ['Plan (starter/growth/pro/enterprise)', 'starter'], // row 11
-                ['PerÃ­odo facturaciÃ³n (monthly/quarterly/semiannual/yearly)', 'monthly'], // row 12
+                ['Período facturación (monthly/quarterly/semiannual/yearly)', 'monthly'], // row 12
                 ['Fecha de inicio (YYYY-MM-DD)', new Date().toISOString().split('T')[0]], // row 13
                 ['Nombre representante legal', ''],        // row 14
                 ['RUT representante legal', ''],            // row 15
               ];
               const ws1 = XLSX.utils.aoa_to_sheet(orgData);
               ws1['!cols'] = [{ wch: 48 }, { wch: 40 }];
-              XLSX.utils.book_append_sheet(wb, ws1, 'OrganizaciÃ³n');
+              XLSX.utils.book_append_sheet(wb, ws1, 'Organización');
 
               // Hoja 2: Administrador (parser reads rows 5-11)
               const adminData = [
                 ['ADMINISTRADOR DEL SISTEMA'], [''],
-                ['El primer usuario creado tendrÃ¡ rol de Administrador'], ['Campo', 'Valor'],
+                ['El primer usuario creado tendrá rol de Administrador'], ['Campo', 'Valor'],
                 ['Email *', ''],              // row 5
                 ['Nombres *', ''],            // row 6
                 ['Apellidos *', ''],          // row 7
                 ['RUT', ''],                  // row 8
-                ['ContraseÃ±a temporal *', 'EvaPro2026!'], // row 9
+                ['Contraseña temporal *', 'EvaPro2026!'], // row 9
                 ['Cargo', ''],                // row 10
                 ['Departamento', ''],         // row 11
               ];
@@ -369,14 +369,14 @@ export default function TenantsPage() {
               const deptData = [
                 ['DEPARTAMENTOS'], [''],
                 ['Ingrese un departamento por fila en la columna B'], ['', 'Nombre del departamento'],
-                ['', 'TecnologÃ­a'],           // row 5, col 2
+                ['', 'Tecnología'],           // row 5, col 2
                 ['', 'Ventas'],               // row 6, col 2
                 ['', 'Recursos Humanos'],
                 ['', 'Finanzas'],
                 ['', 'Operaciones'],
                 ['', 'Marketing'],
                 ['', 'Legal'],
-                ['', 'AdministraciÃ³n'],
+                ['', 'Administración'],
               ];
               const ws3 = XLSX.utils.aoa_to_sheet(deptData);
               ws3['!cols'] = [{ wch: 8 }, { wch: 30 }];
@@ -384,10 +384,10 @@ export default function TenantsPage() {
 
               // Hoja 4: Cargos (parser reads col 2=name, col 3=level starting row 5)
               const posData = [
-                ['CATÃLOGO DE CARGOS'], [''],
-                ['Nombre en col B, nivel en col C (1=mÃ¡s alto)'], ['', 'Nombre del cargo', 'Nivel'],
+                ['CATÁLOGO DE CARGOS'], [''],
+                ['Nombre en col B, nivel en col C (1=más alto)'], ['', 'Nombre del cargo', 'Nivel'],
                 ['', 'Gerente General', 1],   // row 5
-                ['', 'Gerente de Ãrea', 2],
+                ['', 'Gerente de Área', 2],
                 ['', 'Jefe de Departamento', 3],
                 ['', 'Coordinador', 4],
                 ['', 'Analista Senior', 5],
@@ -401,9 +401,9 @@ export default function TenantsPage() {
               // Hoja 5: Competencias (parser reads col 2=name, col 3=category starting row 5)
               const compData = [
                 ['COMPETENCIAS (opcional)'], [''],
-                ['Nombre en col B, categorÃ­a en col C'], ['', 'Nombre', 'CategorÃ­a', 'DescripciÃ³n', 'Nivel esperado'],
+                ['Nombre en col B, categoría en col C'], ['', 'Nombre', 'Categoría', 'Descripción', 'Nivel esperado'],
                 ['', 'Liderazgo', 'Habilidades directivas', 'Capacidad para guiar equipos', 3],
-                ['', 'ComunicaciÃ³n', 'Habilidades interpersonales', 'ComunicaciÃ³n efectiva', 3],
+                ['', 'Comunicación', 'Habilidades interpersonales', 'Comunicación efectiva', 3],
                 ['', 'Trabajo en equipo', 'Habilidades interpersonales', '', 3],
               ];
               const ws5 = XLSX.utils.aoa_to_sheet(compData);
@@ -414,8 +414,8 @@ export default function TenantsPage() {
               const usrData = [
                 ['COLABORADORES'], [''],
                 ['Complete los datos de cada colaborador desde la fila 5'],
-                ['Email *', 'Nombres *', 'Apellidos *', 'RUT', 'ContraseÃ±a *', 'Rol (manager/employee)', 'Departamento', 'Cargo', 'Fecha ingreso', 'Email jefe directo'],
-                ['ejemplo@empresa.cl', 'Juan', 'PÃ©rez', '12345678-9', 'EvaPro2026!', 'employee', 'Ventas', 'Ejecutivo de Ventas', '2024-01-15', 'jefe@empresa.cl'],
+                ['Email *', 'Nombres *', 'Apellidos *', 'RUT', 'Contraseña *', 'Rol (manager/employee)', 'Departamento', 'Cargo', 'Fecha ingreso', 'Email jefe directo'],
+                ['ejemplo@empresa.cl', 'Juan', 'Pérez', '12345678-9', 'EvaPro2026!', 'employee', 'Ventas', 'Ejecutivo de Ventas', '2024-01-15', 'jefe@empresa.cl'],
               ];
               const ws6 = XLSX.utils.aoa_to_sheet(usrData);
               ws6['!cols'] = [{ wch: 25 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 25 }];
@@ -526,14 +526,14 @@ export default function TenantsPage() {
                 }
 
                 if (!org.name || !admin.email || !admin.password) {
-                  setError('Faltan datos obligatorios: nombre de organizaciÃ³n, correo y contraseÃ±a del admin');
+                  setError('Faltan datos obligatorios: nombre de organización, correo y contraseña del admin');
                   setUploading(false);
                   return;
                 }
 
                 const result = await api.tenants.bulkOnboard(token, { org, admin, departments, positions, competencies, users });
                 setUploadResult(result);
-                setSuccess('OrganizaciÃ³n creada exitosamente');
+                setSuccess('Organización creada exitosamente');
                 // Reload tenants list
                 api.tenants.list(token).then(setTenants).catch(() => {});
               } catch (err: any) {
@@ -548,7 +548,7 @@ export default function TenantsPage() {
 
           {uploadResult && (
             <div style={{ marginTop: '0.75rem', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--success)', marginBottom: '0.5rem' }}>OrganizaciÃ³n creada exitosamente</div>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--success)', marginBottom: '0.5rem' }}>Organización creada exitosamente</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
                 {(uploadResult.summary || []).map((s: string, i: number) => (
                   <div key={i}>{s.startsWith('ADVERTENCIA') ? <span style={{ color: 'var(--warning)' }}>{s}</span> : s}</div>
@@ -579,7 +579,7 @@ export default function TenantsPage() {
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={labelStyle}>RazÃ³n Social *</label>
+              <label style={labelStyle}>Razón Social *</label>
               <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Mi Empresa S.A." />
             </div>
             <div>
@@ -608,13 +608,13 @@ export default function TenantsPage() {
               </select>
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>DirecciÃ³n comercial</label>
+              <label style={labelStyle}>Dirección comercial</label>
               <input style={inputStyle} placeholder="Ej: Av. Providencia 1234, Santiago" value={form.commercialAddress} onChange={(e) => setForm({ ...form, commercialAddress: e.target.value })} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
               <div>
                 <label style={labelStyle}>Nombre representante legal</label>
-                <input style={inputStyle} placeholder="Ej: Juan PÃ©rez GonzÃ¡lez" value={form.legalRepName} onChange={(e) => setForm({ ...form, legalRepName: e.target.value })} />
+                <input style={inputStyle} placeholder="Ej: Juan Pérez González" value={form.legalRepName} onChange={(e) => setForm({ ...form, legalRepName: e.target.value })} />
               </div>
               <div>
                 <label style={labelStyle}>RUT representante legal</label>
@@ -622,7 +622,7 @@ export default function TenantsPage() {
               </div>
             </div>
             <div>
-              <label style={labelStyle}>Plan y perÃ­odo {!editingId && '*'}</label>
+              <label style={labelStyle}>Plan y período {!editingId && '*'}</label>
               <select
                 style={{ ...inputStyle, borderColor: !form.planId ? 'var(--warning)' : 'var(--border)' }}
                 value={form.planId ? `${form.planId}|${form.billingPeriod}` : ''}
@@ -632,7 +632,7 @@ export default function TenantsPage() {
                   setForm({ ...form, planId, billingPeriod });
                 }}
               >
-                <option value="">{editingId ? 'Sin cambio de plan' : 'Seleccionar plan y perÃ­odo...'}</option>
+                <option value="">{editingId ? 'Sin cambio de plan' : 'Seleccionar plan y período...'}</option>
                 {plans.flatMap((p: any) => {
                   const cur = p.currency || 'UF';
                   const fmt = (v: any, suffix: string) => v != null && Number(v) > 0 ? ` (${Number(v).toFixed(1)} ${cur}${suffix})` : '';
@@ -651,7 +651,7 @@ export default function TenantsPage() {
               )}
               {editingId && !getSubscription(editingId) && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.3rem' }}>
-                  Esta organizaciÃ³n no tiene suscripciÃ³n. Seleccione un plan para asignarla.
+                  Esta organización no tiene suscripción. Seleccione un plan para asignarla.
                 </p>
               )}
             </div>
