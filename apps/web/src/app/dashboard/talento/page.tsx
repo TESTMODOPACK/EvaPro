@@ -264,7 +264,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
         </select>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Solo ciclos cerrados con evaluaciones completadas</span>
 
-        {selectedCycleId && isAdmin && (
+        {selectedCycleId && (isAdmin || userRole === 'manager') && (
           <button className="btn-primary" onClick={handleGenerate} disabled={generating}>
             {generating ? t('talento.generating') : t('talento.generateBtn')}
           </button>

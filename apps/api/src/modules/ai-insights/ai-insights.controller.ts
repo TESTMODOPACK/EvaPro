@@ -196,7 +196,7 @@ export class AiInsightsController {
   // ─── Cycle Comparison AI ──────────────────────────────────────────────
 
   @Post('cycle-comparison')
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   analyzeCycleComparison(
     @Body() body: { cycleIds: string[] },
     @Request() req: any,

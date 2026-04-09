@@ -277,6 +277,41 @@ async function main() {
 
     const pct = cycleAssignments > 0 ? Math.round((cycleCompleted / cycleAssignments) * 100) : 0;
     console.log(`  Assignments: ${cycleAssignments}, Completed: ${cycleCompleted} (${pct}%)`);
+
+    // ── Create talent assessments (Nine Box) for this cycle ──
+    let assessmentsCreated = 0;
+    for (const evaluatee of evaluatees) {
+      // Get average score for this evaluatee in this cycle
+      const avgResult = await ds.query(`
+        SELECT AVG(r.overall_score) as avg_score
+        FROM evaluation_responses r
+        INNER JOIN evaluation_assignments a ON r.assignment_id = a.id
+        WHERE a.cycle_id = $1 AND a.evaluatee_id = $2 AND r.overall_score IS NOT NULL
+      `, [cycleId, evaluatee.id]);
+      const performanceScore = parseFloat(avgResult[0]?.avg_score || '0');
+      if (performanceScore === 0) continue;
+
+      // Calculate Nine Box position
+      const potentialScore = randScore(3, 9); // random potential
+      const perfLevel = performanceScore >= 7.5 ? 'high' : performanceScore >= 5 ? 'medium' : 'low';
+      const potLevel = potentialScore >= 7 ? 'high' : potentialScore >= 4 ? 'medium' : 'low';
+      const NINE_BOX: Record<string, { position: number; pool: string }> = {
+        'low-low': { position: 1, pool: 'dysfunctional' }, 'low-medium': { position: 2, pool: 'underperformer' },
+        'low-high': { position: 4, pool: 'inconsistent' }, 'medium-low': { position: 3, pool: 'risk' },
+        'medium-medium': { position: 5, pool: 'core_player' }, 'medium-high': { position: 7, pool: 'high_potential' },
+        'high-low': { position: 6, pool: 'enigma' }, 'high-medium': { position: 8, pool: 'high_performer' },
+        'high-high': { position: 9, pool: 'star' },
+      };
+      const nb = NINE_BOX[`${perfLevel}-${potLevel}`] || { position: 5, pool: 'core_player' };
+
+      await ds.query(`
+        INSERT INTO talent_assessments (id, tenant_id, cycle_id, user_id, performance_score, potential_score, nine_box_position, talent_pool, assessed_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT DO NOTHING
+      `, [crypto.randomUUID(), tenantId, cycleId, evaluatee.id, Math.round(performanceScore * 100) / 100, Math.round(potentialScore * 100) / 100, nb.position, nb.pool, admin?.id]);
+      assessmentsCreated++;
+    }
+    console.log(`  Talent assessments: ${assessmentsCreated}`);
   }
 
   console.log(`\n═══ SEED COMPLETE ═══`);

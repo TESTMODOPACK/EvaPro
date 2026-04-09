@@ -31,7 +31,7 @@ export class TalentController {
   // ─── Assessments ───────────────────────────────────────────────────────
 
   @Post('generate/:cycleId')
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   generate(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
