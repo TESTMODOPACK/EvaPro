@@ -501,6 +501,8 @@ export class UsersService {
 
     const errors: { row: number; message: string }[] = [];
     let successCount = 0;
+    const newDepartments: string[] = [];
+    const newPositions: string[] = [];
 
     const emailIdx = header.indexOf('email');
     const firstNameIdx = header.indexOf('first_name');
@@ -578,10 +580,12 @@ export class UsersService {
           continue;
         }
 
-        // Validate department against configured list
+        // Auto-add department to catalog if not exists
         if (department && !validDeptSet.has(normDept(department))) {
-          errors.push({ row: rowNum, message: `Departamento no válido: "${department}". Valores permitidos: ${configuredDepts.join(', ')}` });
-          continue;
+          await this.autoAddDepartmentToCatalog(tenantId, department);
+          validDeptSet.add(normDept(department));
+          configuredDepts.push(department);
+          newDepartments.push(department);
         }
 
         // Resolve manager
@@ -593,9 +597,13 @@ export class UsersService {
           }
         }
 
-        // Validate and normalize RUT if provided
+        // Validate and normalize RUT (required)
         let parsedRut: string | null = null;
         const rawRut = rutIdx >= 0 ? (cols[rutIdx] || '').trim() : '';
+        if (!rawRut) {
+          errors.push({ row: rowNum, message: 'RUT es obligatorio' });
+          continue;
+        }
         if (rawRut) {
           const normalized = normalizeRut(rawRut);
           if (!validateRut(normalized)) {
@@ -662,6 +670,12 @@ export class UsersService {
         );
         // Auto-add custom position to catalog
         if (position && hierarchyLevel) {
+          const posNorm2 = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const tn = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+          const existingPos = (tn?.settings?.positions || []).map((p: any) => posNorm2(p.name));
+          if (!existingPos.includes(posNorm2(position))) {
+            newPositions.push(position);
+          }
           this.autoAddPositionToCatalog(tenantId, position, hierarchyLevel).catch(() => {});
         }
         successCount++;
@@ -675,10 +689,19 @@ export class UsersService {
     saved.errors = errors.length > 0 ? errors : null;
     saved.status = errors.length === dataLines.length ? ImportStatus.FAILED : ImportStatus.COMPLETED;
 
+    // Build summary
+    const summary: any = {
+      newDepartments: [...new Set(newDepartments)],
+      newPositions: [...new Set(newPositions)],
+    };
+    (saved as any).summary = summary;
+
     await this.auditService.log(tenantId, uploadedBy, 'users.bulk_imported', 'bulk_import', saved.id, {
       totalRows: dataLines.length,
       successRows: successCount,
       errorRows: errors.length,
+      newDepartments: summary.newDepartments,
+      newPositions: summary.newPositions,
     });
 
     return this.bulkImportRepo.save(saved);

@@ -1353,6 +1353,24 @@ export default function UsuariosPage() {
                   ))}
                 </div>
               )}
+              {/* Summary of new departments and positions */}
+              {bulkResult.summary && (bulkResult.summary.newDepartments?.length > 0 || bulkResult.summary.newPositions?.length > 0) && (
+                <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.15)', fontSize: '0.78rem' }}>
+                  <div style={{ fontWeight: 600, color: '#6366f1', marginBottom: '0.3rem' }}>Resumen de cat&aacute;logos actualizados:</div>
+                  {bulkResult.summary.newDepartments?.length > 0 && (
+                    <div style={{ marginBottom: '0.2rem' }}>
+                      <strong>Departamentos nuevos ({bulkResult.summary.newDepartments.length}):</strong>{' '}
+                      {bulkResult.summary.newDepartments.join(', ')}
+                    </div>
+                  )}
+                  {bulkResult.summary.newPositions?.length > 0 && (
+                    <div>
+                      <strong>Cargos nuevos ({bulkResult.summary.newPositions.length}):</strong>{' '}
+                      {bulkResult.summary.newPositions.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
               {bulkResult.successRows > 0 && (
                 <button
                   className="btn-primary"
