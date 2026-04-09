@@ -381,44 +381,53 @@ export default function MiDesempenoPage() {
               })()}
 
               {/* Completed — evaluations where I was evaluated */}
-              {myEvaluationsReceived.length > 0 && evalStatusFilter !== 'pending' && (
-                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Evaluaciones Recibidas</h3>
-                  <div className="table-wrapper">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'left' }}>Evaluador</th>
-                          <th>Tipo</th>
-                          <th>Ciclo</th>
-                          <th>Puntaje</th>
-                          <th>Fecha</th>
-                          <th>Firma</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {myEvaluationsReceived
-                          .filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter)
-                          .map((ev: any, i: number) => {
-                          const evaluatorName = ev.evaluator ? `${ev.evaluator.firstName || ''} ${ev.evaluator.lastName || ''}`.trim() : (ev.relationType === 'self' ? 'Autoevaluación' : '--');
-                          const respId = ev.response?.id || ev.responseId;
-                          const sigs = respId ? signatureMap[respId] : null;
-                          return (
-                            <tr key={i}>
-                              <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{evaluatorName}</td>
-                              <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
-                              <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
-                              <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
-                              <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}</td>
-                              <td>{sigs?.length ? <SignatureBadge signatures={sigs} /> : '—'}</td>
+              {(() => {
+                const receivedFiltered = myEvaluationsReceived.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter);
+                return receivedFiltered.length > 0 && evalStatusFilter !== 'pending' && (
+                <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderLeft: '4px solid var(--success)' }}>
+                  <button onClick={() => setExpandedPlan(expandedPlan === 'received-evals' ? null : 'received-evals')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem 0', textAlign: 'left' }}>
+                    <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedPlan === 'received-evals' ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--success)' }}>Evaluaciones Recibidas ({receivedFiltered.length})</span>
+                  </button>
+                  {expandedPlan === 'received-evals' && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div className="table-wrapper">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th style={{ textAlign: 'left' }}>Evaluador</th>
+                              <th>Tipo</th>
+                              <th>Ciclo</th>
+                              <th>Puntaje</th>
+                              <th>Fecha</th>
+                              <th>Firma</th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                          </thead>
+                          <tbody>
+                            {receivedFiltered.map((ev: any, i: number) => {
+                              const evaluatorName = ev.evaluator ? `${ev.evaluator.firstName || ''} ${ev.evaluator.lastName || ''}`.trim() : (ev.relationType === 'self' ? 'Autoevaluación' : '--');
+                              const respId = ev.response?.id || ev.responseId;
+                              const sigs = respId ? signatureMap[respId] : null;
+                              return (
+                                <tr key={i}>
+                                  <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{evaluatorName}</td>
+                                  <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
+                                  <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
+                                  <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
+                                  <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}</td>
+                                  <td>{sigs?.length ? <SignatureBadge signatures={sigs} /> : '—'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              );
+              })()}
 
               {/* Evolution */}
               {cycles.length > 0 && (
