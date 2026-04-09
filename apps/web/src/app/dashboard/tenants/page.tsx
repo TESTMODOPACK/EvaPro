@@ -217,17 +217,33 @@ export default function TenantsPage() {
         if (tenantAdmin.position !== undefined) adminUpdate.position = tenantAdmin.position || null;
         if (form.adminPassword?.trim()) adminUpdate.password = form.adminPassword.trim();
         await api.users.update(token, tenantAdmin.id, adminUpdate);
-      } else if (form.adminEmail?.trim() && form.adminPassword?.trim()) {
-        // Create new admin for this organization
-        await api.users.create(token, {
-          tenantId: editingId,
-          email: form.adminEmail.trim(),
-          firstName: form.adminFirstName.trim() || 'Admin',
-          lastName: form.adminLastName.trim() || form.name,
-          password: form.adminPassword.trim(),
-          role: 'tenant_admin',
-          mustChangePassword: true,
-        });
+      } else if (form.adminEmail?.trim()) {
+        // No tenantAdmin loaded — try to find existing admin first, then create or update
+        try {
+          const searchRes: any = await api.users.list(token, 1, 5, { role: 'tenant_admin', tenantId: editingId });
+          const existingAdmin = ((searchRes as any).data || searchRes || []).find((u: any) => u.role === 'tenant_admin');
+          if (existingAdmin) {
+            // Update existing admin
+            const upd: any = { email: form.adminEmail.trim() };
+            if (form.adminFirstName.trim()) upd.firstName = form.adminFirstName.trim();
+            if (form.adminLastName.trim()) upd.lastName = form.adminLastName.trim();
+            if (form.adminPassword?.trim()) upd.password = form.adminPassword.trim();
+            await api.users.update(token, existingAdmin.id, upd);
+          } else if (form.adminPassword?.trim()) {
+            // Create new admin
+            await api.users.create(token, {
+              tenantId: editingId,
+              email: form.adminEmail.trim(),
+              firstName: form.adminFirstName.trim() || 'Admin',
+              lastName: form.adminLastName.trim() || form.name,
+              password: form.adminPassword.trim(),
+              role: 'tenant_admin',
+              mustChangePassword: true,
+            });
+          }
+        } catch (adminErr: any) {
+          console.warn('Admin update/create:', adminErr.message);
+        }
       }
 
       setSuccess('Organizacion actualizada');
