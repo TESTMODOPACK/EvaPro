@@ -120,7 +120,11 @@ export default function TenantsPage() {
       return;
     }
     if (!form.planId) {
-      setError('Debe seleccionar un plan de suscripcion');
+      setError('Debe seleccionar un plan de suscripción');
+      return;
+    }
+    if (!form.adminEmail?.trim() || !form.adminPassword?.trim() || !form.adminFirstName?.trim() || !form.adminLastName?.trim()) {
+      setError('Los datos del administrador son obligatorios: email, contraseña, nombres y apellidos');
       return;
     }
     setSaving(true);
@@ -391,7 +395,7 @@ export default function TenantsPage() {
                 ['Email *', ''],              // row 5
                 ['Nombres *', ''],            // row 6
                 ['Apellidos *', ''],          // row 7
-                ['RUT', ''],                  // row 8
+                ['RUT *', ''],                // row 8
                 ['Contraseña temporal *', 'EvaPro2026!'], // row 9
                 ['Cargo', ''],                // row 10
                 ['Departamento', ''],         // row 11
@@ -560,8 +564,8 @@ export default function TenantsPage() {
                   });
                 }
 
-                if (!org.name || !admin.email || !admin.password) {
-                  setError('Faltan datos obligatorios: nombre de organización, correo y contraseña del admin');
+                if (!org.name || !admin.email || !admin.password || !admin.firstName || !admin.lastName) {
+                  setError('Faltan datos obligatorios: nombre de organización, correo, contraseña, nombres y apellidos del administrador');
                   setUploading(false);
                   return;
                 }
@@ -695,7 +699,7 @@ export default function TenantsPage() {
           {/* Admin fields â€” Create: new admin / Edit: show & edit existing admin */}
           <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
             <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-              {editingId ? 'Administrador de la Organización' : 'Admin inicial (opcional)'}
+              {editingId ? 'Administrador de la Organización' : 'Administrador de la Organización *'}
             </p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
