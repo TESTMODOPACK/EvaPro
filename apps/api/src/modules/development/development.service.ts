@@ -134,15 +134,22 @@ export class DevelopmentService {
     let skipped = 0;
     const updated: string[] = [];
 
-    // First: update existing competencies that match by normalized name (fix accents)
+    // First: update existing competencies that match by normalized name (fix accents + reactivate)
     for (const def of defaults) {
       const match = existing.find(c => normalize(c.name) === normalize(def.name));
-      if (match && match.name !== def.name) {
-        // Update name to include proper accents
-        match.name = def.name;
-        match.description = def.description;
-        await this.competencyRepo.save(match);
-        updated.push(def.name);
+      if (match) {
+        let needsSave = false;
+        // Fix accents if different
+        if (match.name !== def.name) { match.name = def.name; needsSave = true; }
+        if (match.description !== def.description) { match.description = def.description; needsSave = true; }
+        // Reactivate if deactivated
+        if (!match.isActive) { match.isActive = true; needsSave = true; }
+        // Ensure approved status
+        if (match.status !== CompetencyStatus.APPROVED) { match.status = CompetencyStatus.APPROVED; needsSave = true; }
+        if (needsSave) {
+          await this.competencyRepo.save(match);
+          updated.push(def.name);
+        }
       }
     }
 
