@@ -103,12 +103,12 @@ async function main() {
     await ds.query(`DELETE FROM evaluation_assignments WHERE tenant_id = $1 AND cycle_id = $2`, [tenantId, cycle.id]);
     await ds.query(`DELETE FROM peer_assignments WHERE tenant_id = $1 AND cycle_id = $2`, [tenantId, cycle.id]);
     await ds.query(`DELETE FROM cycle_stages WHERE tenant_id = $1 AND cycle_id = $2`, [tenantId, cycle.id]);
-    // Clear FK references from other tables
+    // Clear ALL FK references from other tables
     try { await ds.query(`UPDATE development_plans SET cycle_id = NULL WHERE cycle_id = $1`, [cycle.id]); } catch {}
-    try { await ds.query(`UPDATE talent_assessments SET cycle_id = NULL WHERE cycle_id = $1`, [cycle.id]); } catch {}
-    try { await ds.query(`UPDATE calibration_sessions SET cycle_id = NULL WHERE cycle_id = $1`, [cycle.id]); } catch {}
+    try { await ds.query(`DELETE FROM talent_assessments WHERE cycle_id = $1`, [cycle.id]); } catch {}
     try { await ds.query(`DELETE FROM calibration_entries WHERE session_id IN (SELECT id FROM calibration_sessions WHERE cycle_id = $1)`, [cycle.id]); } catch {}
     try { await ds.query(`DELETE FROM calibration_sessions WHERE cycle_id = $1`, [cycle.id]); } catch {}
+    try { await ds.query(`DELETE FROM ai_insights WHERE metadata->>'cycleId' = $1`, [cycle.id]); } catch {}
     await ds.query(`DELETE FROM evaluation_cycles WHERE id = $1`, [cycle.id]);
     console.log(`  Deleted: ${cycle.name}`);
   }
