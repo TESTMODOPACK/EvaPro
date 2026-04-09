@@ -106,6 +106,7 @@ export default function UsuariosPage() {
   const [filterRole, setFilterRole] = useState('');
   const [filterPosition, setFilterPosition] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterNoManager, setFilterNoManager] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // Debounce search input (300ms)
@@ -118,7 +119,8 @@ export default function UsuariosPage() {
     ? { search: debouncedSearch || undefined, department: filterDept || undefined, role: filterRole || undefined, position: filterPosition || undefined, status: filterStatus || undefined }
     : undefined;
 
-  const { data: paginated, isLoading } = useUsers(page, pageSize, filters);
+  // When filtering by no-manager, load more users to filter client-side
+  const { data: paginated, isLoading } = useUsers(page, filterNoManager ? 500 : pageSize, filters);
 
   // Load ALL users (no filters) once for departments/positions dropdowns
   const { data: allUsersPag } = useUsers(1, 200);
@@ -180,9 +182,10 @@ export default function UsuariosPage() {
       .catch(() => {});
   }, [token, currentUserRole]);
 
-  const users = paginated?.data || [];
-  const totalRecords = paginated?.total || 0;
-  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const usersRaw = paginated?.data || [];
+  const users = filterNoManager ? usersRaw.filter((u: any) => !u.managerId) : usersRaw;
+  const totalRecords = filterNoManager ? users.length : (paginated?.total || 0);
+  const totalPages = filterNoManager ? 1 : Math.max(1, Math.ceil((paginated?.total || 0) / pageSize));
 
   // Use all users for dropdown options (departments, positions, managers)
   const allUsers = allUsersPag?.data || [];
@@ -192,6 +195,7 @@ export default function UsuariosPage() {
 
   const totalUsers = allUsersPag?.total || 0;
   const activeUsers = allUsers.filter((u: any) => u.isActive).length;
+  const noManagerCount = allUsers.filter((u: any) => !u.managerId && u.role !== 'tenant_admin' && u.role !== 'super_admin').length;
   const inactiveUsers = totalUsers - activeUsers;
   const managersCount = allUsers.filter((u: any) => u.role === 'manager' || u.role === 'tenant_admin').length;
 
@@ -848,11 +852,15 @@ export default function UsuariosPage() {
             <option value="inactive">Inactivos</option>
           </select>
         </div>
-        {(searchTerm || filterDept || filterRole || filterPosition || filterStatus) && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={filterNoManager} onChange={(e) => { setFilterNoManager(e.target.checked); setPage(1); }} style={{ accentColor: 'var(--accent)' }} />
+          Sin jefatura {noManagerCount > 0 && <span style={{ background: 'var(--danger)', color: '#fff', borderRadius: '10px', padding: '0 0.35rem', fontSize: '0.7rem', fontWeight: 700, marginLeft: '0.2rem' }}>{noManagerCount}</span>}
+        </label>
+        {(searchTerm || filterDept || filterRole || filterPosition || filterStatus || filterNoManager) && (
           <button
             className="btn-ghost"
             style={{ fontSize: '0.78rem', padding: '0.5rem 0.75rem' }}
-            onClick={() => { setSearchTerm(''); setFilterDept(''); setFilterRole(''); setFilterPosition(''); setFilterStatus(''); setPage(1); }}
+            onClick={() => { setSearchTerm(''); setFilterDept(''); setFilterRole(''); setFilterPosition(''); setFilterStatus(''); setFilterNoManager(false); setPage(1); }}
           >
             Limpiar filtros
           </button>
