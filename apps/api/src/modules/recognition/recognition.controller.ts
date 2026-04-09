@@ -238,10 +238,11 @@ export class RecognitionController {
     @Query('period') period: string,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('department') department: string,
+    @Query('departmentId') departmentId: string,
   ) {
     const validPeriods = ['week', 'month', 'year', 'all'];
     const safePeriod = validPeriods.includes(period) ? period : 'year';
-    return this.service.getLeaderboardOptIn(req.user.tenantId, safePeriod, Math.min(limit, 50), department || undefined);
+    return this.service.getLeaderboardOptIn(req.user.tenantId, safePeriod, Math.min(limit, 50), department || undefined, departmentId || undefined);
   }
 
   @Post('leaderboard-optin/toggle')

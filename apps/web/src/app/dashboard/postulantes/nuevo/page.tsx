@@ -6,7 +6,7 @@ import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useDepartments } from '@/hooks/useDepartments';
-import { usePositions } from '@/hooks/usePositions';
+import { usePositions, usePositionsV2 } from '@/hooks/usePositions';
 import { useTranslation } from 'react-i18next';
 
 const REQUIREMENT_CATEGORIES = [
@@ -59,8 +59,9 @@ export default function NuevoProcesoPage() {
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore((s) => s.toast);
   const router = useRouter();
-  const { departments: configuredDepartments } = useDepartments();
+  const { departments: configuredDepartments, departmentRecords } = useDepartments();
   const { positions: positionCatalog } = usePositions();
+  const { positions: posV2Records } = usePositionsV2();
   const { t } = useTranslation();
   const [showNewPosition, setShowNewPosition] = useState(false);
   const [newPosName, setNewPosName] = useState('');
@@ -177,9 +178,13 @@ export default function NuevoProcesoPage() {
     setSaving(true);
     setError('');
     try {
+      const deptRec = departmentRecords.find(d => d.name.toLowerCase() === (department || '').toLowerCase());
+      const posRec = posV2Records.find(p => p.name.toLowerCase() === position.trim().toLowerCase());
       const result = await api.recruitment.processes.create(token, {
         processType, title: title.trim(), position: position.trim(),
+        positionId: posRec?.id || undefined,
         department: department || undefined,
+        departmentId: deptRec?.id || undefined,
         description: description.trim() || undefined,
         requirements,
         requireCvForInternal,

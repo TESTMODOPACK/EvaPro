@@ -11,6 +11,7 @@ import { OrgDevelopmentInitiative } from './entities/org-development-initiative.
 import { OrgDevelopmentAction } from './entities/org-development-action.entity';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { User } from '../users/entities/user.entity';
+import { Department } from '../tenants/entities/department.entity';
 import { EmailService } from '../notifications/email.service';
 
 @Injectable()
@@ -28,6 +29,8 @@ export class OrgDevelopmentService {
     private readonly pdiRepo: Repository<DevelopmentPlan>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Department)
+    private readonly departmentRepo: Repository<Department>,
     private readonly emailService: EmailService,
   ) {}
 
@@ -168,7 +171,7 @@ export class OrgDevelopmentService {
    */
   async findActiveInitiatives(
     tenantId: string,
-    options: { department?: string; userId?: string } = {},
+    options: { department?: string; departmentId?: string; userId?: string } = {},
   ): Promise<any[]> {
     let department = options.department;
 
@@ -192,7 +195,12 @@ export class OrgDevelopmentService {
       .orderBy('plan.year', 'DESC')
       .addOrderBy('ini.department', 'ASC');
 
-    if (department) {
+    if (options.departmentId) {
+      qb.andWhere(
+        '(ini.department_id = :deptId OR ini.department_id IS NULL)',
+        { deptId: options.departmentId },
+      );
+    } else if (department) {
       qb.andWhere(
         '(ini.department = :dept OR ini.department IS NULL)',
         { dept: department },
@@ -217,6 +225,7 @@ export class OrgDevelopmentService {
       title: string;
       description?: string;
       department?: string | null;
+      departmentId?: string | null;
       targetDate?: string | null;
       responsibleId?: string | null;
       budget?: number | null;
@@ -228,12 +237,27 @@ export class OrgDevelopmentService {
     const plan = await this.planRepo.findOne({ where: { id: planId, tenantId } });
     if (!plan) throw new NotFoundException('Plan no encontrado');
 
+    // Dual-write: resolve departmentId↔department
+    let department = dto.department ?? null;
+    let departmentId: string | null = null;
+    if (dto.departmentId) {
+      const d = await this.departmentRepo.findOne({ where: { id: dto.departmentId, tenantId } });
+      if (d) { departmentId = d.id; department = d.name; }
+    } else if (department) {
+      const d = await this.departmentRepo.createQueryBuilder('d')
+        .where('d.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(d.name) = LOWER(:name)', { name: department })
+        .getOne();
+      if (d) departmentId = d.id;
+    }
+
     const initiative = this.initiativeRepo.create({
       tenantId,
       planId,
       title: dto.title,
       description: dto.description ?? null,
-      department: dto.department ?? null,
+      department,
+      departmentId,
       targetDate: dto.targetDate ?? null,
       responsibleId: dto.responsibleId ?? null,
       budget: dto.budget ?? null,
@@ -258,6 +282,7 @@ export class OrgDevelopmentService {
       title?: string;
       description?: string | null;
       department?: string | null;
+      departmentId?: string | null;
       status?: string;
       targetDate?: string | null;
       responsibleId?: string | null;
@@ -275,7 +300,23 @@ export class OrgDevelopmentService {
 
     if (dto.title !== undefined) ini.title = dto.title;
     if (dto.description !== undefined) ini.description = dto.description ?? null;
-    if (dto.department !== undefined) ini.department = dto.department ?? null;
+    // Dual-write: resolve department
+    if (dto.departmentId !== undefined || dto.department !== undefined) {
+      let department = dto.department ?? null;
+      let departmentId: string | null = null;
+      if (dto.departmentId) {
+        const d = await this.departmentRepo.findOne({ where: { id: dto.departmentId, tenantId } });
+        if (d) { departmentId = d.id; department = d.name; }
+      } else if (department) {
+        const d = await this.departmentRepo.createQueryBuilder('d')
+          .where('d.tenant_id = :tenantId', { tenantId })
+          .andWhere('LOWER(d.name) = LOWER(:name)', { name: department })
+          .getOne();
+        if (d) departmentId = d.id;
+      }
+      ini.department = department;
+      ini.departmentId = departmentId;
+    }
     if (dto.status !== undefined) ini.status = dto.status;
     if (dto.targetDate !== undefined) ini.targetDate = dto.targetDate ?? null;
     if (dto.responsibleId !== undefined) ini.responsibleId = dto.responsibleId ?? null;

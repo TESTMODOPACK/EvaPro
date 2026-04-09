@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '@/hooks/useUsers';
 import { useQueryClient } from '@tanstack/react-query';
-import { useInvalidatePositions } from '@/hooks/usePositions';
+import { useInvalidatePositions, usePositionsV2 } from '@/hooks/usePositions';
 import { useAuthStore } from '@/store/auth.store';
 import { getRoleLabel, getRoleBadge, ASSIGNABLE_ROLES } from '@/lib/roles';
 import { api } from '@/lib/api';
@@ -96,7 +96,8 @@ export default function UsuariosPage() {
   const toast = useToastStore();
   const currentUserRole = useAuthStore((s) => s.user?.role || '');
   const isAdmin = currentUserRole === 'super_admin' || currentUserRole === 'tenant_admin';
-  const { departments: configuredDepartments } = useDepartments();
+  const { departments: configuredDepartments, departmentRecords } = useDepartments();
+  const { positions: positionV2Records } = usePositionsV2();
 
   // Pagination + filters state
   const [page, setPage] = useState(1);
@@ -252,6 +253,10 @@ export default function UsuariosPage() {
       if (form.contractType) demoFields.contractType = form.contractType;
       if (form.workLocation) demoFields.workLocation = form.workLocation;
 
+      // Resolve department/position IDs from name (case-insensitive)
+      const deptRecord = departmentRecords.find(d => d.name.toLowerCase() === (form.department || '').toLowerCase());
+      const posRecord = positionV2Records.find(p => p.name.toLowerCase() === (form.position || '').toLowerCase());
+
       if (editingId) {
         const data: any = {
           firstName: form.firstName,
@@ -259,7 +264,9 @@ export default function UsuariosPage() {
           rut: rutValue || undefined,
           role: form.role,
           department: form.department || undefined,
+          departmentId: deptRecord?.id || undefined,
           position: form.position || undefined,
+          positionId: posRecord?.id || undefined,
           hierarchyLevel: form.hierarchyLevel ? Number(form.hierarchyLevel) : undefined,
           managerId: form.managerId || null,
           ...demoFields,
@@ -275,7 +282,9 @@ export default function UsuariosPage() {
           password: form.password,
           role: form.role,
           department: form.department || null,
+          departmentId: deptRecord?.id || undefined,
           position: form.position || null,
+          positionId: posRecord?.id || undefined,
           hierarchyLevel: form.hierarchyLevel ? Number(form.hierarchyLevel) : undefined,
           managerId: form.managerId || undefined,
           ...demoFields,

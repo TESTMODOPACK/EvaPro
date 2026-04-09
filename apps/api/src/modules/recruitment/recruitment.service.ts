@@ -12,6 +12,8 @@ import { User } from '../users/entities/user.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
+import { Department } from '../tenants/entities/department.entity';
+import { Position } from '../tenants/entities/position.entity';
 import { AiInsightsService } from '../ai-insights/ai-insights.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -28,9 +30,45 @@ export class RecruitmentService {
     @InjectRepository(EvaluationAssignment) private readonly evalAssignmentRepo: Repository<EvaluationAssignment>,
     @InjectRepository(EvaluationResponse) private readonly evalResponseRepo: Repository<EvaluationResponse>,
     @InjectRepository(TalentAssessment) private readonly talentRepo: Repository<TalentAssessment>,
+    @InjectRepository(Department) private readonly departmentRepo: Repository<Department>,
+    @InjectRepository(Position) private readonly positionRepo: Repository<Position>,
     private readonly aiInsightsService: AiInsightsService,
     private readonly auditService: AuditService,
   ) {}
+
+  /** Resolve department text↔ID bidirectionally */
+  private async resolveDept(tenantId: string, deptId?: string, deptName?: string): Promise<{ departmentId: string | null; department: string | null }> {
+    if (deptId) {
+      const d = await this.departmentRepo.findOne({ where: { id: deptId, tenantId } });
+      if (d) return { departmentId: d.id, department: d.name };
+    }
+    if (deptName?.trim()) {
+      const d = await this.departmentRepo.createQueryBuilder('d')
+        .where('d.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(d.name) = LOWER(:name)', { name: deptName.trim() })
+        .getOne();
+      if (d) return { departmentId: d.id, department: d.name };
+      return { departmentId: null, department: deptName.trim() };
+    }
+    return { departmentId: null, department: null };
+  }
+
+  /** Resolve position text↔ID bidirectionally */
+  private async resolvePos(tenantId: string, posId?: string, posName?: string): Promise<{ positionId: string | null; position: string | null }> {
+    if (posId) {
+      const p = await this.positionRepo.findOne({ where: { id: posId, tenantId } });
+      if (p) return { positionId: p.id, position: p.name };
+    }
+    if (posName?.trim()) {
+      const p = await this.positionRepo.createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(p.name) = LOWER(:name)', { name: posName.trim() })
+        .getOne();
+      if (p) return { positionId: p.id, position: p.name };
+      return { positionId: null, position: posName.trim() };
+    }
+    return { positionId: null, position: null };
+  }
 
   // ─── Processes CRUD ───────────────────────────────────────────────────
 
@@ -42,12 +80,18 @@ export class RecruitmentService {
       throw new BadRequestException('Titulo y cargo son requeridos');
     }
 
+    // Dual-write: resolve department and position IDs
+    const rd = await this.resolveDept(tenantId, dto.departmentId, dto.department);
+    const rp = await this.resolvePos(tenantId, dto.positionId, dto.position);
+
     const process = this.processRepo.create({
       tenantId,
       processType: dto.processType,
       title: dto.title.trim(),
-      position: dto.position.trim(),
-      department: dto.department || null,
+      position: rp.position || dto.position.trim(),
+      positionId: rp.positionId,
+      department: rd.department,
+      departmentId: rd.departmentId,
       description: dto.description || null,
       requirements: Array.isArray(dto.requirements) ? dto.requirements : [],
       requireCvForInternal: dto.requireCvForInternal ?? false,
@@ -136,8 +180,17 @@ export class RecruitmentService {
     }
 
     if (dto.title !== undefined) process.title = dto.title;
-    if (dto.position !== undefined) process.position = dto.position;
-    if (dto.department !== undefined) process.department = dto.department;
+    // Dual-write: resolve position and department
+    if (dto.positionId !== undefined || dto.position !== undefined) {
+      const rp = await this.resolvePos(tenantId, dto.positionId, dto.position ?? process.position);
+      process.position = rp.position || process.position;
+      process.positionId = rp.positionId;
+    }
+    if (dto.departmentId !== undefined || dto.department !== undefined) {
+      const rd = await this.resolveDept(tenantId, dto.departmentId, dto.department ?? process.department);
+      process.department = rd.department;
+      process.departmentId = rd.departmentId;
+    }
     if (dto.description !== undefined) process.description = dto.description;
     if (dto.requirements !== undefined) process.requirements = dto.requirements;
     if (dto.requireCvForInternal !== undefined) process.requireCvForInternal = dto.requireCvForInternal;

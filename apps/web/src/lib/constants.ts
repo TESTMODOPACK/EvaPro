@@ -105,10 +105,7 @@ export const CUSTOM_SETTINGS_META: Record<string, { label: string; description: 
     label: 'Períodos de Evaluación',
     description: 'Frecuencias de evaluación disponibles en la organización',
   },
-  departments: {
-    label: 'Departamentos',
-    description: 'Departamentos de la organización disponibles para asignar a colaboradores',
-  },
+  // departments: migrated to dedicated table CRUD (see mantenedores page)
   jobRequirements: {
     label: 'Requisitos de Cargo',
     description: 'Requisitos predefinidos que se pueden seleccionar al crear un proceso de evaluación de postulantes',

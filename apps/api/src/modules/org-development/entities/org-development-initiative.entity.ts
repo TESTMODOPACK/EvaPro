@@ -10,6 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Department } from '../../tenants/entities/department.entity';
 import { OrgDevelopmentAction } from './org-development-action.entity';
 import { OrgDevelopmentPlan } from './org-development-plan.entity';
 
@@ -34,6 +35,14 @@ export class OrgDevelopmentInitiative {
   /** null significa que aplica a toda la empresa */
   @Column({ type: 'varchar', length: 100, nullable: true })
   department: string | null;
+
+  @Column({ type: 'uuid', nullable: true, name: 'department_id' })
+  @Index('idx_odi_dept_id')
+  departmentId: string | null;
+
+  @ManyToOne(() => Department, { nullable: true })
+  @JoinColumn({ name: 'department_id' })
+  departmentEntity: Department;
 
   @Column({ type: 'varchar', length: 30, default: 'pendiente' })
   status: string;

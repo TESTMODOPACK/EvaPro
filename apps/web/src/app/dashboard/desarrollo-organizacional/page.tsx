@@ -128,7 +128,7 @@ function DesarrolloOrganizacionalPageContent() {
   const [linkedPdis, setLinkedPdis] = useState<Record<string, any[]>>({});
 
   // ── Departamentos configurados en Mantenedores ───────────────────────
-  const { departments } = useDepartments();
+  const { departments, departmentRecords } = useDepartments();
 
   // ─── Carga inicial ────────────────────────────────────────────────────────
 
@@ -234,6 +234,7 @@ function DesarrolloOrganizacionalPageContent() {
         title: initForm.title,
         description: initForm.description || null,
         department: initForm.department || null,
+        departmentId: (() => { const r = departmentRecords.find(d => d.name.toLowerCase() === (initForm.department || '').toLowerCase()); return r?.id || null; })(),
         targetDate: initForm.targetDate || null,
         responsibleId: initForm.responsibleId || null,
         progress: Number(initForm.progress) || 0,

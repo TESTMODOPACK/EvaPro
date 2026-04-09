@@ -27,7 +27,7 @@ function CalibracionPageContent() {
   const { locale } = useLocaleStore();
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
-  const { departments: configuredDepartments } = useDepartments();
+  const { departments: configuredDepartments, departmentRecords } = useDepartments();
 
   const [sessions, setSessions] = useState<any[]>([]);
   const [cycles, setCycles] = useState<any[]>([]);
@@ -63,7 +63,11 @@ function CalibracionPageContent() {
     setCreateError('');
     try {
       const data: any = { name: form.name, cycleId: form.cycleId };
-      if (form.department) data.department = form.department;
+      if (form.department) {
+        data.department = form.department;
+        const dRec = departmentRecords.find(d => d.name.toLowerCase() === form.department.toLowerCase());
+        if (dRec?.id) data.departmentId = dRec.id;
+      }
       if (form.notes) data.notes = form.notes;
       if (useCustomDist) data.expectedDistribution = { ...dist };
       await api.talent.calibration.create(token, data);

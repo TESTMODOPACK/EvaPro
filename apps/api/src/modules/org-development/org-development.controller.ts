@@ -133,12 +133,10 @@ export class OrgDevelopmentController {
   getActiveInitiatives(
     @Request() req: any,
     @Query('dept') dept?: string,
+    @Query('departmentId') departmentId?: string,
   ) {
-    // BUG #4 fix: `department` NO está en el JWT payload.
-    // Para admins se usa el parámetro ?dept opcional.
-    // Para manager/employee se pasa userId y el servicio busca el departamento en BD.
     if (req.user.role === 'tenant_admin') {
-      return this.service.findActiveInitiatives(req.user.tenantId, { department: dept });
+      return this.service.findActiveInitiatives(req.user.tenantId, { department: dept, departmentId });
     }
     return this.service.findActiveInitiatives(req.user.tenantId, { userId: req.user.userId });
   }

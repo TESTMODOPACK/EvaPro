@@ -44,13 +44,14 @@ export class UsersController {
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Query('search') search?: string,
     @Query('department') department?: string,
+    @Query('departmentId') departmentId?: string,
     @Query('role') role?: string,
     @Query('position') position?: string,
     @Query('status') status?: string,
     @Query('tenantId') filterTenantId?: string,
   ) {
-    const filters = (search || department || role || position || status)
-      ? { search, department, role, position, status }
+    const filters = (search || department || departmentId || role || position || status)
+      ? { search, department, departmentId, role, position, status }
       : undefined;
     // super_admin can query any tenant's users via ?tenantId=
     const tenantId = (req.user.role === 'super_admin' && filterTenantId) ? filterTenantId : req.user.tenantId;

@@ -15,6 +15,8 @@ import { DataSource } from 'typeorm';
 
 // ── Entities: Phase 1 ────────────────────────────────────────────────────
 import { Tenant } from '../modules/tenants/entities/tenant.entity';
+import { Department } from '../modules/tenants/entities/department.entity';
+import { Position } from '../modules/tenants/entities/position.entity';
 import { User } from '../modules/users/entities/user.entity';
 import { FormTemplate } from '../modules/templates/entities/form-template.entity';
 import { EvaluationCycle } from '../modules/evaluations/entities/evaluation-cycle.entity';
@@ -108,6 +110,10 @@ async function runSchemaSync() {
       DROP TABLE IF EXISTS quick_feedbacks CASCADE;
       DROP TABLE IF EXISTS checkins CASCADE;
 
+      -- Departments / Positions (migration tables)
+      DROP TABLE IF EXISTS departments CASCADE;
+      DROP TABLE IF EXISTS positions CASCADE;
+
       -- Phase 1
       DROP TABLE IF EXISTS peer_assignments CASCADE;
       DROP TABLE IF EXISTS audit_logs CASCADE;
@@ -150,7 +156,7 @@ async function runSchemaSync() {
     ssl: isProduction && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
     entities: [
       // Phase 1
-      Tenant, User, FormTemplate,
+      Tenant, Department, Position, User, FormTemplate,
       EvaluationCycle, EvaluationAssignment, EvaluationResponse,
       BulkImport, AuditLog, PeerAssignment, CycleStage,
       // Phase 2

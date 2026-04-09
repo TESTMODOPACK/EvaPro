@@ -8,6 +8,7 @@ import { DevelopmentAction } from './entities/development-action.entity';
 import { DevelopmentComment } from './entities/development-comment.entity';
 import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
+import { Position } from '../tenants/entities/position.entity';
 import { DevelopmentService } from './development.service';
 import { DevelopmentController } from './development.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
@@ -18,7 +19,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AuditModule,
     SubscriptionsModule,
     NotificationsModule,
-    TypeOrmModule.forFeature([Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment, User, TalentAssessment]),
+    TypeOrmModule.forFeature([Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment, User, TalentAssessment, Position]),
   ],
   controllers: [DevelopmentController],
   providers: [DevelopmentService],

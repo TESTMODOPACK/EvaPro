@@ -7,6 +7,7 @@ import { OrgDevelopmentInitiative } from './entities/org-development-initiative.
 import { OrgDevelopmentAction } from './entities/org-development-action.entity';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { User } from '../users/entities/user.entity';
+import { Department } from '../tenants/entities/department.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       OrgDevelopmentAction,
       DevelopmentPlan,
       User,
+      Department,
     ]),
     NotificationsModule,
   ],

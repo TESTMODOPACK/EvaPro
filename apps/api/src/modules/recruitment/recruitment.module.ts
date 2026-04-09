@@ -9,6 +9,8 @@ import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignm
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { Competency } from '../development/entities/competency.entity';
+import { Department } from '../tenants/entities/department.entity';
+import { Position } from '../tenants/entities/position.entity';
 import { RecruitmentService } from './recruitment.service';
 import { RecruitmentController } from './recruitment.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
@@ -27,6 +29,8 @@ import { AiInsightsModule } from '../ai-insights/ai-insights.module';
       EvaluationResponse,
       TalentAssessment,
       Competency,
+      Department,
+      Position,
     ]),
     SubscriptionsModule,
     AuditModule,

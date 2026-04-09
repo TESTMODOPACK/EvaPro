@@ -14,6 +14,8 @@ import { UserDeparture } from './entities/user-departure.entity';
 import { UserMovement, MovementType } from './entities/user-movement.entity';
 import { BulkImport, ImportStatus } from './entities/bulk-import.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { Department } from '../tenants/entities/department.entity';
+import { Position } from '../tenants/entities/position.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateDepartureDto } from './dto/create-departure.dto';
@@ -38,6 +40,10 @@ export class UsersService {
     private readonly movementRepo: Repository<UserMovement>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(Department)
+    private readonly departmentRepo: Repository<Department>,
+    @InjectRepository(Position)
+    private readonly positionRepo: Repository<Position>,
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
@@ -49,46 +55,111 @@ export class UsersService {
   ];
 
   private async getConfiguredDepartments(tenantId: string): Promise<string[]> {
+    // Read from departments table first, fallback to JSONB settings
+    const depts = await this.departmentRepo.find({
+      where: { tenantId, isActive: true },
+      order: { sortOrder: 'ASC', name: 'ASC' },
+    });
+    if (depts.length > 0) return depts.map(d => d.name);
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     return tenant?.settings?.departments ?? UsersService.DEFAULT_DEPARTMENTS;
   }
 
-  /** Auto-add custom position to tenant catalog if not already there */
-  private async autoAddPositionToCatalog(tenantId: string, position: string | undefined, hierarchyLevel: number | null | undefined): Promise<void> {
-    if (!position?.trim() || hierarchyLevel == null || hierarchyLevel < 1) return;
+  /** Sync department/position tables → JSONB settings for backward compat (fire-and-forget) */
+  private async syncDeptPosToSettings(tenantId: string): Promise<void> {
     try {
-      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      const [depts, positions, tenant] = await Promise.all([
+        this.departmentRepo.find({ where: { tenantId, isActive: true }, order: { sortOrder: 'ASC', name: 'ASC' } }),
+        this.positionRepo.find({ where: { tenantId, isActive: true }, order: { level: 'ASC', name: 'ASC' } }),
+        this.tenantRepo.findOne({ where: { id: tenantId } }),
+      ]);
       if (!tenant) return;
-      const DEFAULT_POSITIONS = [
-        { name: 'Gerente General', level: 1 }, { name: 'Gerente de Área', level: 2 },
-        { name: 'Subgerente', level: 3 }, { name: 'Jefe de Área', level: 4 },
-        { name: 'Coordinador', level: 5 }, { name: 'Analista', level: 6 }, { name: 'Asistente', level: 7 },
-      ];
-      const current: { name: string; level: number }[] = Array.isArray(tenant.settings?.positions) && tenant.settings.positions.length > 0
-        ? [...tenant.settings.positions]
-        : [...DEFAULT_POSITIONS];
-      const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (current.some(p => norm(p.name) === norm(position.trim()))) return;
-      current.push({ name: position.trim(), level: hierarchyLevel });
-      current.sort((a, b) => a.level - b.level);
-      tenant.settings = { ...(tenant.settings || {}), positions: current };
-      await this.tenantRepo.save(tenant);
-    } catch { /* fire-and-forget: don't block user creation */ }
-  }
-
-  private async autoAddDepartmentToCatalog(tenantId: string, department: string | undefined): Promise<void> {
-    if (!department?.trim()) return;
-    try {
-      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
-      if (!tenant) return;
-      const depts: string[] = Array.isArray(tenant.settings?.departments) ? tenant.settings.departments : [];
-      const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-      if (depts.some(d => norm(d) === norm(department.trim()))) return;
-      depts.push(department.trim());
-      depts.sort();
-      tenant.settings = { ...(tenant.settings || {}), departments: depts };
+      tenant.settings = {
+        ...(tenant.settings || {}),
+        departments: depts.map(d => d.name),
+        positions: positions.map(p => ({ name: p.name, level: p.level })),
+      };
       await this.tenantRepo.save(tenant);
     } catch { /* fire-and-forget */ }
+  }
+
+  /**
+   * Dual-write helper: resolves departmentId ↔ department text bidirectionally.
+   * If departmentId is provided → look up name. If only department text → look up or create record.
+   */
+  private async resolveDepartment(tenantId: string, departmentId?: string | null, departmentName?: string | null): Promise<{ departmentId: string | null; department: string | null }> {
+    if (departmentId) {
+      const dept = await this.departmentRepo.findOne({ where: { id: departmentId, tenantId } });
+      if (dept) return { departmentId: dept.id, department: dept.name };
+      // ID not found — fall through to text lookup
+    }
+    if (departmentName?.trim()) {
+      const trimmed = departmentName.trim();
+      const dept = await this.departmentRepo
+        .createQueryBuilder('d')
+        .where('d.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(d.name) = LOWER(:name)', { name: trimmed })
+        .getOne();
+      if (dept) {
+        if (!dept.isActive) { dept.isActive = true; await this.departmentRepo.save(dept); }
+        return { departmentId: dept.id, department: dept.name };
+      }
+      // Not in table — create it (ensures FK consistency)
+      try {
+        const newDept = await this.departmentRepo.save(this.departmentRepo.create({
+          tenantId, name: trimmed, isActive: true,
+        }));
+        return { departmentId: newDept.id, department: newDept.name };
+      } catch {
+        // Unique constraint race — try lookup again
+        const retry = await this.departmentRepo
+          .createQueryBuilder('d')
+          .where('d.tenant_id = :tenantId', { tenantId })
+          .andWhere('LOWER(d.name) = LOWER(:name)', { name: trimmed })
+          .getOne();
+        if (retry) return { departmentId: retry.id, department: retry.name };
+        return { departmentId: null, department: trimmed };
+      }
+    }
+    return { departmentId: null, department: null };
+  }
+
+  /**
+   * Dual-write helper: resolves positionId ↔ position text bidirectionally.
+   */
+  private async resolvePosition(tenantId: string, positionId?: string | null, positionName?: string | null): Promise<{ positionId: string | null; position: string | null; hierarchyLevel: number | null }> {
+    if (positionId) {
+      const pos = await this.positionRepo.findOne({ where: { id: positionId, tenantId } });
+      if (pos) return { positionId: pos.id, position: pos.name, hierarchyLevel: pos.level };
+    }
+    if (positionName?.trim()) {
+      const trimmed = positionName.trim();
+      const pos = await this.positionRepo
+        .createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(p.name) = LOWER(:name)', { name: trimmed })
+        .getOne();
+      if (pos) {
+        if (!pos.isActive) { pos.isActive = true; await this.positionRepo.save(pos); }
+        return { positionId: pos.id, position: pos.name, hierarchyLevel: pos.level };
+      }
+      // Not in table — create it
+      try {
+        const newPos = await this.positionRepo.save(this.positionRepo.create({
+          tenantId, name: trimmed, level: 0, isActive: true,
+        }));
+        return { positionId: newPos.id, position: newPos.name, hierarchyLevel: newPos.level };
+      } catch {
+        const retry = await this.positionRepo
+          .createQueryBuilder('p')
+          .where('p.tenant_id = :tenantId', { tenantId })
+          .andWhere('LOWER(p.name) = LOWER(:name)', { name: trimmed })
+          .getOne();
+        if (retry) return { positionId: retry.id, position: retry.name, hierarchyLevel: retry.level };
+        return { positionId: null, position: trimmed, hierarchyLevel: null };
+      }
+    }
+    return { positionId: null, position: null, hierarchyLevel: null };
   }
 
   private validateDepartment(department: string | undefined, configuredDepts: string[]): void {
@@ -146,7 +217,7 @@ export class UsersService {
     tenantId: string,
     page = 1,
     limit = 50,
-    filters?: { search?: string; department?: string; role?: string; position?: string; status?: string },
+    filters?: { search?: string; department?: string; departmentId?: string; role?: string; position?: string; status?: string },
   ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(Math.max(1, limit), 500);
@@ -160,7 +231,9 @@ export class UsersService {
         { search: `%${filters.search.toLowerCase()}%` },
       );
     }
-    if (filters?.department) {
+    if (filters?.departmentId) {
+      qb.andWhere('user.department_id = :departmentId', { departmentId: filters.departmentId });
+    } else if (filters?.department) {
       qb.andWhere('user.department = :department', { department: filters.department });
     }
     if (filters?.role) {
@@ -224,15 +297,21 @@ export class UsersService {
       }
     }
 
-    // Validate department against configured list
-    if (dto.department) {
+    // Resolve department: dual-write (ID ↔ text)
+    const resolvedDept = await this.resolveDepartment(tenantId, dto.departmentId, dto.department);
+
+    // Validate department against configured list (only if text-based, skip if by ID)
+    if (!dto.departmentId && resolvedDept.department) {
       const configuredDepts = await this.getConfiguredDepartments(tenantId);
-      this.validateDepartment(dto.department, configuredDepts);
+      this.validateDepartment(resolvedDept.department, configuredDepts);
     }
+
+    // Resolve position: dual-write (ID ↔ text)
+    const resolvedPos = await this.resolvePosition(tenantId, dto.positionId, dto.position);
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = this.userRepository.create({
+    const userData: any = {
       tenantId,
       email: dto.email,
       firstName: dto.firstName,
@@ -241,19 +320,21 @@ export class UsersService {
       rut: dto.rut || null,
       role: dto.role ?? 'employee',
       managerId: dto.managerId,
-      department: dto.department,
-      position: dto.position,
-      hierarchyLevel: dto.hierarchyLevel ?? null,
+      department: resolvedDept.department,
+      departmentId: resolvedDept.departmentId,
+      position: resolvedPos.position,
+      positionId: resolvedPos.positionId,
+      hierarchyLevel: dto.hierarchyLevel ?? resolvedPos.hierarchyLevel ?? null,
       hireDate: dto.hireDate ? new Date(dto.hireDate) : undefined,
       isActive: true,
       mustChangePassword: true,
-    });
+    };
 
-    const saved = await this.userRepository.save(user);
+    const user = this.userRepository.create(userData as Partial<User>);
+    const saved = await this.userRepository.save(user) as User;
     await this.auditService.log(tenantId, saved.id, 'user.created', 'user', saved.id);
-    // Auto-add custom position and department to catalog
-    this.autoAddPositionToCatalog(tenantId, saved.position, saved.hierarchyLevel).catch(() => {});
-    this.autoAddDepartmentToCatalog(tenantId, saved.department).catch(() => {});
+    // Sync department/position tables → JSONB settings (backward compat)
+    this.syncDeptPosToSettings(tenantId).catch(() => {});
     return saved;
   }
 
@@ -300,12 +381,26 @@ export class UsersService {
     // Track department/position changes as internal movements
     const prevDept = user.department;
     const prevPos = user.position;
-    if (dto.department !== undefined) user.department = dto.department;
-    if (dto.position !== undefined) user.position = dto.position;
 
-    // Auto-create movement records for dept/position changes
-    const deptChanged = dto.department !== undefined && dto.department !== prevDept;
-    const posChanged = dto.position !== undefined && dto.position !== prevPos;
+    // Dual-write: resolve department
+    if (dto.departmentId !== undefined || dto.department !== undefined) {
+      const resolved = await this.resolveDepartment(user.tenantId, dto.departmentId, dto.department ?? user.department);
+      user.department = resolved.department as any;
+      user.departmentId = resolved.departmentId as any;
+    }
+    // Dual-write: resolve position
+    if (dto.positionId !== undefined || dto.position !== undefined) {
+      const resolved = await this.resolvePosition(user.tenantId, dto.positionId, dto.position ?? user.position);
+      user.position = resolved.position as any;
+      user.positionId = resolved.positionId as any;
+      if (resolved.hierarchyLevel !== null && dto.hierarchyLevel === undefined) {
+        user.hierarchyLevel = resolved.hierarchyLevel;
+      }
+    }
+
+    // Auto-create movement records for dept/position changes (detect both text and ID changes)
+    const deptChanged = user.department !== prevDept;
+    const posChanged = user.position !== prevPos;
     if (deptChanged || posChanged) {
       const mType = deptChanged && posChanged ? MovementType.LATERAL_TRANSFER
         : deptChanged ? MovementType.DEPARTMENT_CHANGE
@@ -340,12 +435,9 @@ export class UsersService {
     if (dto.language !== undefined) user.language = dto.language;
 
     const saved = await this.userRepository.save(user);
-    // Auto-add custom position/department to catalog if changed
-    if (dto.position !== undefined || dto.hierarchyLevel !== undefined) {
-      this.autoAddPositionToCatalog(user.tenantId, saved.position, saved.hierarchyLevel).catch(() => {});
-    }
-    if (dto.department !== undefined) {
-      this.autoAddDepartmentToCatalog(user.tenantId, saved.department).catch(() => {});
+    // Sync tables → JSONB if department or position changed
+    if (dto.department !== undefined || dto.departmentId !== undefined || dto.position !== undefined || dto.positionId !== undefined) {
+      this.syncDeptPosToSettings(user.tenantId).catch(() => {});
     }
     return saved;
   }
@@ -582,9 +674,8 @@ export class UsersService {
           continue;
         }
 
-        // Auto-add department to catalog if not exists
+        // Track new departments for summary (resolveDepartment creates the table record)
         if (department && !validDeptSet.has(normDept(department))) {
-          await this.autoAddDepartmentToCatalog(tenantId, department);
           validDeptSet.add(normDept(department));
           configuredDepts.push(department);
           newDepartments.push(department);
@@ -646,6 +737,10 @@ export class UsersService {
         const rawContract = contractIdx >= 0 ? (cols[contractIdx] || '').trim().toLowerCase() : '';
         const rawLocation = locationIdx >= 0 ? (cols[locationIdx] || '').trim().toLowerCase() : '';
 
+        // Resolve department/position to IDs (dual-write)
+        const resolvedDept = await this.resolveDepartment(tenantId, null, department || null);
+        const resolvedPos = await this.resolvePosition(tenantId, null, position || null);
+
         const savedUser = await this.userRepository.save(
           this.userRepository.create({
             tenantId,
@@ -656,9 +751,11 @@ export class UsersService {
             role,
             managerId,
             rut: parsedRut,
-            department: department || undefined,
-            position: position || undefined,
-            hierarchyLevel: hierarchyLevel || undefined,
+            department: resolvedDept.department || undefined,
+            departmentId: resolvedDept.departmentId || undefined,
+            position: resolvedPos.position || undefined,
+            positionId: resolvedPos.positionId || undefined,
+            hierarchyLevel: hierarchyLevel || resolvedPos.hierarchyLevel || undefined,
             hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
             gender: validGenders.includes(rawGender) ? rawGender : undefined,
             birthDate: rawBirthDate ? new Date(rawBirthDate) : undefined,
@@ -668,9 +765,9 @@ export class UsersService {
             workLocation: validLocation.includes(rawLocation) ? rawLocation : undefined,
             isActive: true,
             mustChangePassword: true,
-          }),
+          } as any),
         );
-        // Auto-add custom position to catalog
+        // Track new positions for summary
         if (position && hierarchyLevel) {
           const posNorm2 = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           const tn = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
@@ -678,13 +775,27 @@ export class UsersService {
           if (!existingPos.includes(posNorm2(position))) {
             newPositions.push(position);
           }
-          this.autoAddPositionToCatalog(tenantId, position, hierarchyLevel).catch(() => {});
         }
         successCount++;
       } catch (err) {
         errors.push({ row: rowNum, message: `Error: ${(err as Error).message}` });
       }
     }
+
+    // Sync department/position tables → JSONB settings for backward compat
+    try {
+      const allDepts = await this.departmentRepo.find({ where: { tenantId, isActive: true }, order: { sortOrder: 'ASC', name: 'ASC' } });
+      const allPos = await this.positionRepo.find({ where: { tenantId, isActive: true }, order: { level: 'ASC', name: 'ASC' } });
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      if (tenant) {
+        tenant.settings = {
+          ...(tenant.settings || {}),
+          departments: allDepts.map(d => d.name),
+          positions: allPos.map(p => ({ name: p.name, level: p.level })),
+        };
+        await this.tenantRepo.save(tenant);
+      }
+    } catch { /* non-critical */ }
 
     saved.successRows = successCount;
     saved.errorRows = errors.length;
@@ -853,17 +964,36 @@ export class UsersService {
     mismatches: { userId: string; name: string; current: string; suggested: string | null }[];
     fixed: number;
   }> {
-    // Get configured departments
-    const tenant = await this.tenantRepo.findOneByOrFail({ id: tenantId });
-    const configuredDepts: string[] = tenant.settings?.departments ?? [];
+    // Get configured departments from table (with JSONB fallback)
+    const deptRecords = await this.departmentRepo.find({
+      where: { tenantId, isActive: true },
+      order: { sortOrder: 'ASC', name: 'ASC' },
+    });
+    let configuredDepts: string[];
+    if (deptRecords.length > 0) {
+      configuredDepts = deptRecords.map(d => d.name);
+    } else {
+      const tenant = await this.tenantRepo.findOneByOrFail({ id: tenantId });
+      configuredDepts = tenant.settings?.departments ?? [];
+    }
     if (configuredDepts.length === 0) {
       return { mismatches: [], fixed: 0 };
+    }
+
+    // Build lookup map: lowercase name → { name, id }
+    const deptMap = new Map<string, { name: string; id: string | null }>();
+    for (const d of deptRecords) deptMap.set(d.name.toLowerCase().trim(), { name: d.name, id: d.id });
+    // Fallback for JSONB-only entries
+    for (const name of configuredDepts) {
+      if (!deptMap.has(name.toLowerCase().trim())) {
+        deptMap.set(name.toLowerCase().trim(), { name, id: null });
+      }
     }
 
     // Get all users with a department set
     const users = await this.userRepository.find({
       where: { tenantId, isActive: true },
-      select: ['id', 'firstName', 'lastName', 'department'],
+      select: ['id', 'firstName', 'lastName', 'department', 'departmentId'],
     });
 
     const lowerConfigured = configuredDepts.map(d => d.toLowerCase().trim());
@@ -874,34 +1004,25 @@ export class UsersService {
       const dept = u.department.trim();
       const idx = lowerConfigured.indexOf(dept.toLowerCase());
       if (idx >= 0) {
-        // Exact match (case-insensitive) — fix casing if different
         if (dept !== configuredDepts[idx]) {
-          mismatches.push({
-            userId: u.id,
-            name: `${u.firstName} ${u.lastName}`,
-            current: dept,
-            suggested: configuredDepts[idx],
-          });
+          mismatches.push({ userId: u.id, name: `${u.firstName} ${u.lastName}`, current: dept, suggested: configuredDepts[idx] });
         }
         continue;
       }
-      // No exact match — try partial match
       const partial = configuredDepts.find(cd =>
         cd.toLowerCase().includes(dept.toLowerCase()) || dept.toLowerCase().includes(cd.toLowerCase()),
       );
-      mismatches.push({
-        userId: u.id,
-        name: `${u.firstName} ${u.lastName}`,
-        current: dept,
-        suggested: partial || null,
-      });
+      mismatches.push({ userId: u.id, name: `${u.firstName} ${u.lastName}`, current: dept, suggested: partial || null });
     }
 
     let fixed = 0;
     if (apply) {
       for (const m of mismatches) {
         if (m.suggested) {
-          await this.userRepository.update(m.userId, { department: m.suggested });
+          const record = deptMap.get(m.suggested.toLowerCase().trim());
+          const updates: any = { department: m.suggested };
+          if (record?.id) updates.departmentId = record.id;
+          await this.userRepository.update(m.userId, updates);
           fixed++;
         }
       }

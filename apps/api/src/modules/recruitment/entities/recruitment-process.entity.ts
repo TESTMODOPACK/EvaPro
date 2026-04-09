@@ -3,6 +3,8 @@ import {
   PrimaryGeneratedColumn, ManyToOne, JoinColumn, Index,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
+import { Department } from '../../tenants/entities/department.entity';
+import { Position } from '../../tenants/entities/position.entity';
 import { User } from '../../users/entities/user.entity';
 
 export enum ProcessType {
@@ -40,8 +42,24 @@ export class RecruitmentProcess {
   @Column({ type: 'varchar', length: 100 })
   position: string;
 
+  @Column({ type: 'uuid', nullable: true, name: 'position_id' })
+  @Index('idx_rp_pos_id')
+  positionId: string | null;
+
+  @ManyToOne(() => Position, { nullable: true })
+  @JoinColumn({ name: 'position_id' })
+  positionEntity: Position;
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   department: string | null;
+
+  @Column({ type: 'uuid', nullable: true, name: 'department_id' })
+  @Index('idx_rp_dept_id')
+  departmentId: string | null;
+
+  @ManyToOne(() => Department, { nullable: true })
+  @JoinColumn({ name: 'department_id' })
+  departmentEntity: Department;
 
   @Column({ type: 'text', nullable: true })
   description: string | null;

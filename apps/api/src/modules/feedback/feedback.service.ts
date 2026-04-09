@@ -490,14 +490,16 @@ export class FeedbackService {
     const requireCompetency: boolean = fbConfig.requireCompetency === true;
 
     // 2. Validate recipient exists in same tenant
-    const recipientData = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'managerId'] });
+    const recipientData = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'departmentId', 'managerId'] });
     if (!recipientData) throw new NotFoundException('Destinatario no encontrado en esta organización');
 
     // 3. Apply scope restrictions (configurable by admin)
     if (scope !== 'all' && role !== 'tenant_admin' && role !== 'super_admin') {
-      const sender = await this.userRepo.findOne({ where: { id: fromUserId, tenantId }, select: ['id', 'department', 'managerId'] });
+      const sender = await this.userRepo.findOne({ where: { id: fromUserId, tenantId }, select: ['id', 'department', 'departmentId', 'managerId'] });
       if (sender) {
-        const sameDept = !!(sender.department && recipientData.department && sender.department === recipientData.department);
+        const sameDept = !!(sender.departmentId && (recipientData as any).departmentId
+          ? sender.departmentId === (recipientData as any).departmentId
+          : sender.department && recipientData.department && sender.department === recipientData.department);
         if (scope === 'department' && !sameDept) {
           throw new ForbiddenException('La configuración de tu organización permite enviar feedback solo a miembros de tu mismo departamento.');
         }

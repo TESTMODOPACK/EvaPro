@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { CUSTOM_SETTINGS_DEFAULTS, CUSTOM_SETTINGS_META, CUSTOM_SETTINGS_KEYS } from '@/lib/constants';
+import { DepartmentData, PositionData } from '@/lib/api';
+import { useInvalidateDepartments } from '@/hooks/useDepartments';
+import { useInvalidatePositions } from '@/hooks/usePositions';
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -19,6 +22,8 @@ const labelStyle: React.CSSProperties = {
 export default function MantenedoresPage() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
+  const invalidateDepts = useInvalidateDepartments();
+  const invalidatePos = useInvalidatePositions();
 
   const [customSettings, setCustomSettings] = useState<Record<string, string[]>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -30,6 +35,14 @@ export default function MantenedoresPage() {
   const [loading, setLoading] = useState(true);
   const [normalizing, setNormalizing] = useState(false);
   const [normalizeResult, setNormalizeResult] = useState<{ mismatches: any[]; fixed: number } | null>(null);
+
+  // Departments table CRUD
+  const [deptRecords, setDeptRecords] = useState<DepartmentData[]>([]);
+  const [deptExpanded, setDeptExpanded] = useState(false);
+  const [deptNewName, setDeptNewName] = useState('');
+  const [deptSaving, setDeptSaving] = useState(false);
+  const [deptSaved, setDeptSaved] = useState(false);
+  const [deptError, setDeptError] = useState<string | null>(null);
 
   // Positions catalog (structured, separate from string[] settings)
   const [positions, setPositions] = useState<{ name: string; level: number }[]>([]);
@@ -46,9 +59,11 @@ export default function MantenedoresPage() {
     Promise.all([
       api.tenants.getAllCustomSettings(token).catch(() => ({})),
       api.tenants.getPositionsCatalog(token).catch(() => []),
-    ]).then(([settings, pos]) => {
+      api.tenants.getDepartmentsTable(token).catch(() => []),
+    ]).then(([settings, pos, depts]) => {
       setCustomSettings(settings);
       setPositions(pos);
+      setDeptRecords(Array.isArray(depts) ? depts.filter((d: any) => d.isActive) : []);
     }).finally(() => setLoading(false));
   }, [token]);
 
@@ -152,6 +167,132 @@ export default function MantenedoresPage() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           {t('mantenedores.subtitle')}
         </p>
+      </div>
+
+      {/* ─── Departments Table CRUD ─── */}
+      <div className="card animate-fade-up" style={{ overflow: 'hidden', padding: 0, marginBottom: '1rem' }}>
+        <button type="button" onClick={() => setDeptExpanded(!deptExpanded)}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', background: deptExpanded ? 'var(--bg-secondary)' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>Departamentos</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginLeft: '0.75rem' }}>{deptRecords.length} departamentos</span>
+          </div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transform: deptExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>&#9660;</span>
+        </button>
+        {deptExpanded && (
+          <div style={{ padding: '1.25rem', borderTop: '1px solid var(--border)' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+              Departamentos de la organización. Cada departamento tiene un ID único para mantener integridad referencial.
+            </p>
+            {/* Department list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
+              {deptRecords.map((d) => (
+                <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.6rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.88rem' }}>
+                  <input className="input" value={d.name}
+                    onChange={(e) => setDeptRecords(prev => prev.map(dept => dept.id === d.id ? { ...dept, name: e.target.value } : dept))}
+                    onBlur={async () => {
+                      if (!token || !d.name.trim() || !d.id) return;
+                      try {
+                        await api.tenants.updateDepartmentRecord(token, d.id, { name: d.name.trim() });
+                        setDeptSaved(true); setTimeout(() => setDeptSaved(false), 2000);
+                        invalidateDepts();
+                      } catch (e: any) { setDeptError(e.message || 'Error'); setTimeout(() => setDeptError(null), 4000); }
+                    }}
+                    style={{ flex: 1, fontSize: '0.85rem', padding: '0.3rem 0.6rem' }} />
+                  <button type="button" onClick={async () => {
+                    if (!token || !d.id) return;
+                    setDeptError(null);
+                    try {
+                      await api.tenants.deleteDepartmentRecord(token, d.id);
+                      setDeptRecords(prev => prev.filter(dept => dept.id !== d.id));
+                      invalidateDepts();
+                    } catch (e: any) {
+                      setDeptError(e.message || 'No se puede eliminar');
+                      setTimeout(() => setDeptError(null), 6000);
+                    }
+                  }} title="Eliminar" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1.1rem', padding: '0 0.3rem', lineHeight: 1, flexShrink: 0 }}>&times;</button>
+                </div>
+              ))}
+              {deptRecords.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontStyle: 'italic' }}>Sin departamentos configurados</p>}
+            </div>
+            {deptError && <div style={{ padding: '0.5rem 0.75rem', marginBottom: '0.5rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontSize: '0.82rem', color: 'var(--danger)' }}>{deptError}</div>}
+            {/* Add new department */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <input className="input" type="text" value={deptNewName} onChange={(e) => setDeptNewName(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && deptNewName.trim() && token) {
+                    e.preventDefault();
+                    setDeptSaving(true); setDeptError(null);
+                    try {
+                      const created = await api.tenants.createDepartmentRecord(token, { name: deptNewName.trim() });
+                      setDeptRecords(prev => [...prev, created]);
+                      setDeptNewName('');
+                      invalidateDepts();
+                    } catch (err: any) { setDeptError(err.message || 'Error'); setTimeout(() => setDeptError(null), 4000); }
+                    setDeptSaving(false);
+                  }
+                }}
+                placeholder="Nombre del departamento" style={{ flex: 1, fontSize: '0.88rem' }} />
+              <button type="button" className="btn-primary" disabled={!deptNewName.trim() || deptSaving}
+                onClick={async () => {
+                  if (!token || !deptNewName.trim()) return;
+                  setDeptSaving(true); setDeptError(null);
+                  try {
+                    const created = await api.tenants.createDepartmentRecord(token, { name: deptNewName.trim() });
+                    setDeptRecords(prev => [...prev, created]);
+                    setDeptNewName('');
+                    invalidateDepts();
+                  } catch (err: any) { setDeptError(err.message || 'Error'); setTimeout(() => setDeptError(null), 4000); }
+                  setDeptSaving(false);
+                }}
+                style={{ fontSize: '0.85rem', padding: '0.45rem 1rem', opacity: !deptNewName.trim() ? 0.5 : 1 }}>
+                {deptSaving ? 'Creando...' : 'Agregar'}
+              </button>
+            </div>
+            {deptSaved && <span style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600 }}>&#10003; Guardado</span>}
+
+            {/* Normalize departments tool */}
+            <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => handleNormalizeDepts(false)} disabled={normalizing}
+                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.45rem 1rem', fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: normalizing ? 'wait' : 'pointer', opacity: normalizing ? 0.6 : 1 }}>
+                  {normalizing ? 'Analizando...' : 'Verificar departamentos de colaboradores'}
+                </button>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Detecta colaboradores con departamentos que no coinciden con la lista configurada
+                </span>
+              </div>
+              {normalizeResult && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  {normalizeResult.mismatches.length === 0 ? (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--success)', fontWeight: 600 }}>Todos los departamentos coinciden.</p>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                        <strong>{normalizeResult.mismatches.length}</strong> colaborador(es) con departamento diferente:
+                        {normalizeResult.fixed > 0 && <span style={{ color: 'var(--success)', marginLeft: '0.5rem' }}>({normalizeResult.fixed} corregidos)</span>}
+                      </p>
+                      <div style={{ maxHeight: '200px', overflowY: 'auto', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '0.5rem 0.75rem', fontSize: '0.82rem' }}>
+                        {normalizeResult.mismatches.map((m: any, i: number) => (
+                          <div key={i} style={{ padding: '0.25rem 0', borderBottom: i < normalizeResult.mismatches.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                            <strong>{m.name}</strong>: &quot;{m.current}&quot;
+                            {m.suggested ? <span style={{ color: 'var(--primary)' }}> → {m.suggested}</span> : <span style={{ color: 'var(--danger)' }}> (sin coincidencia)</span>}
+                          </div>
+                        ))}
+                      </div>
+                      {normalizeResult.fixed === 0 && normalizeResult.mismatches.some((m: any) => m.suggested) && (
+                        <button type="button" className="btn-primary" onClick={() => handleNormalizeDepts(true)} disabled={normalizing}
+                          style={{ marginTop: '0.75rem', fontSize: '0.85rem', padding: '0.45rem 1.2rem' }}>
+                          Corregir departamentos sugeridos
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── Positions Catalog ─── */}
@@ -299,6 +440,7 @@ export default function MantenedoresPage() {
                   try {
                     const saved = await api.tenants.setPositionsCatalog(token, positions);
                     setPositions(saved); setPosSaved(true); setTimeout(() => setPosSaved(false), 3000);
+                    invalidatePos();
                   } catch (e: any) { setPosError(e.message || 'Error al guardar'); setTimeout(() => setPosError(null), 4000); }
                   setPosSaving(false);
                 }}
@@ -319,7 +461,7 @@ export default function MantenedoresPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {CUSTOM_SETTINGS_KEYS.map((key) => {
+        {CUSTOM_SETTINGS_KEYS.filter((key) => CUSTOM_SETTINGS_META[key]).map((key) => {
           const meta = CUSTOM_SETTINGS_META[key];
           const items = customSettings[key] ?? [];
           const isExpanded = expandedKey === key;

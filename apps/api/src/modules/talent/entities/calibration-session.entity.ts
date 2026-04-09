@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
+import { Department } from '../../tenants/entities/department.entity';
 import { User } from '../../users/entities/user.entity';
 import { EvaluationCycle } from '../../evaluations/entities/evaluation-cycle.entity';
 
@@ -40,6 +41,14 @@ export class CalibrationSession {
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   department: string | null;
+
+  @Column({ type: 'uuid', nullable: true, name: 'department_id' })
+  @Index('idx_calib_dept_id')
+  departmentId: string | null;
+
+  @ManyToOne(() => Department, { nullable: true })
+  @JoinColumn({ name: 'department_id' })
+  departmentEntity: Department;
 
   @Column({ type: 'uuid', name: 'moderator_id' })
   moderatorId: string;

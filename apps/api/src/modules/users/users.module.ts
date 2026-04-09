@@ -6,6 +6,8 @@ import { UserDeparture } from './entities/user-departure.entity';
 import { UserMovement } from './entities/user-movement.entity';
 import { BulkImport } from './entities/bulk-import.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { Department } from '../tenants/entities/department.entity';
+import { Position } from '../tenants/entities/position.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { AuditModule } from '../audit/audit.module';
@@ -14,7 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, UserNote, UserDeparture, UserMovement, BulkImport, Tenant]),
+    TypeOrmModule.forFeature([User, UserNote, UserDeparture, UserMovement, BulkImport, Tenant, Department, Position]),
     AuditModule,
     SubscriptionsModule,
     NotificationsModule,

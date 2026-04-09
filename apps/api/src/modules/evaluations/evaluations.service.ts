@@ -554,7 +554,7 @@ export class EvaluationsService {
     const allowedRelations = this.getAllowedRelations(cycleType);
     const users = await this.userRepo.find({
       where: { tenantId, isActive: true },
-      select: ['id', 'managerId', 'role', 'department', 'firstName', 'lastName', 'hierarchyLevel'],
+      select: ['id', 'managerId', 'role', 'department', 'departmentId', 'firstName', 'lastName', 'hierarchyLevel'],
     });
 
     // Exclude super_admin and external from evaluatees
@@ -649,7 +649,7 @@ export class EvaluationsService {
         const directReports = users.filter((u) =>
           u.managerId === evaluatee.id &&
           u.role !== 'super_admin' && u.role !== 'external' &&
-          !!(evaluatee.department && u.department && evaluatee.department === u.department),
+          !!((evaluatee as any).departmentId && (u as any).departmentId ? (evaluatee as any).departmentId === (u as any).departmentId : evaluatee.department && u.department && evaluatee.department === u.department),
         );
         if (directReports.length === 0) {
           exceptions.push({
@@ -678,7 +678,7 @@ export class EvaluationsService {
 
       // ── Peer auto-assignment (270° only — same department, min 3) ──
       if (cycleType === CycleType.DEGREE_270 && allowedRelations.includes(RelationType.PEER)) {
-        if (!evaluatee.department) {
+        if (!evaluatee.department && !(evaluatee as any).departmentId) {
           exceptions.push({
             evaluateeId: evaluatee.id,
             evaluateeName: evalName(evaluatee),
@@ -688,11 +688,14 @@ export class EvaluationsService {
             relationType: 'peer',
           });
         } else {
-          // Candidates: same department, not self, not their manager, active, not super_admin/external
+          // Candidates: same department (prefer ID, fallback text), not self, not their manager
+          const sameDeptCheck = (a: any, b: any) =>
+            a.departmentId && b.departmentId ? a.departmentId === b.departmentId
+            : !!(a.department && b.department && a.department === b.department);
           const peerCandidates = evaluatees.filter((u) =>
             u.id !== evaluatee.id &&
             u.id !== evaluatee.managerId &&
-            u.department === evaluatee.department &&
+            sameDeptCheck(evaluatee, u) &&
             !existingSet.has(`${evaluatee.id}|${u.id}|${RelationType.PEER}`),
           );
 
@@ -776,11 +779,15 @@ export class EvaluationsService {
       .andWhere('u.isActive = true')
       .andWhere('u.id != :evaluateeId', { evaluateeId })
       .andWhere("u.role NOT IN ('super_admin', 'external')")
-      .select(['u.id', 'u.firstName', 'u.lastName', 'u.position', 'u.hierarchyLevel', 'u.department', 'u.managerId']);
+      .select(['u.id', 'u.firstName', 'u.lastName', 'u.position', 'u.hierarchyLevel', 'u.department', 'u.departmentId', 'u.managerId']);
 
-    // 270°: filter by same department only
-    if (is270 && evaluatee.department) {
-      qb.andWhere('u.department = :dept', { dept: evaluatee.department });
+    // 270°: filter by same department only (prefer ID, fallback to text)
+    if (is270) {
+      if ((evaluatee as any).departmentId) {
+        qb.andWhere('u.department_id = :deptId', { deptId: (evaluatee as any).departmentId });
+      } else if (evaluatee.department) {
+        qb.andWhere('u.department = :dept', { dept: evaluatee.department });
+      }
     }
 
     // If evaluatee has a hierarchy level, prioritize same level
@@ -805,7 +812,7 @@ export class EvaluationsService {
         level: c.hierarchyLevel,
         department: c.department,
         sameLevel: evaluatee.hierarchyLevel != null && c.hierarchyLevel === evaluatee.hierarchyLevel,
-        sameDepartment: evaluatee.department && c.department === evaluatee.department,
+        sameDepartment: (evaluatee as any).departmentId && (c as any).departmentId ? (evaluatee as any).departmentId === (c as any).departmentId : evaluatee.department && c.department === evaluatee.department,
       }));
   }
 

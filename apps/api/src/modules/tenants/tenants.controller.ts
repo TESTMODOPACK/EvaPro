@@ -93,6 +93,68 @@ export class TenantsController {
     return this.tenantsService.checkPositionUsage(req.user.tenantId, name);
   }
 
+  // ─── Departments Table CRUD ──────────────────────────────────────────
+
+  @Get('me/departments')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getDepartmentsTable(@Request() req: any) {
+    return this.tenantsService.getDepartmentsTable(req.user.tenantId);
+  }
+
+  @Post('me/departments')
+  @Roles('super_admin', 'tenant_admin')
+  createDepartmentRecord(@Request() req: any, @Body() dto: { name: string; sortOrder?: number }) {
+    return this.tenantsService.createDepartmentRecord(req.user.tenantId, dto);
+  }
+
+  @Patch('me/departments/:id')
+  @Roles('super_admin', 'tenant_admin')
+  updateDepartmentRecord(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { name?: string; sortOrder?: number; isActive?: boolean },
+  ) {
+    return this.tenantsService.updateDepartmentRecord(req.user.tenantId, id, dto);
+  }
+
+  @Delete('me/departments/:id')
+  @Roles('super_admin', 'tenant_admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteDepartmentRecord(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tenantsService.deleteDepartmentRecord(req.user.tenantId, id);
+  }
+
+  // ─── Positions Table CRUD ──────────────────────────────────────────
+
+  @Get('me/positions-v2')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getPositionsTable(@Request() req: any) {
+    return this.tenantsService.getPositionsTable(req.user.tenantId);
+  }
+
+  @Post('me/positions-v2')
+  @Roles('super_admin', 'tenant_admin')
+  createPositionRecord(@Request() req: any, @Body() dto: { name: string; level?: number }) {
+    return this.tenantsService.createPositionRecord(req.user.tenantId, dto);
+  }
+
+  @Patch('me/positions-v2/:id')
+  @Roles('super_admin', 'tenant_admin')
+  updatePositionRecord(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { name?: string; level?: number; isActive?: boolean },
+  ) {
+    return this.tenantsService.updatePositionRecord(req.user.tenantId, id, dto);
+  }
+
+  @Delete('me/positions-v2/:id')
+  @Roles('super_admin', 'tenant_admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deletePositionRecord(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tenantsService.deletePositionRecord(req.user.tenantId, id);
+  }
+
   /** Update tenant general settings (timezone, sessionTimeout, etc.) */
   @Patch('me/settings')
   @Roles('super_admin', 'tenant_admin')

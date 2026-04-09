@@ -44,9 +44,17 @@ export class UpdateUserDto {
   @IsOptional()
   department?: string;
 
+  @IsUUID()
+  @IsOptional()
+  departmentId?: string;
+
   @IsString()
   @IsOptional()
   position?: string;
+
+  @IsUUID()
+  @IsOptional()
+  positionId?: string;
 
   @IsDateString()
   @IsOptional()

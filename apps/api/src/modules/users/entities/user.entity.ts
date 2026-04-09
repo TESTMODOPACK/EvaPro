@@ -1,5 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Index, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
+import { Department } from '../../tenants/entities/department.entity';
+import { Position } from '../../tenants/entities/position.entity';
 
 @Entity('users')
 @Unique(['tenantId', 'email'])
@@ -44,8 +46,24 @@ export class User {
   @Column({ type: 'varchar', length: 100, nullable: true })
   department: string;
 
+  @Column({ type: 'uuid', nullable: true, name: 'department_id' })
+  @Index('idx_users_department_id')
+  departmentId: string | null;
+
+  @ManyToOne(() => Department, { nullable: true })
+  @JoinColumn({ name: 'department_id' })
+  departmentEntity: Department;
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   position: string;
+
+  @Column({ type: 'uuid', nullable: true, name: 'position_id' })
+  @Index('idx_users_position_id')
+  positionId: string | null;
+
+  @ManyToOne(() => Position, { nullable: true })
+  @JoinColumn({ name: 'position_id' })
+  positionEntity: Position;
 
   @Column({ type: 'int', nullable: true, name: 'hierarchy_level', comment: 'Numeric level from position catalog (1=highest). Null if free-text position.' })
   hierarchyLevel: number | null;

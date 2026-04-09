@@ -11,6 +11,8 @@ import * as bcrypt from 'bcrypt';
 
 // ── Phase 1 ────────────────────────────────────────────────────────────────
 import { Tenant } from '../modules/tenants/entities/tenant.entity';
+import { Department } from '../modules/tenants/entities/department.entity';
+import { Position } from '../modules/tenants/entities/position.entity';
 import { User } from '../modules/users/entities/user.entity';
 import { FormTemplate } from '../modules/templates/entities/form-template.entity';
 import { EvaluationCycle, CycleStatus, CycleType } from '../modules/evaluations/entities/evaluation-cycle.entity';
@@ -82,7 +84,7 @@ const dataSource = new DataSource({
   ssl: process.env.NODE_ENV === 'production' && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
   entities: [
     // Phase 1
-    Tenant, User, FormTemplate,
+    Tenant, Department, Position, User, FormTemplate,
     EvaluationCycle, EvaluationAssignment, EvaluationResponse,
     BulkImport, AuditLog, PeerAssignment, CycleStage,
     // Phase 2
@@ -478,6 +480,70 @@ async function seed() {
       }
     }
 
+    /* ── Department & Position records ─────────────────────────────────── */
+    const deptRepo = dataSource.getRepository(Department);
+    const posRepo = dataSource.getRepository(Position);
+
+    const defaultDepts = ['Tecnología', 'Recursos Humanos', 'Ventas', 'Marketing', 'Operaciones', 'Finanzas', 'Legal', 'Administración'];
+    const defaultPositionsDef = [
+      { name: 'Gerente General', level: 1 }, { name: 'Gerente de Área', level: 2 },
+      { name: 'Subgerente', level: 3 }, { name: 'Jefe de Área', level: 4 },
+      { name: 'Coordinador', level: 5 }, { name: 'Analista', level: 6 }, { name: 'Asistente', level: 7 },
+    ];
+
+    // Create department records (idempotent)
+    const deptIdMap = new Map<string, string>(); // name lowercase → id
+    for (let i = 0; i < defaultDepts.length; i++) {
+      const name = defaultDepts[i];
+      let dept = await deptRepo.createQueryBuilder('d')
+        .where('d.tenant_id = :tenantId', { tenantId: tenant.id })
+        .andWhere('LOWER(d.name) = LOWER(:name)', { name })
+        .getOne();
+      if (!dept) {
+        dept = await deptRepo.save(deptRepo.create({ tenantId: tenant.id, name, sortOrder: i, isActive: true }));
+      }
+      deptIdMap.set(name.toLowerCase(), dept.id);
+    }
+    console.log(`✅  ${deptIdMap.size} department records ensured`);
+
+    // Create position records (idempotent)
+    const posIdMap = new Map<string, string>(); // name lowercase → id
+    for (const p of defaultPositionsDef) {
+      let pos = await posRepo.createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId: tenant.id })
+        .andWhere('LOWER(p.name) = LOWER(:name)', { name: p.name })
+        .getOne();
+      if (!pos) {
+        pos = await posRepo.save(posRepo.create({ tenantId: tenant.id, name: p.name, level: p.level, isActive: true }));
+      }
+      posIdMap.set(p.name.toLowerCase(), pos.id);
+    }
+    // Also create custom positions used by seed users
+    for (const extra of [
+      { name: 'Super Administrador', level: 0 },
+      { name: 'Encargado del Sistema', level: 4 },
+      { name: 'Gerente de Tecnología', level: 2 },
+      { name: 'Diseñadora UX', level: 6 },
+      { name: 'Ingeniero DevOps', level: 6 },
+      { name: 'Analista QA', level: 6 },
+    ]) {
+      if (!posIdMap.has(extra.name.toLowerCase())) {
+        let pos = await posRepo.createQueryBuilder('p')
+          .where('p.tenant_id = :tenantId', { tenantId: tenant.id })
+          .andWhere('LOWER(p.name) = LOWER(:name)', { name: extra.name })
+          .getOne();
+        if (!pos) {
+          pos = await posRepo.save(posRepo.create({ tenantId: tenant.id, name: extra.name, level: extra.level, isActive: true }));
+        }
+        posIdMap.set(extra.name.toLowerCase(), pos.id);
+      }
+    }
+    console.log(`✅  ${posIdMap.size} position records ensured`);
+
+    /** Helper to resolve departmentId and positionId from text */
+    const resolveDeptId = (name?: string) => name ? deptIdMap.get(name.toLowerCase()) || null : null;
+    const resolvePosId = (name?: string) => name ? posIdMap.get(name.toLowerCase()) || null : null;
+
     /* ── Super Admin ─────────────────────────────────────────────────────── */
     let superAdmin = await userRepo.findOne({
       where: { email: 'superadmin@evapro.demo', tenantId: tenant.id },
@@ -487,9 +553,10 @@ async function seed() {
       superAdmin = userRepo.create({
         email: 'superadmin@evapro.demo', passwordHash: pwHash,
         firstName: 'Super', lastName: 'Admin',
-        role: 'super_admin', department: 'Tecnología', position: 'Super Administrador',
+        role: 'super_admin', department: 'Tecnología', departmentId: resolveDeptId('Tecnología'),
+        position: 'Super Administrador', positionId: resolvePosId('Super Administrador'),
         isActive: true, tenantId: tenant.id,
-      });
+      } as any);
       superAdmin = await userRepo.save(superAdmin);
       console.log('\u2705  Super Admin created: superadmin@evapro.demo');
     }
@@ -503,9 +570,10 @@ async function seed() {
       admin = userRepo.create({
         email: 'admin@evapro.demo', passwordHash,
         firstName: 'Admin', lastName: 'EvaPro',
-        role: 'tenant_admin', department: 'Recursos Humanos', position: 'Encargado del Sistema',
+        role: 'tenant_admin', department: 'Recursos Humanos', departmentId: resolveDeptId('Recursos Humanos'),
+        position: 'Encargado del Sistema', positionId: resolvePosId('Encargado del Sistema'),
         isActive: true, tenantId: tenant.id,
-      });
+      } as any);
       admin = await userRepo.save(admin);
       console.log('\u2705  Admin created: admin@evapro.demo');
     }
@@ -519,9 +587,10 @@ async function seed() {
       manager = userRepo.create({
         email: 'carlos.lopez@evapro.demo', passwordHash: pwHash,
         firstName: 'Carlos', lastName: 'Lopez',
-        role: 'manager', department: 'Tecnología', position: 'Gerente de Tecnología',
+        role: 'manager', department: 'Tecnología', departmentId: resolveDeptId('Tecnología'),
+        position: 'Gerente de Tecnología', positionId: resolvePosId('Gerente de Tecnología'),
         hierarchyLevel: 2, isActive: true, tenantId: tenant.id, managerId: admin.id,
-      });
+      } as any);
       manager = await userRepo.save(manager);
       console.log('\u2705  Manager created: carlos.lopez@evapro.demo');
     }
@@ -533,10 +602,11 @@ async function seed() {
       testNewUser = await userRepo.save(userRepo.create({
         email: 'nuevo.usuario@evapro.demo', passwordHash: pwHash,
         firstName: 'Nuevo', lastName: 'Usuario',
-        role: 'employee', department: 'Recursos Humanos', position: 'Analista',
+        role: 'employee', department: 'Recursos Humanos', departmentId: resolveDeptId('Recursos Humanos'),
+        position: 'Analista', positionId: resolvePosId('Analista'),
         hierarchyLevel: 6, isActive: true, tenantId: tenant.id,
         managerId: admin.id, mustChangePassword: true,
-      }));
+      } as any));
       console.log('\u2705  Test user created: nuevo.usuario@evapro.demo (mustChangePassword=true)');
     }
 
@@ -554,7 +624,7 @@ async function seed() {
       if (!user) {
         const pwHash = await bcrypt.hash('EvaPro2026!', 10);
         user = await userRepo.save(
-          userRepo.create({ ...emp, passwordHash: pwHash, role: 'employee', isActive: true, tenantId: tenant.id, managerId: manager.id }),
+          userRepo.create({ ...emp, passwordHash: pwHash, role: 'employee', isActive: true, tenantId: tenant.id, managerId: manager.id, departmentId: resolveDeptId(emp.department), positionId: resolvePosId(emp.position) } as any),
         );
         console.log(`\u2705  Employee created: ${emp.email}`);
       }
@@ -578,6 +648,11 @@ async function seed() {
         if (user.department !== fix.department) { user.department = fix.department; changed = true; }
         if (user.position !== fix.position) { user.position = fix.position; changed = true; }
         if (fix.hierarchyLevel && user.hierarchyLevel !== fix.hierarchyLevel) { user.hierarchyLevel = fix.hierarchyLevel; changed = true; }
+        // Backfill department/position IDs
+        const dId = resolveDeptId(fix.department);
+        const pId = resolvePosId(fix.position);
+        if (dId && user.departmentId !== dId) { user.departmentId = dId; changed = true; }
+        if (pId && user.positionId !== pId) { user.positionId = pId; changed = true; }
         // Ensure manager hierarchy: employees report to Carlos, Carlos reports to Admin
         if (email === 'carlos.lopez@evapro.demo' && admin && !user.managerId) { user.managerId = admin.id; changed = true; }
         if (changed) { await userRepo.save(user); console.log(`   Fixed data for: ${email}`); }

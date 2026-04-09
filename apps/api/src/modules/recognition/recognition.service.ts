@@ -850,7 +850,7 @@ export class RecognitionService {
 
   // ─── Leaderboard with Opt-in ──────────────────────────────────────
 
-  async getLeaderboardOptIn(tenantId: string, period: string, limit = 20, department?: string) {
+  async getLeaderboardOptIn(tenantId: string, period: string, limit = 20, department?: string, departmentId?: string) {
     const qb = this.pointsRepo.createQueryBuilder('p')
       .innerJoin(User, 'u', 'u.id = p.user_id AND u.leaderboard_opt_in = true')
       .where('p.tenant_id = :tenantId', { tenantId })
@@ -868,7 +868,9 @@ export class RecognitionService {
       .orderBy('SUM(p.points)', 'DESC')
       .limit(limit);
 
-    if (department) {
+    if (departmentId) {
+      qb.andWhere('u.department_id = :departmentId', { departmentId });
+    } else if (department) {
       qb.andWhere('u.department = :department', { department });
     }
 

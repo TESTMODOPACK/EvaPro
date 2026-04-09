@@ -25,10 +25,21 @@ export interface Tenant {
 export interface UserData {
   id: string; tenantId: string; email: string; firstName: string; lastName: string;
   role: string; managerId: string | null; department: string | null;
-  position: string | null; hireDate: string | null; isActive: boolean; createdAt: string;
+  departmentId?: string | null; position: string | null; positionId?: string | null;
+  hireDate: string | null; isActive: boolean; createdAt: string;
   // Demographic (optional)
   gender?: string | null; birthDate?: string | null; nationality?: string | null;
   seniorityLevel?: string | null; contractType?: string | null; workLocation?: string | null;
+}
+
+export interface DepartmentData {
+  id: string; tenantId: string; name: string; isActive: boolean; sortOrder: number;
+  createdAt: string; updatedAt: string;
+}
+
+export interface PositionData {
+  id: string; tenantId: string; name: string; level: number; isActive: boolean;
+  createdAt: string; updatedAt: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -237,7 +248,25 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(settings),
       }, token),
-    // Positions catalog
+    // Departments table CRUD
+    getDepartmentsTable: (token: string) =>
+      request<DepartmentData[]>("/tenants/me/departments", {}, token),
+    createDepartmentRecord: (token: string, data: { name: string; sortOrder?: number }) =>
+      request<DepartmentData>("/tenants/me/departments", { method: "POST", body: JSON.stringify(data) }, token),
+    updateDepartmentRecord: (token: string, id: string, data: { name?: string; sortOrder?: number; isActive?: boolean }) =>
+      request<DepartmentData>(`/tenants/me/departments/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    deleteDepartmentRecord: (token: string, id: string) =>
+      request<void>(`/tenants/me/departments/${id}`, { method: "DELETE" }, token),
+    // Positions table CRUD (v2)
+    getPositionsV2: (token: string) =>
+      request<PositionData[]>("/tenants/me/positions-v2", {}, token),
+    createPositionRecord: (token: string, data: { name: string; level?: number }) =>
+      request<PositionData>("/tenants/me/positions-v2", { method: "POST", body: JSON.stringify(data) }, token),
+    updatePositionRecord: (token: string, id: string, data: { name?: string; level?: number; isActive?: boolean }) =>
+      request<PositionData>(`/tenants/me/positions-v2/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    deletePositionRecord: (token: string, id: string) =>
+      request<void>(`/tenants/me/positions-v2/${id}`, { method: "DELETE" }, token),
+    // Positions catalog (legacy)
     getPositionsCatalog: (token: string) =>
       request<{ name: string; level: number }[]>("/tenants/me/positions", {}, token),
     getPositionsAll: (token: string) =>

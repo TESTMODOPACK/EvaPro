@@ -8,6 +8,7 @@ import { CalibrationEntry } from './entities/calibration-entry.entity';
 import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { User } from '../users/entities/user.entity';
+import { Department } from '../tenants/entities/department.entity';
 import { AuditService } from '../audit/audit.service';
 
 // Nine Box mapping:
@@ -65,6 +66,8 @@ export class TalentService {
     private readonly responseRepo: Repository<EvaluationResponse>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Department)
+    private readonly departmentRepo: Repository<Department>,
     private readonly auditService: AuditService,
   ) {}
 
@@ -248,15 +251,30 @@ export class TalentService {
   // ─── Calibration Sessions ─────────────────────────────────────────────
 
   async createSession(tenantId: string, dto: any): Promise<CalibrationSession> {
+    // Dual-write: resolve departmentId↔department
+    let department = dto.department || null;
+    let departmentId: string | null = null;
+    if (dto.departmentId) {
+      const d = await this.departmentRepo.findOne({ where: { id: dto.departmentId, tenantId } });
+      if (d) { departmentId = d.id; department = d.name; }
+    } else if (department) {
+      const d = await this.departmentRepo.createQueryBuilder('d')
+        .where('d.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(d.name) = LOWER(:name)', { name: department })
+        .getOne();
+      if (d) departmentId = d.id;
+    }
+
     const session = this.sessionRepo.create({
       tenantId,
       cycleId: dto.cycleId,
       name: dto.name,
-      department: dto.department || null,
+      department,
+      departmentId,
       moderatorId: dto.moderatorId,
       status: 'draft',
       notes: dto.notes || null,
-    });
+    } as Partial<CalibrationSession>);
     return this.sessionRepo.save(session);
   }
 
@@ -299,7 +317,9 @@ export class TalentService {
       .where('ta.tenant_id = :tenantId', { tenantId: session.tenantId })
       .andWhere('ta.cycle_id = :cycleId', { cycleId: session.cycleId });
 
-    if (session.department) {
+    if (session.departmentId) {
+      qb.andWhere('u.department_id = :deptId', { deptId: session.departmentId });
+    } else if (session.department) {
       qb.andWhere('u.department = :dept', { dept: session.department });
     }
 
@@ -325,7 +345,9 @@ export class TalentService {
       .where('ta.tenant_id = :tenantId', { tenantId: session.tenantId })
       .andWhere('ta.cycle_id = :cycleId', { cycleId: session.cycleId });
 
-    if (session.department) {
+    if (session.departmentId) {
+      qb.andWhere('u.department_id = :deptId', { deptId: session.departmentId });
+    } else if (session.department) {
       qb.andWhere('u.department = :dept', { dept: session.department });
     }
 

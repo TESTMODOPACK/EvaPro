@@ -14,6 +14,8 @@ import * as crypto from 'crypto';
 
 // ── All entities ────────────────────────────────────────────────────────────
 import { Tenant } from '../modules/tenants/entities/tenant.entity';
+import { Department } from '../modules/tenants/entities/department.entity';
+import { Position } from '../modules/tenants/entities/position.entity';
 import { User } from '../modules/users/entities/user.entity';
 import { FormTemplate } from '../modules/templates/entities/form-template.entity';
 import { EvaluationCycle, CycleStatus, CycleType, CyclePeriod } from '../modules/evaluations/entities/evaluation-cycle.entity';
@@ -73,7 +75,7 @@ const ds = new DataSource({
   type: 'postgres', url: DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
   entities: [
-    Tenant, User, FormTemplate, EvaluationCycle, EvaluationAssignment, EvaluationResponse,
+    Tenant, Department, Position, User, FormTemplate, EvaluationCycle, EvaluationAssignment, EvaluationResponse,
     BulkImport, AuditLog, PeerAssignment, CycleStage,
     CheckIn, QuickFeedback, MeetingLocation,
     Objective, ObjectiveUpdate, ObjectiveComment, KeyResult,

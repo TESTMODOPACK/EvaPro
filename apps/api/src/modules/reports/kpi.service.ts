@@ -115,14 +115,20 @@ export class KpiService {
       }
 
       case KpiType.DEPARTMENT_AVG: {
+        const deptId = kpi.config?.departmentId;
         const dept = kpi.config?.department;
-        if (!dept) return { value: 0, formatted: 'Sin departamento configurado' };
-        const result = await this.responseRepo
+        if (!deptId && !dept) return { value: 0, formatted: 'Sin departamento configurado' };
+        const qb = this.responseRepo
           .createQueryBuilder('r')
           .innerJoin('r.assignment', 'a')
           .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
-          .where('r.tenantId = :tenantId', { tenantId })
-          .andWhere('u.department = :dept', { dept })
+          .where('r.tenantId = :tenantId', { tenantId });
+        if (deptId) {
+          qb.andWhere('u.department_id = :deptId', { deptId });
+        } else {
+          qb.andWhere('u.department = :dept', { dept });
+        }
+        const result = await qb
           .andWhere('r.overall_score IS NOT NULL')
           .select('AVG(r.overall_score)', 'avg')
           .getRawOne();

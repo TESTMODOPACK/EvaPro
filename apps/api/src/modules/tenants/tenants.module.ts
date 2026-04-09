@@ -6,6 +6,8 @@ import { AuditLog } from '../audit/entities/audit-log.entity';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { SubscriptionPlan } from '../subscriptions/entities/subscription-plan.entity';
 import { SupportTicket } from './entities/support-ticket.entity';
+import { Department } from './entities/department.entity';
+import { Position } from './entities/position.entity';
 import { AiInsight } from '../ai-insights/entities/ai-insight.entity';
 import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
@@ -13,7 +15,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Tenant, User, AuditLog, Subscription, SubscriptionPlan, SupportTicket, AiInsight]),
+    TypeOrmModule.forFeature([Tenant, User, AuditLog, Subscription, SubscriptionPlan, SupportTicket, AiInsight, Department, Position]),
     NotificationsModule,
   ],
   controllers: [TenantsController],

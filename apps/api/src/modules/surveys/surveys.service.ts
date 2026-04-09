@@ -267,7 +267,12 @@ export class SurveysService {
     const where: any = { tenantId, isActive: true };
 
     if (survey.targetAudience === 'by_department' && survey.targetDepartments.length > 0) {
-      where.department = In(survey.targetDepartments);
+      // Prefer departmentId if available (targetDepartmentIds), fallback to text
+      if ((survey as any).targetDepartmentIds?.length > 0) {
+        where.departmentId = In((survey as any).targetDepartmentIds);
+      } else {
+        where.department = In(survey.targetDepartments);
+      }
     }
     // 'all' or 'custom' (custom uses all for now, can be extended)
 

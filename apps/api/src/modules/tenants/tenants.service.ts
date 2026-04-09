@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Tenant } from './entities/tenant.entity';
+import { Department } from './entities/department.entity';
+import { Position } from './entities/position.entity';
 import { User } from '../users/entities/user.entity';
 import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
 import { AuditLog } from '../audit/entities/audit-log.entity';
@@ -113,6 +115,10 @@ export class TenantsService {
     private readonly aiInsightRepo: Repository<AiInsight>,
     @InjectRepository(SubscriptionPlan)
     private readonly planRepo: Repository<SubscriptionPlan>,
+    @InjectRepository(Department)
+    private readonly departmentRepo: Repository<Department>,
+    @InjectRepository(Position)
+    private readonly positionRepo: Repository<Position>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -178,10 +184,19 @@ export class TenantsService {
     });
     const saved = await this.tenantRepository.save(tenant);
 
+    // Auto-create department and position records from settings
+    try {
+      await this.ensureDepartmentRecords(saved.id);
+      await this.ensurePositionRecords(saved.id);
+    } catch { /* non-critical */ }
+
     // Optionally create admin user for this tenant
     let adminUser = null;
     if (dto.adminEmail && dto.adminPassword) {
       const passwordHash = await bcrypt.hash(dto.adminPassword, 12);
+      // Resolve department/position IDs
+      const deptId = await this.findOrCreateDepartment(saved.id, dto.adminDepartment || 'Administración');
+      const posId = await this.findOrCreatePosition(saved.id, dto.adminPosition || 'Encargado del Sistema');
       adminUser = this.userRepository.create({
         tenantId: saved.id,
         email: dto.adminEmail,
@@ -189,8 +204,10 @@ export class TenantsService {
         firstName: dto.adminFirstName || 'Admin',
         lastName: dto.adminLastName || saved.name,
         role: 'tenant_admin',
-        department: 'Administración',
-        position: 'Encargado del Sistema',
+        department: dto.adminDepartment || 'Administración',
+        departmentId: deptId,
+        position: dto.adminPosition || 'Encargado del Sistema',
+        positionId: posId,
         isActive: true,
       });
       adminUser = await this.userRepository.save(adminUser);
@@ -658,25 +675,6 @@ export class TenantsService {
     return { inUse: count > 0, count };
   }
 
-  /**
-   * Adds a position to the catalog if it doesn't already exist (case-insensitive).
-   * Used when creating/updating users with custom positions.
-   */
-  async addPositionIfNew(tenantId: string, name: string, level: number): Promise<void> {
-    if (!name?.trim() || !Number.isInteger(level) || level < 1) return;
-    const tenant = await this.findById(tenantId);
-    const current: { name: string; level: number }[] = Array.isArray(tenant.settings?.positions) && tenant.settings.positions.length > 0
-      ? tenant.settings.positions
-      : [...TenantsService.DEFAULT_POSITIONS];
-    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\̀-\ͯ]/g, '');
-    const exists = current.some(p => norm(p.name) === norm(name.trim()));
-    if (exists) return; // Already in catalog
-    current.push({ name: name.trim(), level });
-    current.sort((a, b) => a.level - b.level);
-    tenant.settings = { ...(tenant.settings || {}), positions: current };
-    await this.tenantRepository.save(tenant);
-  }
-
   /** Returns all positions from catalog + any custom positions assigned to users */
   async getPositionsWithInUse(tenantId: string): Promise<{ name: string; level: number }[]> {
     const catalog = await this.getPositionsCatalog(tenantId);
@@ -1094,6 +1092,298 @@ export class TenantsService {
     } catch (err) {
       return [];
     }
+  }
+
+  // ─── Departments Table CRUD ──────────────────────────────────────────
+
+  async getDepartmentsTable(tenantId: string): Promise<Department[]> {
+    return this.departmentRepo.find({
+      where: { tenantId },
+      order: { sortOrder: 'ASC', name: 'ASC' },
+    });
+  }
+
+  async createDepartmentRecord(tenantId: string, dto: { name: string; sortOrder?: number }): Promise<Department> {
+    const name = dto.name?.trim();
+    if (!name) throw new BadRequestException('El nombre del departamento es requerido');
+
+    // Check uniqueness (case-insensitive)
+    const existing = await this.departmentRepo
+      .createQueryBuilder('d')
+      .where('d.tenant_id = :tenantId', { tenantId })
+      .andWhere('LOWER(d.name) = LOWER(:name)', { name })
+      .getOne();
+    if (existing) {
+      if (!existing.isActive) {
+        existing.isActive = true;
+        existing.name = name;
+        const reactivated = await this.departmentRepo.save(existing);
+        await this.syncDepartmentsToSettings(tenantId);
+        return reactivated;
+      }
+      throw new ConflictException(`El departamento "${name}" ya existe`);
+    }
+
+    const dept = this.departmentRepo.create({
+      tenantId,
+      name,
+      sortOrder: dto.sortOrder ?? 0,
+      isActive: true,
+    });
+    const saved = await this.departmentRepo.save(dept);
+
+    // Sync to tenant.settings for backward compat
+    await this.syncDepartmentsToSettings(tenantId);
+
+    return saved;
+  }
+
+  async updateDepartmentRecord(tenantId: string, deptId: string, dto: { name?: string; sortOrder?: number; isActive?: boolean }): Promise<Department> {
+    const dept = await this.departmentRepo.findOne({ where: { id: deptId, tenantId } });
+    if (!dept) throw new NotFoundException('Departamento no encontrado');
+
+    if (dto.name !== undefined) {
+      const name = dto.name.trim();
+      if (!name) throw new BadRequestException('El nombre no puede estar vacío');
+
+      // Check uniqueness
+      const existing = await this.departmentRepo
+        .createQueryBuilder('d')
+        .where('d.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(d.name) = LOWER(:name)', { name })
+        .andWhere('d.id != :id', { id: deptId })
+        .getOne();
+      if (existing) throw new ConflictException(`El departamento "${name}" ya existe`);
+
+      // Rename users with old department name
+      const oldName = dept.name;
+      if (oldName !== name) {
+        await this.userRepository.update(
+          { tenantId, department: oldName },
+          { department: name },
+        );
+      }
+
+      dept.name = name;
+    }
+    if (dto.sortOrder !== undefined) dept.sortOrder = dto.sortOrder;
+    if (dto.isActive !== undefined) dept.isActive = dto.isActive;
+
+    const saved = await this.departmentRepo.save(dept);
+    await this.syncDepartmentsToSettings(tenantId);
+    return saved;
+  }
+
+  async deleteDepartmentRecord(tenantId: string, deptId: string): Promise<void> {
+    const dept = await this.departmentRepo.findOne({ where: { id: deptId, tenantId } });
+    if (!dept) throw new NotFoundException('Departamento no encontrado');
+
+    // Check usage
+    const usage = await this.checkSettingUsage(tenantId, 'departments', dept.name);
+    if (usage.inUse) {
+      throw new BadRequestException(usage.message);
+    }
+
+    // Soft-delete (deactivate)
+    dept.isActive = false;
+    await this.departmentRepo.save(dept);
+    await this.syncDepartmentsToSettings(tenantId);
+  }
+
+  /** Sync departments table → tenant.settings.departments for backward compat */
+  async syncDepartmentsToSettings(tenantId: string): Promise<void> {
+    const depts = await this.departmentRepo.find({
+      where: { tenantId, isActive: true },
+      order: { sortOrder: 'ASC', name: 'ASC' },
+    });
+    const tenant = await this.findById(tenantId);
+    tenant.settings = { ...(tenant.settings || {}), departments: depts.map(d => d.name) };
+    await this.tenantRepository.save(tenant);
+  }
+
+  /** Ensure department records exist for a tenant (creates from settings if needed) */
+  async ensureDepartmentRecords(tenantId: string): Promise<void> {
+    const existing = await this.departmentRepo.count({ where: { tenantId } });
+    if (existing > 0) return; // Already migrated
+
+    const tenant = await this.findById(tenantId);
+    const deptNames: string[] = tenant.settings?.departments || CUSTOM_SETTINGS_DEFAULTS.departments;
+    for (let i = 0; i < deptNames.length; i++) {
+      const name = deptNames[i]?.trim();
+      if (!name) continue;
+      try {
+        await this.departmentRepo.save(this.departmentRepo.create({
+          tenantId, name, sortOrder: i, isActive: true,
+        }));
+      } catch { /* duplicate — skip */ }
+    }
+  }
+
+  /** Find or create a department by name, returning its ID */
+  async findOrCreateDepartment(tenantId: string, name: string): Promise<string | null> {
+    if (!name?.trim()) return null;
+    const trimmed = name.trim();
+    let dept = await this.departmentRepo
+      .createQueryBuilder('d')
+      .where('d.tenant_id = :tenantId', { tenantId })
+      .andWhere('LOWER(d.name) = LOWER(:name)', { name: trimmed })
+      .getOne();
+    if (dept) {
+      if (!dept.isActive) {
+        dept.isActive = true;
+        await this.departmentRepo.save(dept);
+      }
+      return dept.id;
+    }
+    // Create new
+    dept = this.departmentRepo.create({ tenantId, name: trimmed, isActive: true });
+    const saved = await this.departmentRepo.save(dept);
+    await this.syncDepartmentsToSettings(tenantId);
+    return saved.id;
+  }
+
+  // ─── Positions Table CRUD ──────────────────────────────────────────
+
+  async getPositionsTable(tenantId: string): Promise<Position[]> {
+    return this.positionRepo.find({
+      where: { tenantId },
+      order: { level: 'ASC', name: 'ASC' },
+    });
+  }
+
+  async createPositionRecord(tenantId: string, dto: { name: string; level?: number }): Promise<Position> {
+    const name = dto.name?.trim();
+    if (!name) throw new BadRequestException('El nombre del cargo es requerido');
+
+    const existing = await this.positionRepo
+      .createQueryBuilder('p')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .andWhere('LOWER(p.name) = LOWER(:name)', { name })
+      .getOne();
+    if (existing) {
+      if (!existing.isActive) {
+        existing.isActive = true;
+        existing.name = name;
+        if (dto.level !== undefined) existing.level = dto.level;
+        const reactivated = await this.positionRepo.save(existing);
+        await this.syncPositionsToSettings(tenantId);
+        return reactivated;
+      }
+      throw new ConflictException(`El cargo "${name}" ya existe`);
+    }
+
+    const pos = this.positionRepo.create({
+      tenantId,
+      name,
+      level: dto.level ?? 0,
+      isActive: true,
+    });
+    const saved = await this.positionRepo.save(pos);
+    await this.syncPositionsToSettings(tenantId);
+    return saved;
+  }
+
+  async updatePositionRecord(tenantId: string, posId: string, dto: { name?: string; level?: number; isActive?: boolean }): Promise<Position> {
+    const pos = await this.positionRepo.findOne({ where: { id: posId, tenantId } });
+    if (!pos) throw new NotFoundException('Cargo no encontrado');
+
+    if (dto.name !== undefined) {
+      const name = dto.name.trim();
+      if (!name) throw new BadRequestException('El nombre no puede estar vacío');
+
+      const existing = await this.positionRepo
+        .createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(p.name) = LOWER(:name)', { name })
+        .andWhere('p.id != :id', { id: posId })
+        .getOne();
+      if (existing) throw new ConflictException(`El cargo "${name}" ya existe`);
+
+      const oldName = pos.name;
+      if (oldName !== name) {
+        await this.userRepository.update(
+          { tenantId, position: oldName },
+          { position: name },
+        );
+      }
+      pos.name = name;
+    }
+    if (dto.level !== undefined) pos.level = dto.level;
+    if (dto.isActive !== undefined) pos.isActive = dto.isActive;
+
+    const saved = await this.positionRepo.save(pos);
+    await this.syncPositionsToSettings(tenantId);
+    return saved;
+  }
+
+  async deletePositionRecord(tenantId: string, posId: string): Promise<void> {
+    const pos = await this.positionRepo.findOne({ where: { id: posId, tenantId } });
+    if (!pos) throw new NotFoundException('Cargo no encontrado');
+
+    const usage = await this.checkPositionUsage(tenantId, pos.name);
+    if (usage.inUse) {
+      throw new BadRequestException(`No se puede eliminar "${pos.name}" porque está asignado a ${usage.count} usuario(s)`);
+    }
+
+    pos.isActive = false;
+    await this.positionRepo.save(pos);
+    await this.syncPositionsToSettings(tenantId);
+  }
+
+  /** Sync positions table → tenant.settings.positions for backward compat */
+  async syncPositionsToSettings(tenantId: string): Promise<void> {
+    const positions = await this.positionRepo.find({
+      where: { tenantId, isActive: true },
+      order: { level: 'ASC', name: 'ASC' },
+    });
+    const tenant = await this.findById(tenantId);
+    tenant.settings = {
+      ...(tenant.settings || {}),
+      positions: positions.map(p => ({ name: p.name, level: p.level })),
+    };
+    await this.tenantRepository.save(tenant);
+  }
+
+  /** Ensure position records exist for a tenant (creates from settings if needed) */
+  async ensurePositionRecords(tenantId: string): Promise<void> {
+    const existing = await this.positionRepo.count({ where: { tenantId } });
+    if (existing > 0) return;
+
+    const tenant = await this.findById(tenantId);
+    const positions: { name: string; level: number }[] = Array.isArray(tenant.settings?.positions) && tenant.settings.positions.length > 0
+      ? tenant.settings.positions
+      : TenantsService.DEFAULT_POSITIONS;
+    for (const p of positions) {
+      const name = p.name?.trim();
+      if (!name) continue;
+      try {
+        await this.positionRepo.save(this.positionRepo.create({
+          tenantId, name, level: p.level || 0, isActive: true,
+        }));
+      } catch { /* duplicate — skip */ }
+    }
+  }
+
+  /** Find or create a position by name, returning its ID */
+  async findOrCreatePosition(tenantId: string, name: string, level?: number): Promise<string | null> {
+    if (!name?.trim()) return null;
+    const trimmed = name.trim();
+    let pos = await this.positionRepo
+      .createQueryBuilder('p')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .andWhere('LOWER(p.name) = LOWER(:name)', { name: trimmed })
+      .getOne();
+    if (pos) {
+      if (!pos.isActive) {
+        pos.isActive = true;
+        await this.positionRepo.save(pos);
+      }
+      return pos.id;
+    }
+    pos = this.positionRepo.create({ tenantId, name: trimmed, level: level ?? 0, isActive: true });
+    const saved = await this.positionRepo.save(pos);
+    await this.syncPositionsToSettings(tenantId);
+    return saved.id;
   }
 
   // ─── Support Tickets ────────────────────────────────────────────────

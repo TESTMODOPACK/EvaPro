@@ -124,15 +124,16 @@ export class DevelopmentController {
   findRoleCompetencies(
     @Request() req: any,
     @Query('position') position?: string,
+    @Query('positionId') positionId?: string,
   ) {
-    return this.developmentService.findRoleCompetencies(req.user.tenantId, position);
+    return this.developmentService.findRoleCompetencies(req.user.tenantId, position, positionId);
   }
 
   @Post('role-competencies')
   @Roles('super_admin', 'tenant_admin')
   createRoleCompetency(
     @Request() req: any,
-    @Body() dto: { position: string; competencyId: string; expectedLevel: number },
+    @Body() dto: { position: string; positionId?: string; competencyId: string; expectedLevel: number },
   ) {
     return this.developmentService.createRoleCompetency(req.user.tenantId, dto);
   }
@@ -161,9 +162,9 @@ export class DevelopmentController {
   @Roles('super_admin', 'tenant_admin')
   bulkAssignCompetencies(
     @Request() req: any,
-    @Body() dto: { position: string; defaultLevel?: number },
+    @Body() dto: { position: string; positionId?: string; defaultLevel?: number },
   ) {
-    return this.developmentService.bulkAssignCompetencies(req.user.tenantId, dto.position, dto.defaultLevel || 5);
+    return this.developmentService.bulkAssignCompetencies(req.user.tenantId, dto.position, dto.defaultLevel || 5, dto.positionId);
   }
 
   // ─── Plans (requires PDI feature) ──────────────────────────────────────

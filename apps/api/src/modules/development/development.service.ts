@@ -14,6 +14,7 @@ import { DevelopmentComment } from './entities/development-comment.entity';
 import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { RoleCompetency } from './entities/role-competency.entity';
+import { Position } from '../tenants/entities/position.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -36,6 +37,8 @@ export class DevelopmentService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(TalentAssessment)
     private readonly assessmentRepo: Repository<TalentAssessment>,
+    @InjectRepository(Position)
+    private readonly positionRepo: Repository<Position>,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
@@ -250,17 +253,36 @@ export class DevelopmentService {
 
   // ─── Role Competencies CRUD ──────────────────────────────────────────
 
-  async findRoleCompetencies(tenantId: string, position?: string): Promise<RoleCompetency[]> {
+  async findRoleCompetencies(tenantId: string, position?: string, positionId?: string): Promise<RoleCompetency[]> {
     const where: any = { tenantId };
-    if (position) where.position = position;
+    if (positionId) {
+      where.positionId = positionId;
+    } else if (position) {
+      where.position = position;
+    }
     return this.roleCompetencyRepo.find({ where, relations: ['competency'], order: { position: 'ASC', createdAt: 'ASC' } });
   }
 
-  async createRoleCompetency(tenantId: string, dto: { position: string; competencyId: string; expectedLevel: number }): Promise<RoleCompetency> {
+  async createRoleCompetency(tenantId: string, dto: { position: string; positionId?: string; competencyId: string; expectedLevel: number }): Promise<RoleCompetency> {
     if (dto.expectedLevel < 1 || dto.expectedLevel > 10) throw new BadRequestException('El nivel esperado debe estar entre 1 y 10');
-    const existing = await this.roleCompetencyRepo.findOne({ where: { tenantId, position: dto.position, competencyId: dto.competencyId } });
+
+    // Dual-write: resolve positionId↔position
+    let positionName = dto.position;
+    let positionId: string | null = null;
+    if (dto.positionId) {
+      const p = await this.positionRepo.findOne({ where: { id: dto.positionId, tenantId } });
+      if (p) { positionId = p.id; positionName = p.name; }
+    } else if (positionName) {
+      const p = await this.positionRepo.createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(p.name) = LOWER(:name)', { name: positionName })
+        .getOne();
+      if (p) positionId = p.id;
+    }
+
+    const existing = await this.roleCompetencyRepo.findOne({ where: { tenantId, position: positionName, competencyId: dto.competencyId } });
     if (existing) throw new ConflictException('Esta competencia ya está asignada a este cargo');
-    const rc = this.roleCompetencyRepo.create({ tenantId, position: dto.position, competencyId: dto.competencyId, expectedLevel: dto.expectedLevel });
+    const rc = this.roleCompetencyRepo.create({ tenantId, position: positionName, positionId, competencyId: dto.competencyId, expectedLevel: dto.expectedLevel } as Partial<RoleCompetency>);
     return this.roleCompetencyRepo.save(rc);
   }
 
@@ -278,13 +300,23 @@ export class DevelopmentService {
     await this.roleCompetencyRepo.remove(rc);
   }
 
-  async bulkAssignCompetencies(tenantId: string, position: string, defaultLevel: number = 5): Promise<{ created: number }> {
+  async bulkAssignCompetencies(tenantId: string, position: string, defaultLevel: number = 5, positionId?: string): Promise<{ created: number }> {
+    // Resolve positionId if not provided
+    let resolvedPosId = positionId || null;
+    if (!resolvedPosId && position) {
+      const p = await this.positionRepo.createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(p.name) = LOWER(:name)', { name: position })
+        .getOne();
+      if (p) resolvedPosId = p.id;
+    }
+
     const competencies = await this.competencyRepo.find({ where: { tenantId, isActive: true, status: CompetencyStatus.APPROVED } });
     let created = 0;
     for (const comp of competencies) {
       const exists = await this.roleCompetencyRepo.findOne({ where: { tenantId, position, competencyId: comp.id } });
       if (!exists) {
-        await this.roleCompetencyRepo.save(this.roleCompetencyRepo.create({ tenantId, position, competencyId: comp.id, expectedLevel: defaultLevel }));
+        await this.roleCompetencyRepo.save(this.roleCompetencyRepo.create({ tenantId, position, positionId: resolvedPosId, competencyId: comp.id, expectedLevel: defaultLevel } as any));
         created++;
       }
     }

@@ -10,6 +10,7 @@ import {
   Check,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
+import { Position } from '../../tenants/entities/position.entity';
 import { Competency } from './competency.entity';
 
 @Entity('role_competencies')
@@ -30,6 +31,14 @@ export class RoleCompetency {
 
   @Column({ type: 'varchar', length: 100 })
   position: string;
+
+  @Column({ type: 'uuid', nullable: true, name: 'position_id' })
+  @Index('idx_rc_pos_id')
+  positionId: string | null;
+
+  @ManyToOne(() => Position, { nullable: true })
+  @JoinColumn({ name: 'position_id' })
+  positionEntity: Position;
 
   @Column({ type: 'uuid', name: 'competency_id' })
   competencyId: string;
