@@ -572,9 +572,9 @@ export default function UsuariosPage() {
       // Validate email
       const email = cols[emailIdx] || '';
       if (!email) {
-        errors.push(`Fila ${rowNum}: Correo electronico vacio.`);
+        errors.push(`Fila ${rowNum}: Correo electr\u00f3nico vac\u00edo.`);
       } else if (!emailRegex.test(email)) {
-        errors.push(`Fila ${rowNum}: Correo electronico invalido: "${email}".`);
+        errors.push(`Fila ${rowNum}: Correo electr\u00f3nico inv\u00e1lido: "${email}".`);
       } else if (seenEmails.has(email.toLowerCase())) {
         errors.push(`Fila ${rowNum}: Correo duplicado en el archivo: "${email}".`);
       } else {
@@ -1226,9 +1226,9 @@ export default function UsuariosPage() {
               <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#6366f1', marginBottom: '0.5rem' }}>Valores permitidos para la columna "rol"</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', fontSize: '0.78rem' }}>
                 {[
-                  ['colaborador', 'Empleado base (default si se deja vacio)'],
+                  ['colaborador', 'Empleado base (default si se deja vac\u00edo)'],
                   ['encargado_equipo', 'Jefe de equipo / Manager'],
-                  ['encargado_sistema', 'Administrador de la organizacion (RRHH)'],
+                  ['encargado_sistema', 'Administrador de la organizaci\u00f3n (RRHH)'],
                   ['asesor_externo', 'Evaluador externo (solo lectura)'],
                 ].map(([code, desc]) => (
                   <div key={code} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
@@ -1243,7 +1243,7 @@ export default function UsuariosPage() {
             <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(245,158,11,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.15)' }}>
               <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#f59e0b', marginBottom: '0.3rem' }}>Formato de fecha</div>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Use el formato <strong>DD-MM-AAAA</strong> (dia-mes-ano). Ejemplo: <code style={{ background: 'rgba(245,158,11,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>15-01-2024</code> para el 15 de enero de 2024. Si no se indica fecha, el campo queda vacio.
+                Use el formato <strong>DD-MM-AAAA</strong> (d&iacute;a-mes-a&ntilde;o). Ejemplo: <code style={{ background: 'rgba(245,158,11,0.1)', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>15-01-2024</code> para el 15 de enero de 2024. Si no se indica fecha, el campo queda vac&iacute;o.
               </p>
             </div>
           </div>
