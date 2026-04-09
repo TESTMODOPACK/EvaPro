@@ -451,51 +451,7 @@ export default function ReportesPage() {
                     </AnalysisCard>
                   )}
 
-                  {/* Cycle Comparison */}
-                  <div className="card" style={{ padding: '1.25rem', marginTop: '1rem' }}>
-                    <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Comparativa de Ciclos</h4>
-                    <select className="input" value={compareCycleId || ''} onChange={(e) => { setCompareCycleId(e.target.value || null); setCompareSummary(null); }} style={{ fontSize: '0.82rem', maxWidth: '300px', marginBottom: '0.75rem' }}>
-                      <option value="">Seleccionar ciclo para comparar...</option>
-                      {closedCycles.filter((c: any) => c.id !== selectedCycleId).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    {compareSummary && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        {[
-                          { label: 'Promedio', current: Number(summary.averageScore), compare: compareSummary.averageScore, fmt: (v: number) => v?.toFixed(1) },
-                          { label: 'Completitud', current: Number(summary.completionRate), compare: compareSummary.completionRate, fmt: (v: number) => `${v}%` },
-                        ].map(({ label, current, compare, fmt }) => {
-                          const delta = Number(current) - Number(compare);
-                          const positive = delta >= 0;
-                          return (
-                            <div key={label} className="card" style={{ padding: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{fmt(current)}</div>
-                              </div>
-                              <div style={{ textAlign: 'right', color: positive ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
-                                <span style={{ fontSize: '1rem' }}>{positive ? '▲' : '▼'}</span> {Math.abs(delta).toFixed(1)}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {/* Historical trend from cycle comparison */}
-                    {cycleCompData?.cycles?.length >= 2 && (
-                      <div style={{ marginTop: '1rem', height: 200 }}>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Tendencia histórica de ciclos</div>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={cycleCompData.cycles.map((c: any) => ({ name: c.cycleName?.slice(0, 20), avg: c.avgScore }))}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                            <YAxis domain={[0, 10]} tick={{ fontSize: 10 }} />
-                            <Tooltip />
-                            <Line type="monotone" dataKey="avg" name="Promedio" stroke="#C9933A" strokeWidth={2} dot={{ r: 4 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </div>
+                  {/* Comparativa de Ciclos removed — use dedicated /analytics-ciclos page */}
                 </>
               )}
             </div>
