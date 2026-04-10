@@ -384,6 +384,10 @@ export class SurveysService {
     }
 
     // Calculate averages by category
+    // Note: climate surveys use likert_5 internally (scores 1-5) but we
+    // present results on a 1-10 scale (×2) so they can be compared directly
+    // against the 1-10 performance evaluation scale. NPS questions are
+    // already 0-10 and remain unchanged.
     const categoryScores: Record<string, number[]> = {};
     const questionScores: Record<string, number[]> = {};
     const openResponses: Array<{ questionId: string; questionText: string; category: string; text: string }> = [];
@@ -394,8 +398,10 @@ export class SurveysService {
         if (!question) continue;
 
         if (question.questionType === 'likert_5' || question.questionType === 'nps') {
-          const numVal = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
-          if (!isNaN(numVal)) {
+          const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
+          if (!isNaN(raw)) {
+            // Normalize likert_5 (1-5) → 2-10 to align with NPS/perf scale.
+            const numVal = question.questionType === 'likert_5' ? raw * 2 : raw;
             if (!categoryScores[question.category]) categoryScores[question.category] = [];
             categoryScores[question.category].push(numVal);
 
@@ -413,14 +419,14 @@ export class SurveysService {
       }
     }
 
-    // Average by category
+    // Average by category (already in 1-10 scale)
     const averageByCategory = Object.entries(categoryScores).map(([category, scores]) => ({
       category,
       average: Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)),
       count: scores.length,
     })).sort((a, b) => b.average - a.average);
 
-    // Average by question
+    // Average by question (1-10 scale)
     const averageByQuestion = survey.questions
       .filter((q) => q.questionType === 'likert_5')
       .map((q) => {
@@ -435,13 +441,16 @@ export class SurveysService {
       })
       .sort((a, b) => b.average - a.average);
 
-    // Likert distribution per question
+    // Likert distribution per question — buckets 2,4,6,8,10 (×2 of 1-5 raw)
     const likertDistribution = survey.questions
       .filter((q) => q.questionType === 'likert_5')
       .map((q) => {
-        const scores = questionScores[q.id] || [];
-        const dist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-        for (const s of scores) dist[Math.round(s) as 1 | 2 | 3 | 4 | 5] = (dist[Math.round(s) as 1 | 2 | 3 | 4 | 5] || 0) + 1;
+        const scores = questionScores[q.id] || []; // already ×2
+        const dist: Record<number, number> = { 2: 0, 4: 0, 6: 0, 8: 0, 10: 0 };
+        for (const s of scores) {
+          const bucket = Math.round(s) as number;
+          if (dist[bucket] !== undefined) dist[bucket] += 1;
+        }
         const total = scores.length || 1;
         return {
           questionId: q.id,
@@ -455,10 +464,10 @@ export class SurveysService {
         };
       });
 
-    // Overall average (likert only)
-    const allLikert = Object.values(categoryScores).flat().filter((v) => v >= 1 && v <= 5);
-    const overallAverage = allLikert.length > 0
-      ? Number((allLikert.reduce((a, b) => a + b, 0) / allLikert.length).toFixed(2))
+    // Overall average (1-10 scale)
+    const allScores = Object.values(categoryScores).flat().filter((v) => v >= 0 && v <= 10);
+    const overallAverage = allScores.length > 0
+      ? Number((allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(2))
       : 0;
 
     return {
@@ -478,39 +487,50 @@ export class SurveysService {
     const survey = await this.findById(tenantId, surveyId);
     const responses = await this.responseRepo.find({ where: { surveyId, tenantId, isComplete: true } });
 
-    // Find NPS questions
     const npsQuestions = survey.questions.filter((q) => q.questionType === 'nps');
-    if (npsQuestions.length === 0) {
-      return { enps: null, message: 'No hay preguntas NPS en esta encuesta.' };
+    const likertQuestions = survey.questions.filter((q) => q.questionType === 'likert_5');
+
+    // Strategy: prefer native NPS questions if available; otherwise derive
+    // eNPS from likert_5 responses by applying the standard 0-10 classification
+    // on each respondent's likert average ×2 (so max 5 → 10 = promoter).
+    // See AIHR/CultureMonkey/Matter references — this is equivalent to the
+    // 5-point eNPS mapping Promoter=5, Passive=4, Detractor=1-3.
+    const useNps = npsQuestions.length > 0;
+    const sourceQuestions = useNps ? npsQuestions : likertQuestions;
+
+    if (sourceQuestions.length === 0) {
+      return { enps: null, message: 'La encuesta no tiene preguntas Likert ni NPS con las que calcular eNPS.' };
     }
 
     let promoters = 0;
     let passives = 0;
     let detractors = 0;
 
-    // Count per respondent (not per answer) to avoid double counting
-    // when there are multiple NPS questions
     for (const r of responses) {
-      const npsScores: number[] = [];
+      const scores: number[] = [];
       for (const ans of r.answers) {
-        const question = npsQuestions.find((q) => q.id === ans.questionId);
+        const question = sourceQuestions.find((q) => q.id === ans.questionId);
         if (!question) continue;
 
-        const score = typeof ans.value === 'number' ? ans.value : parseInt(ans.value as string);
-        if (!isNaN(score)) npsScores.push(score);
+        const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
+        if (isNaN(raw)) continue;
+        // Likert 1-5 → 2-10 for classification; NPS already 0-10.
+        scores.push(question.questionType === 'likert_5' ? raw * 2 : raw);
       }
 
-      if (npsScores.length === 0) continue;
+      if (scores.length === 0) continue;
 
-      // Use average NPS score per respondent if multiple NPS questions exist
-      const avgScore = npsScores.reduce((a, b) => a + b, 0) / npsScores.length;
+      const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
       if (avgScore >= 9) promoters++;
       else if (avgScore >= 7) passives++;
       else detractors++;
     }
 
     const total = promoters + passives + detractors;
-    const enps = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+    if (total === 0) {
+      return { enps: null, message: 'Sin respuestas suficientes para calcular eNPS.', source: useNps ? 'nps_question' : 'likert_derived' };
+    }
+    const enps = Math.round(((promoters - detractors) / total) * 100);
 
     return {
       enps,
@@ -518,9 +538,10 @@ export class SurveysService {
       passives,
       detractors,
       total,
-      promoterPercent: total > 0 ? Number(((promoters / total) * 100).toFixed(1)) : 0,
-      passivePercent: total > 0 ? Number(((passives / total) * 100).toFixed(1)) : 0,
-      detractorPercent: total > 0 ? Number(((detractors / total) * 100).toFixed(1)) : 0,
+      promoterPercent: Number(((promoters / total) * 100).toFixed(1)),
+      passivePercent: Number(((passives / total) * 100).toFixed(1)),
+      detractorPercent: Number(((detractors / total) * 100).toFixed(1)),
+      source: useNps ? 'nps_question' : 'likert_derived',
     };
   }
 

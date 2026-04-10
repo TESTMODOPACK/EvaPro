@@ -543,10 +543,14 @@ export class RecognitionService {
 
   // ─── Redemption Catalog ──────────────────────────────────────────────
 
-  async listRedemptionItems(tenantId: string) {
+  async listRedemptionItems(tenantId: string, includeInactive = false) {
+    // Admins see inactive/closed items too so they can view redemption history
+    // for exhausted benefits. Regular users only see active items.
+    const where: any = { tenantId };
+    if (!includeInactive) where.isActive = true;
     return this.redemptionItemRepo.find({
-      where: { tenantId, isActive: true },
-      order: { pointsCost: 'ASC' },
+      where,
+      order: { isActive: 'DESC', pointsCost: 'ASC' },
     });
   }
 
@@ -620,18 +624,88 @@ export class RecognitionService {
         source: PointsSource.MANUAL, description: `Canje: ${item.name}`, referenceId: itemId,
       }));
 
-      // Decrease stock atomically
+      // Decrease stock atomically; if this drops stock to 0, auto-close the
+      // benefit so it no longer appears available to employees.
       if (item.stock !== -1) {
         await manager.createQueryBuilder()
           .update('redemption_items')
           .set({ stock: () => 'stock - 1' })
           .where('id = :id AND stock > 0', { id: itemId })
           .execute();
+        // Fetch the new stock to decide whether to close the item.
+        const refreshed = await manager.getRepository(RedemptionItem).findOne({ where: { id: itemId } });
+        if (refreshed && refreshed.stock === 0 && refreshed.isActive) {
+          refreshed.isActive = false;
+          await manager.save(refreshed);
+        }
       }
 
       const tx = manager.getRepository(RedemptionTransaction).create({
         tenantId, userId, itemId, pointsSpent: item.pointsCost, status: 'pending',
       });
+      return manager.save(tx);
+    });
+  }
+
+  /**
+   * Admin-only: change the status of a redemption transaction.
+   * Valid transitions:
+   *   pending → approved → delivered
+   *   pending → cancelled
+   *   approved → cancelled
+   * Cancelling a pending/approved redemption refunds the user's points.
+   */
+  async updateRedemptionStatus(tenantId: string, redemptionId: string, newStatus: string) {
+    const allowed = ['pending', 'approved', 'delivered', 'cancelled'];
+    if (!allowed.includes(newStatus)) {
+      throw new BadRequestException(`Estado inválido. Permitidos: ${allowed.join(', ')}`);
+    }
+
+    const tx = await this.redemptionTxRepo.findOne({
+      where: { id: redemptionId, tenantId },
+      relations: ['item'],
+    });
+    if (!tx) throw new NotFoundException('Canje no encontrado');
+    if (tx.status === newStatus) return tx;
+
+    // Validate transition
+    const transitions: Record<string, string[]> = {
+      pending: ['approved', 'delivered', 'cancelled'],
+      approved: ['delivered', 'cancelled'],
+      delivered: [],
+      cancelled: [],
+    };
+    const valid = transitions[tx.status] || [];
+    if (!valid.includes(newStatus)) {
+      throw new BadRequestException(`Transición inválida: ${tx.status} → ${newStatus}`);
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      // Refund points if cancelling a non-delivered redemption.
+      if (newStatus === 'cancelled' && (tx.status === 'pending' || tx.status === 'approved')) {
+        await manager.save(manager.getRepository(UserPoints).create({
+          tenantId,
+          userId: tx.userId,
+          points: tx.pointsSpent,
+          source: PointsSource.MANUAL,
+          description: `Reverso de canje cancelado: ${tx.item?.name || tx.itemId}`,
+          referenceId: tx.itemId,
+        }));
+        // Restore stock if item tracks it. Only re-activate if the item was
+        // auto-closed (stock === 0); don't override an admin-disabled item.
+        if (tx.item && tx.item.stock !== -1) {
+          const current = await manager.getRepository(RedemptionItem).findOne({ where: { id: tx.itemId } });
+          const shouldReactivate = !!(current && current.stock === 0 && !current.isActive);
+          await manager.createQueryBuilder()
+            .update('redemption_items')
+            .set(shouldReactivate
+              ? { stock: () => 'stock + 1', isActive: true }
+              : { stock: () => 'stock + 1' })
+            .where('id = :id', { id: tx.itemId })
+            .execute();
+        }
+      }
+      tx.status = newStatus;
       return manager.save(tx);
     });
   }
@@ -702,7 +776,10 @@ export class RecognitionService {
     });
     return txs.map((tx: any) => ({
       id: tx.id,
+      userId: tx.userId,
       userName: tx.user ? `${tx.user.firstName} ${tx.user.lastName}` : 'N/A',
+      userEmail: tx.user?.email || null,
+      userDepartment: tx.user?.department || null,
       pointsSpent: tx.pointsSpent,
       status: tx.status,
       createdAt: tx.createdAt,

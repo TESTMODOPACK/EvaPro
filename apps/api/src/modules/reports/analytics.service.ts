@@ -173,7 +173,15 @@ export class AnalyticsService {
       completedActions,
       actionCompletionPct: totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0,
       topDepartments,
-      byYear: Object.entries(byYear).map(([year, d]) => ({ year, ...d })).sort((a, b) => b.year.localeCompare(a.year)),
+      // Explicit assignment (not spread) to guarantee the `plans` array is
+      // always present and populated in the response — defensive fix for a
+      // bug where the historical tab reported "no plans" despite total > 0.
+      byYear: Object.entries(byYear).map(([year, d]) => ({
+        year,
+        total: d.total,
+        completed: d.completed,
+        plans: Array.isArray(d.plans) ? d.plans : [],
+      })).sort((a, b) => b.year.localeCompare(a.year)),
     };
   }
 

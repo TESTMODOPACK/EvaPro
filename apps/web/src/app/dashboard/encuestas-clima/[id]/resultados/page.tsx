@@ -204,8 +204,8 @@ export default function ResultadosEncuestaPage() {
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Promedio General</div>
-          <div style={{ fontSize: '2rem', fontWeight: 700, color: results.overallAverage >= 4 ? '#16a34a' : results.overallAverage >= 3 ? '#eab308' : '#ef4444' }}>
-            {results.overallAverage}/5
+          <div style={{ fontSize: '2rem', fontWeight: 700, color: results.overallAverage >= 8 ? '#16a34a' : results.overallAverage >= 6 ? '#eab308' : '#ef4444' }}>
+            {results.overallAverage}/10
           </div>
         </div>
         {enps && enps.enps !== null && (
@@ -214,7 +214,9 @@ export default function ResultadosEncuestaPage() {
             <div style={{ fontSize: '2rem', fontWeight: 700, color: enps.enps >= 50 ? '#16a34a' : enps.enps >= 0 ? '#eab308' : '#ef4444' }}>
               {enps.enps > 0 ? '+' : ''}{enps.enps}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{enps.total} respuestas NPS</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              {enps.total} {enps.source === 'likert_derived' ? 'respuestas (derivado de Likert)' : 'respuestas NPS'}
+            </div>
           </div>
         )}
         {results.survey?.isAnonymous && (
@@ -261,7 +263,7 @@ export default function ResultadosEncuestaPage() {
                 <RadarChart data={radarData}>
                   <PolarGrid />
                   <PolarAngleAxis dataKey="category" tick={{ fontSize: 12 }} />
-                  <PolarRadiusAxis angle={30} domain={[0, 5]} tick={{ fontSize: 10 }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 10]} tick={{ fontSize: 10 }} />
                   <Radar name="Promedio" dataKey="promedio" stroke="#C9933A" fill="#C9933A" fillOpacity={0.3} />
                 </RadarChart>
               </ResponsiveContainer>
@@ -275,7 +277,7 @@ export default function ResultadosEncuestaPage() {
               <ResponsiveContainer width="100%" height={Math.max(250, results.averageByQuestion.length * 40)}>
                 <BarChart data={results.averageByQuestion} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" domain={[0, 5]} />
+                  <XAxis type="number" domain={[0, 10]} />
                   <YAxis dataKey="questionText" type="category" width={250} tick={{ fontSize: 11 }} />
                   <Tooltip />
                   <Bar dataKey="average" fill="#C9933A" radius={[0, 4, 4, 0]} />
@@ -323,8 +325,8 @@ export default function ResultadosEncuestaPage() {
               <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>Análisis General de la Encuesta</h3>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
                 <p style={{ margin: '0 0 0.35rem' }}>
-                  <strong>Satisfacción general:</strong> El promedio global es <strong>{results.overallAverage}/5</strong>
-                  {results.overallAverage >= 4 ? ' — indica un clima laboral saludable y positivo.' : results.overallAverage >= 3 ? ' — clima aceptable con áreas de mejora identificables.' : ' — clima laboral preocupante que requiere intervención.'}
+                  <strong>Satisfacción general:</strong> El promedio global es <strong>{results.overallAverage}/10</strong>
+                  {results.overallAverage >= 8 ? ' — indica un clima laboral saludable y positivo.' : results.overallAverage >= 6 ? ' — clima aceptable con áreas de mejora identificables.' : ' — clima laboral preocupante que requiere intervención.'}
                 </p>
                 <p style={{ margin: '0 0 0.35rem' }}>
                   <strong>Participación:</strong> {results.responseRate}% de tasa de respuesta ({results.totalResponses} de {results.totalAssigned}).
@@ -333,6 +335,7 @@ export default function ResultadosEncuestaPage() {
                 {enps && enps.enps !== null && (
                   <p style={{ margin: '0 0 0.35rem' }}>
                     <strong>eNPS:</strong> Score de {enps.enps > 0 ? '+' : ''}{enps.enps}
+                    {enps.source === 'likert_derived' ? ' (derivado de escala Likert ×2)' : ''}
                     {enps.enps >= 50 ? ' — excelente, los colaboradores son embajadores de la organización.' : enps.enps >= 30 ? ' — muy bueno, mayoría promotores.' : enps.enps >= 0 ? ' — aceptable, hay espacio para mejorar la experiencia del colaborador.' : ' — bajo, requiere atención urgente para revertir la insatisfacción.'}
                   </p>
                 )}
@@ -340,11 +343,11 @@ export default function ResultadosEncuestaPage() {
                   const sorted = [...radarData].sort((a, b) => a.promedio - b.promedio);
                   return <>
                     <p style={{ margin: '0 0 0.35rem' }}>
-                      <strong>Categoría más fuerte:</strong> {sorted[sorted.length - 1]?.category} ({sorted[sorted.length - 1]?.promedio.toFixed(1)}/5)
+                      <strong>Categoría más fuerte:</strong> {sorted[sorted.length - 1]?.category} ({sorted[sorted.length - 1]?.promedio.toFixed(1)}/10)
                     </p>
                     <p style={{ margin: 0 }}>
-                      <strong>Categoría más débil:</strong> {sorted[0]?.category} ({sorted[0]?.promedio.toFixed(1)}/5)
-                      {sorted[0]?.promedio < 3 ? ' — prioridad de intervención.' : ''}
+                      <strong>Categoría más débil:</strong> {sorted[0]?.category} ({sorted[0]?.promedio.toFixed(1)}/10)
+                      {sorted[0]?.promedio < 6 ? ' — prioridad de intervención.' : ''}
                     </p>
                   </>;
                 })()}
@@ -354,8 +357,9 @@ export default function ResultadosEncuestaPage() {
 
           {/* Likert Distribution — with legend, labels, and analysis */}
           {(results.likertDistribution || []).length > 0 && (() => {
-            const likertLabels: Record<number, string> = { 1: 'Muy insatisfecho', 2: 'Insatisfecho', 3: 'Neutral', 4: 'Satisfecho', 5: 'Muy satisfecho' };
-            const likertColors: Record<number, string> = { 1: '#ef4444', 2: '#f97316', 3: '#eab308', 4: '#22c55e', 5: '#16a34a' };
+            // Buckets 2,4,6,8,10 come from the backend after ×2 normalization.
+            const likertLabels: Record<number, string> = { 2: 'Muy insatisfecho', 4: 'Insatisfecho', 6: 'Neutral', 8: 'Satisfecho', 10: 'Muy satisfecho' };
+            const likertColors: Record<number, string> = { 2: '#ef4444', 4: '#f97316', 6: '#eab308', 8: '#22c55e', 10: '#16a34a' };
             // Find weakest and strongest questions
             const withAvg = results.likertDistribution.map((q: any) => {
               const total = q.distribution.reduce((s: number, d: any) => s + d.count, 0);
@@ -370,11 +374,11 @@ export default function ResultadosEncuestaPage() {
             <div className="card" style={{ padding: '1.25rem' }}>
               <h3 style={{ margin: '0 0 0.25rem', fontSize: '1rem', fontWeight: 600 }}>Distribución de Respuestas por Pregunta</h3>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem' }}>
-                Cada barra muestra el porcentaje de respuestas en cada nivel de satisfacción (escala Likert 1-5).
+                Cada barra muestra el porcentaje de respuestas en cada nivel de satisfacción (escala 1-10 ×2 de Likert 1-5).
               </p>
               {/* Legend */}
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem', padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
-                {[1, 2, 3, 4, 5].map(level => (
+                {[2, 4, 6, 8, 10].map(level => (
                   <div key={level} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem' }}>
                     <span style={{ width: 12, height: 12, borderRadius: 2, background: likertColors[level], display: 'inline-block' }} />
                     <span style={{ color: 'var(--text-secondary)' }}>{level} — {likertLabels[level]}</span>
@@ -386,8 +390,8 @@ export default function ResultadosEncuestaPage() {
                 <div key={q.questionId} style={{ marginBottom: '0.85rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
                     <p style={{ fontSize: '0.82rem', margin: 0, fontWeight: 500, flex: 1 }}>{q.questionText}</p>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: q.avg >= 4 ? '#16a34a' : q.avg >= 3 ? '#eab308' : '#ef4444', marginLeft: '0.5rem', whiteSpace: 'nowrap' }}>
-                      Prom: {q.avg.toFixed(1)}/5
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: q.avg >= 8 ? '#16a34a' : q.avg >= 6 ? '#eab308' : '#ef4444', marginLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                      Prom: {q.avg.toFixed(1)}/10
                     </span>
                   </div>
                   <div style={{ display: 'flex', height: 24, borderRadius: 4, overflow: 'hidden', background: 'var(--border)' }}>
@@ -408,17 +412,17 @@ export default function ResultadosEncuestaPage() {
                 <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                   <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: '0.3rem' }}>Análisis de la distribución</div>
                   <p style={{ margin: '0 0 0.25rem' }}>
-                    <strong>Punto más fuerte:</strong> "{strongest?.questionText}" con promedio {strongest?.avg.toFixed(1)}/5
-                    {strongest?.avg >= 4 ? ' — nivel destacado de satisfacción.' : strongest?.avg >= 3 ? ' — aceptable.' : ' — requiere atención.'}
+                    <strong>Punto más fuerte:</strong> "{strongest?.questionText}" con promedio {strongest?.avg.toFixed(1)}/10
+                    {strongest?.avg >= 8 ? ' — nivel destacado de satisfacción.' : strongest?.avg >= 6 ? ' — aceptable.' : ' — requiere atención.'}
                   </p>
                   <p style={{ margin: '0 0 0.25rem' }}>
-                    <strong>Punto más débil:</strong> "{weakest?.questionText}" con promedio {weakest?.avg.toFixed(1)}/5
-                    {weakest?.avg < 3 ? ' — área crítica que requiere intervención prioritaria.' : weakest?.avg < 4 ? ' — oportunidad de mejora.' : ' — buen nivel general.'}
+                    <strong>Punto más débil:</strong> "{weakest?.questionText}" con promedio {weakest?.avg.toFixed(1)}/10
+                    {weakest?.avg < 6 ? ' — área crítica que requiere intervención prioritaria.' : weakest?.avg < 8 ? ' — oportunidad de mejora.' : ' — buen nivel general.'}
                   </p>
                   {(() => {
                     const globalAvg = withAvg.reduce((s: number, q: any) => s + q.avg, 0) / withAvg.length;
                     return <p style={{ margin: 0 }}>
-                      <strong>Promedio global:</strong> {globalAvg.toFixed(1)}/5 — {globalAvg >= 4 ? 'Clima saludable.' : globalAvg >= 3 ? 'Clima aceptable con espacio de mejora.' : 'Clima requiere atención urgente.'}
+                      <strong>Promedio global:</strong> {globalAvg.toFixed(1)}/10 — {globalAvg >= 8 ? 'Clima saludable.' : globalAvg >= 6 ? 'Clima aceptable con espacio de mejora.' : 'Clima requiere atención urgente.'}
                     </p>;
                   })()}
                 </div>
@@ -452,10 +456,10 @@ export default function ResultadosEncuestaPage() {
                       <tr key={d.department}>
                         <td style={{ fontWeight: 500 }}>{d.department}</td>
                         <td>{d.responseCount}</td>
-                        <td style={{ fontWeight: 600 }}>{d.average}/5</td>
+                        <td style={{ fontWeight: 600 }}>{d.average}/10</td>
                         <td>
                           <div style={{ width: 80, height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-                            <div style={{ width: `${(d.average / 5) * 100}%`, height: '100%', background: d.average >= 4 ? '#16a34a' : d.average >= 3 ? '#eab308' : '#ef4444', borderRadius: 4 }} />
+                            <div style={{ width: `${(d.average / 10) * 100}%`, height: '100%', background: d.average >= 8 ? '#16a34a' : d.average >= 6 ? '#eab308' : '#ef4444', borderRadius: 4 }} />
                           </div>
                         </td>
                       </tr>
@@ -467,7 +471,7 @@ export default function ResultadosEncuestaPage() {
                 <BarChart data={deptResults}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="department" tick={{ fontSize: 11 }} />
-                  <YAxis domain={[0, 5]} />
+                  <YAxis domain={[0, 10]} />
                   <Tooltip />
                   <Bar dataKey="average" fill="#C9933A" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -483,10 +487,10 @@ export default function ResultadosEncuestaPage() {
                 return (
                   <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                     <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: '0.3rem' }}>Análisis por Departamento</div>
-                    <p style={{ margin: '0 0 0.25rem' }}><strong>Promedio organizacional:</strong> {globalAvg}/5 entre {deptResults.length} departamentos.</p>
-                    <p style={{ margin: '0 0 0.25rem' }}><strong>Mejor clima:</strong> {best.department} ({best.average}/5, {best.responseCount} respuestas).</p>
-                    <p style={{ margin: '0 0 0.25rem' }}><strong>Menor clima:</strong> {worst.department} ({worst.average}/5, {worst.responseCount} respuestas){worst.average < 3 ? ' — requiere intervención prioritaria.' : '.'}</p>
-                    <p style={{ margin: 0 }}><strong>Brecha entre áreas:</strong> {gap} puntos. {Number(gap) > 1 ? 'Brecha significativa — investigar causas de disparidad.' : 'Brecha moderada.'}</p>
+                    <p style={{ margin: '0 0 0.25rem' }}><strong>Promedio organizacional:</strong> {globalAvg}/10 entre {deptResults.length} departamentos.</p>
+                    <p style={{ margin: '0 0 0.25rem' }}><strong>Mejor clima:</strong> {best.department} ({best.average}/10, {best.responseCount} respuestas).</p>
+                    <p style={{ margin: '0 0 0.25rem' }}><strong>Menor clima:</strong> {worst.department} ({worst.average}/10, {worst.responseCount} respuestas){worst.average < 6 ? ' — requiere intervención prioritaria.' : '.'}</p>
+                    <p style={{ margin: 0 }}><strong>Brecha entre áreas:</strong> {gap} puntos. {Number(gap) > 2 ? 'Brecha significativa — investigar causas de disparidad.' : 'Brecha moderada.'}</p>
                   </div>
                 );
               })()}
@@ -557,7 +561,7 @@ export default function ResultadosEncuestaPage() {
                     <div key={i} style={{ marginBottom: '0.75rem', padding: '0.5rem', background: 'rgba(22,163,106,0.05)', borderRadius: 6 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.9rem' }}>
                         <span>{s.category}</span>
-                        <span style={{ color: '#16a34a' }}>{s.score}/5</span>
+                        <span style={{ color: '#16a34a' }}>{s.score}/10</span>
                       </div>
                       <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>{s.insight}</p>
                     </div>
@@ -572,7 +576,7 @@ export default function ResultadosEncuestaPage() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.9rem' }}>
                         <span>{a.category}</span>
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <span style={{ color: '#ef4444' }}>{a.score}/5</span>
+                          <span style={{ color: '#ef4444' }}>{a.score}/10</span>
                           <span className={`badge ${a.urgency === 'high' ? 'badge-danger' : a.urgency === 'medium' ? 'badge-warning' : 'badge-ghost'}`} style={{ fontSize: '0.65rem' }}>
                             {a.urgency === 'high' ? 'Urgente' : a.urgency === 'medium' ? 'Media' : 'Baja'}
                           </span>
@@ -684,7 +688,7 @@ export default function ResultadosEncuestaPage() {
                 <LineChart data={trends}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="title" tick={{ fontSize: 11 }} />
-                  <YAxis domain={[0, 5]} />
+                  <YAxis domain={[0, 10]} />
                   <Tooltip />
                   <Legend />
                   <Line type="monotone" dataKey="overallAverage" name="Promedio General" stroke="#C9933A" strokeWidth={2} dot={{ r: 4 }} />
@@ -706,7 +710,7 @@ export default function ResultadosEncuestaPage() {
                       <LineChart data={catTrendData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                        <YAxis domain={[0, 5]} />
+                        <YAxis domain={[0, 10]} />
                         <Tooltip />
                         <Legend />
                         {allCategories.map((cat, i) => (
@@ -728,7 +732,7 @@ export default function ResultadosEncuestaPage() {
                   <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: `3px solid ${improving ? 'var(--success)' : 'var(--danger)'}`, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                     <div style={{ fontWeight: 700, color: improving ? 'var(--success)' : 'var(--danger)', marginBottom: '0.3rem' }}>Análisis de Tendencia</div>
                     <p style={{ margin: '0 0 0.25rem' }}>
-                      <strong>Evolución:</strong> El promedio {improving ? 'subió' : 'bajó'} de {previous.overallAverage}/5 ({previous.title}) a {latest.overallAverage}/5 ({latest.title}) — {improving ? `mejora de +${delta} puntos.` : `descenso de ${delta} puntos.`}
+                      <strong>Evolución:</strong> El promedio {improving ? 'subió' : 'bajó'} de {previous.overallAverage}/10 ({previous.title}) a {latest.overallAverage}/10 ({latest.title}) — {improving ? `mejora de +${delta} puntos.` : `descenso de ${delta} puntos.`}
                     </p>
                     <p style={{ margin: '0 0 0.25rem' }}>
                       <strong>Tasa de respuesta:</strong> {latest.responseRate}%{previous.responseRate ? ` (anterior: ${previous.responseRate}%)` : ''}.

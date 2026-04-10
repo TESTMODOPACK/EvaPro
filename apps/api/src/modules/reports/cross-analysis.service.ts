@@ -20,7 +20,7 @@ export interface DepartmentCross {
 }
 
 const PERF_THRESHOLD = 7.0;  // 0-10 scale
-const ENG_THRESHOLD = 3.5;   // 1-5 scale
+const ENG_THRESHOLD = 7.0;   // 0-10 scale (likert_5 is normalized ×2 upstream)
 
 function classifyQuadrant(perf: number | null, eng: number | null): DepartmentCross['quadrant'] {
   if (perf == null || eng == null) return 'no_data';
@@ -167,6 +167,8 @@ export class CrossAnalysisService {
       const questions = survey.questions || await this.questionRepo.find({ where: { surveyId: survey.id } });
       const npsQuestionIds = new Set(questions.filter(q => q.questionType === 'nps').map(q => q.id));
       const likertQuestionIds = new Map(questions.filter(q => q.questionType === 'likert_5').map(q => [q.id, q.category]));
+      // Prefer native NPS if present; otherwise derive eNPS from likert ×2.
+      const useNpsForEnps = npsQuestionIds.size > 0;
 
       for (const resp of responses) {
         if (managerId && resp.respondentId && !userIds.has(resp.respondentId)) continue;
@@ -176,13 +178,18 @@ export class CrossAnalysisService {
 
         for (const ans of answers) {
           if (npsQuestionIds.has(ans.questionId) && typeof ans.value === 'number') {
+            // NPS questions already live on 0-10 scale; use as-is for eNPS.
             eNPSScores.push(ans.value);
           }
           if (likertQuestionIds.has(ans.questionId) && typeof ans.value === 'number') {
-            likertValues.push(ans.value);
+            // Normalize likert_5 (1-5) → 2-10 to match the performance scale
+            // used in cross-analysis. Feed derived eNPS only if no NPS q.
+            const scaled = ans.value * 2;
+            likertValues.push(scaled);
+            if (!useNpsForEnps) eNPSScores.push(scaled);
             const cat = likertQuestionIds.get(ans.questionId)!;
             if (!engByCat[cat]) engByCat[cat] = [];
-            engByCat[cat].push(ans.value);
+            engByCat[cat].push(scaled);
           }
         }
 
@@ -252,7 +259,9 @@ export class CrossAnalysisService {
         category: cat,
         avgScore: catAvg,
         correlation: 0, // simplified
-        interpretation: catAvg >= 4.0 ? 'Fortaleza' : catAvg >= 3.0 ? 'Aceptable' : 'Área de mejora',
+        // Thresholds on 1-10 scale (after ×2 normalization):
+        // ≥8 strong, ≥6 acceptable, <6 improvement area.
+        interpretation: catAvg >= 8.0 ? 'Fortaleza' : catAvg >= 6.0 ? 'Aceptable' : 'Área de mejora',
       });
     }
     categoryCorrelation.sort((a, b) => b.avgScore - a.avgScore);
@@ -299,7 +308,7 @@ export class CrossAnalysisService {
         correlation,
         totalDepartments: departments.length,
         performanceScale: '0-10',
-        engagementScale: '1-5',
+        engagementScale: '0-10',
         thresholds: { performance: PERF_THRESHOLD, engagement: ENG_THRESHOLD },
       },
       departments,

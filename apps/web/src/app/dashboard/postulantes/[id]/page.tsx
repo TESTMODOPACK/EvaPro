@@ -1020,7 +1020,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 {scorecard.scores?.historyAvg != null && (
                   <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{t('postulantes.detail.scorecard.historyAvg')}</div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>{scorecard.scores.historyAvg}/5</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>{Number(scorecard.scores.historyAvg).toFixed(2)}/10</div>
                   </div>
                 )}
                 <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
@@ -1154,7 +1154,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             {c.candidateType === 'internal' && <span style={{ fontSize: '0.68rem', color: '#6366f1', fontWeight: 700, marginLeft: '0.4rem' }}>INTERNO</span>}
                           </td>
                           <td style={{ textAlign: 'center', fontWeight: 600 }}>{row.interviewAvg != null ? row.interviewAvg + '/10' : '--'}</td>
-                          {isInternal && <td style={{ textAlign: 'center', fontWeight: 600, color: '#6366f1' }}>{row.internalProfile?.avgScore ? row.internalProfile.avgScore + '/5' : '--'}</td>}
+                          {isInternal && <td style={{ textAlign: 'center', fontWeight: 600, color: '#6366f1' }}>{row.internalProfile?.avgScore ? Number(row.internalProfile.avgScore).toFixed(2) + '/10' : '--'}</td>}
                           {isInternal && <td style={{ textAlign: 'center', fontSize: '0.82rem' }}>{row.internalProfile?.user?.tenureMonths != null ? (row.internalProfile.user.tenureMonths >= 12 ? Math.floor(row.internalProfile.user.tenureMonths / 12) + 'a ' + (row.internalProfile.user.tenureMonths % 12) + 'm' : row.internalProfile.user.tenureMonths + 'm') : '--'}</td>}
                           <td style={{ textAlign: 'center', fontWeight: 800, fontSize: '1.1rem', color: 'var(--success)' }}>
                             {c.finalScore != null ? Number(c.finalScore).toFixed(1) : '--'}

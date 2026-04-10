@@ -958,6 +958,8 @@ export const api = {
       request<any[]>(`/recognition/challenges/${id}/participants`, {}, token),
     itemRedemptions: (token: string, id: string) =>
       request<any[]>(`/recognition/catalog/${id}/redemptions`, {}, token),
+    updateRedemptionStatus: (token: string, id: string, status: string) =>
+      request<any>(`/recognition/redemptions/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }, token),
     leaderboardOptIn: (token: string, period = 'month', limit = 20, department?: string) =>
       request<any[]>(`/recognition/leaderboard-optin?period=${period}&limit=${limit}${department ? `&department=${department}` : ''}`, {}, token),
     toggleOptIn: (token: string, optIn: boolean) =>

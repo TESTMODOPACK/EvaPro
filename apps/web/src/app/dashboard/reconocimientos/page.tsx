@@ -199,6 +199,9 @@ function ReconocimientosPageContent() {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [itemRedemptions, setItemRedemptions] = useState<any[]>([]);
   const [loadingRedemptions, setLoadingRedemptions] = useState(false);
+  // Modal for admin redemption history (bigger layout + status change)
+  const [historyModalItem, setHistoryModalItem] = useState<any | null>(null);
+  const [updatingRedemptionId, setUpdatingRedemptionId] = useState<string | null>(null);
   // Budget
   const [budget, setBudget] = useState<any>(null);
   // Approvals
@@ -968,10 +971,10 @@ function ReconocimientosPageContent() {
           {catalog.length > 0 ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
               {catalog.map((item: any) => (
-                <div key={item.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div key={item.id} className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: item.isActive === false ? 0.75 : 1 }}>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem' }}>{item.name}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.4rem' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem', flex: 1 }}>{item.name}</div>
                       {isAdmin && (
                         <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}
                           onClick={() => {
@@ -983,6 +986,11 @@ function ReconocimientosPageContent() {
                         </button>
                       )}
                     </div>
+                    {item.isActive === false && (
+                      <span className="badge" style={{ fontSize: '0.6rem', background: 'rgba(107,114,128,0.15)', color: 'var(--text-muted)', display: 'inline-block', marginBottom: '0.3rem' }}>
+                        CERRADO
+                      </span>
+                    )}
                     {item.description && <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.3rem' }}>{item.description}</p>}
                     {item.category && <span className="badge badge-ghost" style={{ fontSize: '0.68rem', marginBottom: '0.3rem', display: 'inline-block' }}>{item.category}</span>}
                     {item.terms && <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.3rem 0', padding: '0.35rem 0.5rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', lineHeight: 1.4 }}>{item.terms}</p>}
@@ -991,38 +999,36 @@ function ReconocimientosPageContent() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
                       <span style={{ fontWeight: 700, color: 'var(--accent)', fontSize: '1rem' }}>{item.pointsCost} pts</span>
                       <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
-                        disabled={(myPoints?.totalPoints || 0) < item.pointsCost}
+                        disabled={(myPoints?.totalPoints || 0) < item.pointsCost || item.isActive === false || (item.stock !== -1 && item.stock <= 0)}
                         onClick={async () => {
                           if (!token) return;
                           try {
                             await api.recognition.redeem(token, item.id);
-                            const [updatedRedemptions, updatedBudget] = await Promise.all([
+                            const [updatedRedemptions, updatedBudget, updatedCatalog] = await Promise.all([
                               api.recognition.myRedemptions(token),
                               api.recognition.budget(token),
+                              api.recognition.catalog(token),
                             ]);
                             setMyRedemptions(updatedRedemptions);
                             setBudget(updatedBudget);
+                            setCatalog(updatedCatalog);
                           } catch (err: any) { alert(err.message || 'Error al canjear'); }
                         }}>
-                        {t('reconocimientos.redeem')}
+                        {item.isActive === false ? 'Cerrado' : t('reconocimientos.redeem')}
                       </button>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
                       {item.stock !== -1 && <span>Stock: {item.stock}</span>}
                       {item.maxRedeemPerUser > 0 && <span>Máx {item.maxRedeemPerUser}/persona</span>}
                     </div>
-                    {/* Admin: expandable redemptions history */}
+                    {/* Admin: open modal with full redemption history + status change */}
                     {isAdmin && (
                       <div style={{ marginTop: '0.4rem' }}>
                         <button
                           className="btn-ghost"
-                          style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}
+                          style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}
                           onClick={async () => {
-                            if (expandedItemId === item.id) {
-                              setExpandedItemId(null);
-                              return;
-                            }
-                            setExpandedItemId(item.id);
+                            setHistoryModalItem(item);
                             setItemRedemptions([]);
                             setLoadingRedemptions(true);
                             try {
@@ -1032,34 +1038,8 @@ function ReconocimientosPageContent() {
                             setLoadingRedemptions(false);
                           }}
                         >
-                          {expandedItemId === item.id ? '▲ Ocultar canjes' : '▼ Ver canjes'}
+                          Ver historial de canjes
                         </button>
-                        {expandedItemId === item.id && (
-                          <div style={{ marginTop: '0.3rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', padding: '0.4rem 0.6rem', border: '1px solid var(--border)' }}>
-                            {loadingRedemptions ? (
-                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cargando...</p>
-                            ) : itemRedemptions.length === 0 ? (
-                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sin canjes aun.</p>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                                {itemRedemptions.map((r: any) => (
-                                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', padding: '0.2rem 0', borderBottom: '1px solid var(--border)' }}>
-                                    <span style={{ fontWeight: 600 }}>{r.userName}</span>
-                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                      <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.7rem' }}>-{r.pointsSpent} pts</span>
-                                      <span className={`badge ${r.status === 'delivered' ? 'badge-success' : r.status === 'cancelled' ? 'badge-danger' : 'badge-accent'}`} style={{ fontSize: '0.62rem' }}>
-                                        {r.status === 'delivered' ? 'Entregado' : r.status === 'cancelled' ? 'Cancelado' : 'Pendiente'}
-                                      </span>
-                                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                                        {new Date(r.createdAt).toLocaleDateString('es-CL')}
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -1072,6 +1052,142 @@ function ReconocimientosPageContent() {
               <p>{t('reconocimientos.emptyStore')}</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Admin: Redemption history modal (bigger layout + status change) */}
+      {historyModalItem && (
+        <div
+          onClick={() => setHistoryModalItem(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: '1rem',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="card"
+            style={{
+              width: '100%', maxWidth: '900px', maxHeight: '85vh',
+              display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem',
+            }}>
+              <div>
+                <h3 style={{ margin: '0 0 0.3rem', fontSize: '1.05rem', fontWeight: 700 }}>
+                  Historial de canjes — {historyModalItem.name}
+                </h3>
+                <div style={{ display: 'flex', gap: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                  <span><strong style={{ color: 'var(--accent)' }}>{historyModalItem.pointsCost} pts</strong> por canje</span>
+                  {historyModalItem.stock !== -1 && <span>Stock restante: <strong>{historyModalItem.stock}</strong></span>}
+                  <span>Total canjes: <strong>{itemRedemptions.length}</strong></span>
+                  {historyModalItem.isActive === false && (
+                    <span className="badge" style={{ fontSize: '0.62rem', background: 'rgba(107,114,128,0.15)', color: 'var(--text-muted)' }}>
+                      BENEFICIO CERRADO
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                className="btn-ghost"
+                onClick={() => setHistoryModalItem(null)}
+                style={{ fontSize: '1.2rem', padding: '0.2rem 0.6rem', lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem' }}>
+              {loadingRedemptions ? (
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
+                  Cargando...
+                </p>
+              ) : itemRedemptions.length === 0 ? (
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
+                  Aún no hay canjes para este beneficio.
+                </p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-base)', textAlign: 'left' }}>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 700, fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Colaborador</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 700, fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Departamento</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 700, fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Fecha</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 700, fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Puntos</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 700, fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itemRedemptions.map((r: any) => {
+                        const terminal = r.status === 'delivered' || r.status === 'cancelled';
+                        return (
+                          <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '0.7rem 0.75rem', fontWeight: 600 }}>{r.userName}</td>
+                            <td style={{ padding: '0.7rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{r.userDepartment || '—'}</td>
+                            <td style={{ padding: '0.7rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                              {new Date(r.createdAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </td>
+                            <td style={{ padding: '0.7rem 0.75rem', textAlign: 'right', color: 'var(--accent)', fontWeight: 700 }}>-{r.pointsSpent}</td>
+                            <td style={{ padding: '0.7rem 0.75rem' }}>
+                              <select
+                                value={r.status}
+                                disabled={terminal || updatingRedemptionId === r.id}
+                                onChange={async (e) => {
+                                  const newStatus = e.target.value;
+                                  if (newStatus === r.status) return;
+                                  setUpdatingRedemptionId(r.id);
+                                  try {
+                                    await api.recognition.updateRedemptionStatus(token!, r.id, newStatus);
+                                    const reds = await api.recognition.itemRedemptions(token!, historyModalItem.id);
+                                    setItemRedemptions(reds);
+                                    // Refresh catalog in background (stock / isActive may change).
+                                    api.recognition.catalog(token!).then(setCatalog).catch(() => {});
+                                  } catch (err: any) {
+                                    alert(err.message || 'Error al actualizar estado');
+                                  }
+                                  setUpdatingRedemptionId(null);
+                                }}
+                                style={{
+                                  fontSize: '0.78rem', padding: '0.3rem 0.5rem',
+                                  border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                                  background: 'var(--bg-surface)', color: 'var(--text-primary)',
+                                  cursor: terminal ? 'not-allowed' : 'pointer',
+                                  opacity: terminal ? 0.7 : 1,
+                                }}
+                              >
+                                <option value="pending">Pendiente</option>
+                                <option value="approved">Aprobado</option>
+                                <option value="delivered">Entregado</option>
+                                <option value="cancelled">Cancelado</option>
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '0.85rem 1.5rem', borderTop: '1px solid var(--border)',
+              display: 'flex', justifyContent: 'flex-end', gap: '0.5rem',
+              background: 'var(--bg-base)',
+            }}>
+              <button className="btn-ghost" onClick={() => setHistoryModalItem(null)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

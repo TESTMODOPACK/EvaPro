@@ -1838,6 +1838,9 @@
       "pdi_required": "PDI requerido",
       "subscription_expiring": "Suscripción por vencer",
       "subscription_expiring_urgent": "Suscripción urgente",
+      "survey_invitation": "Invitación a encuesta",
+      "survey_reminder": "Recordatorio de encuesta",
+      "survey_closed": "Encuesta cerrada",
       "general": "General"
     }
   },
@@ -2412,7 +2415,7 @@
     "deptDetailDesc": "Puntaje de desempeño (evaluaciones) y clima (encuesta) por área, con clasificación de cuadrante.",
     "deptCount": "depto.",
     "climateDimensions": "Dimensiones de Clima",
-    "climateDimensionsDesc": "Promedio de cada categoría de la encuesta de clima (escala 1-5).",
+    "climateDimensionsDesc": "Promedio de cada categoría de la encuesta de clima (escala 1-10).",
     "insightsTitle": "Análisis del Cruce",
     "insightsDisclaimer": "Este análisis se genera automáticamente cruzando los datos más recientes. Los resultados deben ser validados por RRHH.",
     "quadrants": {
@@ -2461,7 +2464,7 @@
       "perfHighlight": "Desempeño:",
       "perfHighlightText": "El departamento con mayor puntaje es <best>{{best}}</best> ({{bestScore}}/10) y el menor es <worst>{{worst}}</worst> ({{worstScore}}/10), una brecha de {{gap}} puntos.",
       "climaHighlight": "Clima:",
-      "climaHighlightText": "El mejor clima lo tiene <best>{{best}}</best> ({{bestScore}}/5) y el más bajo <worst>{{worst}}</worst> ({{worstScore}}/5).",
+      "climaHighlightText": "El mejor clima lo tiene <best>{{best}}</best> ({{bestScore}}/10) y el más bajo <worst>{{worst}}</worst> ({{worstScore}}/10).",
       "burnoutWarningTitle": "Atención — Riesgo de Burnout:",
       "burnoutWarningText": "{{depts}} tienen buen desempeño pero clima deteriorado. Esto puede provocar rotación de talento clave. Se recomienda: revisar cargas de trabajo, implementar encuestas de pulso, y abrir espacios de retroalimentación.",
       "criticalAlertTitle": "Alerta — Departamentos Críticos:",

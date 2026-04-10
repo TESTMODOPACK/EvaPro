@@ -13,9 +13,13 @@ import { useAuthStore } from '@/store/auth.store';
 export function useMySubscription() {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
+  const userId = useAuthStore((s) => s.user?.userId);
+  const tenantId = useAuthStore((s) => s.user?.tenantId);
 
   return useQuery({
-    queryKey: ['my-subscription'],
+    // Key is scoped by userId+tenantId so switching users doesn't return
+    // the previous user's cached subscription (and tenant name).
+    queryKey: ['my-subscription', userId, tenantId],
     queryFn: () => api.subscriptions.mySubscription(token!),
     enabled: !!token && role !== 'super_admin',
     staleTime: 30 * 1000,     // 30 seconds — reflects plan changes quickly

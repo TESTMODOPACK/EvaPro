@@ -98,12 +98,19 @@ export class ExecutiveDashboardService {
 
     if (!survey) return null;
 
-    // Get NPS questions
+    // Prefer native NPS; fall back to derived eNPS from likert_5 ×2.
     const npsQuestions = await this.surveyQuestionRepo.find({
       where: { surveyId: survey.id, questionType: 'nps' },
     });
+    const likertQuestions = await this.surveyQuestionRepo.find({
+      where: { surveyId: survey.id, questionType: 'likert_5' },
+    });
 
-    if (npsQuestions.length === 0) return null;
+    const useNps = npsQuestions.length > 0;
+    const sourceQuestions = useNps ? npsQuestions : likertQuestions;
+    if (sourceQuestions.length === 0) return null;
+
+    const sourceIds = new Set(sourceQuestions.map((q) => q.id));
 
     // Get responses
     const responses = await this.surveyResponseRepo.find({
@@ -114,24 +121,24 @@ export class ExecutiveDashboardService {
     let passives = 0;
     let detractors = 0;
 
-    const npsQuestionIds = new Set(npsQuestions.map((q) => q.id));
-
     for (const r of responses) {
-      const npsScores: number[] = [];
+      const scores: number[] = [];
       for (const ans of r.answers) {
-        if (!npsQuestionIds.has(ans.questionId)) continue;
-        const score = typeof ans.value === 'number' ? ans.value : parseInt(ans.value as string);
-        if (!isNaN(score)) npsScores.push(score);
+        if (!sourceIds.has(ans.questionId)) continue;
+        const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
+        if (isNaN(raw)) continue;
+        scores.push(useNps ? raw : raw * 2);
       }
-      if (npsScores.length === 0) continue;
-      const avg = npsScores.reduce((a, b) => a + b, 0) / npsScores.length;
+      if (scores.length === 0) continue;
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
       if (avg >= 9) promoters++;
       else if (avg >= 7) passives++;
       else detractors++;
     }
 
     const total = promoters + passives + detractors;
-    const enpsScore = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+    if (total === 0) return null;
+    const enpsScore = Math.round(((promoters - detractors) / total) * 100);
 
     return {
       score: enpsScore,
@@ -141,6 +148,7 @@ export class ExecutiveDashboardService {
       promoters,
       passives,
       detractors,
+      source: useNps ? 'nps_question' : 'likert_derived',
     };
   }
 
@@ -164,31 +172,38 @@ export class ExecutiveDashboardService {
     const npsQuestions = await this.surveyQuestionRepo.find({
       where: { surveyId: survey.id, questionType: 'nps' },
     });
-    if (npsQuestions.length === 0) return null;
+    const likertQuestions = await this.surveyQuestionRepo.find({
+      where: { surveyId: survey.id, questionType: 'likert_5' },
+    });
+    const useNps = npsQuestions.length > 0;
+    const sourceQuestions = useNps ? npsQuestions : likertQuestions;
+    if (sourceQuestions.length === 0) return null;
 
     const responses = await this.surveyResponseRepo.find({
       where: { surveyId: survey.id, tenantId, isComplete: true },
     });
 
     let promoters = 0, passives = 0, detractors = 0;
-    const npsQuestionIds = new Set(npsQuestions.map((q) => q.id));
+    const sourceIds = new Set(sourceQuestions.map((q) => q.id));
 
     for (const r of responses) {
-      const npsScores: number[] = [];
+      const scores: number[] = [];
       for (const ans of r.answers) {
-        if (!npsQuestionIds.has(ans.questionId)) continue;
-        const score = typeof ans.value === 'number' ? ans.value : parseInt(ans.value as string);
-        if (!isNaN(score)) npsScores.push(score);
+        if (!sourceIds.has(ans.questionId)) continue;
+        const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
+        if (isNaN(raw)) continue;
+        scores.push(useNps ? raw : raw * 2);
       }
-      if (npsScores.length === 0) continue;
-      const avg = npsScores.reduce((a, b) => a + b, 0) / npsScores.length;
+      if (scores.length === 0) continue;
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
       if (avg >= 9) promoters++;
       else if (avg >= 7) passives++;
       else detractors++;
     }
 
     const total = promoters + passives + detractors;
-    const enpsScore = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+    if (total === 0) return null;
+    const enpsScore = Math.round(((promoters - detractors) / total) * 100);
 
     return {
       score: enpsScore,
@@ -198,6 +213,7 @@ export class ExecutiveDashboardService {
       promoters,
       passives,
       detractors,
+      source: useNps ? 'nps_question' : 'likert_derived',
     };
   }
 

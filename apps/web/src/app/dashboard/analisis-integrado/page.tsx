@@ -36,7 +36,7 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.2rem' }}>{t('crossAnalysis.avgEngagement')}</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: summary?.avgEngagement >= 3.5 ? '#10b981' : summary?.avgEngagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgEngagement ?? '–'}</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: summary?.avgEngagement >= 7 ? '#10b981' : summary?.avgEngagement >= 5 ? '#f59e0b' : '#ef4444' }}>{summary?.avgEngagement ?? '–'}</div>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.scale15')}</div>
         </div>
         <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
@@ -66,7 +66,7 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis type="number" dataKey="x" name={t('crossAnalysis.axisPerformanceShort')} domain={[0, 10]} tick={{ fontSize: 10 }}
                 label={{ value: t('crossAnalysis.axisPerformance'), position: 'bottom', fontSize: 10, fill: '#94a3b8' }} />
-              <YAxis type="number" dataKey="y" name={t('crossAnalysis.axisClimateShort')} domain={[1, 5]} tick={{ fontSize: 10 }}
+              <YAxis type="number" dataKey="y" name={t('crossAnalysis.axisClimateShort')} domain={[0, 10]} tick={{ fontSize: 10 }}
                 label={{ value: t('crossAnalysis.axisClimate'), angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }} />
               <ZAxis range={[80, 80]} />
               <Tooltip content={({ payload }: any) => {
@@ -86,7 +86,7 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
             </ScatterChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            <span>{t('crossAnalysis.perfThreshold')}: ≥ 7.0</span><span>{t('crossAnalysis.engThreshold')}: ≥ 3.5</span>
+            <span>{t('crossAnalysis.perfThreshold')}: ≥ 7.0</span><span>{t('crossAnalysis.engThreshold')}: ≥ 7.0</span>
           </div>
         </div>
       )}
@@ -231,7 +231,7 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
                     <tr key={d.department}>
                       <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{d.department}</td>
                       <td style={{ textAlign: 'center', fontWeight: 700, color: d.performance >= 7 ? '#10b981' : d.performance >= 5 ? '#f59e0b' : '#ef4444' }}>{d.performance ?? '–'}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 700, color: d.engagement >= 3.5 ? '#10b981' : d.engagement >= 2.5 ? '#f59e0b' : '#ef4444' }}>{d.engagement ?? '–'}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 700, color: d.engagement >= 7 ? '#10b981' : d.engagement >= 5 ? '#f59e0b' : '#ef4444' }}>{d.engagement ?? '–'}</td>
                       <td style={{ textAlign: 'center' }}><span style={{ padding: '0.15rem 0.5rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: `${q?.color}15`, color: q?.color }}>{q?.icon} {t(q?.labelKey || '')}</span></td>
                       <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{d.performanceCount}</td>
                       <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{d.engagementCount}</td>
@@ -248,11 +248,11 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
       {categoryCorrelation?.length > 0 && (
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
           <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Dimensiones de Clima</h4>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Promedio de cada categoría de la encuesta de clima (escala 1-5).</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Promedio de cada categoría de la encuesta de clima (escala 1-10).</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             {categoryCorrelation.map((c: any) => {
-              const pct = ((c.avgScore - 1) / 4) * 100;
-              const color = c.avgScore >= 4 ? '#10b981' : c.avgScore >= 3 ? '#f59e0b' : '#ef4444';
+              const pct = (c.avgScore / 10) * 100;
+              const color = c.avgScore >= 8 ? '#10b981' : c.avgScore >= 6 ? '#f59e0b' : '#ef4444';
               return (
                 <div key={c.category} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem' }}>
                   <span style={{ minWidth: 110, fontWeight: 500 }}>{c.category}</span>
@@ -459,7 +459,7 @@ function AnalisisIntegradoContent() {
       {/* Selectors */}
       <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: '1 1 250px' }}>
+          <div style={{ flex: '0 1 420px', maxWidth: '420px', minWidth: '250px' }}>
             <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Encuesta de Clima</label>
             <select className="input" value={selectedSurveyId} onChange={(e) => { setSelectedSurveyId(e.target.value); setSelectedCycleIds(new Set()); setGlobalData(null); setPerCycleData(new Map()); setActiveTabCycleId(null); }} style={{ fontSize: '0.82rem' }}>
               <option value="">Seleccionar encuesta...</option>
@@ -470,11 +470,14 @@ function AnalisisIntegradoContent() {
           </div>
           {selectedSurveyId && (() => {
             const survey = availableSurveys.find((s: any) => s.id === selectedSurveyId);
-            const surveyEnd = survey?.endDate ? new Date(survey.endDate).getTime() : 0;
-            const oneYear = 365 * 24 * 60 * 60 * 1000;
-            const filteredCycles = surveyEnd ? availableCycles.filter((c: any) => {
-              const cycleEnd = c.endDate ? new Date(c.endDate).getTime() : 0;
-              return cycleEnd > 0 && Math.abs(cycleEnd - surveyEnd) <= oneYear;
+            const surveyStart = survey?.startDate ? new Date(survey.startDate).getTime() : 0;
+            // Business rule: only cycles whose startDate is within ±2 years of
+            // the survey startDate can be cross-analyzed. Older/newer cycles
+            // would not be contemporaneous with the climate sample.
+            const twoYears = 2 * 365 * 24 * 60 * 60 * 1000;
+            const filteredCycles = surveyStart ? availableCycles.filter((c: any) => {
+              const cycleStart = c.startDate ? new Date(c.startDate).getTime() : 0;
+              return cycleStart > 0 && Math.abs(cycleStart - surveyStart) <= twoYears;
             }) : availableCycles;
             return (
               <div style={{ flex: '2 1 350px' }}>
@@ -482,9 +485,10 @@ function AnalisisIntegradoContent() {
                   Ciclos de Evaluación <span style={{ fontWeight: 400, textTransform: 'none' }}>(cada ciclo genera un tab)</span>
                 </label>
                 <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                  {filteredCycles.length === 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sin ciclos en el rango de ±1 año</span>}
+                  {filteredCycles.length === 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Ningún ciclo de evaluación está dentro de ±2 años de la encuesta seleccionada.</span>}
                   {filteredCycles.map((c: any) => {
                     const sel = selectedCycleIds.has(c.id);
+                    const label = c.type ? `${c.name} · ${c.type}°` : c.name;
                     return (
                       <button key={c.id} type="button"
                         onClick={() => setSelectedCycleIds(prev => { const next = new Set(prev); if (next.has(c.id)) next.delete(c.id); else next.add(c.id); return next; })}
@@ -493,7 +497,7 @@ function AnalisisIntegradoContent() {
                           border: sel ? '2px solid var(--accent)' : '1px solid var(--border)',
                           background: sel ? 'rgba(201,147,58,0.1)' : 'var(--bg-surface)',
                           color: sel ? 'var(--accent)' : 'var(--text-primary)', fontWeight: sel ? 700 : 400, cursor: 'pointer',
-                        }}>{c.name}</button>
+                        }}>{label}</button>
                     );
                   })}
                 </div>
@@ -505,6 +509,23 @@ function AnalisisIntegradoContent() {
             {loadingAnalysis ? 'Analizando...' : `Analizar (${selectedCycleIds.size} cruce${selectedCycleIds.size !== 1 ? 's' : ''})`}
           </button>
         </div>
+        {selectedSurveyId && (
+          <div style={{
+            marginTop: '0.75rem',
+            padding: '0.5rem 0.75rem',
+            fontSize: '0.78rem',
+            color: 'var(--text-secondary)',
+            background: 'rgba(99,102,241,0.08)',
+            borderLeft: '3px solid var(--accent)',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}>
+            <span aria-hidden="true">ℹ</span>
+            <span>Solo se pueden cruzar ciclos cuya fecha de inicio esté dentro de ±2 años respecto a la fecha de inicio de la encuesta seleccionada.</span>
+          </div>
+        )}
       </div>
 
       {/* Error */}

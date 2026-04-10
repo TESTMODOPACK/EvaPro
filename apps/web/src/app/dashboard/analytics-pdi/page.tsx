@@ -412,7 +412,11 @@ function PdiCompliancePageContent() {
                         </summary>
                         <div style={{ borderTop: '1px solid var(--border)', padding: '0.75rem 1.25rem' }}>
                           {(y.plans || []).length === 0 ? (
-                            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin planes en este año</p>
+                            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                              {y.total > 0
+                                ? 'No se pudo cargar el detalle de planes de este año. Recarga la página.'
+                                : 'Sin planes en este año'}
+                            </p>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                               {(y.plans || []).map((p: any) => (

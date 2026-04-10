@@ -158,7 +158,8 @@ export class RecognitionController {
   // ─── Redemption Catalog ──────────────────────────────────────────
   @Get('catalog')
   listCatalog(@Request() req: any) {
-    return this.service.listRedemptionItems(req.user.tenantId);
+    const isAdmin = ['super_admin', 'tenant_admin'].includes(req.user.role);
+    return this.service.listRedemptionItems(req.user.tenantId, isAdmin);
   }
 
   @Post('catalog')
@@ -194,6 +195,16 @@ export class RecognitionController {
   @Get('redemptions/mine')
   getMyRedemptions(@Request() req: any) {
     return this.service.getUserRedemptions(req.user.tenantId, req.user.userId);
+  }
+
+  @Patch('redemptions/:id')
+  @Roles('super_admin', 'tenant_admin')
+  updateRedemptionStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { status: string },
+  ) {
+    return this.service.updateRedemptionStatus(req.user.tenantId, id, dto.status);
   }
 
   // ─── Challenges (F16 Gamification) ──────────────────────────────

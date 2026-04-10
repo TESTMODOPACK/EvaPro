@@ -1800,12 +1800,25 @@ function ObjetivosPageContent() {
                   style={{ width: '100%' }}
                 >
                   <option value="">Sin ciclo</option>
-                  {(cycles || []).filter((c: any) => c.status !== 'closed').map((c: any) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.status === 'active' ? 'En curso' : 'Borrador'})
-                    </option>
-                  ))}
+                  {(cycles || []).map((c: any) => {
+                    const statusLabel =
+                      c.status === 'active' ? 'En curso' :
+                      c.status === 'draft' ? 'Borrador' :
+                      c.status === 'paused' ? 'Pausado' :
+                      c.status === 'closed' ? 'Cerrado' :
+                      c.status;
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({statusLabel})
+                      </option>
+                    );
+                  })}
                 </select>
+                {(!cycles || cycles.length === 0) && (
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem', fontStyle: 'italic' }}>
+                    No hay ciclos de evaluación creados. Un administrador puede crearlos en Evaluaciones.
+                  </p>
+                )}
               </div>
             </div>
             {/* Parent objective selector — cascading OKR alignment */}

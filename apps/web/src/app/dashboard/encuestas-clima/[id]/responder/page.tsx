@@ -127,33 +127,41 @@ export default function ResponderEncuestaPage() {
                   {q.isRequired && <span style={{ color: 'var(--danger)' }}> *</span>}
                 </p>
 
-                {/* Likert 1-5 */}
+                {/* Likert 1-5 (resultados se presentan en escala 1-10 ×2) */}
                 {q.questionType === 'likert_5' && (
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {LIKERT_LABELS.map((l) => (
-                      <button
-                        key={l.value}
-                        onClick={() => handleAnswer(q.id, l.value)}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          borderRadius: 8,
-                          border: answers[q.id] === l.value ? `2px solid ${l.color}` : '2px solid var(--border)',
-                          background: answers[q.id] === l.value ? `${l.color}15` : 'transparent',
-                          color: answers[q.id] === l.value ? l.color : 'var(--text-main)',
-                          cursor: 'pointer',
-                          fontWeight: answers[q.id] === l.value ? 600 : 400,
-                          fontSize: '0.85rem',
-                          transition: 'all 0.2s',
-                          flex: '1 1 auto',
-                          textAlign: 'center',
-                          minWidth: 80,
-                        }}
-                      >
-                        <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{l.value}</div>
-                        <div style={{ fontSize: '0.7rem' }}>{l.label}</div>
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {LIKERT_LABELS.map((l) => (
+                        <button
+                          key={l.value}
+                          onClick={() => handleAnswer(q.id, l.value)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            borderRadius: 8,
+                            border: answers[q.id] === l.value ? `2px solid ${l.color}` : '2px solid var(--border)',
+                            background: answers[q.id] === l.value ? `${l.color}15` : 'transparent',
+                            color: answers[q.id] === l.value ? l.color : 'var(--text-main)',
+                            cursor: 'pointer',
+                            fontWeight: answers[q.id] === l.value ? 600 : 400,
+                            fontSize: '0.85rem',
+                            transition: 'all 0.2s',
+                            flex: '1 1 auto',
+                            textAlign: 'center',
+                            minWidth: 80,
+                          }}
+                        >
+                          <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{l.value}</div>
+                          <div style={{ fontSize: '0.7rem' }}>{l.label}</div>
+                          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                            = {l.value * 2}/10
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0.35rem 0 0', fontStyle: 'italic' }}>
+                      Los resultados se presentan en escala 1-10 para compararse con las evaluaciones de desempeño.
+                    </p>
+                  </>
                 )}
 
                 {/* NPS 0-10 */}
