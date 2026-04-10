@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { Subscription } from './entities/subscription.entity';
+import { Subscription, SubscriptionStatus, SUBSCRIPTION_STATUS_VALUES } from './entities/subscription.entity';
 import { SubscriptionPlan } from './entities/subscription-plan.entity';
 import { SubscriptionRequest } from './entities/subscription-request.entity';
 import { PaymentHistory, BillingPeriod, PaymentStatus } from './entities/payment-history.entity';
@@ -110,10 +110,10 @@ export class SubscriptionsService {
 
     // Cancel any existing active/trial subscriptions for this tenant before creating the new one
     const previousSubs = await this.subRepo.find({
-      where: { tenantId: dto.tenantId, status: In(['active', 'trial']) },
+      where: { tenantId: dto.tenantId, status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]) },
     });
     for (const prev of previousSubs) {
-      prev.status = 'cancelled';
+      prev.status = SubscriptionStatus.CANCELLED;
       prev.endDate = new Date();
       await this.subRepo.save(prev);
       if (changedBy) {
@@ -133,7 +133,7 @@ export class SubscriptionsService {
     const sub = this.subRepo.create({
       tenantId: dto.tenantId,
       planId: dto.planId,
-      status: dto.status || 'active',
+      status: dto.status || SubscriptionStatus.ACTIVE,
       billingPeriod,
       startDate,
       endDate: dto.endDate || nextBillingDate,
@@ -181,7 +181,7 @@ export class SubscriptionsService {
   async findByTenantId(tenantId: string): Promise<Subscription | null> {
     // Always return the newest active/trial subscription (order by createdAt DESC)
     const activeSubs = await this.subRepo.find({
-      where: { tenantId, status: In(['active', 'trial']) },
+      where: { tenantId, status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]) },
       relations: ['plan', 'tenant'],
       order: { createdAt: 'DESC' },
     });
@@ -189,7 +189,7 @@ export class SubscriptionsService {
     // Auto-cancel stale duplicates — keep only the newest active one
     if (activeSubs.length > 1) {
       for (const stale of activeSubs.slice(1)) {
-        stale.status = 'cancelled';
+        stale.status = SubscriptionStatus.CANCELLED;
         stale.endDate = new Date();
         await this.subRepo.save(stale);
         this.logger.warn(`[findByTenantId] Auto-cancelled stale subscription ${stale.id} (plan: ${stale.plan?.name}) for tenant ${tenantId}`);
@@ -200,12 +200,12 @@ export class SubscriptionsService {
     if (!sub) return null;
 
     // Auto-expire trial if past trialEndsAt
-    if (sub.status === 'trial' && sub.trialEndsAt) {
+    if (sub.status === SubscriptionStatus.TRIAL && sub.trialEndsAt) {
       const now = new Date();
       const trialEnd = new Date(sub.trialEndsAt);
       if (now > trialEnd) {
         this.logger.warn(`Trial expired for tenant ${tenantId} — auto-expiring subscription ${sub.id}`);
-        sub.status = 'expired';
+        sub.status = SubscriptionStatus.EXPIRED;
         await this.subRepo.save(sub);
         return null;
       }
@@ -217,7 +217,7 @@ export class SubscriptionsService {
   async findMySubscription(tenantId: string): Promise<any> {
     // Prefer active/trial, fallback to most recent
     let sub = await this.subRepo.findOne({
-      where: { tenantId, status: In(['active', 'trial']) },
+      where: { tenantId, status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]) },
       relations: ['plan', 'tenant'],
       order: { createdAt: 'DESC' },
     });
@@ -312,7 +312,14 @@ export class SubscriptionsService {
       }
     }
 
-    if (dto.status !== undefined) sub.status = dto.status;
+    if (dto.status !== undefined) {
+      if (!SUBSCRIPTION_STATUS_VALUES.includes(dto.status)) {
+        throw new BadRequestException(
+          `Estado de suscripción inválido. Permitidos: ${SUBSCRIPTION_STATUS_VALUES.join(', ')}`,
+        );
+      }
+      sub.status = dto.status;
+    }
     if (dto.trialEndsAt !== undefined) sub.trialEndsAt = dto.trialEndsAt;
     if (dto.autoRenew !== undefined) sub.autoRenew = dto.autoRenew;
     if (dto.notes !== undefined) sub.notes = dto.notes;
@@ -351,7 +358,7 @@ export class SubscriptionsService {
   async cancel(id: string, changedBy?: string): Promise<void> {
     const sub = await this.findById(id);
     const previousStatus = sub.status;
-    sub.status = 'cancelled';
+    sub.status = SubscriptionStatus.CANCELLED;
     await this.subRepo.save(sub);
 
     if (changedBy) {
@@ -364,11 +371,11 @@ export class SubscriptionsService {
 
   async getStats(): Promise<any> {
     const total = await this.subRepo.count();
-    const active = await this.subRepo.count({ where: { status: 'active' } });
-    const trial = await this.subRepo.count({ where: { status: 'trial' } });
-    const suspended = await this.subRepo.count({ where: { status: 'suspended' } });
-    const cancelled = await this.subRepo.count({ where: { status: 'cancelled' } });
-    const expired = await this.subRepo.count({ where: { status: 'expired' } });
+    const active = await this.subRepo.count({ where: { status: SubscriptionStatus.ACTIVE } });
+    const trial = await this.subRepo.count({ where: { status: SubscriptionStatus.TRIAL } });
+    const suspended = await this.subRepo.count({ where: { status: SubscriptionStatus.SUSPENDED } });
+    const cancelled = await this.subRepo.count({ where: { status: SubscriptionStatus.CANCELLED } });
+    const expired = await this.subRepo.count({ where: { status: SubscriptionStatus.EXPIRED } });
 
     const byPlan = await this.subRepo
       .createQueryBuilder('s')
@@ -388,8 +395,8 @@ export class SubscriptionsService {
     const expiredTrials = await this.subRepo
       .createQueryBuilder()
       .update(Subscription)
-      .set({ status: 'expired' })
-      .where('status = :status', { status: 'trial' })
+      .set({ status: SubscriptionStatus.EXPIRED })
+      .where('status = :status', { status: SubscriptionStatus.TRIAL })
       .andWhere('trial_ends_at IS NOT NULL')
       .andWhere('trial_ends_at < :now', { now })
       .execute();
@@ -423,7 +430,7 @@ export class SubscriptionsService {
     }
 
     // Guard: cannot register payment on cancelled subscription
-    if (sub.status === 'cancelled') {
+    if (sub.status === SubscriptionStatus.CANCELLED) {
       throw new ForbiddenException('No se puede registrar un pago en una suscripción cancelada. Reactive la suscripción primero.');
     }
 
@@ -462,8 +469,8 @@ export class SubscriptionsService {
       sub.nextBillingDate = nextBilling;
 
       // Reactivate if was suspended/expired
-      if (sub.status === 'suspended' || sub.status === 'expired') {
-        sub.status = 'active';
+      if (sub.status === SubscriptionStatus.SUSPENDED || sub.status === SubscriptionStatus.EXPIRED) {
+        sub.status = SubscriptionStatus.ACTIVE;
       }
       await this.subRepo.save(sub);
     }
@@ -535,7 +542,7 @@ export class SubscriptionsService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.plan', 'p')
       .leftJoinAndSelect('s.tenant', 't')
-      .where('s.status IN (:...statuses)', { statuses: ['active', 'trial'] })
+      .where('s.status IN (:...statuses)', { statuses: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL] })
       .andWhere('COALESCE(s.next_billing_date, s.end_date) BETWEEN :now AND :target', { now, target })
       .getMany();
   }
@@ -697,7 +704,7 @@ export class SubscriptionsService {
           tenantId: req.tenantId,
           planId: plan.id,
           billingPeriod: req.targetBillingPeriod || BillingPeriod.MONTHLY,
-          status: 'active',
+          status: SubscriptionStatus.ACTIVE,
         },
         processedBy,
       );
@@ -766,7 +773,7 @@ export class SubscriptionsService {
     const overdue = await this.subRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.plan', 'p')
-      .where('s.status = :status', { status: 'active' })
+      .where('s.status = :status', { status: SubscriptionStatus.ACTIVE })
       .andWhere('s.next_billing_date IS NOT NULL')
       .andWhere('s.next_billing_date <= :now', { now })
       .getMany();
@@ -792,7 +799,7 @@ export class SubscriptionsService {
       } else {
         // No auto-renew: suspend the subscription
         const previousStatus = sub.status;
-        sub.status = 'suspended';
+        sub.status = SubscriptionStatus.SUSPENDED;
         await this.subRepo.save(sub);
         suspended++;
 

@@ -186,7 +186,7 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt'))
   @HttpCode(HttpStatus.OK)
   async setup2FA(@Request() req: any) {
-    return this.authService.setup2FA(req.user.userId);
+    return this.authService.setup2FA(req.user.userId, req.user.tenantId ?? null);
   }
 
   /** Verify code and enable 2FA */
@@ -195,7 +195,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async enable2FA(@Request() req: any, @Body() dto: { code: string }) {
     if (!dto.code) throw new BadRequestException('Código requerido');
-    return this.authService.enable2FA(req.user.userId, dto.code);
+    return this.authService.enable2FA(req.user.userId, req.user.tenantId ?? null, dto.code);
   }
 
   /** Disable 2FA (requires password) */
@@ -204,6 +204,6 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async disable2FA(@Request() req: any, @Body() dto: { password: string }) {
     if (!dto.password) throw new BadRequestException('Contraseña requerida');
-    return this.authService.disable2FA(req.user.userId, dto.password);
+    return this.authService.disable2FA(req.user.userId, req.user.tenantId ?? null, dto.password);
   }
 }

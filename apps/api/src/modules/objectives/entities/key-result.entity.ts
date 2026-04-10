@@ -6,6 +6,7 @@ import {
   ManyToOne,
   JoinColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 import { Objective } from './objective.entity';
 
@@ -16,6 +17,8 @@ export enum KRStatus {
 }
 
 @Entity('key_results')
+@Index('idx_kr_tenant', ['tenantId'])
+@Index('idx_kr_objective', ['objectiveId'])
 export class KeyResult {
   @PrimaryGeneratedColumn('uuid')
   id: string;

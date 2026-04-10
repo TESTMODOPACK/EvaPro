@@ -89,7 +89,7 @@ export class InvoicesController {
     @Request() req: any,
     @Res() res: any,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     const pdf = await this.invoicesService.generatePdf(id, tenantId);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=factura-${id.slice(0, 8)}.pdf`);

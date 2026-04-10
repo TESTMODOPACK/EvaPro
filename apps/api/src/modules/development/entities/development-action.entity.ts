@@ -14,6 +14,7 @@ import { Competency } from './competency.entity';
 
 @Entity('development_actions')
 @Index('idx_devaction_plan', ['tenantId', 'planId'])
+@Index('idx_devaction_plan_status', ['planId', 'status'])
 export class DevelopmentAction {
   @PrimaryGeneratedColumn('uuid')
   id: string;

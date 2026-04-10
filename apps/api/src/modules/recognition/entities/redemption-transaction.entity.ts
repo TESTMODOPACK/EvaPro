@@ -11,6 +11,16 @@ import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
 import { RedemptionItem } from './redemption-item.entity';
 
+/** Valid states of a redemption transaction lifecycle. */
+export enum RedemptionStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled',
+}
+
+export const REDEMPTION_STATUS_VALUES: readonly RedemptionStatus[] = Object.values(RedemptionStatus);
+
 @Entity('redemption_transactions')
 @Index('idx_rt_tenant_user', ['tenantId', 'userId'])
 export class RedemptionTransaction {
@@ -41,8 +51,11 @@ export class RedemptionTransaction {
   @Column({ type: 'int', name: 'points_spent' })
   pointsSpent: number;
 
-  @Column({ type: 'varchar', length: 30, default: 'pending', comment: 'pending | approved | delivered | cancelled' })
-  status: string;
+  // Stored as varchar for compatibility with the existing production schema
+  // (no migrations yet). The RedemptionStatus TS enum + service-layer
+  // validation in updateRedemptionStatus() guarantee only legal values.
+  @Column({ type: 'varchar', length: 30, default: RedemptionStatus.PENDING })
+  status: RedemptionStatus;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;

@@ -35,6 +35,7 @@ export enum CyclePeriod {
 
 @Entity('evaluation_cycles')
 @Index('idx_cycles_tenant', ['tenantId'])
+@Index('idx_cycles_tenant_status', ['tenantId', 'status'])
 export class EvaluationCycle {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -8,7 +8,7 @@ import { Position } from './entities/position.entity';
 import { User } from '../users/entities/user.entity';
 import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
 import { AuditLog } from '../audit/entities/audit-log.entity';
-import { Subscription } from '../subscriptions/entities/subscription.entity';
+import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
 import { SupportTicket } from './entities/support-ticket.entity';
 import { AiInsight } from '../ai-insights/entities/ai-insight.entity';
 import { SubscriptionPlan } from '../subscriptions/entities/subscription-plan.entity';
@@ -757,7 +757,7 @@ export class TenantsService {
       const sub = this.subscriptionRepo.create({
         tenantId: tenant.id,
         planId: (plan as any).id,
-        status: 'active',
+        status: SubscriptionStatus.ACTIVE,
         startDate: data.org.startDate ? new Date(data.org.startDate) : new Date(),
         billingPeriod: billingPeriod as any,
         autoRenew: true,
@@ -1010,10 +1010,10 @@ export class TenantsService {
       for (const tenant of tenants) {
         // Get subscription with plan
         const sub = await this.subscriptionRepo.findOne({
-          where: { tenantId: tenant.id, status: 'active' },
+          where: { tenantId: tenant.id, status: SubscriptionStatus.ACTIVE },
           relations: ['plan'],
         }) || await this.subscriptionRepo.findOne({
-          where: { tenantId: tenant.id, status: 'trial' },
+          where: { tenantId: tenant.id, status: SubscriptionStatus.TRIAL },
           relations: ['plan'],
         });
 

@@ -7,7 +7,7 @@ import { UserBadge } from './entities/user-badge.entity';
 import { UserPoints, PointsSource } from './entities/user-points.entity';
 import { PointsBudget } from './entities/points-budget.entity';
 import { RedemptionItem } from './entities/redemption-item.entity';
-import { RedemptionTransaction } from './entities/redemption-transaction.entity';
+import { RedemptionTransaction, RedemptionStatus, REDEMPTION_STATUS_VALUES } from './entities/redemption-transaction.entity';
 import { Challenge } from './entities/challenge.entity';
 import { ChallengeProgress } from './entities/challenge-progress.entity';
 import { User } from '../users/entities/user.entity';
@@ -641,7 +641,7 @@ export class RecognitionService {
       }
 
       const tx = manager.getRepository(RedemptionTransaction).create({
-        tenantId, userId, itemId, pointsSpent: item.pointsCost, status: 'pending',
+        tenantId, userId, itemId, pointsSpent: item.pointsCost, status: RedemptionStatus.PENDING,
       });
       return manager.save(tx);
     });
@@ -656,33 +656,33 @@ export class RecognitionService {
    * Cancelling a pending/approved redemption refunds the user's points.
    */
   async updateRedemptionStatus(tenantId: string, redemptionId: string, newStatus: string) {
-    const allowed = ['pending', 'approved', 'delivered', 'cancelled'];
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(`Estado inválido. Permitidos: ${allowed.join(', ')}`);
+    if (!REDEMPTION_STATUS_VALUES.includes(newStatus as RedemptionStatus)) {
+      throw new BadRequestException(`Estado inválido. Permitidos: ${REDEMPTION_STATUS_VALUES.join(', ')}`);
     }
+    const target = newStatus as RedemptionStatus;
 
     const tx = await this.redemptionTxRepo.findOne({
       where: { id: redemptionId, tenantId },
       relations: ['item'],
     });
     if (!tx) throw new NotFoundException('Canje no encontrado');
-    if (tx.status === newStatus) return tx;
+    if (tx.status === target) return tx;
 
     // Validate transition
-    const transitions: Record<string, string[]> = {
-      pending: ['approved', 'delivered', 'cancelled'],
-      approved: ['delivered', 'cancelled'],
-      delivered: [],
-      cancelled: [],
+    const transitions: Record<RedemptionStatus, RedemptionStatus[]> = {
+      [RedemptionStatus.PENDING]: [RedemptionStatus.APPROVED, RedemptionStatus.DELIVERED, RedemptionStatus.CANCELLED],
+      [RedemptionStatus.APPROVED]: [RedemptionStatus.DELIVERED, RedemptionStatus.CANCELLED],
+      [RedemptionStatus.DELIVERED]: [],
+      [RedemptionStatus.CANCELLED]: [],
     };
     const valid = transitions[tx.status] || [];
-    if (!valid.includes(newStatus)) {
-      throw new BadRequestException(`Transición inválida: ${tx.status} → ${newStatus}`);
+    if (!valid.includes(target)) {
+      throw new BadRequestException(`Transición inválida: ${tx.status} → ${target}`);
     }
 
     return this.dataSource.transaction(async (manager) => {
       // Refund points if cancelling a non-delivered redemption.
-      if (newStatus === 'cancelled' && (tx.status === 'pending' || tx.status === 'approved')) {
+      if (target === RedemptionStatus.CANCELLED && (tx.status === RedemptionStatus.PENDING || tx.status === RedemptionStatus.APPROVED)) {
         await manager.save(manager.getRepository(UserPoints).create({
           tenantId,
           userId: tx.userId,
@@ -705,7 +705,7 @@ export class RecognitionService {
             .execute();
         }
       }
-      tx.status = newStatus;
+      tx.status = target;
       return manager.save(tx);
     });
   }

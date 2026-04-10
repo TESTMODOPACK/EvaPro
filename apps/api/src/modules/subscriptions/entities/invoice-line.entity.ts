@@ -1,10 +1,11 @@
 import {
   Column, CreateDateColumn, Entity, PrimaryGeneratedColumn,
-  ManyToOne, JoinColumn,
+  ManyToOne, JoinColumn, Index,
 } from 'typeorm';
 import { Invoice } from './invoice.entity';
 
 @Entity('invoice_lines')
+@Index('idx_invoiceline_invoice', ['invoiceId'])
 export class InvoiceLine {
   @PrimaryGeneratedColumn('uuid')
   id: string;

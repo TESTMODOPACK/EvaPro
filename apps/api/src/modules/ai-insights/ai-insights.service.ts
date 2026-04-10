@@ -18,7 +18,7 @@ import { buildBiasPrompt } from './prompts/bias.prompt';
 import { buildSuggestionsPrompt } from './prompts/suggestions.prompt';
 import { buildSurveyAnalysisPrompt } from './prompts/survey-analysis.prompt';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
-import { Subscription } from '../subscriptions/entities/subscription.entity';
+import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
 
 const MODEL = 'claude-haiku-4-5-20251001';
 const CACHE_DAYS = 7;
@@ -220,7 +220,7 @@ export class AiInsightsService {
       // If usage exceeds plan limit, the latest call consumed an addon credit
       if (periodUsed > planLimit) {
         await this.subscriptionRepo.increment(
-          { tenantId, status: In(['active', 'trial']) },
+          { tenantId, status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]) },
           'aiAddonUsed',
           1,
         );

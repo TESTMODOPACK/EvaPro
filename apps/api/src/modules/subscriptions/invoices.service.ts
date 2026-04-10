@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Between, LessThanOrEqual, MoreThanOrEqual, ILike } from 'typeorm';
 import { Invoice, InvoiceStatus, InvoiceType } from './entities/invoice.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
-import { Subscription } from './entities/subscription.entity';
+import { Subscription, SubscriptionStatus } from './entities/subscription.entity';
 import { PaymentHistory, PaymentStatus, BillingPeriod } from './entities/payment-history.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
@@ -147,7 +147,7 @@ export class InvoicesService {
 
   async generateBulkInvoices(userId: string): Promise<{ generated: number; skipped: number; errors: string[] }> {
     const subs = await this.subRepo.find({
-      where: { status: In(['active', 'trial']) },
+      where: { status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]) },
       relations: ['plan', 'tenant'],
     });
 
@@ -294,8 +294,8 @@ export class InvoicesService {
     if (sub) {
       sub.lastPaymentDate = new Date();
       sub.lastPaymentAmount = Number(invoice.total);
-      if (sub.status === 'suspended' || sub.status === 'expired') {
-        sub.status = 'active';
+      if (sub.status === SubscriptionStatus.SUSPENDED || sub.status === SubscriptionStatus.EXPIRED) {
+        sub.status = SubscriptionStatus.ACTIVE;
       }
       await this.subRepo.save(sub);
     }
@@ -404,9 +404,9 @@ export class InvoicesService {
 
   // ─── PDF Generation ─────────────────────────────────────────────────
 
-  async generatePdf(invoiceId: string, tenantId?: string): Promise<Buffer> {
+  async generatePdf(invoiceId: string, tenantId: string | null): Promise<Buffer> {
     const where: any = { id: invoiceId };
-    if (tenantId) where.tenantId = tenantId;
+    if (tenantId !== null) where.tenantId = tenantId;
     const invoice = await this.invoiceRepo.findOne({ where, relations: ['tenant', 'lines', 'subscription'] });
     if (!invoice) throw new NotFoundException('Factura no encontrada');
 

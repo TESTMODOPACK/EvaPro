@@ -44,7 +44,9 @@ export class ContractsController {
   @Get(':id')
   @Roles('super_admin', 'tenant_admin')
   findOne(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    // Super admin uses the cross-tenant escape hatch; regular admins must be
+    // scoped to their tenant.
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     return this.contractsService.findById(id, tenantId);
   }
 
@@ -80,7 +82,7 @@ export class ContractsController {
     @Request() req: any,
     @Res() res: any,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     const pdf = await this.contractsService.generatePdf(id, tenantId);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=contrato-${id.slice(0, 8)}.pdf`);

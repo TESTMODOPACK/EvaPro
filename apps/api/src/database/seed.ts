@@ -37,7 +37,7 @@ import { UserNote } from '../modules/users/entities/user-note.entity';
 import { UserDeparture } from '../modules/users/entities/user-departure.entity';
 import { UserMovement } from '../modules/users/entities/user-movement.entity';
 import { SubscriptionPlan } from '../modules/subscriptions/entities/subscription-plan.entity';
-import { Subscription } from '../modules/subscriptions/entities/subscription.entity';
+import { Subscription, SubscriptionStatus } from '../modules/subscriptions/entities/subscription.entity';
 
 // ── Phase 4 ────────────────────────────────────────────────────────────────
 import { TalentAssessment } from '../modules/talent/entities/talent-assessment.entity';
@@ -444,7 +444,7 @@ async function seed() {
     const enterprisePlan = await planRepo.findOne({ where: { code: 'enterprise' } });
     // Find the active subscription (same logic as SubscriptionsService.findByTenantId)
     let subscription = await subRepo.findOne({
-      where: { tenantId: tenant.id, status: 'active' },
+      where: { tenantId: tenant.id, status: SubscriptionStatus.ACTIVE },
       order: { createdAt: 'DESC' as const },
     }) || await subRepo.findOne({
       where: { tenantId: tenant.id },
@@ -454,7 +454,7 @@ async function seed() {
       subscription = subRepo.create({
         tenantId: tenant.id,
         planId: enterprisePlan?.id || starterPlan.id,
-        status: 'active',
+        status: SubscriptionStatus.ACTIVE,
         startDate: new Date(),
         aiAddonCalls: 50,
       });
@@ -472,7 +472,7 @@ async function seed() {
         subChanged = true;
       }
       if (subChanged) {
-        subscription.status = 'active'; // Ensure it's active
+        subscription.status = SubscriptionStatus.ACTIVE; // Ensure it's active
         await subRepo.save(subscription);
         console.log(`✅  Subscription upgraded: planId=${subscription.planId}, plan=${enterprisePlan?.name}, aiAddonCalls=${subscription.aiAddonCalls}, status=${subscription.status}`);
       } else {

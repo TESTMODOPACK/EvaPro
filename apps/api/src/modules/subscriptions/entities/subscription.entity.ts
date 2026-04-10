@@ -12,8 +12,21 @@ import { Tenant } from '../../tenants/entities/tenant.entity';
 import { SubscriptionPlan } from './subscription-plan.entity';
 import { BillingPeriod } from './payment-history.entity';
 
+/** Valid lifecycle states for a tenant subscription. */
+export enum SubscriptionStatus {
+  ACTIVE = 'active',
+  TRIAL = 'trial',
+  SUSPENDED = 'suspended',
+  CANCELLED = 'cancelled',
+  EXPIRED = 'expired',
+}
+
+export const SUBSCRIPTION_STATUS_VALUES: readonly SubscriptionStatus[] = Object.values(SubscriptionStatus);
+
 @Entity('subscriptions')
 @Index('idx_sub_tenant', ['tenantId'])
+@Index('idx_sub_tenant_status', ['tenantId', 'status'])
+@Index('idx_sub_status', ['status'])
 export class Subscription {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -32,8 +45,10 @@ export class Subscription {
   @JoinColumn({ name: 'plan_id' })
   plan: SubscriptionPlan;
 
-  @Column({ type: 'varchar', length: 30, default: 'active' })
-  status: string; // active | trial | suspended | cancelled | expired
+  // Stored as varchar to preserve the existing production schema. The
+  // SubscriptionStatus TS enum constrains writes at the service layer.
+  @Column({ type: 'varchar', length: 30, default: SubscriptionStatus.ACTIVE })
+  status: SubscriptionStatus;
 
   @Column({ type: 'date', name: 'start_date' })
   startDate: Date;

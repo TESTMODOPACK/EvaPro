@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
 import { generateTotpSecret, generateTotpUri, verifyTotp } from '../../common/utils/totp';
@@ -89,7 +89,14 @@ export class AuthService {
   // ─── Token Refresh ──────────────────────────────────────────────────
 
   async refreshToken(userId: string, tenantId: string | null): Promise<{ access_token: string }> {
-    const user = await this.usersService.findById(userId);
+    // Scope the lookup to the tenant claimed in the token. If the user no
+    // longer belongs to that tenant (moved, deleted, claim tampered), we
+    // return 401 — preventing cross-tenant refresh attacks.
+    const user = await this.userRepo.findOne({
+      where: tenantId
+        ? { id: userId, tenantId }
+        : { id: userId, tenantId: IsNull() }, // super_admin: no tenant
+    });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Usuario inactivo o no encontrado');
     }
@@ -220,9 +227,18 @@ export class AuthService {
 
   // ─── 2FA / MFA ─────────────────────────────────────────────────────
 
+  /**
+   * Build the tenant-scoped WHERE clause for user lookups used by 2FA methods.
+   * super_admin users may not have a tenantId, so we match on NULL in that case.
+   */
+  private tenantScopedUserWhere(userId: string, tenantId: string | null): any {
+    if (tenantId) return { id: userId, tenantId };
+    return { id: userId, tenantId: IsNull() };
+  }
+
   /** Step 1: Generate secret and return URI for QR code */
-  async setup2FA(userId: string): Promise<{ secret: string; uri: string }> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+  async setup2FA(userId: string, tenantId: string | null): Promise<{ secret: string; uri: string }> {
+    const user = await this.userRepo.findOne({ where: this.tenantScopedUserWhere(userId, tenantId) });
     if (!user) throw new BadRequestException('Usuario no encontrado');
     if (user.twoFactorEnabled) throw new BadRequestException('2FA ya está activado');
 
@@ -235,8 +251,8 @@ export class AuthService {
   }
 
   /** Step 2: Verify code and enable 2FA */
-  async enable2FA(userId: string, code: string): Promise<{ enabled: boolean }> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+  async enable2FA(userId: string, tenantId: string | null, code: string): Promise<{ enabled: boolean }> {
+    const user = await this.userRepo.findOne({ where: this.tenantScopedUserWhere(userId, tenantId) });
     if (!user || !user.twoFactorSecret) throw new BadRequestException('Primero debes configurar 2FA');
     if (user.twoFactorEnabled) throw new BadRequestException('2FA ya está activado');
 
@@ -251,8 +267,8 @@ export class AuthService {
   }
 
   /** Disable 2FA */
-  async disable2FA(userId: string, password: string): Promise<{ disabled: boolean }> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+  async disable2FA(userId: string, tenantId: string | null, password: string): Promise<{ disabled: boolean }> {
+    const user = await this.userRepo.findOne({ where: this.tenantScopedUserWhere(userId, tenantId) });
     if (!user) throw new BadRequestException('Usuario no encontrado');
     if (!user.twoFactorEnabled) throw new BadRequestException('2FA no está activado');
 

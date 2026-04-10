@@ -1,7 +1,9 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, Index } from 'typeorm';
 
 @Entity('tenants')
 @Unique(['slug'])
+@Index('idx_tenant_plan', ['plan'])
+@Index('idx_tenant_active', ['isActive'])
 export class Tenant {
   @PrimaryGeneratedColumn('uuid')
   id: string;

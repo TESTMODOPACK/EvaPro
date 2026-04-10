@@ -84,9 +84,15 @@ export class ContractsService {
     });
   }
 
-  async findById(id: string, tenantId?: string): Promise<Contract> {
+  /**
+   * Find a contract by id, scoped to a tenant.
+   * Pass `tenantId = null` to perform a cross-tenant lookup — reserved for
+   * super_admin endpoints and system-level callers (e.g. signatures module).
+   * Every regular caller MUST pass the authenticated user's tenantId.
+   */
+  async findById(id: string, tenantId: string | null): Promise<Contract> {
     const where: any = { id };
-    if (tenantId) where.tenantId = tenantId;
+    if (tenantId !== null) where.tenantId = tenantId;
     const contract = await this.contractRepo.findOne({ where, relations: ['tenant', 'creator'] });
     if (!contract) throw new NotFoundException('Contrato no encontrado');
     return contract;
@@ -100,7 +106,9 @@ export class ContractsService {
     effectiveDate: string;
     expirationDate: string;
   }>, userId: string): Promise<Contract> {
-    const contract = await this.findById(id);
+    // update/remove/sendForSignature endpoints are super_admin-only; explicit
+    // cross-tenant lookup is intentional (null sentinel).
+    const contract = await this.findById(id, null);
     if (contract.status !== 'draft') {
       throw new BadRequestException('Solo se pueden editar contratos en estado borrador');
     }
@@ -117,7 +125,7 @@ export class ContractsService {
   }
 
   async remove(id: string, userId: string): Promise<void> {
-    const contract = await this.findById(id);
+    const contract = await this.findById(id, null); // super_admin-only
     if (contract.status !== 'draft') {
       throw new BadRequestException('Solo se pueden eliminar contratos en estado borrador');
     }
@@ -127,7 +135,7 @@ export class ContractsService {
   }
 
   async sendForSignature(id: string, userId: string): Promise<Contract> {
-    const contract = await this.findById(id);
+    const contract = await this.findById(id, null); // super_admin-only
     if (contract.status !== 'draft') {
       throw new BadRequestException('Solo se pueden enviar a firma contratos en estado borrador');
     }
@@ -271,7 +279,8 @@ export class ContractsService {
   }
 
   async activateAfterSignature(id: string): Promise<void> {
-    const contract = await this.findById(id);
+    // Called from signatures module (system-level) when the last signature is collected.
+    const contract = await this.findById(id, null);
     if (contract.status === 'pending_signature') {
       contract.status = 'active';
       // Log to status history
@@ -284,7 +293,8 @@ export class ContractsService {
 
   /** Get contract content for document hashing (used by signatures module) */
   async getContractContent(id: string): Promise<string> {
-    const contract = await this.findById(id);
+    const contract = await this.findById(id, null); // system-level
+
     return JSON.stringify({
       id: contract.id,
       type: contract.type,
@@ -297,7 +307,7 @@ export class ContractsService {
   }
 
   async getContractName(id: string): Promise<string> {
-    const contract = await this.findById(id);
+    const contract = await this.findById(id, null); // system-level
     return contract.title;
   }
 
@@ -467,7 +477,7 @@ Excepciones: información pública, obtenida independientemente, o requerida por
 
   // ─── PDF Generation ───────────────────────────────────────────────────
 
-  async generatePdf(contractId: string, tenantId?: string): Promise<Buffer> {
+  async generatePdf(contractId: string, tenantId: string | null): Promise<Buffer> {
     const contract = await this.findById(contractId, tenantId);
 
     // Dynamic import jsPDF

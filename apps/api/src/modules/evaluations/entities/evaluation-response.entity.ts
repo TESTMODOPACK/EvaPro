@@ -6,11 +6,13 @@ import {
   ManyToOne,
   JoinColumn,
   OneToOne,
+  Index,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { EvaluationAssignment } from './evaluation-assignment.entity';
 
 @Entity('evaluation_responses')
+@Index('idx_eval_response_tenant', ['tenantId'])
 export class EvaluationResponse {
   @PrimaryGeneratedColumn('uuid')
   id: string;
