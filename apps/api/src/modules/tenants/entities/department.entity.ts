@@ -21,6 +21,10 @@ export class Department {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  /** Timestamp of when this row was soft-deleted (isActive=false). Null while active. */
+  @Column({ type: 'timestamptz', name: 'deactivated_at', nullable: true })
+  deactivatedAt: Date | null;
+
   @Column({ type: 'int', default: 0, name: 'sort_order' })
   sortOrder: number;
 

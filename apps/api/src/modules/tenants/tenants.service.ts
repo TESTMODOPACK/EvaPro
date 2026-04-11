@@ -288,7 +288,7 @@ export class TenantsService {
       throw new BadRequestException(`Clave no válida: ${key}`);
     }
     const tenant = await this.findById(tenantId);
-    return tenant.settings?.[key] ?? CUSTOM_SETTINGS_DEFAULTS[key];
+    return (tenant.settings?.[key] as string[] | undefined) ?? CUSTOM_SETTINGS_DEFAULTS[key];
   }
 
   /**
@@ -584,7 +584,7 @@ export class TenantsService {
     const tenant = await this.findById(tenantId);
     const result: Record<string, string[]> = {};
     for (const key of VALID_CUSTOM_KEYS) {
-      result[key] = tenant.settings?.[key] ?? CUSTOM_SETTINGS_DEFAULTS[key];
+      result[key] = (tenant.settings?.[key] as string[] | undefined) ?? CUSTOM_SETTINGS_DEFAULTS[key];
     }
     return result;
   }
@@ -1184,8 +1184,9 @@ export class TenantsService {
       throw new BadRequestException(usage.message);
     }
 
-    // Soft-delete (deactivate)
+    // Soft-delete (deactivate) — record timestamp for audit trail
     dept.isActive = false;
+    dept.deactivatedAt = new Date();
     await this.departmentRepo.save(dept);
     await this.syncDepartmentsToSettings(tenantId);
   }
@@ -1231,6 +1232,7 @@ export class TenantsService {
     if (dept) {
       if (!dept.isActive) {
         dept.isActive = true;
+        dept.deactivatedAt = null; // clear audit timestamp on reactivation
         await this.departmentRepo.save(dept);
       }
       return dept.id;
@@ -1326,6 +1328,7 @@ export class TenantsService {
     }
 
     pos.isActive = false;
+    pos.deactivatedAt = new Date();
     await this.positionRepo.save(pos);
     await this.syncPositionsToSettings(tenantId);
   }
@@ -1376,6 +1379,7 @@ export class TenantsService {
     if (pos) {
       if (!pos.isActive) {
         pos.isActive = true;
+        pos.deactivatedAt = null;
         await this.positionRepo.save(pos);
       }
       return pos.id;

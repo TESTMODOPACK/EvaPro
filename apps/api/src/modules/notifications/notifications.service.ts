@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, MoreThan } from 'typeorm';
+import { Repository, LessThan, MoreThan, In } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
 import { EmailService } from './email.service';
 
@@ -94,26 +94,66 @@ export class NotificationsService {
     return count > 0;
   }
 
-  /** Bulk create notifications for multiple users (with dedup) */
-  async createBulk(notifications: Array<{
-    tenantId: string;
-    userId: string;
-    type: NotificationType;
-    title: string;
-    message: string;
-    metadata?: Record<string, any>;
-  }>): Promise<void> {
+  /**
+   * Bulk create notifications for multiple users.
+   *
+   * By default this method applies 12h dedup per-user to avoid spamming
+   * people with repeated reminders; pass `options.dedupe = false` for
+   * announcements where each user should always receive the notification
+   * (e.g., new catalog item, new challenge). Dedup is implemented as a
+   * single batched IN query, not N sequential counts — safe for 1000+ users.
+   */
+  async createBulk(
+    notifications: Array<{
+      tenantId: string;
+      userId: string;
+      type: NotificationType;
+      title: string;
+      message: string;
+      metadata?: Record<string, any>;
+    }>,
+    options: { dedupe?: boolean; dedupeHoursBack?: number } = {},
+  ): Promise<void> {
     if (notifications.length === 0) return;
 
-    // Dedup: filter out notifications where a similar one exists in last 12h
-    const filtered: typeof notifications = [];
-    for (const n of notifications) {
-      const exists = await this.existsRecent(n.tenantId, n.userId, n.type);
-      if (!exists) filtered.push(n);
-    }
-    if (filtered.length === 0) return;
+    let toInsert = notifications;
 
-    const entities = filtered.map((n) =>
+    if (options.dedupe !== false) {
+      const hoursBack = options.dedupeHoursBack ?? 12;
+      const cutoff = new Date();
+      cutoff.setHours(cutoff.getHours() - hoursBack);
+
+      // Group candidates by (tenantId, type) and fetch existing recipients
+      // in one query per group, turning an O(N) lookup into O(groups).
+      const byGroup = new Map<string, { tenantId: string; type: NotificationType; userIds: string[] }>();
+      for (const n of notifications) {
+        const key = `${n.tenantId}:${n.type}`;
+        const g = byGroup.get(key);
+        if (g) g.userIds.push(n.userId);
+        else byGroup.set(key, { tenantId: n.tenantId, type: n.type, userIds: [n.userId] });
+      }
+
+      const alreadyNotified = new Set<string>();
+      for (const g of byGroup.values()) {
+        const existing = await this.notifRepo.find({
+          where: {
+            tenantId: g.tenantId,
+            type: g.type,
+            userId: In(g.userIds),
+            createdAt: MoreThan(cutoff),
+          },
+          select: ['userId'],
+        });
+        for (const e of existing) alreadyNotified.add(`${g.tenantId}:${g.type}:${e.userId}`);
+      }
+
+      toInsert = notifications.filter(
+        (n) => !alreadyNotified.has(`${n.tenantId}:${n.type}:${n.userId}`),
+      );
+      if (toInsert.length === 0) return;
+    }
+
+    const entities = toInsert.map((n) =>
       this.notifRepo.create({
         tenantId: n.tenantId,
         userId: n.userId,

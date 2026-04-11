@@ -3,6 +3,7 @@ import {
   Index, ManyToOne, JoinColumn,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
+import type { BadgeCriteria } from '../../../common/types/jsonb-schemas';
 
 /**
  * Badge definition: achievement types that users can earn.
@@ -37,7 +38,7 @@ export class Badge {
 
   /** Auto-award criteria (JSON): { type: "recognitions_received", threshold: 10 } */
   @Column({ type: 'jsonb', nullable: true })
-  criteria: any;
+  criteria: BadgeCriteria | null;
 
   /** Points awarded when badge is earned */
   @Column({ type: 'int', default: 50, name: 'points_reward' })
@@ -45,6 +46,10 @@ export class Badge {
 
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
+
+  /** Timestamp of when this row was soft-deleted (isActive=false). Null while active. */
+  @Column({ type: 'timestamptz', name: 'deactivated_at', nullable: true })
+  deactivatedAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;

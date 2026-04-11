@@ -5,6 +5,7 @@ import {
   PrimaryGeneratedColumn,
   Index,
 } from 'typeorm';
+import type { AuditLogMetadata } from '../../../common/types/jsonb-schemas';
 
 @Entity('audit_logs')
 @Index('idx_audit_tenant_date', ['tenantId', 'createdAt'])
@@ -28,7 +29,7 @@ export class AuditLog {
   entityId: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  metadata: any;
+  metadata: AuditLogMetadata | null;
 
   @Column({ type: 'varchar', length: 45, name: 'ip_address', nullable: true })
   ipAddress: string;

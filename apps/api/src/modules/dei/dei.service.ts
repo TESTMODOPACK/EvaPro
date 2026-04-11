@@ -30,7 +30,8 @@ export class DeiService {
   /** Get tenant-configurable DEI thresholds (falls back to defaults) */
   private async getThresholds(tenantId: string) {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
-    const dei = tenant?.settings?.dei || {};
+    type DeiConfig = { privacyMin?: number; mediumThreshold?: number; highThreshold?: number };
+    const dei: DeiConfig = (tenant?.settings?.dei as DeiConfig | undefined) || {};
     return {
       privacyMin: typeof dei.privacyMin === 'number' && dei.privacyMin >= 2 ? dei.privacyMin : DEFAULT_PRIVACY_MIN,
       mediumThreshold: typeof dei.mediumThreshold === 'number' && dei.mediumThreshold > 0 ? dei.mediumThreshold : DEFAULT_MEDIUM_THRESHOLD,
@@ -321,7 +322,8 @@ export class DeiService {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
 
-    const currentDei = tenant.settings?.dei || {};
+    type DeiConfig = { privacyMin?: number; mediumThreshold?: number; highThreshold?: number };
+    const currentDei: DeiConfig = (tenant.settings?.dei as DeiConfig | undefined) || {};
 
     if (config.privacyMin !== undefined) {
       const val = Number(config.privacyMin);

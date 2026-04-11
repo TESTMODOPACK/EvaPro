@@ -24,6 +24,10 @@ export class Position {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  /** Timestamp of when this row was soft-deleted (isActive=false). Null while active. */
+  @Column({ type: 'timestamptz', name: 'deactivated_at', nullable: true })
+  deactivatedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

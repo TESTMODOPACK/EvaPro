@@ -5,6 +5,7 @@ import {
   PrimaryGeneratedColumn,
   Index,
 } from 'typeorm';
+import type { AiInsightContent } from '../../../common/types/jsonb-schemas';
 
 export enum InsightType {
   SUMMARY = 'summary',
@@ -37,7 +38,7 @@ export class AiInsight {
   cycleId: string;
 
   @Column({ type: 'jsonb', default: {} })
-  content: any;
+  content: AiInsightContent;
 
   @Column({ type: 'varchar', length: 100, default: 'claude-haiku-4-5' })
   model: string;

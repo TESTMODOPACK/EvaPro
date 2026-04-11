@@ -109,6 +109,7 @@ export class DevelopmentService {
     }
 
     competency.isActive = false;
+    competency.deactivatedAt = new Date();
     return this.competencyRepo.save(competency);
   }
 

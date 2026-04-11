@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, Index } from 'typeorm';
+import type { TenantSettings } from '../../../common/types/jsonb-schemas';
 
 @Entity('tenants')
 @Unique(['slug'])
@@ -45,7 +46,7 @@ export class Tenant {
   legalRepRut: string | null;
 
   @Column({ type: 'jsonb', default: {} })
-  settings: any;
+  settings: TenantSettings;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;

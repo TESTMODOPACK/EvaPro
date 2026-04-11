@@ -4,7 +4,11 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { User } from '../../users/entities/user.entity';
+import { Tenant } from '../../tenants/entities/tenant.entity';
 
 export type SubscriptionRequestType = 'plan_change' | 'cancel';
 export type SubscriptionRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -19,8 +23,16 @@ export class SubscriptionRequest {
   @Column({ type: 'uuid', name: 'tenant_id' })
   tenantId: string;
 
+  @ManyToOne(() => Tenant)
+  @JoinColumn({ name: 'tenant_id' })
+  tenant: Tenant;
+
   @Column({ type: 'uuid', name: 'requested_by' })
   requestedBy: string;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'requested_by' })
+  requester: User;
 
   @Column({ type: 'varchar', length: 30 })
   type: SubscriptionRequestType;
@@ -39,6 +51,10 @@ export class SubscriptionRequest {
 
   @Column({ type: 'uuid', name: 'processed_by', nullable: true })
   processedBy: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'processed_by' })
+  processor: User | null;
 
   @Column({ type: 'timestamptz', name: 'processed_at', nullable: true })
   processedAt: Date | null;

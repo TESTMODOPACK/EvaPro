@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
+import type { CycleSettings } from '../../../common/types/jsonb-schemas';
 
 export enum CycleType {
   DEGREE_90 = '90',
@@ -91,7 +92,7 @@ export class EvaluationCycle {
   creator: User;
 
   @Column({ type: 'jsonb', default: {}, name: 'settings' })
-  settings: any;
+  settings: CycleSettings;
 
   @Column({ type: 'int', default: 0, name: 'total_evaluated' })
   totalEvaluated: number;

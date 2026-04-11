@@ -39,18 +39,26 @@ export class RecognitionService {
     private readonly emailService: EmailService,
   ) {}
 
-  /** Send in-app notification to all active users in tenant */
+  /** Send in-app notification to all active users in tenant (batched). */
   private async notifyAllUsers(tenantId: string, message: string): Promise<void> {
     const users = await this.userRepo.find({ where: { tenantId, isActive: true }, select: ['id'] });
-    for (const u of users) {
-      this.notificationsService.create({
-        tenantId,
-        userId: u.id,
-        type: 'recognition' as any,
-        title: 'Reconocimientos',
-        message,
-      }).catch(() => {});
-    }
+    if (users.length === 0) return;
+    // Single bulk insert instead of N individual writes. For a tenant with
+    // 1000 active users this changes 1000 round-trips into 1. Dedup disabled
+    // because each broadcast (new catalog item, challenge, etc.) is a distinct
+    // announcement that every user should see.
+    await this.notificationsService
+      .createBulk(
+        users.map((u) => ({
+          tenantId,
+          userId: u.id,
+          type: 'recognition' as any,
+          title: 'Reconocimientos',
+          message,
+        })),
+        { dedupe: false },
+      )
+      .catch(() => { /* non-critical */ });
   }
 
   // ─── Recognition Wall (Social Feed) ─────────────────────────────────
@@ -292,7 +300,9 @@ export class RecognitionService {
 
     // 4. Check each badge against pre-fetched counts
     for (const badge of unchecked) {
+      if (!badge.criteria) continue; // manual-only badges have no auto criteria
       const { type, threshold } = badge.criteria;
+      if (threshold == null) continue;
       let count = 0;
       if (type === 'recognitions_received') count = recvCount;
       else if (type === 'recognitions_sent') count = sentCount;

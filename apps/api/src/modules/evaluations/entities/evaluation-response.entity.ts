@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { EvaluationAssignment } from './evaluation-assignment.entity';
+import type { EvaluationAnswers } from '../../../common/types/jsonb-schemas';
 
 @Entity('evaluation_responses')
 @Index('idx_eval_response_tenant', ['tenantId'])
@@ -33,7 +34,7 @@ export class EvaluationResponse {
 
   /** { "q1": 4, "q2": "texto libre", "q3": ["opA", "opC"] } */
   @Column({ type: 'jsonb', default: {} })
-  answers: any;
+  answers: EvaluationAnswers;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, name: 'overall_score' })
   overallScore: number | null;

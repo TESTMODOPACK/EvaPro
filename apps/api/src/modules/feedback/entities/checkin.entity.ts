@@ -99,7 +99,11 @@ export class CheckIn {
   rejectionReason: string;
 
   @Column({ type: 'uuid', name: 'rejected_by', nullable: true })
-  rejectedBy: string;
+  rejectedBy: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'rejected_by' })
+  rejectedByUser: User | null;
 
   @Column({ type: 'uuid', name: 'development_plan_id', nullable: true, comment: 'Plan de desarrollo vinculado a este check-in' })
   developmentPlanId: string | null;

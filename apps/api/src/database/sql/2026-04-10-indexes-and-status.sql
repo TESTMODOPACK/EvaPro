@@ -31,3 +31,19 @@ CREATE INDEX IF NOT EXISTS idx_invoiceline_invoice ON invoice_lines (invoice_id)
 -- Tenant: SaaS-wide filters by plan and active state
 CREATE INDEX IF NOT EXISTS idx_tenant_plan ON tenants (plan);
 CREATE INDEX IF NOT EXISTS idx_tenant_active ON tenants (is_active);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Soft-delete audit trail: add deactivated_at column to catalog tables so the
+-- existing isActive=false soft-delete records WHEN the deactivation happened.
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE departments    ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
+ALTER TABLE positions      ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
+ALTER TABLE competencies   ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
+ALTER TABLE badges         ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
+ALTER TABLE challenges     ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- @ManyToOne gaps — the entity decorators have been added but the FK columns
+-- already exist as raw uuids in production. No ALTER needed; TypeORM now
+-- enforces the relation at the application layer via @ManyToOne declarations.
+-- ────────────────────────────────────────────────────────────────────────────

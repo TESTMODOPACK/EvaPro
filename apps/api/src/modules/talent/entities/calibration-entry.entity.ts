@@ -68,6 +68,10 @@ export class CalibrationEntry {
   @Column({ type: 'uuid', name: 'approved_by', nullable: true })
   approvedBy: string | null;
 
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'approved_by' })
+  approver: User | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

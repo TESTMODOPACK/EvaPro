@@ -6,8 +6,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, In, IsNull, DataSource } from 'typeorm';
 import { EngagementSurvey } from './entities/engagement-survey.entity';
 import { SurveyQuestion } from './entities/survey-question.entity';
 import { SurveyResponse } from './entities/survey-response.entity';
@@ -42,6 +42,8 @@ export class SurveysService {
     private readonly orgDevService: OrgDevelopmentService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly auditService: AuditService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   // ─── Feature gate ──────────────────────────────────────────────────────
@@ -183,24 +185,28 @@ export class SurveysService {
     if (dto.endDate !== undefined) survey.endDate = new Date(dto.endDate);
     if (dto.settings !== undefined) survey.settings = dto.settings;
 
-    await this.surveyRepo.save(survey);
+    // Wrap the survey save and question replace in a single transaction so
+    // a crash between DELETE and INSERT of the new questions cannot leave the
+    // survey with zero questions (or a mix of old+new).
+    await this.dataSource.transaction(async (manager) => {
+      await manager.save(survey);
 
-    // Replace questions if provided
-    if (dto.questions) {
-      await this.questionRepo.delete({ surveyId });
-      const questions = dto.questions.map((q, i) =>
-        this.questionRepo.create({
-          surveyId,
-          category: q.category,
-          questionText: q.questionText,
-          questionType: q.questionType,
-          options: q.options ?? null,
-          isRequired: q.isRequired ?? true,
-          sortOrder: q.sortOrder ?? i,
-        }),
-      );
-      await this.questionRepo.save(questions);
-    }
+      if (dto.questions) {
+        await manager.delete(SurveyQuestion, { surveyId });
+        const questions = dto.questions!.map((q, i) =>
+          manager.getRepository(SurveyQuestion).create({
+            surveyId,
+            category: q.category,
+            questionText: q.questionText,
+            questionType: q.questionType,
+            options: q.options ?? null,
+            isRequired: q.isRequired ?? true,
+            sortOrder: q.sortOrder ?? i,
+          }),
+        );
+        await manager.save(questions);
+      }
+    });
 
     return this.findById(tenantId, surveyId);
   }
@@ -697,7 +703,7 @@ export class SurveysService {
     for (const suggestion of suggestedInitiatives) {
       const initiative = await this.orgDevService.createInitiative(tenantId, planId, {
         title: `[Clima] ${suggestion.title}`,
-        description: suggestion.description || null,
+        description: suggestion.description || undefined,
         department: suggestion.department || null,
         status: 'pendiente',
       });

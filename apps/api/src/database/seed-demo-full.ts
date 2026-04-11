@@ -959,7 +959,7 @@ async function seedDemoFull() {
     const existingRecog = await recogRepo.count({ where: { tenantId: tid } });
     if (existingRecog === 0) {
       // Create badges
-      const badgeData = [
+      const badgeData: Array<Partial<Badge>> = [
         { name: 'Colaborador Estrella', description: 'Recibe 5 reconocimientos', icon: 'star', color: '#f59e0b', criteria: { type: 'recognitions_received', threshold: 5 }, pointsReward: 50 },
         { name: 'Mentor', description: 'Envia 10 reconocimientos a otros', icon: 'brain', color: '#8b5cf6', criteria: { type: 'recognitions_sent', threshold: 10 }, pointsReward: 75 },
         { name: 'Innovador', description: 'Acumula 200 puntos', icon: 'rocket', color: '#3b82f6', criteria: { type: 'total_points', threshold: 200 }, pointsReward: 100 },

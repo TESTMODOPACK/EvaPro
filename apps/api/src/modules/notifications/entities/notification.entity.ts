@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
+import type { NotificationMetadata } from '../../../common/types/jsonb-schemas';
 
 export enum NotificationType {
   EVALUATION_PENDING = 'evaluation_pending',
@@ -79,7 +80,7 @@ export class Notification {
   isRead: boolean;
 
   @Column({ type: 'jsonb', nullable: true, comment: 'Datos extra: cycleId, assignmentId, objectiveId, etc.' })
-  metadata: Record<string, any>;
+  metadata: NotificationMetadata | null;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
