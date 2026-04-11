@@ -287,6 +287,14 @@ export class DevelopmentService {
     return this.roleCompetencyRepo.save(rc);
   }
 
+  /**
+   * Update the expected level of a role↔competency mapping.
+   *
+   * Note: position and competencyId are intentionally NOT editable here —
+   * changing either effectively creates a different mapping, so the right
+   * pattern is delete + create. This keeps the dual-write of position
+   * text↔FK contained to `createRoleCompetency` / `bulkAssignCompetencies`.
+   */
   async updateRoleCompetency(tenantId: string, id: string, expectedLevel: number): Promise<RoleCompetency> {
     if (expectedLevel < 1 || expectedLevel > 10) throw new BadRequestException('El nivel esperado debe estar entre 1 y 10');
     const rc = await this.roleCompetencyRepo.findOne({ where: { id, tenantId } });
@@ -302,12 +310,18 @@ export class DevelopmentService {
   }
 
   async bulkAssignCompetencies(tenantId: string, position: string, defaultLevel: number = 5, positionId?: string): Promise<{ created: number }> {
-    // Resolve positionId if not provided
+    // Dual-write: resolve position↔positionId in BOTH directions so new
+    // rows always carry the canonical name + FK regardless of which the
+    // caller supplied.
+    let resolvedPosName = position;
     let resolvedPosId = positionId || null;
-    if (!resolvedPosId && position) {
+    if (resolvedPosId) {
+      const p = await this.positionRepo.findOne({ where: { id: resolvedPosId, tenantId } });
+      if (p) resolvedPosName = p.name; // snap text to the canonical name
+    } else if (resolvedPosName) {
       const p = await this.positionRepo.createQueryBuilder('p')
         .where('p.tenant_id = :tenantId', { tenantId })
-        .andWhere('LOWER(p.name) = LOWER(:name)', { name: position })
+        .andWhere('LOWER(p.name) = LOWER(:name)', { name: resolvedPosName })
         .getOne();
       if (p) resolvedPosId = p.id;
     }
@@ -315,9 +329,9 @@ export class DevelopmentService {
     const competencies = await this.competencyRepo.find({ where: { tenantId, isActive: true, status: CompetencyStatus.APPROVED } });
     let created = 0;
     for (const comp of competencies) {
-      const exists = await this.roleCompetencyRepo.findOne({ where: { tenantId, position, competencyId: comp.id } });
+      const exists = await this.roleCompetencyRepo.findOne({ where: { tenantId, position: resolvedPosName, competencyId: comp.id } });
       if (!exists) {
-        await this.roleCompetencyRepo.save(this.roleCompetencyRepo.create({ tenantId, position, positionId: resolvedPosId, competencyId: comp.id, expectedLevel: defaultLevel } as any));
+        await this.roleCompetencyRepo.save(this.roleCompetencyRepo.create({ tenantId, position: resolvedPosName, positionId: resolvedPosId, competencyId: comp.id, expectedLevel: defaultLevel } as any));
         created++;
       }
     }

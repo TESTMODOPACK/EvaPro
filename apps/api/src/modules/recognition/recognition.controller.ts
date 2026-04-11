@@ -124,6 +124,18 @@ export class RecognitionController {
     return this.service.getHistoricalRanking(req.user.tenantId);
   }
 
+  /**
+   * Ops-only: recompute the denormalized user_points_summary table for this
+   * tenant from the ledger. Safe to re-run; used on first cutover after the
+   * summary table is introduced, or if an external event ever corrupts the
+   * per-user totals.
+   */
+  @Post('points-summary/backfill')
+  @Roles('super_admin', 'tenant_admin')
+  backfillPointsSummary(@Request() req: any) {
+    return this.service.backfillUserPointsSummary(req.user.tenantId);
+  }
+
   // ─── Stats ──────────────────────────────────────────────────────
 
   @Get('stats')

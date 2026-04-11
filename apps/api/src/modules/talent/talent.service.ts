@@ -249,6 +249,14 @@ export class TalentService {
   }
 
   // ─── Calibration Sessions ─────────────────────────────────────────────
+  //
+  // Note: there is intentionally no updateSession method. A calibration
+  // session's scope (cycleId, department, moderator) is fixed at creation
+  // and only its `status` progresses through the workflow via dedicated
+  // state transitions (start, close, etc.). If the scope needs to change,
+  // the pattern is to cancel the session and create a new one — this keeps
+  // calibration audit trails coherent and avoids retroactive dual-write
+  // invariants on the department text↔FK pair.
 
   async createSession(tenantId: string, dto: any): Promise<CalibrationSession> {
     // Dual-write: resolve departmentId↔department
