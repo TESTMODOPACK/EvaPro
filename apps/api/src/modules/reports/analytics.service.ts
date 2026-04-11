@@ -80,10 +80,13 @@ export class AnalyticsService {
       const rawName = (plan.user as any) ? `${(plan.user as any).firstName || ''} ${(plan.user as any).lastName || ''}`.trim() : '';
       const userName = rawName || 'N/A';
       byDepartment[dept].plans.push({
+        id: plan.id,
         userName,
         planTitle: plan.title || 'Sin título',
         status: plan.status,
         progress,
+        totalActions: actions.length,
+        completedActions: actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length,
       });
     }
 

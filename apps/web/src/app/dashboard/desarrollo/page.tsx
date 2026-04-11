@@ -2,6 +2,7 @@
 import { PlanGate } from '@/components/PlanGate';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 
+import { useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
@@ -191,10 +192,24 @@ function DesarrolloPageContent() {
   const [orgInitiatives, setOrgInitiatives] = useState<any[]>([]);
   const [planFormOrgInitiativeId, setPlanFormOrgInitiativeId] = useState('');
 
+  const searchParams = useSearchParams();
+  const initialPlanIdFromUrl = searchParams?.get('planId') || null;
+  const [openedFromUrl, setOpenedFromUrl] = useState(false);
+
   useEffect(() => {
     if (!token) return;
     loadData();
   }, [token]);
+
+  // When arriving with ?planId=xxx, open that plan in the detail panel
+  // after the plans list has loaded (once per navigation).
+  useEffect(() => {
+    if (!initialPlanIdFromUrl || openedFromUrl || !token) return;
+    // Plans don't need to be loaded to open detail — openDetail fetches by id.
+    openDetail({ id: initialPlanIdFromUrl });
+    setOpenedFromUrl(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPlanIdFromUrl, token]);
 
   async function loadData() {
     setLoading(true);

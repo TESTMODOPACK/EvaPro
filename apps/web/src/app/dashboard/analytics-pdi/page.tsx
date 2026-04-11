@@ -3,14 +3,104 @@ import React from 'react';
 import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
+
+// Shared status color + label dictionaries so both current and historical plan
+// rows render identically. Kept in sync with backend DevelopmentPlanStatus.
+const PLAN_STATUS_COLORS: Record<string, string> = {
+  activo: 'var(--accent)',
+  completado: 'var(--success)',
+  cancelado: 'var(--danger)',
+  borrador: 'var(--text-muted)',
+  en_revision: 'var(--warning)',
+  pausado: 'var(--text-muted)',
+  aprobado: 'var(--success)',
+};
+const PLAN_STATUS_LABELS: Record<string, string> = {
+  activo: 'Activo',
+  completado: 'Completado',
+  cancelado: 'Cancelado',
+  borrador: 'Borrador',
+  en_revision: 'En revisión',
+  pausado: 'Pausado',
+  aprobado: 'Aprobado',
+};
+
+/** Single plan row — used by both the current-plans department drill-down and
+ *  the historical year drill-down so the two views look identical. */
+function PlanRow({ p, onView }: { p: any; onView: (id: string) => void }) {
+  const status = p.status || 'borrador';
+  const progress = typeof p.progress === 'number' ? p.progress : 0;
+  const title = p.title || p.planTitle || 'Sin título';
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) 80px 80px 110px 72px',
+        alignItems: 'center',
+        gap: '0.75rem',
+        padding: '0.5rem 0.75rem',
+        background: 'var(--bg-secondary)',
+        borderRadius: '6px',
+        fontSize: '0.82rem',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {p.userName}{p.department ? ` — ${p.department}` : ''}
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Acciones</div>
+        <div style={{ fontWeight: 600, fontSize: '0.78rem' }}>
+          {typeof p.completedActions === 'number' && typeof p.totalActions === 'number'
+            ? `${p.completedActions}/${p.totalActions}`
+            : '—'}
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Progreso</div>
+        <div style={{ fontWeight: 700, fontSize: '0.78rem', color: progress >= 80 ? 'var(--success)' : progress >= 40 ? 'var(--warning)' : 'var(--text-secondary)' }}>{progress}%</div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <span
+          style={{
+            padding: '0.25rem 0.6rem',
+            borderRadius: '10px',
+            fontSize: '0.68rem',
+            fontWeight: 600,
+            background: `${PLAN_STATUS_COLORS[status] || 'var(--text-muted)'}15`,
+            color: PLAN_STATUS_COLORS[status] || 'var(--text-muted)',
+            whiteSpace: 'nowrap',
+            textAlign: 'center',
+          }}
+        >
+          {PLAN_STATUS_LABELS[status] || status}
+        </span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          className="btn-ghost"
+          disabled={!p.id}
+          title={p.id ? 'Abrir plan en detalle' : 'ID de plan no disponible'}
+          onClick={() => p.id && onView(p.id)}
+          style={{ padding: '0.25rem 0.6rem', fontSize: '0.72rem', opacity: p.id ? 1 : 0.45, cursor: p.id ? 'pointer' : 'not-allowed' }}
+        >
+          Ver
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
 const DEPT_PAGE_SIZE = 5;
 
-function DepartmentSection({ departments, statusLabels, t }: { departments: any[]; statusLabels: Record<string, string>; t: any }) {
+function DepartmentSection({ departments, t, onViewPlan }: { departments: any[]; t: any; onViewPlan: (id: string) => void }) {
   const [expandedDept, setExpandedDept] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
@@ -81,7 +171,8 @@ function DepartmentSection({ departments, statusLabels, t }: { departments: any[
                       </div>
                     </td>
                   </tr>
-                  {/* Expanded plans */}
+                  {/* Expanded plans — uses the same PlanRow as the historical
+                      drill-down so both views share one visual language. */}
                   {isExpanded && d.plans && d.plans.length > 0 && (
                     <tr>
                       <td colSpan={5} style={{ padding: 0 }}>
@@ -89,28 +180,11 @@ function DepartmentSection({ departments, statusLabels, t }: { departments: any[
                           <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
                             Planes de desarrollo ({d.plans.length})
                           </div>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                            <thead>
-                              <tr>
-                                <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Colaborador</th>
-                                <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Plan</th>
-                                <th style={{ textAlign: 'center', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Estado</th>
-                                <th style={{ textAlign: 'center', padding: '0.3rem 0.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>Progreso</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {d.plans.map((p: any, i: number) => (
-                                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                                  <td style={{ padding: '0.35rem 0.5rem' }}>{p.userName}</td>
-                                  <td style={{ padding: '0.35rem 0.5rem' }}>{p.planTitle}</td>
-                                  <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center' }}>
-                                    <span className="badge badge-ghost" style={{ fontSize: '0.7rem' }}>{statusLabels[p.status] || p.status}</span>
-                                  </td>
-                                  <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', fontWeight: 600 }}>{p.progress}%</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {d.plans.map((p: any, i: number) => (
+                              <PlanRow key={p.id || i} p={{ ...p, title: p.planTitle, department: d.department }} onView={onViewPlan} />
+                            ))}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -134,6 +208,7 @@ function DepartmentSection({ departments, statusLabels, t }: { departments: any[
 
 function PdiCompliancePageContent() {
   const { t } = useTranslation();
+  const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -142,6 +217,12 @@ function PdiCompliancePageContent() {
   const [showGuide, setShowGuide] = useState(false);
   const [activeTab, setActiveTab] = useState<'current' | 'historical'>('current');
   const [historicalData, setHistoricalData] = useState<any>(null);
+
+  // Navigate to the development plan detail view (/dashboard/desarrollo picks
+  // up the ?planId and auto-opens it in the detail panel).
+  const handleViewPlan = (planId: string) => {
+    router.push(`/dashboard/desarrollo?planId=${planId}`);
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -294,7 +375,7 @@ function PdiCompliancePageContent() {
       </div>
 
       {/* By Department — collapsible + paginated */}
-      <DepartmentSection departments={data.byDepartment || []} statusLabels={statusLabels} t={t} />
+      <DepartmentSection departments={data.byDepartment || []} t={t} onViewPlan={handleViewPlan} />
 
       {/* Analysis Section */}
       <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: `4px solid ${completionLevel === 'bueno' ? 'var(--success)' : completionLevel === 'moderado' ? 'var(--warning)' : 'var(--danger)'}` }}>
@@ -395,24 +476,6 @@ function PdiCompliancePageContent() {
                   <h3 style={{ fontWeight: 700, fontSize: '0.92rem' }}>Planes por Año</h3>
                   {historicalData.byYear.map((y: any) => {
                     const pct = y.total > 0 ? Math.round((y.completed / y.total) * 100) : 0;
-                    const statusColors: Record<string, string> = {
-                      activo: 'var(--accent)',
-                      completado: 'var(--success)',
-                      cancelado: 'var(--danger)',
-                      borrador: 'var(--text-muted)',
-                      en_revision: 'var(--warning)',
-                      pausado: 'var(--text-muted)',
-                      aprobado: 'var(--success)',
-                    };
-                    const statusLabels: Record<string, string> = {
-                      activo: 'Activo',
-                      completado: 'Completado',
-                      cancelado: 'Cancelado',
-                      borrador: 'Borrador',
-                      en_revision: 'En revisión',
-                      pausado: 'Pausado',
-                      aprobado: 'Aprobado',
-                    };
                     return (
                       <details key={y.year} className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
                         <summary style={{ padding: '0.85rem 1.25rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none', listStyle: 'none' }}>
@@ -436,50 +499,7 @@ function PdiCompliancePageContent() {
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                               {(y.plans || []).map((p: any) => (
-                                <div
-                                  key={p.id}
-                                  style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'minmax(0, 1fr) 80px 80px 110px',
-                                    alignItems: 'center',
-                                    gap: '0.75rem',
-                                    padding: '0.5rem 0.75rem',
-                                    background: 'var(--bg-secondary)',
-                                    borderRadius: '6px',
-                                    fontSize: '0.82rem',
-                                  }}
-                                >
-                                  <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title || 'Sin título'}</div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {p.userName}{p.department ? ` — ${p.department}` : ''}
-                                    </div>
-                                  </div>
-                                  <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Acciones</div>
-                                    <div style={{ fontWeight: 600, fontSize: '0.78rem' }}>{p.completedActions}/{p.totalActions}</div>
-                                  </div>
-                                  <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Progreso</div>
-                                    <div style={{ fontWeight: 700, fontSize: '0.78rem', color: p.progress >= 80 ? 'var(--success)' : p.progress >= 40 ? 'var(--warning)' : 'var(--text-secondary)' }}>{p.progress}%</div>
-                                  </div>
-                                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                                    <span
-                                      style={{
-                                        padding: '0.25rem 0.6rem',
-                                        borderRadius: '10px',
-                                        fontSize: '0.68rem',
-                                        fontWeight: 600,
-                                        background: `${statusColors[p.status] || 'var(--text-muted)'}15`,
-                                        color: statusColors[p.status] || 'var(--text-muted)',
-                                        whiteSpace: 'nowrap',
-                                        textAlign: 'center',
-                                      }}
-                                    >
-                                      {statusLabels[p.status] || p.status}
-                                    </span>
-                                  </div>
-                                </div>
+                                <PlanRow key={p.id} p={p} onView={handleViewPlan} />
                               ))}
                             </div>
                           )}
