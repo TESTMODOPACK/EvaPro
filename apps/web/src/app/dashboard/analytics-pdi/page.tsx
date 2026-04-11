@@ -395,8 +395,24 @@ function PdiCompliancePageContent() {
                   <h3 style={{ fontWeight: 700, fontSize: '0.92rem' }}>Planes por Año</h3>
                   {historicalData.byYear.map((y: any) => {
                     const pct = y.total > 0 ? Math.round((y.completed / y.total) * 100) : 0;
-                    const statusColors: Record<string, string> = { activo: 'var(--accent)', completado: 'var(--success)', cancelado: 'var(--danger)', borrador: 'var(--text-muted)' };
-                    const statusLabels: Record<string, string> = { activo: 'Activo', completado: 'Completado', cancelado: 'Cancelado', borrador: 'Borrador' };
+                    const statusColors: Record<string, string> = {
+                      activo: 'var(--accent)',
+                      completado: 'var(--success)',
+                      cancelado: 'var(--danger)',
+                      borrador: 'var(--text-muted)',
+                      en_revision: 'var(--warning)',
+                      pausado: 'var(--text-muted)',
+                      aprobado: 'var(--success)',
+                    };
+                    const statusLabels: Record<string, string> = {
+                      activo: 'Activo',
+                      completado: 'Completado',
+                      cancelado: 'Cancelado',
+                      borrador: 'Borrador',
+                      en_revision: 'En revisión',
+                      pausado: 'Pausado',
+                      aprobado: 'Aprobado',
+                    };
                     return (
                       <details key={y.year} className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
                         <summary style={{ padding: '0.85rem 1.25rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none', listStyle: 'none' }}>
@@ -420,24 +436,49 @@ function PdiCompliancePageContent() {
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                               {(y.plans || []).map((p: any) => (
-                                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.6rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.82rem' }}>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: 600 }}>{p.title || 'Sin título'}</div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                                <div
+                                  key={p.id}
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'minmax(0, 1fr) 80px 80px 110px',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    padding: '0.5rem 0.75rem',
+                                    background: 'var(--bg-secondary)',
+                                    borderRadius: '6px',
+                                    fontSize: '0.82rem',
+                                  }}
+                                >
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title || 'Sin título'}</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {p.userName}{p.department ? ` — ${p.department}` : ''}
                                     </div>
                                   </div>
-                                  <div style={{ textAlign: 'center', minWidth: '70px' }}>
+                                  <div style={{ textAlign: 'center' }}>
                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Acciones</div>
                                     <div style={{ fontWeight: 600, fontSize: '0.78rem' }}>{p.completedActions}/{p.totalActions}</div>
                                   </div>
-                                  <div style={{ textAlign: 'center', minWidth: '55px' }}>
+                                  <div style={{ textAlign: 'center' }}>
                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Progreso</div>
                                     <div style={{ fontWeight: 700, fontSize: '0.78rem', color: p.progress >= 80 ? 'var(--success)' : p.progress >= 40 ? 'var(--warning)' : 'var(--text-secondary)' }}>{p.progress}%</div>
                                   </div>
-                                  <span style={{ padding: '0.2rem 0.5rem', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 600, background: `${statusColors[p.status] || 'var(--text-muted)'}15`, color: statusColors[p.status] || 'var(--text-muted)' }}>
-                                    {statusLabels[p.status] || p.status}
-                                  </span>
+                                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                    <span
+                                      style={{
+                                        padding: '0.25rem 0.6rem',
+                                        borderRadius: '10px',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 600,
+                                        background: `${statusColors[p.status] || 'var(--text-muted)'}15`,
+                                        color: statusColors[p.status] || 'var(--text-muted)',
+                                        whiteSpace: 'nowrap',
+                                        textAlign: 'center',
+                                      }}
+                                    >
+                                      {statusLabels[p.status] || p.status}
+                                    </span>
+                                  </div>
                                 </div>
                               ))}
                             </div>
