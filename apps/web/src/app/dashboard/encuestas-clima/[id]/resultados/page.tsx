@@ -561,6 +561,48 @@ export default function ResultadosEncuestaPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Regenerar análisis — banner prominente arriba del analisis.
+                  `force: true` borra el insight cacheado antes de pedirle uno
+                  nuevo a Claude, esencial cuando el backend cambio la escala
+                  o el prompt. Explicamos ambas cosas en la nota. */}
+              <div
+                className="card"
+                style={{
+                  padding: '0.85rem 1.1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  flexWrap: 'wrap',
+                  background: 'linear-gradient(135deg, rgba(201,147,58,0.08) 0%, rgba(99,102,241,0.06) 100%)',
+                  borderLeft: '4px solid var(--accent)',
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.15rem' }}>
+                    ¿Análisis desactualizado?
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                    Genera un nuevo informe con los datos más recientes. Reemplaza el análisis actual y consume un crédito de IA del mes.
+                  </div>
+                </div>
+                <button
+                  className="btn-primary"
+                  onClick={() => handleGenerateAi(true)}
+                  disabled={generatingAi || aiBlocked}
+                  title="Elimina el análisis actual y genera uno nuevo con los datos más recientes"
+                  style={{
+                    fontSize: '0.85rem',
+                    padding: '0.55rem 1.1rem',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  {aiBlocked ? 'Sin créditos IA' : generatingAi ? 'Regenerando…' : '↻ Regenerar análisis'}
+                </button>
+              </div>
+
               {/* Executive Summary */}
               <div className="card" style={{ padding: '1.25rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -703,18 +745,6 @@ export default function ResultadosEncuestaPage() {
                 </div>
               )}
 
-              {/* Regenerate — force: true so the stale cached insight is wiped
-                  before generating. Useful after any backend scale or prompt
-                  fix that would otherwise be hidden behind the 7-day cache. */}
-              <button
-                className="btn-ghost"
-                style={{ fontSize: '0.85rem' }}
-                onClick={() => handleGenerateAi(true)}
-                disabled={generatingAi || aiBlocked}
-                title="Elimina el análisis actual y genera uno nuevo con los datos más recientes"
-              >
-                {aiBlocked ? 'Sin créditos' : generatingAi ? 'Regenerando...' : 'Regenerar análisis'}
-              </button>
             </div>
           )}
         </div>
