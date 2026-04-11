@@ -3,30 +3,10 @@ import React from 'react';
 import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
-
-// Shared status color + label dictionaries so both current and historical plan
-// rows render identically. Kept in sync with backend DevelopmentPlanStatus.
-const PLAN_STATUS_COLORS: Record<string, string> = {
-  activo: 'var(--accent)',
-  completado: 'var(--success)',
-  cancelado: 'var(--danger)',
-  borrador: 'var(--text-muted)',
-  en_revision: 'var(--warning)',
-  pausado: 'var(--text-muted)',
-  aprobado: 'var(--success)',
-};
-const PLAN_STATUS_LABELS: Record<string, string> = {
-  activo: 'Activo',
-  completado: 'Completado',
-  cancelado: 'Cancelado',
-  borrador: 'Borrador',
-  en_revision: 'En revisión',
-  pausado: 'Pausado',
-  aprobado: 'Aprobado',
-};
+import { PlanDetailModal } from '@/components/PlanDetailModal';
+import { PLAN_STATUS_COLORS, PLAN_STATUS_LABELS } from '@/lib/plan-status';
 
 /** Single plan row — used by both the current-plans department drill-down and
  *  the historical year drill-down so the two views look identical. */
@@ -208,7 +188,6 @@ function DepartmentSection({ departments, t, onViewPlan }: { departments: any[];
 
 function PdiCompliancePageContent() {
   const { t } = useTranslation();
-  const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -218,11 +197,10 @@ function PdiCompliancePageContent() {
   const [activeTab, setActiveTab] = useState<'current' | 'historical'>('current');
   const [historicalData, setHistoricalData] = useState<any>(null);
 
-  // Navigate to the development plan detail view (/dashboard/desarrollo picks
-  // up the ?planId and auto-opens it in the detail panel).
-  const handleViewPlan = (planId: string) => {
-    router.push(`/dashboard/desarrollo?planId=${planId}`);
-  };
+  // Open the plan detail inline as a read-only modal — the user stays on the
+  // analytics page instead of being taken to the operational module.
+  const [viewingPlanId, setViewingPlanId] = useState<string | null>(null);
+  const handleViewPlan = (planId: string) => setViewingPlanId(planId);
 
   useEffect(() => {
     if (!token) return;
@@ -277,6 +255,7 @@ function PdiCompliancePageContent() {
   const worstDept = data.byDepartment?.length >= 2 ? [...data.byDepartment].sort((a: any, b: any) => a.avgProgress - b.avgProgress)[0] : null;
 
   return (
+    <>
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
       {/* Header + Export */}
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -514,6 +493,8 @@ function PdiCompliancePageContent() {
         </div>
       )}
     </div>
+    <PlanDetailModal planId={viewingPlanId} onClose={() => setViewingPlanId(null)} />
+    </>
   );
 }
 
