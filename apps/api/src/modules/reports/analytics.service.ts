@@ -37,8 +37,13 @@ export class AnalyticsService {
   // ─── 1. Cumplimiento PDI ────────────────────────────────────────────
 
   async getPdiCompliance(tenantId: string, managerId?: string): Promise<any> {
-    const where: any = { tenantId };
-    const plans = await this.planRepo.find({ where, relations: ['user', 'actions'] });
+    // Defense-in-depth tenant guard on the JOIN — see getInternalMovementAnalysis.
+    const plans = await this.planRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.user', 'u', 'u.tenant_id = p.tenant_id')
+      .leftJoinAndSelect('p.actions', 'a')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .getMany();
 
     // If manager, filter to direct reports
     let filtered = plans;
@@ -107,7 +112,13 @@ export class AnalyticsService {
   // ─── 1b. PDI Historical ─────────────────────────────────────────────
 
   async getPdiHistorical(tenantId: string): Promise<any> {
-    const allPlans = await this.planRepo.find({ where: { tenantId }, relations: ['user', 'actions'] });
+    // Defense-in-depth tenant guard on the JOIN — see getInternalMovementAnalysis.
+    const allPlans = await this.planRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.user', 'u', 'u.tenant_id = p.tenant_id')
+      .leftJoinAndSelect('p.actions', 'a')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .getMany();
 
     const total = allPlans.length;
     const completed = allPlans.filter(p => p.status === 'completado').length;
@@ -342,11 +353,16 @@ export class AnalyticsService {
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
     // ── Primary source: user_departures table ──
-    const departures = await this.departureRepo.find({
-      where: { tenantId, departureDate: MoreThan(twelveMonthsAgo) },
-      relations: ['user'],
-      order: { departureDate: 'DESC' },
-    });
+    // Same defense-in-depth JOIN condition as getInternalMovementAnalysis:
+    // enforce u.tenant_id = d.tenant_id to prevent cross-tenant user leaks
+    // when departure rows have stale userIds pointing to users in other tenants.
+    const departures = await this.departureRepo
+      .createQueryBuilder('d')
+      .innerJoinAndSelect('d.user', 'u', 'u.tenant_id = d.tenant_id')
+      .where('d.tenant_id = :tenantId', { tenantId })
+      .andWhere('d.departure_date > :cutoff', { cutoff: twelveMonthsAgo })
+      .orderBy('d.departure_date', 'DESC')
+      .getMany();
 
     // ── Fallback: audit logs for old deactivations without departure record ──
     const departureUserIds = new Set(departures.map(d => d.userId));
@@ -431,11 +447,18 @@ export class AnalyticsService {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
-    const movements = await this.movementRepo.find({
-      where: { tenantId, effectiveDate: MoreThan(twelveMonthsAgo) },
-      relations: ['user'],
-      order: { effectiveDate: 'DESC' },
-    });
+    // Defense-in-depth: the join enforces u.tenant_id = m.tenant_id. Without
+    // that constraint, a stale user_movements row that points at a user in
+    // ANOTHER tenant would leak that other user's name into this tenant's
+    // report. This happened in prod (Rodrigo Monasterio of Cesce showing up
+    // in Demo Company's movements).
+    const movements = await this.movementRepo
+      .createQueryBuilder('m')
+      .innerJoinAndSelect('m.user', 'u', 'u.tenant_id = m.tenant_id')
+      .where('m.tenant_id = :tenantId', { tenantId })
+      .andWhere('m.effective_date > :cutoff', { cutoff: twelveMonthsAgo })
+      .orderBy('m.effective_date', 'DESC')
+      .getMany();
 
     // By type
     const byType: Record<string, number> = {};

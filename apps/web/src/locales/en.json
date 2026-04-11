@@ -2199,7 +2199,7 @@
     "avgEngagement": "Avg. Climate",
     "correlation": "Correlation",
     "scale010": "Scale 0-10",
-    "scale15": "Scale 1-5",
+    "scale15": "Scale 1-10",
     "promotersDetractors": "promoters - detractors",
     "quadrantMap": "Quadrant Map",
     "quadrantMapDesc": "Each dot is a department. X-axis: performance (0-10), Y-axis: climate (0-10). Thresholds define 4 quadrants.",
