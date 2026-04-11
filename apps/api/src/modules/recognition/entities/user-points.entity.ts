@@ -4,6 +4,7 @@ import {
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
+import { bigintNumberTransformer } from '../../../common/transformers/bigint-number.transformer';
 
 export enum PointsSource {
   RECOGNITION_SENT = 'recognition_sent',
@@ -42,7 +43,10 @@ export class UserPoints {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column({ type: 'int' })
+  // Individual ledger entries are small (± a few thousand), but the column
+  // type is bigint so that SUM() aggregates can grow without int32 overflow.
+  // The transformer keeps JS reads as `number` within the safe-integer range.
+  @Column({ type: 'bigint', transformer: bigintNumberTransformer })
   points: number;
 
   @Column({ type: 'enum', enum: PointsSource })

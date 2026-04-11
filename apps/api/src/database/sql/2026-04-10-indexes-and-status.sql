@@ -65,9 +65,9 @@ CREATE TABLE IF NOT EXISTS user_points_summary (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id    UUID        NOT NULL,
   user_id      UUID        NOT NULL,
-  total_points INTEGER     NOT NULL DEFAULT 0,
-  month_points INTEGER     NOT NULL DEFAULT 0,
-  year_points  INTEGER     NOT NULL DEFAULT 0,
+  total_points BIGINT      NOT NULL DEFAULT 0,
+  month_points BIGINT      NOT NULL DEFAULT 0,
+  year_points  BIGINT      NOT NULL DEFAULT 0,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT uq_user_points_summary UNIQUE (tenant_id, user_id)
 );
@@ -110,3 +110,21 @@ ON CONFLICT ON CONSTRAINT uq_odip_initiative_user DO NOTHING;
 ALTER TABLE notifications    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE user_departures  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE user_movements   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 2026-04 — int32 → bigint for cumulative counters (audit point 16)
+-- Prevents overflow on long-lived tenants that accumulate large totals.
+-- int → bigint is a safe widening conversion: existing values fit, no data
+-- loss, and postgres rewrites the column in place.
+--
+-- HEADS UP: ALTER COLUMN TYPE rewrites the entire table and holds an
+-- ACCESS EXCLUSIVE lock. For the tables below (subscriptions, user_points,
+-- user_points_summary) the row counts are typically small enough that this
+-- runs in seconds, but schedule during a low-traffic window on large tenants.
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE subscriptions        ALTER COLUMN ai_addon_calls  TYPE BIGINT USING ai_addon_calls::bigint;
+ALTER TABLE subscriptions        ALTER COLUMN ai_addon_used   TYPE BIGINT USING ai_addon_used::bigint;
+ALTER TABLE user_points          ALTER COLUMN points          TYPE BIGINT USING points::bigint;
+ALTER TABLE user_points_summary  ALTER COLUMN total_points    TYPE BIGINT USING total_points::bigint;
+ALTER TABLE user_points_summary  ALTER COLUMN month_points    TYPE BIGINT USING month_points::bigint;
+ALTER TABLE user_points_summary  ALTER COLUMN year_points     TYPE BIGINT USING year_points::bigint;

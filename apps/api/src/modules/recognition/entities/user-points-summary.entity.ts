@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
+import { bigintNumberTransformer } from '../../../common/transformers/bigint-number.transformer';
 
 /**
  * Denormalized per-user running totals of points, kept in sync by the
@@ -54,16 +55,20 @@ export class UserPointsSummary {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  /** Lifetime total. Can be negative after redemptions. */
-  @Column({ type: 'int', name: 'total_points', default: 0 })
+  /**
+   * Lifetime total. Can be negative after redemptions. Stored as bigint
+   * since this is a cumulative aggregate of the entire ledger; the
+   * transformer returns a plain `number` for callers (safe to 2^53 − 1).
+   */
+  @Column({ type: 'bigint', name: 'total_points', default: 0, transformer: bigintNumberTransformer })
   totalPoints: number;
 
   /** Rolling window: current calendar month only. */
-  @Column({ type: 'int', name: 'month_points', default: 0 })
+  @Column({ type: 'bigint', name: 'month_points', default: 0, transformer: bigintNumberTransformer })
   monthPoints: number;
 
   /** Rolling window: current calendar year only. */
-  @Column({ type: 'int', name: 'year_points', default: 0 })
+  @Column({ type: 'bigint', name: 'year_points', default: 0, transformer: bigintNumberTransformer })
   yearPoints: number;
 
   /** ISO timestamp of the last `refresh` invocation. */

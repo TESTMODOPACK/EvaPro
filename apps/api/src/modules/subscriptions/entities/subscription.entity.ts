@@ -11,6 +11,7 @@ import {
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { SubscriptionPlan } from './subscription-plan.entity';
 import { BillingPeriod } from './payment-history.entity';
+import { bigintNumberTransformer } from '../../../common/transformers/bigint-number.transformer';
 
 /** Valid lifecycle states for a tenant subscription. */
 export enum SubscriptionStatus {
@@ -74,13 +75,16 @@ export class Subscription {
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'last_payment_amount', nullable: true })
   lastPaymentAmount: number | null;
 
-  @Column({ type: 'int', name: 'ai_addon_calls', default: 0, comment: 'Additional AI calls purchased as add-on (on top of plan limit)' })
+  // Stored as bigint to protect against int32 overflow on high-volume tenants.
+  // The transformer returns a plain `number` to callers — safe up to 2^53 − 1,
+  // which is ~4M× the int32 max. See bigint-number.transformer.ts.
+  @Column({ type: 'bigint', name: 'ai_addon_calls', default: 0, transformer: bigintNumberTransformer, comment: 'Additional AI calls purchased as add-on (on top of plan limit)' })
   aiAddonCalls: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'ai_addon_price', default: 0, comment: 'Monthly price in plan currency for the AI add-on' })
   aiAddonPrice: number;
 
-  @Column({ type: 'int', name: 'ai_addon_used', default: 0, comment: 'Cumulative addon credits consumed (persists across periods, never resets)' })
+  @Column({ type: 'bigint', name: 'ai_addon_used', default: 0, transformer: bigintNumberTransformer, comment: 'Cumulative addon credits consumed (persists across periods, never resets)' })
   aiAddonUsed: number;
 
   @Column({ type: 'text', nullable: true })
