@@ -6,6 +6,7 @@ import {
   Index,
   ManyToOne,
   JoinColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from './user.entity';
@@ -83,4 +84,11 @@ export class UserDeparture {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
+
+  /**
+   * Populated whenever admin edits departure details (e.g., corrects a
+   * reason category or adds would-rehire info after exit interview).
+   */
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
 }

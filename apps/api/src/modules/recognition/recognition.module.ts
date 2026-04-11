@@ -4,6 +4,7 @@ import { Recognition } from './entities/recognition.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
 import { UserPoints } from './entities/user-points.entity';
+import { UserPointsSummary } from './entities/user-points-summary.entity';
 import { PointsBudget } from './entities/points-budget.entity';
 import { RedemptionItem } from './entities/redemption-item.entity';
 import { RedemptionTransaction } from './entities/redemption-transaction.entity';
@@ -16,7 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Recognition, Badge, UserBadge, UserPoints, PointsBudget, RedemptionItem, RedemptionTransaction, Challenge, ChallengeProgress, User]),
+    TypeOrmModule.forFeature([Recognition, Badge, UserBadge, UserPoints, UserPointsSummary, PointsBudget, RedemptionItem, RedemptionTransaction, Challenge, ChallengeProgress, User]),
     forwardRef(() => NotificationsModule),
   ],
   controllers: [RecognitionController],

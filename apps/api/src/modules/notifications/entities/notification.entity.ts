@@ -6,6 +6,7 @@ import {
   Index,
   ManyToOne,
   JoinColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from '../../users/entities/user.entity';
@@ -84,4 +85,12 @@ export class Notification {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
+
+  /**
+   * Updated whenever the row mutates — most importantly when `isRead` flips
+   * from false to true. Lets the UI show "marked as read N minutes ago"
+   * and gives ops a way to identify stale notifications that never mutated.
+   */
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
 }

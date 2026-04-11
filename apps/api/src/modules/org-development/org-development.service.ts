@@ -9,6 +9,7 @@ import { In, Repository } from 'typeorm';
 import { OrgDevelopmentPlan } from './entities/org-development-plan.entity';
 import { OrgDevelopmentInitiative } from './entities/org-development-initiative.entity';
 import { OrgDevelopmentAction } from './entities/org-development-action.entity';
+import { OrgDevInitiativeParticipant } from './entities/org-development-participant.entity';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { User } from '../users/entities/user.entity';
 import { Department } from '../tenants/entities/department.entity';
@@ -25,6 +26,8 @@ export class OrgDevelopmentService {
     private readonly initiativeRepo: Repository<OrgDevelopmentInitiative>,
     @InjectRepository(OrgDevelopmentAction)
     private readonly actionRepo: Repository<OrgDevelopmentAction>,
+    @InjectRepository(OrgDevInitiativeParticipant)
+    private readonly participantRepo: Repository<OrgDevInitiativeParticipant>,
     @InjectRepository(DevelopmentPlan)
     private readonly pdiRepo: Repository<DevelopmentPlan>,
     @InjectRepository(User)
@@ -267,12 +270,47 @@ export class OrgDevelopmentService {
     });
     const saved = await this.initiativeRepo.save(initiative);
 
+    // Dual-write participants to the normalized join table.
+    await this.syncInitiativeParticipants(tenantId, saved.id, saved.participantIds);
+
     // Notify participants if the initiative starts in active state
     if (saved.status === 'en_curso' && saved.participantIds.length > 0) {
       this.notifyParticipants(saved, saved.participantIds, tenantId, plan.title, plan.year).catch(() => {/* non-critical */});
     }
 
     return saved;
+  }
+
+  /**
+   * Replace the normalized participant rows for an initiative to match the
+   * given list of user ids. Called after every create/update that touches
+   * `participantIds` so the JSONB and join table stay in sync.
+   *
+   * Intentionally tolerant of errors: if the join table write fails we log
+   * and continue — the legacy JSONB is still authoritative during the
+   * migration period.
+   */
+  private async syncInitiativeParticipants(
+    tenantId: string,
+    initiativeId: string,
+    userIds: string[],
+  ): Promise<void> {
+    try {
+      // Wipe & re-insert is simpler than computing a diff and keeps the join
+      // table exactly in sync with the JSONB. Participant counts per
+      // initiative are small (typically <50) so cost is negligible.
+      await this.participantRepo.delete({ initiativeId, tenantId });
+      if (userIds.length === 0) return;
+      const unique = Array.from(new Set(userIds));
+      const rows = unique.map((userId) =>
+        this.participantRepo.create({ tenantId, initiativeId, userId }),
+      );
+      await this.participantRepo.save(rows);
+    } catch (err: any) {
+      this.logger.warn(
+        `syncInitiativeParticipants(${initiativeId}) failed: ${err?.message || err}. Legacy JSONB column remains authoritative.`,
+      );
+    }
   }
 
   async updateInitiative(
@@ -326,6 +364,11 @@ export class OrgDevelopmentService {
     if (dto.participantIds !== undefined) ini.participantIds = dto.participantIds;
 
     const saved = await this.initiativeRepo.save(ini);
+
+    // Keep the normalized participant table in sync whenever participants change.
+    if (dto.participantIds !== undefined) {
+      await this.syncInitiativeParticipants(tenantId, saved.id, saved.participantIds);
+    }
 
     // Determine who to notify:
     // 1. Status just changed to 'en_curso' → notify all current participants

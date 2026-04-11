@@ -6,6 +6,7 @@ import {
   Index,
   ManyToOne,
   JoinColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { User } from './user.entity';
@@ -66,4 +67,8 @@ export class UserMovement {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
+
+  /** Populated whenever admin corrects movement details (e.g., approval, reason). */
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
 }

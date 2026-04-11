@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, MoreThan } from 'typeorm';
 import { Recognition } from './entities/recognition.entity';
@@ -8,6 +8,7 @@ import { UserPoints, PointsSource } from './entities/user-points.entity';
 import { PointsBudget } from './entities/points-budget.entity';
 import { RedemptionItem } from './entities/redemption-item.entity';
 import { RedemptionTransaction, RedemptionStatus, REDEMPTION_STATUS_VALUES } from './entities/redemption-transaction.entity';
+import { UserPointsSummary } from './entities/user-points-summary.entity';
 import { Challenge } from './entities/challenge.entity';
 import { ChallengeProgress } from './entities/challenge-progress.entity';
 import { User } from '../users/entities/user.entity';
@@ -23,11 +24,14 @@ const DEFAULT_MONTHLY_BUDGET = 100;
 
 @Injectable()
 export class RecognitionService {
+  private readonly logger = new Logger(RecognitionService.name);
+
   constructor(
     @InjectRepository(Recognition) private readonly recogRepo: Repository<Recognition>,
     @InjectRepository(Badge) private readonly badgeRepo: Repository<Badge>,
     @InjectRepository(UserBadge) private readonly userBadgeRepo: Repository<UserBadge>,
     @InjectRepository(UserPoints) private readonly pointsRepo: Repository<UserPoints>,
+    @InjectRepository(UserPointsSummary) private readonly pointsSummaryRepo: Repository<UserPointsSummary>,
     @InjectRepository(PointsBudget) private readonly budgetRepo: Repository<PointsBudget>,
     @InjectRepository(RedemptionItem) private readonly redemptionItemRepo: Repository<RedemptionItem>,
     @InjectRepository(RedemptionTransaction) private readonly redemptionTxRepo: Repository<RedemptionTransaction>,
@@ -161,6 +165,11 @@ export class RecognitionService {
       return recognition;
     }).then(async (recognition) => {
       // Non-critical operations outside transaction
+      // Refresh denormalized points summary for both parties (non-critical).
+      if (!isMonetary) {
+        this.refreshUserPointsSummary(tenantId, dto.toUserId).catch(() => {});
+        this.refreshUserPointsSummary(tenantId, fromUserId).catch(() => {});
+      }
       // Non-critical gamification hooks (fire-and-forget)
       this.checkAutoBadges(tenantId, dto.toUserId).catch(() => {});
       this.evaluateChallenges(tenantId, dto.toUserId).catch(() => {});
@@ -262,6 +271,9 @@ export class RecognitionService {
 
       return ub;
     }).then(async (ub) => {
+      if (badge.pointsReward > 0) {
+        this.refreshUserPointsSummary(tenantId, userId).catch(() => {});
+      }
       await this.notificationsService.create({
         tenantId, userId, type: NotificationType.GENERAL,
         title: `Has obtenido el badge "${badge.name}"`,
@@ -318,9 +330,77 @@ export class RecognitionService {
 
   async addPoints(tenantId: string, userId: string, points: number, source: PointsSource,
     description?: string, referenceId?: string) {
-    return this.pointsRepo.save(this.pointsRepo.create({
+    const saved = await this.pointsRepo.save(this.pointsRepo.create({
       tenantId, userId, points, source, description: description || null, referenceId: referenceId || null,
     }));
+    // Keep denormalized summary in sync. Non-critical: if this fails the
+    // ledger is still authoritative and callers that do SUM() keep working.
+    this.refreshUserPointsSummary(tenantId, userId).catch((err) => {
+      this.logger.warn(`refreshUserPointsSummary(${userId}) failed: ${err?.message || err}`);
+    });
+    return saved;
+  }
+
+  /**
+   * Recompute the points summary for a single user from the ledger and
+   * upsert it. Called after every ledger write in `addPoints` and after
+   * point refunds in `updateRedemptionStatus`.
+   *
+   * Uses 3 SUM queries (total / month / year) rather than loading all rows.
+   * At ~1000 ledger entries per user this is still O(ledger) per call but
+   * amortized across writes rather than happening on every read.
+   */
+  async refreshUserPointsSummary(tenantId: string, userId: string): Promise<void> {
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+
+    const baseQb = () =>
+      this.pointsRepo
+        .createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('p.user_id = :userId', { userId });
+
+    const [totalRaw, monthRaw, yearRaw] = await Promise.all([
+      baseQb().select('COALESCE(SUM(p.points), 0)', 'total').getRawOne(),
+      baseQb().andWhere('p.created_at >= :monthStart', { monthStart }).select('COALESCE(SUM(p.points), 0)', 'total').getRawOne(),
+      baseQb().andWhere('p.created_at >= :yearStart', { yearStart }).select('COALESCE(SUM(p.points), 0)', 'total').getRawOne(),
+    ]);
+
+    const totalPoints = parseInt(totalRaw?.total || '0', 10) || 0;
+    const monthPoints = parseInt(monthRaw?.total || '0', 10) || 0;
+    const yearPoints = parseInt(yearRaw?.total || '0', 10) || 0;
+
+    // Upsert via find-then-save so we hit the existing unique (tenantId,userId)
+    // constraint without needing raw SQL.
+    const existing = await this.pointsSummaryRepo.findOne({ where: { tenantId, userId } });
+    if (existing) {
+      existing.totalPoints = totalPoints;
+      existing.monthPoints = monthPoints;
+      existing.yearPoints = yearPoints;
+      await this.pointsSummaryRepo.save(existing);
+    } else {
+      await this.pointsSummaryRepo.save(
+        this.pointsSummaryRepo.create({ tenantId, userId, totalPoints, monthPoints, yearPoints }),
+      );
+    }
+  }
+
+  /**
+   * Backfill the summary table from scratch for every user in a tenant.
+   * Used once when the table is first populated or after bulk ledger fixes.
+   * Safe to re-run — each row is an idempotent recompute.
+   */
+  async backfillUserPointsSummary(tenantId: string): Promise<{ refreshed: number }> {
+    const userIds: Array<{ userId: string }> = await this.pointsRepo
+      .createQueryBuilder('p')
+      .select('DISTINCT p.user_id', 'userId')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .getRawMany();
+    for (const { userId } of userIds) {
+      await this.refreshUserPointsSummary(tenantId, userId);
+    }
+    return { refreshed: userIds.length };
   }
 
   async getUserPoints(tenantId: string, userId: string) {
@@ -517,30 +597,38 @@ export class RecognitionService {
   // ─── Monetary Approval ──────────────────────────────────────────────
 
   async approveRecognition(tenantId: string, recognitionId: string, approvedBy: string, approved: boolean) {
-    return this.dataSource.transaction(async (manager) => {
-      const recog = await manager.findOne(Recognition, { where: { id: recognitionId, tenantId } });
-      if (!recog) throw new NotFoundException('Reconocimiento no encontrado');
-      if (recog.approvalStatus !== 'pending') {
+    const recog = await this.dataSource.transaction(async (manager) => {
+      const r = await manager.findOne(Recognition, { where: { id: recognitionId, tenantId } });
+      if (!r) throw new NotFoundException('Reconocimiento no encontrado');
+      if (r.approvalStatus !== 'pending') {
         throw new BadRequestException('Este reconocimiento no requiere aprobación o ya fue procesado');
       }
-      recog.approvalStatus = approved ? 'approved' : 'rejected';
-      recog.approvedBy = approvedBy;
-      await manager.save(recog);
+      r.approvalStatus = approved ? 'approved' : 'rejected';
+      r.approvedBy = approvedBy;
+      await manager.save(r);
 
       // If approved, award the points now (they were held during creation)
       if (approved) {
         await manager.save(manager.getRepository(UserPoints).create({
-          tenantId, userId: recog.toUserId, points: recog.points,
-          source: PointsSource.RECOGNITION_RECEIVED, description: 'Reconocimiento monetario aprobado', referenceId: recog.id,
+          tenantId, userId: r.toUserId, points: r.points,
+          source: PointsSource.RECOGNITION_RECEIVED, description: 'Reconocimiento monetario aprobado', referenceId: r.id,
         }));
         await manager.save(manager.getRepository(UserPoints).create({
-          tenantId, userId: recog.fromUserId, points: SENDER_POINTS,
-          source: PointsSource.RECOGNITION_SENT, description: 'Bono por reconocimiento monetario aprobado', referenceId: recog.id,
+          tenantId, userId: r.fromUserId, points: SENDER_POINTS,
+          source: PointsSource.RECOGNITION_SENT, description: 'Bono por reconocimiento monetario aprobado', referenceId: r.id,
         }));
       }
 
-      return recog;
+      return r;
     });
+
+    // Refresh denormalized summary after the transaction commits.
+    if (approved) {
+      this.refreshUserPointsSummary(tenantId, recog.toUserId).catch(() => {});
+      this.refreshUserPointsSummary(tenantId, recog.fromUserId).catch(() => {});
+    }
+
+    return recog;
   }
 
   async getPendingApprovals(tenantId: string) {
@@ -616,7 +704,7 @@ export class RecognitionService {
     }
 
     // Use transaction for atomicity (balance check + deduction must be atomic)
-    return this.dataSource.transaction(async (manager) => {
+    const savedTx = await this.dataSource.transaction(async (manager) => {
       // Check balance inside transaction to prevent double-spend
       const balanceResult = await manager.createQueryBuilder()
         .select('COALESCE(SUM(p.points), 0)', 'total')
@@ -655,6 +743,11 @@ export class RecognitionService {
       });
       return manager.save(tx);
     });
+
+    // Post-commit: refresh denormalized summary for the user whose balance dropped.
+    this.refreshUserPointsSummary(tenantId, userId).catch(() => {});
+
+    return savedTx;
   }
 
   /**
@@ -690,9 +783,15 @@ export class RecognitionService {
       throw new BadRequestException(`Transición inválida: ${tx.status} → ${target}`);
     }
 
-    return this.dataSource.transaction(async (manager) => {
-      // Refund points if cancelling a non-delivered redemption.
-      if (target === RedemptionStatus.CANCELLED && (tx.status === RedemptionStatus.PENDING || tx.status === RedemptionStatus.APPROVED)) {
+    // Capture the previous status BEFORE the transaction mutates tx, so the
+    // post-commit summary refresh can tell whether a refund happened.
+    const previousStatus = tx.status;
+    const refundIssued =
+      target === RedemptionStatus.CANCELLED &&
+      (previousStatus === RedemptionStatus.PENDING || previousStatus === RedemptionStatus.APPROVED);
+
+    const savedTx = await this.dataSource.transaction(async (manager) => {
+      if (refundIssued) {
         await manager.save(manager.getRepository(UserPoints).create({
           tenantId,
           userId: tx.userId,
@@ -718,6 +817,17 @@ export class RecognitionService {
       tx.status = target;
       return manager.save(tx);
     });
+
+    // Refresh the denormalized summary AFTER the transaction commits. If it
+    // fails, the ledger remains authoritative and subsequent addPoints calls
+    // (or the backfill op) will eventually self-heal it.
+    if (refundIssued) {
+      this.refreshUserPointsSummary(tenantId, tx.userId).catch((err) => {
+        this.logger.warn(`refreshUserPointsSummary(${tx.userId}) after cancel failed: ${err?.message || err}`);
+      });
+    }
+
+    return savedTx;
   }
 
   async getUserRedemptions(tenantId: string, userId: string) {
@@ -885,6 +995,9 @@ export class RecognitionService {
         });
 
         // Notify outside transaction (non-critical)
+        if (ch.pointsReward > 0) {
+          this.refreshUserPointsSummary(tenantId, userId).catch(() => {});
+        }
         this.notificationsService.create({
           tenantId, userId, type: NotificationType.GENERAL,
           title: `Desafío completado: ${ch.name}`,
