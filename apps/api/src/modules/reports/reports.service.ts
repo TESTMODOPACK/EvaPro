@@ -94,7 +94,7 @@ export class ReportsService {
     // Build filtered queries
     const totalQb = this.assignmentRepo
       .createQueryBuilder('a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('a.tenantId = :tenantId', { tenantId });
     this.applyUserFilters(totalQb, filters);
@@ -102,7 +102,7 @@ export class ReportsService {
 
     const completedQb = this.assignmentRepo
       .createQueryBuilder('a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
@@ -112,7 +112,7 @@ export class ReportsService {
     const avgQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
@@ -124,7 +124,7 @@ export class ReportsService {
     const deptQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
@@ -933,7 +933,7 @@ export class ReportsService {
 
     // Manager scope: only show data for direct reports
     if (managerId) {
-      responseQb.innerJoin(User, 'scope_u', 'scope_u.id = a.evaluatee_id AND scope_u.manager_id = :managerId', { managerId });
+      responseQb.innerJoin(User, 'scope_u', 'scope_u.id = a.evaluatee_id AND scope_u.tenant_id = a.tenant_id AND scope_u.manager_id = :managerId', { managerId });
     }
 
     const responses = await responseQb.select('r.overall_score', 'score').getRawMany();
@@ -952,7 +952,7 @@ export class ReportsService {
     const deptQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
@@ -972,8 +972,8 @@ export class ReportsService {
     const teamBenchmarks = await this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
-      .innerJoin(User, 'm', 'm.id = u.manager_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
+      .innerJoin(User, 'm', 'm.id = u.manager_id AND m.tenant_id = u.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
@@ -1012,7 +1012,7 @@ export class ReportsService {
     const qb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
@@ -1239,7 +1239,7 @@ export class ReportsService {
     const qb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
@@ -1320,7 +1320,7 @@ export class ReportsService {
     const qb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+      .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.answers IS NOT NULL')
@@ -1349,7 +1349,7 @@ export class ReportsService {
     const qbCount = this.responseRepo
       .createQueryBuilder('r2')
       .innerJoin('r2.assignment', 'a2')
-      .innerJoin(User, 'u2', 'u2.id = a2.evaluatee_id')
+      .innerJoin(User, 'u2', 'u2.id = a2.evaluatee_id AND u2.tenant_id = a2.tenant_id')
       .where('a2.cycleId = :cycleId', { cycleId })
       .andWhere('r2.tenantId = :tenantId', { tenantId })
       .select('u2.department', 'department')

@@ -10,16 +10,16 @@ export function buildSurveyAnalysisPrompt(data: {
   openResponses: Array<{ questionText: string; category: string; text: string }>;
 }): string {
   const categoryList = data.averageByCategory
-    .map((c) => `- ${c.category}: ${c.average}/5 (${c.count} respuestas)`)
+    .map((c) => `- ${c.category}: ${c.average}/10 (${c.count} respuestas)`)
     .join('\n');
 
   const questionList = data.averageByQuestion
     .slice(0, 20)
-    .map((q) => `- [${q.category}] "${q.questionText}": ${q.average}/5`)
+    .map((q) => `- [${q.category}] "${q.questionText}": ${q.average}/10`)
     .join('\n');
 
   const deptList = data.departmentResults
-    .map((d) => `- ${d.department}: ${d.average}/5 (${d.responseCount} respuestas)`)
+    .map((d) => `- ${d.department}: ${d.average}/10 (${d.responseCount} respuestas)`)
     .join('\n');
 
   const enpsInfo = data.enps
@@ -36,7 +36,8 @@ export function buildSurveyAnalysisPrompt(data: {
 ENCUESTA: "${data.surveyTitle}"
 Tasa de respuesta: ${data.responseRate}%
 Total respuestas: ${data.totalResponses}
-Promedio general (Likert 1-5): ${data.overallAverage}
+Escala de puntuación: 1 a 10 (normalizada desde likert 1-5 multiplicada por 2)
+Promedio general: ${data.overallAverage}/10
 
 PROMEDIOS POR CATEGORIA:
 ${categoryList}
@@ -87,6 +88,7 @@ Genera un JSON con la siguiente estructura exacta (sin texto adicional fuera del
 }
 
 IMPORTANTE:
+- TODOS los puntajes están en escala 1-10. Interpreta: ≥8 fortaleza, 6-8 aceptable, <6 área crítica.
 - Incluye entre 2-4 fortalezas y 2-4 areas criticas
 - Incluye entre 3-5 recomendaciones priorizadas
 - Incluye entre 2-4 iniciativas sugeridas para desarrollo organizacional

@@ -121,7 +121,7 @@ export class KpiService {
         const qb = this.responseRepo
           .createQueryBuilder('r')
           .innerJoin('r.assignment', 'a')
-          .innerJoin(User, 'u', 'u.id = a.evaluatee_id')
+          .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
           .where('r.tenantId = :tenantId', { tenantId });
         if (deptId) {
           qb.andWhere('u.department_id = :deptId', { deptId });

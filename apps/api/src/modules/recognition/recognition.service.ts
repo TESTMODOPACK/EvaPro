@@ -442,7 +442,7 @@ export class RecognitionService {
     // end-to-end (post-backfill + a period of observation), this method can
     // be re-migrated to ORDER BY s.total_points/month_points/year_points.
     const qb = this.pointsRepo.createQueryBuilder('p')
-      .innerJoin(User, 'u', 'u.id = p.user_id')
+      .innerJoin(User, 'u', 'u.id = p.user_id AND u.tenant_id = p.tenant_id')
       .where('p.tenant_id = :tenantId', { tenantId })
       .select('p.user_id', 'userId')
       .addSelect("u.first_name || ' ' || u.last_name", 'userName')
@@ -510,7 +510,7 @@ export class RecognitionService {
       const yearEnd = new Date(year + 1, 0, 1);
 
       const rows = await this.pointsRepo.createQueryBuilder('p')
-        .innerJoin(User, 'u', 'u.id = p.user_id')
+        .innerJoin(User, 'u', 'u.id = p.user_id AND u.tenant_id = p.tenant_id')
         .where('p.tenant_id = :tenantId', { tenantId })
         .andWhere('p.created_at >= :yearStart', { yearStart })
         .andWhere('p.created_at < :yearEnd', { yearEnd })
@@ -1061,7 +1061,7 @@ export class RecognitionService {
 
   async getLeaderboardOptIn(tenantId: string, period: string, limit = 20, department?: string, departmentId?: string) {
     const qb = this.pointsRepo.createQueryBuilder('p')
-      .innerJoin(User, 'u', 'u.id = p.user_id AND u.leaderboard_opt_in = true')
+      .innerJoin(User, 'u', 'u.id = p.user_id AND u.tenant_id = p.tenant_id AND u.leaderboard_opt_in = true')
       .where('p.tenant_id = :tenantId', { tenantId })
       .select('p.user_id', 'userId')
       .addSelect("u.first_name || ' ' || u.last_name", 'userName')

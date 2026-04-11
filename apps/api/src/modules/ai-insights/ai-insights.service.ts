@@ -381,8 +381,8 @@ export class AiInsightsService {
     const raw = await this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a')
-      .innerJoin(User, 'evaluator', 'evaluator.id = a.evaluator_id')
-      .innerJoin(User, 'evaluatee', 'evaluatee.id = a.evaluatee_id')
+      .innerJoin(User, 'evaluator', 'evaluator.id = a.evaluator_id AND evaluator.tenant_id = a.tenant_id')
+      .innerJoin(User, 'evaluatee', 'evaluatee.id = a.evaluatee_id AND evaluatee.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL')
