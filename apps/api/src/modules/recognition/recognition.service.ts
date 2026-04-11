@@ -404,24 +404,15 @@ export class RecognitionService {
   }
 
   async getUserPoints(tenantId: string, userId: string) {
+    // IMPORTANT: the ledger (user_points) is the source of truth. The
+    // user_points_summary denormalization (commit 8030fcd) was reverted on
+    // the read path because a half-populated summary returns wrong totals
+    // when only SOME users have been refreshed. Until a full backfill has
+    // been validated, SUM the ledger directly — the write-through to the
+    // summary is still active so the table stays ready for future reads.
     const now = new Date();
+    const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)); // Jan 1st UTC
 
-    // Fast path: read from the denormalized summary table. On a miss (e.g.
-    // user hasn't had any ledger entries yet, or the row hasn't been
-    // backfilled), fall back to the ledger SUM and self-heal the summary.
-    const summary = await this.pointsSummaryRepo.findOne({ where: { tenantId, userId } });
-
-    if (summary) {
-      return {
-        userId,
-        totalPoints: summary.yearPoints, // Current-year total (API contract)
-        historicalPoints: summary.totalPoints - summary.yearPoints,
-        year: now.getFullYear(),
-      };
-    }
-
-    // Fallback: compute from ledger and kick a refresh for next time.
-    const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
     const [yearResult, histResult] = await Promise.all([
       this.pointsRepo.createQueryBuilder('p')
         .where('p.tenant_id = :tenantId', { tenantId })
@@ -437,12 +428,6 @@ export class RecognitionService {
         .getRawOne(),
     ]);
 
-    // Self-heal: populate the summary for next time. Non-blocking —
-    // failure doesn't hurt correctness since we already computed the answer.
-    this.refreshUserPointsSummary(tenantId, userId).catch((err) => {
-      this.logger.warn(`Self-heal refreshUserPointsSummary(${userId}) failed: ${err?.message || err}`);
-    });
-
     return {
       userId,
       totalPoints: parseInt(yearResult.total), // Current year points (active)
@@ -452,45 +437,10 @@ export class RecognitionService {
   }
 
   async getLeaderboard(tenantId: string, period?: 'week' | 'month' | 'year' | 'all', limit = 20) {
-    // Fast path for month/year/all: read from the denormalized summary table.
-    // `week` still has to SUM the ledger because the summary doesn't track
-    // weekly buckets (would require a nightly cron; not worth it at current
-    // scale).
-    if (period !== 'week') {
-      const col =
-        period === 'month' ? 's.month_points' :
-        period === 'year' ? 's.year_points' :
-        's.total_points'; // 'all' or undefined → lifetime total
-
-      const summaryRows = await this.pointsSummaryRepo
-        .createQueryBuilder('s')
-        .innerJoin(User, 'u', 'u.id = s.user_id')
-        .where('s.tenant_id = :tenantId', { tenantId })
-        .select('s.user_id', 'userId')
-        .addSelect("u.first_name || ' ' || u.last_name", 'userName')
-        .addSelect('u.department', 'department')
-        .addSelect('u.position', 'position')
-        .addSelect(col, 'totalPoints')
-        .orderBy(col, 'DESC')
-        .limit(limit)
-        .getRawMany();
-
-      if (summaryRows.length > 0) {
-        return summaryRows.map((r, i) => ({
-          rank: i + 1,
-          userId: r.userId,
-          userName: r.userName,
-          department: r.department,
-          position: r.position,
-          totalPoints: parseInt(r.totalPoints),
-          // transactions count is not in the summary — leaderboard shows 0.
-          // Callers that need the accurate count must fall back to the ledger.
-          transactions: 0,
-        }));
-      }
-      // Summary empty (fresh tenant, not yet backfilled) — fall through to SUM.
-    }
-
+    // Always SUM from the ledger — see note on getUserPoints for why the
+    // summary-based fast path was reverted. When the summary is validated
+    // end-to-end (post-backfill + a period of observation), this method can
+    // be re-migrated to ORDER BY s.total_points/month_points/year_points.
     const qb = this.pointsRepo.createQueryBuilder('p')
       .innerJoin(User, 'u', 'u.id = p.user_id')
       .where('p.tenant_id = :tenantId', { tenantId })
