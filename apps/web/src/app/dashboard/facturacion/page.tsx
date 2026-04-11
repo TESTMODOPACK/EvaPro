@@ -117,7 +117,14 @@ export default function FacturacionPage() {
                 setGenerating(true);
                 try {
                   const result = await api.invoices.generateBulk(token);
-                  toast(`Facturas generadas: ${result.generated}, omitidas: ${result.skipped}${result.errors?.length ? `, errores: ${result.errors.length}` : ''}`, 'success');
+                  const hasErrors = (result.errors?.length ?? 0) > 0;
+                  const toastType = hasErrors && result.generated === 0 ? 'error' : hasErrors ? 'warning' : 'success';
+                  toast(`Facturas generadas: ${result.generated}, omitidas: ${result.skipped}${hasErrors ? `, errores: ${result.errors.length}` : ''}`, toastType as any);
+                  if (hasErrors) {
+                    // Mostrar el detalle de errores para poder diagnosticar
+                    const detail = result.errors.map((e: string, i: number) => `${i + 1}. ${e}`).join('\n');
+                    alert(`Se detectaron ${result.errors.length} error(es) al generar facturas:\n\n${detail}\n\nRevisa que cada suscripción tenga plan asignado, tenant activo y un precio de plan > 0.`);
+                  }
                   loadData();
                 } catch (e: any) { toast(e.message || 'Error', 'error'); }
                 setGenerating(false);
