@@ -243,11 +243,13 @@ export class RecognitionService {
   }
 
   async getUserBadges(tenantId: string, userId: string) {
-    return this.userBadgeRepo.find({
-      where: { tenantId, userId },
-      relations: ['badge'],
-      order: { earnedAt: 'DESC' },
-    });
+    return this.userBadgeRepo
+      .createQueryBuilder('ub')
+      .leftJoinAndSelect('ub.badge', 'badge', 'badge.tenant_id = ub.tenant_id')
+      .where('ub.tenantId = :tenantId', { tenantId })
+      .andWhere('ub.userId = :userId', { userId })
+      .orderBy('ub.earnedAt', 'DESC')
+      .getMany();
   }
 
   async awardBadge(tenantId: string, userId: string, badgeId: string, awardedBy?: string) {

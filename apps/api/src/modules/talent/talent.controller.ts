@@ -103,7 +103,7 @@ export class TalentController {
     @Body() dto: any,
     @Request() req: any,
   ) {
-    return this.talentService.updateAssessment(id, dto, req.user.userId);
+    return this.talentService.updateAssessment(req.user.tenantId, id, dto, req.user.userId);
   }
 
   @Get('user/:userId')

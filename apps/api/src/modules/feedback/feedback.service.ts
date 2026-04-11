@@ -249,7 +249,14 @@ export class FeedbackService {
     if (!updateResult.affected) {
       throw new BadRequestException('Esta solicitud ya fue procesada por otro usuario.');
     }
-    const saved = await this.checkInRepo.findOne({ where: { id: checkInId }, relations: ['manager', 'employee', 'location'] });
+    const saved = await this.checkInRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.manager', 'manager', 'manager.tenant_id = c.tenant_id')
+      .leftJoinAndSelect('c.employee', 'employee', 'employee.tenant_id = c.tenant_id')
+      .leftJoinAndSelect('c.location', 'location')
+      .where('c.id = :id', { id: checkInId })
+      .andWhere('c.tenantId = :tenantId', { tenantId })
+      .getOne();
 
     if (!saved) return ci; // fallback
 
@@ -273,23 +280,36 @@ export class FeedbackService {
 
   async findCheckIns(tenantId: string, userId: string, role: string): Promise<CheckIn[]> {
     const isAdminOrManager = role === 'super_admin' || role === 'tenant_admin' || role === 'manager';
-    const where = isAdminOrManager
-      ? [{ tenantId, managerId: userId }, { tenantId, employeeId: userId }]
-      : [{ tenantId, employeeId: userId }];
-    return this.checkInRepo.find({
-      where,
-      relations: ['manager', 'employee', 'location', 'developmentPlan'],
-      order: { scheduledDate: 'DESC' },
-    });
+    // queryBuilder with tenant guards on every joined relation to prevent
+    // cross-tenant leak if a checkin has an orphan manager_id/employee_id.
+    const qb = this.checkInRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.manager', 'manager', 'manager.tenant_id = c.tenant_id')
+      .leftJoinAndSelect('c.employee', 'employee', 'employee.tenant_id = c.tenant_id')
+      .leftJoinAndSelect('c.location', 'location')
+      .leftJoinAndSelect('c.developmentPlan', 'dp', 'dp.tenant_id = c.tenant_id')
+      .where('c.tenantId = :tenantId', { tenantId })
+      .orderBy('c.scheduledDate', 'DESC');
+
+    if (isAdminOrManager) {
+      qb.andWhere('(c.managerId = :userId OR c.employeeId = :userId)', { userId });
+    } else {
+      qb.andWhere('c.employeeId = :userId', { userId });
+    }
+
+    return qb.getMany();
   }
 
   // ─── Check-in Rejection ──────────────────────────────────────────────────
 
   async rejectCheckIn(tenantId: string, checkInId: string, userId: string, dto: RejectCheckInDto): Promise<CheckIn> {
-    const ci = await this.checkInRepo.findOne({
-      where: { id: checkInId, tenantId },
-      relations: ['manager', 'employee'],
-    });
+    const ci = await this.checkInRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.manager', 'manager', 'manager.tenant_id = c.tenant_id')
+      .leftJoinAndSelect('c.employee', 'employee', 'employee.tenant_id = c.tenant_id')
+      .where('c.id = :id', { id: checkInId })
+      .andWhere('c.tenantId = :tenantId', { tenantId })
+      .getOne();
     if (!ci) throw new NotFoundException('Check-in no encontrado');
     if (ci.employeeId !== userId) {
       throw new ForbiddenException('Solo el colaborador asignado puede rechazar este check-in');

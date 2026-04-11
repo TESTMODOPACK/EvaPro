@@ -124,7 +124,7 @@ export class AuditService {
     const limit = filters.limit || 25;
 
     const qb = this.auditRepo.createQueryBuilder('log')
-      .leftJoin('users', 'u', 'u.id = log.user_id')
+      .leftJoin('users', 'u', 'u.id = log.user_id AND u.tenant_id = log.tenant_id')
       .select([
         'log.id as id',
         'log.action as action',

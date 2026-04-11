@@ -458,12 +458,24 @@ export class DevelopmentService {
     return this.planRepo.save(plan);
   }
 
+  /**
+   * Shared queryBuilder for development plan lookups. Enforces tenant-match
+   * on every joined relation (user, creator, actions) so an orphan FK can't
+   * leak cross-tenant data via the JOIN.
+   */
+  private plansWithRelationsQb(tenantId: string) {
+    return this.planRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.user', 'user', 'user.tenant_id = p.tenant_id')
+      .leftJoinAndSelect('p.creator', 'creator', 'creator.tenant_id = p.tenant_id')
+      .leftJoinAndSelect('p.actions', 'actions', 'actions.tenant_id = p.tenant_id')
+      .leftJoinAndSelect('actions.competency', 'competency', 'competency.tenant_id = p.tenant_id')
+      .where('p.tenantId = :tenantId', { tenantId })
+      .orderBy('p.createdAt', 'DESC');
+  }
+
   async findAllPlans(tenantId: string) {
-    return this.planRepo.find({
-      where: { tenantId },
-      relations: ['user', 'creator', 'actions', 'actions.competency'],
-      order: { createdAt: 'DESC' },
-    });
+    return this.plansWithRelationsQb(tenantId).getMany();
   }
 
   async findPlansByManager(tenantId: string, managerId: string) {
@@ -474,26 +486,23 @@ export class DevelopmentService {
     const userIds = directReports.map((u) => u.id);
     userIds.push(managerId);
 
-    return this.planRepo.find({
-      where: { tenantId, userId: In(userIds) },
-      relations: ['user', 'creator', 'actions', 'actions.competency'],
-      order: { createdAt: 'DESC' },
-    });
+    return this.plansWithRelationsQb(tenantId)
+      .andWhere('p.userId IN (:...userIds)', { userIds })
+      .getMany();
   }
 
   async findPlansByUser(tenantId: string, userId: string) {
-    return this.planRepo.find({
-      where: { tenantId, userId },
-      relations: ['user', 'creator', 'actions', 'actions.competency'],
-      order: { createdAt: 'DESC' },
-    });
+    return this.plansWithRelationsQb(tenantId)
+      .andWhere('p.userId = :userId', { userId })
+      .getMany();
   }
 
   async findPlanById(tenantId: string, id: string) {
-    const plan = await this.planRepo.findOne({
-      where: { id, tenantId },
-      relations: ['user', 'creator', 'actions', 'actions.competency', 'comments', 'comments.author'],
-    });
+    const plan = await this.plansWithRelationsQb(tenantId)
+      .leftJoinAndSelect('p.comments', 'comments', 'comments.tenant_id = p.tenant_id')
+      .leftJoinAndSelect('comments.author', 'commentAuthor', 'commentAuthor.tenant_id = p.tenant_id')
+      .andWhere('p.id = :id', { id })
+      .getOne();
     if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
     return plan;
   }

@@ -234,8 +234,8 @@ export class ExecutiveDashboardService {
       return { avgScore: 0, completionRate: 0, totalAssignments: 0, completedAssignments: 0, cycleName: null, cycleId: null };
     }
 
-    // Build assignment query, scoped to manager's direct reports if applicable
-    const assignmentWhere: any = { cycleId: cycle.id };
+    // Build assignment query, scoped to tenant + optional manager reports
+    const assignmentWhere: any = { tenantId, cycleId: cycle.id };
     if (managerId) {
       const directReports = await this.userRepo.find({
         where: { tenantId, managerId, isActive: true },
@@ -253,12 +253,13 @@ export class ExecutiveDashboardService {
       where: { ...assignmentWhere, status: AssignmentStatus.COMPLETED },
     });
 
-    // Average score from responses
+    // Average score from responses — tenant guard on the JOIN + where clause.
     const qb = this.responseRepo
       .createQueryBuilder('r')
       .select('AVG(r.overallScore)', 'avg')
-      .innerJoin('r.assignment', 'a')
-      .where('a.cycleId = :cycleId', { cycleId: cycle.id })
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
+      .where('r.tenantId = :tenantId', { tenantId })
+      .andWhere('a.cycleId = :cycleId', { cycleId: cycle.id })
       .andWhere('r.overallScore IS NOT NULL');
 
     if (managerId && assignmentWhere.evaluateeId) {

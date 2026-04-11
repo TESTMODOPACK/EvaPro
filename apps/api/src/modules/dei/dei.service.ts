@@ -76,7 +76,7 @@ export class DeiService {
     // Get all completed responses with evaluatee demographics
     const rows = await this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = :tenantId')
       .where('a.cycle_id = :cycleId', { cycleId })
       .andWhere('r.tenant_id = :tenantId', { tenantId })
@@ -146,7 +146,7 @@ export class DeiService {
 
     const rows = await this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = :tenantId')
       .where('a.cycle_id = :cycleId', { cycleId })
       .andWhere('r.tenant_id = :tenantId', { tenantId })

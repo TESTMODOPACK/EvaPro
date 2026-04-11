@@ -97,40 +97,48 @@ export class ObjectivesService {
 
   // ─── Queries by role ────────────────────────────────────────────────────────
 
+  /**
+   * Shared queryBuilder: loads objectives with their user/updates/keyResults
+   * and enforces tenant-match on every joined relation. Prevents cross-tenant
+   * leaks caused by orphan FKs (e.g. objective.user_id pointing at a user in
+   * a different tenant after a data migration).
+   */
+  private objectivesWithRelationsQb(tenantId: string) {
+    return this.objectiveRepo
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.user', 'user', 'user.tenant_id = o.tenant_id')
+      .leftJoinAndSelect('o.updates', 'updates', 'updates.tenant_id = o.tenant_id')
+      .leftJoinAndSelect('updates.creator', 'creator', 'creator.tenant_id = o.tenant_id')
+      .leftJoinAndSelect('o.keyResults', 'kr', 'kr.tenant_id = o.tenant_id')
+      .where('o.tenantId = :tenantId', { tenantId })
+      .orderBy('o.createdAt', 'DESC');
+  }
+
   /** All objectives in the tenant (for tenant_admin) */
   async findAll(tenantId: string, filterUserId?: string): Promise<Objective[]> {
-    const where: any = { tenantId };
-    if (filterUserId) where.userId = filterUserId;
-    return this.objectiveRepo.find({
-      where,
-      relations: ['user', 'updates', 'updates.creator', 'keyResults'],
-      order: { createdAt: 'DESC' },
-    });
+    const qb = this.objectivesWithRelationsQb(tenantId);
+    if (filterUserId) qb.andWhere('o.userId = :filterUserId', { filterUserId });
+    return qb.getMany();
   }
 
   /** Objectives of manager's direct reports + own (for manager) */
   async findByManager(tenantId: string, managerId: string): Promise<Objective[]> {
-    // Get direct reports
     const subordinates = await this.userRepo.find({
       where: { tenantId, managerId, isActive: true },
       select: ['id'],
     });
     const userIds = [managerId, ...subordinates.map((u) => u.id)];
 
-    return this.objectiveRepo.find({
-      where: { tenantId, userId: In(userIds) },
-      relations: ['user', 'updates', 'updates.creator', 'keyResults'],
-      order: { createdAt: 'DESC' },
-    });
+    return this.objectivesWithRelationsQb(tenantId)
+      .andWhere('o.userId IN (:...userIds)', { userIds })
+      .getMany();
   }
 
   /** Only the user's own objectives (for employee) */
   async findByUser(tenantId: string, userId: string): Promise<Objective[]> {
-    return this.objectiveRepo.find({
-      where: { tenantId, userId },
-      relations: ['user', 'updates', 'updates.creator', 'keyResults'],
-      order: { createdAt: 'DESC' },
-    });
+    return this.objectivesWithRelationsQb(tenantId)
+      .andWhere('o.userId = :userId', { userId })
+      .getMany();
   }
 
   /**
@@ -155,7 +163,7 @@ export class ObjectivesService {
       qb.andWhere('o.cycleId = :cycleId', { cycleId });
     }
 
-    qb.leftJoinAndSelect('o.user', 'user')
+    qb.leftJoinAndSelect('o.user', 'user', 'user.tenant_id = o.tenant_id')
       .orderBy('o.updatedAt', 'DESC');
 
     const objectives = await qb.getMany();
@@ -221,10 +229,12 @@ export class ObjectivesService {
   }
 
   async findById(tenantId: string, id: string): Promise<Objective> {
-    const obj = await this.objectiveRepo.findOne({
-      where: { id, tenantId },
-      relations: ['user'],
-    });
+    const obj = await this.objectiveRepo
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.user', 'user', 'user.tenant_id = o.tenant_id')
+      .where('o.id = :id', { id })
+      .andWhere('o.tenantId = :tenantId', { tenantId })
+      .getOne();
     if (!obj) throw new NotFoundException('Objetivo no encontrado');
     return obj;
   }
@@ -460,7 +470,7 @@ export class ObjectivesService {
     // Fetch all active objectives first, then filter intelligently
     const qb = this.objectiveRepo
       .createQueryBuilder('o')
-      .leftJoinAndSelect('o.user', 'u')
+      .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
       .where('o.tenantId = :tenantId', { tenantId })
       .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE });
 

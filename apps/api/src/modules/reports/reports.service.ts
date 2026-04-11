@@ -111,7 +111,7 @@ export class ReportsService {
 
     const avgQb = this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
@@ -123,7 +123,7 @@ export class ReportsService {
     // Department breakdown
     const deptQb = this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
@@ -926,7 +926,7 @@ export class ReportsService {
     // Score distribution (buckets of 0.5 in scale 0-10)
     const responseQb = this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL');
@@ -951,7 +951,7 @@ export class ReportsService {
     // Department comparison
     const deptQb = this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
@@ -971,7 +971,7 @@ export class ReportsService {
     // Team benchmarks (by manager)
     const teamBenchmarks = await this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .innerJoin(User, 'm', 'm.id = u.manager_id AND m.tenant_id = u.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
@@ -1011,7 +1011,7 @@ export class ReportsService {
   async bellCurve(cycleId: string, tenantId: string, filters?: ReportFilters) {
     const qb = this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
@@ -1238,7 +1238,7 @@ export class ReportsService {
   async performanceHeatmap(cycleId: string, tenantId: string, filters?: ReportFilters) {
     const qb = this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
@@ -1319,7 +1319,7 @@ export class ReportsService {
     // 2. Load all responses with evaluatee department
     const qb = this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })

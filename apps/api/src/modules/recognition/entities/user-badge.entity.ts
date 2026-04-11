@@ -33,7 +33,10 @@ export class UserBadge {
   @Column({ type: 'uuid', name: 'badge_id' })
   badgeId: string;
 
-  @ManyToOne(() => Badge, { eager: true })
+  // NOTE: eager loading removed — it was bypassing tenant guards. Callers
+  // that need the badge data must explicitly join with a tenant guard, e.g.
+  // leftJoinAndSelect('ub.badge', 'b', 'b.tenant_id = ub.tenant_id').
+  @ManyToOne(() => Badge)
   @JoinColumn({ name: 'badge_id' })
   badge: Badge;
 

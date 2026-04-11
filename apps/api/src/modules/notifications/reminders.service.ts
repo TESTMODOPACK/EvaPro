@@ -183,7 +183,7 @@ export class RemindersService {
     try {
       const atRisk = await this.objectiveRepo
         .createQueryBuilder('o')
-        .leftJoinAndSelect('o.user', 'u')
+        .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
         .where('o.status = :status', { status: ObjectiveStatus.ACTIVE })
         .andWhere('o.progress < :threshold', { threshold: 40 })
         .andWhere('o.target_date IS NOT NULL')
@@ -315,8 +315,8 @@ export class RemindersService {
       // Find check-ins scheduled for today or tomorrow that are still SCHEDULED
       const upcoming = await this.checkinRepo
         .createQueryBuilder('c')
-        .leftJoinAndSelect('c.manager', 'mgr')
-        .leftJoinAndSelect('c.employee', 'emp')
+        .leftJoinAndSelect('c.manager', 'mgr', 'mgr.tenant_id = c.tenant_id')
+        .leftJoinAndSelect('c.employee', 'emp', 'emp.tenant_id = c.tenant_id')
         .where('c.status = :status', { status: 'scheduled' })
         .andWhere('c.scheduledDate >= :today', { today: todayStr })
         .andWhere('c.scheduledDate <= :tomorrow', { tomorrow: tomorrowStr })
@@ -679,9 +679,10 @@ export class RemindersService {
         // Find assignments with 2+ reminders that are still not completed
         const unresponsive = await this.assignmentRepo
           .createQueryBuilder('a')
-          .leftJoinAndSelect('a.evaluator', 'evaluator')
-          .leftJoinAndSelect('a.evaluatee', 'evaluatee')
+          .leftJoinAndSelect('a.evaluator', 'evaluator', 'evaluator.tenant_id = a.tenant_id')
+          .leftJoinAndSelect('a.evaluatee', 'evaluatee', 'evaluatee.tenant_id = a.tenant_id')
           .where('a.cycleId = :cycleId', { cycleId: cycle.id })
+          .andWhere('a.tenantId = :tenantId', { tenantId: cycle.tenantId })
           .andWhere('a.reminderCount >= :min', { min: 2 })
           .andWhere('a.status != :completed', { completed: AssignmentStatus.COMPLETED })
           .getMany();
@@ -735,8 +736,8 @@ export class RemindersService {
 
       const overdueActions = await this.actionRepo
         .createQueryBuilder('a')
-        .leftJoinAndSelect('a.plan', 'p')
-        .leftJoinAndSelect('p.user', 'u')
+        .leftJoinAndSelect('a.plan', 'p', 'p.tenant_id = a.tenant_id')
+        .leftJoinAndSelect('p.user', 'u', 'u.tenant_id = p.tenant_id')
         .where('a.status != :completed', { completed: 'completada' })
         .andWhere('a.due_date IS NOT NULL')
         .andWhere('a.due_date < :sevenDaysAgo', { sevenDaysAgo: sevenDaysAgo.toISOString().split('T')[0] })
@@ -805,7 +806,7 @@ export class RemindersService {
 
       const criticalObjectives = await this.objectiveRepo
         .createQueryBuilder('o')
-        .leftJoinAndSelect('o.user', 'u')
+        .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
         .where('o.status = :status', { status: ObjectiveStatus.ACTIVE })
         .andWhere('o.progress < :threshold', { threshold: 20 })
         .andWhere('o.target_date IS NOT NULL')

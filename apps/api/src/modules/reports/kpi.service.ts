@@ -103,7 +103,7 @@ export class KpiService {
         const cycleId = kpi.config?.cycleId || cycles[0].id;
         const result = await this.responseRepo
           .createQueryBuilder('r')
-          .innerJoin('r.assignment', 'a')
+          .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
           .where('a.cycleId = :cycleId', { cycleId })
           .andWhere('r.tenantId = :tenantId', { tenantId })
           .andWhere('r.overall_score IS NOT NULL')
@@ -120,7 +120,7 @@ export class KpiService {
         if (!deptId && !dept) return { value: 0, formatted: 'Sin departamento configurado' };
         const qb = this.responseRepo
           .createQueryBuilder('r')
-          .innerJoin('r.assignment', 'a')
+          .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
           .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
           .where('r.tenantId = :tenantId', { tenantId });
         if (deptId) {

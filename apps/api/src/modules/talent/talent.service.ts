@@ -99,7 +99,7 @@ export class TalentService {
       // Calculate average score from all completed responses for this evaluatee
       const avgResult = await this.responseRepo
         .createQueryBuilder('r')
-        .innerJoin('r.assignment', 'a')
+        .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
         .select('AVG(r.overall_score)', 'avgScore')
         .where('a.evaluatee_id = :evaluateeId', { evaluateeId })
         .andWhere('a.cycle_id = :cycleId', { cycleId })
@@ -144,7 +144,7 @@ export class TalentService {
   async findByCycle(tenantId: string, cycleId: string, managerId?: string): Promise<TalentAssessment[]> {
     const qb = this.assessmentRepo
       .createQueryBuilder('a')
-      .leftJoinAndSelect('a.user', 'u')
+      .leftJoinAndSelect('a.user', 'u', 'u.tenant_id = a.tenant_id')
       .where('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.cycleId = :cycleId', { cycleId })
       .orderBy('a.performanceScore', 'DESC');
@@ -165,8 +165,15 @@ export class TalentService {
     });
   }
 
-  async updateAssessment(id: string, dto: any, assessedBy: string): Promise<TalentAssessment> {
-    const assessment = await this.assessmentRepo.findOne({ where: { id }, relations: ['user'] });
+  async updateAssessment(tenantId: string, id: string, dto: any, assessedBy: string): Promise<TalentAssessment> {
+    // Tenant-scoped lookup + tenant guard on the joined user to prevent
+    // cross-tenant access via a known assessment id or via an orphan user_id.
+    const assessment = await this.assessmentRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.user', 'user', 'user.tenant_id = a.tenant_id')
+      .where('a.id = :id', { id })
+      .andWhere('a.tenantId = :tenantId', { tenantId })
+      .getOne();
     if (!assessment) throw new NotFoundException('Assessment no encontrado');
 
     // B8.2: Fresh justification is mandatory on every potential score change

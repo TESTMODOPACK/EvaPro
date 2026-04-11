@@ -91,9 +91,21 @@ export class ContractsService {
    * Every regular caller MUST pass the authenticated user's tenantId.
    */
   async findById(id: string, tenantId: string | null): Promise<Contract> {
-    const where: any = { id };
-    if (tenantId !== null) where.tenantId = tenantId;
-    const contract = await this.contractRepo.findOne({ where, relations: ['tenant', 'creator'] });
+    // When tenantId is provided (regular callers), enforce tenant guard on
+    // the joined creator so an orphan created_by cross-tenant can't leak.
+    // super_admin callers pass null → join without guard (intentional).
+    const qb = this.contractRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.tenant', 'tenant');
+    if (tenantId !== null) {
+      qb.leftJoinAndSelect('c.creator', 'creator', 'creator.tenant_id = c.tenant_id')
+        .where('c.id = :id', { id })
+        .andWhere('c.tenantId = :tenantId', { tenantId });
+    } else {
+      qb.leftJoinAndSelect('c.creator', 'creator')
+        .where('c.id = :id', { id });
+    }
+    const contract = await qb.getOne();
     if (!contract) throw new NotFoundException('Contrato no encontrado');
     return contract;
   }

@@ -160,11 +160,17 @@ export class OrgDevelopmentService {
   ): Promise<OrgDevelopmentInitiative[]> {
     const plan = await this.planRepo.findOne({ where: { id: planId, tenantId } });
     if (!plan) throw new NotFoundException('Plan no encontrado');
-    return this.initiativeRepo.find({
-      where: { tenantId, planId },
-      relations: ['responsible', 'actions', 'actions.assignedTo'],
-      order: { department: 'ASC', createdAt: 'ASC' },
-    });
+    // Tenant guard on every joined User/action so orphan FKs can't leak.
+    return this.initiativeRepo
+      .createQueryBuilder('i')
+      .leftJoinAndSelect('i.responsible', 'responsible', 'responsible.tenant_id = i.tenant_id')
+      .leftJoinAndSelect('i.actions', 'actions', 'actions.tenant_id = i.tenant_id')
+      .leftJoinAndSelect('actions.assignedTo', 'assignedTo', 'assignedTo.tenant_id = i.tenant_id')
+      .where('i.tenantId = :tenantId', { tenantId })
+      .andWhere('i.planId = :planId', { planId })
+      .orderBy('i.department', 'ASC')
+      .addOrderBy('i.createdAt', 'ASC')
+      .getMany();
   }
 
   /**

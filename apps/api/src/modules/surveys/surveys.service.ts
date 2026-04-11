@@ -132,19 +132,25 @@ export class SurveysService {
   }
 
   async findAll(tenantId: string): Promise<EngagementSurvey[]> {
-    return this.surveyRepo.find({
-      where: { tenantId },
-      relations: ['creator'],
-      order: { createdAt: 'DESC' },
-    });
+    // Tenant guard on creator join — survey.createdBy could be orphan
+    // cross-tenant after a data migration.
+    return this.surveyRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.creator', 'creator', 'creator.tenant_id = s.tenant_id')
+      .where('s.tenantId = :tenantId', { tenantId })
+      .orderBy('s.createdAt', 'DESC')
+      .getMany();
   }
 
   async findById(tenantId: string, surveyId: string): Promise<EngagementSurvey> {
-    const survey = await this.surveyRepo.findOne({
-      where: { id: surveyId, tenantId },
-      relations: ['questions', 'creator'],
-      order: { questions: { sortOrder: 'ASC' } },
-    });
+    const survey = await this.surveyRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.creator', 'creator', 'creator.tenant_id = s.tenant_id')
+      .leftJoinAndSelect('s.questions', 'questions')
+      .where('s.id = :id', { id: surveyId })
+      .andWhere('s.tenantId = :tenantId', { tenantId })
+      .orderBy('questions.sortOrder', 'ASC')
+      .getOne();
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
     return survey;
   }

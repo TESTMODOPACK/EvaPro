@@ -1388,10 +1388,10 @@ export class EvaluationsService {
     if (teamUserIds) completedQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
     const completedAssignments = await completedQb.getCount();
 
-    // Average score — scoped
+    // Average score — scoped (tenant guard also on the JOIN)
     const avgQb = this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .where('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL');
     if (teamUserIds) avgQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });

@@ -380,7 +380,7 @@ export class AiInsightsService {
     // Get all responses with evaluator info
     const raw = await this.responseRepo
       .createQueryBuilder('r')
-      .innerJoin('r.assignment', 'a')
+      .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'evaluator', 'evaluator.id = a.evaluator_id AND evaluator.tenant_id = a.tenant_id')
       .innerJoin(User, 'evaluatee', 'evaluatee.id = a.evaluatee_id AND evaluatee.tenant_id = a.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })

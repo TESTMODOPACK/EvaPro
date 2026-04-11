@@ -150,22 +150,30 @@ export class RecruitmentService {
   }
 
   async getProcess(tenantId: string, id: string): Promise<any> {
-    const process = await this.processRepo.findOne({
-      where: { id, tenantId },
-      relations: ['creator'],
-    });
+    // Tenant guard on creator/user/evaluator joins — any of these FKs could
+    // be orphan cross-tenant after a data migration.
+    const process = await this.processRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.creator', 'creator', 'creator.tenant_id = p.tenant_id')
+      .where('p.id = :id', { id })
+      .andWhere('p.tenantId = :tenantId', { tenantId })
+      .getOne();
     if (!process) throw new NotFoundException('Proceso no encontrado');
 
-    const candidates = await this.candidateRepo.find({
-      where: { processId: id },
-      relations: ['user'],
-      order: { createdAt: 'DESC' },
-    });
+    const candidates = await this.candidateRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.user', 'user', 'user.tenant_id = c.tenant_id')
+      .where('c.processId = :processId', { processId: id })
+      .andWhere('c.tenantId = :tenantId', { tenantId })
+      .orderBy('c.createdAt', 'DESC')
+      .getMany();
 
-    const evaluators = await this.evaluatorRepo.find({
-      where: { processId: id },
-      relations: ['evaluator'],
-    });
+    const evaluators = await this.evaluatorRepo
+      .createQueryBuilder('e')
+      .leftJoinAndSelect('e.evaluator', 'evaluator', 'evaluator.tenant_id = e.tenant_id')
+      .where('e.processId = :processId', { processId: id })
+      .andWhere('e.tenantId = :tenantId', { tenantId })
+      .getMany();
 
     return { ...process, candidates, evaluators };
   }
@@ -284,17 +292,22 @@ export class RecruitmentService {
   }
 
   async getCandidateProfile(tenantId: string, candidateId: string): Promise<any> {
-    const candidate = await this.candidateRepo.findOne({
-      where: { id: candidateId, tenantId },
-      relations: ['user', 'process'],
-    });
+    const candidate = await this.candidateRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.user', 'user', 'user.tenant_id = c.tenant_id')
+      .leftJoinAndSelect('c.process', 'process', 'process.tenant_id = c.tenant_id')
+      .where('c.id = :id', { id: candidateId })
+      .andWhere('c.tenantId = :tenantId', { tenantId })
+      .getOne();
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
 
-    const interviews = await this.interviewRepo.find({
-      where: { candidateId },
-      relations: ['evaluator'],
-      order: { createdAt: 'DESC' },
-    });
+    const interviews = await this.interviewRepo
+      .createQueryBuilder('i')
+      .leftJoinAndSelect('i.evaluator', 'evaluator', 'evaluator.tenant_id = i.tenant_id')
+      .where('i.candidateId = :candidateId', { candidateId })
+      .andWhere('i.tenantId = :tenantId', { tenantId })
+      .orderBy('i.createdAt', 'DESC')
+      .getMany();
 
     let internalProfile = null;
     if (candidate.candidateType === 'internal' && candidate.userId) {
