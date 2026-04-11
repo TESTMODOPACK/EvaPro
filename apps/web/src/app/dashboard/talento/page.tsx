@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import { useDepartments } from '@/hooks/useDepartments';
 
 type ActiveTab = 'ninebox' | 'segmentation';
 
@@ -106,6 +107,10 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
   const token = useAuthStore((s) => s.token)!;
   const userRole = useAuthStore((s) => s.user?.role);
   const isAdmin = userRole === 'tenant_admin' || userRole === 'super_admin';
+  // Full department catalog from mantenedor (not derived from user rows) so
+  // the dropdown shows every active department even if no assessed user
+  // belongs to it yet.
+  const { departments: allDepartments } = useDepartments();
   const [nineBoxData, setNineBoxData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -219,8 +224,13 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
     const matchesDept = !boxDeptFilter || u.department === boxDeptFilter;
     return matchesSearch && matchesDept;
   });
-  // Get unique departments from raw users for the filter dropdown
-  const boxDepts = Array.from(new Set(rawUsers.map((a: any) => (a.user || a).department).filter(Boolean))).sort() as string[];
+  // Department dropdown sourced from the mantenedor (full catalog), falling
+  // back to the departments that appear in the current user set if the
+  // mantenedor hasn't loaded yet. Prevents "8 departamentos visible / 9 en
+  // mantenedor" mismatches where an empty department was hidden.
+  const boxDepts = allDepartments.length > 0
+    ? allDepartments
+    : (Array.from(new Set(rawUsers.map((a: any) => (a.user || a).department).filter(Boolean))).sort() as string[]);
   const selectedUsers = [...filteredUsers].sort((a, b) => {
     const u1 = a.user || a;
     const u2 = b.user || b;
@@ -613,6 +623,9 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
 function SegmentationTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { cycles: any[]; selectedCycleId: string; onCycleChange: (id: string) => void; onDataLoaded?: () => void }) {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token)!;
+  // Full catalog from mantenedor (fixes dropdown missing departments without
+  // assessed users).
+  const { departments: allDepartments } = useDepartments();
   const [segData, setSegData] = useState<any>(null);
   const [assessments, setAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -651,8 +664,11 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded 
     else { setSortField(field); setSortDir('asc'); }
   }
 
-  // Compute unique departments for the filter dropdown
-  const segDepts = Array.from(new Set(assessments.map((a: any) => (a.user || a).department).filter(Boolean))).sort() as string[];
+  // Department dropdown sourced from the mantenedor (full catalog) so every
+  // active department appears even if no assessed user belongs to it yet.
+  const segDepts = allDepartments.length > 0
+    ? allDepartments
+    : (Array.from(new Set(assessments.map((a: any) => (a.user || a).department).filter(Boolean))).sort() as string[]);
 
   const filtered = assessments
     .filter((a) => {

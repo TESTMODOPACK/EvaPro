@@ -1026,8 +1026,27 @@ export default function SubscriptionsPage() {
                           <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                             {sub.startDate ? new Date(sub.startDate).toLocaleDateString('es-CL') : '-'}
                           </td>
-                          <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                            {sub.endDate ? new Date(sub.endDate).toLocaleDateString('es-CL') : '-'}
+                          <td style={{ fontSize: '0.85rem' }}>
+                            {(() => {
+                              const expiry = sub.endDate || sub.nextBillingDate;
+                              if (!expiry) {
+                                return <span style={{ color: 'var(--text-muted)' }}>{sub.autoRenew ? 'Auto-renovación' : '-'}</span>;
+                              }
+                              const d = new Date(expiry);
+                              const daysLeft = Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                              const color = daysLeft < 0 ? 'var(--danger)' : daysLeft <= 7 ? 'var(--danger)' : daysLeft <= 30 ? 'var(--warning)' : 'var(--text-primary)';
+                              const label = daysLeft < 0 ? `Vencido hace ${Math.abs(daysLeft)}d` : daysLeft === 0 ? 'Vence hoy' : `En ${daysLeft}d`;
+                              return (
+                                <div>
+                                  <div style={{ fontWeight: 700, color }}>
+                                    {d.toLocaleDateString('es-CL')}
+                                  </div>
+                                  <div style={{ fontSize: '0.7rem', color, marginTop: '0.1rem' }}>
+                                    {label}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {sub.notes ?? '-'}
