@@ -875,23 +875,14 @@ async function seedDemoFull() {
       console.log(`   Notifications already exist (${existingNotifs}), skipping.`);
     }
 
-    /* ── 14. UPDATE SUBSCRIPTION to Pro plan ─────────────────────────── */
-    const subPlanRepo = ds.getRepository(SubscriptionPlan);
+    /* ── 14. SUBSCRIPTION (no-op: seed.ts already bootstraps the demo sub) ─
+     * This block USED to force the demo tenant back to the Pro plan + active
+     * status on every container startup, silently reverting plan changes and
+     * add-on cancellations made by the admin via the UI. That is now handled
+     * exclusively by seed.ts on first-run bootstrap (when the subscription
+     * row does not exist yet), so this step is intentionally a no-op.
+     * See git history for the old logic if you need to re-bootstrap manually. */
     const subRepo = ds.getRepository(Subscription);
-    const proPlan = await subPlanRepo.findOne({ where: { code: 'pro' } });
-    if (proPlan) {
-      const existingSub = await subRepo.findOne({ where: { tenantId: tid } });
-      if (existingSub) {
-        existingSub.planId = proPlan.id;
-        existingSub.status = 'active' as any;
-        await subRepo.save(existingSub);
-        // Also update tenant
-        await tenantRepo.update(tid, { plan: 'pro', maxEmployees: proPlan.maxEmployees });
-        console.log(`✅ Demo tenant upgraded to Pro plan (maxEmployees: ${proPlan.maxEmployees})`);
-      }
-    } else {
-      console.log('   Pro plan not found, skipping subscription upgrade.');
-    }
 
     /* ── 14b. PAYMENT HISTORY (demo) ──────────────────────────────── */
     const payHistRepo = ds.getRepository(PaymentHistory);

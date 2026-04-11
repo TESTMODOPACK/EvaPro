@@ -451,6 +451,8 @@ async function seed() {
       order: { createdAt: 'DESC' as const },
     });
     if (!subscription) {
+      // First deploy — bootstrap the demo subscription with Enterprise plan
+      // and a starter AI add-on so the demo can test IA features right away.
       subscription = subRepo.create({
         tenantId: tenant.id,
         planId: enterprisePlan?.id || starterPlan.id,
@@ -461,23 +463,13 @@ async function seed() {
       await subRepo.save(subscription);
       console.log('\u2705  Subscription created for demo tenant (Enterprise plan, 50 addon credits)');
     } else {
-      // Migrate existing subscription to Enterprise + 50 addon credits for testing
-      let subChanged = false;
-      if (enterprisePlan && subscription.planId !== enterprisePlan.id) {
-        subscription.planId = enterprisePlan.id;
-        subChanged = true;
-      }
-      if (!subscription.aiAddonCalls || subscription.aiAddonCalls < 50) {
-        subscription.aiAddonCalls = 50;
-        subChanged = true;
-      }
-      if (subChanged) {
-        subscription.status = SubscriptionStatus.ACTIVE; // Ensure it's active
-        await subRepo.save(subscription);
-        console.log(`✅  Subscription upgraded: planId=${subscription.planId}, plan=${enterprisePlan?.name}, aiAddonCalls=${subscription.aiAddonCalls}, status=${subscription.status}`);
-      } else {
-        console.log(`   Subscription already configured: planId=${subscription.planId}, status=${subscription.status}, aiAddonCalls=${subscription.aiAddonCalls}`);
-      }
+      // IMPORTANT: do NOT mutate an existing subscription here. The seed runs on
+      // every container startup, and this block used to force planId=enterprise
+      // and aiAddonCalls>=50 on every boot, silently reverting any change an
+      // admin had made via the UI (plan change, add-on cancellation, etc).
+      // If you need to re-bootstrap the demo subscription, delete the row
+      // manually and let the `if (!subscription)` branch create it fresh.
+      console.log(`   Subscription already exists (no changes): planId=${subscription.planId}, status=${subscription.status}, aiAddonCalls=${subscription.aiAddonCalls}`);
     }
 
     /* ── Department & Position records ─────────────────────────────────── */
