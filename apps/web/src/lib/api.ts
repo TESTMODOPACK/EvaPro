@@ -987,8 +987,8 @@ export const api = {
       request<any[]>(`/surveys/${id}/results/department`, {}, token),
     getENPS: (token: string, id: string) => request<any>(`/surveys/${id}/results/enps`, {}, token),
     getTrends: (token: string) => request<any[]>("/surveys/trends", {}, token),
-    generateAiAnalysis: (token: string, id: string) =>
-      request<any>(`/surveys/${id}/ai-analysis`, { method: "POST" }, token),
+    generateAiAnalysis: (token: string, id: string, force = false) =>
+      request<any>(`/surveys/${id}/ai-analysis`, { method: "POST", body: JSON.stringify({ force }) }, token),
     getAiAnalysis: (token: string, id: string) =>
       request<any>(`/surveys/${id}/ai-analysis`, {}, token),
     createInitiatives: (token: string, id: string, targetPlanId?: string) =>

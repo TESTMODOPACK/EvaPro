@@ -96,15 +96,18 @@ export default function ResultadosEncuestaPage() {
     }
   };
 
-  const handleGenerateAi = async () => {
+  const handleGenerateAi = async (force = false) => {
     if (!token) return;
+    if (force && !confirm('Esto eliminará el análisis AI previo y generará uno nuevo con los datos más recientes (puede consumir un crédito de IA del mes). ¿Continuar?')) {
+      return;
+    }
     setGeneratingAi(true);
     try {
-      const analysis = await api.surveys.generateAiAnalysis(token, surveyId);
+      const analysis = await api.surveys.generateAiAnalysis(token, surveyId, force);
       setAiAnalysis(analysis);
-      toast('Analisis AI generado exitosamente', 'success');
+      toast(force ? 'Análisis AI regenerado exitosamente' : 'Análisis AI generado exitosamente', 'success');
     } catch (e: any) {
-      toast(e.message || 'Error al generar analisis AI', 'error');
+      toast(e.message || 'Error al generar análisis AI', 'error');
     } finally {
       setGeneratingAi(false);
     }
@@ -214,9 +217,42 @@ export default function ResultadosEncuestaPage() {
             <div style={{ fontSize: '2rem', fontWeight: 700, color: enps.enps >= 50 ? '#16a34a' : enps.enps >= 0 ? '#eab308' : '#ef4444' }}>
               {enps.enps > 0 ? '+' : ''}{enps.enps}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {enps.total} {enps.source === 'likert_derived' ? 'respuestas (derivado de Likert)' : 'respuestas NPS'}
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              {enps.total} {enps.source === 'likert_derived' ? 'resp. (derivado Likert)' : 'respuestas NPS'}
             </div>
+            {(() => {
+              const total = enps.total || (enps.promoters + enps.passives + enps.detractors) || 0;
+              if (total === 0) return null;
+              const pct = (n: number) => Math.round((n / total) * 100);
+              return (
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '0.4rem',
+                    marginTop: '0.55rem',
+                    paddingTop: '0.55rem',
+                    borderTop: '1px solid var(--border)',
+                    fontSize: '0.68rem',
+                    fontWeight: 600,
+                  }}
+                  title={`Promotores ${enps.promoters} | Pasivos ${enps.passives} | Detractores ${enps.detractors}`}
+                >
+                  <div style={{ flex: 1, color: '#16a34a' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800 }}>{pct(enps.promoters)}%</div>
+                    <div style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Promotores</div>
+                  </div>
+                  <div style={{ flex: 1, color: '#eab308' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800 }}>{pct(enps.passives)}%</div>
+                    <div style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Pasivos</div>
+                  </div>
+                  <div style={{ flex: 1, color: '#ef4444' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800 }}>{pct(enps.detractors)}%</div>
+                    <div style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Detractores</div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
         {results.survey?.isAnonymous && (
@@ -514,7 +550,7 @@ export default function ResultadosEncuestaPage() {
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
                 Genera un informe ejecutivo completo con fortalezas, áreas críticas, análisis de sentimiento y recomendaciones accionables.
               </p>
-              <button className="btn-primary" onClick={handleGenerateAi} disabled={generatingAi || results.totalResponses === 0 || aiBlocked}>
+              <button className="btn-primary" onClick={() => handleGenerateAi(false)} disabled={generatingAi || results.totalResponses === 0 || aiBlocked}>
                 {aiBlocked ? 'Créditos IA agotados' : generatingAi ? 'Generando análisis...' : 'Generar Análisis con IA'}
               </button>
               {results.totalResponses === 0 && (
@@ -667,8 +703,16 @@ export default function ResultadosEncuestaPage() {
                 </div>
               )}
 
-              {/* Regenerate */}
-              <button className="btn-ghost" style={{ fontSize: '0.85rem' }} onClick={handleGenerateAi} disabled={generatingAi || aiBlocked}>
+              {/* Regenerate — force: true so the stale cached insight is wiped
+                  before generating. Useful after any backend scale or prompt
+                  fix that would otherwise be hidden behind the 7-day cache. */}
+              <button
+                className="btn-ghost"
+                style={{ fontSize: '0.85rem' }}
+                onClick={() => handleGenerateAi(true)}
+                disabled={generatingAi || aiBlocked}
+                title="Elimina el análisis actual y genera uno nuevo con los datos más recientes"
+              >
                 {aiBlocked ? 'Sin créditos' : generatingAi ? 'Regenerando...' : 'Regenerar análisis'}
               </button>
             </div>

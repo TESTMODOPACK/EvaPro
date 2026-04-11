@@ -23,7 +23,11 @@ export function buildSurveyAnalysisPrompt(data: {
     .join('\n');
 
   const enpsInfo = data.enps
-    ? `eNPS: ${data.enps.enps} (Promotores: ${data.enps.promoters}, Pasivos: ${data.enps.passives}, Detractores: ${data.enps.detractors})`
+    ? (() => {
+        const total = data.enps.total || (data.enps.promoters + data.enps.passives + data.enps.detractors) || 0;
+        const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
+        return `eNPS: ${data.enps.enps} (Promotores: ${data.enps.promoters} / ${pct(data.enps.promoters)}%, Pasivos: ${data.enps.passives} / ${pct(data.enps.passives)}%, Detractores: ${data.enps.detractors} / ${pct(data.enps.detractors)}%, Total: ${total} respuestas)`;
+      })()
     : 'No hay datos de eNPS disponibles.';
 
   const openTexts = data.openResponses

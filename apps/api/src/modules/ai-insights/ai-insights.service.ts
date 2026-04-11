@@ -1319,13 +1319,25 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
       departmentResults: any[];
       openResponses: any[];
     },
+    options: { force?: boolean } = {},
   ): Promise<AiInsight> {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
-    // Check cache — reuse cycleId field to store surveyId
-    const cached = await this.getCached(tenantId, InsightType.SURVEY_ANALYSIS, surveyId);
-    if (cached) return cached;
+    // Check cache — reuse cycleId field to store surveyId.
+    // `force: true` skips the cache AND wipes prior insights for this survey so
+    // we never mix old/new scale data side by side. Used when the analyst
+    // explicitly clicks "Regenerar" after a scale/logic fix on the backend.
+    if (options.force) {
+      await this.insightRepo.delete({
+        tenantId,
+        type: InsightType.SURVEY_ANALYSIS,
+        cycleId: surveyId,
+      });
+    } else {
+      const cached = await this.getCached(tenantId, InsightType.SURVEY_ANALYSIS, surveyId);
+      if (cached) return cached;
+    }
 
     const prompt = buildSurveyAnalysisPrompt(surveyData);
     const { text, tokensUsed } = await this.callClaude(prompt, 4000);

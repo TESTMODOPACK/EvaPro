@@ -149,11 +149,23 @@ export class SurveysController {
     return this.surveysService.getResults(req.user.tenantId, id);
   }
 
-  /** Generate AI analysis for a closed survey */
+  /** Generate AI analysis for a closed survey.
+   * Body `{ force?: boolean }` — when true, skips cache and wipes prior
+   * insights so a fresh analysis is produced. Useful after backend scale
+   * or prompt fixes, where the cached analysis would otherwise be stale. */
   @Post(':id/ai-analysis')
   @Roles('super_admin', 'tenant_admin')
-  generateAiAnalysis(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.surveysService.generateAiAnalysis(req.user.tenantId, id, req.user.userId);
+  generateAiAnalysis(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.surveysService.generateAiAnalysis(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      body?.force === true,
+    );
   }
 
   /** Get existing AI analysis */

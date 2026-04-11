@@ -652,7 +652,12 @@ export class SurveysService {
 
   // ─── AI Analysis ───────────────────────────────────────────────────────
 
-  async generateAiAnalysis(tenantId: string, surveyId: string, generatedBy: string): Promise<any> {
+  async generateAiAnalysis(
+    tenantId: string,
+    surveyId: string,
+    generatedBy: string,
+    force = false,
+  ): Promise<any> {
     // Check AI feature
     await this.checkFeature(tenantId, PlanFeature.AI_INSIGHTS);
 
@@ -664,17 +669,23 @@ export class SurveysService {
       throw new BadRequestException('No hay respuestas para analizar.');
     }
 
-    return this.aiInsightsService.analyzeSurvey(tenantId, surveyId, generatedBy, {
-      surveyTitle: results.survey.title,
-      responseRate: results.responseRate,
-      totalResponses: results.totalResponses,
-      overallAverage: results.overallAverage,
-      averageByCategory: results.averageByCategory,
-      averageByQuestion: results.averageByQuestion,
-      enps,
-      departmentResults: deptResults,
-      openResponses: results.openResponses.slice(0, 50), // Limit to avoid token overflow
-    });
+    return this.aiInsightsService.analyzeSurvey(
+      tenantId,
+      surveyId,
+      generatedBy,
+      {
+        surveyTitle: results.survey.title,
+        responseRate: results.responseRate,
+        totalResponses: results.totalResponses,
+        overallAverage: results.overallAverage,
+        averageByCategory: results.averageByCategory,
+        averageByQuestion: results.averageByQuestion,
+        enps,
+        departmentResults: deptResults,
+        openResponses: results.openResponses.slice(0, 50), // Limit to avoid token overflow
+      },
+      { force },
+    );
   }
 
   async getAiAnalysis(tenantId: string, surveyId: string): Promise<any> {
