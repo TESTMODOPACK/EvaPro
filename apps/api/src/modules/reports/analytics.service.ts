@@ -280,6 +280,16 @@ export class AnalyticsService {
 
     const result: any[] = [];
 
+    // Pre-load direct reports ONCE outside the cycle loop (N+1 fix).
+    // Before: if manager filters + 10 closed cycles, the same query for
+    // directReports ran 10 times with identical results.
+    let managerFilterIds: Set<string> | null = null;
+    if (managerId) {
+      const directReports = await this.userRepo.find({ where: { tenantId, managerId }, select: ['id'] });
+      managerFilterIds = new Set(directReports.map(u => u.id));
+      managerFilterIds.add(managerId);
+    }
+
     for (const cycle of closedCycles) {
       const assignments = await this.assignmentRepo.find({
         where: { cycleId: cycle.id, tenantId },
@@ -293,13 +303,10 @@ export class AnalyticsService {
         : [];
       const responseByAssignment = new Map(responses.map(r => [r.assignmentId, r]));
 
-      // If manager, filter to direct reports
+      // If manager, filter to direct reports (pre-loaded above)
       let filtered = assignments;
-      if (managerId) {
-        const directReports = await this.userRepo.find({ where: { tenantId, managerId }, select: ['id'] });
-        const ids = new Set(directReports.map(u => u.id));
-        ids.add(managerId);
-        filtered = assignments.filter(a => ids.has(a.evaluateeId));
+      if (managerFilterIds) {
+        filtered = assignments.filter(a => managerFilterIds!.has(a.evaluateeId));
       }
 
       // Match responses with assignments

@@ -362,12 +362,21 @@ export class ReportsService {
       external: 'Externo',
     };
 
+    // Pre-load ALL responses for the assignments in a single query instead of
+    // doing a findOne per assignment inside the loop (N+1 fix — 100
+    // assignments = 100 queries → 1 query).
+    const assignmentIds = assignments.map((a) => a.id);
+    const allResponses = assignmentIds.length > 0
+      ? await this.responseRepo.find({ where: { assignmentId: In(assignmentIds) } })
+      : [];
+    const responseByAssignmentPdf = new Map(allResponses.map((r) => [r.assignmentId, r]));
+
     // Build evaluation detail rows + collect scores and responses
     const evalRows: string[][] = [];
     const scores: number[] = [];
     const textAnswers: { evaluator: string; relation: string; answers: Record<string, any> }[] = [];
     for (const a of assignments) {
-      const resp = await this.responseRepo.findOne({ where: { assignmentId: a.id } });
+      const resp = responseByAssignmentPdf.get(a.id) ?? null;
       const score = resp?.overallScore != null ? Number(resp.overallScore) : null;
       if (score != null) scores.push(score);
       evalRows.push([
