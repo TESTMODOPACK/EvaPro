@@ -1,10 +1,14 @@
 import {
   Injectable,
+  Inject,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { cachedFetch, invalidateCache } from '../../common/cache/cache.helper';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Competency, CompetencyStatus } from './entities/competency.entity';
@@ -42,6 +46,7 @@ export class DevelopmentService {
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
   // ─── Competencies ──────────────────────────────────────────────────────
@@ -60,6 +65,7 @@ export class DevelopmentService {
       tenantId,
     });
     const saved = await this.competencyRepo.save(competency);
+    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
     this.auditService.log(tenantId, userId || null, 'competency.created', 'competency', saved.id, {
       name: dto.name, category: dto.category,
     }).catch(() => {});
@@ -71,9 +77,17 @@ export class DevelopmentService {
     if (!includeAll) {
       where.status = CompetencyStatus.APPROVED;
     }
+    // Solo cachear el caso mas comun (approved, sin relations pesadas).
+    // includeAll=true se usa solo en la vista admin de competencias, que
+    // necesita proposer/reviewer y se llama raramente.
+    if (!includeAll) {
+      return cachedFetch(this.cacheManager, `competencies:${tenantId}`, 600, () =>
+        this.competencyRepo.find({ where, order: { category: 'ASC', name: 'ASC' } }),
+      );
+    }
     return this.competencyRepo.find({
       where,
-      relations: includeAll ? ['proposer', 'reviewer'] : [],
+      relations: ['proposer', 'reviewer'],
       order: { category: 'ASC', name: 'ASC' },
     });
   }
@@ -82,7 +96,9 @@ export class DevelopmentService {
     const competency = await this.competencyRepo.findOne({ where: { id, tenantId } });
     if (!competency) throw new NotFoundException('Competencia no encontrada');
     Object.assign(competency, dto);
-    return this.competencyRepo.save(competency);
+    const saved = await this.competencyRepo.save(competency);
+    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
+    return saved;
   }
 
   async deactivateCompetency(tenantId: string, id: string) {
@@ -110,7 +126,9 @@ export class DevelopmentService {
 
     competency.isActive = false;
     competency.deactivatedAt = new Date();
-    return this.competencyRepo.save(competency);
+    const saved = await this.competencyRepo.save(competency);
+    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
+    return saved;
   }
 
   // ─── Seed Default Competencies ────────────────────────────────────────
@@ -177,6 +195,7 @@ export class DevelopmentService {
       await this.auditService.log(tenantId, userId, 'competencies.seeded', 'competency', undefined, { created, skipped, updated: updated.length }).catch(() => {});
     }
 
+    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
     return { created, skipped, updated: updated.length, total: defaults.length };
   }
 
@@ -214,6 +233,7 @@ export class DevelopmentService {
     comp.reviewNote = note || null;
     comp.reviewedAt = new Date();
     const saved = await this.competencyRepo.save(comp);
+    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
     this.auditService.log(tenantId, reviewerId, 'competency.approved', 'competency', comp.id, {
       name: comp.name, approvedBy: reviewerId,
     }).catch(() => {});
@@ -235,6 +255,7 @@ export class DevelopmentService {
     comp.reviewNote = note.trim();
     comp.reviewedAt = new Date();
     const saved = await this.competencyRepo.save(comp);
+    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
     this.auditService.log(tenantId, reviewerId, 'competency.rejected', 'competency', comp.id, {
       name: comp.name, rejectedBy: reviewerId, reason: note.trim(),
     }).catch(() => {});

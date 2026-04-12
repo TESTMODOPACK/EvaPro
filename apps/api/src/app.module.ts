@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
@@ -49,6 +50,16 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     // que reemplaza al default de Nest.
     LoggerModule.forRoot(pinoLoggerConfig),
     ScheduleModule.forRoot(),
+    // Cache in-memory global — TTL por defecto 5 min (300s). Usado por
+    // servicios para cachear lookups que cambian raramente (planes,
+    // tenants, competencias, badges). En Fase 3 se puede migrar a Redis
+    // cambiando solo el store aqui. isGlobal: true permite inyectar
+    // CACHE_MANAGER en cualquier servicio sin importar el modulo.
+    CacheModule.register({
+      isGlobal: true,
+      ttl: 5 * 60 * 1000, // 5 minutos default en milisegundos (cache-manager v6 memory store usa ms)
+      max: 500, // max 500 items en memoria (~2MB estimado)
+    }),
     DatabaseModule,
     AuthModule,
     TenantsModule,

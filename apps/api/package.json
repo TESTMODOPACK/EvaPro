@@ -25,6 +25,7 @@
     },
     "dependencies": {
         "@anthropic-ai/sdk": "^0.80.0",
+        "@nestjs/cache-manager": "^3.0.1",
         "@nestjs/common": "^11.0.1",
         "@nestjs/config": "^4.0.3",
         "@nestjs/core": "^11.0.1",
@@ -37,6 +38,7 @@
         "@sentry/profiling-node": "^10.21.0",
         "@types/multer": "^2.1.0",
         "bcrypt": "^6.0.0",
+        "cache-manager": "^6.4.2",
         "class-transformer": "^0.5.1",
         "class-validator": "^0.15.1",
         "cloudinary": "^2.9.0",

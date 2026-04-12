@@ -8,6 +8,9 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { cachedFetch, invalidateCache } from '../../common/cache/cache.helper';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Subscription, SubscriptionStatus, SUBSCRIPTION_STATUS_VALUES } from './entities/subscription.entity';
@@ -44,6 +47,7 @@ export class SubscriptionsService {
     private readonly auditService: AuditService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
   // ─── Plans CRUD ────────────────────────────────────────────────────────
@@ -75,7 +79,9 @@ export class SubscriptionsService {
   }
 
   async findPlanById(id: string): Promise<SubscriptionPlan> {
-    const plan = await this.planRepo.findOne({ where: { id } });
+    const plan = await cachedFetch(this.cacheManager, `plan:${id}`, 300, () =>
+      this.planRepo.findOne({ where: { id } }),
+    );
     if (!plan) throw new NotFoundException('Plan no encontrado');
     return plan;
   }
@@ -94,13 +100,16 @@ export class SubscriptionsService {
     if (dto.maxAiCallsPerMonth !== undefined) plan.maxAiCallsPerMonth = dto.maxAiCallsPerMonth;
     if (dto.isActive !== undefined) plan.isActive = dto.isActive;
     if (dto.displayOrder !== undefined) plan.displayOrder = dto.displayOrder;
-    return this.planRepo.save(plan);
+    const saved = await this.planRepo.save(plan);
+    await invalidateCache(this.cacheManager, `plan:${id}`);
+    return saved;
   }
 
   async deactivatePlan(id: string): Promise<void> {
     const plan = await this.findPlanById(id);
     plan.isActive = false;
     await this.planRepo.save(plan);
+    await invalidateCache(this.cacheManager, `plan:${id}`);
   }
 
   // ─── Subscriptions CRUD ────────────────────────────────────────────────

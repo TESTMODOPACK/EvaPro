@@ -1,4 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { cachedFetch, invalidateCache } from '../../common/cache/cache.helper';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, MoreThan } from 'typeorm';
 import { Recognition } from './entities/recognition.entity';
@@ -41,6 +44,7 @@ export class RecognitionService {
     private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
   /** Send in-app notification to all active users in tenant (batched). */
@@ -229,17 +233,21 @@ export class RecognitionService {
   // ─── Badges ─────────────────────────────────────────────────────────
 
   async getBadges(tenantId: string) {
-    return this.badgeRepo.find({ where: { tenantId, isActive: true }, order: { name: 'ASC' } });
+    return cachedFetch(this.cacheManager, `badges:${tenantId}`, 600, () =>
+      this.badgeRepo.find({ where: { tenantId, isActive: true }, order: { name: 'ASC' } }),
+    );
   }
 
   async createBadge(tenantId: string, dto: {
     name: string; description?: string; icon?: string; color?: string; criteria?: any; pointsReward?: number;
   }) {
-    return this.badgeRepo.save(this.badgeRepo.create({
+    const saved = await this.badgeRepo.save(this.badgeRepo.create({
       tenantId, name: dto.name, description: dto.description || null,
       icon: dto.icon || 'star', color: dto.color || '#6366f1',
       criteria: dto.criteria || null, pointsReward: dto.pointsReward || 50,
     }));
+    await invalidateCache(this.cacheManager, `badges:${tenantId}`);
+    return saved;
   }
 
   async getUserBadges(tenantId: string, userId: string) {
