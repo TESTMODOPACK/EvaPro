@@ -114,11 +114,13 @@ export class ObjectivesService {
       .orderBy('o.createdAt', 'DESC');
   }
 
-  /** All objectives in the tenant (for tenant_admin) */
+  /** All objectives in the tenant (for tenant_admin). Capped at 200
+   *  to prevent OOM with tenants that accumulate 1000+ OKRs over time.
+   *  The frontend applies its own client-side filtering on the capped set. */
   async findAll(tenantId: string, filterUserId?: string): Promise<Objective[]> {
     const qb = this.objectivesWithRelationsQb(tenantId);
     if (filterUserId) qb.andWhere('o.userId = :filterUserId', { filterUserId });
-    return qb.getMany();
+    return qb.take(200).getMany();
   }
 
   /** Objectives of manager's direct reports + own (for manager) */
@@ -131,6 +133,7 @@ export class ObjectivesService {
 
     return this.objectivesWithRelationsQb(tenantId)
       .andWhere('o.userId IN (:...userIds)', { userIds })
+      .take(200)
       .getMany();
   }
 
@@ -138,6 +141,7 @@ export class ObjectivesService {
   async findByUser(tenantId: string, userId: string): Promise<Objective[]> {
     return this.objectivesWithRelationsQb(tenantId)
       .andWhere('o.userId = :userId', { userId })
+      .take(200)
       .getMany();
   }
 

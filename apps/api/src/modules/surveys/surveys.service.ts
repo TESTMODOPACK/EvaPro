@@ -139,6 +139,7 @@ export class SurveysService {
       .leftJoinAndSelect('s.creator', 'creator', 'creator.tenant_id = s.tenant_id')
       .where('s.tenantId = :tenantId', { tenantId })
       .orderBy('s.createdAt', 'DESC')
+      .take(200) // Safety cap — surveys are low-volume
       .getMany();
   }
 

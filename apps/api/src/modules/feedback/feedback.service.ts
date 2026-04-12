@@ -299,7 +299,7 @@ export class FeedbackService {
       qb.andWhere('c.employeeId = :userId', { userId });
     }
 
-    return qb.getMany();
+    return qb.take(200).getMany();
   }
 
   // ─── Check-in Rejection ──────────────────────────────────────────────────

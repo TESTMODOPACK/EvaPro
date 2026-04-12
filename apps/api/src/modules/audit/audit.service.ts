@@ -50,7 +50,10 @@ export class AuditService {
     page: number,
     limit: number,
     filters?: { action?: string; tenantId?: string; dateFrom?: string; dateTo?: string; entityType?: string; searchText?: string },
-  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+  ): Promise<{ data: any[]; total: number; page: number; limit: number; totalPages: number; hasNext: boolean }> {
+    // Cap limit to prevent OOM — MAX 200 rows per page
+    const safePage = Math.max(1, page || 1);
+    const safeLimit = Math.min(Math.max(1, limit || 50), 200);
     const qb = this.auditRepo.createQueryBuilder('log');
 
     if (filters?.action) {
@@ -70,8 +73,8 @@ export class AuditService {
     }
 
     qb.orderBy('log.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .skip((safePage - 1) * safeLimit)
+      .take(safeLimit);
 
     const [rawData, total] = await qb.getManyAndCount();
 
@@ -104,7 +107,9 @@ export class AuditService {
       );
     }
 
-    return { data, total: filters?.searchText ? data.length : total, page, limit };
+    const finalTotal = filters?.searchText ? data.length : total;
+    const totalPages = Math.ceil(finalTotal / safeLimit);
+    return { data, total: finalTotal, page: safePage, limit: safeLimit, totalPages, hasNext: safePage < totalPages };
   }
 
   async findByTenant(
@@ -119,9 +124,14 @@ export class AuditService {
       evidenceOnly?: boolean;
       searchText?: string;
     },
-  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
-    const page = filters.page || 1;
-    const limit = filters.limit || 25;
+  ): Promise<{ data: any[]; total: number; page: number; limit: number; totalPages: number; hasNext: boolean }> {
+    const page = Math.max(1, filters.page || 1);
+    // Cap at 200 for API requests but allow up to 10000 for internal callers
+    // (CSV export). The controller enforces the 200 cap via ParseIntPipe +
+    // DefaultValuePipe; internal callers like exportTenantCsv pass the
+    // explicit higher limit.
+    const maxCap = (filters as any)._internalMaxLimit || 200;
+    const limit = Math.min(Math.max(1, filters.limit || 25), maxCap);
 
     const qb = this.auditRepo.createQueryBuilder('log')
       .leftJoin('users', 'u', 'u.id = log.user_id AND u.tenant_id = log.tenant_id')
@@ -171,11 +181,12 @@ export class AuditService {
       isEvidence: EVIDENCE_ACTIONS.includes(d.action),
     }));
 
-    return { data: result, total, page, limit };
+    const totalPages = Math.ceil(total / limit);
+    return { data: result, total, page, limit, totalPages, hasNext: page < totalPages };
   }
 
   async exportTenantCsv(tenantId: string, filters: { dateFrom?: string; dateTo?: string; action?: string; entityType?: string; evidenceOnly?: boolean; searchText?: string } = {}): Promise<string> {
-    const { data } = await this.findByTenant(tenantId, { page: 1, limit: 10000, ...filters });
+    const { data } = await this.findByTenant(tenantId, { page: 1, limit: 10000, ...filters, _internalMaxLimit: 10000 } as any);
     const header = 'Fecha,Usuario,Email,Accion,Tipo Entidad,ID Entidad,Detalle,IP,Evidencia Legal';
     const escCsv = (v: string) => v.replace(/"/g, '""');
     const rows = data.map((d: any) => {

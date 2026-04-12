@@ -67,6 +67,7 @@ export class EvaluationsService {
       .where('c.tenantId = :tenantId', { tenantId })
       .andWhere('c.status != :cancelled', { cancelled: CycleStatus.CANCELLED })
       .orderBy('c.created_at', 'DESC')
+      .take(200) // Safety cap — cycles are low-volume (~50 for 3 years of operation)
       .getMany();
   }
 

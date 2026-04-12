@@ -74,6 +74,7 @@ export class ContractsService {
     return this.contractRepo.find({
       where: { tenantId },
       order: { createdAt: 'DESC' },
+      take: 200,
     });
   }
 
@@ -81,6 +82,7 @@ export class ContractsService {
     return this.contractRepo.find({
       relations: ['tenant'],
       order: { createdAt: 'DESC' },
+      take: 200,
     });
   }
 

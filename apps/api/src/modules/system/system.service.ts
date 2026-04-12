@@ -20,7 +20,10 @@ export class SystemService {
   }
 
   async getAllChangelog(): Promise<SystemChangelog[]> {
-    return this.changelogRepo.find({ order: { publishedAt: 'DESC' } });
+    // Safety cap: changelog is low-volume (~50-100 entries) so full
+    // PaginatedResponse is overkill, but we still cap at 200 to prevent
+    // accidental unbounded growth from becoming an OOM vector.
+    return this.changelogRepo.find({ order: { publishedAt: 'DESC' }, take: 200 });
   }
 
   async createChangelog(dto: CreateChangelogDto): Promise<SystemChangelog> {

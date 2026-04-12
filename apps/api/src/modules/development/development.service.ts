@@ -496,7 +496,7 @@ export class DevelopmentService {
   }
 
   async findAllPlans(tenantId: string) {
-    return this.plansWithRelationsQb(tenantId).getMany();
+    return this.plansWithRelationsQb(tenantId).take(200).getMany();
   }
 
   async findPlansByManager(tenantId: string, managerId: string) {
@@ -509,12 +509,14 @@ export class DevelopmentService {
 
     return this.plansWithRelationsQb(tenantId)
       .andWhere('p.userId IN (:...userIds)', { userIds })
+      .take(200)
       .getMany();
   }
 
   async findPlansByUser(tenantId: string, userId: string) {
     return this.plansWithRelationsQb(tenantId)
       .andWhere('p.userId = :userId', { userId })
+      .take(200)
       .getMany();
   }
 
