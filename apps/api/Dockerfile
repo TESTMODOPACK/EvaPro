@@ -22,5 +22,14 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 
-# Run migrations + seed + start
-CMD ["sh", "-c", "node dist/database/cleanup-orphans.js && node dist/database/seed.js && node dist/database/seed-demo-full.js && node dist/main"]
+# Start the app. Los seeds (seed.js y seed-demo-full.js) YA NO corren en
+# el CMD — eran la causa raiz del bug del add-on IA que reaparecia (y de
+# otros efectos colaterales en cada reboot del container). Para
+# bootstrapear el demo en un entorno nuevo, correr manualmente:
+#
+#   docker compose exec api node dist/database/seed.js
+#   docker compose exec api node dist/database/seed-demo-full.js
+#
+# `cleanup-orphans.js` SI sigue corriendo porque es idempotente y solo
+# borra filas huerfanas (no reescribe datos del usuario).
+CMD ["sh", "-c", "node dist/database/cleanup-orphans.js && node dist/main"]

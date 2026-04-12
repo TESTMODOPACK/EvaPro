@@ -2,9 +2,12 @@ services:
   - type: web
     name: ascenda-api
     env: node
-    # pnpm install without --prod so that devDependencies (nest CLI) are available during build
-    # schema-sync + seed removed — run manually only when schema changes
-    buildCommand: pnpm install && npx turbo run build --filter=@repo/api && node apps/api/dist/database/seed.js || true
+    # pnpm install without --prod so that devDependencies (nest CLI) are available during build.
+    # NOTA: los seeds YA NO corren en el buildCommand. En cada deploy, seed.js
+    # pisaba silenciosamente los cambios del demo tenant (plan, addon IA).
+    # Si necesitas bootstrapear un entorno nuevo, correr manualmente via Render Shell:
+    #   node apps/api/dist/database/seed.js && node apps/api/dist/database/seed-demo-full.js
+    buildCommand: pnpm install && npx turbo run build --filter=@repo/api
     startCommand: node apps/api/dist/main
     envVars:
       - key: NODE_ENV

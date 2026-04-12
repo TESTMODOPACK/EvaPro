@@ -15,6 +15,7 @@ import { EngagementSurvey } from './engagement-survey.entity';
 @Entity('survey_responses')
 @Index('idx_response_survey', ['surveyId'])
 @Index('idx_response_tenant', ['tenantId'])
+@Index('idx_survey_resp_respondent', ['tenantId', 'respondentId'])
 export class SurveyResponse {
   @PrimaryGeneratedColumn('uuid')
   id: string;

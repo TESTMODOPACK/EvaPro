@@ -338,11 +338,18 @@ export class UsersService {
     return saved;
   }
 
-  async update(id: string, tenantId: string, dto: UpdateUserDto, callerRole?: string): Promise<User> {
+  async update(id: string, tenantId: string, dto: UpdateUserDto, callerRole?: string, callerUserId?: string): Promise<User> {
     const user = await this.findById(id);
     // super_admin can update any user; others only their own tenant
     if (callerRole !== 'super_admin' && user.tenantId !== tenantId) {
       throw new NotFoundException('Usuario no encontrado');
+    }
+    // Non-admin callers can ONLY update their own profile. Without this check
+    // an `employee` or `manager` could PATCH another user's managerId /
+    // departmentId / password since the controller does not restrict by role.
+    const isAdmin = callerRole === 'super_admin' || callerRole === 'tenant_admin';
+    if (!isAdmin && callerUserId && id !== callerUserId) {
+      throw new ForbiddenException('Solo puede editar su propio perfil');
     }
 
     if (dto.password) {

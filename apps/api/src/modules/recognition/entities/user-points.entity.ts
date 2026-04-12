@@ -25,6 +25,7 @@ export enum PointsSource {
 @Entity('user_points')
 @Index('idx_up_tenant_user', ['tenantId', 'userId'])
 @Index('idx_up_created', ['tenantId', 'createdAt'])
+@Index('idx_up_tenant_source', ['tenantId', 'source'])
 export class UserPoints {
   @PrimaryGeneratedColumn('uuid')
   id: string;

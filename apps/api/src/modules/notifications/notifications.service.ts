@@ -102,6 +102,14 @@ export class NotificationsService {
    * announcements where each user should always receive the notification
    * (e.g., new catalog item, new challenge). Dedup is implemented as a
    * single batched IN query, not N sequential counts — safe for 1000+ users.
+   *
+   * `dedupeByMetadataKeys` extiende el key de dedup para incluir campos
+   * del metadata. Ej. pasando `['assignmentId']` garantiza que dos
+   * recordatorios del mismo user para distintos assignments NO se
+   * confundan como duplicados. Uso tipico: el cron de recordatorios de
+   * evaluaciones pasa `['assignmentId']` para que cada assignment en
+   * progreso reciba su propio recordatorio aunque el user tenga varios
+   * a la vez.
    */
   async createBulk(
     notifications: Array<{
@@ -112,7 +120,7 @@ export class NotificationsService {
       message: string;
       metadata?: Record<string, any>;
     }>,
-    options: { dedupe?: boolean; dedupeHoursBack?: number } = {},
+    options: { dedupe?: boolean; dedupeHoursBack?: number; dedupeByMetadataKeys?: string[] } = {},
   ): Promise<void> {
     if (notifications.length === 0) return;
 
@@ -120,8 +128,18 @@ export class NotificationsService {
 
     if (options.dedupe !== false) {
       const hoursBack = options.dedupeHoursBack ?? 12;
+      const metaKeys = options.dedupeByMetadataKeys || [];
       const cutoff = new Date();
       cutoff.setHours(cutoff.getHours() - hoursBack);
+
+      /** Genera la clave de dedup para una notificacion. Incluye los campos
+       *  de metadata indicados en `metaKeys` para que distintos ciclos /
+       *  assignments no se pisen entre si. */
+      const buildKey = (n: { tenantId: string; type: NotificationType; userId: string; metadata?: Record<string, any> }) => {
+        const parts: string[] = [n.tenantId, n.type, n.userId];
+        for (const k of metaKeys) parts.push(String(n.metadata?.[k] ?? ''));
+        return parts.join(':');
+      };
 
       // Group candidates by (tenantId, type) and fetch existing recipients
       // in one query per group, turning an O(N) lookup into O(groups).
@@ -135,6 +153,8 @@ export class NotificationsService {
 
       const alreadyNotified = new Set<string>();
       for (const g of byGroup.values()) {
+        // Si hay metadata keys en el dedup, necesitamos traer `metadata`
+        // para reconstruir la misma clave sobre las filas existentes.
         const existing = await this.notifRepo.find({
           where: {
             tenantId: g.tenantId,
@@ -142,14 +162,21 @@ export class NotificationsService {
             userId: In(g.userIds),
             createdAt: MoreThan(cutoff),
           },
-          select: ['userId'],
+          select: metaKeys.length > 0 ? ['userId', 'metadata'] : ['userId'],
         });
-        for (const e of existing) alreadyNotified.add(`${g.tenantId}:${g.type}:${e.userId}`);
+        for (const e of existing) {
+          alreadyNotified.add(
+            buildKey({
+              tenantId: g.tenantId,
+              type: g.type,
+              userId: e.userId,
+              metadata: (e as any).metadata,
+            }),
+          );
+        }
       }
 
-      toInsert = notifications.filter(
-        (n) => !alreadyNotified.has(`${n.tenantId}:${n.type}:${n.userId}`),
-      );
+      toInsert = notifications.filter((n) => !alreadyNotified.has(buildKey(n)));
       if (toInsert.length === 0) return;
     }
 

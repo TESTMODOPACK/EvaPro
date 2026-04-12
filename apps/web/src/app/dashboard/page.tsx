@@ -1605,6 +1605,32 @@ function AdminDashboard() {
   const obj = execData?.objectives || {};
   const enps = execData?.enps;
   const depts = (cycleSummary?.departmentBreakdown || []).map((d: any) => ({ ...d, avgScore: Number(d.avgScore) || 0 })).sort((a: any, b: any) => b.avgScore - a.avgScore);
+
+  // Metadatos de fuente para la nota al pie de los indicadores. Los KPIs de
+  // Desempeno/OKRs/Eval.Completitud vienen del ULTIMO CICLO CERRADO. El eNPS
+  // viene de la ULTIMA ENCUESTA DE CLIMA CERRADA. Los metadatos ayudan al
+  // usuario a entender de donde provienen los numeros.
+  const latestClosedCycle = closedCycles[0];
+  const latestClosedCycleName = latestClosedCycle?.name || null;
+  const latestClosedCycleDate = latestClosedCycle?.endDate
+    ? new Date(latestClosedCycle.endDate).toLocaleDateString('es-CL')
+    : null;
+  const latestSurveyName = enps?.surveyName || null;
+  // Breakdown del eNPS — misma logica de porcentajes que en
+  // /dashboard/encuestas-clima/[id]/resultados. Si el total es 0 o no hay
+  // datos, no se renderiza nada.
+  const enpsBreakdown = (() => {
+    if (!enps || !enps.total || enps.total === 0) return null;
+    const total = enps.total;
+    return {
+      promoters: enps.promoters || 0,
+      passives: enps.passives || 0,
+      detractors: enps.detractors || 0,
+      pctProm: Math.round(((enps.promoters || 0) / total) * 100),
+      pctPass: Math.round(((enps.passives || 0) / total) * 100),
+      pctDetr: Math.round(((enps.detractors || 0) / total) * 100),
+    };
+  })();
   const plan = subscription?.plan;
   const pendingContracts = contracts.filter((c: any) => c.status === 'pending_signature').length;
   const now = new Date();
@@ -1684,14 +1710,51 @@ function AdminDashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Colaboradores</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--success)' }}>{hc.active || 0}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>activos</div></div>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Desempeño</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: Number(perf.avgScore) >= 7 ? 'var(--success)' : Number(perf.avgScore) >= 5 ? 'var(--warning)' : 'var(--danger)' }}>{Number(perf.avgScore || 0).toFixed(1)}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>promedio</div></div>
-          <div className="card" style={kpiStyle}><div style={kpiLabel}>eNPS</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: enps?.score == null ? 'var(--text-muted)' : enps.score >= 30 ? 'var(--success)' : enps.score >= 0 ? 'var(--warning)' : 'var(--danger)' }}>{enps?.score ?? '—'}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>clima</div></div>
+          <div className="card" style={kpiStyle}>
+            <div style={kpiLabel}>eNPS</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 800, color: enps?.score == null ? 'var(--text-muted)' : enps.score >= 30 ? 'var(--success)' : enps.score >= 0 ? 'var(--warning)' : 'var(--danger)' }}>
+              {enps?.score ?? '—'}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+              {enpsBreakdown ? `${enps.total} respuestas` : 'clima'}
+            </div>
+            {/* Breakdown %promotores / %pasivos / %detractores — solo si hay datos. */}
+            {enpsBreakdown && (
+              <div
+                title={`Promotores ${enpsBreakdown.promoters} · Pasivos ${enpsBreakdown.passives} · Detractores ${enpsBreakdown.detractors}`}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '0.3rem',
+                  marginTop: '0.4rem',
+                  paddingTop: '0.4rem',
+                  borderTop: '1px solid var(--border)',
+                  fontSize: '0.58rem',
+                  fontWeight: 600,
+                }}
+              >
+                <div style={{ flex: 1, color: '#16a34a' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800 }}>{enpsBreakdown.pctProm}%</div>
+                  <div style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.54rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Prom.</div>
+                </div>
+                <div style={{ flex: 1, color: '#eab308' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800 }}>{enpsBreakdown.pctPass}%</div>
+                  <div style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.54rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Pas.</div>
+                </div>
+                <div style={{ flex: 1, color: '#ef4444' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800 }}>{enpsBreakdown.pctDetr}%</div>
+                  <div style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.54rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Detr.</div>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>OKRs</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: obj.total > 0 ? (obj.completionPct >= 70 ? 'var(--success)' : obj.completionPct >= 40 ? 'var(--warning)' : 'var(--danger)') : 'var(--text-muted)' }}>{obj.total > 0 ? `${obj.completionPct || 0}%` : '—'}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>cumplimiento</div></div>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Rotación</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: (turnover?.turnoverRate || 0) > 15 ? 'var(--danger)' : (turnover?.turnoverRate || 0) > 8 ? 'var(--warning)' : 'var(--success)' }}>{turnover?.turnoverRate || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>anual</div></div>
         </div>
       </div>
 
       {/* KPIs Row 2 — Secundarios */}
-      <div className="animate-fade-up" style={{ marginBottom: '1.25rem' }}>
+      <div className="animate-fade-up" style={{ marginBottom: '0.5rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>PDI Completitud</div><div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{pdi?.completionRate || 0}%</div></div>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Adopción (MAU)</div><div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{systemUsage?.adoptionRate || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{systemUsage?.mau || 0} activos/mes</div></div>
@@ -1699,6 +1762,35 @@ function AdminDashboard() {
           {aiQuota && <div className="card" style={kpiStyle}><div style={kpiLabel}>IA Créditos</div><div style={{ fontSize: '1.2rem', fontWeight: 800, color: aiQuota.nearLimit ? 'var(--danger)' : 'var(--text-primary)' }}>{aiQuota.monthlyRemaining ?? '—'}/{aiQuota.monthlyLimit ?? '—'}</div></div>}
         </div>
       </div>
+
+      {/* Fuente de los KPIs — aclara que Desempeno/OKRs/Eval.Completitud
+          provienen del ultimo ciclo cerrado y el eNPS de la ultima encuesta
+          de clima cerrada. Evita confusion cuando los numeros no coinciden
+          con lo que el admin "cree" que deberian mostrar. */}
+      {(latestClosedCycleName || latestSurveyName) && (
+        <div className="animate-fade-up" style={{
+          fontSize: '0.68rem',
+          color: 'var(--text-muted)',
+          marginBottom: '1.25rem',
+          padding: '0.5rem 0.75rem',
+          background: 'rgba(99,102,241,0.05)',
+          borderLeft: '3px solid var(--accent)',
+          borderRadius: 'var(--radius-sm, 6px)',
+          lineHeight: 1.5,
+        }}>
+          <strong style={{ color: 'var(--text-secondary)' }}>Fuente de los indicadores:</strong>{' '}
+          {latestClosedCycleName ? (
+            <>Desempeño, OKRs y Evaluación Completitud provienen del último ciclo cerrado <em>&ldquo;{latestClosedCycleName}&rdquo;</em>{latestClosedCycleDate ? ` (cerrado el ${latestClosedCycleDate})` : ''}. </>
+          ) : (
+            <>Aún no hay ciclos de evaluación cerrados. </>
+          )}
+          {latestSurveyName ? (
+            <>eNPS proviene de la última encuesta de clima cerrada <em>&ldquo;{latestSurveyName}&rdquo;</em>.</>
+          ) : (
+            <>Aún no hay encuestas de clima cerradas.</>
+          )}
+        </div>
+      )}
 
       {/* Alerts */}
       {alerts.length > 0 && (

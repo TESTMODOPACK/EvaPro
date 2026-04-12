@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
@@ -28,6 +29,8 @@ import { KeyResult } from '../objectives/entities/key-result.entity';
 
 @Injectable()
 export class EvaluationsService {
+  private readonly logger = new Logger(EvaluationsService.name);
+
   constructor(
     @InjectRepository(EvaluationCycle)
     private readonly cycleRepo: Repository<EvaluationCycle>,
@@ -925,19 +928,59 @@ export class EvaluationsService {
         totalEvaluated: cycle.totalEvaluated,
       });
 
-      // Send email to all unique evaluators notifying them of the new cycle
+      // Notify all unique evaluators — both via email AND in-app notification.
+      // Previously this only sent email (fire-and-forget, sin logger), so si
+      // el user ignoraba/perdía el mail no veía nada hasta que el cron
+      // `remindPendingEvaluations` (cada 6 h) lo recordara — y ese cron solo
+      // se dispara cuando el assignment pasa a IN_PROGRESS. Resultado: un
+      // user podía lanzarse un ciclo y el evaluador no se enteraba por la
+      // campanita hasta que él mismo lo abriera.
       const uniqueEvaluatorIds = [...new Set(assignments.map(a => a.evaluatorId))];
       const evaluators = await this.userRepo.find({
         where: uniqueEvaluatorIds.map(eid => ({ id: eid })),
         select: ['id', 'email', 'firstName'],
       });
       const dueDateStr = new Date(cycle.endDate).toLocaleDateString('es-CL');
+
+      // Count pending assignments per evaluator so the in-app message is
+      // specific ("2 evaluaciones asignadas" en lugar de solo "Nuevo ciclo").
+      const pendingCountByEvaluator = new Map<string, number>();
+      for (const a of assignments) {
+        if (!a.evaluatorId) continue;
+        pendingCountByEvaluator.set(a.evaluatorId, (pendingCountByEvaluator.get(a.evaluatorId) || 0) + 1);
+      }
+
       for (const ev of evaluators) {
-        if (!ev.email) continue;
-        this.emailService.sendCycleLaunched(ev.email, {
-          firstName: ev.firstName, cycleName: cycle.name,
-          cycleType: cycle.type, dueDate: dueDateStr, cycleId: cycle.id, tenantId,
-        }).catch(() => {});
+        const pendingCount = pendingCountByEvaluator.get(ev.id) || 0;
+        if (pendingCount === 0) continue;
+
+        // 1) Email — ahora con logger si falla (antes era silent).
+        if (ev.email) {
+          this.emailService.sendCycleLaunched(ev.email, {
+            firstName: ev.firstName, cycleName: cycle.name,
+            cycleType: cycle.type, dueDate: dueDateStr, cycleId: cycle.id, tenantId,
+          }).catch((err) => {
+            this.logger.error(
+              `Failed to send cycle-launched email to ${ev.email} for cycle ${cycle.id}: ${err?.message || err}`,
+            );
+          });
+        }
+
+        // 2) Notificación in-app (campanita). Usa el mismo NotificationType
+        //    que el cron de recordatorios, pero con metadata.action
+        //    'cycle_launched' para diferenciar en futuros reportes.
+        this.notificationsService.create({
+          tenantId,
+          userId: ev.id,
+          type: NotificationType.EVALUATION_PENDING,
+          title: `Nuevo ciclo de evaluación: ${cycle.name}`,
+          message: `Tienes ${pendingCount} evaluación${pendingCount > 1 ? 'es' : ''} asignada${pendingCount > 1 ? 's' : ''} en el ciclo "${cycle.name}". Complétala${pendingCount > 1 ? 's' : ''} antes del ${dueDateStr}.`,
+          metadata: { cycleId: cycle.id, action: 'cycle_launched', pendingCount },
+        }).catch((err) => {
+          this.logger.error(
+            `Failed to create in-app notification for evaluator ${ev.id} on cycle ${cycle.id}: ${err?.message || err}`,
+          );
+        });
       }
 
       return {

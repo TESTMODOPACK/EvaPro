@@ -9,6 +9,7 @@ import type { AuditLogMetadata } from '../../../common/types/jsonb-schemas';
 
 @Entity('audit_logs')
 @Index('idx_audit_tenant_date', ['tenantId', 'createdAt'])
+@Index('idx_audit_entity', ['tenantId', 'entityType', 'entityId'])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;

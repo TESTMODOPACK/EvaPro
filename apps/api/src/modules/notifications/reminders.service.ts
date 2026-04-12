@@ -86,7 +86,14 @@ export class RemindersService {
           }));
 
         if (notifications.length > 0) {
-          await this.notificationsService.createBulk(notifications);
+          // Dedup por assignmentId (no solo por user+type) para que:
+          // 1) Si el user tiene pendientes en DOS ciclos distintos, reciba
+          //    recordatorio de ambos (antes solo del primero en disparar).
+          // 2) El cron, al correr cada 6 h, no spamee la campanita — espera
+          //    12 h entre recordatorios del mismo assignment.
+          await this.notificationsService.createBulk(notifications, {
+            dedupeByMetadataKeys: ['assignmentId'],
+          });
           // B2.2: Increment reminder count only for assignments that actually had notifications sent
           // (those with a valid evaluator and where the notification wasn't deduplicated)
           const notifiedAssignmentIds = new Set(

@@ -31,57 +31,130 @@ class ResetPasswordDto {
 }
 
 // ─── In-memory rate limiter for auth endpoints ─────────────────────────
-const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+//
+// Tres buckets separados con distintos limites:
+// - login:         5 intentos / 15 min block / clave IP+email
+// - request-reset: 3 requests / 30 min block / clave IP (evita enumeracion
+//                  de emails y flood de SMTP)
+// - reset-password:5 intentos / 10 min block / clave IP+email (bruteforce del
+//                  codigo de 6 digitos)
+//
+// En memoria significa que se resetean al reiniciar el contenedor. Aceptable
+// para la Fase 0 — en Fase 3 se reemplaza por Redis cuando introduzcamos la
+// infra de queues.
+interface AttemptRecord { count: number; blockedUntil: number; lastAttempt: number }
+const loginAttempts = new Map<string, AttemptRecord>();
+const resetRequestAttempts = new Map<string, AttemptRecord>();
+const resetCodeAttempts = new Map<string, AttemptRecord>();
+
 const MAX_LOGIN_ATTEMPTS = 5;
 const BLOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const ATTEMPT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+const MAX_RESET_REQUESTS = 3;
+const RESET_REQUEST_BLOCK_MS = 30 * 60 * 1000; // 30 minutes
+
+const MAX_RESET_CODE_ATTEMPTS = 5;
+const RESET_CODE_BLOCK_MS = 10 * 60 * 1000; // 10 minutes
 
 function getRateLimitKey(ip: string, email: string): string {
   return `${ip}:${email.toLowerCase()}`;
 }
 
-function checkRateLimit(ip: string, email: string): void {
-  const key = getRateLimitKey(ip, email);
-  const record = loginAttempts.get(key);
+/** Generic rate limiter check that throws with a readable message. Used by
+ *  all three buckets below with their own map + config. */
+function checkBucket(
+  map: Map<string, AttemptRecord>,
+  key: string,
+  operation: string,
+): void {
+  const record = map.get(key);
   if (!record) return;
-
   if (record.blockedUntil > Date.now()) {
     const minutesLeft = Math.ceil((record.blockedUntil - Date.now()) / 60000);
     throw new BadRequestException(
-      `Demasiados intentos fallidos. Cuenta bloqueada por ${minutesLeft} minuto${minutesLeft > 1 ? 's' : ''}. Intenta más tarde.`,
+      `Demasiados intentos de ${operation}. Inténtalo de nuevo en ${minutesLeft} minuto${minutesLeft > 1 ? 's' : ''}.`,
     );
   }
 }
 
-function recordFailedAttempt(ip: string, email: string): void {
-  const key = getRateLimitKey(ip, email);
-  const record = loginAttempts.get(key);
+/** Registra un intento fallido. Si el ultimo intento ocurrio hace mas de
+ *  ATTEMPT_WINDOW_MS, la ventana se reinicia (para no castigar a un usuario
+ *  que vuelve al dia siguiente con password fresco). Si acumula `maxAttempts`
+ *  intentos dentro de la ventana, marca el bucket como bloqueado por
+ *  `blockMs` milisegundos. */
+function recordBucketAttempt(
+  map: Map<string, AttemptRecord>,
+  key: string,
+  maxAttempts: number,
+  blockMs: number,
+): void {
   const now = Date.now();
-
-  if (!record || now - (record.blockedUntil - BLOCK_DURATION_MS) > ATTEMPT_WINDOW_MS) {
-    loginAttempts.set(key, { count: 1, blockedUntil: 0 });
+  const record = map.get(key);
+  if (!record || now - record.lastAttempt > ATTEMPT_WINDOW_MS) {
+    map.set(key, { count: 1, blockedUntil: 0, lastAttempt: now });
     return;
   }
-
   record.count++;
-  if (record.count >= MAX_LOGIN_ATTEMPTS) {
-    record.blockedUntil = now + BLOCK_DURATION_MS;
+  record.lastAttempt = now;
+  if (record.count >= maxAttempts) {
+    record.blockedUntil = now + blockMs;
   }
 }
 
+// ─── Login bucket ─────────────────────────────────────────────────────
+function checkRateLimit(ip: string, email: string): void {
+  checkBucket(loginAttempts, getRateLimitKey(ip, email), 'inicio de sesión');
+}
+function recordFailedAttempt(ip: string, email: string): void {
+  recordBucketAttempt(loginAttempts, getRateLimitKey(ip, email), MAX_LOGIN_ATTEMPTS, BLOCK_DURATION_MS);
+}
 function clearAttempts(ip: string, email: string): void {
   loginAttempts.delete(getRateLimitKey(ip, email));
 }
 
-// Clean up old entries every 30 minutes
+// ─── Reset-request bucket (solicitar codigo de recuperacion) ──────────
+function checkResetRequestLimit(ip: string): void {
+  checkBucket(resetRequestAttempts, ip, 'solicitud de recuperación');
+}
+function recordResetRequest(ip: string): void {
+  recordBucketAttempt(resetRequestAttempts, ip, MAX_RESET_REQUESTS, RESET_REQUEST_BLOCK_MS);
+}
+
+// ─── Reset-code bucket (ingresar codigo + nueva password) ─────────────
+function checkResetCodeLimit(ip: string, email: string): void {
+  checkBucket(resetCodeAttempts, getRateLimitKey(ip, email), 'restablecimiento');
+}
+function recordResetCodeAttempt(ip: string, email: string): void {
+  recordBucketAttempt(resetCodeAttempts, getRateLimitKey(ip, email), MAX_RESET_CODE_ATTEMPTS, RESET_CODE_BLOCK_MS);
+}
+function clearResetCodeAttempts(ip: string, email: string): void {
+  resetCodeAttempts.delete(getRateLimitKey(ip, email));
+}
+
+// Garbage-collect entradas viejas cada 30 minutos. Una entrada se puede
+// borrar si (a) ya salio del bloqueo (blockedUntil < now) Y (b) el ultimo
+// intento fue hace mas que la ventana larga — usamos el mayor de los tres
+// bloqueos para no borrar prematuramente.
+const MAX_BLOCK_WINDOW_MS = Math.max(BLOCK_DURATION_MS, RESET_REQUEST_BLOCK_MS, RESET_CODE_BLOCK_MS);
 setInterval(() => {
   const now = Date.now();
-  loginAttempts.forEach((v, k) => {
-    if (v.blockedUntil < now && now - v.blockedUntil > ATTEMPT_WINDOW_MS) {
-      loginAttempts.delete(k);
-    }
-  });
+  for (const map of [loginAttempts, resetRequestAttempts, resetCodeAttempts]) {
+    map.forEach((v, k) => {
+      if (v.blockedUntil < now && now - v.lastAttempt > MAX_BLOCK_WINDOW_MS) {
+        map.delete(k);
+      }
+    });
+  }
 }, 30 * 60 * 1000);
+
+/** Extract the client IP from a request, handling x-forwarded-for. */
+function getClientIp(req: any): string {
+  const ip = req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress;
+  if (typeof ip === 'string') return ip.split(',')[0].trim();
+  if (Array.isArray(ip) && ip.length > 0) return ip[0];
+  return 'unknown';
+}
 
 // ─── Password policy ───────────────────────────────────────────────────
 const PASSWORD_MIN_LENGTH = 8;
@@ -103,8 +176,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto, @Req() req: any) {
-    const ip = req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress;
-    const clientIp = typeof ip === 'string' ? ip.split(',')[0].trim() : ip?.[0] || 'unknown';
+    const clientIp = getClientIp(req);
 
     // Rate limit check
     checkRateLimit(clientIp, loginDto.email);
@@ -155,16 +227,34 @@ export class AuthController {
 
   @Post('request-reset')
   @HttpCode(HttpStatus.OK)
-  async requestReset(@Body() dto: RequestResetDto) {
+  async requestReset(@Body() dto: RequestResetDto, @Req() req: any) {
+    const clientIp = getClientIp(req);
+    // Rate limit SIEMPRE por IP para evitar (a) enumeracion de emails validos
+    // y (b) flood del proveedor de email. Cuenta tanto si el email existe
+    // como si no, porque el endpoint devuelve 200 en ambos casos.
+    checkResetRequestLimit(clientIp);
+    recordResetRequest(clientIp);
     await this.authService.requestPasswordReset(dto.email, dto.tenantSlug);
     return { message: 'Si el correo existe, se envió un código de recuperación.' };
   }
 
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  async resetPassword(@Body() dto: ResetPasswordDto) {
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: any) {
+    const clientIp = getClientIp(req);
+    // Rate limit por IP+email para bloquear bruteforce del codigo de 6
+    // digitos. 5 intentos -> bloqueo por 10 min.
+    checkResetCodeLimit(clientIp, dto.email);
     validatePasswordPolicy(dto.newPassword);
-    await this.authService.resetPassword(dto.email, dto.code, dto.newPassword, dto.tenantSlug);
+    try {
+      await this.authService.resetPassword(dto.email, dto.code, dto.newPassword, dto.tenantSlug);
+    } catch (err) {
+      // Registrar intento fallido ANTES de propagar la excepcion, asi el
+      // atacante no puede evadir el contador provocando 500s.
+      recordResetCodeAttempt(clientIp, dto.email);
+      throw err;
+    }
+    clearResetCodeAttempts(clientIp, dto.email);
     return { message: 'Contraseña actualizada exitosamente.' };
   }
 

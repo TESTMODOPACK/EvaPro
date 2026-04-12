@@ -31,6 +31,7 @@ export enum AssignmentStatus {
 @Index('idx_assignments_cycle', ['cycleId'])
 @Index('idx_assignments_evaluatee', ['evaluateeId'])
 @Index('idx_assignments_evaluator', ['evaluatorId'])
+@Index('idx_assignments_tenant_status', ['tenantId', 'status'])
 export class EvaluationAssignment {
   @PrimaryGeneratedColumn('uuid')
   id: string;

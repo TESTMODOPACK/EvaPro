@@ -50,6 +50,7 @@ export enum NotificationType {
 @Index('idx_notifications_user', ['userId'])
 @Index('idx_notifications_tenant_unread', ['tenantId', 'userId', 'isRead'])
 @Index('idx_notifications_created', ['createdAt'])
+@Index('idx_notifications_dedupe', ['tenantId', 'type', 'userId', 'createdAt'])
 export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;

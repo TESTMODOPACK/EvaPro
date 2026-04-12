@@ -139,14 +139,16 @@ export class UsersController {
     return this.usersService.fillFakeRuts(tenantId);
   }
 
-  /** PATCH /users/:id */
+  /** PATCH /users/:id — admins pueden editar cualquier user del tenant;
+   *  usuarios no-admin solo pueden editar su propio perfil (validacion en el
+   *  service). */
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() dto: UpdateUserDto,
   ) {
-    return this.usersService.update(id, req.user.tenantId, dto, req.user.role);
+    return this.usersService.update(id, req.user.tenantId, dto, req.user.role, req.user.userId);
   }
 
   /** DELETE /users/:id  (soft delete – deactivates) */

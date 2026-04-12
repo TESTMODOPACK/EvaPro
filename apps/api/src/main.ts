@@ -1,10 +1,18 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // ─── Graceful shutdown ────────────────────────────────────────────────
+  // Hace que NestJS responda a SIGTERM/SIGINT cerrando los modulos en
+  // orden (destroyers de repositorios, cron jobs, conexiones DB) antes de
+  // matar el proceso. Sin esto, un `docker stop` o un deploy rolling dejan
+  // requests a medio procesar y conexiones DB huerfanas.
+  app.enableShutdownHooks();
 
   // Increase body size limit for base64 file uploads (CVs, attachments stored in DB)
   app.useBodyParser('json', { limit: '10mb' });
@@ -56,7 +64,27 @@ async function bootstrap() {
 
   const port = parseInt(process.env.PORT ?? '3000', 10);
   await app.listen(port);
-  console.log(`API running on port ${port}`);
-  console.log(`CORS allowed origins: ${allowedOrigins ? allowedOrigins.join(', ') : 'all (reflect)'}`);
+  logger.log(`API running on port ${port}`);
+  logger.log(`CORS allowed origins: ${allowedOrigins ? allowedOrigins.join(', ') : 'all (reflect)'}`);
+  logger.log(`Health check: GET /health | /health/live | /health/ready`);
 }
+
+// Catch promesas sin .catch() y excepciones uncaught — sin esto Node
+// silenciosamente sigue corriendo en estado inconsistente. Loggeamos y
+// dejamos que el supervisor (Docker, systemd) reinicie el proceso.
+process.on('unhandledRejection', (reason) => {
+  const logger = new Logger('UnhandledRejection');
+  logger.error(`Unhandled promise rejection: ${reason}`, (reason as any)?.stack);
+  // Deliberadamente NO llamamos process.exit(1). EvaPro tiene muchos
+  // fire-and-forget (emails, notificaciones) con .catch() vacio que pueden
+  // ocasionalmente tirar rejections — matar el API por eso seria demasiado
+  // agresivo. Loggear es suficiente para diagnostico.
+});
+process.on('uncaughtException', (err) => {
+  const logger = new Logger('UncaughtException');
+  logger.error(`Uncaught exception: ${err.message}`, err.stack);
+  // Dar tiempo al logger de flushear antes de salir
+  setTimeout(() => process.exit(1), 1000);
+});
+
 void bootstrap();

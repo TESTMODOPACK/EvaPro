@@ -38,7 +38,11 @@ export class DeiController {
     return this.deiService.getConfig(req.user.tenantId);
   }
 
+  // Writes below override the class-level @Roles to exclude `manager` —
+  // modificar configuracion DEI o acciones correctivas del tenant entero
+  // es responsabilidad de tenant_admin, no de cada jefe de equipo.
   @Patch('config')
+  @Roles('super_admin', 'tenant_admin')
   updateConfig(@Request() req: any, @Body() dto: any) {
     return this.deiService.updateConfig(req.user.tenantId, dto);
   }
@@ -50,11 +54,13 @@ export class DeiController {
   }
 
   @Post('corrective-actions')
+  @Roles('super_admin', 'tenant_admin')
   createCorrectiveAction(@Request() req: any, @Body() dto: any) {
     return this.deiService.createCorrectiveAction(req.user.tenantId, req.user.userId, dto);
   }
 
   @Patch('corrective-actions/:id')
+  @Roles('super_admin', 'tenant_admin')
   updateCorrectiveAction(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,

@@ -28,6 +28,7 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
+import { HealthModule } from './modules/health/health.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
@@ -60,6 +61,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     SignaturesModule,
     SurveysModule,
     ContractsModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
