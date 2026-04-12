@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
+import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
+import { pinoLoggerConfig } from './common/logger/pino-logger.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -36,6 +39,15 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    // Sentry — debe ir primero (ademas del import de instrument.ts en
+    // main.ts) para que los tracing hooks registren los controllers/
+    // services de TODOS los modulos de abajo. Si SENTRY_DSN no esta
+    // seteado, el init() es no-op y SentryModule queda pasivo.
+    SentryModule.forRoot(),
+    // Logger estructurado (pino) — debe ir ANTES de cualquier modulo que
+    // use `@InjectPinoLogger` o `new Logger()`. Provee un Logger global
+    // que reemplaza al default de Nest.
+    LoggerModule.forRoot(pinoLoggerConfig),
     ScheduleModule.forRoot(),
     DatabaseModule,
     AuthModule,
@@ -66,6 +78,16 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
   controllers: [AppController],
   providers: [
     AppService,
+    // SentryGlobalFilter atrapa TODAS las excepciones no-manejadas y las
+    // reporta a Sentry. Se registra como APP_FILTER para que corra al
+    // final de la cadena de filters. Ya esta configurado con la
+    // whitelist de ignoreErrors en instrument.ts, asi que los 4xx de
+    // cliente (BadRequest, NotFound, Unauthorized, Forbidden, Conflict)
+    // se filtran antes de llegar a Sentry.
+    {
+      provide: APP_FILTER,
+      useClass: SentryGlobalFilter,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: TenantContextInterceptor,

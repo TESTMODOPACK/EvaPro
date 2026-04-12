@@ -1,11 +1,34 @@
+// ──────────────────────────────────────────────────────────────────────
+// SENTRY — debe ser el PRIMER import del proceso. Ver instrument.ts para
+// detalles. El side-effect del import ejecuta Sentry.init() que registra
+// los hooks de OpenTelemetry antes de que se cargue express/typeorm/pg.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+// ──────────────────────────────────────────────────────────────────────
+import './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { Logger as PinoLogger } from 'nestjs-pino';
+import * as Sentry from '@sentry/nestjs';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  // `bufferLogs: true` hace que NestJS acumule los logs de arranque hasta
+  // que el LoggerModule (pino) este listo, despues los flushea con el
+  // formato correcto. Sin esto los primeros logs salen con el formato
+  // default de Nest, lo cual rompe el parsing JSON.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
+
+  // Reemplazar el logger default de Nest por el pino global registrado
+  // en LoggerModule. A partir de aqui, todo `new Logger(...)` en cualquier
+  // servicio usa pino, todos los logs salen en JSON, y request-id +
+  // tenantId + userId se propagan automaticamente.
+  app.useLogger(app.get(PinoLogger));
+
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // ─── Graceful shutdown ────────────────────────────────────────────────
   // Hace que NestJS responda a SIGTERM/SIGINT cerrando los modulos en
@@ -70,21 +93,31 @@ async function bootstrap() {
 }
 
 // Catch promesas sin .catch() y excepciones uncaught — sin esto Node
-// silenciosamente sigue corriendo en estado inconsistente. Loggeamos y
-// dejamos que el supervisor (Docker, systemd) reinicie el proceso.
+// silenciosamente sigue corriendo en estado inconsistente. Loggeamos Y
+// reportamos a Sentry (si esta configurado) para diagnostico remoto.
 process.on('unhandledRejection', (reason) => {
   const logger = new Logger('UnhandledRejection');
   logger.error(`Unhandled promise rejection: ${reason}`, (reason as any)?.stack);
+  // Sentry captura tambien estos eventos automaticamente via
+  // OnUncaughtExceptionStrategy, pero los mandamos explicitamente con
+  // mas contexto. Si Sentry esta desactivado, este call es no-op.
+  Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)), {
+    tags: { source: 'unhandledRejection' },
+  });
   // Deliberadamente NO llamamos process.exit(1). EvaPro tiene muchos
   // fire-and-forget (emails, notificaciones) con .catch() vacio que pueden
   // ocasionalmente tirar rejections — matar el API por eso seria demasiado
-  // agresivo. Loggear es suficiente para diagnostico.
+  // agresivo. Loggear + reportar es suficiente para diagnostico.
 });
 process.on('uncaughtException', (err) => {
   const logger = new Logger('UncaughtException');
   logger.error(`Uncaught exception: ${err.message}`, err.stack);
-  // Dar tiempo al logger de flushear antes de salir
-  setTimeout(() => process.exit(1), 1000);
+  Sentry.captureException(err, { tags: { source: 'uncaughtException' } });
+  // Dar tiempo al logger Y a Sentry de flushear antes de salir.
+  // Sentry.close() espera a que los eventos pendientes se envien.
+  Sentry.close(2000).finally(() => {
+    setTimeout(() => process.exit(1), 500);
+  });
 });
 
 void bootstrap();

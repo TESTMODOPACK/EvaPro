@@ -71,6 +71,13 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-Eva360 <onboarding@resend.dev>}
       NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost}
       FRONTEND_URL: ${APP_URL:-http://localhost}
+      # ─── Observabilidad ───────────────────────────────────────────
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      SENTRY_PROFILES_SAMPLE_RATE: ${SENTRY_PROFILES_SAMPLE_RATE:-0.1}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "127.0.0.1:3000:3000"
     # /health/live es liveness puro — no toca DB, no pesa el event loop.

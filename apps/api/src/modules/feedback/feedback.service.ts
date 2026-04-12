@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CheckIn, CheckInStatus } from './entities/checkin.entity';
@@ -15,6 +15,8 @@ import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class FeedbackService {
+  private readonly logger = new Logger(FeedbackService.name);
+
   constructor(
     @InjectRepository(CheckIn)
     private readonly checkInRepo: Repository<CheckIn>,
@@ -424,9 +426,15 @@ export class FeedbackService {
         }],
       );
       await this.checkInRepo.update(checkIn.id, { emailSent: true });
-      console.log(`[CheckIn] Email sent to ${employee.email} for check-in ${checkIn.id}`);
+      // NO loggeamos el email (PII) — solo el checkInId para diagnosticar.
+      // El redactor de pino filtra `email` por default, pero mejor ni
+      // exponerlo en el string del mensaje.
+      this.logger.log({ checkInId: checkIn.id, employeeId: employee.id }, 'CheckIn email sent');
     } catch (e: any) {
-      console.error(`[CheckIn] Email FAILED for ${employee.email}:`, e?.message || e);
+      this.logger.error(
+        { checkInId: checkIn.id, employeeId: employee.id, err: e?.message || String(e) },
+        'CheckIn email failed',
+      );
     }
   }
 

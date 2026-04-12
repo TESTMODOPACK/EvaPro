@@ -45,7 +45,13 @@ export const bigintNumberTransformer: ValueTransformer = {
   },
 };
 
-/** Minimal ring-buffer to warn at most once per distinct value prefix. */
+/** Minimal ring-buffer to warn at most once per distinct value prefix.
+ *  NOTE: este transformer es instanciado directamente por TypeORM, fuera
+ *  del DI de NestJS. No tiene acceso al Logger/pino global, asi que se
+ *  usa `console.warn` como ultima opcion. El pino logger de Nest igual
+ *  captura stdout/stderr del proceso, asi que los warnings siguen
+ *  apareciendo en los logs estructurados (con menor contexto, pero
+ *  visibles). No migrar a pino — romperia el transformer. */
 const warned = new Set<string>();
 function warnOnce(value: string): void {
   const key = value.slice(0, 16);

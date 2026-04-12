@@ -31,6 +31,23 @@ services:
         value: 7d
       - key: FRONTEND_URL
         value: https://evaascenda.netlify.app
+      # ─── Observabilidad ────────────────────────────────────────────
+      # SENTRY_DSN: configurar en Render dashboard (valor sensible, no va al yaml).
+      # Si no esta definido, Sentry queda inactivo silenciosamente.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      # Render expone el SHA del commit en RENDER_GIT_COMMIT. instrument.ts
+      # lo usa como fallback si SENTRY_RELEASE no esta explicitamente seteado.
+      # Sampling de traces: 10% en prod es suficiente para ver p95/p99.
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.1"
+      - key: SENTRY_PROFILES_SAMPLE_RATE
+        value: "0.1"
+      # LOG_LEVEL: controla verbosidad de pino. `info` en prod, `debug` en dev.
+      - key: LOG_LEVEL
+        value: info
 
   - type: redis
     name: ascenda-redis
