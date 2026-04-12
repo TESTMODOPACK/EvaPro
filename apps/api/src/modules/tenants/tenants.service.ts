@@ -667,6 +667,39 @@ export class TenantsService {
     const sorted = [...positions].sort((a, b) => a.level - b.level);
     tenant.settings = { ...(tenant.settings || {}), positions: sorted };
     await this.tenantRepository.save(tenant);
+
+    // ── Sync la tabla `positions` (fuente de verdad para FK de users) ──
+    // Sin esta sincronizacion, los niveles quedan en el JSONB pero la tabla
+    // sigue con level=0, y el dropdown de jefatura directa no filtra bien.
+    // Tambien propaga el nivel a los users via update de hierarchyLevel.
+    for (const p of sorted) {
+      const name = p.name?.trim();
+      if (!name) continue;
+      const existing = await this.positionRepo
+        .createQueryBuilder('p')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('LOWER(p.name) = LOWER(:name)', { name })
+        .getOne();
+      if (existing) {
+        // Actualizar nivel si cambio
+        if (existing.level !== p.level) {
+          existing.level = p.level;
+          existing.isActive = true;
+          await this.positionRepo.save(existing);
+          // Propagar a users con este cargo
+          await this.userRepository.update(
+            { tenantId, positionId: existing.id },
+            { hierarchyLevel: p.level },
+          );
+        }
+      } else {
+        // Crear nuevo record en la tabla
+        await this.positionRepo.save(this.positionRepo.create({
+          tenantId, name, level: p.level, isActive: true,
+        }));
+      }
+    }
+
     return sorted;
   }
 
@@ -1310,7 +1343,20 @@ export class TenantsService {
       }
       pos.name = name;
     }
-    if (dto.level !== undefined) pos.level = dto.level;
+    if (dto.level !== undefined) {
+      pos.level = dto.level;
+      // Propagar el nuevo nivel a TODOS los usuarios que tienen este cargo.
+      // Sin esto, editar el nivel de un cargo en el mantenedor no se reflejaba
+      // en los users existentes: sus `hierarchyLevel` quedaba con el valor
+      // viejo (o null si nunca tuvieron). Eso rompía el filtro de jefatura
+      // directa que compara niveles para determinar quien puede ser jefe de
+      // quien. La propagacion usa `positionId` (FK directa) para mayor
+      // precision que el nombre en texto.
+      await this.userRepository.update(
+        { tenantId, positionId: posId },
+        { hierarchyLevel: dto.level },
+      );
+    }
     if (dto.isActive !== undefined) pos.isActive = dto.isActive;
 
     const saved = await this.positionRepo.save(pos);

@@ -126,6 +126,28 @@ async function main() {
       }
     }
 
+    // ── Backfill hierarchyLevel from position catalog ───────────────────
+    // If a position in the catalog has a `level` but the user's
+    // `hierarchy_level` is NULL (e.g., the level was added to the catalog
+    // AFTER the user was created), sync it. Idempotent — only updates
+    // rows where the user's level is missing AND the position has one.
+    try {
+      const backfillResult = await client.query(`
+        UPDATE users u
+        SET hierarchy_level = p.level
+        FROM positions p
+        WHERE u.position_id = p.id
+          AND u.tenant_id = p.tenant_id
+          AND p.level IS NOT NULL
+          AND u.hierarchy_level IS NULL
+      `);
+      if (backfillResult.rowCount && backfillResult.rowCount > 0) {
+        console.log(`[cleanup] Backfilled hierarchy_level for ${backfillResult.rowCount} user(s) from position catalog`);
+      }
+    } catch (err: any) {
+      console.log(`[cleanup] hierarchy_level backfill skipped: ${err.message}`);
+    }
+
     console.log('[cleanup] Done — TypeORM synchronize can now run cleanly');
   } catch (err: any) {
     console.error('[cleanup] Error:', err.message);
