@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -33,7 +33,9 @@ import { SignaturesModule } from './modules/signatures/signatures.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { HealthModule } from './modules/health/health.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
   imports: [
@@ -85,6 +87,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
     SurveysModule,
     ContractsModule,
     HealthModule,
+    MetricsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -103,6 +106,22 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
       provide: APP_INTERCEPTOR,
       useClass: TenantContextInterceptor,
     },
+    // AuditInterceptor — escribe al audit_log para endpoints con @Audited().
+    // Solo actua sobre handlers que tienen el decorator; los demas pasan
+    // sin costo. Fire-and-forget: no bloquea la respuesta.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
+    },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Registrar el middleware de metricas HTTP globalmente.
+    // Se importa aqui (no en MetricsModule) para que aplique a
+    // TODAS las rutas de todos los modulos, no solo a las del modulo
+    // de metricas.
+    const { MetricsMiddleware } = require('./modules/metrics/metrics.middleware');
+    consumer.apply(MetricsMiddleware).forRoutes('*');
+  }
+}

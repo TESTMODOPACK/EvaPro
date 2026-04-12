@@ -37,6 +37,31 @@ async function bootstrap() {
   // requests a medio procesar y conexiones DB huerfanas.
   app.enableShutdownHooks();
 
+  // ─── /metrics basic auth ──────────────────────────────────────────────
+  // Protege el endpoint de Prometheus con basic auth para que no sea
+  // publico en prod (metadata sensible: rutas, latencia, error rate).
+  // Si METRICS_USER o METRICS_PASSWORD no estan definidos, el endpoint
+  // queda abierto (util para dev local — peligroso en prod).
+  const metricsUser = process.env.METRICS_USER;
+  const metricsPass = process.env.METRICS_PASSWORD;
+  if (metricsUser && metricsPass) {
+    app.use('/metrics', (req: any, res: any, next: any) => {
+      const authHeader = req.headers['authorization'] || '';
+      if (!authHeader.startsWith('Basic ')) {
+        res.setHeader('WWW-Authenticate', 'Basic realm="metrics"');
+        return res.status(401).send('Authentication required');
+      }
+      const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
+      const [user, pass] = decoded.split(':');
+      if (user === metricsUser && pass === metricsPass) return next();
+      res.setHeader('WWW-Authenticate', 'Basic realm="metrics"');
+      return res.status(401).send('Invalid credentials');
+    });
+    logger.log('Metrics endpoint /metrics protected with basic auth');
+  } else {
+    logger.warn('METRICS_USER/METRICS_PASSWORD not set — /metrics endpoint is UNPROTECTED');
+  }
+
   // Increase body size limit for base64 file uploads (CVs, attachments stored in DB)
   app.useBodyParser('json', { limit: '10mb' });
   app.useBodyParser('urlencoded', { limit: '10mb', extended: true } as any);

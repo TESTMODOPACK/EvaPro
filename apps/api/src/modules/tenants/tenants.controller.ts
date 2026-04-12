@@ -18,6 +18,7 @@ import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Audited } from '../../common/decorators/audited.decorator';
 
 @Controller('tenants')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -202,23 +203,27 @@ export class TenantsController {
   }
 
   @Post()
+  @Audited('tenant.created', 'tenant')
   create(@Body() dto: any) {
     return this.tenantsService.create(dto);
   }
 
   /** Bulk onboard a new organization from Excel data */
   @Post('bulk-onboard')
+  @Audited('tenant.bulk_onboarded', 'tenant')
   bulkOnboard(@Body() dto: any) {
     return this.tenantsService.bulkOnboard(dto);
   }
 
   @Patch(':id')
+  @Audited('tenant.updated', 'tenant')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
     return this.tenantsService.update(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Audited('tenant.deactivated', 'tenant')
   deactivate(@Param('id', ParseUUIDPipe) id: string) {
     return this.tenantsService.deactivate(id);
   }
