@@ -138,6 +138,82 @@ const icons = {
       <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" />
     </svg>
   ),
+  // ─── Iconos unicos para menus que antes compartian icono ──────────────
+  // Organigrama — arbol jerarquico (antes: icons.users)
+  orgChart: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="2" width="6" height="4" rx="1"/><rect x="2" y="18" width="6" height="4" rx="1"/><rect x="16" y="18" width="6" height="4" rx="1"/>
+      <line x1="12" y1="6" x2="12" y2="12"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="12" x2="5" y2="18"/><line x1="19" y1="12" x2="19" y2="18"/>
+    </svg>
+  ),
+  // Reconocimientos — corazon/mano (antes: icons.competencies)
+  recognition: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+    </svg>
+  ),
+  // Encuestas de Clima — clipboard con check (antes: icons.calibration)
+  surveys: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 14l2 2 4-4"/>
+    </svg>
+  ),
+  // DEI / Diversidad — globo con personas (antes: icons.orgDevelopment)
+  dei: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+    </svg>
+  ),
+  // Datos Personalizados / Mantenedores — base de datos (antes: icons.settings)
+  customData: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+    </svg>
+  ),
+  // Mis Firmas — lapiz con linea (antes: icons.log)
+  signatures: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="20" x2="20" y2="20"/><path d="M4 16c4-4 6 2 8-2s4-6 6-2"/>
+    </svg>
+  ),
+  // Notificaciones — campana (antes: icons.log)
+  bell: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+  ),
+  // Contratos — documento con sello/firma (antes: icons.log)
+  contracts: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      <path d="M9 15l2 2 4-4"/>
+    </svg>
+  ),
+  // Solicitudes Administrativas — bandeja de entrada (antes: icons.log)
+  inbox: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+    </svg>
+  ),
+  // Auditoría — escudo con check (antes: icons.log)
+  audit: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>
+    </svg>
+  ),
+  // Mi Perfil — usuario individual (antes: icons.users que es grupo)
+  profile: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+    </svg>
+  ),
+  // Facturación — recibo/factura (antes: icons.log)
+  invoice: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  ),
 };
 
 // ─── Nav sections are built inside the component to support i18n ─────────
@@ -187,7 +263,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       items: [
         { href: '/dashboard', label: t('nav.dashboard', 'Dashboard'), icon: icons.dashboard },
         { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance', 'Mi Desempeño'), icon: icons.myPerformance },
-        { href: '/dashboard/notificaciones', label: t('nav.notifications', 'Notificaciones'), icon: icons.log },
+        { href: '/dashboard/notificaciones', label: t('nav.notifications', 'Notificaciones'), icon: icons.bell },
       ],
     },
     // ─── Evaluación de Desempeño ────────────────────────────────
@@ -239,8 +315,8 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       items: [
         { href: '/dashboard/objetivos', label: t('nav.objectives', 'Objetivos y Metas'), icon: icons.objectives },
         { href: '/dashboard/feedback', label: t('nav.feedback', 'Retroalimentación Continua'), icon: icons.feedback },
-        { href: '/dashboard/reconocimientos', label: t('nav.recognitions', 'Reconocimientos'), icon: icons.competencies },
-        { href: '/dashboard/encuestas-clima', label: t('nav.surveys', 'Encuestas de Clima'), icon: icons.calibration },
+        { href: '/dashboard/reconocimientos', label: t('nav.recognitions', 'Reconocimientos'), icon: icons.recognition },
+        { href: '/dashboard/encuestas-clima', label: t('nav.surveys', 'Encuestas de Clima'), icon: icons.surveys },
       ],
     },
     // ─── Selección de Personal ──────────────────────────────────
@@ -254,7 +330,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
     {
       title: 'Firmas Digitales',
       items: [
-        { href: '/dashboard/firmas', label: 'Mis Firmas', icon: icons.log },
+        { href: '/dashboard/firmas', label: 'Mis Firmas', icon: icons.signatures },
       ],
     },
     // ─── Personas ───────────────────────────────────────────────
@@ -264,9 +340,9 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         ...(isAdmin ? [
           { href: '/dashboard/usuarios', label: t('nav.users', 'Usuarios'), icon: icons.users },
         ] : []),
-        { href: '/dashboard/organigrama', label: 'Organigrama', icon: icons.users },
+        { href: '/dashboard/organigrama', label: 'Organigrama', icon: icons.orgChart },
         ...(isAdminOrManager ? [
-          { href: '/dashboard/dei', label: t('nav.dei', 'Diversidad e Inclusión'), icon: icons.orgDevelopment },
+          { href: '/dashboard/dei', label: t('nav.dei', 'Diversidad e Inclusión'), icon: icons.dei },
         ] : []),
       ],
     },
@@ -274,8 +350,8 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
     ...(isAdmin ? [{
       title: t('nav.operations', 'Operaciones'),
       items: [
-        { href: '/dashboard/solicitudes', label: t('nav.approvals', 'Solicitudes Administrativas'), icon: icons.log },
-        { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.log },
+        { href: '/dashboard/solicitudes', label: t('nav.approvals', 'Solicitudes Administrativas'), icon: icons.inbox },
+        { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.audit },
       ],
     }] : []),
     // ─── Configuración ────────────────────────────────────────────
@@ -284,13 +360,13 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       items: [
         ...(isAdmin ? [
           { href: '/dashboard/plantillas', label: t('nav.templates', 'Plantillas'), icon: icons.templates },
-          { href: '/dashboard/mantenedores', label: t('nav.customData', 'Mantenedores'), icon: icons.settings },
+          { href: '/dashboard/mantenedores', label: t('nav.customData', 'Mantenedores'), icon: icons.customData },
         ] : []),
         { href: '/dashboard/mi-suscripcion', label: t('nav.subscription', 'Mi Suscripción'), icon: icons.subscription },
         ...(isAdmin ? [
-          { href: '/dashboard/contratos', label: 'Contratos', icon: icons.log },
+          { href: '/dashboard/contratos', label: 'Contratos', icon: icons.contracts },
         ] : []),
-        { href: '/dashboard/perfil', label: 'Mi Perfil', icon: icons.users },
+        { href: '/dashboard/perfil', label: 'Mi Perfil', icon: icons.profile },
         ...(isAdmin ? [
           { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },
         ] : []),
@@ -305,13 +381,13 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard', label: t('nav.systemPanel'), icon: icons.dashboard },
         { href: '/dashboard/tenants', label: t('nav.organizations'), icon: icons.home },
         { href: '/dashboard/subscriptions', label: t('nav.subscriptions'), icon: icons.subscription },
-        { href: '/dashboard/facturacion', label: 'Facturación', icon: icons.log },
+        { href: '/dashboard/facturacion', label: 'Facturación', icon: icons.invoice },
         { href: '/dashboard/system-metrics', label: t('nav.usageMetrics'), icon: icons.analytics },
         { href: '/dashboard/analytics-uso', label: 'Adopción y Uso', icon: icons.analytics },
-        { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.log },
-        { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: '📋' },
-        { href: '/dashboard/contratos', label: 'Contratos', icon: icons.log },
-        { href: '/dashboard/perfil', label: 'Mi Perfil', icon: icons.users },
+        { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.audit },
+        { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: icons.inbox },
+        { href: '/dashboard/contratos', label: 'Contratos', icon: icons.contracts },
+        { href: '/dashboard/perfil', label: 'Mi Perfil', icon: icons.profile },
         { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },
       ],
     },

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import { CUSTOM_SETTINGS_DEFAULTS, CUSTOM_SETTINGS_META, CUSTOM_SETTINGS_KEYS } from '@/lib/constants';
 import { DepartmentData, PositionData } from '@/lib/api';
@@ -22,6 +23,7 @@ const labelStyle: React.CSSProperties = {
 export default function MantenedoresPage() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
+  const toast = useToastStore((s) => s.toast);
   const invalidateDepts = useInvalidateDepartments();
   const invalidatePos = useInvalidatePositions();
 
@@ -195,8 +197,9 @@ export default function MantenedoresPage() {
                       try {
                         await api.tenants.updateDepartmentRecord(token, d.id, { name: d.name.trim() });
                         setDeptSaved(true); setTimeout(() => setDeptSaved(false), 2000);
+                        toast(`Departamento "${d.name.trim()}" actualizado`, 'success');
                         invalidateDepts();
-                      } catch (e: any) { setDeptError(e.message || 'Error'); setTimeout(() => setDeptError(null), 4000); }
+                      } catch (e: any) { setDeptError(e.message || 'Error'); toast(e.message || 'Error al actualizar departamento', 'error'); setTimeout(() => setDeptError(null), 4000); }
                     }}
                     style={{ flex: 1, fontSize: '0.85rem', padding: '0.3rem 0.6rem' }} />
                   <button type="button" onClick={async () => {
@@ -205,9 +208,11 @@ export default function MantenedoresPage() {
                     try {
                       await api.tenants.deleteDepartmentRecord(token, d.id);
                       setDeptRecords(prev => prev.filter(dept => dept.id !== d.id));
+                      toast(`Departamento "${d.name}" eliminado`, 'success');
                       invalidateDepts();
                     } catch (e: any) {
                       setDeptError(e.message || 'No se puede eliminar');
+                      toast(e.message || 'No se puede eliminar el departamento', 'error');
                       setTimeout(() => setDeptError(null), 6000);
                     }
                   }} title="Eliminar" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1.1rem', padding: '0 0.3rem', lineHeight: 1, flexShrink: 0 }}>&times;</button>
@@ -226,9 +231,10 @@ export default function MantenedoresPage() {
                     try {
                       const created = await api.tenants.createDepartmentRecord(token, { name: deptNewName.trim() });
                       setDeptRecords(prev => [...prev, created]);
+                      toast(`Departamento "${deptNewName.trim()}" creado`, 'success');
                       setDeptNewName('');
                       invalidateDepts();
-                    } catch (err: any) { setDeptError(err.message || 'Error'); setTimeout(() => setDeptError(null), 4000); }
+                    } catch (err: any) { setDeptError(err.message || 'Error'); toast(err.message || 'Error al crear departamento', 'error'); setTimeout(() => setDeptError(null), 4000); }
                     setDeptSaving(false);
                   }
                 }}
@@ -240,9 +246,10 @@ export default function MantenedoresPage() {
                   try {
                     const created = await api.tenants.createDepartmentRecord(token, { name: deptNewName.trim() });
                     setDeptRecords(prev => [...prev, created]);
+                    toast(`Departamento "${deptNewName.trim()}" creado`, 'success');
                     setDeptNewName('');
                     invalidateDepts();
-                  } catch (err: any) { setDeptError(err.message || 'Error'); setTimeout(() => setDeptError(null), 4000); }
+                  } catch (err: any) { setDeptError(err.message || 'Error'); toast(err.message || 'Error al crear departamento', 'error'); setTimeout(() => setDeptError(null), 4000); }
                   setDeptSaving(false);
                 }}
                 style={{ fontSize: '0.85rem', padding: '0.45rem 1rem', opacity: !deptNewName.trim() ? 0.5 : 1 }}>
