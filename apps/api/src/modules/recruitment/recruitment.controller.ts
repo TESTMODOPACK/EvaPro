@@ -159,4 +159,11 @@ export class RecruitmentController {
   generateAiRecommendation(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.generateAiRecommendation(req.user.tenantId, id, req.user.userId);
   }
+
+  /** Recalculate all candidate scores (admin fix after formula change) */
+  @Post('recalculate-scores')
+  @Roles('super_admin', 'tenant_admin')
+  recalculateScores(@Request() req: any) {
+    return this.service.recalculateAllScores(req.user.tenantId);
+  }
 }

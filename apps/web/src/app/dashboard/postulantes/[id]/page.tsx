@@ -1014,7 +1014,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 {scorecard.scores?.interviewAvg != null && (
                   <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{t('postulantes.detail.scorecard.interviewAvg')}</div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{scorecard.scores.interviewAvg}/10</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{Number(scorecard.scores.interviewAvg).toFixed(1)}/10</div>
                   </div>
                 )}
                 {scorecard.scores?.requirementPct != null && (
@@ -1026,7 +1026,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 {scorecard.scores?.historyAvg != null && (
                   <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{t('postulantes.detail.scorecard.historyAvg')}</div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>{Number(scorecard.scores.historyAvg).toFixed(2)}/10</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>{Number(scorecard.scores.historyAvg).toFixed(1)}/10</div>
                   </div>
                 )}
                 <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
@@ -1045,7 +1045,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                     <div key={i.id} style={{ padding: '0.75rem', marginBottom: '0.5rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
                         <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{i.evaluator?.firstName} {i.evaluator?.lastName}</span>
-                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{i.globalScore != null ? i.globalScore + '/10' : '--'}</span>
+                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{i.globalScore != null ? Number(i.globalScore).toFixed(1) + '/10' : '--'}</span>
                       </div>
                       {i.comments && <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>{i.comments}</p>}
                     </div>
@@ -1216,6 +1216,88 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               ))}
             </div>
           </div>
+
+          {/* Scoring weights configuration */}
+          {isAdmin && (
+            <div className="card" style={{ padding: '1.5rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Ponderación del Puntaje Final</h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                Define qué porcentaje aporta cada componente al puntaje final. La suma debe ser 100%.
+                Al guardar, se recalculan automáticamente los puntajes de todos los candidatos.
+              </p>
+              {(() => {
+                const w = process.scoringWeights || { interview: 40, history: 30, requirements: 20, cvMatch: 10 };
+                const fields = isInternal
+                  ? [
+                      { key: 'interview', label: 'Entrevistas', desc: 'Promedio de evaluaciones de entrevista' },
+                      { key: 'history', label: 'Historial Eval.', desc: 'Puntaje promedio de evaluaciones pasadas' },
+                      { key: 'requirements', label: 'Requisitos', desc: '% de cumplimiento de requisitos del cargo' },
+                      { key: 'cvMatch', label: 'Match CV (IA)', desc: '% de ajuste del CV analizado por IA' },
+                    ]
+                  : [
+                      { key: 'interview', label: 'Entrevistas', desc: 'Promedio de evaluaciones de entrevista' },
+                      { key: 'requirements', label: 'Requisitos', desc: '% de cumplimiento de requisitos del cargo' },
+                      { key: 'cvMatch', label: 'Match CV (IA)', desc: '% de ajuste del CV analizado por IA' },
+                    ];
+                const total = fields.reduce((s, f) => s + ((w as any)[f.key] || 0), 0);
+                return (
+                  <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      {fields.map((f) => (
+                        <div key={f.key} style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                          <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.3rem' }}>{f.label}</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <input
+                              className="input"
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={(w as any)[f.key] || 0}
+                              onChange={(e) => {
+                                const newW = { ...w, [f.key]: Number(e.target.value) || 0 };
+                                // Optimistic UI update
+                                (process as any).scoringWeights = newW;
+                              }}
+                              style={{ width: '70px', fontSize: '0.85rem', textAlign: 'center' }}
+                            />
+                            <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>%</span>
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{f.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: total === 100 ? 'var(--success)' : 'var(--danger)' }}>
+                        Total: {total}% {total !== 100 ? '(debe ser 100%)' : '✓'}
+                      </span>
+                      <button
+                        className="btn-primary"
+                        disabled={total !== 100}
+                        style={{ fontSize: '0.82rem', padding: '0.4rem 1rem', opacity: total !== 100 ? 0.5 : 1 }}
+                        onClick={async () => {
+                          if (!token || total !== 100) return;
+                          try {
+                            await api.recruitment.processes.update(token, params.id, { scoringWeights: w });
+                            // Recalculate all scores with new weights
+                            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/recruitment/recalculate-scores`, {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                            });
+                            fetchProcess();
+                            toast('Pesos actualizados y puntajes recalculados', 'success');
+                          } catch (e: any) {
+                            toast(e.message || 'Error al guardar pesos', 'error');
+                          }
+                        }}
+                      >
+                        Guardar pesos y recalcular
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {/* Status change (admin only) */}
           {isAdmin && (

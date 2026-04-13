@@ -79,8 +79,8 @@ export class RecruitmentProcess {
   @Column({ type: 'date', name: 'end_date', nullable: true })
   endDate: Date | null;
 
-  @Column({ type: 'jsonb', name: 'scoring_weights', default: () => "'{\"history\": 40, \"interview\": 60}'" })
-  scoringWeights: { history: number; interview: number };
+  @Column({ type: 'jsonb', name: 'scoring_weights', default: () => "'{\"interview\": 40, \"history\": 30, \"requirements\": 20, \"cvMatch\": 10}'" })
+  scoringWeights: { interview: number; history?: number; requirements?: number; cvMatch?: number };
 
   @Column({ type: 'uuid', name: 'created_by' })
   createdBy: string;

@@ -579,6 +579,24 @@ export class RecruitmentService {
     await this.recalculateScore(tenantId, candidateId);
   }
 
+  /**
+   * Recalculate the final score for a candidate using ALL available data:
+   *
+   * CANDIDATO INTERNO:
+   *   Pesos por defecto (configurables via process.scoringWeights):
+   *     - Entrevistas:   40%  (promedio de globalScore de evaluadores)
+   *     - Historial:     30%  (avgScore de evaluaciones pasadas, escala 0-10)
+   *     - Requisitos:    20%  (% cumplimiento de requisitos del cargo)
+   *     - Match CV IA:   10%  (cvMatchScore del analisis IA, si existe)
+   *
+   * CANDIDATO EXTERNO:
+   *     - Entrevistas:   50%
+   *     - Requisitos:    30%
+   *     - Match CV IA:   20%
+   *
+   * Si un componente no tiene datos (ej: no hay entrevistas aun), su peso
+   * se redistribuye proporcionalmente entre los que si tienen datos.
+   */
   private async recalculateScore(tenantId: string, candidateId: string): Promise<void> {
     const candidate = await this.candidateRepo.findOne({
       where: { id: candidateId, tenantId },
@@ -586,28 +604,70 @@ export class RecruitmentService {
     });
     if (!candidate) return;
 
+    // ── 1. Interview average ─────────────────────────────────────────
     const interviews = await this.interviewRepo.find({ where: { candidateId } });
     const interviewScores = interviews.filter((i) => i.globalScore != null).map((i) => Number(i.globalScore));
     const interviewAvg = interviewScores.length > 0
       ? interviewScores.reduce((a, b) => a + b, 0) / interviewScores.length
-      : 0;
+      : null; // null = no data, not 0
 
-    let finalScore: number;
-
-    if (candidate.candidateType === 'internal' && candidate.userId) {
-      // Weighted: history + interview
-      const weights = candidate.process?.scoringWeights || { history: 40, interview: 60 };
-      const profile = await this.getInternalUserProfile(tenantId, candidate.userId);
-      // avgScore from evaluations is already in 0-10 scale (evaluation
-      // responses use overallScore which ranges 0-10). No normalization needed.
-      // The old code divided by 5 and multiplied by 10 (assuming 1-5 scale)
-      // which inflated the score to 16.74 for an 8.37 → capped to 10.
-      const historyScore = profile?.avgScore ? Math.min(10, Number(profile.avgScore)) : 0;
-      finalScore = (historyScore * weights.history + interviewAvg * weights.interview) / 100;
-    } else {
-      // External: just interview average
-      finalScore = interviewAvg;
+    // ── 2. Requirement fulfillment % → normalized to 0-10 ───────────
+    // Calculate from interviews req checks (same logic as getScorecard)
+    let reqScore: number | null = null;
+    const allReqChecks = interviews.flatMap((i: any) => i.reqChecks || []);
+    if (allReqChecks.length > 0) {
+      const statusScore: Record<string, number> = { fulfilled: 1, partial: 0.5, not_fulfilled: 0 };
+      const hasWeights = allReqChecks.some((c: any) => c.weight > 0);
+      if (hasWeights) {
+        const totalW = allReqChecks.reduce((s: number, c: any) => s + (c.weight || 0), 0);
+        const scored = allReqChecks.reduce((s: number, c: any) => s + (statusScore[c.status] || 0) * (c.weight || 0), 0);
+        reqScore = totalW > 0 ? (scored / totalW) * 10 : null;
+      } else {
+        const fulfilled = allReqChecks.filter((c: any) => c.status === 'fulfilled').length;
+        const partial = allReqChecks.filter((c: any) => c.status === 'partial').length;
+        reqScore = ((fulfilled + partial * 0.5) / allReqChecks.length) * 10;
+      }
     }
+
+    // ── 3. CV Match % → normalized to 0-10 ──────────────────────────
+    const cvMatchPct = (candidate as any).cvAnalysis?.matchPercentage ?? null;
+    const cvScore = cvMatchPct != null ? (Number(cvMatchPct) / 100) * 10 : null;
+
+    // ── 4. History score (internal only) ─────────────────────────────
+    let historyScore: number | null = null;
+    if (candidate.candidateType === 'internal' && candidate.userId) {
+      const profile = await this.getInternalUserProfile(tenantId, candidate.userId);
+      historyScore = profile?.avgScore ? Math.min(10, Number(profile.avgScore)) : null;
+    }
+
+    // ── 5. Build weighted components ─────────────────────────────────
+    const isInternal = candidate.candidateType === 'internal';
+    const customWeights = candidate.process?.scoringWeights;
+
+    // Components: { value (0-10), weight (%) }
+    const components: Array<{ value: number | null; weight: number; label: string }> = isInternal
+      ? [
+          { value: interviewAvg, weight: customWeights?.interview ?? 40, label: 'interview' },
+          { value: historyScore, weight: customWeights?.history ?? 30, label: 'history' },
+          { value: reqScore,     weight: customWeights?.requirements ?? 20, label: 'requirements' },
+          { value: cvScore,      weight: customWeights?.cvMatch ?? 10, label: 'cvMatch' },
+        ]
+      : [
+          { value: interviewAvg, weight: 50, label: 'interview' },
+          { value: reqScore,     weight: 30, label: 'requirements' },
+          { value: cvScore,      weight: 20, label: 'cvMatch' },
+        ];
+
+    // Filter to components with actual data and redistribute weights
+    const withData = components.filter((c) => c.value != null);
+    if (withData.length === 0) {
+      // No data at all — keep existing score
+      return;
+    }
+    const totalWeight = withData.reduce((s, c) => s + c.weight, 0);
+
+    // Weighted average normalized to the available weights
+    let finalScore = withData.reduce((s, c) => s + (c.value! * (c.weight / totalWeight)), 0);
 
     // Apply manual adjustment if exists
     if (candidate.scoreAdjustment != null) {
@@ -622,6 +682,23 @@ export class RecruitmentService {
     }
 
     await this.candidateRepo.save(candidate);
+  }
+
+  /** Recalculate finalScore for ALL candidates with stale scores.
+   *  Needed after fixing the avgScore normalization bug (was /5*10, now direct). */
+  async recalculateAllScores(tenantId: string): Promise<{ updated: number }> {
+    const candidates = await this.candidateRepo.find({
+      where: { tenantId },
+      select: ['id'],
+    });
+    let updated = 0;
+    for (const c of candidates) {
+      try {
+        await this.recalculateScore(tenantId, c.id);
+        updated++;
+      } catch { /* skip individual failures */ }
+    }
+    return { updated };
   }
 
   // ─── Comparative (internal only) ─────────────────────────────────────
