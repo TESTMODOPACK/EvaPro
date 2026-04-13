@@ -435,6 +435,8 @@ export const api = {
         request<any>(`/recruitment/processes/${id}/comparative`, {}, token),
       aiRecommendation: (token: string, id: string) =>
         request<any>(`/recruitment/processes/${id}/ai-recommendation`, { method: "POST" }, token),
+      recalculateScores: (token: string) =>
+        request<{ updated: number }>("/recruitment/recalculate-scores", { method: "POST" }, token),
     },
     candidates: {
       add: (token: string, processId: string, data: any) =>

@@ -9,6 +9,92 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useTranslation } from 'react-i18next';
 
+// ─── Scoring Weights Editor (stateful component) ─────────────────────
+function ScoringWeightsEditor({ process, isInternal, token, processId, onSaved }: {
+  process: any; isInternal: boolean; token: string | null; processId: string; onSaved: () => void;
+}) {
+  const toast = useToastStore((s) => s.toast);
+  const defaultW = isInternal
+    ? { interview: 40, history: 30, requirements: 20, cvMatch: 10 }
+    : { interview: 50, requirements: 30, cvMatch: 20 };
+  const [weights, setWeights] = useState<Record<string, number>>(
+    process.scoringWeights || defaultW,
+  );
+  const [saving, setSaving] = useState(false);
+
+  const fields = isInternal
+    ? [
+        { key: 'interview', label: 'Entrevistas', desc: 'Promedio de evaluaciones de entrevista' },
+        { key: 'history', label: 'Historial Eval.', desc: 'Puntaje promedio de evaluaciones pasadas' },
+        { key: 'requirements', label: 'Requisitos', desc: '% de cumplimiento de requisitos del cargo' },
+        { key: 'cvMatch', label: 'Match CV (IA)', desc: '% de ajuste del CV analizado por IA' },
+      ]
+    : [
+        { key: 'interview', label: 'Entrevistas', desc: 'Promedio de evaluaciones de entrevista' },
+        { key: 'requirements', label: 'Requisitos', desc: '% de cumplimiento de requisitos del cargo' },
+        { key: 'cvMatch', label: 'Match CV (IA)', desc: '% de ajuste del CV analizado por IA' },
+      ];
+
+  const total = fields.reduce((s, f) => s + (weights[f.key] || 0), 0);
+
+  const handleSave = async () => {
+    if (!token || total !== 100) return;
+    setSaving(true);
+    try {
+      await api.recruitment.processes.update(token, processId, { scoringWeights: weights });
+      await api.recruitment.processes.recalculateScores(token);
+      onSaved();
+      toast('Pesos actualizados y puntajes recalculados', 'success');
+    } catch (e: any) {
+      toast(e.message || 'Error al guardar pesos', 'error');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="card" style={{ padding: '1.5rem' }}>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Ponderación del Puntaje Final</h3>
+      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+        Define qué porcentaje aporta cada componente al puntaje final. La suma debe ser 100%.
+        Al guardar, se recalculan automáticamente los puntajes de todos los candidatos.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        {fields.map((f) => (
+          <div key={f.key} style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.3rem' }}>{f.label}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={100}
+                value={weights[f.key] || 0}
+                onChange={(e) => setWeights((prev) => ({ ...prev, [f.key]: Number(e.target.value) || 0 }))}
+                style={{ width: '70px', fontSize: '0.85rem', textAlign: 'center' }}
+              />
+              <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>%</span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{f.desc}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: total === 100 ? 'var(--success)' : 'var(--danger)' }}>
+          Total: {total}% {total !== 100 ? '(debe ser 100%)' : '✓'}
+        </span>
+        <button
+          className="btn-primary"
+          disabled={total !== 100 || saving}
+          onClick={handleSave}
+          style={{ fontSize: '0.82rem', padding: '0.4rem 1rem', opacity: total !== 100 ? 0.5 : 1 }}
+        >
+          {saving ? 'Guardando...' : 'Guardar pesos y recalcular'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const STAGES = [
   // Process statuses
   { key: 'draft', badge: 'badge-ghost' },
@@ -1218,86 +1304,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           </div>
 
           {/* Scoring weights configuration */}
-          {isAdmin && (
-            <div className="card" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Ponderación del Puntaje Final</h3>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                Define qué porcentaje aporta cada componente al puntaje final. La suma debe ser 100%.
-                Al guardar, se recalculan automáticamente los puntajes de todos los candidatos.
-              </p>
-              {(() => {
-                const w = process.scoringWeights || { interview: 40, history: 30, requirements: 20, cvMatch: 10 };
-                const fields = isInternal
-                  ? [
-                      { key: 'interview', label: 'Entrevistas', desc: 'Promedio de evaluaciones de entrevista' },
-                      { key: 'history', label: 'Historial Eval.', desc: 'Puntaje promedio de evaluaciones pasadas' },
-                      { key: 'requirements', label: 'Requisitos', desc: '% de cumplimiento de requisitos del cargo' },
-                      { key: 'cvMatch', label: 'Match CV (IA)', desc: '% de ajuste del CV analizado por IA' },
-                    ]
-                  : [
-                      { key: 'interview', label: 'Entrevistas', desc: 'Promedio de evaluaciones de entrevista' },
-                      { key: 'requirements', label: 'Requisitos', desc: '% de cumplimiento de requisitos del cargo' },
-                      { key: 'cvMatch', label: 'Match CV (IA)', desc: '% de ajuste del CV analizado por IA' },
-                    ];
-                const total = fields.reduce((s, f) => s + ((w as any)[f.key] || 0), 0);
-                return (
-                  <div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                      {fields.map((f) => (
-                        <div key={f.key} style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                          <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.3rem' }}>{f.label}</label>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <input
-                              className="input"
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={(w as any)[f.key] || 0}
-                              onChange={(e) => {
-                                const newW = { ...w, [f.key]: Number(e.target.value) || 0 };
-                                // Optimistic UI update
-                                (process as any).scoringWeights = newW;
-                              }}
-                              style={{ width: '70px', fontSize: '0.85rem', textAlign: 'center' }}
-                            />
-                            <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>%</span>
-                          </div>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{f.desc}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: total === 100 ? 'var(--success)' : 'var(--danger)' }}>
-                        Total: {total}% {total !== 100 ? '(debe ser 100%)' : '✓'}
-                      </span>
-                      <button
-                        className="btn-primary"
-                        disabled={total !== 100}
-                        style={{ fontSize: '0.82rem', padding: '0.4rem 1rem', opacity: total !== 100 ? 0.5 : 1 }}
-                        onClick={async () => {
-                          if (!token || total !== 100) return;
-                          try {
-                            await api.recruitment.processes.update(token, params.id, { scoringWeights: w });
-                            // Recalculate all scores with new weights
-                            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/recruitment/recalculate-scores`, {
-                              method: 'POST',
-                              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                            });
-                            fetchProcess();
-                            toast('Pesos actualizados y puntajes recalculados', 'success');
-                          } catch (e: any) {
-                            toast(e.message || 'Error al guardar pesos', 'error');
-                          }
-                        }}
-                      >
-                        Guardar pesos y recalcular
-                      </button>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
+          {isAdmin && <ScoringWeightsEditor process={process} isInternal={isInternal} token={token} processId={params.id} onSaved={fetchProcess} />}
 
           {/* Status change (admin only) */}
           {isAdmin && (
