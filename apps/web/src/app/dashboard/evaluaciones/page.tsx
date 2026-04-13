@@ -108,14 +108,32 @@ function EmployeeEvaluationsView() {
         <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.pending')}</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
+          {/* Desglose por ciclo */}
+          {pending.length > 0 && (() => {
+            const byCycle: Record<string, number> = {};
+            pending.forEach((ev: any) => {
+              const name = ev.cycle?.name || 'Sin ciclo';
+              byCycle[name] = (byCycle[name] || 0) + 1;
+            });
+            return (
+              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                {Object.entries(byCycle).map(([cycle, count]) => (
+                  <div key={cycle} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>{cycle}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--warning)' }}>{count}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
         <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.completed')}</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{completed.length}</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{allCompleted.length}</div>
         </div>
         <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Total</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{pending.length + completed.length}</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{pending.length + allCompleted.length}</div>
         </div>
       </div>
 
