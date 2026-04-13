@@ -10,6 +10,12 @@ import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useTranslation } from 'react-i18next';
 
 const STAGES = [
+  // Process statuses
+  { key: 'draft', badge: 'badge-ghost' },
+  { key: 'active', badge: 'badge-accent' },
+  { key: 'closed', badge: 'badge-warning' },
+  { key: 'cancelled', badge: 'badge-danger' },
+  // Candidate statuses
   { key: 'registered', badge: 'badge-ghost' },
   { key: 'cv_review', badge: 'badge-accent' },
   { key: 'interviewing', badge: 'badge-warning' },

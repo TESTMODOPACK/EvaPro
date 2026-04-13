@@ -223,8 +223,10 @@ function CalibracionPageContent() {
                   style={{ width: '100%' }}
                 >
                   <option value="">{t('calibracion.form.cyclePlaceholder')}</option>
-                  {cycles.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : c.status === 'active' ? 'Activo' : c.status === 'draft' ? 'Borrador' : c.status})</option>
+                  {cycles
+                    .filter((c: any) => c.status === 'active' || c.status === 'closed')
+                    .map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.status === 'closed' ? 'Cerrado' : 'Activo'})</option>
                   ))}
                 </select>
               </div>

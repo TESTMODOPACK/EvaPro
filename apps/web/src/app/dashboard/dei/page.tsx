@@ -96,6 +96,8 @@ export default function DeiPage() {
   const { data: gap } = useGapReport(selectedCycleId, dimension);
   const [showGuide, setShowGuide] = useState(false);
 
+  const [deiTab, setDeiTab] = useState<'demographics' | 'equity'>('demographics');
+
   // DEI Config state
   const [deiConfig, setDeiConfig] = useState({ privacyMin: 5, mediumThreshold: 1.5, highThreshold: 2.0 });
   const [configSaving, setConfigSaving] = useState(false);
@@ -228,7 +230,31 @@ export default function DeiPage() {
         </div>
       )}
 
-      {demo && demo.total > 0 && (
+      {/* Tabs */}
+      {!loadingDemo && !demoError && (
+        <div style={{ display: 'flex', gap: '0.15rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
+          {[
+            { id: 'demographics' as const, label: 'Demografía y Diversidad' },
+            { id: 'equity' as const, label: 'Análisis de Equidad en Evaluaciones' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setDeiTab(tab.id)}
+              style={{
+                padding: '0.6rem 1rem', border: 'none', background: 'none', cursor: 'pointer',
+                borderBottom: deiTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent',
+                fontWeight: deiTab === tab.id ? 700 : 400,
+                color: deiTab === tab.id ? 'var(--accent)' : 'var(--text-muted)',
+                fontSize: '0.85rem',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {deiTab === 'demographics' && demo && demo.total > 0 && (
         <>
           {/* Overview Cards */}
           <div className="animate-fade-up" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
@@ -267,7 +293,8 @@ export default function DeiPage() {
             <DataCompletenessBar data={demo.dataCompleteness} t={t} />
           </div>
 
-          {/* Equity Analysis Section */}
+          {/* Equity Analysis — hidden in demographics tab, shown in equity tab */}
+          {deiTab === 'equity' && (
           <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
             <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('dei.equityTitle')}</h2>
             <select className="input" value={selectedCycleId || ''} onChange={(e) => setSelectedCycleId(e.target.value || null)}
@@ -359,10 +386,18 @@ export default function DeiPage() {
               </>
             )}
           </div>
+          )}
         </>
       )}
 
-      {demo && demo.total === 0 && (
+      {/* Equity tab — visible even without demographics data */}
+      {deiTab === 'equity' && (!demo || demo.total === 0) && (
+        <div className="card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <p>Seleccione un ciclo de evaluación cerrado para ver el análisis de equidad.</p>
+        </div>
+      )}
+
+      {demo && demo.total === 0 && deiTab === 'demographics' && (
         <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
           <p>{t('dei.emptyState')}</p>
         </div>

@@ -593,9 +593,9 @@ function EncuestasClimaPageContent() {
                         {t('surveys.results')}
                       </Link>
                     )}
-                    {/* Super admin puede eliminar encuestas en CUALQUIER estado
+                    {/* Admin puede eliminar encuestas en CUALQUIER estado
                         (activas, cerradas). El backend valida el rol. */}
-                    {s.status !== 'draft' && user?.role === 'super_admin' && (
+                    {s.status !== 'draft' && isAdmin && (
                       <button
                         onClick={() => setConfirmDelete(s.id)}
                         title="Eliminar encuesta permanentemente (solo administrador del sistema)"

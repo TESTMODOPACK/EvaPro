@@ -598,7 +598,11 @@ export class RecruitmentService {
       // Weighted: history + interview
       const weights = candidate.process?.scoringWeights || { history: 40, interview: 60 };
       const profile = await this.getInternalUserProfile(tenantId, candidate.userId);
-      const historyScore = profile?.avgScore ? (profile.avgScore / 5) * 10 : 0; // Normalize to 0-10
+      // avgScore from evaluations is already in 0-10 scale (evaluation
+      // responses use overallScore which ranges 0-10). No normalization needed.
+      // The old code divided by 5 and multiplied by 10 (assuming 1-5 scale)
+      // which inflated the score to 16.74 for an 8.37 → capped to 10.
+      const historyScore = profile?.avgScore ? Math.min(10, Number(profile.avgScore)) : 0;
       finalScore = (historyScore * weights.history + interviewAvg * weights.interview) / 100;
     } else {
       // External: just interview average

@@ -233,11 +233,11 @@ export class SurveysService {
     const survey = await this.surveyRepo.findOne({ where: { id: surveyId, tenantId } });
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
 
-    const isSuperAdmin = callerRole === 'super_admin';
+    const isAdmin = callerRole === 'super_admin' || callerRole === 'tenant_admin';
 
-    // Non-super-admin solo puede eliminar borradores
-    if (!isSuperAdmin && survey.status !== 'draft') {
-      throw new BadRequestException('Solo se pueden eliminar encuestas en borrador. Contacte al administrador del sistema para eliminar encuestas activas o cerradas.');
+    // Non-admin (manager/employee) solo puede eliminar borradores
+    if (!isAdmin && survey.status !== 'draft') {
+      throw new BadRequestException('Solo se pueden eliminar encuestas en borrador. Contacte al administrador para eliminar encuestas activas o cerradas.');
     }
 
     // Si la encuesta tiene respuestas, advertir (pero permitir si es super_admin)

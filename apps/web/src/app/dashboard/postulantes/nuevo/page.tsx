@@ -348,7 +348,7 @@ export default function NuevoProcesoPage() {
                     <select className="input" style={{ flex: 1 }} value={positionCatalog.some(p => p.name === position) ? position : (position ? '__custom__' : '')}
                       onChange={(e) => { if (e.target.value === '__new__') { setShowNewPosition(true); } else if (e.target.value === '__custom__') { setPosition(''); } else { setPosition(e.target.value); } }}>
                       <option value="">{t('postulantes.new.selectPosition')}</option>
-                      {positionCatalog.map(p => <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>)}
+                      {[...positionCatalog].sort((a, b) => a.name.localeCompare(b.name)).map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
                       {position && !positionCatalog.some(p => p.name === position) && <option value="__custom__">{position} (personalizado)</option>}
                       <option value="__new__">{t('postulantes.new.newPosition')}</option>
                     </select>
@@ -440,6 +440,22 @@ export default function NuevoProcesoPage() {
                             );
                           })}
                         </div>
+                        {/* Requisitos custom ya agregados por el usuario (no estan en cat.defaults) */}
+                        {requirements.filter(r => r.category === cat.key && !cat.defaults.includes(r.text)).length > 0 && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginBottom: '0.5rem', paddingTop: '0.4rem', borderTop: '1px dashed var(--border)' }}>
+                            {requirements.filter(r => r.category === cat.key && !cat.defaults.includes(r.text)).map((r) => (
+                              <label key={r.text} style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem',
+                                cursor: 'pointer', padding: '0.3rem 0.5rem', borderRadius: 'var(--radius-sm)',
+                                background: 'rgba(201,147,58,0.08)',
+                              }}>
+                                <input type="checkbox" checked onChange={() => toggleReq(cat.key, r.text)} style={{ accentColor: 'var(--accent)' }} />
+                                <span style={{ fontWeight: 600 }}>{r.text}</span>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>(personalizado)</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <input className="input" style={{ flex: 1, fontSize: '0.82rem' }}
                             value={customReq[cat.key] || ''} onChange={(e) => setCustomReq((p) => ({ ...p, [cat.key]: e.target.value }))}

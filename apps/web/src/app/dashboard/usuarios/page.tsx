@@ -855,7 +855,7 @@ export default function UsuariosPage() {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cargo</label>
           <select className="input" value={filterPosition} onChange={(e) => { setFilterPosition(e.target.value); setPage(1); }} style={{ fontSize: '0.85rem' }}>
             <option value="">Todos los cargos</option>
-            {positionCatalog.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+            {[...positionCatalog].sort((a, b) => a.name.localeCompare(b.name)).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
           </select>
         </div>
         <div style={{ flex: '0 1 120px' }}>

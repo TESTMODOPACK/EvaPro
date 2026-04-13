@@ -60,6 +60,25 @@ function OrgNode({ node, depth = 0 }: { node: any; depth?: number }) {
               {totalDescendants(node) > node.children.length && ` (${totalDescendants(node)} total)`}
             </span>
           )}
+          {node.id && (
+            <a
+              href={`/dashboard/usuarios/${node.id}`}
+              title="Ver perfil del colaborador"
+              style={{
+                fontSize: '0.68rem',
+                color: 'var(--accent)',
+                textDecoration: 'none',
+                padding: '2px 6px',
+                borderRadius: 4,
+                border: '1px solid rgba(201,147,58,0.3)',
+                background: 'rgba(201,147,58,0.06)',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Ver perfil
+            </a>
+          )}
         </div>
       </div>
 
