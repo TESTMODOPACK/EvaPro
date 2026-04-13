@@ -293,8 +293,12 @@ export default function DeiPage() {
             <DataCompletenessBar data={demo.dataCompleteness} t={t} />
           </div>
 
-          {/* Equity Analysis — hidden in demographics tab, shown in equity tab */}
-          {deiTab === 'equity' && (
+        </>
+      )}
+
+      {/* ═══ Tab: Equidad en Evaluaciones ═══ */}
+      {deiTab === 'equity' && (
+        <>
           <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
             <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('dei.equityTitle')}</h2>
             <select className="input" value={selectedCycleId || ''} onChange={(e) => setSelectedCycleId(e.target.value || null)}
@@ -386,15 +390,7 @@ export default function DeiPage() {
               </>
             )}
           </div>
-          )}
         </>
-      )}
-
-      {/* Equity tab — visible even without demographics data */}
-      {deiTab === 'equity' && (!demo || demo.total === 0) && (
-        <div className="card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          <p>Seleccione un ciclo de evaluación cerrado para ver el análisis de equidad.</p>
-        </div>
       )}
 
       {demo && demo.total === 0 && deiTab === 'demographics' && (
