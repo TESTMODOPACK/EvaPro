@@ -112,6 +112,7 @@ export default function ReportesPage() {
 
   // Team members (for manager filtering)
   const [teamUserIds, setTeamUserIds] = useState<Set<string>>(new Set());
+  const [teamDepts, setTeamDepts] = useState<Set<string>>(new Set());
 
   // Flight risk (uses react-query hook) — filtered for managers
   const { data: rawFlightRisk } = useFlightRisk();
@@ -186,6 +187,7 @@ export default function ReportesPage() {
         const myId = useAuthStore.getState().user?.userId;
         const myTeam = users.filter((u: any) => u.managerId === myId);
         setTeamUserIds(new Set(myTeam.map((u: any) => u.id)));
+        setTeamDepts(new Set(myTeam.map((u: any) => u.department).filter(Boolean)));
       }).catch(() => {});
     }
     // Reset tab-specific data
@@ -363,13 +365,37 @@ export default function ReportesPage() {
             <div className="animate-fade-up">
               {!summary ? <Spinner /> : (
                 <>
-                  {/* KPIs */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  {/* KPIs Organización */}
+                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>
+                    {'🏢'} Organización
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
                     <KPI label="Promedio Global" value={Number(summary.averageScore || 0)?.toFixed(1) || '--'} color={getScoreColor(Number(summary.averageScore || 0))} sub={getScoreLabel(Number(summary.averageScore || 0))} />
                     <KPI label="Completitud" value={`${Number(summary.completionRate) || 0}%`} color={Number(summary.completionRate) >= 80 ? 'var(--success)' : 'var(--warning)'} />
                     <KPI label="Evaluaciones" value={`${summary.completedAssignments || 0}/${summary.totalAssignments || 0}`} />
                     <KPI label="Departamentos" value={depts.length} />
                   </div>
+
+                  {/* KPIs Mi Equipo (solo para managers) */}
+                  {!isAdmin && teamDepts.size > 0 && depts.length > 0 && (() => {
+                    const myDepts = depts.filter((d: any) => teamDepts.has(d.department));
+                    if (myDepts.length === 0) return null;
+                    const myAvg = myDepts.reduce((s: number, d: any) => s + d.avgScore, 0) / myDepts.length;
+                    const myTotal = myDepts.reduce((s: number, d: any) => s + (d.count || 0), 0);
+                    return (
+                      <>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>
+                          {'👥'} Mi Equipo ({Array.from(teamDepts).join(', ')})
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                          <KPI label="Promedio Equipo" value={myAvg.toFixed(1)} color={getScoreColor(myAvg)} sub={getScoreLabel(myAvg)} />
+                          <KPI label="Colaboradores" value={myTotal} />
+                          <KPI label="Áreas" value={myDepts.length} />
+                          <KPI label="vs Organización" value={`${myAvg > Number(summary.averageScore) ? '+' : ''}${(myAvg - Number(summary.averageScore)).toFixed(1)}`} color={myAvg >= Number(summary.averageScore) ? 'var(--success)' : 'var(--danger)'} />
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {/* Department Ranking BarChart */}
                   {depts.length > 0 && (
@@ -397,21 +423,27 @@ export default function ReportesPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                       <div className="card" style={{ padding: '1rem' }}>
                         <h4 style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--success)' }}>▲ Top 3 Departamentos</h4>
-                        {topDepts.map((d: any, i: number) => (
-                          <div key={d.department} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
-                            <span style={{ fontWeight: 600 }}>{i + 1}. {d.department}</span>
+                        {topDepts.map((d: any, i: number) => {
+                          const isMine = teamDepts.has(d.department);
+                          return (
+                          <div key={d.department} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0.4rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem', background: isMine ? 'rgba(201,147,58,0.08)' : 'transparent', borderRadius: isMine ? 4 : 0 }}>
+                            <span style={{ fontWeight: 600, color: isMine ? 'var(--accent)' : 'inherit' }}>{i + 1}. {d.department}{isMine ? ' ★' : ''}</span>
                             <span style={{ fontWeight: 700, color: getScoreColor(d.avgScore) }}>{Number(d.avgScore).toFixed(1)}</span>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <div className="card" style={{ padding: '1rem' }}>
                         <h4 style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--danger)' }}>▼ Bottom 3 Departamentos</h4>
-                        {bottomDepts.map((d: any, i: number) => (
-                          <div key={d.department} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
-                            <span style={{ fontWeight: 600 }}>{i + 1}. {d.department}</span>
+                        {bottomDepts.map((d: any, i: number) => {
+                          const isMine = teamDepts.has(d.department);
+                          return (
+                          <div key={d.department} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0.4rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem', background: isMine ? 'rgba(201,147,58,0.08)' : 'transparent', borderRadius: isMine ? 4 : 0 }}>
+                            <span style={{ fontWeight: 600, color: isMine ? 'var(--accent)' : 'inherit' }}>{i + 1}. {d.department}{isMine ? ' ★' : ''}</span>
                             <span style={{ fontWeight: 700, color: getScoreColor(d.avgScore) }}>{Number(d.avgScore).toFixed(1)}</span>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
