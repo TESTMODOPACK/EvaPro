@@ -218,10 +218,43 @@ export class SurveysService {
     return this.findById(tenantId, surveyId);
   }
 
-  async delete(tenantId: string, surveyId: string): Promise<void> {
+  /**
+   * Eliminar una encuesta. Dos modos:
+   * - role != super_admin → solo puede eliminar en status 'draft'
+   * - role == super_admin (force=true) → puede eliminar en CUALQUIER estado,
+   *   incluyendo 'closed'. Elimina en cascada: responses, assignments, questions,
+   *   y el insight de AI si existe.
+   *
+   * La eliminacion es HARD DELETE (no soft-delete) porque las encuestas
+   * contienen datos anonimizados que no deben persistir si el admin decide
+   * borrarlas. Las respuestas se eliminan via CASCADE en la relacion FK.
+   */
+  async delete(tenantId: string, surveyId: string, callerRole?: string): Promise<void> {
     const survey = await this.surveyRepo.findOne({ where: { id: surveyId, tenantId } });
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
-    if (survey.status !== 'draft') throw new BadRequestException('Solo se pueden eliminar encuestas en borrador.');
+
+    const isSuperAdmin = callerRole === 'super_admin';
+
+    // Non-super-admin solo puede eliminar borradores
+    if (!isSuperAdmin && survey.status !== 'draft') {
+      throw new BadRequestException('Solo se pueden eliminar encuestas en borrador. Contacte al administrador del sistema para eliminar encuestas activas o cerradas.');
+    }
+
+    // Si la encuesta tiene respuestas, advertir (pero permitir si es super_admin)
+    if (survey.status !== 'draft') {
+      const responseCount = await this.responseRepo.count({ where: { surveyId, tenantId } });
+      if (responseCount > 0) {
+        this.logger.warn(
+          `Super admin deleting survey "${survey.title}" (${surveyId}) with ${responseCount} responses`,
+        );
+      }
+    }
+
+    // Eliminar insight de AI si existe (no tiene CASCADE a la encuesta)
+    try {
+      await this.aiInsightsService.clearCache(tenantId, 'survey_analysis' as any, surveyId);
+    } catch { /* ignore — insight may not exist */ }
+
     await this.surveyRepo.remove(survey);
   }
 
@@ -644,10 +677,22 @@ export class SurveysService {
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
     if (survey.status !== 'active') throw new BadRequestException('Solo se pueden cerrar encuestas activas.');
 
+    // Validar que tenga al menos 1 respuesta completa antes de cerrar.
+    // Cerrar sin respuestas genera reportes vacios y un eNPS sin datos,
+    // lo cual confunde al admin cuando ve "0" o "—" en el dashboard.
+    const responseCount = await this.responseRepo.count({
+      where: { surveyId, tenantId, isComplete: true },
+    });
+    if (responseCount === 0) {
+      throw new BadRequestException(
+        'No se puede cerrar la encuesta porque no tiene respuestas completadas. Espere a que al menos un colaborador responda antes de cerrar.',
+      );
+    }
+
     survey.status = 'closed';
     await this.surveyRepo.save(survey);
 
-    this.logger.log(`Survey "${survey.title}" closed`);
+    this.logger.log(`Survey "${survey.title}" closed with ${responseCount} responses`);
     return this.findById(tenantId, surveyId);
   }
 

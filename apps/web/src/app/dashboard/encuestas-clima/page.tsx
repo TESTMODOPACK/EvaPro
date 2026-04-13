@@ -312,6 +312,29 @@ function EncuestasClimaPageContent() {
             </ol>
           </div>
 
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'📊'} ¿Qué es el eNPS?</div>
+            <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              <p style={{ margin: '0 0 0.35rem' }}>
+                El <strong>eNPS (Employee Net Promoter Score)</strong> mide la lealtad y satisfacción de los colaboradores. Se calcula como <strong>% Promotores − % Detractores</strong>.
+              </p>
+              <p style={{ margin: '0 0 0.35rem' }}>
+                <strong>Escala:</strong> va de <strong>−100</strong> (todos detractores) a <strong>+100</strong> (todos promotores).
+              </p>
+              <p style={{ margin: '0 0 0.35rem' }}>
+                <strong>Clasificación de respuestas (escala 1-10):</strong>
+              </p>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                <span><span style={{ color: '#16a34a', fontWeight: 700 }}>Promotores (9-10):</span> Recomendarían la empresa</span>
+                <span><span style={{ color: '#eab308', fontWeight: 700 }}>Pasivos (7-8):</span> Neutrales</span>
+                <span><span style={{ color: '#ef4444', fontWeight: 700 }}>Detractores (0-6):</span> No recomendarían</span>
+              </div>
+              <p style={{ margin: 0 }}>
+                <strong>Interpretación:</strong> {'\u2265'}50 excelente · 30-49 muy bueno · 0-29 aceptable · {'\u003C'}0 requiere atención urgente.
+              </p>
+            </div>
+          </div>
+
           <div>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('surveys.guide.permissions')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -558,6 +581,7 @@ function EncuestasClimaPageContent() {
                     {s.status === 'draft' && (
                       <>
                         <button onClick={() => handleLaunch(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(22,163,106,0.3)', background: 'rgba(22,163,106,0.08)', color: 'var(--success)', cursor: 'pointer' }}>{t('surveys.launch')}</button>
+                        {/* Draft: cualquier admin puede eliminar */}
                         <button onClick={() => setConfirmDelete(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: 'var(--danger)', cursor: 'pointer' }}>{t('common.delete')}</button>
                       </>
                     )}
@@ -569,6 +593,26 @@ function EncuestasClimaPageContent() {
                         {t('surveys.results')}
                       </Link>
                     )}
+                    {/* Super admin puede eliminar encuestas en CUALQUIER estado
+                        (activas, cerradas). El backend valida el rol. */}
+                    {s.status !== 'draft' && user?.role === 'super_admin' && (
+                      <button
+                        onClick={() => setConfirmDelete(s.id)}
+                        title="Eliminar encuesta permanentemente (solo administrador del sistema)"
+                        style={{
+                          padding: '0.35rem 0.75rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          background: 'rgba(239,68,68,0.08)',
+                          color: 'var(--danger)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t('common.delete')}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -577,19 +621,44 @@ function EncuestasClimaPageContent() {
         </div>
       )}
 
-      {/* Delete confirmation */}
-      {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmDelete(null)}>
-          <div className="card animate-fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, padding: '1.75rem' }}>
-            <h3 style={{ margin: '0 0 1rem' }}>{t('surveys.deleteConfirm')}</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('surveys.deleteWarning')}</p>
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setConfirmDelete(null)}>{t('common.cancel')}</button>
-              <button onClick={() => handleDelete(confirmDelete)} style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>{t('common.delete')}</button>
+      {/* Delete confirmation — warning reforzado para encuestas no-draft */}
+      {confirmDelete && (() => {
+        const surveyToDelete = surveys.find((s: any) => s.id === confirmDelete);
+        const isDraft = surveyToDelete?.status === 'draft';
+        const hasResponses = (surveyToDelete?.responseCount || 0) > 0;
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmDelete(null)}>
+            <div className="card animate-fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, padding: '1.75rem' }}>
+              <h3 style={{ margin: '0 0 0.75rem', color: 'var(--danger)' }}>
+                {isDraft ? t('surveys.deleteConfirm') : '⚠️ Eliminar encuesta con datos'}
+              </h3>
+              {isDraft ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('surveys.deleteWarning')}</p>
+              ) : (
+                <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  <p style={{ marginBottom: '0.5rem' }}>
+                    Estás a punto de eliminar la encuesta <strong>&ldquo;{surveyToDelete?.title}&rdquo;</strong> que está en estado <strong>{surveyToDelete?.status === 'active' ? 'Activa' : 'Cerrada'}</strong>.
+                  </p>
+                  {hasResponses && (
+                    <p style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '0.5rem' }}>
+                      Esta encuesta tiene {surveyToDelete.responseCount} respuesta(s). Se eliminarán permanentemente junto con el análisis de IA asociado.
+                    </p>
+                  )}
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    Esta acción no se puede deshacer.
+                  </p>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => setConfirmDelete(null)}>{t('common.cancel')}</button>
+                <button onClick={() => handleDelete(confirmDelete)} style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>
+                  {isDraft ? t('common.delete') : 'Eliminar permanentemente'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

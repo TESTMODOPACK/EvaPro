@@ -666,7 +666,9 @@ function DesarrolloOrganizacionalPageContent() {
                         .filter((u: any) => u.isActive !== false)
                         .filter((u: any) => !initForm.department || u.department === initForm.department || !u.department)
                         .map((u: any) => (
-                          <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}</option>
+                          <option key={u.id} value={u.id}>
+                            {u.firstName} {u.lastName}{u.position ? ` — ${u.position}` : ''}{u.department ? ` (${u.department})` : ''}
+                          </option>
                         ))}
                     </select>
                   </div>

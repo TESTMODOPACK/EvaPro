@@ -965,6 +965,63 @@ function AnalyticsPageContent() {
                     </div>
                   )}
 
+                  {/* ── Análisis interpretativo de rendimiento de equipo ── */}
+                  {analytics?.teamBenchmarks && analytics?.teamBenchmarks.length >= 2 && (() => {
+                    const sorted = [...analytics.teamBenchmarks].sort((a: any, b: any) => Number(b.avgScore) - Number(a.avgScore));
+                    const best = sorted[0];
+                    const worst = sorted[sorted.length - 1];
+                    const avgAll = sorted.reduce((s: number, t: any) => s + Number(t.avgScore || 0), 0) / sorted.length;
+                    const spread = Number(best.avgScore) - Number(worst.avgScore);
+                    const aboveAvg = sorted.filter((t: any) => Number(t.avgScore) >= avgAll);
+                    const belowThreshold = sorted.filter((t: any) => Number(t.avgScore) < 5);
+                    const topPerformers = sorted.filter((t: any) => Number(t.avgScore) >= 7.5);
+
+                    return (
+                      <div className="card" style={{ padding: '1.25rem' }}>
+                        <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span>{'📊'}</span> Análisis de Rendimiento por Equipo
+                        </h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                          {/* Brecha entre mejor y peor */}
+                          <div style={{ padding: '0.6rem 0.85rem', background: spread > 3 ? 'rgba(239,68,68,0.06)' : spread > 1.5 ? 'rgba(234,179,8,0.06)' : 'rgba(22,163,106,0.06)', borderRadius: '6px', borderLeft: `3px solid ${spread > 3 ? 'var(--danger)' : spread > 1.5 ? 'var(--warning)' : 'var(--success)'}` }}>
+                            <strong>Brecha entre equipos:</strong> {spread.toFixed(1)} puntos.
+                            {spread > 3 ? ' La diferencia es significativa — hay equipos con rendimiento muy dispar que requieren atención diferenciada.' :
+                             spread > 1.5 ? ' Existe variabilidad moderada entre equipos. Revisar prácticas de los equipos con mejor desempeño para replicarlas.' :
+                             ' Los equipos tienen rendimiento homogéneo — buena consistencia organizacional.'}
+                          </div>
+
+                          {/* Top performers */}
+                          {topPerformers.length > 0 && (
+                            <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(22,163,106,0.06)', borderRadius: '6px', borderLeft: '3px solid var(--success)' }}>
+                              <strong>Equipos destacados ({'\u2265'}7.5):</strong>{' '}
+                              {topPerformers.map((t: any) => `${t.managerName} (${Number(t.avgScore).toFixed(1)})`).join(', ')}.
+                              {topPerformers.length === 1 ? ' Solo 1 equipo supera el umbral de excelencia.' :
+                               ` ${topPerformers.length} de ${sorted.length} equipos (${Math.round((topPerformers.length / sorted.length) * 100)}%) están en zona de excelencia.`}
+                            </div>
+                          )}
+
+                          {/* Equipos en riesgo */}
+                          {belowThreshold.length > 0 && (
+                            <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(239,68,68,0.06)', borderRadius: '6px', borderLeft: '3px solid var(--danger)' }}>
+                              <strong>Equipos en riesgo ({'\u003C'}5.0):</strong>{' '}
+                              {belowThreshold.map((t: any) => `${t.managerName} (${Number(t.avgScore).toFixed(1)})`).join(', ')}.
+                              {' Estos equipos requieren intervención: revisar con la jefatura las causas del bajo desempeño, planes de acción y posible capacitación.'}
+                            </div>
+                          )}
+
+                          {/* Distribución general */}
+                          <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', borderLeft: '3px solid var(--accent)' }}>
+                            <strong>Distribución:</strong>{' '}
+                            {aboveAvg.length} de {sorted.length} equipos ({Math.round((aboveAvg.length / sorted.length) * 100)}%) están por encima del promedio organizacional ({avgAll.toFixed(1)}).
+                            {avgAll >= 7 ? ' El promedio general es sólido.' :
+                             avgAll >= 5 ? ' El promedio general es aceptable pero con margen de mejora.' :
+                             ' El promedio general está por debajo de lo esperado — considerar una revisión de las prácticas de gestión.'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {(!analytics?.teamBenchmarks || analytics?.teamBenchmarks.length === 0) && (
                     <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('analytics.teams.noData')}</div>
                   )}

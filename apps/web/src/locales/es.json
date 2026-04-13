@@ -77,6 +77,9 @@
     "next": "Siguiente",
     "selectPlaceholder": "— Seleccionar —",
     "creating": "Creando...",
+    "add": "Agregar",
+    "adding": "Agregando...",
+    "unassigned": "Sin asignar",
     "update": "Actualizar",
     "showGuide": "Cómo funciona",
     "hideGuide": "Ocultar guía",
@@ -960,7 +963,7 @@
       "connTalent": "Talento (Nine Box): Los puntajes de desempeño vistos aquí alimentan el eje de desempeño del Nine Box",
       "permissions": "Permisos: Solo Administradores y Encargados de Equipo pueden acceder a esta página."
     },
-    "distributionTitle": "Distribución de Puntajes (Curva de Bell)",
+    "distributionTitle": "Distribución de Puntajes (Campana de Gauss)",
     "stdDev": "Desv. Estándar:",
     "howToRead": "¿Cómo leer este gráfico?",
     "howToReadDesc": "Las barras muestran cuántos colaboradores obtuvieron cada rango de puntaje. La línea amarilla es la curva normal teórica. Si las barras siguen esa línea, la distribución es equilibrada.",

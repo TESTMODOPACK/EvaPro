@@ -1,11 +1,13 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
+import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { pinoLoggerConfig } from './common/logger/pino-logger.config';
+import { PrometheusMiddleware } from './common/middleware/prometheus.middleware';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -52,6 +54,15 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     // que reemplaza al default de Nest.
     LoggerModule.forRoot(pinoLoggerConfig),
     ScheduleModule.forRoot(),
+    // Prometheus metrics — expone /metrics con metricas default (CPU,
+    // memoria, event loop, GC) + custom (http requests, duration).
+    // Protegido: solo accesible desde localhost / red interna (Nginx
+    // no expone /metrics al exterior). Para Grafana Cloud, configurar
+    // un scraper apuntando a la IP interna del container.
+    PrometheusModule.register({
+      defaultMetrics: { enabled: true },
+      path: '/metrics',
+    }),
     // Cache in-memory global — TTL por defecto 5 min (300s). Usado por
     // servicios para cachear lookups que cambian raramente (planes,
     // tenants, competencias, badges). En Fase 3 se puede migrar a Redis
@@ -117,11 +128,8 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    // Registrar el middleware de metricas HTTP globalmente.
-    // Se importa aqui (no en MetricsModule) para que aplique a
-    // TODAS las rutas de todos los modulos, no solo a las del modulo
-    // de metricas.
-    const { MetricsMiddleware } = require('./modules/metrics/metrics.middleware');
-    consumer.apply(MetricsMiddleware).forRoutes('*');
+    // Metricas HTTP Prometheus globales — counter de requests + histogram
+    // de latencia por ruta normalizada. Excluye /health y /metrics.
+    consumer.apply(PrometheusMiddleware).forRoutes('*');
   }
 }

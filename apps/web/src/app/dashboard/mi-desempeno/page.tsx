@@ -121,7 +121,7 @@ export default function MiDesempenoPage() {
 
   // Tabs
   const [parentTab, setParentTab] = useState<'personal' | 'team'>('personal');
-  const [personalTab, setPersonalTab] = useState<'evaluaciones' | 'feedback' | 'pdi' | 'objetivos' | 'reconocimientos'>('evaluaciones');
+  const [personalTab, setPersonalTab] = useState<'evaluaciones' | 'feedback' | 'pdi' | 'objetivos' | 'reconocimientos' | 'clima'>('evaluaciones');
   const [teamTab, setTeamTab] = useState<'evaluaciones' | 'objetivos' | 'pdi'>('evaluaciones');
 
   // Filters
@@ -316,6 +316,7 @@ export default function MiDesempenoPage() {
               { id: 'pdi' as const, label: `Planes de Desarrollo (${myDevPlans.length})` },
               { id: 'objetivos' as const, label: `Mis Objetivos (${myObjectives.length})` },
               { id: 'reconocimientos' as const, label: `Reconocimientos` },
+              { id: 'clima' as const, label: `Encuestas de Clima` },
             ].map(tab => (
               <button key={tab.id} style={subTabStyle(personalTab === tab.id)} onClick={() => setPersonalTab(tab.id)}>{tab.label}</button>
             ))}
@@ -666,6 +667,34 @@ export default function MiDesempenoPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Encuestas de Clima ─── */}
+          {personalTab === 'clima' && (
+            <div className="animate-fade-up">
+              <div className="card" style={{ padding: '1.25rem' }}>
+                <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>{'📋'} Mis Encuestas de Clima</h3>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                  Las encuestas de clima miden la percepción de los colaboradores sobre distintos aspectos de la organización.
+                  Tus respuestas son anónimas y contribuyen al cálculo del <strong>eNPS</strong> (Employee Net Promoter Score, escala −100 a +100).
+                </p>
+                <a
+                  href="/dashboard/encuestas-clima"
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--accent)',
+                    color: '#fff',
+                    textDecoration: 'none',
+                    display: 'inline-block',
+                  }}
+                >
+                  Ver encuestas disponibles
+                </a>
               </div>
             </div>
           )}

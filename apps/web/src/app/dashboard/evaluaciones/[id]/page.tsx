@@ -76,7 +76,10 @@ export default function CycleDetailPage() {
   const [peerEvaluatorId, setPeerEvaluatorId] = useState('');
   const [peerRelationType, setPeerRelationType] = useState('');
   const [manualDeptFilter, setManualDeptFilter] = useState('');
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Set de evaluateeIds EXPANDIDOS (vacío = todos colapsados por defecto).
+  // Antes era al revés (set de colapsados, vacío = todos expandidos) pero
+  // con muchos evaluados la lista se hacia interminable al abrir la pagina.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   // Exception assignment states
   const [excRelationType, setExcRelationType] = useState('manager');
   const [excEvaluateeId, setExcEvaluateeId] = useState('');
@@ -852,9 +855,24 @@ export default function CycleDetailPage() {
                     {`✕ ${t('evaluaciones.detail.cleanFilters')}`}
                   </button>
                 )}
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', alignSelf: 'center', marginLeft: 'auto' }}>
-                  {filteredPeerEntries.length} de {Object.keys(peerListGrouped).length} evaluado{Object.keys(peerListGrouped).length !== 1 ? 's' : ''}
-                </span>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginLeft: 'auto' }}>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => {
+                      if (expandedGroups.size >= filteredPeerEntries.length) {
+                        setExpandedGroups(new Set());
+                      } else {
+                        setExpandedGroups(new Set(filteredPeerEntries.map(([id]) => id)));
+                      }
+                    }}
+                    style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}
+                  >
+                    {expandedGroups.size >= filteredPeerEntries.length ? '▲ Colapsar' : '▼ Expandir'}
+                  </button>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    {filteredPeerEntries.length} de {Object.keys(peerListGrouped).length} evaluado{Object.keys(peerListGrouped).length !== 1 ? 's' : ''}
+                  </span>
+                </div>
               </div>
 
               {filteredPeerEntries.length === 0 && (
@@ -880,7 +898,7 @@ export default function CycleDetailPage() {
                   >
                     {/* Evaluatee header — clickable to collapse */}
                     <div
-                      onClick={() => setCollapsedGroups(prev => {
+                      onClick={() => setExpandedGroups(prev => {
                         const next = new Set(prev);
                         next.has(evaluateeId) ? next.delete(evaluateeId) : next.add(evaluateeId);
                         return next;
@@ -888,7 +906,7 @@ export default function CycleDetailPage() {
                       style={{
                       padding: '0.6rem 1rem',
                       background: 'rgba(99,102,241,0.07)',
-                      borderBottom: collapsedGroups.has(evaluateeId) ? 'none' : '1px solid var(--border)',
+                      borderBottom: expandedGroups.has(evaluateeId) ? '1px solid var(--border)' : 'none',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.5rem',
@@ -907,11 +925,11 @@ export default function CycleDetailPage() {
                       )}
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         {assignments.length} evaluador{assignments.length !== 1 ? 'es' : ''}
-                        <span style={{ fontSize: '0.65rem', transition: 'transform 0.2s', transform: collapsedGroups.has(evaluateeId) ? 'rotate(0deg)' : 'rotate(90deg)', display: 'inline-block' }}>▶</span>
+                        <span style={{ fontSize: '0.65rem', transition: 'transform 0.2s', transform: expandedGroups.has(evaluateeId) ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
                       </span>
                     </div>
                     {/* Evaluators list — collapsible */}
-                    {!collapsedGroups.has(evaluateeId) && assignments.map((pa: any, idx: number) => (
+                    {expandedGroups.has(evaluateeId) && assignments.map((pa: any, idx: number) => (
                       <div
                         key={pa.id}
                         style={{

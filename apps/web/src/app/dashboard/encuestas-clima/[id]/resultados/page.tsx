@@ -294,7 +294,11 @@ export default function ResultadosEncuestaPage() {
           {/* Radar Chart */}
           {radarData.length > 0 && (
             <div className="card" style={{ padding: '1.25rem' }}>
-              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Promedio por Categoría</h3>
+              <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }}>Promedio por Categoría</h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                Cada eje del radar representa una categoría de la encuesta. El valor es el promedio de todas las respuestas de esa categoría en escala 1-10.
+                Cuanto más se expande el área hacia el borde (10), mejor es la percepción. Áreas que no llegan al centro ({'\u003C'}6) son prioridad de mejora.
+              </p>
               <ResponsiveContainer width="100%" height={350}>
                 <RadarChart data={radarData}>
                   <PolarGrid />
@@ -303,6 +307,12 @@ export default function ResultadosEncuestaPage() {
                   <Radar name="Promedio" dataKey="promedio" stroke="#C9933A" fill="#C9933A" fillOpacity={0.3} />
                 </RadarChart>
               </ResponsiveContainer>
+              {/* Interpretación rápida debajo del gráfico */}
+              <div style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <span><strong style={{ color: 'var(--success)' }}>{'\u2265'}8</strong> Fortaleza</span>
+                <span><strong style={{ color: 'var(--warning)' }}>6-8</strong> Aceptable</span>
+                <span><strong style={{ color: 'var(--danger)' }}>{'\u003C'}6</strong> Área crítica</span>
+              </div>
             </div>
           )}
 
@@ -325,7 +335,13 @@ export default function ResultadosEncuestaPage() {
           {/* eNPS Pie */}
           {enps && enps.total > 0 && (
             <div className="card" style={{ padding: '1.25rem' }}>
-              <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Distribución eNPS</h3>
+              <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }}>Distribución eNPS (Employee Net Promoter Score)</h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                El <strong>eNPS</strong> mide qué tan probable es que los colaboradores recomienden la organización como lugar de trabajo.
+                Se calcula como <strong>% Promotores − % Detractores</strong>. Rango: <strong>−100 a +100</strong>.
+                Un eNPS positivo ({'\u003E'}0) indica más promotores que detractores.
+                {'\u2265'}50 es excelente, 30-49 es muy bueno, 0-29 es aceptable, {'\u003C'}0 requiere atención.
+              </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
                 <ResponsiveContainer width={200} height={200}>
                   <PieChart>

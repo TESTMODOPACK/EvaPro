@@ -316,6 +316,12 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/objetivos', label: t('nav.objectives', 'Objetivos y Metas'), icon: icons.objectives },
         { href: '/dashboard/feedback', label: t('nav.feedback', 'Retroalimentación Continua'), icon: icons.feedback },
         { href: '/dashboard/reconocimientos', label: t('nav.recognitions', 'Reconocimientos'), icon: icons.recognition },
+      ],
+    },
+    // ─── Encuestas de Clima (sección propia, visible para todos) ──
+    {
+      title: t('nav.climaSurveys', 'Clima Organizacional'),
+      items: [
         { href: '/dashboard/encuestas-clima', label: t('nav.surveys', 'Encuestas de Clima'), icon: icons.surveys },
       ],
     },

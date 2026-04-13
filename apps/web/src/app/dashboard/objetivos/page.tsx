@@ -970,7 +970,7 @@ function ObjetivosPageContent() {
   const totalWeight = myObjectives.reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0);
 
   // Build unique users from objectives for the user filter dropdown
-  const uniqueUsers: { id: string; name: string }[] = [];
+  const uniqueUsers: { id: string; name: string; department?: string }[] = [];
   if (objectives && showAssignedTo) {
     const seen = new Set<string>();
     objectives.forEach((o: any) => {
@@ -978,7 +978,7 @@ function ObjetivosPageContent() {
       if (uid && !seen.has(uid)) {
         seen.add(uid);
         const name = o.user ? `${o.user.firstName || ''} ${o.user.lastName || ''}`.trim() : uid;
-        uniqueUsers.push({ id: uid, name });
+        uniqueUsers.push({ id: uid, name, department: o.user?.department || undefined });
       }
     });
     uniqueUsers.sort((a, b) => a.name.localeCompare(b.name));
@@ -1611,7 +1611,9 @@ function ObjetivosPageContent() {
                 style={{ fontSize: '0.78rem', padding: '0.3rem 0.5rem', width: 'auto' }}
               >
                 <option value="all">Todos los colaboradores</option>
-                {uniqueUsers.map((u) => (
+                {uniqueUsers
+                  .filter((u: any) => !deptFilter || u.department === deptFilter)
+                  .map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
@@ -1800,12 +1802,13 @@ function ObjetivosPageContent() {
                   style={{ width: '100%' }}
                 >
                   <option value="">Sin ciclo</option>
-                  {(cycles || []).map((c: any) => {
+                  {(cycles || [])
+                    .filter((c: any) => c.status !== 'closed' && c.status !== 'cancelled')
+                    .map((c: any) => {
                     const statusLabel =
                       c.status === 'active' ? 'En curso' :
                       c.status === 'draft' ? 'Borrador' :
                       c.status === 'paused' ? 'Pausado' :
-                      c.status === 'closed' ? 'Cerrado' :
                       c.status;
                     return (
                       <option key={c.id} value={c.id}>
@@ -1833,7 +1836,10 @@ function ObjetivosPageContent() {
                 style={{ width: '100%' }}
               >
                 <option value="">{t('objetivos.form.noParent')}</option>
-                {(objectives || []).filter((o: any) => o.status !== 'abandoned').map((o: any) => (
+                {(objectives || [])
+                  .filter((o: any) => o.status !== 'abandoned')
+                  .filter((o: any) => !form.type || o.type === form.type)
+                  .map((o: any) => (
                   <option key={o.id} value={o.id}>
                     [{o.type}] {o.title}
                   </option>

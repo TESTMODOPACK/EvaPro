@@ -67,12 +67,13 @@ export class SurveysController {
     return this.surveysService.update(req.user.tenantId, id, dto);
   }
 
-  /** Delete a draft survey */
+  /** Delete a survey. tenant_admin can only delete drafts; super_admin
+   *  can delete in any status (including closed with responses). */
   @Delete(':id')
   @Roles('super_admin', 'tenant_admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.surveysService.delete(req.user.tenantId, id);
+    return this.surveysService.delete(req.user.tenantId, id, req.user.role);
   }
 
   /** Launch a survey (draft → active) */
