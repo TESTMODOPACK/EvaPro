@@ -735,6 +735,7 @@ function SegmentationTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded 
   const [filterPool, setFilterPool] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [segDeptFilter, setSegDeptFilter] = useState('');
+  const [segExpandedDepts, setSegExpandedDepts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!selectedCycleId) { setSegData(null); setAssessments([]); return; }

@@ -7,11 +7,152 @@ import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
 import { DEFAULT_COMPETENCY_CATEGORIES } from '@/lib/constants';
+import { usePositions } from '@/hooks/usePositions';
 
 function Spinner() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
       <span className="spinner" />
+    </div>
+  );
+}
+
+// ─── Matriz de Competencias por Cargo (tab completo) ──────────────────────
+function CompetencyMatrixTab() {
+  const token = useAuthStore((s) => s.token);
+  const { positions: positionCatalog } = usePositions();
+  const [roleComps, setRoleComps] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterLevel, setFilterLevel] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    api.development.roleCompetencies.list(token)
+      .then((data) => setRoleComps(Array.isArray(data) ? data : []))
+      .catch(() => setRoleComps([]))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  // Build matrix
+  const allPositions = Array.from(new Set([
+    ...roleComps.map((rc: any) => rc.position),
+    ...positionCatalog.map(p => p.name),
+  ])).sort();
+
+  const allCompetencies = Array.from(
+    new Map(roleComps.map((rc: any) => [rc.competencyId, { id: rc.competencyId, name: rc.competency?.name || rc.competencyId, category: rc.competency?.category || '' }])).values()
+  );
+  const categories = Array.from(new Set(allCompetencies.map(c => c.category).filter(Boolean))).sort();
+  const filteredCompetencies = filterCategory ? allCompetencies.filter(c => c.category === filterCategory) : allCompetencies;
+
+  // Nivel jerarquico para filtro
+  const posLevelMap = new Map(positionCatalog.map(p => [p.name, p.level]));
+  const levels = Array.from(new Set(positionCatalog.map(p => p.level).filter(l => l > 0))).sort((a, b) => a - b);
+
+  const filteredPositions = filterLevel
+    ? allPositions.filter(p => posLevelMap.get(p) === Number(filterLevel))
+    : allPositions;
+
+  const levelMap = new Map(roleComps.map((rc: any) => [`${rc.position}|${rc.competencyId}`, rc.expectedLevel]));
+  const levelColor = (level: number) => level >= 8 ? '#10b981' : level >= 5 ? '#f59e0b' : level >= 3 ? '#6366f1' : '#94a3b8';
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Nota explicativa */}
+      <div style={{ padding: '0.85rem 1rem', background: 'rgba(99,102,241,0.05)', borderLeft: '3px solid var(--accent)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+        <strong>¿Qué es esta matriz?</strong> Define el nivel de dominio esperado (1-10) para cada competencia según el cargo.
+        Se usa como referencia para los planes de desarrollo individual (PDI): cuando un colaborador tiene una brecha entre su nivel real y el esperado, se generan acciones de mejora.
+        Para editar los niveles, vaya a <strong>Mantenedores → Competencias por Cargo</strong>.
+        {allPositions.length > filteredPositions.length && <span style={{ fontWeight: 600, color: 'var(--warning)' }}> Hay {allPositions.length - filteredPositions.length} cargo(s) sin competencias asignadas.</span>}
+      </div>
+
+      {/* Filtros */}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        {categories.length > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>Categoría:</span>
+            <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} style={{ fontSize: '0.82rem', maxWidth: '200px' }}>
+              <option value="">Todas ({allCompetencies.length})</option>
+              {categories.map(c => <option key={c} value={c}>{c} ({allCompetencies.filter(comp => comp.category === c).length})</option>)}
+            </select>
+          </div>
+        )}
+        {levels.length > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>Nivel jerárquico:</span>
+            <select className="input" value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)} style={{ fontSize: '0.82rem', maxWidth: '200px' }}>
+              <option value="">Todos los niveles ({allPositions.length} cargos)</option>
+              {levels.map(l => {
+                const count = allPositions.filter(p => posLevelMap.get(p) === l).length;
+                return <option key={l} value={l}>Nivel {l} ({count} cargos)</option>;
+              })}
+            </select>
+          </div>
+        )}
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {filteredPositions.length} cargos × {filteredCompetencies.length} competencias
+        </span>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#10b981', marginRight: 4 }} />Alto (8-10)</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#f59e0b', marginRight: 4 }} />Medio (5-7)</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#6366f1', marginRight: 4 }} />Básico (3-4)</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#94a3b8', marginRight: 4 }} />Inicial (1-2)</span>
+      </div>
+
+      {roleComps.length === 0 ? (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          No hay competencias asignadas a cargos aún. Vaya a <strong>Mantenedores → Competencias por Cargo</strong> para configurarlas.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.78rem' }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '0.5rem 0.6rem', borderBottom: '2px solid var(--border)', fontWeight: 700, position: 'sticky', left: 0, background: 'var(--bg-base)', minWidth: 150, zIndex: 1 }}>
+                  Cargo
+                  {filterLevel && <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: '0.3rem' }}>(Nv.{filterLevel})</span>}
+                </th>
+                {filteredCompetencies.map(c => (
+                  <th key={c.id} style={{ padding: '0.4rem 0.5rem', borderBottom: '2px solid var(--border)', fontWeight: 600, textAlign: 'center', minWidth: 80, fontSize: '0.7rem' }} title={`${c.name} (${c.category})`}>
+                    {c.name.length > 14 ? c.name.slice(0, 13) + '…' : c.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPositions.map(pos => {
+                const level = posLevelMap.get(pos);
+                const hasAnyComp = filteredCompetencies.some(c => levelMap.has(`${pos}|${c.id}`));
+                return (
+                  <tr key={pos} style={{ background: hasAnyComp ? 'transparent' : 'rgba(239,68,68,0.03)' }}>
+                    <td style={{ padding: '0.4rem 0.6rem', borderBottom: '1px solid var(--border)', fontWeight: 600, position: 'sticky', left: 0, background: hasAnyComp ? 'var(--bg-base)' : 'rgba(239,68,68,0.03)', zIndex: 1 }}>
+                      {pos}
+                      {level != null && level > 0 && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.3rem' }}>Nv.{level}</span>}
+                      {!hasAnyComp && <span style={{ fontSize: '0.62rem', color: 'var(--danger)', marginLeft: '0.3rem' }}>sin asignar</span>}
+                    </td>
+                    {filteredCompetencies.map(c => {
+                      const lv = levelMap.get(`${pos}|${c.id}`);
+                      return (
+                        <td key={c.id} style={{ padding: '0.3rem 0.5rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+                          {lv != null ? (
+                            <span style={{ display: 'inline-block', width: 28, height: 28, lineHeight: '28px', borderRadius: 4, fontWeight: 700, fontSize: '0.78rem', color: '#fff', background: levelColor(lv) }}>{lv}</span>
+                          ) : <span style={{ color: 'var(--border)' }}>—</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -60,6 +201,7 @@ export default function CompetenciasPage() {
     onConfirm: () => void;
   } | null>(null);
 
+  const [activeTab, setActiveTab] = useState<'catalog' | 'matrix'>('catalog');
   const [showGuide, setShowGuide] = useState(false);
   const [loading, setLoading] = useState(true);
   const [competencies, setCompetencies] = useState<any[]>([]);
@@ -222,10 +364,10 @@ export default function CompetenciasPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-            {'Cat\u00e1logo de Competencias'}
+            Competencias
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
-            {'Gesti\u00f3n de competencias para planes de desarrollo'}
+            Gestión de competencias y niveles esperados por cargo
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -239,6 +381,33 @@ export default function CompetenciasPage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0.15rem', borderBottom: '1px solid var(--border)' }}>
+        {[
+          { id: 'catalog' as const, label: 'Catálogo de Competencias' },
+          { id: 'matrix' as const, label: 'Matriz por Cargo' },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '0.6rem 1rem', border: 'none', background: 'none', cursor: 'pointer',
+              borderBottom: activeTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent',
+              fontWeight: activeTab === tab.id ? 700 : 400,
+              color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)',
+              fontSize: '0.85rem',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ═══ Tab: Matriz por Cargo ═══ */}
+      {activeTab === 'matrix' && <CompetencyMatrixTab />}
+
+      {/* ═══ Tab: Catálogo ═══ */}
+      {activeTab === 'catalog' && (<>
       {error && (
         <div className="card" style={{
           padding: '1rem 1.25rem',
@@ -496,6 +665,7 @@ export default function CompetenciasPage() {
           </div>
         </div>
       )}
+    </>)}
     </div>
     {confirmState && (
       <ConfirmModal
