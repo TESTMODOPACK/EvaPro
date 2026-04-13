@@ -276,6 +276,21 @@ export class AiInsightsService {
       .replace(/```\s*/g, '')
       .trim();
 
+    // If the AI wrapped the JSON in extra escaping (e.g., returned a
+    // string-escaped JSON instead of raw JSON), unescape it first.
+    // This happens when Claude puts the JSON inside a string literal.
+    if (cleaned.includes('\\"') && !cleaned.startsWith('"')) {
+      try {
+        const unescaped = cleaned
+          .replace(/\\"/g, '"')
+          .replace(/\\n/g, '\n')
+          .replace(/\\t/g, '\t')
+          .replace(/\\\\/g, '\\');
+        const parsed = JSON.parse(unescaped);
+        if (typeof parsed === 'object') return parsed;
+      } catch { /* not a double-escaped string, continue */ }
+    }
+
     // Try direct parse first
     try {
       return JSON.parse(cleaned);

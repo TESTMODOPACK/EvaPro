@@ -114,6 +114,7 @@ export default function MiDesempenoPage() {
   const [myBadges, setMyBadges] = useState<any[]>([]);
   const [recognitionsReceived, setRecognitionsReceived] = useState<any[]>([]);
   const [myRedemptions, setMyRedemptions] = useState<any[]>([]);
+  const [pendingSurveys, setPendingSurveys] = useState<any[]>([]);
   const [teamObjectives, setTeamObjectives] = useState<any>(null);
   const [teamMemberIds, setTeamMemberIds] = useState<Set<string>>(new Set());
   const [history, setHistory] = useState<any>(null);
@@ -185,6 +186,8 @@ export default function MiDesempenoPage() {
         setTeamMemberIds(new Set(directReports.map((u: any) => u.id)));
       }
     }).finally(() => setLoading(false));
+    // Load pending climate surveys separately (no need to block main load)
+    api.surveys.getMyPending(token).then((s) => setPendingSurveys(Array.isArray(s) ? s : [])).catch(() => {});
   }, [token, user?.userId]);
 
   // Load signatures
@@ -673,29 +676,74 @@ export default function MiDesempenoPage() {
 
           {/* ─── Encuestas de Clima ─── */}
           {personalTab === 'clima' && (
-            <div className="animate-fade-up">
-              <div className="card" style={{ padding: '1.25rem' }}>
-                <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>{'📋'} Mis Encuestas de Clima</h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                  Las encuestas de clima miden la percepción de los colaboradores sobre distintos aspectos de la organización.
-                  Tus respuestas son anónimas y contribuyen al cálculo del <strong>eNPS</strong> (Employee Net Promoter Score, escala −100 a +100).
-                </p>
-                <a
-                  href="/dashboard/encuestas-clima"
-                  style={{
-                    padding: '0.5rem 1rem',
-                    fontSize: '0.85rem',
-                    fontWeight: 600,
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--accent)',
-                    color: '#fff',
-                    textDecoration: 'none',
-                    display: 'inline-block',
-                  }}
-                >
-                  Ver encuestas disponibles
-                </a>
-              </div>
+            <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Encuestas pendientes por responder — visible para TODOS los roles */}
+              {pendingSurveys.length > 0 ? (
+                <div>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>
+                    {'🔔'} Encuestas Pendientes por Responder ({pendingSurveys.length})
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {pendingSurveys.map((s: any) => (
+                      <div key={s.id} className="card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: '4px solid var(--warning)' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{s.title}</div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '0.75rem', marginTop: '0.2rem' }}>
+                            <span>{s.isAnonymous ? 'Anónima' : 'Identificada'}</span>
+                            <span>Fecha límite: <strong style={{ color: 'var(--warning)' }}>{new Date(s.endDate).toLocaleDateString('es-CL')}</strong></span>
+                          </div>
+                        </div>
+                        <a
+                          href={`/dashboard/encuestas-clima/${s.id}/responder`}
+                          style={{
+                            padding: '0.5rem 1.25rem',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            borderRadius: 'var(--radius-sm)',
+                            background: 'var(--accent)',
+                            color: '#fff',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          Responder
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {'✅'} No tienes encuestas de clima pendientes por responder.
+                  </p>
+                </div>
+              )}
+
+              {/* Info administrativa — solo para admin */}
+              {isAdmin && (
+                <div className="card" style={{ padding: '1.25rem', borderLeft: '3px solid var(--accent)' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>{'📊'} Gestión de Encuestas</h3>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+                    Como administrador, puedes crear, gestionar y analizar encuestas de clima organizacional.
+                    Los resultados incluyen el <strong>eNPS</strong> (escala −100 a +100) y análisis por categoría.
+                  </p>
+                  <a
+                    href="/dashboard/encuestas-clima"
+                    style={{
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--accent)',
+                      color: '#fff',
+                      textDecoration: 'none',
+                      display: 'inline-block',
+                    }}
+                  >
+                    Ir a Encuestas de Clima
+                  </a>
+                </div>
+              )}
             </div>
           )}
         </>
