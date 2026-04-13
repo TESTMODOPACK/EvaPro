@@ -55,6 +55,28 @@ function EmployeeEvaluationsView() {
   const [compPage, setCompPage] = useState(1);
   const compPageSize = 10;
 
+  // ── Pending filters + pagination ────────────────────────────────────
+  const [pendCycleFilter, setPendCycleFilter] = useState('');
+  const [pendSearch, setPendSearch] = useState('');
+  const [pendPage, setPendPage] = useState(1);
+  const pendPageSize = 10;
+  const [showScale, setShowScale] = useState(false);
+
+  const pendCycles = Array.from(new Set(pending.map((e: any) => e.cycle?.name).filter(Boolean)));
+
+  const filteredPending = pending.filter((ev: any) => {
+    if (pendCycleFilter && ev.cycle?.name !== pendCycleFilter) return false;
+    if (pendSearch) {
+      const q = pendSearch.toLowerCase();
+      const name = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}`.toLowerCase() : '';
+      if (!name.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const pendTotalPages = Math.ceil(filteredPending.length / pendPageSize);
+  const paginatedPending = filteredPending.slice((pendPage - 1) * pendPageSize, pendPage * pendPageSize);
+
   const compCycles = Array.from(new Set(allCompleted.map((e: any) => e.cycle?.name).filter(Boolean)));
 
   const filteredCompleted = allCompleted.filter((ev: any) => {
@@ -72,11 +94,13 @@ function EmployeeEvaluationsView() {
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
-      <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('evaluaciones.myTitle')}</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          {t('evaluaciones.subtitle')}
-        </p>
+      <div className="animate-fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Bandeja de Evaluaciones</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            Evaluaciones asignadas a ti como evaluador y tus resultados completados
+          </p>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -95,16 +119,24 @@ function EmployeeEvaluationsView() {
         </div>
       </div>
 
-      {/* Scale legend */}
-      <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.5rem' }}>
-        <ScaleLegend />
+      {/* Scale legend — colapsable como guia */}
+      <div className="animate-fade-up-delay-1" style={{ marginBottom: '1rem' }}>
+        <button
+          className="btn-ghost"
+          onClick={() => setShowScale(!showScale)}
+          style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+        >
+          <span style={{ fontSize: '0.7rem', transform: showScale ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', display: 'inline-block' }}>▶</span>
+          {showScale ? 'Ocultar escala de desempeño' : 'Ver escala de desempeño'}
+        </button>
+        {showScale && <div style={{ marginTop: '0.5rem' }}><ScaleLegend /></div>}
       </div>
 
       {/* Pending evaluations */}
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--warning)', display: 'inline-block' }} />
-          {t('evaluaciones.pendingEvals')}
+          {t('evaluaciones.pendingEvals')} ({filteredPending.length})
         </h2>
 
         {loadingPending ? <Spinner /> : pending.length === 0 ? (
@@ -112,8 +144,35 @@ function EmployeeEvaluationsView() {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('evaluaciones.noPending')}</p>
           </div>
         ) : (
+          <>
+          {/* Filtros pendientes */}
+          {pending.length > 5 && (
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+              {pendCycles.length > 1 && (
+                <select className="input" value={pendCycleFilter} onChange={(e) => { setPendCycleFilter(e.target.value); setPendPage(1); }} style={{ fontSize: '0.82rem', maxWidth: '250px' }}>
+                  <option value="">Todos los ciclos</option>
+                  {pendCycles.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+              <input
+                className="input"
+                placeholder="Buscar colaborador..."
+                value={pendSearch}
+                onChange={(e) => { setPendSearch(e.target.value); setPendPage(1); }}
+                style={{ fontSize: '0.82rem', maxWidth: '220px' }}
+              />
+              {(pendCycleFilter || pendSearch) && (
+                <button className="btn-ghost" onClick={() => { setPendCycleFilter(''); setPendSearch(''); setPendPage(1); }} style={{ fontSize: '0.78rem' }}>
+                  ✕ Limpiar
+                </button>
+              )}
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                {filteredPending.length} de {pending.length}
+              </span>
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {pending.map((ev: any) => (
+            {paginatedPending.map((ev: any) => (
               <div key={ev.id} className="card" style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
@@ -148,6 +207,15 @@ function EmployeeEvaluationsView() {
               </div>
             ))}
           </div>
+          {/* Pagination */}
+          {pendTotalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
+              <button className="btn-ghost" disabled={pendPage <= 1} onClick={() => setPendPage(p => p - 1)} style={{ fontSize: '0.78rem' }}>← Anterior</button>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Página {pendPage} de {pendTotalPages}</span>
+              <button className="btn-ghost" disabled={pendPage >= pendTotalPages} onClick={() => setPendPage(p => p + 1)} style={{ fontSize: '0.78rem' }}>Siguiente →</button>
+            </div>
+          )}
+          </>
         )}
       </div>
 
