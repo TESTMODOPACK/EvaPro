@@ -123,6 +123,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [boxSearch, setBoxSearch] = useState('');
   const [boxDeptFilter, setBoxDeptFilter] = useState('');
+  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!selectedCycleId) { setNineBoxData(null); return; }
@@ -447,21 +448,57 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
                   )}
 
                   <div className="table-wrapper" style={{ margin: 0, overflowX: 'auto' }}>
-                    <table style={{ minWidth: '760px' }}>
-                      <thead>
-                        <tr>
-                          <SortTh field="name" label="Colaborador" />
-                          <SortTh field="dept" label="Departamento" />
-                          <th>{`Clasificaci\u00f3n`}</th>
-                          <SortTh field="performance" label={t('talento.colPerformance')} title={t('talento.colPerformanceHint')} />
-                          <SortTh field="potential" label={t('talento.colPotential')} title={t('talento.colPotentialHint')} />
-                          <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title={t('talento.colReadinessHint')}>{t('talento.colReadiness')}</th>
-                          <SortTh field="risk" label={t('talento.colFlightRisk')} title={t('talento.colFlightRiskHint')} />
-                          {isAdmin && <th></th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedUsers.map((a: any) => {
+                    {/* Agrupado por departamento cuando no hay filtro de depto */}
+                    {!boxDeptFilter && selectedUsers.length > 10 && (() => {
+                      // Group users by department
+                      const byDept: Record<string, any[]> = {};
+                      selectedUsers.forEach((a: any) => {
+                        const dept = (a.user || a).department || 'Sin departamento';
+                        if (!byDept[dept]) byDept[dept] = [];
+                        byDept[dept].push(a);
+                      });
+                      const deptNames = Object.keys(byDept).sort();
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.5rem' }}>
+                          {deptNames.map((dept) => {
+                            const users = byDept[dept];
+                            const isExpanded = expandedDepts.has(dept);
+                            return (
+                              <div key={dept} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+                                <button
+                                  onClick={() => setExpandedDepts(prev => {
+                                    const next = new Set(prev);
+                                    next.has(dept) ? next.delete(dept) : next.add(dept);
+                                    return next;
+                                  })}
+                                  style={{
+                                    width: '100%', display: 'flex', justifyContent: 'space-between',
+                                    alignItems: 'center', padding: '0.6rem 1rem', background: 'var(--bg-base)',
+                                    border: 'none', cursor: 'pointer', textAlign: 'left',
+                                  }}
+                                >
+                                  <span style={{ fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.65rem', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
+                                    {dept}
+                                  </span>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{users.length} colaboradores</span>
+                                </button>
+                                {isExpanded && (
+                                  <table style={{ width: '100%', minWidth: '760px' }}>
+                                    <thead>
+                                      <tr>
+                                        <SortTh field="name" label="Colaborador" />
+                                        <SortTh field="dept" label="Departamento" />
+                                        <th>{`Clasificaci\u00f3n`}</th>
+                                        <SortTh field="performance" label={t('talento.colPerformance')} title={t('talento.colPerformanceHint')} />
+                                        <SortTh field="potential" label={t('talento.colPotential')} title={t('talento.colPotentialHint')} />
+                                        <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title={t('talento.colReadinessHint')}>{t('talento.colReadiness')}</th>
+                                        <SortTh field="risk" label={t('talento.colFlightRisk')} title={t('talento.colFlightRiskHint')} />
+                                        {isAdmin && <th></th>}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {users.map((a: any) => {
                           const u = a.user || a;
                           const accent = POOL_ACCENT[a.talentPool] || 'var(--accent)';
                           return (
@@ -502,8 +539,72 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
                             </tr>
                           );
                         })}
+                                    </tbody>
+                                  </table>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Tabla plana: cuando hay filtro de depto O pocos usuarios */}
+                    {(boxDeptFilter || selectedUsers.length <= 10) && (
+                    <table style={{ minWidth: '760px' }}>
+                      <thead>
+                        <tr>
+                          <SortTh field="name" label="Colaborador" />
+                          <SortTh field="dept" label="Departamento" />
+                          <th>{`Clasificaci\u00f3n`}</th>
+                          <SortTh field="performance" label={t('talento.colPerformance')} title={t('talento.colPerformanceHint')} />
+                          <SortTh field="potential" label={t('talento.colPotential')} title={t('talento.colPotentialHint')} />
+                          <th style={{ whiteSpace: 'nowrap', cursor: 'default' }} title={t('talento.colReadinessHint')}>{t('talento.colReadiness')}</th>
+                          <SortTh field="risk" label={t('talento.colFlightRisk')} title={t('talento.colFlightRiskHint')} />
+                          {isAdmin && <th></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedUsers.map((a: any) => {
+                          const u = a.user || a;
+                          const accent = POOL_ACCENT[a.talentPool] || 'var(--accent)';
+                          return (
+                            <tr
+                              key={a.id}
+                              onClick={() => isAdmin && startEdit(a)}
+                              style={{ borderLeft: `3px solid ${accent}`, cursor: isAdmin ? 'pointer' : 'default' }}
+                            >
+                              <td>
+                                <div style={{ fontWeight: 700, fontSize: '.9rem' }}>{u.firstName} {u.lastName}</div>
+                                {u.position && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: '.1rem' }}>{u.position}</div>}
+                              </td>
+                              <td style={{ color: 'var(--text-secondary)', fontSize: '.875rem' }}>{u.department || '\u2014'}</td>
+                              <td>
+                                <span className={`badge ${POOL_BADGE[a.talentPool] || 'badge-accent'}`}>{POOL_LABEL_KEY[a.talentPool] ? t(POOL_LABEL_KEY[a.talentPool]) : a.talentPool}</span>
+                              </td>
+                              <td style={{ minWidth: '110px' }}>
+                                <ScoreBar value={a.performanceScore} color="var(--accent)" />
+                              </td>
+                              <td style={{ minWidth: '110px' }}>
+                                {a.potentialScore != null ? <ScoreBar value={a.potentialScore} color="#6366f1" /> : <span style={{ color: 'var(--text-muted)' }}>&mdash;</span>}
+                              </td>
+                              <td style={{ color: 'var(--text-secondary)', fontSize: '.875rem' }}>{a.readinessLevel ? t(`talento.readiness.${a.readinessLevel}`) : '\u2014'}</td>
+                              <td>
+                                {a.flightRisk ? <span className={`badge ${a.flightRisk === 'high' ? 'badge-danger' : a.flightRisk === 'medium' ? 'badge-warning' : 'badge-success'}`}>{t(`talento.risk.${a.flightRisk}`)}</span> : '\u2014'}
+                              </td>
+                              {isAdmin && (
+                                <td>
+                                  <button className="btn-ghost" style={{ fontSize: '.75rem', padding: '0.2rem .5rem' }} onClick={(e) => { e.stopPropagation(); startEdit(a); }}>
+                                    {t('common.edit')}
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
+                    )}
                   </div>
                 </div>
               )}
