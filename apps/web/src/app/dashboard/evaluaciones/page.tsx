@@ -105,36 +105,57 @@ function EmployeeEvaluationsView() {
 
       {/* Summary cards */}
       <div className="animate-fade-up-delay-1" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-        <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.pending')}</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
-          {/* Desglose por ciclo */}
-          {pending.length > 0 && (() => {
+        {(() => {
+          // Agrupar por ciclo para los 3 cards
+          const groupByCycle = (list: any[]) => {
             const byCycle: Record<string, number> = {};
-            pending.forEach((ev: any) => {
+            list.forEach((ev: any) => {
               const name = ev.cycle?.name || 'Sin ciclo';
               byCycle[name] = (byCycle[name] || 0) + 1;
             });
-            return (
-              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                {Object.entries(byCycle).map(([cycle, count]) => (
-                  <div key={cycle} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>{cycle}</span>
-                    <span style={{ fontWeight: 700, color: 'var(--warning)' }}>{count}</span>
-                  </div>
-                ))}
+            return Object.entries(byCycle).sort((a, b) => b[1] - a[1]);
+          };
+          const pendByCycle = groupByCycle(pending);
+          const compByCycle = groupByCycle(allCompleted);
+          // Total = merge ambos
+          const totalByCycle: Record<string, number> = {};
+          [...pending, ...allCompleted].forEach((ev: any) => {
+            const name = ev.cycle?.name || 'Sin ciclo';
+            totalByCycle[name] = (totalByCycle[name] || 0) + 1;
+          });
+          const totalEntries = Object.entries(totalByCycle).sort((a, b) => b[1] - a[1]);
+
+          const CycleBreakdown = ({ entries, color }: { entries: [string, number][]; color: string }) => (
+            <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {entries.map(([cycle, count]) => (
+                <div key={cycle} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', gap: '0.5rem' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={cycle}>{cycle}</span>
+                  <span style={{ fontWeight: 700, color, flexShrink: 0 }}>{count}</span>
+                </div>
+              ))}
+            </div>
+          );
+
+          return (
+            <>
+              <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.pending')}</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
+                {pendByCycle.length > 0 && <CycleBreakdown entries={pendByCycle} color="var(--warning)" />}
               </div>
-            );
-          })()}
-        </div>
-        <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.completed')}</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{allCompleted.length}</div>
-        </div>
-        <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '180px' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Total</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{pending.length + allCompleted.length}</div>
-        </div>
+              <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.completed')}</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{allCompleted.length}</div>
+                {compByCycle.length > 0 && <CycleBreakdown entries={compByCycle} color="#10b981" />}
+              </div>
+              <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Total</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{pending.length + allCompleted.length}</div>
+                {totalEntries.length > 0 && <CycleBreakdown entries={totalEntries} color="#6366f1" />}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* Scale legend — colapsable como guia */}
