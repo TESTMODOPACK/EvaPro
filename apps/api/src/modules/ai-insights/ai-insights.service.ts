@@ -270,8 +270,11 @@ export class AiInsightsService {
   }
 
   private parseJson(text: string): any {
-    // Remove markdown fences if present
-    let cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    // Remove markdown fences if present (```json ... ``` or ``` ... ```)
+    let cleaned = text
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .trim();
 
     // Try direct parse first
     try {
@@ -285,14 +288,33 @@ export class AiInsightsService {
         try {
           return JSON.parse(extracted);
         } catch (_e2) {
-          // Try fixing common issues: trailing commas, single quotes
+          // Fix common Claude issues:
+          // - Trailing commas before } or ]
+          // - Control characters (\n inside strings that aren't escaped)
+          // - Comments (// or /* */)
           const fixed = extracted
             .replace(/,\s*}/g, '}')
-            .replace(/,\s*]/g, ']');
+            .replace(/,\s*]/g, ']')
+            .replace(/\/\/[^\n]*/g, '')  // Remove single-line comments
+            .replace(/\/\*[\s\S]*?\*\//g, '')  // Remove multi-line comments
+            .replace(/[\x00-\x1F\x7F]/g, (ch) => {
+              // Preserve \n \r \t inside strings (will be handled by JSON.parse)
+              if (ch === '\n' || ch === '\r' || ch === '\t') return ch;
+              return ''; // Strip other control chars
+            });
           try {
             return JSON.parse(fixed);
           } catch (_e3) {
-            // Last resort
+            // Try one more time: replace newlines inside strings
+            const aggressive = fixed.replace(
+              /"([^"]*?)"/g,
+              (_, content) => `"${content.replace(/\n/g, ' ').replace(/\r/g, '')}"`,
+            );
+            try {
+              return JSON.parse(aggressive);
+            } catch (_e4) {
+              // Last resort failed
+            }
           }
         }
       }
