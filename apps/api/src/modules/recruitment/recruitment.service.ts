@@ -168,11 +168,15 @@ export class RecruitmentService {
       .orderBy('c.createdAt', 'DESC')
       .getMany();
 
+    // recruitment_evaluators NO tiene tenant_id (es una tabla de relacion
+    // pura processId+evaluatorId). El aislamiento multi-tenant se garantiza
+    // porque filtramos por processId de un proceso que YA fue validado
+    // como perteneciente al tenant (query de arriba). El JOIN al user
+    // usa el tenant del proceso para evitar cross-tenant leak.
     const evaluators = await this.evaluatorRepo
       .createQueryBuilder('e')
-      .leftJoinAndSelect('e.evaluator', 'evaluator', 'evaluator.tenant_id = e.tenant_id')
+      .leftJoinAndSelect('e.evaluator', 'evaluator', 'evaluator.tenant_id = :tenantId', { tenantId })
       .where('e.processId = :processId', { processId: id })
-      .andWhere('e.tenantId = :tenantId', { tenantId })
       .getMany();
 
     return { ...process, candidates, evaluators };
