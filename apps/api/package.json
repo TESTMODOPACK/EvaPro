@@ -12,7 +12,7 @@
         "start:dev": "nest start --watch",
         "start:debug": "nest start --debug --watch",
         "start:prod": "node dist/database/cleanup-orphans.js && node dist/main",
-        "db:migrate:prod": "ts-node -r tsconfig-paths/register src/database/schema-sync.ts",
+        "db:DANGER:reset-schema": "echo '⚠️  ESTO BORRA TODAS LAS TABLAS Y RECREA EL SCHEMA. Solo para entornos de desarrollo.' && ts-node -r tsconfig-paths/register src/database/schema-sync.ts",
         "db:seed": "ts-node -r tsconfig-paths/register src/database/seed.ts",
         "db:seed-full": "ts-node -r tsconfig-paths/register src/database/seed-demo-full.ts",
         "db:seed:demo": "node dist/database/seed.js && node dist/database/seed-demo-full.js",
@@ -24,6 +24,7 @@
         "test": "jest",
         "test:watch": "jest --watch",
         "test:cov": "jest --coverage",
+        "test:ci": "jest --ci --coverage --forceExit --maxWorkers=50%",
         "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
         "test:e2e": "jest --config ./test/jest-e2e.json"
     },
@@ -108,9 +109,27 @@
             "^.+\\.(t|j)s$": "ts-jest"
         },
         "collectCoverageFrom": [
-            "**/*.(t|j)s"
+            "modules/**/*.service.ts",
+            "modules/**/*.controller.ts",
+            "common/**/*.ts",
+            "!**/*.module.ts",
+            "!**/*.entity.ts",
+            "!**/*.dto.ts",
+            "!**/index.ts",
+            "!database/**"
         ],
         "coverageDirectory": "../coverage",
-        "testEnvironment": "node"
+        "coverageReporters": ["text", "text-summary", "lcov"],
+        "coverageThreshold": {
+            "global": {
+                "branches": 30,
+                "functions": 35,
+                "lines": 40,
+                "statements": 40
+            }
+        },
+        "testEnvironment": "node",
+        "testTimeout": 30000,
+        "maxWorkers": "50%"
     }
 }
