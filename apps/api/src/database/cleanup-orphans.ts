@@ -126,11 +126,40 @@ async function main() {
       }
     }
 
+    // ── Sync positions.level from tenant settings JSONB ─────────────────
+    // The mantenedor saves levels in tenant.settings.positions (JSONB).
+    // When positions are auto-created via findOrCreatePosition (e.g., from
+    // user form or import), they get level=0 because the JSONB level isn't
+    // consulted. This backfill syncs the table from the JSONB source of
+    // truth. Idempotent — only updates rows where the table level differs
+    // from the JSONB level.
+    try {
+      const tenants = await client.query(`SELECT id, settings FROM tenants WHERE is_active = true`);
+      let positionsFixed = 0;
+      for (const t of tenants.rows) {
+        const settingsPositions: { name: string; level: number }[] = t.settings?.positions || [];
+        if (settingsPositions.length === 0) continue;
+        for (const sp of settingsPositions) {
+          if (!sp.name || !sp.level) continue;
+          const res = await client.query(
+            `UPDATE positions SET level = $1 WHERE tenant_id = $2 AND LOWER(name) = LOWER($3) AND (level IS NULL OR level = 0 OR level != $1)`,
+            [sp.level, t.id, sp.name],
+          );
+          if (res.rowCount && res.rowCount > 0) positionsFixed += res.rowCount;
+        }
+      }
+      if (positionsFixed > 0) {
+        console.log(`[cleanup] Synced position levels from JSONB settings: ${positionsFixed} position(s) updated`);
+      }
+    } catch (err: any) {
+      console.log(`[cleanup] Position level sync skipped: ${err.message}`);
+    }
+
     // ── Backfill hierarchyLevel from position catalog ───────────────────
     // If a position in the catalog has a `level` but the user's
     // `hierarchy_level` is NULL (e.g., the level was added to the catalog
-    // AFTER the user was created), sync it. Idempotent — only updates
-    // rows where the user's level is missing AND the position has one.
+    // AFTER the user was created), sync it. Also updates users whose
+    // hierarchyLevel is 0 (stale from before the position got its level).
     try {
       const backfillResult = await client.query(`
         UPDATE users u
@@ -139,7 +168,8 @@ async function main() {
         WHERE u.position_id = p.id
           AND u.tenant_id = p.tenant_id
           AND p.level IS NOT NULL
-          AND u.hierarchy_level IS NULL
+          AND p.level > 0
+          AND (u.hierarchy_level IS NULL OR u.hierarchy_level = 0)
       `);
       if (backfillResult.rowCount && backfillResult.rowCount > 0) {
         console.log(`[cleanup] Backfilled hierarchy_level for ${backfillResult.rowCount} user(s) from position catalog`);

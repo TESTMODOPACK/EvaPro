@@ -1430,7 +1430,21 @@ export class TenantsService {
       }
       return pos.id;
     }
-    pos = this.positionRepo.create({ tenantId, name: trimmed, level: level ?? 0, isActive: true });
+    // Si no se pasa nivel, intentar inferirlo del nombre del cargo
+    // comparando contra el catalogo JSONB del tenant (que tiene los
+    // niveles que el admin ya configuro). Si no hay match, usar 0
+    // como fallback — el admin debera asignarlo en el mantenedor.
+    let inferredLevel = level;
+    if (inferredLevel === undefined || inferredLevel === null) {
+      try {
+        const tenant = await this.tenantRepository.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+        const positions: { name: string; level: number }[] = tenant?.settings?.positions || [];
+        const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const match = positions.find(p => norm(p.name) === norm(trimmed));
+        if (match) inferredLevel = match.level;
+      } catch { /* ignore — use fallback */ }
+    }
+    pos = this.positionRepo.create({ tenantId, name: trimmed, level: inferredLevel ?? 0, isActive: true });
     const saved = await this.positionRepo.save(pos);
     await this.syncPositionsToSettings(tenantId);
     return saved.id;
