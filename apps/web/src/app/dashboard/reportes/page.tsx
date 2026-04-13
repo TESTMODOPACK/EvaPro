@@ -462,6 +462,13 @@ export default function ReportesPage() {
           {/* ═══════════════════════════════════════════════════════════════ */}
           {activeTab === 'climate' && (
             <div className="animate-fade-up">
+              {/* Nota para managers: datos de toda la organización */}
+              {!isAdmin && (
+                <div style={{ padding: '0.65rem 0.85rem', background: 'rgba(99,102,241,0.06)', borderLeft: '3px solid var(--accent)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                  <strong>Nota:</strong> Los datos de clima corresponden a <strong>toda la organización</strong>, no solo a tu equipo.
+                  Las encuestas de clima son anónimas — no es posible filtrar las respuestas por departamento o equipo sin comprometer el anonimato de los colaboradores.
+                </div>
+              )}
               {!enpsData ? <EmptyState msg="Seleccione una encuesta de clima para ver los resultados." /> : (
                 <>
                   {/* eNPS KPIs */}
@@ -901,9 +908,9 @@ export default function ReportesPage() {
                 <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
                   <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{'⚠️'}</p>
                   <p style={{ fontWeight: 600, color: 'var(--warning)', marginBottom: '0.5rem' }}>Análisis de riesgo no disponible</p>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '500px', margin: '0 auto' }}>
-                    El cálculo de riesgo de fuga requiere un plan que incluya análisis de IA (Pro o Enterprise).
-                    Este análisis utiliza un algoritmo que combina datos de evaluaciones, objetivos, feedback y nine-box para generar un score de riesgo por colaborador.
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '520px', margin: '0 auto', lineHeight: 1.6 }}>
+                    El análisis de riesgo de fuga requiere datos suficientes: evaluaciones completadas con puntajes, datos de talento (9-Box) y objetivos.
+                    Verifique que el ciclo seleccionado tenga evaluaciones cerradas. Si el problema persiste, intente seleccionar otro ciclo o contacte al administrador.
                   </p>
                 </div>
               ) : (

@@ -107,7 +107,7 @@ export class AiInsightsController {
   // ─── Flight Risk Score ─────────────────────────────────────────────────
 
   @Get('flight-risk')
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   getFlightRisk(@Request() req: any) {
     return this.aiService.getFlightRiskScores(req.user.tenantId);
   }
