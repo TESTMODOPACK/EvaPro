@@ -365,34 +365,54 @@ export default function ReportesPage() {
             <div className="animate-fade-up">
               {!summary ? <Spinner /> : (
                 <>
-                  {/* KPIs Organización */}
-                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>
-                    {'🏢'} Organización
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
-                    <KPI label="Promedio Global" value={Number(summary.averageScore || 0)?.toFixed(1) || '--'} color={getScoreColor(Number(summary.averageScore || 0))} sub={getScoreLabel(Number(summary.averageScore || 0))} />
-                    <KPI label="Completitud" value={`${Number(summary.completionRate) || 0}%`} color={Number(summary.completionRate) >= 80 ? 'var(--success)' : 'var(--warning)'} />
-                    <KPI label="Evaluaciones" value={`${summary.completedAssignments || 0}/${summary.totalAssignments || 0}`} />
-                    <KPI label="Departamentos" value={depts.length} />
-                  </div>
+                  {(() => {
+                    // Para managers: summary viene filtrado por su equipo.
+                    // Los datos de "Organización" se calculan desde los departamentos
+                    // (que incluyen todos los deptos del ciclo con sus promedios).
+                    const orgAvg = depts.length > 0
+                      ? depts.reduce((s: number, d: any) => s + d.avgScore * (d.count || 1), 0) / depts.reduce((s: number, d: any) => s + (d.count || 1), 0)
+                      : Number(summary.averageScore || 0);
+                    const orgTotal = depts.reduce((s: number, d: any) => s + (d.count || 0), 0);
 
-                  {/* KPIs Mi Equipo (solo para managers) */}
-                  {!isAdmin && teamDepts.size > 0 && depts.length > 0 && (() => {
-                    const myDepts = depts.filter((d: any) => teamDepts.has(d.department));
-                    if (myDepts.length === 0) return null;
-                    const myAvg = myDepts.reduce((s: number, d: any) => s + d.avgScore, 0) / myDepts.length;
-                    const myTotal = myDepts.reduce((s: number, d: any) => s + (d.count || 0), 0);
+                    // Para Mi Equipo: usar summary directo (ya filtrado por el backend)
+                    const teamAvg = Number(summary.averageScore || 0);
+                    const teamEvals = `${summary.completedAssignments || 0}/${summary.totalAssignments || 0}`;
+                    const teamCompletion = Number(summary.completionRate || 0);
+
                     return (
                       <>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>
-                          {'👥'} Mi Equipo ({Array.from(teamDepts).join(', ')})
+                        {/* KPIs Organización */}
+                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>
+                          {'🏢'} Organización
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                          <KPI label="Promedio Equipo" value={myAvg.toFixed(1)} color={getScoreColor(myAvg)} sub={getScoreLabel(myAvg)} />
-                          <KPI label="Colaboradores" value={myTotal} />
-                          <KPI label="Áreas" value={myDepts.length} />
-                          <KPI label="vs Organización" value={`${myAvg > Number(summary.averageScore) ? '+' : ''}${(myAvg - Number(summary.averageScore)).toFixed(1)}`} color={myAvg >= Number(summary.averageScore) ? 'var(--success)' : 'var(--danger)'} />
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+                          <KPI label="Promedio Global" value={orgAvg.toFixed(1)} color={getScoreColor(orgAvg)} sub={getScoreLabel(orgAvg)} />
+                          <KPI label="Colaboradores Eval." value={orgTotal || '--'} />
+                          <KPI label="Departamentos" value={depts.length} />
                         </div>
+
+                        {/* KPIs Mi Equipo (solo para managers) */}
+                        {!isAdmin && teamDepts.size > 0 && (
+                          <>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>
+                              {'👥'} Mi Equipo ({Array.from(teamDepts).join(', ')})
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                              <KPI label="Promedio Equipo" value={teamAvg.toFixed(1)} color={getScoreColor(teamAvg)} sub={getScoreLabel(teamAvg)} />
+                              <KPI label="Completitud" value={`${teamCompletion}%`} color={teamCompletion >= 80 ? 'var(--success)' : 'var(--warning)'} />
+                              <KPI label="Evaluaciones" value={teamEvals} />
+                              <KPI label="vs Organización" value={`${teamAvg > orgAvg ? '+' : ''}${(teamAvg - orgAvg).toFixed(1)}`} color={teamAvg >= orgAvg ? 'var(--success)' : 'var(--danger)'} />
+                            </div>
+                          </>
+                        )}
+
+                        {/* Para admins: una sola fila con todos los datos */}
+                        {isAdmin && (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem', marginTop: '-0.75rem' }}>
+                            <KPI label="Completitud" value={`${teamCompletion}%`} color={teamCompletion >= 80 ? 'var(--success)' : 'var(--warning)'} />
+                            <KPI label="Evaluaciones" value={teamEvals} />
+                          </div>
+                        )}
                       </>
                     );
                   })()}
@@ -453,15 +473,22 @@ export default function ReportesPage() {
                     <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
                       <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Semáforo de Áreas</h4>
                       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Vista rápida del estado de cada departamento. 🟢 ≥7.0 (Alto) | 🟡 5.0-6.9 (Medio) | 🔴 &lt;5.0 (Bajo).</p>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
                         {depts.map((d: any) => {
                           const score = Number(d.avgScore);
                           const color = score >= 7 ? 'var(--success)' : score >= 5 ? 'var(--warning)' : 'var(--danger)';
+                          const isMine = teamDepts.has(d.department);
                           return (
-                            <div key={d.department} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
+                            <div key={d.department} style={{
+                              display: 'flex', alignItems: 'center', gap: '0.5rem',
+                              padding: '0.5rem 0.75rem',
+                              background: isMine ? 'rgba(201,147,58,0.06)' : 'var(--bg-surface)',
+                              borderRadius: 'var(--radius-sm)',
+                              border: isMine ? '1px solid rgba(201,147,58,0.2)' : '1px solid transparent',
+                            }}>
                               <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                              <span style={{ fontSize: '0.8rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.department}</span>
-                              <span style={{ fontSize: '0.8rem', fontWeight: 700, color }}>{score.toFixed(1)}</span>
+                              <span style={{ fontSize: '0.82rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isMine ? 600 : 400 }}>{d.department}{isMine ? ' ★' : ''}</span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 700, color, flexShrink: 0 }}>{score.toFixed(1)}</span>
                             </div>
                           );
                         })}
