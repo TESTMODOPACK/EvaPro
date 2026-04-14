@@ -484,7 +484,18 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
                   ...(sIdx > 0 ? { cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0.5rem', borderRadius: 'var(--radius-sm)' } : {}),
                 }}
               >
-                <span>{section.title}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  {section.title}
+                  {sIdx > 0 && isCollapsed && (() => {
+                    const sectionBadgeTotal = visibleItems.reduce((sum, it) => sum + (badgeCounts[it.href]?.count || 0), 0);
+                    if (sectionBadgeTotal <= 0) return null;
+                    return (
+                      <span style={{ minWidth: '16px', height: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontSize: '0.55rem', fontWeight: 700, borderRadius: '8px', padding: '0 4px', lineHeight: 1 }}>
+                        {sectionBadgeTotal > 99 ? '99+' : sectionBadgeTotal}
+                      </span>
+                    );
+                  })()}
+                </span>
                 {sIdx > 0 && (
                   <span style={{ fontSize: '0.6rem', transition: 'transform 0.2s', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
                     &#9660;

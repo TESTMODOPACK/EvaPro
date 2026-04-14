@@ -13,6 +13,8 @@ export interface SidebarBadges {
 
 export function useSidebarBadges() {
   const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.user?.role);
+  const isSuperAdmin = role === 'super_admin';
 
   return useQuery<SidebarBadges>({
     queryKey: ['sidebar', 'badges'],
@@ -31,7 +33,7 @@ export function useSidebarBadges() {
         objectives: actions.filter((a: any) => a.type === 'okr').length,
       };
     },
-    enabled: !!token,
+    enabled: !!token && !isSuperAdmin,
     staleTime: 30_000,
     refetchInterval: 60_000,
   });

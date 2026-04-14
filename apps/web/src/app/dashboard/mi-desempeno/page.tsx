@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
-import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
+import { ScoreBadge } from '@/components/ScoreBadge';
 import CompetencyRadarChart from '@/components/CompetencyRadarChart';
 import SelfVsOthersChart from '@/components/SelfVsOthersChart';
 import GapAnalysisChart from '@/components/GapAnalysisChart';
