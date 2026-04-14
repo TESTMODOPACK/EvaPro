@@ -1538,4 +1538,69 @@ export class TenantsService {
     ticket.status = status;
     return this.ticketRepo.save(ticket);
   }
+
+  // ─── Onboarding Progress ─────────────────────────────────────────────
+
+  async getOnboardingProgress(tenantId: string, userId: string, role: string) {
+    const ds = this.tenantRepository.manager;
+
+    if (role === 'tenant_admin' || role === 'super_admin') {
+      const [tenant, deptCount, userCount, compCount, templateCount, cycleCount, surveyCount] = await Promise.all([
+        this.findById(tenantId),
+        this.departmentRepo.count({ where: { tenantId, isActive: true } }),
+        this.userRepository.count({ where: { tenantId, isActive: true } }),
+        ds.query(`SELECT COUNT(*) as c FROM competencies WHERE tenant_id = $1 AND is_active = true`, [tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+        ds.query(`SELECT COUNT(*) as c FROM form_templates WHERE tenant_id = $1`, [tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+        ds.query(`SELECT COUNT(*) as c FROM evaluation_cycles WHERE tenant_id = $1`, [tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+        ds.query(`SELECT COUNT(*) as c FROM engagement_surveys WHERE tenant_id = $1`, [tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+      ]);
+
+      const steps = [
+        { key: 'company_setup', label: 'Completar datos de la empresa', done: !!tenant.settings?.industry, href: '/dashboard/onboarding' },
+        { key: 'departments', label: 'Configurar departamentos', done: deptCount > 3, href: '/dashboard/mantenedores' },
+        { key: 'users', label: 'Importar colaboradores', done: userCount > 1, href: '/dashboard/usuarios' },
+        { key: 'competencies', label: 'Definir competencias', done: compCount >= 3, href: '/dashboard/competencias' },
+        { key: 'templates', label: 'Crear plantilla de evaluación', done: templateCount >= 1, href: '/dashboard/plantillas' },
+        { key: 'cycles', label: 'Lanzar primer ciclo', done: cycleCount >= 1, href: '/dashboard/evaluaciones' },
+        { key: 'surveys', label: 'Configurar encuesta de clima', done: surveyCount >= 1, href: '/dashboard/encuestas-clima' },
+      ];
+      const completedCount = steps.filter(s => s.done).length;
+      return { role, steps, completedCount, totalSteps: steps.length, allDone: completedCount === steps.length };
+    }
+
+    if (role === 'manager') {
+      const [user, completedEvals, checkinCount, objCount, pdiCount] = await Promise.all([
+        this.userRepository.findOne({ where: { id: userId }, select: ['id', 'position'] }),
+        ds.query(`SELECT COUNT(*) as c FROM evaluation_assignments WHERE evaluator_id = $1 AND tenant_id = $2 AND status = 'completed'`, [userId, tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+        ds.query(`SELECT COUNT(*) as c FROM checkins WHERE manager_id = $1 AND tenant_id = $2`, [userId, tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+        ds.query(`SELECT COUNT(*) as c FROM objectives WHERE user_id = $1 AND tenant_id = $2`, [userId, tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+        ds.query(`SELECT COUNT(*) as c FROM development_plans WHERE created_by = $1 AND tenant_id = $2`, [userId, tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+      ]);
+      const steps = [
+        { key: 'profile', label: 'Completar mi perfil', done: !!user?.position, href: '/dashboard/perfil' },
+        { key: 'evaluation', label: 'Responder una evaluación', done: completedEvals >= 1, href: '/dashboard/evaluaciones' },
+        { key: 'checkin', label: 'Crear un check-in con mi equipo', done: checkinCount >= 1, href: '/dashboard/feedback' },
+        { key: 'objectives', label: 'Definir objetivos del equipo', done: objCount >= 1, href: '/dashboard/objetivos' },
+        { key: 'pdi', label: 'Crear plan de desarrollo', done: pdiCount >= 1, href: '/dashboard/desarrollo' },
+      ];
+      const completedCount = steps.filter(s => s.done).length;
+      return { role, steps, completedCount, totalSteps: steps.length, allDone: completedCount === steps.length };
+    }
+
+    // employee
+    const [user, completedEvals, feedbackCount, receivedEvals] = await Promise.all([
+      this.userRepository.findOne({ where: { id: userId }, select: ['id', 'position'] }),
+      ds.query(`SELECT COUNT(*) as c FROM evaluation_assignments WHERE evaluator_id = $1 AND tenant_id = $2 AND status = 'completed'`, [userId, tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+      ds.query(`SELECT COUNT(*) as c FROM quick_feedbacks WHERE from_user_id = $1 AND tenant_id = $2`, [userId, tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+      ds.query(`SELECT COUNT(*) as c FROM evaluation_assignments WHERE evaluatee_id = $1 AND tenant_id = $2 AND status = 'completed'`, [userId, tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
+    ]);
+    const steps = [
+      { key: 'profile', label: 'Completar mi perfil', done: !!user?.position, href: '/dashboard/perfil' },
+      { key: 'evaluation', label: 'Completar mi primera evaluación', done: completedEvals >= 1, href: '/dashboard/evaluaciones' },
+      { key: 'feedback', label: 'Enviar feedback o solicitar check-in', done: feedbackCount >= 1, href: '/dashboard/feedback' },
+      { key: 'performance', label: 'Revisar mis resultados', done: receivedEvals >= 1, href: '/dashboard/mi-desempeno' },
+    ];
+    const completedCount = steps.filter(s => s.done).length;
+    return { role, steps, completedCount, totalSteps: steps.length, allDone: completedCount === steps.length };
+  }
 }

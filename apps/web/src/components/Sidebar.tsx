@@ -276,6 +276,10 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard', label: t('nav.dashboard', 'Dashboard'), icon: icons.dashboard },
         { href: '/dashboard/mi-desempeno', label: t('nav.myPerformance', 'Mi Desempeño'), icon: icons.myPerformance },
         { href: '/dashboard/notificaciones', label: t('nav.notifications', 'Notificaciones'), icon: icons.bell },
+        // Onboarding item — only for admin when setup not complete
+        ...(isAdmin && !sub?.tenant?.settings?.onboardingDone
+          ? [{ href: '/dashboard/onboarding', label: 'Configuración inicial', icon: <span style={{ fontSize: '1rem' }}>🚀</span> }]
+          : []),
       ],
     },
     // ─── Evaluación de Desempeño ────────────────────────────────

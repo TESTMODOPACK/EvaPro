@@ -1255,18 +1255,20 @@ export class ReportsService {
       .select('u.department', 'department')
       .addSelect('r.overall_score', 'score')
       .addSelect("COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')", 'name')
-      .addSelect('u.id', 'userId');
+      .addSelect('u.id', 'userId')
+      .addSelect('u.position', 'position');
     this.applyUserFilters(qb, filters);
     const raw = await qb.getRawMany();
 
     // Fix C3: Deduplicate users — average scores per user first
-    const userMap: Record<string, { name: string; department: string; scores: number[] }> = {};
+    const userMap: Record<string, { name: string; department: string; position: string; scores: number[] }> = {};
     for (const r of raw) {
       const uid = r.userId;
       if (!userMap[uid]) {
         userMap[uid] = {
           name: (r.name || '').trim(),
           department: r.department || 'Sin departamento',
+          position: r.position || '',
           scores: [],
         };
       }
@@ -1274,12 +1276,12 @@ export class ReportsService {
     }
 
     // Group unique users by department with their average score
-    const deptMap: Record<string, { users: { name: string; userId: string; score: number }[] }> = {};
+    const deptMap: Record<string, { users: { name: string; userId: string; position: string; score: number }[] }> = {};
     for (const [uid, data] of Object.entries(userMap)) {
       const dept = data.department;
       if (!deptMap[dept]) deptMap[dept] = { users: [] };
       const avgScore = data.scores.reduce((a, b) => a + b, 0) / data.scores.length;
-      deptMap[dept].users.push({ name: data.name, userId: uid, score: Math.round(avgScore * 100) / 100 });
+      deptMap[dept].users.push({ name: data.name, userId: uid, position: data.position, score: Math.round(avgScore * 100) / 100 });
     }
 
     const heatmap = Object.entries(deptMap).map(([dept, data]) => {

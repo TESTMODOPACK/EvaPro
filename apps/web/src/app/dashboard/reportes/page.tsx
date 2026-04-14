@@ -552,7 +552,7 @@ export default function ReportesPage() {
                   {/* eNPS Donut */}
                   <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
                     <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Distribución eNPS</h4>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Employee Net Promoter Score: promotores (9-10), pasivos (7-8) y detractores (0-6).</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Índice de Promotores Netos del Empleado: promotores (9-10), pasivos (7-8) y detractores (0-6).</p>
                     {(enpsData.total || 0) > 0 ? (
                     <div style={{ height: 220 }}>
                       <ResponsiveContainer width="100%" height="100%">
@@ -597,10 +597,16 @@ export default function ReportesPage() {
                   {/* Survey Comparison */}
                   <div className="card" style={{ padding: '1.25rem', marginTop: '1rem' }}>
                     <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Comparativa de Encuestas</h4>
+                    {closedSurveys.filter((s: any) => s.id !== selectedSurveyId).length === 0 ? (
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                        No existen otras encuestas cerradas para comparar con la seleccionada. Cuando se cierre otra encuesta, podrás comparar sus resultados aquí.
+                      </p>
+                    ) : (
                     <select className="input" value={compareSurveyId || ''} onChange={(e) => { setCompareSurveyId(e.target.value || null); setCompareEnps(null); }} style={{ fontSize: '0.82rem', maxWidth: '300px', marginBottom: '0.75rem' }}>
                       <option value="">Seleccionar encuesta para comparar...</option>
                       {closedSurveys.filter((s: any) => s.id !== selectedSurveyId).map((s: any) => <option key={s.id} value={s.id}>{s.title}</option>)}
                     </select>
+                    )}
                     {compareEnps && (
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                         {[
@@ -635,6 +641,21 @@ export default function ReportesPage() {
           {/* ═══════════════════════════════════════════════════════════════ */}
           {activeTab === 'headcount' && (
             <div className="animate-fade-up">
+              {/* Intro */}
+              <div className="card" style={{ padding: '1rem 1.25rem', marginBottom: '1.25rem', borderLeft: '4px solid var(--accent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h4 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.2rem', color: 'var(--accent)' }}>Dotación y Capital Humano</h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                    Composición de la dotación actual: colaboradores activos por departamento, tasa de rotación, tipos de salida y movimientos internos.
+                    {isAdmin ? ' Para un análisis detallado, visita el módulo de Dotación.' : ''}
+                  </p>
+                </div>
+                {isAdmin && (
+                  <a href="/dashboard/analytics-rotacion" className="btn-ghost" style={{ fontSize: '0.78rem', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                    Análisis detallado →
+                  </a>
+                )}
+              </div>
               {/* Headcount KPIs */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
                 <KPI label="Activos" value={headcount?.active || 0} color="var(--success)" />
@@ -752,7 +773,20 @@ export default function ReportesPage() {
           {/* ═══════════════════════════════════════════════════════════════ */}
           {activeTab === 'objectives' && (
             <div className="animate-fade-up">
-              {!objectives && !execData ? <Spinner /> : !objectives ? <EmptyState msg="No hay datos de objetivos disponibles." /> : (
+              {/* Intro */}
+              <div className="card" style={{ padding: '1rem 1.25rem', marginBottom: '1.25rem', borderLeft: '4px solid var(--accent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h4 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.2rem', color: 'var(--accent)' }}>Objetivos y Metas (OKRs)</h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                    Estado de los objetivos estratégicos de la organización: cumplimiento global, distribución por estado y análisis de avance.
+                    Los objetivos se definen por ciclo y se miden con indicadores clave de resultado.
+                  </p>
+                </div>
+                <a href="/dashboard/objetivos" className="btn-ghost" style={{ fontSize: '0.78rem', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                  Ir a Objetivos →
+                </a>
+              </div>
+              {!objectives && !execData ? <Spinner /> : !objectives ? <EmptyState msg="No hay datos de objetivos disponibles. Crea objetivos desde el módulo de Objetivos y Metas." /> : (
                 <>
                   {/* KPIs */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>

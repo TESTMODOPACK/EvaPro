@@ -19,6 +19,7 @@ import { useChangelog } from '@/hooks/useSystemChangelog';
 import { getRoleLabel } from '@/lib/roles';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { useRecognitionWall } from '@/hooks/useRecognition';
+import { OnboardingChecklist } from '@/components/OnboardingChecklist';
 
 function Spinner() {
   return (
@@ -557,6 +558,9 @@ function RegularDashboard() {
           </Link>
         </div>
       )}
+
+      {/* Onboarding checklist — role-specific progress */}
+      <OnboardingChecklist />
 
       {/* Next Actions widget — full width before grid */}
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.25rem' }}>
@@ -1747,6 +1751,9 @@ function AdminDashboard() {
           Vista ejecutiva de tu organización — {now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       </div>
+
+      {/* Onboarding checklist for admin */}
+      <OnboardingChecklist />
 
       {/* Process Steps Guide — collapsible */}
       {showSteps && (

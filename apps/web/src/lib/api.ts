@@ -248,6 +248,8 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(settings),
       }, token),
+    getOnboardingProgress: (token: string) =>
+      request<any>("/tenants/me/onboarding-progress", {}, token),
     // Departments table CRUD
     getDepartmentsTable: (token: string) =>
       request<DepartmentData[]>("/tenants/me/departments", {}, token),

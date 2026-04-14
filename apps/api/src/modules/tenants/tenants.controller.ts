@@ -94,6 +94,14 @@ export class TenantsController {
     return this.tenantsService.checkPositionUsage(req.user.tenantId, name);
   }
 
+  // ─── Onboarding Progress ─────────────────────────────────────────────
+
+  @Get('me/onboarding-progress')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getOnboardingProgress(@Request() req: any) {
+    return this.tenantsService.getOnboardingProgress(req.user.tenantId, req.user.userId, req.user.role);
+  }
+
   // ─── Departments Table CRUD ──────────────────────────────────────────
 
   @Get('me/departments')

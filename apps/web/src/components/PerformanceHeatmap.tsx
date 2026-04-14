@@ -88,9 +88,12 @@ export default function PerformanceHeatmap({ cycleId }: { cycleId: string }) {
                 <div style={{ padding: '0.5rem 1rem', marginTop: '-0.25rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     {dept.users.map((u: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.8rem' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>{u.name}</span>
-                        <span style={{ fontWeight: 700, color: scoreColor(u.score) }}>{u.score.toFixed(1)}</span>
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.8rem' }}>
+                        <div>
+                          <span style={{ color: 'var(--text-secondary)' }}>{u.name}</span>
+                          {u.position && <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginLeft: '0.5rem' }}>· {u.position}</span>}
+                        </div>
+                        <span style={{ fontWeight: 700, color: scoreColor(u.score), flexShrink: 0 }}>{u.score.toFixed(1)}</span>
                       </div>
                     ))}
                   </div>
