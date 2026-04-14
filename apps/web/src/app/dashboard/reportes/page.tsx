@@ -13,8 +13,7 @@ import { useToastStore } from '@/store/toast.store';
 import PerformanceHeatmap from '@/components/PerformanceHeatmap';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, Legend, AreaChart, Area,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from 'recharts';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
@@ -99,9 +98,8 @@ export default function ReportesPage() {
   // Shared data (loaded on cycle change)
   const { data: summary } = useCycleSummary(selectedCycleId);
   const [execData, setExecData] = useState<any>(null);
-  // Org-wide data for managers (unfiltered) — admins don't need this
+  // Org-wide cycle summary for managers (unfiltered) — admins don't need this
   const [orgSummary, setOrgSummary] = useState<any>(null);
-  const [orgExecData, setOrgExecData] = useState<any>(null);
 
   // Tab-specific data (lazy loaded)
   const [cycleCompData, setCycleCompData] = useState<any>(null);
@@ -163,7 +161,7 @@ export default function ReportesPage() {
       setClosedSurveys(s);
       if (s.length > 0 && !selectedSurveyId) setSelectedSurveyId(s[0].id);
     }).catch(() => {});
-    api.orgDevelopment?.plans?.list?.(token)?.then((plans) => {
+    api.orgDevelopment?.plans?.list?.(token)?.then?.((plans) => {
       setOrgPlans(plans || []);
       // Auto-select the most recent active plan
       const active = (plans || []).find((p: any) => p.status === 'activo');
@@ -171,7 +169,7 @@ export default function ReportesPage() {
         setSelectedPlanId(active.id);
         setSelectedPlanData(active);
       }
-    }).catch(() => {});
+    })?.catch?.(() => {});
   }, [token]);
 
   // Load initiatives when plan selected
@@ -179,7 +177,7 @@ export default function ReportesPage() {
     if (!token || !selectedPlanId) { setPlanInitiatives([]); return; }
     const plan = orgPlans.find((p: any) => p.id === selectedPlanId);
     setSelectedPlanData(plan || null);
-    api.orgDevelopment?.initiatives?.listByPlan?.(token, selectedPlanId)?.then(setPlanInitiatives).catch(() => setPlanInitiatives([]));
+    api.orgDevelopment?.initiatives?.listByPlan?.(token, selectedPlanId)?.then?.(setPlanInitiatives)?.catch?.(() => setPlanInitiatives([]));
   }, [selectedPlanId, token]);
 
   // Load shared data on cycle change
@@ -198,11 +196,9 @@ export default function ReportesPage() {
       }).catch(() => {});
       // Fetch org-wide (unfiltered) data so we can show true org KPIs
       api.reports.cycleSummary(token, selectedCycleId, 'org').then(setOrgSummary).catch(() => setOrgSummary(null));
-      api.reports.executiveDashboard(token, selectedCycleId, 'org').then(setOrgExecData).catch(() => setOrgExecData(null));
     } else {
       // For admins, the main summary IS the org data
       setOrgSummary(null);
-      setOrgExecData(null);
     }
     // Reset tab-specific data
     setLoadedTabs(new Set());
@@ -280,7 +276,6 @@ export default function ReportesPage() {
   const depts = (effectiveOrgSummary?.departmentBreakdown || []).map((d: any) => ({ ...d, avgScore: Number(d.avgScore) || 0 })).sort((a: any, b: any) => b.avgScore - a.avgScore);
   const topDepts = depts.slice(0, 3);
   const bottomDepts = [...depts].sort((a: any, b: any) => a.avgScore - b.avgScore).slice(0, 3);
-  const effectiveOrgExec = isAdmin ? execData : (orgExecData || execData);
   const objectives = execData?.objectives;
   const headcount = execData?.headcount;
 
@@ -555,30 +550,26 @@ export default function ReportesPage() {
                   </div>
 
                   {/* eNPS Donut */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div className="card" style={{ padding: '1.25rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Distribución eNPS</h4>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Employee Net Promoter Score: promotores (9-10), pasivos (7-8) y detractores (0-6).</p>
-                      {(enpsData.total || 0) > 0 ? (
-                      <div style={{ height: 220 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={[
-                              { name: 'Promotores', value: enpsData.promoters || 0 },
-                              { name: 'Pasivos', value: (enpsData.total || 0) - (enpsData.promoters || 0) - (enpsData.detractors || 0) },
-                              { name: 'Detractores', value: enpsData.detractors || 0 },
-                            ]} innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value">
-                              <Cell fill="#10b981" /><Cell fill="#94a3b8" /><Cell fill="#ef4444" />
-                            </Pie>
-                            <Legend />
-                            <Tooltip />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center', padding: '3rem 0' }}>Sin respuestas en esta encuesta.</p>}
+                  <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                    <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Distribución eNPS</h4>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Employee Net Promoter Score: promotores (9-10), pasivos (7-8) y detractores (0-6).</p>
+                    {(enpsData.total || 0) > 0 ? (
+                    <div style={{ height: 220 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={[
+                            { name: 'Promotores', value: enpsData.promoters || 0 },
+                            { name: 'Pasivos', value: (enpsData.total || 0) - (enpsData.promoters || 0) - (enpsData.detractors || 0) },
+                            { name: 'Detractores', value: enpsData.detractors || 0 },
+                          ]} innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value">
+                            <Cell fill="#10b981" /><Cell fill="#94a3b8" /><Cell fill="#ef4444" />
+                          </Pie>
+                          <Legend />
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
                     </div>
-
-                    {/* Headcount chart is in Tab 3 (Dotación) */}
+                    ) : <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center', padding: '3rem 0' }}>Sin respuestas en esta encuesta.</p>}
                   </div>
 
                   {/* eNPS Interpretation */}

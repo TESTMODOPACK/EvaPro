@@ -88,15 +88,23 @@ export class ReportsController {
 
   @Get('executive-dashboard')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  executiveDashboard(@Query('cycleId') cycleId: string, @Query('scope') scope: string, @Request() req: any) {
+  async executiveDashboard(@Query('cycleId') cycleId: string, @Query('scope') scope: string, @Request() req: any) {
     // scope=org lets managers fetch org-wide totals for comparison in dashboard
-    const managerId = req.user.role === 'manager' && scope !== 'org' ? req.user.userId : undefined;
+    const isOrgScope = req.user.role === 'manager' && scope === 'org';
+    const managerId = req.user.role === 'manager' && !isOrgScope ? req.user.userId : undefined;
     this.logAccess(req, 'executive_dashboard', { cycleId });
-    return this.executiveDashboardService.getExecutiveSummary(
+    const result = await this.executiveDashboardService.getExecutiveSummary(
       req.user.tenantId,
       cycleId || undefined,
       managerId,
     );
+    // Privacy: suppress small-count department rows for managers viewing org-wide
+    if (isOrgScope && result?.headcount?.byDepartment) {
+      result.headcount.byDepartment = result.headcount.byDepartment.filter(
+        (d: any) => (d.count || 0) >= 3,
+      );
+    }
+    return result;
   }
 
   // ─── Custom KPIs ──────────────────────────────────────────────────────
@@ -157,7 +165,7 @@ export class ReportsController {
 
   @Get('cycle/:cycleId/summary')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  cycleSummary(
+  async cycleSummary(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Query('department') department: string,
     @Query('position') position: string,
@@ -166,14 +174,23 @@ export class ReportsController {
   ) {
     const { role, userId } = req.user;
     // scope=org lets managers fetch org-wide summary (read-only, for dashboard comparison)
-    const managerId = role === 'manager' && scope !== 'org' ? userId : undefined;
+    const isOrgScope = role === 'manager' && scope === 'org';
+    const managerId = role === 'manager' && !isOrgScope ? userId : undefined;
     const filters: any = {};
     if (department) filters.department = department;
     if (position) filters.position = position;
     if (managerId) filters.managerId = managerId;
     const hasFilters = Object.keys(filters).length > 0 ? filters : undefined;
     this.logAccess(req, 'cycle_summary', { cycleId, filters: hasFilters });
-    return this.reportsService.cycleSummary(cycleId, req.user.tenantId, hasFilters);
+    const result = await this.reportsService.cycleSummary(cycleId, req.user.tenantId, hasFilters);
+    // Privacy: when a manager views org-wide data, suppress departments with < 3
+    // evaluatees to prevent inferring individual scores
+    if (isOrgScope && result?.departmentBreakdown) {
+      result.departmentBreakdown = result.departmentBreakdown.filter(
+        (d: any) => (d.count || 0) >= 3,
+      );
+    }
+    return result;
   }
 
   @Get('cycle/:cycleId/individual/:userId')

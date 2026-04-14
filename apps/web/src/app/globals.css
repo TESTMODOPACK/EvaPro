@@ -321,9 +321,6 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
   .topbar-desktop .topbar-org-badge {
     display: none !important;
   }
-  .topbar-desktop .topbar-brand-text {
-    display: none !important;
-  }
 
   /* P3: Hamburger visible */
   .hamburger-btn {
