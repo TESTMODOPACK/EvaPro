@@ -60,7 +60,7 @@ function userName(user?: { firstName: string; lastName: string }) {
 
 function CheckInsTab() {
   const { t } = useTranslation();
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const role = user?.role || '';
   const currentUserId = user?.userId || '';
   const canCreateCheckIn = role === 'tenant_admin' || role === 'manager' || role === 'super_admin';
@@ -73,7 +73,7 @@ function CheckInsTab() {
     rejected: t('feedback.statusRejected'),
   };
 
-  const { data: checkIns, isLoading } = useCheckIns();
+  const { data: checkIns, isLoading, refetch: refetchCheckIns } = useCheckIns();
   const { data: usersPage } = useUsers(1, 500);
   const { data: locations } = useMeetingLocations();
   const createCheckIn = useCreateCheckIn();
@@ -91,8 +91,11 @@ function CheckInsTab() {
   const [rejectModal, setRejectModal] = useState<{ id: string; topic: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [completeModal, setCompleteModal] = useState<{ id: string; topic: string; employee: string } | null>(null);
-  const [completeForm, setCompleteForm] = useState({ notes: '', rating: 0, actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
+  const [completeForm, setCompleteForm] = useState({ notes: '', rating: 0, minutes: '', actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingMinutesId, setEditingMinutesId] = useState<string | null>(null);
+  const [editingMinutesText, setEditingMinutesText] = useState('');
+  const [savingMinutes, setSavingMinutes] = useState(false);
 
   const allCiUsers = usersPage?.data || [];
   const [ciSearch, setCiSearch] = useState('');
@@ -328,6 +331,16 @@ function CheckInsTab() {
                 style={{ width: '100%', resize: 'vertical' }} />
             </div>
 
+            {/* Minutes */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Minuta de la reunión <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(opcional — se puede agregar después)</span>
+              </label>
+              <textarea className="input" rows={5} placeholder="Detalle lo conversado: contexto, decisiones, seguimientos, próximos pasos..."
+                value={completeForm.minutes} onChange={(e) => setCompleteForm({ ...completeForm, minutes: e.target.value })}
+                style={{ width: '100%', resize: 'vertical', fontSize: '0.82rem' }} />
+            </div>
+
             {/* Action Items */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
@@ -377,6 +390,7 @@ function CheckInsTab() {
                 onClick={() => {
                   const data: any = {};
                   if (completeForm.notes.trim()) data.notes = completeForm.notes.trim();
+                  if (completeForm.minutes.trim()) data.minutes = completeForm.minutes.trim();
                   if (completeForm.rating > 0) data.rating = completeForm.rating;
                   const validItems = completeForm.actionItems.filter(i => i.text.trim());
                   if (validItems.length > 0) data.actionItems = validItems;
@@ -455,6 +469,48 @@ function CheckInsTab() {
                           <div style={{ color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{ci.notes}</div>
                         </div>
                       )}
+                      {/* Minuta — editable post-completar */}
+                      <div style={{ marginBottom: '0.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Minuta de la reunión:</span>
+                          {(ci.managerId === currentUserId || ci.employeeId === currentUserId) && editingMinutesId !== ci.id && (
+                            <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
+                              onClick={() => { setEditingMinutesId(ci.id); setEditingMinutesText(ci.minutes || ''); }}>
+                              {ci.minutes ? 'Editar' : '+ Agregar minuta'}
+                            </button>
+                          )}
+                        </div>
+                        {editingMinutesId === ci.id ? (
+                          <div>
+                            <textarea className="input" rows={5} value={editingMinutesText}
+                              onChange={(e) => setEditingMinutesText(e.target.value)}
+                              placeholder="Detalle lo conversado: contexto, decisiones, seguimientos..."
+                              style={{ width: '100%', resize: 'vertical', fontSize: '0.82rem', marginBottom: '0.4rem' }} />
+                            <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                              <button className="btn-ghost" style={{ fontSize: '0.75rem' }}
+                                onClick={() => setEditingMinutesId(null)}>Cancelar</button>
+                              <button className="btn-primary" style={{ fontSize: '0.75rem' }} disabled={savingMinutes}
+                                onClick={async () => {
+                                  setSavingMinutes(true);
+                                  try {
+                                    await api.feedback.updateMinutes(token!, ci.id, editingMinutesText.trim());
+                                    setEditingMinutesId(null);
+                                    refetchCheckIns();
+                                  } catch { /* ignore */ }
+                                  setSavingMinutes(false);
+                                }}>
+                                {savingMinutes ? 'Guardando...' : 'Guardar minuta'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : ci.minutes ? (
+                          <div style={{ color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6, padding: '0.5rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.1)' }}>
+                            {ci.minutes}
+                          </div>
+                        ) : (
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontStyle: 'italic' }}>Sin minuta registrada</div>
+                        )}
+                      </div>
                       {ci.actionItems?.length > 0 && (
                         <div>
                           <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Acuerdos y compromisos ({ci.actionItems.length}):</div>
@@ -506,7 +562,7 @@ function CheckInsTab() {
                         title={canComplete ? 'Completar reunión' : 'Solo se puede completar después de la fecha y hora programada'}
                         onClick={() => {
                           setCompleteModal({ id: ci.id, topic: ci.topic, employee: userName(ci.employee) });
-                          setCompleteForm({ notes: '', rating: 0, actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
+                          setCompleteForm({ notes: '', rating: 0, minutes: '', actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
                         }}>
                         {t('feedback.complete')}
                       </button>

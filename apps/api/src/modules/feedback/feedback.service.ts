@@ -130,7 +130,7 @@ export class FeedbackService {
 
   async completeCheckIn(
     tenantId: string, id: string, userId?: string,
-    data?: { notes?: string; actionItems?: any[]; rating?: number },
+    data?: { notes?: string; actionItems?: any[]; rating?: number; minutes?: string },
   ): Promise<CheckIn> {
     const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
@@ -153,6 +153,7 @@ export class FeedbackService {
       }));
     }
     if (data?.rating && data.rating >= 1 && data.rating <= 5) ci.rating = data.rating;
+    if (data?.minutes !== undefined) ci.minutes = data.minutes || null;
 
     const saved = await this.checkInRepo.save(ci);
     this.auditService.log(tenantId, userId || null, 'checkin.completed', 'checkin', ci.id, {
@@ -160,6 +161,20 @@ export class FeedbackService {
       rating: ci.rating, actionItemsCount: ci.actionItems?.length || 0,
     }).catch(() => {});
     return saved;
+  }
+
+  /** Update minutes on a completed check-in (manager or employee) */
+  async updateMinutes(tenantId: string, id: string, userId: string, minutes: string): Promise<CheckIn> {
+    const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+    if (ci.status !== CheckInStatus.COMPLETED) {
+      throw new BadRequestException('Solo se puede agregar minuta a check-ins completados');
+    }
+    if (ci.managerId !== userId && ci.employeeId !== userId) {
+      throw new ForbiddenException('Solo los participantes pueden editar la minuta');
+    }
+    ci.minutes = minutes || null;
+    return this.checkInRepo.save(ci);
   }
 
   async deleteCheckIn(tenantId: string, id: string, userId: string, role: string): Promise<{ deleted: boolean }> {

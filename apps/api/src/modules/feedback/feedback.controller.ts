@@ -110,9 +110,20 @@ export class FeedbackController {
   completeCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
-    @Body() body?: { notes?: string; actionItems?: any[]; rating?: number },
+    @Body() body?: { notes?: string; actionItems?: any[]; rating?: number; minutes?: string },
   ) {
     return this.feedbackService.completeCheckIn(req.user.tenantId, id, req.user.userId, body);
+  }
+
+  /** Update minutes on a completed check-in (editable post-completion) */
+  @Patch('checkins/:id/minutes')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  updateMinutes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body: { minutes: string },
+  ) {
+    return this.feedbackService.updateMinutes(req.user.tenantId, id, req.user.userId, body.minutes);
   }
 
   @Patch('checkins/:id/add-topic')

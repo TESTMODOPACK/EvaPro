@@ -112,6 +112,9 @@ export class CheckIn {
   @JoinColumn({ name: 'development_plan_id' })
   developmentPlan: DevelopmentPlan;
 
+  @Column({ type: 'text', nullable: true, comment: 'Minuta formal de la reunión (editable post-completar)' })
+  minutes: string | null;
+
   @Column({ type: 'smallint', nullable: true, comment: 'Valoración del check-in 1-5 (1=poco productivo, 5=muy productivo)' })
   rating: number | null;
 

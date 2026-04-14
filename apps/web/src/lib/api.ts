@@ -628,8 +628,10 @@ export const api = {
       request<CheckInData[]>("/feedback/checkins", {}, token),
     updateCheckIn: (token: string, id: string, data: any) =>
       request<CheckInData>(`/feedback/checkins/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
-    completeCheckIn: (token: string, id: string, data?: { notes?: string; actionItems?: any[]; rating?: number }) =>
+    completeCheckIn: (token: string, id: string, data?: { notes?: string; actionItems?: any[]; rating?: number; minutes?: string }) =>
       request<CheckInData>(`/feedback/checkins/${id}/complete`, { method: "POST", ...(data ? { body: JSON.stringify(data) } : {}) }, token),
+    updateMinutes: (token: string, id: string, minutes: string) =>
+      request<CheckInData>(`/feedback/checkins/${id}/minutes`, { method: "PATCH", body: JSON.stringify({ minutes }) }, token),
     deleteCheckIn: (token: string, id: string) =>
       request<{ deleted: boolean }>(`/feedback/checkins/${id}`, { method: "DELETE" }, token),
     requestCheckIn: (token: string, data: { topic: string; suggestedDate?: string }) =>
