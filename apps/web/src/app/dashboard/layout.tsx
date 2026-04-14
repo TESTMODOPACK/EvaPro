@@ -72,7 +72,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const { isAuthenticated, token, user, logout, _hasHydrated } = useAuthStore();
   const { data: sub, isLoading: subLoading, isError: subError } = useMySubscription();
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false); // Disabled: onboarding is done by super_admin at registration
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Close mobile sidebar on navigation
@@ -88,16 +88,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.replace('/login');
     }
   }, [_hasHydrated, isAuthenticated, token, router, logout]);
-
-  // ─── Onboarding redirect for new tenant admins ──────────────────────
-  useEffect(() => {
-    if (!sub || !user) return;
-    const role = user.role;
-    const onboardingDone = sub.tenant?.settings?.onboardingDone;
-    if (role === 'tenant_admin' && !onboardingDone && !pathname.startsWith('/dashboard/onboarding')) {
-      setShowOnboarding(true);
-    }
-  }, [sub, user, pathname]);
 
   // ─── Silent token refresh based on user activity ─────────────────────
   const lastActivityRef = useRef(Date.now());
