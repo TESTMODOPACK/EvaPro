@@ -459,7 +459,11 @@ function DesarrolloPageContent() {
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>{pageTitle}</h1>
           <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
-            {t('desarrollo.subtitle')}
+            {isAdmin
+              ? t('desarrollo.subtitle')
+              : isManager
+                ? 'Planes de desarrollo individual (PDI) de tu equipo'
+                : 'Tu plan de desarrollo individual y acciones de crecimiento profesional'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
