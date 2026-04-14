@@ -253,7 +253,9 @@ function EncuestasClimaPageContent() {
             {t('surveys.title', 'Encuestas de Clima')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {t('surveys.subtitle')}
+            {isAdmin
+              ? t('surveys.subtitle')
+              : 'Participa en las encuestas de clima de tu organización'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -533,6 +535,19 @@ function EncuestasClimaPageContent() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ─── Employee empty state ─── */}
+      {!isAdmin && pendingSurveys.length === 0 && (
+        <div className="card animate-fade-up" style={{ padding: '3rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📋</div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+            No tienes encuestas pendientes
+          </p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+            Cuando se lance una nueva encuesta de clima, aparecerá aquí para que puedas responderla.
+          </p>
         </div>
       )}
 
