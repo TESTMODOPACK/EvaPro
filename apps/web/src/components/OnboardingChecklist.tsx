@@ -45,7 +45,7 @@ export function OnboardingChecklist() {
   }, [token, hidden]);
 
   if (hidden || loading || !data || data.allDone) return null;
-  if (role === 'super_admin') return null;
+  if (role === 'super_admin' || role === 'tenant_admin') return null;
 
   const pct = data.totalSteps > 0 ? Math.round((data.completedCount / data.totalSteps) * 100) : 0;
 
