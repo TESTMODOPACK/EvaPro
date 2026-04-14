@@ -246,10 +246,12 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
   const isAdminOrManager = isAdmin || isManager;
 
   // Pending badges for sidebar items
+  // For admin, don't show evaluation badge on "Ciclos de Evaluación" — confusing
+  // because that page shows cycle management, not the user's pending assignments
   const { data: badges } = useSidebarBadges();
   const badgeCounts: Record<string, { count: number; color: string }> = {
     '/dashboard/notificaciones': { count: badges?.notifications || 0, color: '#ef4444' },
-    '/dashboard/evaluaciones': { count: badges?.evaluations || 0, color: '#ef4444' },
+    ...(!isAdmin ? { '/dashboard/evaluaciones': { count: badges?.evaluations || 0, color: '#ef4444' } } : {}),
     '/dashboard/encuestas-clima': { count: badges?.surveys || 0, color: '#C9933A' },
     '/dashboard/objetivos': { count: badges?.objectives || 0, color: '#C9933A' },
   };
