@@ -53,9 +53,10 @@ export class AuthService {
       lastName: user.lastName || '',
     };
 
-    // Log successful login
+    // Log successful login — super_admin logs are system-level (tenantId=null)
+    // to prevent them from leaking into tenant_admin audit views.
     await this.auditService.log(
-      user.tenantId || null,
+      user.role === 'super_admin' ? null : (user.tenantId || null),
       user.id,
       'login',
       'User',
@@ -167,7 +168,7 @@ export class AuthService {
     try {
       const user = await this.usersService.findByEmail(email, tenantSlug);
       await this.auditService.log(
-        user?.tenantId || null,
+        user?.role === 'super_admin' ? null : (user?.tenantId || null),
         user?.id || null,
         'login.failed',
         'User',
