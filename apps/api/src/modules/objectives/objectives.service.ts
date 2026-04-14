@@ -127,9 +127,10 @@ export class ObjectivesService {
   async findByManager(tenantId: string, managerId: string): Promise<Objective[]> {
     const subordinates = await this.userRepo.find({
       where: { tenantId, managerId, isActive: true },
-      select: ['id'],
+      select: ['id', 'role'],
     });
-    const userIds = [managerId, ...subordinates.map((u) => u.id)];
+    // Exclude tenant_admin from manager's team view — they are system admins, not operational subordinates
+    const userIds = [managerId, ...subordinates.filter((u) => u.role !== 'tenant_admin').map((u) => u.id)];
 
     return this.objectivesWithRelationsQb(tenantId)
       .andWhere('o.userId IN (:...userIds)', { userIds })
