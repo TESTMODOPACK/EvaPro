@@ -10,9 +10,10 @@ import SelfVsOthersChart from '@/components/SelfVsOthersChart';
 import GapAnalysisChart from '@/components/GapAnalysisChart';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import SignatureModal, { SignatureBadge } from '@/components/SignatureModal';
+import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { getScaleLevel } from '@/lib/scales';
 import { useCycles } from '@/hooks/useCycles';
-import { useGapAnalysisIndividual } from '@/hooks/useReports';
+import { useGapAnalysisIndividual, useCompetencyRadar } from '@/hooks/useReports';
 
 function Spinner() { return <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><span className="spinner" /></div>; }
 
@@ -20,6 +21,28 @@ function GapSection({ cycleId, userId }: { cycleId: string; userId: string }) {
   const { data } = useGapAnalysisIndividual(cycleId, userId);
   if (!data) return null;
   return <GapAnalysisChart data={data} />;
+}
+
+function CompetencyInsights({ cycleId, userId }: { cycleId: string; userId: string }) {
+  const { data } = useCompetencyRadar(cycleId, userId);
+  if (!data?.sections?.length || data.sections.length < 2) return null;
+  const sorted = [...data.sections].sort((a: any, b: any) => (b.overall || 0) - (a.overall || 0));
+  const strongest = sorted[0];
+  const weakest = sorted[sorted.length - 1];
+  if (!strongest || !weakest) return null;
+  return (
+    <div className="card animate-fade-up" style={{ padding: '1rem', marginTop: '0.75rem', borderLeft: '4px solid var(--accent)' }}>
+      <h4 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--accent)' }}>Insights de Competencias</h4>
+      <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+        <p>{'🟢'} Tu competencia más fuerte: <strong style={{ color: '#10b981' }}>{strongest.section}</strong> ({Number(strongest.overall || 0).toFixed(1)})</p>
+        <p>{'🔴'} Tu área de mejora: <strong style={{ color: '#ef4444' }}>{weakest.section}</strong> ({Number(weakest.overall || 0).toFixed(1)})</p>
+      </div>
+      <a href={`/dashboard/desarrollo?competency=${encodeURIComponent(weakest.section)}`}
+        className="btn-ghost" style={{ fontSize: '0.78rem', marginTop: '0.5rem', display: 'inline-block' }}>
+        Crear acción de desarrollo →
+      </a>
+    </div>
+  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -214,7 +237,11 @@ export default function MiDesempenoPage() {
   const myUserId = user?.userId;
   const cycles = history?.cycles || history?.history || [];
   const latestScore = cycles.length > 0 ? cycles[cycles.length - 1] : null;
+  const previousScore = cycles.length > 1 ? cycles[cycles.length - 2] : null;
   const displayScore = latestScore?.avgOverall ?? null;
+  const scoreDelta = displayScore != null && previousScore?.avgOverall != null
+    ? Number(displayScore) - Number(previousScore.avgOverall)
+    : null;
 
   // Personal evaluations: where I'm the evaluatee (received endpoint)
   const myEvaluationsReceived = received;
@@ -273,7 +300,18 @@ export default function MiDesempenoPage() {
       <div className="animate-fade-up" style={{ marginBottom: hasTeam ? '0.75rem' : '1.25rem' }}>
         <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>Mi Resumen</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
-          <KPI label="Último puntaje" value={displayScore != null ? Number(displayScore).toFixed(1) : '--'} color={displayScore != null ? getScaleLevel(Number(displayScore))?.color : undefined} sub={displayScore != null ? getScaleLevel(Number(displayScore))?.label : undefined} />
+          <div className="card" style={{ padding: '0.85rem', textAlign: 'center' }}>
+            <div style={labelStyle}>Último puntaje</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 800, color: displayScore != null ? getScaleLevel(Number(displayScore))?.color : 'var(--text-primary)' }}>
+              {displayScore != null ? Number(displayScore).toFixed(1) : '--'}
+              {scoreDelta != null && scoreDelta !== 0 && (
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, marginLeft: '0.35rem', color: scoreDelta > 0 ? '#10b981' : '#ef4444' }}>
+                  {scoreDelta > 0 ? '+' : ''}{scoreDelta.toFixed(1)} {scoreDelta > 0 ? '↑' : '↓'}
+                </span>
+              )}
+            </div>
+            {displayScore != null && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{getScaleLevel(Number(displayScore))?.label}</div>}
+          </div>
           <KPI label="Pendientes" value={myPendingEvals.length} color={myPendingEvals.length > 0 ? '#f59e0b' : '#10b981'} />
           <KPI label="Feedback" value={feedbackReceived.length} />
           <KPI label="Objetivos" value={`${myActiveObj} act.`} />
@@ -293,6 +331,11 @@ export default function MiDesempenoPage() {
           </div>
         </div>
       )}
+
+      {/* Action Cards — "Qué necesita tu atención" */}
+      <div className="animate-fade-up" style={{ marginBottom: '1.25rem' }}>
+        <NextActionsWidget />
+      </div>
 
       {/* Parent Tabs (only manager/admin) */}
       {hasTeam && (
@@ -469,6 +512,7 @@ export default function MiDesempenoPage() {
                       <CompetencyRadarChart cycleId={radarCycleId} userId={myUserId} />
                       <SelfVsOthersChart cycleId={radarCycleId} userId={myUserId} />
                       <GapSection cycleId={radarCycleId} userId={myUserId} />
+                      <CompetencyInsights cycleId={radarCycleId} userId={myUserId} />
                     </div>
                   )}
                 </div>
@@ -764,6 +808,28 @@ export default function MiDesempenoPage() {
               <button key={tab.id} style={subTabStyle(teamTab === tab.id)} onClick={() => setTeamTab(tab.id)}>{tab.label}</button>
             ))}
           </div>
+
+          {/* ─── Team Alerts ─── */}
+          {(() => {
+            const atRiskObj = teamObjectives?.members?.reduce((sum: number, m: any) => sum + (m.atRiskCount || 0), 0) || 0;
+            const today = new Date();
+            const overduePdiCount = teamDevPlans.filter((p: any) =>
+              (p.actions || []).some((a: any) =>
+                a.status !== 'completada' && a.status !== 'completed' && a.status !== 'cancelada' &&
+                a.dueDate && new Date(a.dueDate) < today
+              )
+            ).length;
+            if (atRiskObj === 0 && overduePdiCount === 0) return null;
+            return (
+              <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1rem', borderLeft: '4px solid #ef4444', background: 'rgba(239,68,68,0.04)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.35rem', color: '#ef4444' }}>⚠️ Alertas del equipo</div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                  {atRiskObj > 0 && <span>🎯 {atRiskObj} objetivo{atRiskObj > 1 ? 's' : ''} en riesgo</span>}
+                  {overduePdiCount > 0 && <span>📋 {overduePdiCount} miembro{overduePdiCount > 1 ? 's' : ''} con acciones PDI vencidas</span>}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ─── Team Evaluaciones ─── */}
           {teamTab === 'evaluaciones' && (

@@ -1,0 +1,38 @@
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/store/auth.store';
+
+export interface SidebarBadges {
+  notifications: number;
+  evaluations: number;
+  surveys: number;
+  objectives: number;
+}
+
+export function useSidebarBadges() {
+  const token = useAuthStore((s) => s.token);
+
+  return useQuery<SidebarBadges>({
+    queryKey: ['sidebar', 'badges'],
+    queryFn: async () => {
+      const [unread, nextActions, pendingSurveys] = await Promise.all([
+        api.notifications.unreadCount(token!).catch(() => ({ count: 0 })),
+        api.dashboard.nextActions(token!).catch(() => ({ actions: [] })),
+        api.surveys.getMyPending(token!).catch(() => []),
+      ]);
+
+      const actions = nextActions?.actions || [];
+      return {
+        notifications: unread?.count || 0,
+        evaluations: actions.filter((a: any) => a.type === 'evaluation').length,
+        surveys: Array.isArray(pendingSurveys) ? pendingSurveys.length : 0,
+        objectives: actions.filter((a: any) => a.type === 'okr').length,
+      };
+    },
+    enabled: !!token,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}

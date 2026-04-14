@@ -8,6 +8,7 @@ import { canAccessPage } from '@/lib/roles';
 import { formatRut } from '@/lib/rut';
 import { useMySubscription } from '@/hooks/useSubscription';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
+import { useSidebarBadges } from '@/hooks/useSidebarBadges';
 import { FEATURE_MIN_PLAN, ROUTE_FEATURE_MAP } from '@/lib/feature-routes';
 
 interface NavItem {
@@ -243,6 +244,15 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
   const isAdmin = user?.role === 'tenant_admin';
   const isManager = user?.role === 'manager';
   const isAdminOrManager = isAdmin || isManager;
+
+  // Pending badges for sidebar items
+  const { data: badges } = useSidebarBadges();
+  const badgeCounts: Record<string, { count: number; color: string }> = {
+    '/dashboard/notificaciones': { count: badges?.notifications || 0, color: '#ef4444' },
+    '/dashboard/evaluaciones': { count: badges?.evaluations || 0, color: '#ef4444' },
+    '/dashboard/encuestas-clima': { count: badges?.surveys || 0, color: '#C9933A' },
+    '/dashboard/objetivos': { count: badges?.objectives || 0, color: '#C9933A' },
+  };
 
   // Collapsible sections — first section ("Mi Espacio") always open
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
@@ -552,12 +562,25 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
                   );
                 }
 
+                const badge = badgeCounts[item.href];
+                const badgeCount = badge?.count || 0;
                 return (
-                  <Link key={item.href} href={item.href} className={'sidebar-link' + (isActive ? ' active' : '')}>
+                  <Link key={item.href} href={item.href} className={'sidebar-link' + (isActive ? ' active' : '')} style={{ position: 'relative' }}>
                     <span style={{ width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: typeof item.icon === 'string' ? '1rem' : undefined }}>
                       {item.icon}
                     </span>
                     {item.label}
+                    {badgeCount > 0 && (
+                      <span style={{
+                        marginLeft: 'auto', minWidth: '18px', height: '18px',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        background: badge.color, color: '#fff',
+                        fontSize: '0.6rem', fontWeight: 700, borderRadius: '9px',
+                        padding: '0 5px', lineHeight: 1,
+                      }}>
+                        {badgeCount > 99 ? '99+' : badgeCount}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
