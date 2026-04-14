@@ -338,6 +338,10 @@ export class UsersService {
     return saved;
   }
 
+  async updateCv(userId: string, tenantId: string, cvUrl: string | null, cvFileName: string | null): Promise<void> {
+    await this.userRepository.update({ id: userId, tenantId }, { cvUrl, cvFileName });
+  }
+
   async update(id: string, tenantId: string, dto: UpdateUserDto, callerRole?: string, callerUserId?: string): Promise<User> {
     const user = await this.findById(id);
     // super_admin can update any user; others only their own tenant

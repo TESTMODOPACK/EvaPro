@@ -8,13 +8,17 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   Request,
   ParseUUIDPipe,
   ParseIntPipe,
   DefaultValuePipe,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -23,11 +27,15 @@ import { CreateDepartureDto } from './dto/create-departure.dto';
 import { CreateMovementDto } from './dto/create-movement.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { UploadsService } from '../uploads/uploads.service';
 
 @Controller('users')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly uploadsService: UploadsService,
+  ) {}
 
   /** GET /users/me */
   @Get('me')
@@ -56,6 +64,26 @@ export class UsersController {
     // super_admin can query any tenant's users via ?tenantId=
     const tenantId = (req.user.role === 'super_admin' && filterTenantId) ? filterTenantId : req.user.tenantId;
     return this.usersService.findAll(tenantId, page, limit, filters);
+  }
+
+  /** POST /users/me/cv — Upload CV (PDF/DOCX, max 5MB) */
+  @Post('me/cv')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async uploadCv(@UploadedFile() file: Express.Multer.File, @Request() req: any) {
+    if (!file) throw new BadRequestException('No se envió ningún archivo');
+    const allowed = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!allowed.includes(file.mimetype)) throw new BadRequestException('Solo se permiten archivos PDF o Word (.docx)');
+    const result = await this.uploadsService.uploadFile(file, req.user.tenantId, `users/${req.user.userId}/cv`);
+    await this.usersService.updateCv(req.user.userId, req.user.tenantId, result.url, file.originalname);
+    return { cvUrl: result.url, cvFileName: file.originalname };
+  }
+
+  /** DELETE /users/me/cv — Remove CV */
+  @Delete('me/cv')
+  @HttpCode(HttpStatus.OK)
+  async deleteCv(@Request() req: any) {
+    await this.usersService.updateCv(req.user.userId, req.user.tenantId, null, null);
+    return { deleted: true };
   }
 
   /** GET /users/org-chart — Hierarchical org chart tree */

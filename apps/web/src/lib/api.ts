@@ -30,6 +30,8 @@ export interface UserData {
   // Demographic (optional)
   gender?: string | null; birthDate?: string | null; nationality?: string | null;
   seniorityLevel?: string | null; contractType?: string | null; workLocation?: string | null;
+  // CV
+  cvUrl?: string | null; cvFileName?: string | null;
 }
 
 export interface DepartmentData {
@@ -481,6 +483,19 @@ export const api = {
     },
     me: (token: string) =>
       request<UserData>("/users/me", {}, token),
+    uploadCv: async (token: string, file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${BASE_URL}/users/me/cv`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Error al subir CV'); }
+      return res.json() as Promise<{ cvUrl: string; cvFileName: string }>;
+    },
+    deleteCv: (token: string) =>
+      request<{ deleted: boolean }>("/users/me/cv", { method: "DELETE" }, token),
     getById: (token: string, id: string) =>
       request<UserData>(`/users/${id}`, {}, token),
     create: (token: string, data: any) =>

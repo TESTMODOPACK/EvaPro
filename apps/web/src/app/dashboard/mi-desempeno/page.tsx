@@ -9,7 +9,7 @@ import CompetencyRadarChart from '@/components/CompetencyRadarChart';
 import SelfVsOthersChart from '@/components/SelfVsOthersChart';
 import GapAnalysisChart from '@/components/GapAnalysisChart';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
-import SignatureModal, { SignatureBadge } from '@/components/SignatureModal';
+import { SignatureBadge } from '@/components/SignatureModal';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { getScaleLevel } from '@/lib/scales';
 import { useCycles } from '@/hooks/useCycles';
@@ -161,7 +161,7 @@ export default function MiDesempenoPage() {
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [expandedTeamMember, setExpandedTeamMember] = useState<string | null>(null);
   const [expandedFbRecipient, setExpandedFbRecipient] = useState<string | null>(null);
-  const [signModal, setSignModal] = useState<any>(null);
+  // signModal removed — was dead code (setSignModal never called with value)
 
   // Cycles for filter
   const { data: allCycles } = useCycles();
@@ -1021,16 +1021,6 @@ export default function MiDesempenoPage() {
         </>
       )}
 
-      {/* Signature Modal */}
-      {signModal && (
-        <SignatureModal
-          documentType={signModal.documentType}
-          documentId={signModal.documentId}
-          documentName={signModal.documentName}
-          onCancel={() => setSignModal(null)}
-          onSigned={() => { setSignModal(null); window.location.reload(); }}
-        />
-      )}
     </div>
   );
 }

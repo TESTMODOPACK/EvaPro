@@ -130,6 +130,12 @@ export class User {
   @Column({ type: 'jsonb', nullable: true, name: 'notification_preferences', default: () => "'{}'" })
   notificationPreferences: Record<string, boolean> | null;
 
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'cv_url' })
+  cvUrl: string | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true, name: 'cv_file_name' })
+  cvFileName: string | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }

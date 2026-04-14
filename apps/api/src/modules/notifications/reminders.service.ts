@@ -1149,4 +1149,70 @@ export class RemindersService {
       this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
     }
   }
+
+  // ─── 16. Resumen semanal para managers (lunes 8am) ────────────────
+
+  @Cron('0 8 * * 1')
+  async sendWeeklyManagerSummary() {
+    this.logger.log('[Cron] Sending weekly manager summaries...');
+    try {
+      const managers = await this.userRepo.find({
+        where: { role: 'manager', isActive: true },
+        select: ['id', 'email', 'firstName', 'tenantId'],
+      });
+
+      let sent = 0;
+      const today = new Date();
+
+      for (const mgr of managers) {
+        if (!mgr.email) continue;
+
+        // Count pending evals for this manager
+        const pendingEvals = await this.assignmentRepo.count({
+          where: { evaluatorId: mgr.id, tenantId: mgr.tenantId, status: In([AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS]) },
+        });
+
+        // Count overdue PDI actions for direct reports
+        const overduePdi = await this.actionRepo.createQueryBuilder('a')
+          .innerJoin(DevelopmentPlan, 'p', 'p.id = a.plan_id AND p.tenant_id = a.tenant_id')
+          .innerJoin(User, 'u', 'u.id = p.user_id AND u.tenant_id = p.tenant_id')
+          .where('u.manager_id = :managerId', { managerId: mgr.id })
+          .andWhere('a.tenant_id = :tenantId', { tenantId: mgr.tenantId })
+          .andWhere('a.status NOT IN (:...done)', { done: ['completada', 'completed', 'cancelada'] })
+          .andWhere('a.due_date < :today', { today: today.toISOString().split('T')[0] })
+          .getCount();
+
+        // Count at-risk objectives for manager's team (direct reports + own)
+        const teamUserIds = await this.userRepo.find({
+          where: { managerId: mgr.id, tenantId: mgr.tenantId, isActive: true },
+          select: ['id'],
+        }).then((users) => [mgr.id, ...users.map((u) => u.id)]);
+
+        const atRiskObj = teamUserIds.length > 0
+          ? await this.objectiveRepo.createQueryBuilder('o')
+              .where('o.userId IN (:...uids)', { uids: teamUserIds })
+              .andWhere('o.tenantId = :tid', { tid: mgr.tenantId })
+              .andWhere('o.status = :s', { s: ObjectiveStatus.ACTIVE })
+              .andWhere('o.progress < 40')
+              .getCount()
+          : 0;
+
+        // Only send if there's something to report
+        if (pendingEvals === 0 && overduePdi === 0 && atRiskObj === 0) continue;
+
+        await this.emailService.sendManagerWeeklySummary(mgr.email, {
+          firstName: mgr.firstName,
+          pendingEvals,
+          overduePdi,
+          atRiskObjectives: atRiskObj,
+          tenantId: mgr.tenantId,
+        }).catch((err) => this.logger.warn(`Failed to send weekly summary to ${mgr.email}: ${err.message}`));
+        sent++;
+      }
+
+      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} weekly manager summaries`);
+    } catch (error) {
+      this.logger.error(`[Cron] Error in sendWeeklyManagerSummary: ${error}`);
+    }
+  }
 }

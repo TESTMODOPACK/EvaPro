@@ -108,6 +108,8 @@ async function main() {
       { table: 'checkins', column: 'rating', sql: `ALTER TABLE "checkins" ADD COLUMN IF NOT EXISTS "rating" smallint NULL` },
       { table: 'users', column: 'notification_preferences', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notification_preferences" jsonb DEFAULT '{}'` },
       { table: 'checkins', column: 'minutes', sql: `ALTER TABLE "checkins" ADD COLUMN IF NOT EXISTS "minutes" text NULL` },
+      { table: 'users', column: 'cv_url', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "cv_url" varchar(500) NULL` },
+      { table: 'users', column: 'cv_file_name', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "cv_file_name" varchar(200) NULL` },
     ];
 
     for (const fix of columnFixes) {

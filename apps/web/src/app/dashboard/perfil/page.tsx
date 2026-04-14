@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrentUser, useUpdateUser } from '@/hooks/useUsers';
 import { getRoleLabel } from '@/lib/roles';
@@ -8,6 +8,7 @@ import { formatRut } from '@/lib/rut';
 import { useLocaleStore, SupportedLocale } from '@/store/locale.store';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import { useToastStore } from '@/store/toast.store';
 
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: '0.78rem', fontWeight: 600,
@@ -19,7 +20,7 @@ const readOnlyStyle: React.CSSProperties = { opacity: 0.7, cursor: 'not-allowed'
 
 export default function PerfilPage() {
   const { t } = useTranslation();
-  const { data: user, isLoading } = useCurrentUser();
+  const { data: user, isLoading, refetch } = useCurrentUser();
   const updateUser = useUpdateUser();
   const { locale, setLocale } = useLocaleStore();
   const token = useAuthStore((s) => s.token);
@@ -29,6 +30,10 @@ export default function PerfilPage() {
   const [newPassword, setNewPassword] = useState('');
   const [passwordSaved, setPasswordSaved] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  const [cvUploading, setCvUploading] = useState(false);
+  const [cvDeleting, setCvDeleting] = useState(false);
+  const cvInputRef = useRef<HTMLInputElement>(null);
+  const toast = useToastStore((s) => s.toast);
 
   const handleLanguageChange = async (lang: SupportedLocale) => {
     setLocale(lang);
@@ -147,6 +152,70 @@ export default function PerfilPage() {
           <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '1rem 0 0' }}>
             Los datos personales (nombres, apellidos, RUT, cargo) son gestionados por el administrador de tu organización.
           </p>
+        </div>
+
+        {/* CV Upload */}
+        <div className="card" style={{ padding: '1.5rem' }}>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>Curriculum Vitae</h2>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+            Sube tu CV en formato PDF o Word. Es opcional y se usa en procesos de selección interna.
+          </p>
+          {user?.cvUrl ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 0.85rem', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 'var(--radius-sm)' }}>
+              <span style={{ fontSize: '1.2rem' }}>📄</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.cvFileName || 'CV adjunto'}</div>
+                <a href={user.cvUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: 'var(--accent)' }}>
+                  Ver / Descargar →
+                </a>
+              </div>
+              <button
+                className="btn-ghost"
+                disabled={cvDeleting}
+                style={{ fontSize: '0.75rem', color: 'var(--danger)' }}
+                onClick={async () => {
+                  setCvDeleting(true);
+                  try {
+                    await api.users.deleteCv(token!);
+                    toast('CV eliminado', 'success');
+                    refetch();
+                  } catch { toast('Error al eliminar', 'error'); }
+                  setCvDeleting(false);
+                }}
+              >
+                {cvDeleting ? '...' : 'Eliminar'}
+              </button>
+            </div>
+          ) : (
+            <div>
+              <input
+                ref={cvInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file || !token) return;
+                  setCvUploading(true);
+                  try {
+                    await api.users.uploadCv(token, file);
+                    toast('CV subido correctamente', 'success');
+                    refetch();
+                  } catch (err: any) { toast(err.message || 'Error al subir', 'error'); }
+                  setCvUploading(false);
+                  if (cvInputRef.current) cvInputRef.current.value = '';
+                }}
+              />
+              <button
+                className="btn-ghost"
+                disabled={cvUploading}
+                onClick={() => cvInputRef.current?.click()}
+                style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <span>📎</span> {cvUploading ? 'Subiendo...' : 'Subir CV (PDF o Word)'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Change password */}

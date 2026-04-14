@@ -13,6 +13,7 @@ import { UsersController } from './users.controller';
 import { AuditModule } from '../audit/audit.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AuditModule,
     SubscriptionsModule,
     NotificationsModule,
+    UploadsModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

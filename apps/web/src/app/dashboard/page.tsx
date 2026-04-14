@@ -964,9 +964,10 @@ function RegularDashboard() {
   );
 }
 
-// ─── Employee Dashboard ─────────────────────────────────────────────────────
+// NOTE: EmployeeDashboard (~180 lines) removed — dead code.
+// RegularDashboard handles both employee and manager roles.
 
-function EmployeeDashboard() {
+function __removedEmployeeDashboard() { // eslint-disable-line
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);

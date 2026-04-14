@@ -676,6 +676,36 @@ export class EmailService {
     );
   }
 
+  // ─── Template: Manager Weekly Summary ──────────────────────────────────────
+
+  async sendManagerWeeklySummary(
+    email: string,
+    data: { firstName: string; pendingEvals: number; overduePdi: number; atRiskObjectives: number; tenantId?: string },
+  ) {
+    const items: string[] = [];
+    if (data.pendingEvals > 0) items.push(`📝 <strong>${data.pendingEvals}</strong> evaluación${data.pendingEvals > 1 ? 'es' : ''} pendiente${data.pendingEvals > 1 ? 's' : ''}`);
+    if (data.overduePdi > 0) items.push(`📋 <strong>${data.overduePdi}</strong> acción${data.overduePdi > 1 ? 'es' : ''} PDI vencida${data.overduePdi > 1 ? 's' : ''} en tu equipo`);
+    if (data.atRiskObjectives > 0) items.push(`🎯 <strong>${data.atRiskObjectives}</strong> objetivo${data.atRiskObjectives > 1 ? 's' : ''} en riesgo`);
+
+    const listHtml = items.map((i) => `<li style="padding:6px 0;font-size:0.9rem;color:#334155;">${i}</li>`).join('');
+
+    await this.send(
+      email,
+      `Resumen semanal — ${items.length} tema${items.length > 1 ? 's' : ''} pendiente${items.length > 1 ? 's' : ''}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Hola ${data.firstName}, tienes ${items.length} tema(s) pendiente(s) esta semana.`,
+        body: `
+          ${this.heading('Resumen semanal de tu equipo')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, este es un resumen de lo que necesita tu atención esta semana:`)}
+          <ul style="margin:1rem 0;padding-left:1.5rem;">${listHtml}</ul>
+          ${this.paragraph('Revisa estos puntos para mantener a tu equipo al día.')}
+          ${this.cta('Ir al Dashboard', `${this.appUrl}/dashboard`)}
+          <p style="margin-top:1.5rem;font-size:0.72rem;color:#94a3b8;text-align:center;">Este es un resumen automático semanal. Se envía cada lunes.</p>
+        `,
+      }),
+    );
+  }
+
   // ─── Template: Objective Completed ────────────────────────────────────────
 
   async sendObjectiveCompleted(

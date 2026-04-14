@@ -360,6 +360,13 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     grid-template-columns: 1fr !important;
   }
 
+  /* P7b: Fixed sidebar grids (e.g. '1fr 340px') → single column */
+  .main-content div[style*="1fr 340px"],
+  .main-content div[style*="1fr 300px"],
+  .main-content div[style*="1fr 280px"] {
+    grid-template-columns: 1fr !important;
+  }
+
   /* P8: Auto-fit grids with large minmax (300px+) that overflow 375px screens */
   .main-content div[style*="minmax(3"],
   .main-content div[style*="minmax(4"] {
