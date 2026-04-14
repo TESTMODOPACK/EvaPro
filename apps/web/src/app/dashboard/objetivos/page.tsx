@@ -1007,6 +1007,11 @@ function ObjetivosPageContent() {
           if (!name.includes(q) && !title.includes(q)) return false;
         }
         return true;
+      }).sort((a: any, b: any) => {
+        // Sort by target date ASC — closest deadline first
+        const aDate = a.targetDate ? new Date(a.targetDate).getTime() : Infinity;
+        const bDate = b.targetDate ? new Date(b.targetDate).getTime() : Infinity;
+        return aDate - bDate;
       })
     : [];
 
@@ -1521,33 +1526,7 @@ function ObjetivosPageContent() {
         ))}
       </div>
 
-      {/* Weight total bar — only shown when at least one objective has a weight > 0 */}
-      {myObjectives.length > 0 && totalWeight > 0 && (
-        <div className="animate-fade-up" style={{
-          display: 'flex', alignItems: 'center', gap: '0.75rem',
-          padding: '0.6rem 0.9rem', marginBottom: '1rem',
-          background: totalWeight > 100 ? 'rgba(239,68,68,0.08)' : totalWeight === 100 ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
-          border: `1px solid ${totalWeight > 100 ? 'rgba(239,68,68,0.2)' : totalWeight === 100 ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`,
-          borderRadius: 'var(--radius-sm)', fontSize: '0.8rem',
-        }}>
-          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Peso relativo:</span>
-          <div style={{ flex: 1, maxWidth: '200px', height: '6px', borderRadius: '999px', background: 'var(--border)' }}>
-            <div style={{
-              width: `${Math.min(100, totalWeight)}%`, height: '100%', borderRadius: '999px',
-              background: totalWeight > 100 ? 'var(--danger)' : totalWeight === 100 ? 'var(--success)' : 'var(--warning)',
-              transition: 'width 0.3s ease',
-            }} />
-          </div>
-          <span style={{
-            fontWeight: 700, fontSize: '0.85rem',
-            color: totalWeight > 100 ? 'var(--danger)' : totalWeight === 100 ? 'var(--success)' : 'var(--warning)',
-          }}>
-            {totalWeight}% / 100%
-          </span>
-          {totalWeight > 100 && <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>Excede el 100%</span>}
-          {totalWeight < 100 && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>La suma de pesos de tus objetivos no llega al 100%</span>}
-        </div>
-      )}
+      {/* Weight total bar — hidden (confusing UX, not used by most orgs) */}
 
       {/* Filters bar */}
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>

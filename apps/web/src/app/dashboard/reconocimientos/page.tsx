@@ -880,7 +880,9 @@ function ReconocimientosPageContent() {
                     <span>{r.item?.name || 'Item'}</span>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                       <span style={{ color: 'var(--accent)', fontWeight: 600 }}>-{r.pointsSpent} pts</span>
-                      <span className={`badge ${r.status === 'delivered' ? 'badge-success' : r.status === 'cancelled' ? 'badge-danger' : 'badge-accent'}`} style={{ fontSize: '0.68rem' }}>{r.status}</span>
+                      <span className={`badge ${r.status === 'delivered' ? 'badge-success' : r.status === 'cancelled' ? 'badge-danger' : 'badge-accent'}`} style={{ fontSize: '0.68rem' }}>
+                        {{ pending: 'Pendiente', approved: 'Aprobado', delivered: 'Entregado', cancelled: 'Cancelado' }[r.status as string] || r.status}
+                      </span>
                     </div>
                   </div>
                 ))}
