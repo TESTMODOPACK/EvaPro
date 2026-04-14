@@ -784,6 +784,14 @@ export const api = {
       request<any>(`/notifications/${id}/read`, { method: "PATCH" }, token),
     markAllAsRead: (token: string) =>
       request<void>("/notifications/read-all", { method: "PATCH" }, token),
+    deleteOne: (token: string, id: string) =>
+      request<void>(`/notifications/${id}`, { method: "DELETE" }, token),
+    deleteAllRead: (token: string) =>
+      request<{ deleted: number }>("/notifications/read", { method: "DELETE" }, token),
+    getPreferences: (token: string) =>
+      request<Record<string, boolean>>("/notifications/preferences", {}, token),
+    updatePreferences: (token: string, prefs: Record<string, boolean>) =>
+      request<void>("/notifications/preferences", { method: "PATCH", body: JSON.stringify(prefs) }, token),
   },
 
   dashboard: {

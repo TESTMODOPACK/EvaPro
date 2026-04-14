@@ -431,9 +431,9 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       {/* Sidebar header — Eva360 logo */}
       <div style={{ padding: '1rem 1.25rem 0.65rem', borderBottom: '1px solid var(--border)' }}>
         <img
-          src="/eva360-logo-dark.png"
+          src="/eva360-logo.png"
           alt="Eva360"
-          style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
+          style={{ height: '42px', width: 'auto', objectFit: 'contain' }}
         />
       </div>
 

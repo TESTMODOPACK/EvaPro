@@ -79,3 +79,78 @@ export function useMarkAllAsRead() {
     },
   });
 }
+
+export function useDeleteNotification() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.notifications.deleteOne(token!, id),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['notifications', 'list'] });
+      let wasUnread = false;
+      qc.setQueriesData({ queryKey: ['notifications', 'list'] }, (old: any) => {
+        if (!Array.isArray(old)) return old;
+        const target = old.find((n: any) => n.id === id);
+        if (target && !target.isRead) wasUnread = true;
+        return old.filter((n: any) => n.id !== id);
+      });
+      if (wasUnread) {
+        qc.setQueryData(['notifications', 'unread'], (old: any) => {
+          if (!old) return old;
+          return { count: Math.max(0, (old.count || 0) - 1) };
+        });
+      }
+    },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['notifications', 'unread'] });
+      qc.invalidateQueries({ queryKey: ['sidebar', 'badges'] });
+    },
+  });
+}
+
+export function useDeleteAllRead() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.notifications.deleteAllRead(token!),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ['notifications', 'list'] });
+      qc.setQueriesData({ queryKey: ['notifications', 'list'] }, (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.filter((n: any) => !n.isRead);
+      });
+    },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['notifications', 'list'] });
+      qc.invalidateQueries({ queryKey: ['notifications', 'unread'] });
+      qc.invalidateQueries({ queryKey: ['sidebar', 'badges'] });
+    },
+  });
+}
+
+export function useNotificationPreferences() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['notifications', 'preferences'],
+    queryFn: () => api.notifications.getPreferences(token!),
+    enabled: !!token,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateNotificationPreferences() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (prefs: Record<string, boolean>) => api.notifications.updatePreferences(token!, prefs),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['notifications', 'preferences'] });
+    },
+  });
+}

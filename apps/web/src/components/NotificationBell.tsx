@@ -2,21 +2,21 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useUnreadCount, useNotifications, useMarkAsRead, useMarkAllAsRead } from '@/hooks/useNotifications';
+import { getNotificationHref } from '@/lib/notification-links';
 
 const typeIcons: Record<string, string> = {
-  EVALUATION_PENDING: '\uD83D\uDCDD',
-  EVALUATION_COMPLETED: '\u2705',
-  CHECKIN_SCHEDULED: '\uD83D\uDCC5',
-  CHECKIN_REJECTED: '\u274C',
-  CHECKIN_OVERDUE: '\u23F0',
-  FEEDBACK_RECEIVED: '\uD83D\uDCAC',
-  PDI_ACTION_DUE: '\uD83C\uDFAF',
-  OBJECTIVE_AT_RISK: '\u26A0\uFE0F',
-  CYCLE_CLOSING: '\uD83D\uDD14',
-  CALIBRATION_PENDING: '\u2696\uFE0F',
-  STAGE_ADVANCED: '\u27A1\uFE0F',
-  GENERAL: '\uD83D\uDD35',
+  evaluation_pending: '📝', evaluation_completed: '✅',
+  checkin_scheduled: '📅', checkin_rejected: '❌', checkin_overdue: '⏰',
+  feedback_received: '💬', pdi_action_due: '🎯',
+  objective_at_risk: '⚠️', cycle_closing: '🔔', cycle_closed: '✅',
+  calibration_pending: '⚖️', stage_advanced: '➡️',
+  escalation_evaluation_overdue: '🚨', escalation_pdi_overdue: '🚨',
+  escalation_objective_critical: '🚨', pdi_required: '📋',
+  subscription_expiring: '⏳', subscription_expiring_urgent: '⚠️',
+  survey_invitation: '📋', survey_reminder: '🔔', survey_closed: '✅',
+  general: '🔵',
 };
 
 function timeAgo(dateStr: string): string {
@@ -32,6 +32,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function NotificationBell() {
+  const router = useRouter();
   const { data: unreadData } = useUnreadCount();
   const { data: notifications } = useNotifications(15);
   const markAsRead = useMarkAsRead();
@@ -167,17 +168,20 @@ export default function NotificationBell() {
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{'No hay notificaciones'}</p>
               </div>
             ) : (
-              notifications.map((n: any) => (
+              notifications.map((n: any) => {
+                const href = getNotificationHref(n.type, n.metadata);
+                return (
                 <div
                   key={n.id}
                   onClick={() => {
                     if (!n.isRead) markAsRead.mutate(n.id);
+                    if (href) { setOpen(false); router.push(href); }
                   }}
                   style={{
                     padding: '0.75rem 1rem',
                     borderBottom: '1px solid var(--border)',
-                    cursor: n.isRead ? 'default' : 'pointer',
-                    background: n.isRead ? 'transparent' : 'rgba(99,102,241,0.04)',
+                    cursor: 'pointer',
+                    background: n.isRead ? 'transparent' : 'rgba(201,147,58,0.04)',
                     transition: 'background 0.15s',
                     display: 'flex',
                     gap: '0.65rem',
@@ -185,7 +189,7 @@ export default function NotificationBell() {
                   }}
                 >
                   <span style={{ fontSize: '1.1rem', flexShrink: 0, marginTop: '0.1rem' }}>
-                    {typeIcons[n.type] || typeIcons.GENERAL}
+                    {typeIcons[n.type] || typeIcons.general}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
@@ -225,7 +229,8 @@ export default function NotificationBell() {
                     </p>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, MoreThan, In } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
+import { User } from '../users/entities/user.entity';
 import { EmailService } from './email.service';
 
 @Injectable()
@@ -11,6 +12,8 @@ export class NotificationsService {
   constructor(
     @InjectRepository(Notification)
     private readonly notifRepo: Repository<Notification>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly emailService: EmailService,
   ) {}
 
@@ -224,6 +227,19 @@ export class NotificationsService {
     );
   }
 
+  /** Delete a single notification (user-initiated dismiss) */
+  async deleteOne(tenantId: string, userId: string, notifId: string): Promise<void> {
+    const notif = await this.notifRepo.findOne({ where: { id: notifId, tenantId, userId } });
+    if (!notif) throw new NotFoundException('Notificación no encontrada');
+    await this.notifRepo.remove(notif);
+  }
+
+  /** Delete all read notifications for a user */
+  async deleteAllRead(tenantId: string, userId: string): Promise<number> {
+    const result = await this.notifRepo.delete({ tenantId, userId, isRead: true });
+    return result.affected || 0;
+  }
+
   /** Delete notifications older than N days (cleanup) */
   async deleteOlderThan(days: number): Promise<number> {
     const cutoff = new Date();
@@ -233,5 +249,20 @@ export class NotificationsService {
       isRead: true,
     });
     return result.affected || 0;
+  }
+
+  // ─── Notification Preferences ───────────────────────────────────
+
+  async getPreferences(tenantId: string, userId: string): Promise<Record<string, boolean>> {
+    const user = await this.userRepo.findOne({ where: { id: userId, tenantId }, select: ['id', 'notificationPreferences'] });
+    return user?.notificationPreferences || {};
+  }
+
+  async updatePreferences(tenantId: string, userId: string, prefs: Record<string, boolean>): Promise<Record<string, boolean>> {
+    const user = await this.userRepo.findOne({ where: { id: userId, tenantId }, select: ['id', 'notificationPreferences'] });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+    const merged = { ...(user.notificationPreferences || {}), ...prefs };
+    await this.userRepo.update(user.id, { notificationPreferences: merged });
+    return merged;
   }
 }

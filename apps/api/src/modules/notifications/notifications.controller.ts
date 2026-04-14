@@ -3,12 +3,15 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   UseGuards,
   Request,
   ParseUUIDPipe,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -27,7 +30,7 @@ export class NotificationsController {
   /** Get my notifications (latest 50 by default) */
   @Get()
   findMine(@Request() req: any, @Query('limit') limit?: string) {
-    const take = limit ? Math.min(parseInt(limit, 10), 100) : 50;
+    const take = limit ? Math.min(parseInt(limit, 10), 200) : 50;
     return this.notificationsService.findByUser(req.user.tenantId, req.user.userId, take);
   }
 
@@ -51,6 +54,33 @@ export class NotificationsController {
   @Patch('read-all')
   markAllAsRead(@Request() req: any) {
     return this.notificationsService.markAllAsRead(req.user.tenantId, req.user.userId);
+  }
+
+  /** Get user notification preferences */
+  @Get('preferences')
+  getPreferences(@Request() req: any) {
+    return this.notificationsService.getPreferences(req.user.tenantId, req.user.userId);
+  }
+
+  /** Update user notification preferences */
+  @Patch('preferences')
+  updatePreferences(@Request() req: any, @Body() body: Record<string, boolean>) {
+    return this.notificationsService.updatePreferences(req.user.tenantId, req.user.userId, body);
+  }
+
+  /** Delete all read notifications */
+  @Delete('read')
+  @HttpCode(HttpStatus.OK)
+  async deleteAllRead(@Request() req: any) {
+    const deleted = await this.notificationsService.deleteAllRead(req.user.tenantId, req.user.userId);
+    return { deleted };
+  }
+
+  /** Delete a single notification */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteOne(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.notificationsService.deleteOne(req.user.tenantId, req.user.userId, id);
   }
 
   /** POST /notifications/test-email — super_admin only, sends all templates to provided address */

@@ -127,6 +127,9 @@ export class User {
   @Column({ type: 'varchar', length: 64, nullable: true, name: 'two_factor_secret' })
   twoFactorSecret: string | null;
 
+  @Column({ type: 'jsonb', nullable: true, name: 'notification_preferences', default: () => "'{}'" })
+  notificationPreferences: Record<string, boolean> | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }
