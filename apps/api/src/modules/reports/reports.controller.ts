@@ -88,8 +88,9 @@ export class ReportsController {
 
   @Get('executive-dashboard')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  executiveDashboard(@Query('cycleId') cycleId: string, @Request() req: any) {
-    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+  executiveDashboard(@Query('cycleId') cycleId: string, @Query('scope') scope: string, @Request() req: any) {
+    // scope=org lets managers fetch org-wide totals for comparison in dashboard
+    const managerId = req.user.role === 'manager' && scope !== 'org' ? req.user.userId : undefined;
     this.logAccess(req, 'executive_dashboard', { cycleId });
     return this.executiveDashboardService.getExecutiveSummary(
       req.user.tenantId,
@@ -160,11 +161,12 @@ export class ReportsController {
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Query('department') department: string,
     @Query('position') position: string,
+    @Query('scope') scope: string,
     @Request() req: any,
   ) {
     const { role, userId } = req.user;
-    // Managers only see their team's data
-    const managerId = role === 'manager' ? userId : undefined;
+    // scope=org lets managers fetch org-wide summary (read-only, for dashboard comparison)
+    const managerId = role === 'manager' && scope !== 'org' ? userId : undefined;
     const filters: any = {};
     if (department) filters.department = department;
     if (position) filters.position = position;

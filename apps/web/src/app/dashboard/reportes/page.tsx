@@ -99,6 +99,9 @@ export default function ReportesPage() {
   // Shared data (loaded on cycle change)
   const { data: summary } = useCycleSummary(selectedCycleId);
   const [execData, setExecData] = useState<any>(null);
+  // Org-wide data for managers (unfiltered) — admins don't need this
+  const [orgSummary, setOrgSummary] = useState<any>(null);
+  const [orgExecData, setOrgExecData] = useState<any>(null);
 
   // Tab-specific data (lazy loaded)
   const [cycleCompData, setCycleCompData] = useState<any>(null);
@@ -183,7 +186,7 @@ export default function ReportesPage() {
   useEffect(() => {
     if (!token || !selectedCycleId) return;
     api.reports.executiveDashboard(token, selectedCycleId).then(setExecData).catch(() => {});
-    // For managers: load team members (direct reports) to filter cross-tab data
+    // For managers: load team members + org-wide data for comparison
     if (!isAdmin) {
       api.users.list(token, 1, 500).then((res: any) => {
         const users = Array.isArray(res) ? res : res?.data || [];
@@ -193,6 +196,13 @@ export default function ReportesPage() {
         setTeamDepts(new Set(myTeam.map((u: any) => u.department).filter(Boolean)));
         setTeamMembers(myTeam);
       }).catch(() => {});
+      // Fetch org-wide (unfiltered) data so we can show true org KPIs
+      api.reports.cycleSummary(token, selectedCycleId, 'org').then(setOrgSummary).catch(() => setOrgSummary(null));
+      api.reports.executiveDashboard(token, selectedCycleId, 'org').then(setOrgExecData).catch(() => setOrgExecData(null));
+    } else {
+      // For admins, the main summary IS the org data
+      setOrgSummary(null);
+      setOrgExecData(null);
     }
     // Reset tab-specific data
     setLoadedTabs(new Set());
@@ -265,10 +275,12 @@ export default function ReportesPage() {
     } catch (e: any) { toast(e.message || 'Error al exportar', 'error'); }
   };
 
-  // Derived data
-  const depts = (summary?.departmentBreakdown || []).map((d: any) => ({ ...d, avgScore: Number(d.avgScore) || 0 })).sort((a: any, b: any) => b.avgScore - a.avgScore);
+  // Derived data — for managers, use orgSummary for org-wide charts; for admins, summary IS org
+  const effectiveOrgSummary = isAdmin ? summary : (orgSummary || summary);
+  const depts = (effectiveOrgSummary?.departmentBreakdown || []).map((d: any) => ({ ...d, avgScore: Number(d.avgScore) || 0 })).sort((a: any, b: any) => b.avgScore - a.avgScore);
   const topDepts = depts.slice(0, 3);
   const bottomDepts = [...depts].sort((a: any, b: any) => a.avgScore - b.avgScore).slice(0, 3);
+  const effectiveOrgExec = isAdmin ? execData : (orgExecData || execData);
   const objectives = execData?.objectives;
   const headcount = execData?.headcount;
 
@@ -370,18 +382,21 @@ export default function ReportesPage() {
               {!summary ? <Spinner /> : (
                 <>
                   {(() => {
-                    // Para managers: summary viene filtrado por su equipo.
-                    // Los datos de "Organización" se calculan desde los departamentos
-                    // (que incluyen todos los deptos del ciclo con sus promedios).
+                    // Org KPIs: use effectiveOrgSummary (unfiltered for managers via scope=org)
                     const orgAvg = depts.length > 0
                       ? depts.reduce((s: number, d: any) => s + d.avgScore * (d.count || 1), 0) / depts.reduce((s: number, d: any) => s + (d.count || 1), 0)
-                      : Number(summary.averageScore || 0);
+                      : Number(effectiveOrgSummary?.averageScore || 0);
                     const orgTotal = depts.reduce((s: number, d: any) => s + (d.count || 0), 0);
+                    const orgCompletion = Number(effectiveOrgSummary?.completionRate || 0);
+                    const orgEvals = `${effectiveOrgSummary?.completedAssignments || 0}/${effectiveOrgSummary?.totalAssignments || 0}`;
 
-                    // Para Mi Equipo: usar summary directo (ya filtrado por el backend)
+                    // Team KPIs: summary directo (filtered by managerId on backend)
                     const teamAvg = Number(summary.averageScore || 0);
                     const teamEvals = `${summary.completedAssignments || 0}/${summary.totalAssignments || 0}`;
                     const teamCompletion = Number(summary.completionRate || 0);
+
+                    // Team departments that have evaluation data in this cycle
+                    const teamDeptNames = (summary?.departmentBreakdown || []).map((d: any) => d.department);
 
                     return (
                       <>
@@ -393,31 +408,25 @@ export default function ReportesPage() {
                           <KPI label="Promedio Global" value={orgAvg.toFixed(1)} color={getScoreColor(orgAvg)} sub={getScoreLabel(orgAvg)} />
                           <KPI label="Colaboradores Eval." value={orgTotal || '--'} />
                           <KPI label="Departamentos" value={allOrgDepts.length || depts.length} />
+                          <KPI label="Completitud" value={`${orgCompletion}%`} color={orgCompletion >= 80 ? 'var(--success)' : 'var(--warning)'} />
+                          <KPI label="Evaluaciones" value={orgEvals} />
                         </div>
 
                         {/* KPIs Mi Equipo (solo para managers) */}
                         {!isAdmin && teamDepts.size > 0 && (
                           <>
                             <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>
-                              {'👥'} Mi Equipo ({Array.from(teamDepts).join(', ')})
+                              {'👥'} Mi Equipo ({teamDeptNames.length > 0 ? teamDeptNames.join(', ') : Array.from(teamDepts).join(', ')})
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
                               <KPI label="Promedio Equipo" value={teamAvg.toFixed(1)} color={getScoreColor(teamAvg)} sub={getScoreLabel(teamAvg)} />
                               <KPI label="Colaboradores" value={teamMembers.length} />
-                              <KPI label="Departamentos" value={teamDepts.size} />
+                              <KPI label="Departamentos" value={teamDeptNames.length || teamDepts.size} />
                               <KPI label="Completitud" value={`${teamCompletion}%`} color={teamCompletion >= 80 ? 'var(--success)' : 'var(--warning)'} />
                               <KPI label="Evaluaciones" value={teamEvals} />
                               <KPI label="vs Organización" value={`${teamAvg > orgAvg ? '+' : ''}${(teamAvg - orgAvg).toFixed(1)}`} color={teamAvg >= orgAvg ? 'var(--success)' : 'var(--danger)'} />
                             </div>
                           </>
-                        )}
-
-                        {/* Para admins: una sola fila con todos los datos */}
-                        {isAdmin && (
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem', marginTop: '-0.75rem' }}>
-                            <KPI label="Completitud" value={`${teamCompletion}%`} color={teamCompletion >= 80 ? 'var(--success)' : 'var(--warning)'} />
-                            <KPI label="Evaluaciones" value={teamEvals} />
-                          </div>
                         )}
                       </>
                     );
@@ -1012,9 +1021,9 @@ export default function ReportesPage() {
 
                     {/* High risk employees table */}
                     <div className="card" style={{ padding: '1.25rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Empleados en Riesgo Alto</h4>
-                      {(flightRisk.scores || []).filter((s: any) => s.riskLevel === 'high').length === 0 ? (
-                        <p style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>✅ Sin empleados en riesgo alto</p>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Empleados en Riesgo Alto y Medio</h4>
+                      {(flightRisk.scores || []).filter((s: any) => s.riskLevel === 'high' || s.riskLevel === 'medium').length === 0 ? (
+                        <p style={{ color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>✅ Sin empleados en riesgo alto o medio</p>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', maxHeight: 180, overflowY: 'auto' }}>
                           {(flightRisk.scores || []).filter((s: any) => s.riskLevel === 'high' || s.riskLevel === 'medium').slice(0, 10).map((s: any) => (

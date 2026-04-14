@@ -700,8 +700,13 @@ export const api = {
   },
 
   reports: {
-    executiveDashboard: (token: string, cycleId?: string) =>
-      request<any>(`/reports/executive-dashboard${cycleId ? `?cycleId=${cycleId}` : ''}`, {}, token),
+    executiveDashboard: (token: string, cycleId?: string, scope?: 'org') => {
+      const params = new URLSearchParams();
+      if (cycleId) params.set('cycleId', cycleId);
+      if (scope) params.set('scope', scope);
+      const qs = params.toString();
+      return request<any>(`/reports/executive-dashboard${qs ? `?${qs}` : ''}`, {}, token);
+    },
     closedSurveys: (token: string) =>
       request<any[]>("/reports/executive-dashboard/surveys", {}, token),
     enpsBySurvey: (token: string, surveyId: string) =>
@@ -715,8 +720,8 @@ export const api = {
     },
     crossAnalysisAvailable: (token: string) =>
       request<{ cycles: any[]; surveys: any[] }>('/reports/cross-analysis/available', {}, token),
-    cycleSummary: (token: string, cycleId: string) =>
-      request<CycleSummary>(`/reports/cycle/${cycleId}/summary`, {}, token),
+    cycleSummary: (token: string, cycleId: string, scope?: 'org') =>
+      request<CycleSummary>(`/reports/cycle/${cycleId}/summary${scope ? '?scope=org' : ''}`, {}, token),
     individual: (token: string, cycleId: string, userId: string) =>
       request<any>(`/reports/cycle/${cycleId}/individual/${userId}`, {}, token),
     team: (token: string, cycleId: string, managerId: string) =>
