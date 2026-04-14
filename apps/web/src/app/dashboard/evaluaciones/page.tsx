@@ -18,6 +18,7 @@ import {
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
+import { FirstVisitTip } from '@/components/FirstVisitTip';
 
 // ─── Urgency helpers ────────────────────────────────────────────────
 
@@ -133,6 +134,13 @@ function EmployeeEvaluationsView() {
           </p>
         </div>
       </div>
+
+      <FirstVisitTip
+        id="evaluaciones"
+        icon="📝"
+        title="Tu bandeja de evaluaciones"
+        description="Aquí verás las evaluaciones que te han asignado como evaluador. Haz click en 'Responder' para completar cada una. Las más urgentes aparecen primero. Puedes filtrar por ciclo o buscar por nombre."
+      />
 
       {/* Summary cards */}
       <div className="animate-fade-up-delay-1" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>

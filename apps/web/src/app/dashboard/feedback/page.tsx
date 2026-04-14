@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import ConfirmModal from '@/components/ConfirmModal';
+import { FirstVisitTip } from '@/components/FirstVisitTip';
 import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useUsers } from '@/hooks/useUsers';
@@ -1098,6 +1099,12 @@ function FeedbackPageContent() {
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
+      <FirstVisitTip
+        id="feedback"
+        icon="💬"
+        title="Retroalimentación continua"
+        description="Agenda reuniones 1:1 con tu equipo (check-ins), envía feedback rápido a cualquier compañero y registra minutas de las reuniones. Todo queda documentado para seguimiento."
+      />
       {/* Header */}
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>

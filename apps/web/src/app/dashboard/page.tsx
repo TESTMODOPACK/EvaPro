@@ -964,10 +964,10 @@ function RegularDashboard() {
   );
 }
 
-// NOTE: EmployeeDashboard (~180 lines) removed — dead code.
-// RegularDashboard handles both employee and manager roles.
+// ─── Role-based Journey Steps ──────────────────────────────────────────────
+// (EmployeeDashboard removed — RegularDashboard handles employee + manager)
 
-function __removedEmployeeDashboard() { // eslint-disable-line
+function __dead_code_placeholder() { // eslint-disable-line
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);

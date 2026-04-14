@@ -354,9 +354,10 @@ export class ExecutiveDashboardService {
   // ─── Export Dashboard PDF (multi-tab) ─────────────────────────────────
 
   async exportDashboardPdf(tenantId: string, cycleId: string, surveyId?: string, managerId?: string): Promise<Buffer> {
-    // Gather ALL data — both org-wide and filtered for managers
-    const [execData, turnover] = await Promise.all([
+    // Gather data — team-filtered for managers + org-wide for comparison
+    const [execData, orgData, turnover] = await Promise.all([
       this.getExecutiveSummary(tenantId, cycleId, managerId),
+      managerId ? this.getExecutiveSummary(tenantId, cycleId).catch(() => null) : Promise.resolve(null),
       this.getTurnoverForExport(tenantId).catch(() => null),
     ]);
 
@@ -452,13 +453,17 @@ export class ExecutiveDashboardService {
       : Number(perf.avgScore || 0);
     const orgDeptCount = cycleSummary?.departmentBreakdown?.length || 0;
 
+    // Org-wide data for manager PDF (unfiltered headcount, performance)
+    const orgHc = orgData?.headcount || hc;
+    const orgPerf = orgData?.performance || perf;
+
     if (isManagerView) {
       // Sección Organización
       y = addSectionTitle(y, '🏢 Organización');
       y = addKpiRow(y, [
         { label: 'Promedio Global', value: `${orgAvg.toFixed(1)}/10` },
         { label: 'eNPS', value: `${enpsData?.score ?? '--'}` },
-        { label: 'Dotación', value: `${hc.active || 0} activos` },
+        { label: 'Dotación', value: `${orgHc.active || 0} activos` },
         { label: 'Departamentos', value: `${orgDeptCount}` },
       ]);
       y += 2;

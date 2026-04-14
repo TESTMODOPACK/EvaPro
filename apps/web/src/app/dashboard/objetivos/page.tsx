@@ -33,6 +33,7 @@ import { useUsers } from '@/hooks/useUsers';
 import { useCycles } from '@/hooks/useCycles';
 import { getRoleLabel } from '@/lib/roles';
 import { useDepartments } from '@/hooks/useDepartments';
+import { FirstVisitTip } from '@/components/FirstVisitTip';
 
 type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned' | 'at_risk';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
@@ -1153,6 +1154,12 @@ function ObjetivosPageContent() {
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
+      <FirstVisitTip
+        id="objetivos"
+        icon="🎯"
+        title="Objetivos y Metas"
+        description="Define objetivos medibles (OKR, KPI o SMART) con fecha límite y resultados clave. Los objetivos se ordenan por urgencia. Puedes ver el resumen del equipo y el árbol de alineación organizacional en las pestañas superiores."
+      />
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>

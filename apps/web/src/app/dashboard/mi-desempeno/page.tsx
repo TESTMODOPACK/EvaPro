@@ -11,6 +11,7 @@ import GapAnalysisChart from '@/components/GapAnalysisChart';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { SignatureBadge } from '@/components/SignatureModal';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
+import { FirstVisitTip } from '@/components/FirstVisitTip';
 import { getScaleLevel } from '@/lib/scales';
 import { useCycles } from '@/hooks/useCycles';
 import { useGapAnalysisIndividual, useCompetencyRadar } from '@/hooks/useReports';
@@ -211,7 +212,7 @@ export default function MiDesempenoPage() {
     }).finally(() => setLoading(false));
     // Load pending climate surveys separately (no need to block main load)
     api.surveys.getMyPending(token).then((s) => setPendingSurveys(Array.isArray(s) ? s : [])).catch(() => {});
-  }, [token, user?.userId]);
+  }, [token, user?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load signatures
   useEffect(() => {
@@ -290,6 +291,13 @@ export default function MiDesempenoPage() {
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
+      <FirstVisitTip
+        id="mi-desempeno"
+        icon="📊"
+        title="Tu panel de desempeño"
+        description="Aquí encuentras tu historial de evaluaciones, feedback recibido, planes de desarrollo y objetivos. Usa las pestañas para navegar entre secciones. El radar muestra tus competencias evaluadas por diferentes perspectivas."
+      />
+
       {/* Header */}
       <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Mi Desempeño</h1>

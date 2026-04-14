@@ -147,12 +147,12 @@ export default function ReportesPage() {
   // Tab loading flags
   const [loadedTabs, setLoadedTabs] = useState<Set<TabKey>>(new Set());
 
-  // Auto-select latest cycle
+  // Auto-select latest cycle (use length to avoid re-running on array reference change)
   useEffect(() => {
     if (closedCycles.length > 0 && !selectedCycleId) {
       setSelectedCycleId(closedCycles[0].id);
     }
-  }, [closedCycles]);
+  }, [closedCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load surveys + org plans on mount
   useEffect(() => {
@@ -232,7 +232,7 @@ export default function ReportesPage() {
       ]).then(() => mark());
     }
     if (activeTab === 'risks') mark();
-  }, [activeTab, token, selectedSurveyId]);
+  }, [activeTab, token, selectedSurveyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load eNPS when survey changes
   useEffect(() => {

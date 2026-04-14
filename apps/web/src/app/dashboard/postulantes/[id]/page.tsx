@@ -9,6 +9,73 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useTranslation } from 'react-i18next';
 
+// ─── Internal Candidate Profile (shows Eva360 data) ─────────────────
+
+function InternalCandidateProfile({ userId, user }: { userId: string; user: any }) {
+  const token = useAuthStore((s) => s.token);
+  const [data, setData] = useState<any>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!token || !userId || !expanded) return;
+    if (data) return; // Already loaded
+    api.reports.performanceHistory(token, userId).then(setData).catch(() => {});
+  }, [token, userId, expanded, data]);
+
+  const history = data?.history || [];
+  const latest = history.length > 0 ? history[history.length - 1] : null;
+  const position = user?.position || '';
+  const department = user?.department || '';
+  const hireDate = user?.hireDate;
+
+  return (
+    <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600, padding: '0.2rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+      >
+        <span style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', display: 'inline-block', fontSize: '0.65rem' }}>▶</span>
+        Perfil Eva360
+      </button>
+      {expanded && (
+        <div style={{ marginTop: '0.4rem', padding: '0.65rem 0.85rem', background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+            {position && <span><strong>Cargo:</strong> {position}</span>}
+            {department && <span><strong>Departamento:</strong> {department}</span>}
+            {hireDate && <span><strong>Ingreso:</strong> {new Date(hireDate).toLocaleDateString('es-CL', { month: 'short', year: 'numeric' })}</span>}
+          </div>
+          {history.length > 0 ? (
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>Historial de evaluaciones</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                {history.slice(-5).map((h: any, i: number) => {
+                  const score = Number(h.avgOverall || 0);
+                  const color = score >= 8.5 ? '#10b981' : score >= 7 ? '#6366f1' : score >= 5 ? '#f59e0b' : '#ef4444';
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.2rem 0', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>{h.cycleName || h.name}</span>
+                      <span style={{ fontWeight: 700, color, fontSize: '0.82rem' }}>{score.toFixed(1)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {latest && (
+                <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Último puntaje: <strong style={{ color: Number(latest.avgOverall) >= 7 ? '#10b981' : '#f59e0b' }}>{Number(latest.avgOverall || 0).toFixed(1)}/10</strong>
+                </div>
+              )}
+            </div>
+          ) : data ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', margin: 0 }}>Sin evaluaciones previas en el sistema</p>
+          ) : (
+            <span className="spinner" style={{ width: 16, height: 16 }} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Scoring Weights Editor (stateful component) ─────────────────────
 function ScoringWeightsEditor({ process, isInternal, token, processId, onSaved }: {
   process: any; isInternal: boolean; token: string | null; processId: string; onSaved: () => void;
@@ -687,7 +754,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 const name = c.candidateType === 'internal' && c.user
                   ? c.user.firstName + ' ' + c.user.lastName
                   : (c.firstName || '') + ' ' + (c.lastName || '');
-                const cvStatus = c.cvAnalysis ? 'analyzed' : c.cvUrl ? 'uploaded' : 'none';
+                // For internal candidates: use profile CV if no process-specific CV exists
+                const effectiveCvUrl = c.cvUrl || (c.candidateType === 'internal' && c.user?.cvUrl ? c.user.cvUrl : null);
+                const cvFromProfile = !c.cvUrl && c.candidateType === 'internal' && c.user?.cvUrl;
+                const cvStatus = c.cvAnalysis ? 'analyzed' : effectiveCvUrl ? 'uploaded' : 'none';
                 let matchPct: number | null = null;
                 if (c.cvAnalysis) {
                   const analysis = typeof c.cvAnalysis === 'string' ? (() => { try { return JSON.parse(c.cvAnalysis); } catch (_e) { return null; } })() : c.cvAnalysis;
@@ -730,6 +800,11 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         </div>
                       )}
                     </div>
+
+                    {/* Internal candidate: Eva360 profile summary */}
+                    {c.candidateType === 'internal' && c.user && (
+                      <InternalCandidateProfile userId={c.user.id || c.userId} user={c.user} />
+                    )}
 
                     {/* Actions row */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
@@ -801,11 +876,13 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           </div>
                         </div>
 
-                        {/* Step 1: Upload */}
-                        {!c.cvUrl ? (
+                        {/* Step 1: Upload or use profile CV */}
+                        {!c.cvUrl && !cvFromProfile ? (
                           <div style={{ textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
                             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                              {t('postulantes.detail.cv.uploadDesc')}
+                              {c.candidateType === 'internal'
+                                ? 'Este colaborador no tiene CV en su perfil. Puedes subir uno para este proceso.'
+                                : t('postulantes.detail.cv.uploadDesc')}
                             </p>
                             {canManageCv && (
                               <label className="btn-primary" style={{ cursor: 'pointer', fontSize: '0.85rem' }}>
@@ -813,6 +890,25 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                                 <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
                               </label>
                             )}
+                          </div>
+                        ) : !c.cvUrl && cvFromProfile ? (
+                          <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)', borderRadius: 'var(--radius-sm)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                              <span style={{ fontSize: '1rem' }}>📄</span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>CV cargado desde el perfil del colaborador</span>
+                              <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.1rem 0.4rem', borderRadius: 8 }}>Perfil</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.82rem' }}>
+                              <a href={c.user.cvUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}>
+                                {c.user.cvFileName || 'Ver CV'} →
+                              </a>
+                              {canManageCv && (
+                                <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
+                                  {uploadingCv ? 'Subiendo...' : 'Subir CV actualizado'}
+                                  <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
+                                </label>
+                              )}
+                            </div>
                           </div>
                         ) : !c.cvAnalysis ? (
                           /* Step 2: Analyze */
