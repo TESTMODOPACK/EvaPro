@@ -354,12 +354,33 @@ export class ExecutiveDashboardService {
   // ─── Export Dashboard PDF (multi-tab) ─────────────────────────────────
 
   async exportDashboardPdf(tenantId: string, cycleId: string, surveyId?: string, managerId?: string): Promise<Buffer> {
-    // Gather ALL data
+    // Gather ALL data — both org-wide and filtered for managers
     const [execData, turnover] = await Promise.all([
       this.getExecutiveSummary(tenantId, cycleId, managerId),
       this.getTurnoverForExport(tenantId).catch(() => null),
     ]);
-    const cycleSummary: any = null; // Department data comes from the cycle summary endpoint
+
+    // Department breakdown — calculated directly (no dep on ReportsService)
+    let cycleSummary: any = null;
+    try {
+      const deptData = await this.responseRepo
+        .createQueryBuilder('r')
+        .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
+        .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
+        .where('a.cycleId = :cycleId', { cycleId })
+        .andWhere('r.tenantId = :tenantId', { tenantId })
+        .andWhere('r.overall_score IS NOT NULL')
+        .andWhere('u.department IS NOT NULL')
+        .select('u.department', 'department')
+        .addSelect('AVG(r.overall_score)', 'avgScore')
+        .addSelect('COUNT(DISTINCT u.id)', 'count')
+        .groupBy('u.department')
+        .orderBy('AVG(r.overall_score)', 'DESC')
+        .getRawMany();
+      if (deptData.length > 0) {
+        cycleSummary = { departmentBreakdown: deptData };
+      }
+    } catch { /* ignore — PDF will skip department table */ }
     const movements: any = null;
     const pdiCompliance: any = null;
     let enpsData: any = null;
@@ -416,16 +437,49 @@ export class ExecutiveDashboardService {
     const obj = execData.objectives || {};
     const orgDev = execData.orgDevelopment || {};
 
+    const isManagerView = !!managerId;
+
     // ═══ PAGE 1: PORTADA + RESUMEN GENERAL ═══
-    addHeader('Dashboard Ejecutivo', 'Resumen integral de la organización');
+    addHeader(
+      'Dashboard Ejecutivo',
+      isManagerView ? 'Resumen de mi equipo y la organización' : 'Resumen integral de la organización',
+    );
     let y = 36;
-    y = addKpiRow(y, [
-      { label: 'Promedio Global', value: `${Number(perf.avgScore || 0).toFixed(1)}/10` },
-      { label: 'Completitud', value: `${perf.completionRate || 0}%` },
-      { label: 'eNPS', value: `${enpsData?.score ?? '--'}` },
-      { label: 'Dotación', value: `${hc.active || 0} activos` },
-      { label: 'OKRs', value: `${obj.completionPct || 0}%` },
-    ]);
+
+    // Organización KPIs (calculados desde depts si existen)
+    const orgAvg = cycleSummary?.departmentBreakdown?.length > 0
+      ? cycleSummary.departmentBreakdown.reduce((s: number, d: any) => s + Number(d.avgScore) * Number(d.count || 1), 0) / cycleSummary.departmentBreakdown.reduce((s: number, d: any) => s + Number(d.count || 1), 0)
+      : Number(perf.avgScore || 0);
+    const orgDeptCount = cycleSummary?.departmentBreakdown?.length || 0;
+
+    if (isManagerView) {
+      // Sección Organización
+      y = addSectionTitle(y, '🏢 Organización');
+      y = addKpiRow(y, [
+        { label: 'Promedio Global', value: `${orgAvg.toFixed(1)}/10` },
+        { label: 'eNPS', value: `${enpsData?.score ?? '--'}` },
+        { label: 'Dotación', value: `${hc.active || 0} activos` },
+        { label: 'Departamentos', value: `${orgDeptCount}` },
+      ]);
+      y += 2;
+
+      // Sección Mi Equipo
+      y = addSectionTitle(y, '👥 Mi Equipo');
+      y = addKpiRow(y, [
+        { label: 'Promedio Equipo', value: `${Number(perf.avgScore || 0).toFixed(1)}/10` },
+        { label: 'Completitud', value: `${perf.completionRate || 0}%` },
+        { label: 'Evaluaciones', value: `${perf.completedAssignments || 0}/${perf.totalAssignments || 0}` },
+        { label: 'vs Organización', value: `${Number(perf.avgScore || 0) >= orgAvg ? '+' : ''}${(Number(perf.avgScore || 0) - orgAvg).toFixed(1)}` },
+      ]);
+    } else {
+      y = addKpiRow(y, [
+        { label: 'Promedio Global', value: `${Number(perf.avgScore || 0).toFixed(1)}/10` },
+        { label: 'Completitud', value: `${perf.completionRate || 0}%` },
+        { label: 'eNPS', value: `${enpsData?.score ?? '--'}` },
+        { label: 'Dotación', value: `${hc.active || 0} activos` },
+        { label: 'OKRs', value: `${obj.completionPct || 0}%` },
+      ]);
+    }
     y += 4;
 
     // Cycle info

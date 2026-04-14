@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
+import { useDepartments } from '@/hooks/useDepartments';
 import { useCycleSummary } from '@/hooks/useReports';
 import { useFlightRisk, useRetentionRecommendations } from '@/hooks/useAiInsights';
 import { useAuthStore } from '@/store/auth.store';
@@ -77,6 +78,7 @@ export default function ReportesPage() {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
   const isAdmin = role === 'tenant_admin' || role === 'super_admin';
+  const { departments: allOrgDepts } = useDepartments();
   const toast = useToastStore((s) => s.toast);
 
   // Pre-selectors
@@ -113,6 +115,7 @@ export default function ReportesPage() {
   // Team members (for manager filtering)
   const [teamUserIds, setTeamUserIds] = useState<Set<string>>(new Set());
   const [teamDepts, setTeamDepts] = useState<Set<string>>(new Set());
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
 
   // Flight risk (uses react-query hook) — filtered for managers
   const { data: rawFlightRisk } = useFlightRisk();
@@ -185,9 +188,10 @@ export default function ReportesPage() {
       api.users.list(token, 1, 500).then((res: any) => {
         const users = Array.isArray(res) ? res : res?.data || [];
         const myId = useAuthStore.getState().user?.userId;
-        const myTeam = users.filter((u: any) => u.managerId === myId);
+        const myTeam = users.filter((u: any) => u.managerId === myId && u.isActive);
         setTeamUserIds(new Set(myTeam.map((u: any) => u.id)));
         setTeamDepts(new Set(myTeam.map((u: any) => u.department).filter(Boolean)));
+        setTeamMembers(myTeam);
       }).catch(() => {});
     }
     // Reset tab-specific data
@@ -388,7 +392,7 @@ export default function ReportesPage() {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
                           <KPI label="Promedio Global" value={orgAvg.toFixed(1)} color={getScoreColor(orgAvg)} sub={getScoreLabel(orgAvg)} />
                           <KPI label="Colaboradores Eval." value={orgTotal || '--'} />
-                          <KPI label="Departamentos" value={depts.length} />
+                          <KPI label="Departamentos" value={allOrgDepts.length || depts.length} />
                         </div>
 
                         {/* KPIs Mi Equipo (solo para managers) */}
@@ -399,6 +403,8 @@ export default function ReportesPage() {
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
                               <KPI label="Promedio Equipo" value={teamAvg.toFixed(1)} color={getScoreColor(teamAvg)} sub={getScoreLabel(teamAvg)} />
+                              <KPI label="Colaboradores" value={teamMembers.length} />
+                              <KPI label="Departamentos" value={teamDepts.size} />
                               <KPI label="Completitud" value={`${teamCompletion}%`} color={teamCompletion >= 80 ? 'var(--success)' : 'var(--warning)'} />
                               <KPI label="Evaluaciones" value={teamEvals} />
                               <KPI label="vs Organización" value={`${teamAvg > orgAvg ? '+' : ''}${(teamAvg - orgAvg).toFixed(1)}`} color={teamAvg >= orgAvg ? 'var(--success)' : 'var(--danger)'} />
