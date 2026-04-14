@@ -9,6 +9,8 @@ import {
   useNotificationPreferences, useUpdateNotificationPreferences,
 } from '@/hooks/useNotifications';
 import { getNotificationHref, NOTIFICATION_CATEGORIES, NOTIFICATION_TYPE_LABELS } from '@/lib/notification-links';
+import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 
 // ─── Icons ──────────────────────────────────────────────────────────
 
@@ -216,12 +218,16 @@ function PreferencesPanel() {
 
 export default function NotificacionesPage() {
   const { t } = useTranslation();
-  const { data: notifications, isLoading } = useNotifications(200);
+  const { data: notifications, isLoading, refetch } = useNotifications(200);
   const { data: unreadData } = useUnreadCount();
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
   const deleteNotif = useDeleteNotification();
   const deleteAllRead = useDeleteAllRead();
+  const role = useAuthStore((s) => s.user?.role);
+  const token = useAuthStore((s) => s.token);
+  const isAdmin = role === 'tenant_admin' || role === 'super_admin';
+  const [cleaningUp, setCleaningUp] = useState(false);
 
   const [readFilter, setReadFilter] = useState<'all' | 'unread'>('all');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
@@ -295,7 +301,37 @@ export default function NotificacionesPage() {
       </div>
 
       {/* ═══ Preferences Tab ═══ */}
-      {activeTab === 'preferences' && <PreferencesPanel />}
+      {activeTab === 'preferences' && (
+        <>
+          <PreferencesPanel />
+          {isAdmin && (
+            <div className="card" style={{ padding: '1rem', marginTop: '1rem', borderLeft: '4px solid var(--warning)' }}>
+              <h4 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.35rem' }}>Mantenimiento</h4>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                Elimina notificaciones referenciando encuestas eliminadas, ciclos cerrados y notificaciones antiguas (&gt;180 días).
+              </p>
+              <button
+                className="btn-ghost"
+                disabled={cleaningUp}
+                style={{ fontSize: '0.78rem' }}
+                onClick={async () => {
+                  if (!token) return;
+                  setCleaningUp(true);
+                  try {
+                    const result = await api.notifications.cleanupOrphans(token);
+                    const total = (result.surveys || 0) + (result.cycles || 0) + (result.old || 0);
+                    alert(`Limpieza completada: ${total} notificaciones eliminadas (${result.surveys} de encuestas, ${result.cycles} de ciclos, ${result.old} antiguas)`);
+                    refetch();
+                  } catch { alert('Error al ejecutar limpieza'); }
+                  setCleaningUp(false);
+                }}
+              >
+                {cleaningUp ? 'Limpiando...' : 'Ejecutar limpieza de notificaciones huérfanas'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* ═══ Notifications Tab ═══ */}
       {activeTab === 'notifications' && (

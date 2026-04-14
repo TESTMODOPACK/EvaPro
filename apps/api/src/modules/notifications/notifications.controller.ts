@@ -83,6 +83,14 @@ export class NotificationsController {
     return this.notificationsService.deleteOne(req.user.tenantId, req.user.userId, id);
   }
 
+  /** POST /notifications/cleanup — admin-only: cleanup orphan notifications now */
+  @Post('cleanup')
+  @Roles('super_admin', 'tenant_admin')
+  async cleanupOrphans() {
+    const result = await this.notificationsService.cleanupOrphanNotifications();
+    return { message: 'Limpieza de notificaciones huérfanas completada', ...result };
+  }
+
   /** POST /notifications/test-email — super_admin only, sends all templates to provided address */
   @Post('test-email')
   @Roles('super_admin')

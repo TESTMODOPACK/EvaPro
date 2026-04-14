@@ -236,8 +236,10 @@ export default function MiDesempenoPage() {
   // Derived data
   const myUserId = user?.userId;
   const cycles = history?.cycles || history?.history || [];
-  const latestScore = cycles.length > 0 ? cycles[cycles.length - 1] : null;
-  const previousScore = cycles.length > 1 ? cycles[cycles.length - 2] : null;
+  // Find the most recent cycle WITH a score (skip cycles with null avgOverall)
+  const cyclesWithScore = cycles.filter((c: any) => c.avgOverall != null && !isNaN(Number(c.avgOverall)));
+  const latestScore = cyclesWithScore.length > 0 ? cyclesWithScore[cyclesWithScore.length - 1] : null;
+  const previousScore = cyclesWithScore.length > 1 ? cyclesWithScore[cyclesWithScore.length - 2] : null;
   const displayScore = latestScore?.avgOverall ?? null;
   const scoreDelta = displayScore != null && previousScore?.avgOverall != null
     ? Number(displayScore) - Number(previousScore.avgOverall)

@@ -794,6 +794,8 @@ export const api = {
       request<Record<string, boolean>>("/notifications/preferences", {}, token),
     updatePreferences: (token: string, prefs: Record<string, boolean>) =>
       request<void>("/notifications/preferences", { method: "PATCH", body: JSON.stringify(prefs) }, token),
+    cleanupOrphans: (token: string) =>
+      request<{ surveys: number; cycles: number; old: number }>("/notifications/cleanup", { method: "POST" }, token),
   },
 
   dashboard: {

@@ -216,9 +216,9 @@ function DesarrolloPageContent() {
     setError('');
     try {
       const promises: Promise<any>[] = [
-        api.development.plans.list(token!),
+        api.development.plans.list(token!).catch((e) => { console.warn('Plans load failed:', e.message); return []; }),
         api.users.list(token!, 1, 500).catch(() => []),
-        api.development.competencies.list(token!),
+        api.development.competencies.list(token!).catch(() => []),
         api.orgDevelopment.activeInitiatives(token!).catch(() => []),
       ];
       if (canCreate) {
