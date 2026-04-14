@@ -1545,8 +1545,7 @@ export class TenantsService {
     const ds = this.tenantRepository.manager;
 
     if (role === 'tenant_admin' || role === 'super_admin') {
-      const [tenant, deptCount, userCount, compCount, templateCount, cycleCount, surveyCount] = await Promise.all([
-        this.findById(tenantId),
+      const [deptCount, userCount, compCount, templateCount, cycleCount, surveyCount] = await Promise.all([
         this.departmentRepo.count({ where: { tenantId, isActive: true } }),
         this.userRepository.count({ where: { tenantId, isActive: true } }),
         ds.query(`SELECT COUNT(*) as c FROM competencies WHERE tenant_id = $1 AND is_active = true`, [tenantId]).then((r: any) => +(r[0]?.c || 0)).catch(() => 0),
@@ -1556,7 +1555,6 @@ export class TenantsService {
       ]);
 
       const steps = [
-        { key: 'company_setup', label: 'Completar datos de la empresa', done: !!tenant.settings?.industry, href: '/dashboard/onboarding' },
         { key: 'departments', label: 'Configurar departamentos', done: deptCount > 3, href: '/dashboard/mantenedores' },
         { key: 'users', label: 'Importar colaboradores', done: userCount > 1, href: '/dashboard/usuarios' },
         { key: 'competencies', label: 'Definir competencias', done: compCount >= 3, href: '/dashboard/competencias' },
