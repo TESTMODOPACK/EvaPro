@@ -14,6 +14,7 @@ import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { ReportsService } from '../reports/reports.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Servicio de recordatorios automáticos.
@@ -56,7 +57,19 @@ export class RemindersService {
     private readonly subscriptionsService: SubscriptionsService,
     @Inject(forwardRef(() => ReportsService))
     private readonly reportsService: ReportsService,
+    private readonly auditService: AuditService,
   ) {}
+
+  /** Registra un fallo de cron en el audit log (fire-and-forget). */
+  private async recordCronFailure(cronName: string, error: unknown, tenantId?: string | null) {
+    await this.auditService.logFailure('cron.failed', {
+      tenantId: tenantId ?? null,
+      entityType: 'Cron',
+      entityId: cronName,
+      error,
+      metadata: { cronName },
+    });
+  }
 
   // ─── 1. Evaluaciones pendientes (cada 6 horas) ───────────────────────
 
@@ -133,6 +146,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindPendingEvaluations: ${error}`);
+      await this.recordCronFailure('remindPendingEvaluations', error);
     }
   }
 
@@ -179,6 +193,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindCycleClosing: ${error}`);
+      await this.recordCronFailure('remindCycleClosing', error);
     }
   }
 
@@ -246,6 +261,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindObjectivesAtRisk: ${error}`);
+      await this.recordCronFailure('remindObjectivesAtRisk', error);
     }
   }
 
@@ -304,6 +320,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindOverduePDIActions: ${error}`);
+      await this.recordCronFailure('remindOverduePDIActions', error);
     }
   }
 
@@ -399,6 +416,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindUpcomingCheckins: ${error}`);
+      await this.recordCronFailure('remindUpcomingCheckins', error);
     }
   }
 
@@ -468,6 +486,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindOverdueCheckins: ${error}`);
+      await this.recordCronFailure('remindOverdueCheckins', error);
     }
   }
 
@@ -560,6 +579,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in escalateMissedCheckins: ${error}`);
+      await this.recordCronFailure('escalateMissedCheckins', error);
     }
   }
 
@@ -660,6 +680,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in escalateOverdueEvaluations: ${error}`);
+      await this.recordCronFailure('escalateOverdueEvaluations', error);
     }
   }
 
@@ -729,6 +750,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in escalateUnresponsiveEvaluators: ${error}`);
+      await this.recordCronFailure('escalateUnresponsiveEvaluators', error);
     }
   }
 
@@ -799,6 +821,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in escalateOverduePDIActions: ${error}`);
+      await this.recordCronFailure('escalateOverduePDIActions', error);
     }
   }
 
@@ -864,6 +887,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in escalateCriticalObjectives: ${error}`);
+      await this.recordCronFailure('escalateCriticalObjectives', error);
     }
   }
 
@@ -942,6 +966,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in remindPDIRequired: ${error}`);
+      await this.recordCronFailure('remindPDIRequired', error);
     }
   }
 
@@ -960,6 +985,7 @@ export class RemindersService {
       );
     } catch (error) {
       this.logger.error(`[Cron] Error in cleanupOldNotifications: ${error}`);
+      await this.recordCronFailure('cleanupOldNotifications', error);
     }
   }
 
@@ -975,6 +1001,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in expireTrialSubscriptions: ${error}`);
+      await this.recordCronFailure('expireTrialSubscriptions', error);
     }
   }
 
@@ -1048,6 +1075,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in alertSubscriptionExpiring: ${error}`);
+      await this.recordCronFailure('alertSubscriptionExpiring', error);
     }
   }
 
@@ -1132,6 +1160,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in autoCloseCycles: ${error}`);
+      await this.recordCronFailure('autoCloseCycles', error);
     }
   }
 
@@ -1147,6 +1176,7 @@ export class RemindersService {
       }
     } catch (error) {
       this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
+      await this.recordCronFailure('processAutoRenewals', error);
     }
   }
 
@@ -1213,6 +1243,7 @@ export class RemindersService {
       if (sent > 0) this.logger.log(`[Cron] Sent ${sent} weekly manager summaries`);
     } catch (error) {
       this.logger.error(`[Cron] Error in sendWeeklyManagerSummary: ${error}`);
+      await this.recordCronFailure('sendWeeklyManagerSummary', error);
     }
   }
 }

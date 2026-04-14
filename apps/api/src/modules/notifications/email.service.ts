@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * EmailService — Beautiful branded transactional emails for Eva360.
@@ -19,6 +20,7 @@ export class EmailService {
   constructor(
     @Optional() @InjectRepository(Tenant)
     private readonly tenantRepo?: Repository<Tenant>,
+    @Optional() private readonly auditService?: AuditService,
   ) {
     this.init();
   }
@@ -112,6 +114,12 @@ export class EmailService {
       this.logger.log(`✉️  Email sent: to=${recipients.join(', ')}, from=${from}, id=${result?.data?.id || 'ok'}`);
     } catch (err: any) {
       this.logger.error(`❌ Email FAILED: to=${recipients.join(', ')}, from=${from}, error=${err?.message}`);
+      await this.auditService?.logFailure('notification.failed', {
+        tenantId: tenantId ?? null,
+        entityType: 'Email',
+        error: err,
+        metadata: { to: recipients, subject, channel: 'resend' },
+      });
     }
   }
 
@@ -136,6 +144,12 @@ export class EmailService {
       this.logger.log(`✉️  Email+attachment sent: to=${recipients.join(', ')}, from=${from}, id=${result?.data?.id || 'ok'}`);
     } catch (err: any) {
       this.logger.error(`❌ Email+attachment FAILED: to=${recipients.join(', ')}, from=${from}, error=${err?.message}`);
+      await this.auditService?.logFailure('notification.failed', {
+        tenantId: tenantId ?? null,
+        entityType: 'Email',
+        error: err,
+        metadata: { to: recipients, subject, channel: 'resend', hasAttachments: true },
+      });
     }
   }
 

@@ -33,9 +33,21 @@ const ACTION_BADGES: Record<string, { cls: string; label: string }> = {
   assessed:  { cls: 'badge-warning', label: 'Evaluado' },
   adjusted:  { cls: 'badge-warning', label: 'Ajustado' },
   signed:    { cls: 'badge-success', label: 'Firmado' },
+  failed:    { cls: 'badge-danger',  label: 'Fallo' },
+  denied:    { cls: 'badge-danger',  label: 'Acceso denegado' },
+  error:     { cls: 'badge-danger',  label: 'Error' },
+};
+
+const FULL_ACTION_BADGES: Record<string, { cls: string; label: string }> = {
+  'cron.failed':         { cls: 'badge-danger', label: 'Cron fallido' },
+  'notification.failed': { cls: 'badge-danger', label: 'Notificación fallida' },
+  'access.denied':       { cls: 'badge-danger', label: 'Acceso denegado' },
+  'system.error':        { cls: 'badge-danger', label: 'Error de sistema' },
 };
 
 function getActionBadge(action: string): { cls: string; label: string } {
+  // Exact full-action match first (e.g. 'cron.failed')
+  if (FULL_ACTION_BADGES[action]) return FULL_ACTION_BADGES[action];
   // try to match the suffix after the last dot
   const suffix = action.split('.').pop() || action;
   if (ACTION_BADGES[suffix]) return ACTION_BADGES[suffix];
@@ -58,6 +70,7 @@ const ENTITY_TYPE_KEYS = [
 const ACTION_TYPE_KEYS = [
   '', 'login', 'created', 'approved', 'rejected', 'submitted',
   'completed', 'updated', 'launched', 'viewed',
+  'cron.failed', 'notification.failed', 'access.denied', 'system.error',
 ];
 
 function formatMetadata(metadata: any): string {

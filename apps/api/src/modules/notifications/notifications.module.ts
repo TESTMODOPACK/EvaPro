@@ -15,6 +15,7 @@ import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { ReportsModule } from '../reports/reports.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ReportsModule } from '../reports/reports.module';
     ]),
     forwardRef(() => SubscriptionsModule),
     forwardRef(() => ReportsModule),
+    AuditModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, RemindersService, EmailService],

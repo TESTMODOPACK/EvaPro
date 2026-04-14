@@ -46,6 +46,50 @@ export class AuditService {
     await this.auditRepo.save(entry);
   }
 
+  /**
+   * Helper seguro para registrar fallos de sistema en el audit log.
+   * Nunca lanza (fire-and-forget). Trunca el stack para no inflar BD.
+   *
+   * - `cron.failed`        → fallo de un job programado
+   * - `notification.failed`→ fallo al enviar notificación/email
+   * - `access.denied`      → intento de acceso bloqueado por guard
+   * - `system.error`       → puente genérico desde Sentry beforeSend
+   */
+  async logFailure(
+    action: 'cron.failed' | 'notification.failed' | 'access.denied' | 'system.error',
+    opts: {
+      tenantId?: string | null;
+      userId?: string | null;
+      entityType?: string;
+      entityId?: string;
+      error?: unknown;
+      metadata?: Record<string, any>;
+      ipAddress?: string;
+    } = {},
+  ): Promise<void> {
+    try {
+      const err = opts.error as any;
+      const errMsg = err?.message ? String(err.message) : err ? String(err) : undefined;
+      const errStack = err?.stack ? String(err.stack).split('\n').slice(0, 8).join('\n') : undefined;
+      const metadata = {
+        ...(opts.metadata || {}),
+        ...(errMsg ? { errorMessage: errMsg.slice(0, 500) } : {}),
+        ...(errStack ? { stack: errStack } : {}),
+      };
+      await this.log(
+        opts.tenantId ?? null,
+        opts.userId ?? null,
+        action,
+        opts.entityType,
+        opts.entityId,
+        Object.keys(metadata).length ? metadata : undefined,
+        opts.ipAddress,
+      );
+    } catch {
+      // Never let the audit logger itself throw.
+    }
+  }
+
   async findAll(
     page: number,
     limit: number,
