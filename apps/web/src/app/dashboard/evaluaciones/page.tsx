@@ -266,17 +266,28 @@ function EmployeeEvaluationsView() {
           {allCompleted.length > 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>({filteredCompleted.length})</span>}
         </h2>
 
-        {/* Filters */}
+        {/* Filters — same layout as pending section */}
         {allCompleted.length > 0 && (
-          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-            <input className="input" type="text" placeholder="Buscar evaluado..." value={compSearch}
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            {compCycles.length > 1 && (
+              <select className="input" value={compCycleFilter} onChange={(e) => { setCompCycleFilter(e.target.value); setCompPage(1); }}
+                style={{ fontSize: '0.82rem', maxWidth: '250px' }}>
+                <option value="">Todos los ciclos</option>
+                {compCycles.map((c: any) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+            <input className="input" type="text" placeholder="Buscar colaborador..."
+              value={compSearch}
               onChange={(e) => { setCompSearch(e.target.value); setCompPage(1); }}
-              style={{ flex: '1 1 200px', fontSize: '0.82rem', minWidth: '160px' }} />
-            <select className="input" value={compCycleFilter} onChange={(e) => { setCompCycleFilter(e.target.value); setCompPage(1); }}
-              style={{ flex: '0 1 280px', fontSize: '0.82rem' }}>
-              <option value="">Todos los ciclos</option>
-              {compCycles.map((c: any) => <option key={c} value={c}>{c}</option>)}
-            </select>
+              style={{ fontSize: '0.82rem', maxWidth: '220px' }} />
+            {(compCycleFilter || compSearch) && (
+              <button className="btn-ghost" onClick={() => { setCompCycleFilter(''); setCompSearch(''); setCompPage(1); }} style={{ fontSize: '0.78rem' }}>
+                ✕ Limpiar
+              </button>
+            )}
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+              {filteredCompleted.length} de {allCompleted.length}
+            </span>
           </div>
         )}
 
