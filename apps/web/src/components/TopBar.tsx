@@ -95,7 +95,7 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
         <img
           src="/eva360-logo.png"
           alt="Eva360"
-          style={{ height: '34px', width: 'auto', objectFit: 'contain' }}
+          style={{ height: '51px', width: 'auto', objectFit: 'contain' }}
         />
       </div>
 

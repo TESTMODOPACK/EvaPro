@@ -174,7 +174,7 @@ export default function LoginPage() {
         <img
           src="/eva360-logo.png"
           alt="Eva360"
-          style={{ height: '100px', width: 'auto', objectFit: 'contain', marginBottom: '1.5rem' }}
+          style={{ height: '150px', width: 'auto', objectFit: 'contain', marginBottom: '1.5rem' }}
         />
 
         <p style={{

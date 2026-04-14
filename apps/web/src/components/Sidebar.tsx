@@ -433,7 +433,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         <img
           src="/eva360-logo.png"
           alt="Eva360"
-          style={{ height: '42px', width: 'auto', objectFit: 'contain' }}
+          style={{ height: '63px', width: 'auto', objectFit: 'contain' }}
         />
       </div>
 
