@@ -19,6 +19,32 @@ import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
 
+// ─── Urgency helpers ────────────────────────────────────────────────
+
+function getUrgencyInfo(dueDate: string | null | undefined): { label: string; color: string; bg: string } {
+  if (!dueDate) return { label: '', color: 'var(--text-muted)', bg: 'transparent' };
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  // Parse as local date to avoid timezone-shift issues with date-only strings
+  const parts = String(dueDate).split('T')[0].split('-');
+  const due = parts.length === 3 ? new Date(+parts[0], +parts[1] - 1, +parts[2]) : new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+  const diff = Math.ceil((due.getTime() - now.getTime()) / 86400000);
+  if (diff < 0) return { label: `Vencida hace ${Math.abs(diff)} día${Math.abs(diff) !== 1 ? 's' : ''}`, color: '#ef4444', bg: 'rgba(239,68,68,0.10)' };
+  if (diff === 0) return { label: 'Vence hoy', color: '#ef4444', bg: 'rgba(239,68,68,0.10)' };
+  if (diff <= 5) return { label: `Vence en ${diff} día${diff !== 1 ? 's' : ''}`, color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' };
+  return { label: `Vence en ${diff} días`, color: 'var(--text-muted)', bg: 'rgba(148,163,184,0.06)' };
+}
+
+function estimateTime(ev: any): string | null {
+  try {
+    const sections = ev.cycle?.template?.sections;
+    if (!sections) return null;
+    const parsed = typeof sections === 'string' ? JSON.parse(sections) : sections;
+    const count = Array.isArray(parsed) ? parsed.reduce((s: number, sec: any) => s + (Array.isArray(sec.questions) ? sec.questions.length : 0), 0) : 0;
+    return count > 0 ? `~${Math.max(1, Math.round(count * 12 / 60))} min` : null;
+  } catch { return null; }
+}
+
 const typeLabels: Record<string, string> = {
   '90': '90\u00b0',
   '180': '180\u00b0',
@@ -72,6 +98,11 @@ function EmployeeEvaluationsView() {
       if (!name.includes(q)) return false;
     }
     return true;
+  }).sort((a: any, b: any) => {
+    // Sort by due date ascending (most urgent first)
+    const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+    const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+    return aDate - bDate;
   });
 
   const pendTotalPages = Math.ceil(filteredPending.length / pendPageSize);
@@ -229,11 +260,22 @@ function EmployeeEvaluationsView() {
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                       {t('evaluaciones.cycleLabel')}: <strong style={{ color: 'var(--text-secondary)' }}>{ev.cycle?.name || '--'}</strong>
                     </span>
-                    {ev.dueDate && (
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        {t('evaluaciones.dueDate')}: <strong style={{ color: 'var(--warning)' }}>{new Date(ev.dueDate).toLocaleDateString('es-ES')}</strong>
-                      </span>
-                    )}
+                    {(() => {
+                      const urgency = getUrgencyInfo(ev.dueDate);
+                      const est = estimateTime(ev);
+                      return (
+                        <>
+                          {urgency.label && (
+                            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: urgency.color, background: urgency.bg, padding: '2px 8px', borderRadius: '999px' }}>
+                              {urgency.label}
+                            </span>
+                          )}
+                          {est && (
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }} title="Tiempo estimado">⏱ {est}</span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
                 <Link
@@ -609,9 +651,19 @@ function AdminEvaluationsView() {
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                     {startDate}{' \u2014 '}{endDate}
                   </p>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
                     {totalEval} evaluado{totalEval !== 1 ? 's' : ''}
                   </p>
+                  {cycle.status === 'active' && cycle.endDate && (() => {
+                    const urgency = getUrgencyInfo(cycle.endDate);
+                    const pending = Math.max(0, (cycle.totalAssignments || 0) - (cycle.completedAssignments || 0));
+                    if (pending <= 0) return null;
+                    return (
+                      <p style={{ fontSize: '0.72rem', fontWeight: 600, color: urgency.color, marginBottom: '0.75rem' }}>
+                        {pending} evaluador{pending !== 1 ? 'es' : ''} pendiente{pending !== 1 ? 's' : ''} — {urgency.label.toLowerCase() || 'en plazo'}
+                      </p>
+                    );
+                  })()}
 
                   {cycle.status === 'active' && (
                     <div style={{ marginBottom: '0.5rem' }}>
@@ -623,7 +675,7 @@ function AdminEvaluationsView() {
                       </div>
                       <div style={{ height: '6px', borderRadius: '999px', background: 'var(--bg-surface)' }}>
                         <div style={{
-                          width: totalEval > 0 ? '50%' : '0%',
+                          width: totalEval > 0 ? `${Math.round(((cycle.completedAssignments || 0) / (cycle.totalAssignments || 1)) * 100)}%` : '0%',
                           height: '100%', borderRadius: '999px',
                           background: 'var(--accent)',
                           transition: 'width 0.5s ease',

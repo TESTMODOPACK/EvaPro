@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/auth.store';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import Toast from '@/components/Toast';
+import { CommandPalette } from '@/components/CommandPalette';
 import { useMySubscription } from '@/hooks/useSubscription';
 
 function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
@@ -262,6 +263,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {children}
       </main>
       <Toast />
+      <CommandPalette />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { useChangelog } from '@/hooks/useSystemChangelog';
 import { getRoleLabel } from '@/lib/roles';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
+import { useRecognitionWall } from '@/hooks/useRecognition';
 
 function Spinner() {
   return (
@@ -155,13 +156,13 @@ function SuperAdminDashboard() {
             {/* Recent open tickets preview */}
             {open > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                {tickets.filter((t: any) => t.status === 'open').slice(0, 3).map((t: any) => (
-                  <Link key={t.id} href="/dashboard/solicitudes" style={{ textDecoration: 'none', color: 'inherit' }}>
+                {tickets.filter((tk: any) => tk.status === 'open').slice(0, 3).map((tk: any) => (
+                  <Link key={tk.id} href="/dashboard/solicitudes" style={{ textDecoration: 'none', color: 'inherit' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'rgba(201,147,58,0.04)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
                       <div>
-                        <span style={{ fontWeight: 600 }}>{t.subject}</span>
+                        <span style={{ fontWeight: 600 }}>{tk.subject}</span>
                         <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem', fontSize: '0.75rem' }}>
-                          {t.tenant?.name || ''} · {new Date(t.createdAt).toLocaleDateString('es-CL')}
+                          {tk.tenant?.name || ''} · {new Date(tk.createdAt).toLocaleDateString('es-CL')}
                         </span>
                       </div>
                       <span className="badge badge-warning" style={{ fontSize: '0.68rem' }}>{t('solicitudes.status.open')}</span>
@@ -277,6 +278,7 @@ function RegularDashboard() {
   const { data: feedbackSummary } = useFeedbackSummary();
   const { data: atRiskObjectives } = useAtRiskObjectives();
   const { data: changelog } = useChangelog(3);
+  const { data: recognitionData } = useRecognitionWall(1);
   const [showGuide, setShowGuide] = useState(true);
 
   const activeCycle = cycles?.find((c: any) => c.status === 'active');
@@ -559,6 +561,92 @@ function RegularDashboard() {
       {/* Next Actions widget — full width before grid */}
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.25rem' }}>
         <NextActionsWidget />
+      </div>
+
+      {/* Mi último resultado + Reconocimientos + Team summary */}
+      <div className="animate-fade-up-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+        {/* Circular score — last cycle result */}
+        {(() => {
+          const perfData = perfHistory?.history || (perfHistory as any)?.cycles || [];
+          if (perfData.length === 0) return null;
+          const last = perfData[perfData.length - 1];
+          const score = Number(last.avgOverall) || 0;
+          if (score === 0) return null;
+          const circumference = 2 * Math.PI * 42;
+          const strokeDash = ((score / 10) * 100 / 100) * circumference;
+          const color = score >= 8.5 ? '#10b981' : score >= 7 ? '#6366f1' : score >= 5 ? '#f59e0b' : '#ef4444';
+          return (
+            <div className="card" style={{ padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+              <svg width="90" height="90" viewBox="0 0 96 96">
+                <circle cx="48" cy="48" r="42" fill="none" stroke="var(--border)" strokeWidth="6" />
+                <circle cx="48" cy="48" r="42" fill="none" stroke={color} strokeWidth="6"
+                  strokeDasharray={`${strokeDash} ${circumference}`}
+                  strokeLinecap="round" transform="rotate(-90 48 48)" style={{ transition: 'stroke-dasharray 0.8s ease' }} />
+                <text x="48" y="44" textAnchor="middle" fontSize="20" fontWeight="800" fill={color}>{score.toFixed(1)}</text>
+                <text x="48" y="60" textAnchor="middle" fontSize="9" fill="var(--text-muted)">/10</text>
+              </svg>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.15rem' }}>Mi último resultado</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>{last.cycleName || last.name}</div>
+                <Link href="/dashboard/mi-desempeno" style={{ fontSize: '0.78rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
+                  Ver historial →
+                </Link>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Recent recognitions received */}
+        {(() => {
+          const myId = user?.userId;
+          const received = (recognitionData?.data || []).filter((r: any) => r.toUserId === myId).slice(0, 3);
+          if (received.length === 0) return null;
+          return (
+            <div className="card" style={{ padding: '1.25rem' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.6rem' }}>⭐ Reconocimientos recientes</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {received.map((r: any) => (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem', background: 'rgba(245,158,11,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245,158,11,0.1)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.message}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>de {r.fromUser?.firstName} {r.fromUser?.lastName}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Manager: Team summary */}
+        {stats?.scope === 'team' && (
+          <div className="card" style={{ padding: '1.25rem', borderLeft: '3px solid #6366f1' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: '0.6rem' }}>👥 Mi equipo</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.84rem' }}>
+              {(stats.pendingAssignments || 0) > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }} />
+                  <span>{stats.pendingAssignments} evaluación{stats.pendingAssignments !== 1 ? 'es' : ''} pendiente{stats.pendingAssignments !== 1 ? 's' : ''}</span>
+                </div>
+              )}
+              {atRiskCount > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
+                  <span>{atRiskCount} objetivo{atRiskCount !== 1 ? 's' : ''} en riesgo</span>
+                </div>
+              )}
+              {stats.teamSize && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                  <span>{stats.teamSize} miembro{stats.teamSize !== 1 ? 's' : ''} en el equipo</span>
+                </div>
+              )}
+              {(stats.pendingAssignments || 0) === 0 && atRiskCount === 0 && (
+                <div style={{ color: '#10b981', fontWeight: 600 }}>✅ Todo al día</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Lower grid */}
