@@ -22,7 +22,7 @@ export enum InvoiceStatus {
 @Entity('invoices')
 @Index('idx_invoice_tenant', ['tenantId'])
 @Index('idx_invoice_status', ['status'])
-@Index('idx_invoice_number', ['invoiceNumber'], { unique: true })
+@Index('idx_invoice_number_tenant', ['tenantId', 'invoiceNumber'], { unique: true })
 export class Invoice {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -41,7 +41,7 @@ export class Invoice {
   @JoinColumn({ name: 'subscription_id' })
   subscription: Subscription;
 
-  @Column({ type: 'varchar', length: 30, name: 'invoice_number', unique: true })
+  @Column({ type: 'varchar', length: 30, name: 'invoice_number' })
   invoiceNumber: string;
 
   @Column({ type: 'varchar', length: 20, default: InvoiceType.INVOICE })

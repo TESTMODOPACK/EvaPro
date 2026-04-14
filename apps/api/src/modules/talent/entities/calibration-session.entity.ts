@@ -46,7 +46,7 @@ export class CalibrationSession {
   @Index('idx_calib_dept_id')
   departmentId: string | null;
 
-  @ManyToOne(() => Department, { nullable: true })
+  @ManyToOne(() => Department, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'department_id' })
   departmentEntity: Department;
 

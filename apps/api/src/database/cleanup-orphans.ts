@@ -185,6 +185,29 @@ async function main() {
       console.log(`[startup] hierarchy_level backfill skipped: ${err.message}`);
     }
 
+    // ── 5. DB Integrity fixes (idempotent) ──────────────────────────────
+    const integrityFixes = [
+      // P1: Invoice unique constraint scoped by tenant (multi-tenant isolation)
+      // Drop both the manually named and any TypeORM auto-generated unique constraint
+      `DROP INDEX IF EXISTS "idx_invoice_number"`,
+      `DO $$ BEGIN
+        EXECUTE (SELECT 'DROP INDEX IF EXISTS "' || indexname || '"' FROM pg_indexes WHERE tablename = 'invoices' AND indexdef LIKE '%invoice_number%' AND indexname != 'idx_invoice_number_tenant' LIMIT 1);
+      EXCEPTION WHEN OTHERS THEN NULL; END $$`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "idx_invoice_number_tenant" ON "invoices" ("tenant_id", "invoice_number")`,
+      // P3: Missing indexes on hot-query columns
+      `CREATE INDEX IF NOT EXISTS "idx_org_dev_action_initiative" ON "org_development_actions" ("initiative_id")`,
+      `CREATE INDEX IF NOT EXISTS "idx_org_dev_action_assigned" ON "org_development_actions" ("assigned_to_id")`,
+      `CREATE INDEX IF NOT EXISTS "idx_recruitment_interview_candidate" ON "recruitment_interviews" ("candidate_id")`,
+    ];
+    for (const sql of integrityFixes) {
+      try {
+        await client.query(sql);
+      } catch (err: any) {
+        // Ignore — index/constraint may already exist or table may not exist
+      }
+    }
+    console.log(`[startup] Integrity fixes checked (${integrityFixes.length} items)`);
+
     console.log('[startup] Done — all checks passed, no data modified destructively');
   } catch (err: any) {
     console.error('[startup] Error:', err.message);

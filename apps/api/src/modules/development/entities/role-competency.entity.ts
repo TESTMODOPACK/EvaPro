@@ -43,7 +43,7 @@ export class RoleCompetency {
   @Column({ type: 'uuid', name: 'competency_id' })
   competencyId: string;
 
-  @ManyToOne(() => Competency)
+  @ManyToOne(() => Competency, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'competency_id' })
   competency: Competency;
 

@@ -46,7 +46,7 @@ export class RecruitmentProcess {
   @Index('idx_rp_pos_id')
   positionId: string | null;
 
-  @ManyToOne(() => Position, { nullable: true })
+  @ManyToOne(() => Position, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'position_id' })
   positionEntity: Position;
 
@@ -57,7 +57,7 @@ export class RecruitmentProcess {
   @Index('idx_rp_dept_id')
   departmentId: string | null;
 
-  @ManyToOne(() => Department, { nullable: true })
+  @ManyToOne(() => Department, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'department_id' })
   departmentEntity: Department;
 
