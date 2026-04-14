@@ -19,16 +19,18 @@ export function useSidebarBadges() {
   return useQuery<SidebarBadges>({
     queryKey: ['sidebar', 'badges'],
     queryFn: async () => {
-      const [unread, nextActions, pendingSurveys] = await Promise.all([
+      const [unread, nextActions, pendingSurveys, pendingEvals] = await Promise.all([
         api.notifications.unreadCount(token!).catch(() => ({ count: 0 })),
         api.dashboard.nextActions(token!).catch(() => ({ actions: [] })),
         api.surveys.getMyPending(token!).catch(() => []),
+        api.evaluations.pending(token!).catch(() => []),
       ]);
 
       const actions = nextActions?.actions || [];
+      const evalCount = Array.isArray(pendingEvals) ? pendingEvals.length : 0;
       return {
         notifications: unread?.count || 0,
-        evaluations: actions.filter((a: any) => a.type === 'evaluation').length,
+        evaluations: evalCount,
         surveys: Array.isArray(pendingSurveys) ? pendingSurveys.length : 0,
         objectives: actions.filter((a: any) => a.type === 'okr').length,
       };

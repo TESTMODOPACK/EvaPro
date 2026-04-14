@@ -156,33 +156,47 @@ function EmployeeEvaluationsView() {
           });
           const totalEntries = Object.entries(totalByCycle).sort((a, b) => b[1] - a[1]);
 
-          const CycleBreakdown = ({ entries, color }: { entries: [string, number][]; color: string }) => (
-            <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {entries.map(([cycle, count]) => (
-                <div key={cycle} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', gap: '0.5rem' }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={cycle}>{cycle}</span>
-                  <span style={{ fontWeight: 700, color, flexShrink: 0 }}>{count}</span>
-                </div>
-              ))}
-            </div>
-          );
+          const CycleBreakdown = ({ entries, color, id }: { entries: [string, number][]; color: string; id: string }) => {
+            const [open, setOpen] = useState(false);
+            return (
+              <div style={{ marginTop: '0.4rem' }}>
+                <button
+                  onClick={() => setOpen(!open)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0.15rem 0' }}
+                >
+                  <span style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', display: 'inline-block', fontSize: '0.6rem' }}>▶</span>
+                  {entries.length} ciclo{entries.length !== 1 ? 's' : ''}
+                </button>
+                {open && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0.25rem' }}>
+                    {entries.map(([cycle, count]) => (
+                      <div key={cycle} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', gap: '0.5rem' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={cycle}>{cycle}</span>
+                        <span style={{ fontWeight: 700, color, flexShrink: 0 }}>{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          };
 
           return (
             <>
               <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.pending')}</div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
-                {pendByCycle.length > 0 && <CycleBreakdown entries={pendByCycle} color="var(--warning)" />}
+                {pendByCycle.length > 0 && <CycleBreakdown entries={pendByCycle} color="var(--warning)" id="pend" />}
               </div>
               <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.completed')}</div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{allCompleted.length}</div>
-                {compByCycle.length > 0 && <CycleBreakdown entries={compByCycle} color="#10b981" />}
+                {compByCycle.length > 0 && <CycleBreakdown entries={compByCycle} color="#10b981" id="comp" />}
               </div>
               <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Total</div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{pending.length + allCompleted.length}</div>
-                {totalEntries.length > 0 && <CycleBreakdown entries={totalEntries} color="#6366f1" />}
+                {totalEntries.length > 0 && <CycleBreakdown entries={totalEntries} color="#6366f1" id="total" />}
               </div>
             </>
           );
