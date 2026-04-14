@@ -285,6 +285,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [analyzingCvId, setAnalyzingCvId] = useState<string | null>(null);
   const [expandedCvPanel, setExpandedCvPanel] = useState<string | null>(null);
 
+  // Track which candidates the current evaluator has already evaluated
+  const [evaluatedCandidateIds, setEvaluatedCandidateIds] = useState<Set<string>>(new Set());
+
   // Edit candidate
   const [editingCandidate, setEditingCandidate] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ email: '', phone: '', linkedIn: '', availability: '', salaryExpectation: '', recruiterNotes: '' });
@@ -304,6 +307,24 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
 
   useEffect(() => { fetchProcess(); }, [token, params.id]);
 
+  // Load which candidates the current evaluator has already evaluated
+  useEffect(() => {
+    if (!token || !process?.candidates?.length || !userId) return;
+    const evs = process.evaluators || [];
+    if (!evs.some((ev: any) => ev.evaluatorId === userId)) return;
+    const load = async () => {
+      const ids = new Set<string>();
+      for (const c of process.candidates) {
+        try {
+          const ivs = await api.recruitment.candidates.getInterviews(token, c.id);
+          if ((ivs || []).some((i: any) => i.evaluatorId === userId)) ids.add(c.id);
+        } catch { /* ignore */ }
+      }
+      setEvaluatedCandidateIds(ids);
+    };
+    load();
+  }, [token, process?.id, userId]); // eslint-disable-line
+
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><span className="spinner" /></div>;
   if (!process) return <div style={{ padding: '2rem 2.5rem', color: 'var(--text-muted)' }}>{t('postulantes.detail.notFound') || 'Proceso no encontrado'}</div>;
 
@@ -312,7 +333,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const requirements = process.requirements || [];
   const isInternal = process.processType === 'internal';
   const isEvaluatorOfProcess = evaluators.some((ev: any) => ev.evaluatorId === userId);
-  const canManageCv = isAdmin || isEvaluatorOfProcess; // Admin + evaluadores pueden gestionar CV
+  const canManageCv = isAdmin || isEvaluatorOfProcess;
 
   // ─── Validation helpers ─────────────────────────────────────────────
   const validateExtForm = () => {
@@ -468,6 +489,8 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
         manualScore: interviewForm.manualScore ? Number(interviewForm.manualScore) : null,
       });
       toast(t('postulantes.detail.eval.evalSaved') || 'Evaluación guardada', 'success');
+      // Mark this candidate as evaluated by current user
+      setEvaluatedCandidateIds((prev) => new Set(prev).add(selectedCandidate.id));
       fetchProcess();
     } catch (e: any) {
       toast(e.message || t('postulantes.detail.eval.saveError') || 'Error al guardar evaluación', 'error');
@@ -712,8 +735,10 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
                         {isEvaluatorOfProcess ? (
-                          <button className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
-                            onClick={() => openInterview(c)}>{t('postulantes.detail.eval.evaluate')}</button>
+                          <button className={evaluatedCandidateIds.has(c.id) ? 'btn-ghost' : 'btn-primary'} style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
+                            onClick={() => openInterview(c)}>
+                            {evaluatedCandidateIds.has(c.id) ? 'Actualizar evaluación' : t('postulantes.detail.eval.evaluate')}
+                          </button>
                         ) : isAdmin && (
                           <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem', borderColor: 'var(--accent)', color: 'var(--accent)' }}
                             onClick={() => { setSelectedCandidate(c); setTab('evaluacion'); }}>{t('postulantes.detail.eval.viewEvals')}</button>
