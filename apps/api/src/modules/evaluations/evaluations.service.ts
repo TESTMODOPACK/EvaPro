@@ -1044,6 +1044,11 @@ export class EvaluationsService {
       }
     }
 
+    // Cleanup pending evaluation notifications for this closed cycle
+    this.notificationsService.cleanupByMetadata(tenantId, 'cycleId', id, {
+      types: ['evaluation_pending', 'cycle_closing'],
+    }).catch((e) => this.logger.warn(`Cycle notification cleanup failed: ${e.message}`));
+
     return saved;
   }
 
@@ -1339,6 +1344,12 @@ export class EvaluationsService {
     await this.auditService.log(
       tenantId, userId, 'evaluation.submitted', 'assignment', assignmentId,
     );
+
+    // Cleanup evaluation_pending notification for this completed assignment
+    this.notificationsService.cleanupByMetadata(tenantId, 'assignmentId', assignmentId, {
+      userId,
+      types: ['evaluation_pending'],
+    }).catch((e) => this.logger.warn(`Assignment notification cleanup failed: ${e.message}`));
 
     return { assignment, response };
   }

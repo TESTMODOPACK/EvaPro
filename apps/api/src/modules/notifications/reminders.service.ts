@@ -949,10 +949,15 @@ export class RemindersService {
 
   @Cron('0 3 * * 0')
   async cleanupOldNotifications() {
-    this.logger.log('[Cron] Cleaning up old notifications...');
+    this.logger.log('[Cron] Cleaning up old and orphan notifications...');
     try {
       const deleted = await this.notificationsService.deleteOlderThan(90);
       this.logger.log(`[Cron] Deleted ${deleted} read notifications older than 90 days`);
+
+      const orphans = await this.notificationsService.cleanupOrphanNotifications();
+      this.logger.log(
+        `[Cron] Orphan cleanup: ${orphans.surveys} survey orphans, ${orphans.cycles} stale cycle notifs, ${orphans.old} very old notifications`,
+      );
     } catch (error) {
       this.logger.error(`[Cron] Error in cleanupOldNotifications: ${error}`);
     }

@@ -256,6 +256,9 @@ export class SurveysService {
     } catch { /* ignore — insight may not exist */ }
 
     await this.surveyRepo.remove(survey);
+
+    // Cleanup notifications referencing this survey
+    this.notificationsService.cleanupByMetadata(tenantId, 'surveyId', surveyId).catch((e) => this.logger.warn(`Survey notification cleanup failed: ${e.message}`));
   }
 
   // ─── Distribution ──────────────────────────────────────────────────────
@@ -386,6 +389,12 @@ export class SurveysService {
     if (isNewResponse) {
       await this.surveyRepo.increment({ id: surveyId, tenantId }, 'responseCount', 1);
     }
+
+    // Cleanup survey notifications for this user (they already responded)
+    this.notificationsService.cleanupByMetadata(tenantId, 'surveyId', surveyId, {
+      userId,
+      types: ['survey_invitation', 'survey_reminder'],
+    }).catch(() => {});
 
     return saved;
   }
@@ -691,6 +700,11 @@ export class SurveysService {
 
     survey.status = 'closed';
     await this.surveyRepo.save(survey);
+
+    // Cleanup pending survey notifications (invitation + reminders)
+    this.notificationsService.cleanupByMetadata(tenantId, 'surveyId', surveyId, {
+      types: ['survey_invitation', 'survey_reminder'],
+    }).catch(() => {});
 
     this.logger.log(`Survey "${survey.title}" closed with ${responseCount} responses`);
     return this.findById(tenantId, surveyId);

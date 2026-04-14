@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import NavConfirmModal from '@/components/ConfirmModal';
+import { useAuthStore } from '@/store/auth.store';
 import {
   useEvaluationDetail,
   useSaveResponse,
@@ -180,6 +181,10 @@ export default function ResponderEvaluacionPage() {
   const params = useParams();
   const assignmentId = params.assignmentId as string;
   const cycleId = params.id as string;
+  const role = useAuthStore((s) => s.user?.role);
+  const isAdmin = role === 'tenant_admin' || role === 'super_admin';
+  // After submitting, admins go to cycle detail; others go back to evaluation inbox
+  const backUrl = isAdmin ? `/dashboard/evaluaciones/${cycleId}` : '/dashboard/evaluaciones';
 
   const { data: detail, isLoading, isError } = useEvaluationDetail(assignmentId);
   const saveResponse = useSaveResponse();
@@ -191,6 +196,7 @@ export default function ResponderEvaluacionPage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [showConfirm, setShowConfirm] = useState(false);
   const [hasUnsaved, setHasUnsaved] = useState(false);
+  const [showScale, setShowScale] = useState(false);
   const [navConfirmState, setNavConfirmState] = useState<{
     message: string;
     detail?: string;
@@ -327,7 +333,7 @@ export default function ResponderEvaluacionPage() {
       await submitResponse.mutateAsync({ assignmentId, answers: filteredAnswers });
       setHasUnsaved(false);
       setSubmitted(true);
-      setTimeout(() => router.push(`/dashboard/evaluaciones/${cycleId}`), 2200);
+      setTimeout(() => router.push(backUrl), 2200);
     } catch {
       setShowConfirm(false);
     }
@@ -347,7 +353,7 @@ export default function ResponderEvaluacionPage() {
     return (
       <div style={{ padding: '2rem 2.5rem' }}>
         <p style={{ color: 'var(--danger)' }}>Error al cargar la evaluaci&oacute;n.</p>
-        <button className="btn-ghost" onClick={() => router.push(`/dashboard/evaluaciones/${cycleId}`)} style={{ marginTop: '1rem' }}>
+        <button className="btn-ghost" onClick={() => router.push(backUrl)} style={{ marginTop: '1rem' }}>
           &larr; Volver al ciclo
         </button>
       </div>
@@ -420,11 +426,11 @@ export default function ResponderEvaluacionPage() {
                   confirmLabel: 'Salir sin guardar',
                   onConfirm: () => {
                     setNavConfirmState(null);
-                    router.push(`/dashboard/evaluaciones/${cycleId}`);
+                    router.push(backUrl);
                   },
                 });
               } else {
-                router.push(`/dashboard/evaluaciones/${cycleId}`);
+                router.push(backUrl);
               }
             }}
             style={{ fontSize: '0.82rem', padding: '0.3rem 0.65rem' }}
@@ -481,9 +487,17 @@ export default function ResponderEvaluacionPage() {
           </div>
         </div>
 
-        {/* Scale legend */}
+        {/* Scale legend — collapsible */}
         <div className="animate-fade-up" style={{ marginBottom: '1.25rem' }}>
-          <ScaleLegend />
+          <button
+            className="btn-ghost"
+            onClick={() => setShowScale(!showScale)}
+            style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <span style={{ fontSize: '0.7rem', transform: showScale ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', display: 'inline-block' }}>▶</span>
+            {showScale ? 'Ocultar escala de desempeño' : 'Ver escala de desempeño'}
+          </button>
+          {showScale && <div style={{ marginTop: '0.5rem' }}><ScaleLegend /></div>}
         </div>
 
         {/* Submit error */}

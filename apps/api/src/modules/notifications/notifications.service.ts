@@ -251,6 +251,68 @@ export class NotificationsService {
     return result.affected || 0;
   }
 
+  // ─── Stale Notification Cleanup ──────────────────────────────────
+
+  /** Remove notifications referencing a specific entity via metadata key.
+   *  Uses raw SQL because TypeORM DeleteQueryBuilder does not support
+   *  JSONB ->> operator or aliases in DELETE WHERE clauses. */
+  async cleanupByMetadata(
+    tenantId: string,
+    metadataKey: string,
+    metadataValue: string,
+    opts?: { userId?: string; types?: string[] },
+  ): Promise<number> {
+    const params: any[] = [tenantId, metadataKey, metadataValue];
+    let sql = `DELETE FROM notifications WHERE tenant_id = $1 AND metadata ->> $2 = $3`;
+    if (opts?.userId) {
+      params.push(opts.userId);
+      sql += ` AND user_id = $${params.length}`;
+    }
+    if (opts?.types?.length) {
+      const placeholders = opts.types.map((_, i) => `$${params.length + i + 1}`).join(', ');
+      params.push(...opts.types);
+      sql += ` AND type IN (${placeholders})`;
+    }
+    const result = await this.notifRepo.query(sql, params);
+    this.logger.debug(`cleanupByMetadata(${metadataKey}=${metadataValue}): deleted ${result[1] || 0}`);
+    return result[1] || 0;
+  }
+
+  /** Cleanup orphan notifications referencing deleted entities (cron safety net) */
+  async cleanupOrphanNotifications(): Promise<{ surveys: number; cycles: number; old: number }> {
+    // 1. Orphan survey notifications (survey deleted)
+    const orphanSurveys = await this.notifRepo.query(`
+      DELETE FROM notifications WHERE id IN (
+        SELECT n.id FROM notifications n
+        LEFT JOIN engagement_surveys s ON (n.metadata->>'surveyId')::uuid = s.id
+        WHERE n.metadata->>'surveyId' IS NOT NULL AND s.id IS NULL
+      )
+    `);
+
+    // 2. Notifications for closed/cancelled cycles (evaluation_pending only)
+    const staleCycles = await this.notifRepo.query(`
+      DELETE FROM notifications WHERE id IN (
+        SELECT n.id FROM notifications n
+        INNER JOIN evaluation_cycles c ON (n.metadata->>'cycleId')::uuid = c.id
+        WHERE n.type = 'evaluation_pending'
+          AND c.status IN ('closed', 'cancelled')
+      )
+    `);
+
+    // 3. All notifications older than 180 days (read + unread)
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 180);
+    const oldResult = await this.notifRepo.delete({
+      createdAt: LessThan(cutoff),
+    });
+
+    return {
+      surveys: orphanSurveys[1] || 0,
+      cycles: staleCycles[1] || 0,
+      old: oldResult.affected || 0,
+    };
+  }
+
   // ─── Notification Preferences ───────────────────────────────────
 
   async getPreferences(tenantId: string, userId: string): Promise<Record<string, boolean>> {
