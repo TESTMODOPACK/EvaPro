@@ -349,7 +349,7 @@ export class EmailService {
           ${this.heading('Suscripción próxima a vencer')}
           ${this.paragraph(`La suscripción <strong>${data.planName}</strong> de <strong>${data.orgName}</strong> vence en <strong>${data.daysLeft} día${data.daysLeft > 1 ? 's' : ''}</strong>.`)}
           ${this.alertBox(`Fecha de vencimiento: ${data.expiresAt}. Renueva para mantener el acceso ininterrumpido a la plataforma.`, 'danger')}
-          ${this.paragraph('Si necesitas renovar o tienes preguntas, contacta al equipo de Ascenda.')}
+          ${this.paragraph('Si necesitas renovar o tienes preguntas, contacta al equipo de Eva360.')}
           ${this.cta('Gestionar suscripción', `${this.appUrl}/dashboard/mi-suscripcion`)}
         `,
       }),
@@ -801,7 +801,7 @@ export class EmailService {
     orgLogoUrl?: string | null;
     orgName?: string;
   }): string {
-    // Build the org logo row: if an org logo is provided, show it above the Ascenda header
+    // Build the org logo row: if an org logo is provided, show it above the Eva360 header
     const orgLogoHtml = orgLogoUrl ? `
         <tr>
           <td style="background:linear-gradient(135deg,#0a0b0e 0%,#1a1208 100%);border-radius:16px 16px 0 0;padding:24px 36px 0;text-align:center;">
@@ -835,7 +835,7 @@ export class EmailService {
                 <path d="M20 8L32 14V26L20 32L8 26V14L20 8Z" stroke="${accentColor}" stroke-width="2" fill="none"/>
                 <circle cx="20" cy="20" r="4" fill="${accentColor}"/>
               </svg>
-              <span style="color:#E8C97A;font-size:1.2rem;font-weight:700;letter-spacing:-0.02em;">Ascenda <span style="color:#ffffff;font-weight:400;">Performance</span></span>
+              <span style="color:#E8C97A;font-size:1.2rem;font-weight:700;letter-spacing:-0.02em;">Eva<span style="color:#ffffff;font-weight:400;">360</span></span>
             </div>
           </td>
         </tr>

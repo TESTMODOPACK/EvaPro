@@ -357,7 +357,7 @@ export default function FacturacionPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.85rem' }}>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.2rem' }}>Razón Social</div>
-                <div style={{ fontWeight: 600 }}>Ascenda Performance SpA</div>
+                <div style={{ fontWeight: 600 }}>Eva360</div>
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.2rem' }}>RUT</div>

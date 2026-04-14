@@ -91,28 +91,12 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
             <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        {/* Ascenda mini logo icon — 7 growing bars */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '24px' }}>
-          {[6, 9, 12, 15, 18, 21, 24].map((h, i) => (
-            <div key={i} style={{
-              width: '3px',
-              height: `${h}px`,
-              borderRadius: '1px',
-              background: `linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 100%)`,
-              opacity: 0.4 + i * 0.09,
-            }} />
-          ))}
-        </div>
-        <span className="topbar-brand-text" style={{
-          fontSize: '1rem',
-          fontWeight: 700,
-          background: 'linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          letterSpacing: '0.02em',
-        }}>
-          Eva360
-        </span>
+        {/* Eva360 logo */}
+        <img
+          src="/eva360-logo-dark.png"
+          alt="Eva360"
+          style={{ height: '28px', width: 'auto', objectFit: 'contain' }}
+        />
       </div>
 
       {/* Right: Org + Language + Notifications + User */}

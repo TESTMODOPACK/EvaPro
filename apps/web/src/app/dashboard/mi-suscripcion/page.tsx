@@ -158,7 +158,7 @@ export default function MiSuscripcionPage() {
       });
       setShowRequestForm(false);
       setReqNotes('');
-      showToast('Solicitud enviada. El equipo de Ascenda la procesará pronto.');
+      showToast('Solicitud enviada. El equipo de Eva360 la procesará pronto.');
       loadAll();
     } catch (err: any) {
       setReqError(err.message || 'Error al enviar la solicitud');
@@ -554,7 +554,7 @@ export default function MiSuscripcionPage() {
               <div>
                 <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.15rem' }}>Solicitud de cambio de plan</h2>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  El equipo de Ascenda procesará tu solicitud
+                  El equipo de Eva360 procesará tu solicitud
                 </p>
               </div>
               {hasPendingRequest ? (
@@ -597,7 +597,7 @@ export default function MiSuscripcionPage() {
                       ({proration.daysRemaining} días restantes de {proration.totalDays} del período)
                     </span>
                     <div style={{ color: 'var(--text-muted)', marginTop: '0.25rem', fontSize: '0.78rem' }}>
-                      El crédito es informativo. Ascenda lo considerará al aprobar el cambio.
+                      El crédito es informativo. Eva360 lo considerará al aprobar el cambio.
                     </div>
                   </div>
                 )}

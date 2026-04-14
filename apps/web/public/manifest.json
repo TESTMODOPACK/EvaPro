@@ -1,7 +1,7 @@
 {
-  "name": "Ascenda Performance",
-  "short_name": "Ascenda",
-  "description": "Plataforma de evaluación de desempeño empresarial",
+  "name": "Eva360 - Evaluación de Desempeño 360°",
+  "short_name": "Eva360",
+  "description": "Plataforma integral de evaluación de desempeño 360°",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#1a1206",

@@ -21,13 +21,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Eva360 by Ascenda – Evaluación de Desempeño',
-  description: 'Plataforma multi-tenant de evaluación de desempeño para empresas',
+  title: 'Eva360 – Evaluación de Desempeño 360°',
+  description: 'Plataforma integral de evaluación de desempeño 360° para empresas',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Ascenda',
+    title: 'Eva360',
   },
   icons: {
     apple: '/icons/icon.svg',

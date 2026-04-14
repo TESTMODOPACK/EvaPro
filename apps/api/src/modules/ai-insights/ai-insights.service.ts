@@ -1247,7 +1247,7 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
     const pageWidth = doc.internal.pageSize.getWidth();
-    const accent = [201, 147, 58]; // #C9933A (Ascenda gold)
+    const accent = [201, 147, 58]; // #C9933A (Eva360 gold)
 
     // Header
     doc.setFillColor(26, 18, 6);

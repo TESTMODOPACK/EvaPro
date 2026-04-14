@@ -463,7 +463,7 @@ export class InvoicesService {
     doc.text(invoice.invoiceNumber, margin, 28);
     doc.setFontSize(9);
     doc.setTextColor(201, 147, 58);
-    doc.text('Eva360 — Ascenda Performance SpA', pageW - margin, 14, { align: 'right' });
+    doc.text('Eva360 — Evaluación de Desempeño 360°', pageW - margin, 14, { align: 'right' });
     doc.text('RUT: 77.XXX.XXX-X', pageW - margin, 22, { align: 'right' });
     doc.text('Santiago, Chile', pageW - margin, 30, { align: 'right' });
 

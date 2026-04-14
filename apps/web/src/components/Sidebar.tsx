@@ -418,26 +418,13 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       display: 'flex', flexDirection: 'column',
       zIndex: 100,
     }}>
-      {/* Sidebar header — Eva360 logo with Ascenda bars */}
-      <div style={{ padding: '1.25rem 1.25rem 0.75rem', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px' }}>
-            {[6, 9, 12, 15, 18, 21, 24].map((h, i) => (
-              <div key={i} style={{
-                width: '3px', height: `${h}px`, borderRadius: '1px',
-                background: 'linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 100%)',
-                opacity: 0.4 + i * 0.09,
-              }} />
-            ))}
-          </div>
-          <span style={{
-            fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.02em',
-            background: 'linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>
-            Eva360
-          </span>
-        </div>
+      {/* Sidebar header — Eva360 logo */}
+      <div style={{ padding: '1rem 1.25rem 0.65rem', borderBottom: '1px solid var(--border)' }}>
+        <img
+          src="/eva360-logo-dark.png"
+          alt="Eva360"
+          style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
+        />
       </div>
 
       {/* Organization info */}

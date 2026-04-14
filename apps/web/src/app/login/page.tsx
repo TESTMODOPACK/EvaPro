@@ -170,27 +170,12 @@ export default function LoginPage() {
           pointerEvents: "none",
         }} />
 
-        {/* Logo icon — 7 growing bars */}
-        <div style={{ display: "flex", alignItems: "flex-end", gap: "3px", marginBottom: "1.5rem" }}>
-          {[10, 16, 22, 30, 38, 48, 58].map((h, i) => (
-            <div key={i} style={{
-              width: "5px", height: `${h}px`, borderRadius: "2px",
-              background: "linear-gradient(180deg, #F5E4A8 0%, #C9933A 60%, #6B4A18 100%)",
-              opacity: 0.35 + i * 0.1,
-            }} />
-          ))}
-        </div>
-
-        <h1 style={{
-          fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1,
-          marginBottom: "0.5rem",
-        }}>
-          <span style={{ color: "#F5E4A8" }}>Eva</span>
-          <span style={{
-            background: "linear-gradient(135deg, #E8C97A 0%, #C9933A 100%)",
-            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          }}>360</span>
-        </h1>
+        {/* Eva360 logo */}
+        <img
+          src="/eva360-logo-dark.png"
+          alt="Eva360"
+          style={{ height: '80px', width: 'auto', objectFit: 'contain', marginBottom: '1.5rem' }}
+        />
 
         <p style={{
           fontSize: "1.05rem", color: "rgba(245,228,168,0.6)",
@@ -222,7 +207,7 @@ export default function LoginPage() {
           position: "absolute", bottom: "2rem", left: "3.5rem",
           fontSize: "0.72rem", color: "rgba(201,147,58,0.35)",
         }}>
-          &copy; {new Date().getFullYear()} Eva360 by Ascenda
+          &copy; {new Date().getFullYear()} Eva360
         </p>
       </div>
 

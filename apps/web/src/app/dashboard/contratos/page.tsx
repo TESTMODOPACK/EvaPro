@@ -147,7 +147,7 @@ export default function ContratosPage() {
             </p>
           </div>
           <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            <strong style={{ color: 'var(--accent)' }}>Acceso:</strong> Los administradores de la organización pueden ver y firmar contratos. Ambas partes (Ascenda y su organización) pueden consultar los documentos firmados en cualquier momento.
+            <strong style={{ color: 'var(--accent)' }}>Acceso:</strong> Los administradores de la organización pueden ver y firmar contratos. Ambas partes (Eva360 y su organización) pueden consultar los documentos firmados en cualquier momento.
           </div>
         </div>
       )}
