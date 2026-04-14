@@ -422,6 +422,47 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     font-size: 0.75rem !important;
   }
 
+  /* P15: Multi-column inline grids not caught by P7 (2fr 1fr, 1fr auto) */
+  .main-content div[style*="2fr 1fr"],
+  .main-content div[style*="1fr auto"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* P16: minmax(2XX) grids that need 2 columns but overflow 375px */
+  .main-content div[style*="minmax(22"],
+  .main-content div[style*="minmax(24"],
+  .main-content div[style*="minmax(25"],
+  .main-content div[style*="minmax(26"],
+  .main-content div[style*="minmax(27"],
+  .main-content div[style*="minmax(28"],
+  .main-content div[style*="minmax(29"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* P17: Reduce page padding on mobile (2.5rem → 1rem) */
+  .main-content > div[style*="padding: 2rem 2.5rem"] {
+    padding: 1rem !important;
+  }
+
+  /* P18: TopBar logo responsive */
+  .topbar-logo {
+    height: 35px !important;
+  }
+
+  /* P19: Touch targets — minimum tap area for primary/ghost action buttons */
+  .main-content .btn-primary,
+  .main-content .btn-ghost {
+    min-height: 36px;
+  }
+
+  /* P20: Fixed-width flex items that overflow — force wrap and shrink */
+  .main-content div[style*="min-width: 220px"],
+  .main-content div[style*="min-width: 200px"],
+  .main-content div[style*="min-width: 180px"] {
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+  }
+
 }
 
 /* Very small screens (iPhone SE, etc.) — extra padding reduction */
@@ -430,7 +471,8 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     padding-left: 0.5rem !important;
     padding-right: 0.5rem !important;
   }
-  .main-content div[style*="minmax(155px"] {
+  /* KPI cards and small grids → 2 columns on very small screens */
+  .main-content div[style*="minmax(1"] {
     grid-template-columns: 1fr 1fr !important;
   }
 }
