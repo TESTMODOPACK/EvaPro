@@ -1752,6 +1752,9 @@ function AdminDashboard() {
         </p>
       </div>
 
+      {/* Onboarding checklist for admin */}
+      <OnboardingChecklist />
+
       {/* Process Steps Guide — collapsible */}
       {showSteps && (
         <div className="card animate-fade-up" style={{ padding: '1rem 1.25rem', marginBottom: '1rem', borderLeft: '3px solid var(--accent)' }}>
