@@ -325,10 +325,12 @@ export class SurveysService {
     }
     // 'all' or 'custom' (custom uses all for now, can be extended)
 
-    return this.userRepo.find({
+    const users = await this.userRepo.find({
       where,
-      select: ['id', 'email', 'firstName', 'lastName', 'department'],
+      select: ['id', 'email', 'firstName', 'lastName', 'department', 'role'],
     });
+    // Exclude super_admin — they are platform administrators, not organization collaborators
+    return users.filter((u) => u.role !== 'super_admin');
   }
 
   // ─── Responses ─────────────────────────────────────────────────────────
