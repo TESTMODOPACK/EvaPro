@@ -442,12 +442,11 @@ export class TemplatesService {
     const scale = { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } };
 
     // Question banks per evaluation type perspective
+    // Optimized: 2 supervisor questions per competency (was 5) to keep templates
+    // within 18-40 questions total depending on evaluation type.
     const supervisorQuestions = (name: string) => [
       { text: `El colaborador demuestra dominio en ${name}`, type: 'scale', scale, required: true },
-      { text: `Aplica ${name} de manera consistente en sus tareas diarias`, type: 'scale', scale, required: true },
       { text: `Ha demostrado mejora en ${name} durante el período evaluado`, type: 'scale', scale, required: true },
-      { text: `Cumple con los estándares esperados en ${name}`, type: 'scale', scale, required: true },
-      { text: `Contribuye al equipo a través de su competencia en ${name}`, type: 'scale', scale, required: true },
     ];
     const selfQuestions = (name: string) => [
       { text: `Considero que mi desempeño en ${name} es adecuado para mi cargo`, type: 'scale', scale, required: true },
@@ -459,15 +458,14 @@ export class TemplatesService {
       { text: `Mi encargado me brinda orientación efectiva en ${name}`, type: 'scale', scale, required: true },
     ];
 
-    // Feedback section (common)
+    // Feedback section (common) — 2 questions to keep total count lean
     const feedbackSection = {
       id: `sec-feedback`,
       title: 'Retroalimentación General',
       competencyId: null,
       questions: [
         { id: `q-fb-1`, text: '¿Cuáles son las principales fortalezas de esta persona?', type: 'text', required: true },
-        { id: `q-fb-2`, text: '¿En qué áreas podría mejorar?', type: 'text', required: true },
-        { id: `q-fb-3`, text: '¿Tiene algún comentario adicional sobre el desempeño general?', type: 'text', required: false },
+        { id: `q-fb-2`, text: '¿En qué áreas podría mejorar y qué acción concreta recomendaría?', type: 'text', required: true },
       ],
     };
 
