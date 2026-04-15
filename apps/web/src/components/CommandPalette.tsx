@@ -207,6 +207,9 @@ export function CommandPalette() {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Búsqueda rápida (Ctrl+K)"
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
@@ -228,7 +231,7 @@ export function CommandPalette() {
       >
         {/* Search input */}
         <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
@@ -238,6 +241,7 @@ export function CommandPalette() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Buscar páginas, personas o acciones..."
+            aria-label="Buscar páginas, personas o acciones"
             style={{
               flex: 1, border: 'none', outline: 'none', background: 'transparent',
               fontSize: '0.95rem', color: 'var(--text-primary)',

@@ -5,7 +5,10 @@ import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 
-const HIDE_KEY = 'evapro_hide_onboarding_checklist';
+/** Clave en localStorage para recordar si el usuario quiere el checklist
+ *  colapsado por defecto (solo afecta visualmente — nunca se oculta del todo
+ *  mientras haya pasos pendientes). */
+const COLLAPSED_KEY = 'evapro_onboarding_collapsed';
 
 interface Step {
   key: string;
@@ -27,31 +30,40 @@ export function OnboardingChecklist() {
   const role = useAuthStore((s) => s.user?.role);
   const [data, setData] = useState<ProgressData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hidden, setHidden] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  // Lee preferencia de colapsado al montar (no oculta, solo inicia colapsado)
   useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem(HIDE_KEY) === '1') {
-      setHidden(true);
+    if (typeof window !== 'undefined' && localStorage.getItem(COLLAPSED_KEY) === '1') {
+      setCollapsed(true);
     }
   }, []);
 
   useEffect(() => {
-    if (!token || hidden) return;
+    if (!token) return;
     api.tenants.getOnboardingProgress(token)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [token, hidden]);
+  }, [token]);
 
-  if (hidden || loading || !data || data.allDone) return null;
+  if (loading || !data || data.allDone) return null;
   if (role === 'super_admin') return null;
 
   const pct = data.totalSteps > 0 ? Math.round((data.completedCount / data.totalSteps) * 100) : 0;
 
-  const handleHide = () => {
-    setHidden(true);
-    if (typeof window !== 'undefined') localStorage.setItem(HIDE_KEY, '1');
+  // Guardamos la preferencia de colapsado pero nunca ocultamos del todo
+  // mientras haya pasos pendientes — el admin siempre ve al menos la barra
+  // de progreso. Cuando data.allDone pasa a true el componente deja de
+  // renderizarse automáticamente arriba.
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
+      }
+      return next;
+    });
   };
 
   const titles: Record<string, string> = {
@@ -62,18 +74,24 @@ export function OnboardingChecklist() {
 
   return (
     <div className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden', marginBottom: '1.25rem', border: '1px solid rgba(201,147,58,0.2)' }}>
-      {/* Header */}
-      <div
+      {/* Header — siempre visible. Click alterna colapso de la lista. */}
+      <button
+        onClick={toggleCollapsed}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? `Expandir checklist de primeros pasos (${data.completedCount} de ${data.totalSteps} completados)` : 'Colapsar checklist de primeros pasos'}
         style={{
+          width: '100%',
           padding: '0.85rem 1.25rem',
           background: 'linear-gradient(135deg, rgba(201,147,58,0.08) 0%, rgba(201,147,58,0.02) 100%)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           cursor: 'pointer',
+          border: 'none',
+          textAlign: 'left',
+          color: 'inherit',
         }}
-        onClick={() => setCollapsed(!collapsed)}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontSize: '1.2rem' }}>🚀</span>
+          <span aria-hidden="true" style={{ fontSize: '1.2rem' }}>🚀</span>
           <div>
             <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{titles[role || ''] || 'Primeros pasos'}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -86,18 +104,11 @@ export function OnboardingChecklist() {
           <div style={{ width: '80px', height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
             <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); handleHide(); }}
-            title="Ocultar checklist"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.75rem', padding: '0.2rem' }}
-          >
-            ✕
-          </button>
-          <span style={{ fontSize: '0.7rem', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', display: 'inline-block', color: 'var(--text-muted)' }}>
+          <span aria-hidden="true" style={{ fontSize: '0.7rem', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', display: 'inline-block', color: 'var(--text-muted)' }}>
             ▼
           </span>
         </div>
-      </div>
+      </button>
 
       {/* Steps */}
       {!collapsed && (

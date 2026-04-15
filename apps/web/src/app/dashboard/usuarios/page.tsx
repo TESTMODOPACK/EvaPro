@@ -14,6 +14,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { usePositions } from '@/hooks/usePositions';
 import { formatRutInput, validateRut, normalizeRut } from '@/lib/rut';
 import { TableSkeleton } from '@/components/LoadingSkeleton';
+import { FirstVisitTip } from '@/components/FirstVisitTip';
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -755,6 +756,12 @@ export default function UsuariosPage() {
           {resendToast}
         </div>
       )}
+      <FirstVisitTip
+        id="usuarios-intro"
+        icon="👥"
+        title="Gestión de colaboradores"
+        description="Desde aquí creas, edités y desactivas usuarios. Usa la carga masiva por Excel para importar grandes listas. Al desactivar a alguien, se abrirá el flujo de desvinculación con cascade completo (reportes directos, evaluaciones en curso, PDIs, etc.)."
+      />
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('usuarios.title')}</h1>
@@ -1609,11 +1616,13 @@ export default function UsuariosPage() {
                 className="input"
                 value={pageSize}
                 onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                style={{ width: '70px', padding: '0.3rem 0.5rem', fontSize: '0.82rem' }}
+                style={{ width: '85px', padding: '0.3rem 0.5rem', fontSize: '0.82rem' }}
+                aria-label="Cantidad de usuarios por página"
               >
                 <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={30}>30</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
               </select>
               <span>de {totalRecords} usuarios</span>
             </div>

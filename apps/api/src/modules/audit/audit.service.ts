@@ -216,7 +216,21 @@ export class AuditService {
       qb.andWhere('log.action IN (:...evidenceActions)', { evidenceActions: EVIDENCE_ACTIONS });
     }
     if (filters.searchText) {
-      qb.andWhere("(u.first_name ILIKE :search OR u.last_name ILIKE :search OR u.email ILIKE :search)", { search: '%' + filters.searchText + '%' });
+      // Búsqueda full-text en: nombre, email, action, entity_id (uuid),
+      // y dentro del JSONB metadata (cast a texto). Permite que el admin
+      // encuentre logs por palabras clave que aparezcan en el detalle
+      // ("OKR de ventas", "evaluación 360", etc.).
+      qb.andWhere(
+        `(
+          u.first_name ILIKE :search
+          OR u.last_name ILIKE :search
+          OR u.email ILIKE :search
+          OR log.action ILIKE :search
+          OR CAST(log.entity_id AS text) ILIKE :search
+          OR CAST(log.metadata AS text) ILIKE :search
+        )`,
+        { search: '%' + filters.searchText + '%' },
+      );
     }
 
     const total = await qb.getCount();

@@ -21,6 +21,7 @@ import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { useRecognitionWall } from '@/hooks/useRecognition';
 import { OnboardingChecklist } from '@/components/OnboardingChecklist';
 import CommandCenter, { CommandAlert } from '@/components/CommandCenter';
+import { FirstVisitTip } from '@/components/FirstVisitTip';
 
 function Spinner() {
   return (
@@ -1860,6 +1861,14 @@ function AdminDashboard() {
           Vista ejecutiva de tu organización — {now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       </div>
+
+      {/* First-visit tip para admin — explica qué esperar del dashboard */}
+      <FirstVisitTip
+        id="admin-dashboard-welcome"
+        icon="👋"
+        title="Bienvenido/a al panel ejecutivo"
+        description="Abajo verás tu Centro de Comando con alertas priorizadas (ciclos que cierran, uso del plan, acciones urgentes). Los indicadores clave muestran tu organización al día de hoy; si hay un ciclo cerrado anterior, verás también la variación (↑/↓) respecto al periodo previo."
+      />
 
       {/* Onboarding checklist for admin */}
       <OnboardingChecklist />
