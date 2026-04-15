@@ -456,9 +456,11 @@ function KeyResultsSection({ objectiveId, canEdit = false }: { objectiveId: stri
                   </div>
                   <span style={{ fontSize: '0.72rem', fontWeight: 700, color: progColor, minWidth: '35px', textAlign: 'right' }}>{prog}%</span>
                 </div>
-                {/* Values */}
+                {/* Values: base → target con actual destacado */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  <span>Base: {kr.baseValue} {kr.unit}</span>
+                  <span title="Punto de partida → meta propuesta">
+                    {kr.baseValue} → <strong style={{ color: 'var(--text-secondary)' }}>{kr.targetValue}</strong> {kr.unit}
+                  </span>
                   {isEditing && canEdit ? (
                     <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
                       <input className="input" type="number" value={editValue} onChange={(e) => setEditValue(Number(e.target.value))} style={{ width: '80px', fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} />
@@ -466,8 +468,12 @@ function KeyResultsSection({ objectiveId, canEdit = false }: { objectiveId: stri
                       <button className="btn-ghost" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }} onClick={() => setEditingKrId(null)}>X</button>
                     </div>
                   ) : (
-                    <span style={{ cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', color: canEdit ? 'var(--accent)' : 'var(--text-muted)' }} onClick={() => canEdit && setEditingKrId(kr.id)}>
-                      Actual: {kr.currentValue} / {kr.targetValue} {kr.unit}
+                    <span
+                      title="Valor actual — click para actualizar"
+                      style={{ cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', color: canEdit ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 600 }}
+                      onClick={() => canEdit && setEditingKrId(kr.id)}
+                    >
+                      Actual: {kr.currentValue} {kr.unit}
                     </span>
                   )}
                 </div>
@@ -861,6 +867,7 @@ function ObjetivosPageContent() {
   const { t } = useTranslation();
   const userRole = useAuthStore((s) => s.user?.role) || '';
   const userId = useAuthStore((s) => s.user?.userId) || '';
+  const toast = useToastStore();
 
   const statusLabel: Record<string, string> = {
     draft: t('objetivos.objStatus.draft'),
@@ -1070,8 +1077,12 @@ function ObjetivosPageContent() {
         setCreateDeptFilter('');
         setShowForm(false);
         setFormError(null);
+        toast.success('Objetivo creado');
       },
-      onError: (err: any) => setFormError(err.message || 'Error al crear el objetivo'),
+      onError: (err: any) => {
+        setFormError(err.message || 'Error al crear el objetivo');
+        toast.error(err.message || 'Error al crear el objetivo');
+      },
     });
   }
 
@@ -1082,10 +1093,14 @@ function ObjetivosPageContent() {
       {
         onSuccess: () => {
           setExpandedId(null);
+          toast.success(`Progreso actualizado a ${progressForm.value}%`);
           setProgressForm({ value: 50, notes: '' });
           setProgressError(null);
         },
-        onError: (err: any) => setProgressError(err.message || 'Error al actualizar el progreso'),
+        onError: (err: any) => {
+          setProgressError(err.message || 'Error al actualizar el progreso');
+          toast.error(err.message || 'Error al actualizar el progreso');
+        },
       },
     );
   }
@@ -1961,7 +1976,10 @@ function ObjetivosPageContent() {
               /* ── objective card ─────────────────────────────────────── */
               const obj = item.obj;
               const progress = Number(obj.progress) || 0;
-              const color = progressColor(progress);
+              const isAtRisk = atRiskIds.has(obj.id);
+              // Si está marcado en riesgo, la barra se pinta en rojo para alerta
+              // visual; si no, usa la escala normal de progreso.
+              const color = isAtRisk ? 'var(--danger)' : progressColor(progress);
               const isExpanded = expandedId === obj.id;
               const days = daysUntil(obj.targetDate);
               const alert = deadlineAlert(days, obj.status, t);
@@ -2126,7 +2144,16 @@ function ObjetivosPageContent() {
                       onClick={() => setConfirmState({
                         message: '¿Cancelar este objetivo? El objetivo quedará en estado "Cancelado" y no se eliminará.',
                         danger: true,
-                        onConfirm: () => { setConfirmState(null); updateObjective.mutate({ id: obj.id, data: { status: 'abandoned' } }); },
+                        onConfirm: () => {
+                          setConfirmState(null);
+                          updateObjective.mutate(
+                            { id: obj.id, data: { status: 'abandoned' } },
+                            {
+                              onSuccess: () => toast.success('Objetivo cancelado'),
+                              onError: (err: any) => toast.error(err?.message || 'Error al cancelar el objetivo'),
+                            },
+                          );
+                        },
                       })}
                     >
                       Cancelar objetivo

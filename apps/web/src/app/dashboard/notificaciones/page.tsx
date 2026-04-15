@@ -9,6 +9,7 @@ import {
   useNotificationPreferences, useUpdateNotificationPreferences,
 } from '@/hooks/useNotifications';
 import { getNotificationHref, NOTIFICATION_CATEGORIES, NOTIFICATION_TYPE_LABELS } from '@/lib/notification-links';
+import EmptyState from '@/components/EmptyState';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 
@@ -383,16 +384,18 @@ export default function NotificacionesPage() {
           {isLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>
           ) : filtered.length === 0 ? (
-            <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🔔</p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-                {readFilter === 'unread' ? 'Sin notificaciones pendientes' : 'No hay notificaciones'}
-              </p>
-              {categoryFilter !== 'all' && (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.25rem' }}>
-                  Intenta cambiar el filtro de categoría
-                </p>
-              )}
+            <div className="card">
+              <EmptyState
+                icon="🔔"
+                title={readFilter === 'unread' ? 'Sin notificaciones pendientes' : 'No hay notificaciones'}
+                description={
+                  categoryFilter !== 'all'
+                    ? 'Intenta cambiar el filtro de categoría, o elige "Todas" para ver el historial completo.'
+                    : readFilter === 'unread'
+                    ? 'Estás al día. Las nuevas notificaciones aparecerán aquí.'
+                    : 'Aún no recibiste notificaciones. El sistema te avisará cuando tengas acciones pendientes.'
+                }
+              />
             </div>
           ) : (
             <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
