@@ -13,13 +13,14 @@ import { useFeedbackSummary } from '@/hooks/useFeedback';
 import { useAtRiskObjectives } from '@/hooks/useObjectives';
 import { assignmentStatusLabel, assignmentStatusBadge } from '@/lib/statusMaps';
 import { api } from '@/lib/api';
-import { ScoreBadge } from '@/components/ScoreBadge';
+import { ScoreBadge, DeltaBadge } from '@/components/ScoreBadge';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSystemChangelog } from '@/hooks/useSystemChangelog';
 import { getRoleLabel } from '@/lib/roles';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { useRecognitionWall } from '@/hooks/useRecognition';
 import { OnboardingChecklist } from '@/components/OnboardingChecklist';
+import CommandCenter, { CommandAlert } from '@/components/CommandCenter';
 
 function Spinner() {
   return (
@@ -1670,6 +1671,9 @@ function AdminDashboard() {
   const closedCycles = (cycles || []).filter((c: any) => c.status === 'closed').sort((a: any, b: any) => new Date(b.endDate || b.createdAt).getTime() - new Date(a.endDate || a.createdAt).getTime());
   const activeCycles = (cycles || []).filter((c: any) => c.status === 'active');
   const latestClosedId = closedCycles[0]?.id;
+  // Penúltimo ciclo cerrado → sirve de baseline para calcular δ en los KPIs.
+  const previousClosedId = closedCycles[1]?.id;
+  const [previousExecData, setPreviousExecData] = useState<any>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -1684,12 +1688,15 @@ function AdminDashboard() {
       api.contracts.list(token).catch(() => []),
       api.dashboard.nextActions(token).catch(() => null),
       latestClosedId ? api.reports.cycleSummary(token, latestClosedId).catch(() => null) : Promise.resolve(null),
-    ]).then(([exec, turn, pdiData, usage, quota, sub, ctrs, actions, summary]) => {
+      // Penúltimo ciclo cerrado para delta en KPIs (comparativa temporal)
+      previousClosedId ? api.reports.executiveDashboard(token, previousClosedId).catch(() => null) : Promise.resolve(null),
+    ]).then(([exec, turn, pdiData, usage, quota, sub, ctrs, actions, summary, prevExec]) => {
       setExecData(exec); setTurnover(turn); setPdi(pdiData); setSystemUsage(usage);
       setAiQuota(quota); setSubscription(sub); setContracts(Array.isArray(ctrs) ? ctrs : []);
       setNextActions(actions); setCycleSummary(summary);
+      setPreviousExecData(prevExec);
     }).finally(() => setLoading(false));
-  }, [token, latestClosedId]);
+  }, [token, latestClosedId, previousClosedId]);
 
   if (loading) return <PageSkeleton cards={9} tableRows={4} />;
 
@@ -1697,6 +1704,17 @@ function AdminDashboard() {
   const perf = execData?.performance || {};
   const obj = execData?.objectives || {};
   const enps = execData?.enps;
+
+  // ── Deltas vs penúltimo ciclo cerrado ──────────────────────────────
+  // Se calculan solo si existe ciclo previo con datos numéricos válidos.
+  // Nunca renderiza delta cuando previousClosedId es undefined o el endpoint
+  // falló — el badge se oculta por si solo cuando previousScore es null.
+  const prevPerf = previousExecData?.performance || {};
+  const prevObj = previousExecData?.objectives || {};
+  const prevEnps = previousExecData?.enps;
+  const perfPrev = Number.isFinite(Number(prevPerf.avgScore)) && Number(prevPerf.avgScore) > 0 ? Number(prevPerf.avgScore) : null;
+  const okrPrev = Number.isFinite(Number(prevObj.completionPct)) ? Number(prevObj.completionPct) : null;
+  const enpsPrev = typeof prevEnps?.score === 'number' ? prevEnps.score : null;
   const depts = (cycleSummary?.departmentBreakdown || []).map((d: any) => ({ ...d, avgScore: Number(d.avgScore) || 0 })).sort((a: any, b: any) => b.avgScore - a.avgScore);
 
   // Metadatos de fuente para la nota al pie de los indicadores. Los KPIs de
@@ -1732,13 +1750,103 @@ function AdminDashboard() {
   const subEndDate = subscription?.nextBillingDate ? new Date(subscription.nextBillingDate) : (subscription?.endDate ? new Date(subscription.endDate) : null);
   const subDaysLeft = subEndDate ? Math.ceil((subEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
 
-  // Alerts
-  const alerts: Array<{ icon: string; color: string; text: string; href?: string }> = [];
-  if (nextActions?.highPriority > 0) alerts.push({ icon: '🔴', color: 'var(--danger)', text: `${nextActions.highPriority} acciones urgentes pendientes`, href: '/dashboard/evaluaciones' });
-  if (((obj.total || 0) - (obj.completed || 0)) > 0 && (obj.completionPct || 0) < 50) alerts.push({ icon: '🟡', color: 'var(--warning)', text: `OKRs al ${obj.completionPct || 0}% — ${(obj.total || 0) - (obj.completed || 0)} pendientes`, href: '/dashboard/objetivos' });
-  if (pdi?.overdueActions > 0) alerts.push({ icon: '🟡', color: 'var(--warning)', text: `${pdi.overdueActions} acciones PDI vencidas`, href: '/dashboard/desarrollo' });
-  if (pendingContracts > 0) alerts.push({ icon: '🔵', color: 'var(--accent)', text: `${pendingContracts} contrato(s) pendiente(s) de firma`, href: '/dashboard/contratos' });
-  if (subDaysLeft != null && subDaysLeft <= 30 && subDaysLeft > 0) alerts.push({ icon: '🔵', color: 'var(--accent)', text: `Suscripción se renueva en ${subDaysLeft} días` });
+  // Alertas agrupadas para el Centro de Comando. Cada alerta tiene severidad
+  // explícita (critical/warning/info) que el widget usa para colorear y
+  // ordenar. El objetivo es que el admin vea de un vistazo qué atender hoy.
+  const commandAlerts: CommandAlert[] = [];
+  if (nextActions?.highPriority > 0) {
+    commandAlerts.push({
+      id: 'high-priority',
+      severity: 'critical',
+      icon: '🔴',
+      title: 'Acciones urgentes pendientes',
+      description: 'Evaluaciones vencidas o con riesgo alto que requieren intervención inmediata.',
+      count: nextActions.highPriority,
+      href: '/dashboard/evaluaciones',
+      ctaLabel: 'Resolver',
+    });
+  }
+  if (activeCycles.length > 0) {
+    // Ciclos que cierran en <= 7 días → warning
+    const closingSoon = activeCycles.filter((c: any) => {
+      if (!c.endDate) return false;
+      const daysLeft = Math.ceil((new Date(c.endDate).getTime() - now.getTime()) / 86_400_000);
+      return daysLeft >= 0 && daysLeft <= 7;
+    });
+    if (closingSoon.length > 0) {
+      commandAlerts.push({
+        id: 'cycles-closing',
+        severity: 'warning',
+        icon: '⏰',
+        title: `${closingSoon.length} ciclo${closingSoon.length !== 1 ? 's' : ''} cierra${closingSoon.length === 1 ? '' : 'n'} esta semana`,
+        description: closingSoon.map((c: any) => c.name).slice(0, 2).join(' · '),
+        href: '/dashboard/evaluaciones',
+        ctaLabel: 'Revisar',
+      });
+    }
+  }
+  if (((obj.total || 0) - (obj.completed || 0)) > 0 && (obj.completionPct || 0) < 50) {
+    commandAlerts.push({
+      id: 'okrs-low',
+      severity: 'warning',
+      icon: '🎯',
+      title: `OKRs al ${obj.completionPct || 0}% de cumplimiento`,
+      description: `${(obj.total || 0) - (obj.completed || 0)} objetivos pendientes · revisa los que están en riesgo`,
+      href: '/dashboard/objetivos?filter=at_risk',
+      ctaLabel: 'Ver en riesgo',
+    });
+  }
+  if (pdi?.overdueActions > 0) {
+    commandAlerts.push({
+      id: 'pdi-overdue',
+      severity: 'warning',
+      icon: '📚',
+      title: 'Acciones PDI vencidas',
+      description: 'Colaboradores con planes de desarrollo sin avance oportuno.',
+      count: pdi.overdueActions,
+      href: '/dashboard/desarrollo',
+      ctaLabel: 'Revisar',
+    });
+  }
+  if (pendingContracts > 0) {
+    commandAlerts.push({
+      id: 'contracts-pending',
+      severity: 'info',
+      icon: '✍️',
+      title: `Contrato${pendingContracts !== 1 ? 's' : ''} pendiente${pendingContracts !== 1 ? 's' : ''} de firma`,
+      count: pendingContracts,
+      href: '/dashboard/contratos',
+      ctaLabel: 'Ver',
+    });
+  }
+  if (subDaysLeft != null && subDaysLeft > 0 && subDaysLeft <= 30) {
+    commandAlerts.push({
+      id: 'subscription-renewal',
+      severity: subDaysLeft <= 7 ? 'warning' : 'info',
+      icon: '💳',
+      title: `Suscripción se renueva en ${subDaysLeft} día${subDaysLeft !== 1 ? 's' : ''}`,
+      description: plan?.name ? `Plan actual: ${plan.name}` : undefined,
+      href: '/dashboard/mi-suscripcion',
+      ctaLabel: 'Revisar plan',
+    });
+  }
+  // Uso cercano al límite del plan (warning a 90%, critical a 100%)
+  const planMaxUsers = plan?.maxUsers || plan?.maxEmployees;
+  const activeUsersCount = hc.active || 0;
+  if (planMaxUsers && activeUsersCount) {
+    const usagePct = Math.round((activeUsersCount / planMaxUsers) * 100);
+    if (usagePct >= 90) {
+      commandAlerts.push({
+        id: 'plan-usage',
+        severity: usagePct >= 100 ? 'critical' : 'warning',
+        icon: '👥',
+        title: `Uso del plan al ${usagePct}%`,
+        description: `${activeUsersCount} de ${planMaxUsers} usuarios activos. ${usagePct >= 100 ? 'Límite alcanzado — contacta soporte.' : 'Considera evaluar un upgrade.'}`,
+        href: '/dashboard/mi-suscripcion',
+        ctaLabel: 'Ver plan',
+      });
+    }
+  }
 
   const kpiStyle: React.CSSProperties = { padding: '0.85rem', textAlign: 'center' };
   const kpiLabel: React.CSSProperties = { fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '0.15rem' };
@@ -1805,11 +1913,36 @@ function AdminDashboard() {
         <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>Indicadores Clave</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Colaboradores</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--success)' }}>{hc.active || 0}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>activos</div></div>
-          <div className="card" style={kpiStyle}><div style={kpiLabel}>Desempeño</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: Number(perf.avgScore) >= 7 ? 'var(--success)' : Number(perf.avgScore) >= 5 ? 'var(--warning)' : 'var(--danger)' }}>{Number(perf.avgScore || 0).toFixed(1)}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>promedio</div></div>
+          <div className="card" style={kpiStyle}>
+            <div style={kpiLabel}>Desempeño</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 800, color: Number(perf.avgScore) >= 7 ? 'var(--success)' : Number(perf.avgScore) >= 5 ? 'var(--warning)' : 'var(--danger)' }}>
+              {Number(perf.avgScore || 0).toFixed(1)}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+              promedio
+              {perfPrev != null && Number(perf.avgScore) > 0 && (
+                <DeltaBadge
+                  delta={Number(perf.avgScore) - perfPrev}
+                  size="sm"
+                  tooltip={`Comparado con ${closedCycles[1]?.name || 'ciclo anterior'} (${perfPrev.toFixed(1)})`}
+                />
+              )}
+            </div>
+          </div>
           <div className="card" style={kpiStyle}>
             <div style={kpiLabel}>eNPS</div>
             <div style={{ fontSize: '1.3rem', fontWeight: 800, color: enps?.score == null ? 'var(--text-muted)' : enps.score >= 30 ? 'var(--success)' : enps.score >= 0 ? 'var(--warning)' : 'var(--danger)' }}>
               {enps?.score ?? '—'}
+              {enpsPrev != null && typeof enps?.score === 'number' && (
+                <span style={{ marginLeft: '0.35rem', verticalAlign: 'middle' }}>
+                  <DeltaBadge
+                    delta={enps.score - enpsPrev}
+                    size="sm"
+                    tooltip={`Comparado con encuesta anterior (${enpsPrev})`}
+                    unit="pts"
+                  />
+                </span>
+              )}
             </div>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
               {enpsBreakdown ? `${enps.total} respuestas` : 'clima'}
@@ -1844,7 +1977,23 @@ function AdminDashboard() {
               </div>
             )}
           </div>
-          <div className="card" style={kpiStyle}><div style={kpiLabel}>OKRs</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: obj.total > 0 ? (obj.completionPct >= 70 ? 'var(--success)' : obj.completionPct >= 40 ? 'var(--warning)' : 'var(--danger)') : 'var(--text-muted)' }}>{obj.total > 0 ? `${obj.completionPct || 0}%` : '—'}</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>cumplimiento</div></div>
+          <div className="card" style={kpiStyle}>
+            <div style={kpiLabel}>OKRs</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 800, color: obj.total > 0 ? (obj.completionPct >= 70 ? 'var(--success)' : obj.completionPct >= 40 ? 'var(--warning)' : 'var(--danger)') : 'var(--text-muted)' }}>
+              {obj.total > 0 ? `${obj.completionPct || 0}%` : '—'}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+              cumplimiento
+              {okrPrev != null && obj.total > 0 && (
+                <DeltaBadge
+                  delta={(obj.completionPct || 0) - okrPrev}
+                  size="sm"
+                  unit="%"
+                  tooltip={`Comparado con ${closedCycles[1]?.name || 'ciclo anterior'} (${okrPrev}%)`}
+                />
+              )}
+            </div>
+          </div>
           <div className="card" style={kpiStyle}><div style={kpiLabel}>Rotación</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: (turnover?.turnoverRate || 0) > 15 ? 'var(--danger)' : (turnover?.turnoverRate || 0) > 8 ? 'var(--warning)' : 'var(--success)' }}>{turnover?.turnoverRate || 0}%</div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>anual</div></div>
         </div>
       </div>
@@ -1888,21 +2037,14 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* Alerts */}
-      {alerts.length > 0 && (
-        <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--warning)' }}>Alertas y Acciones Urgentes</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            {alerts.map((a, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem' }}>
-                <span>{a.icon}</span>
-                <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{a.text}</span>
-                {a.href && <Link href={a.href} style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>Ver →</Link>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Centro de comando — alertas operacionales agrupadas + prioritizadas.
+          Muestra CRÍTICAS primero, luego warnings, luego info. Cada item tiene
+          CTA clickeable. Si no hay alertas, estado "todo en orden". */}
+      <CommandCenter
+        alerts={commandAlerts}
+        subtitle="Resumen de lo que requiere tu atención hoy"
+      />
+
 
       {/* Two column grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>

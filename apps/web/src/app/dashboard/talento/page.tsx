@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useDepartments } from '@/hooks/useDepartments';
+import TalentRecommendations from '@/components/TalentRecommendations';
 
 type ActiveTab = 'ninebox' | 'segmentation';
 
@@ -353,6 +354,12 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
               </div>
             </div>
           </div>
+
+          {/* Recomendaciones accionables basadas en reglas sobre la matriz.
+              Solo visible si hay datos y el usuario es admin. */}
+          {isAdmin && nineBoxData && (
+            <TalentRecommendations nineBoxData={nineBoxData} cycleId={selectedCycleId} />
+          )}
 
           {/* Hint to click on quadrants */}
           {selectedBox === null && (
