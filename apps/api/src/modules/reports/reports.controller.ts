@@ -41,10 +41,13 @@ export class ReportsController {
     private readonly auditService: AuditService,
   ) {}
 
-  // B7.1: Fire-and-forget audit log for report access
+  // B7.1: Fire-and-forget audit log for report access.
+  // super_admin views are system-level (tenantId=null) so they don't leak
+  // into the organization's audit view.
   private logAccess(req: any, reportType: string, meta?: Record<string, any>) {
+    const tenantId = req.user.role === 'super_admin' ? null : (req.user.tenantId || null);
     this.auditService
-      .log(req.user.tenantId, req.user.userId, 'report.viewed', 'report', undefined, { reportType, ...meta })
+      .log(tenantId, req.user.userId, 'report.viewed', 'report', undefined, { reportType, ...meta })
       .catch(() => {});
   }
 
@@ -64,7 +67,7 @@ export class ReportsController {
       return;
     }
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
-    await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'executive-dashboard', format }).catch(() => {});
+    await this.auditService.log(req.user.role === 'super_admin' ? null : (req.user.tenantId || null), req.user.userId, 'report.exported', 'report', undefined, { report: 'executive-dashboard', format }).catch(() => {});
 
     const pdfBuffer = await this.executiveDashboardService.exportDashboardPdf(
       req.user.tenantId, cycleId, surveyId || undefined, managerId,
@@ -371,7 +374,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.auditService
-      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', cycleId, { format: format || 'csv', userId: userId || 'all' })
+      .log(req.user.role === 'super_admin' ? null : (req.user.tenantId || null), req.user.userId, 'report.exported', 'report', cycleId, { format: format || 'csv', userId: userId || 'all' })
       .catch(() => {});
 
     const filterUserId = userId || undefined;
@@ -417,7 +420,7 @@ export class ReportsController {
   ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     await this.auditService
-      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', cycleId, { report: 'analytics-cycle', format })
+      .log(req.user.role === 'super_admin' ? null : (req.user.tenantId || null), req.user.userId, 'report.exported', 'report', cycleId, { report: 'analytics-cycle', format })
       .catch(() => {});
 
     if (format === 'pdf') {
@@ -456,7 +459,7 @@ export class ReportsController {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     const ids = cycleIds ? cycleIds.split(',').filter(Boolean) : undefined;
     const data = await this.crossAnalysisService.getCrossAnalysis(req.user.tenantId, ids, surveyId, managerId);
-    await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'cross-analysis', format }).catch(() => {});
+    await this.auditService.log(req.user.role === 'super_admin' ? null : (req.user.tenantId || null), req.user.userId, 'report.exported', 'report', undefined, { report: 'cross-analysis', format }).catch(() => {});
 
     if (format === 'pdf') {
       const buffer = await this.crossAnalysisService.exportPdf(data);
@@ -507,7 +510,7 @@ export class ReportsController {
   ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     const data = await this.analyticsService.getPdiCompliance(req.user.tenantId, managerId);
-    await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'pdi-compliance', format }).catch(() => {});
+    await this.auditService.log(req.user.role === 'super_admin' ? null : (req.user.tenantId || null), req.user.userId, 'report.exported', 'report', undefined, { report: 'pdi-compliance', format }).catch(() => {});
     if (format === 'xlsx') {
       const buffer = await this.analyticsService.exportPdiComplianceXlsx(data);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -543,7 +546,7 @@ export class ReportsController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     const data = await this.analyticsService.getSystemUsage(tenantId);
-    await this.auditService.log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'system-usage', format }).catch(() => {});
+    await this.auditService.log(req.user.role === 'super_admin' ? null : (req.user.tenantId || null), req.user.userId, 'report.exported', 'report', undefined, { report: 'system-usage', format }).catch(() => {});
     if (format === 'pdf') {
       const buffer = await this.analyticsService.exportSystemUsagePdf(data);
       res.setHeader('Content-Type', 'application/pdf');
@@ -580,7 +583,7 @@ export class ReportsController {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     const data = await this.analyticsService.getCycleComparison(req.user.tenantId, managerId);
     await this.auditService
-      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'cycle-comparison', format })
+      .log(req.user.role === 'super_admin' ? null : (req.user.tenantId || null), req.user.userId, 'report.exported', 'report', undefined, { report: 'cycle-comparison', format })
       .catch(() => {});
 
     if (format === 'xlsx') {
@@ -613,7 +616,7 @@ export class ReportsController {
   ) {
     const data = await this.analyticsService.getTurnoverAnalysis(req.user.tenantId);
     await this.auditService
-      .log(req.user.tenantId, req.user.userId, 'report.exported', 'report', undefined, { report: 'turnover', format })
+      .log(req.user.role === 'super_admin' ? null : (req.user.tenantId || null), req.user.userId, 'report.exported', 'report', undefined, { report: 'turnover', format })
       .catch(() => {});
 
     if (format === 'pdf') {
