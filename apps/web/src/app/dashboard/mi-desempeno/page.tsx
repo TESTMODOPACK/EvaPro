@@ -167,7 +167,6 @@ export default function MiDesempenoPage() {
   // Cycles for filter
   const { data: allCycles } = useCycles();
   const closedCycles = (allCycles || []).filter((c: any) => c.status === 'closed' || c.status === 'active');
-  const [radarCycleId, setRadarCycleId] = useState('');
 
   // Load data
   useEffect(() => {
@@ -509,21 +508,21 @@ export default function MiDesempenoPage() {
                 </div>
               )}
 
-              {/* Radar */}
+              {/* Radar — usa el filtro de ciclo superior (evalCycleFilter) */}
               {closedCycles.length > 0 && (
                 <div className="card" style={{ padding: '1.25rem' }}>
                   <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Radar de Competencias</h3>
-                  <select style={selectStyle} value={radarCycleId} onChange={(e) => setRadarCycleId(e.target.value)}>
-                    <option value="">Seleccionar ciclo...</option>
-                    {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  {radarCycleId && myUserId && (
-                    <div style={{ marginTop: '1rem' }}>
-                      <CompetencyRadarChart cycleId={radarCycleId} userId={myUserId} />
-                      <SelfVsOthersChart cycleId={radarCycleId} userId={myUserId} />
-                      <GapSection cycleId={radarCycleId} userId={myUserId} />
-                      <CompetencyInsights cycleId={radarCycleId} userId={myUserId} />
+                  {evalCycleFilter && myUserId ? (
+                    <div>
+                      <CompetencyRadarChart cycleId={evalCycleFilter} userId={myUserId} />
+                      <SelfVsOthersChart cycleId={evalCycleFilter} userId={myUserId} />
+                      <GapSection cycleId={evalCycleFilter} userId={myUserId} />
+                      <CompetencyInsights cycleId={evalCycleFilter} userId={myUserId} />
                     </div>
+                  ) : (
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                      Selecciona un ciclo en el filtro superior para visualizar tu radar de competencias.
+                    </p>
                   )}
                 </div>
               )}
