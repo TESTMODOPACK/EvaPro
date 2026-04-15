@@ -107,14 +107,6 @@ export const NOTIFICATION_CATEGORIES: Record<string, { label: string; icon: stri
   },
 };
 
-/** Retorna la key de categoría para un tipo de notificación. */
-export function getNotificationCategory(type: string): string {
-  for (const [key, cat] of Object.entries(NOTIFICATION_CATEGORIES)) {
-    if (cat.types.includes(type)) return key;
-  }
-  return 'sistema';
-}
-
 /** Labels legibles para los tipos de notificación (para preferencias UI). */
 export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   evaluation_pending: 'Evaluaciones pendientes',

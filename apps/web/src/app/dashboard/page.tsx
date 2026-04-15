@@ -15,7 +15,7 @@ import { assignmentStatusLabel, assignmentStatusBadge } from '@/lib/statusMaps';
 import { api } from '@/lib/api';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { useChangelog } from '@/hooks/useSystemChangelog';
+import { useSystemChangelog } from '@/hooks/useSystemChangelog';
 import { getRoleLabel } from '@/lib/roles';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { useRecognitionWall } from '@/hooks/useRecognition';
@@ -278,7 +278,7 @@ function RegularDashboard() {
   const { data: perfHistory } = usePerformanceHistory(user?.userId ?? null);
   const { data: feedbackSummary } = useFeedbackSummary();
   const { data: atRiskObjectives } = useAtRiskObjectives();
-  const { data: changelog } = useChangelog(3);
+  const { data: changelog } = useSystemChangelog(3);
   const { data: recognitionData } = useRecognitionWall(1);
   const [showGuide, setShowGuide] = useState(true);
 
@@ -1522,7 +1522,7 @@ function DashboardStats() {
 function WelcomePage() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
-  const { data: changelog, isLoading: loadingCL, isError: errorCL } = useChangelog(5);
+  const { data: changelog, isLoading: loadingCL, isError: errorCL } = useSystemChangelog(5);
   const steps = ROLE_STEPS[user?.role || 'employee'] || ROLE_STEPS.employee;
   const today = new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
