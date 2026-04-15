@@ -554,10 +554,12 @@ function AuditoriaPageContent() {
         </select>
 
         <input
-          style={{ ...inputSt, width: '180px' }}
-          placeholder={t('audit.searchUser')}
+          style={{ ...inputSt, width: '240px' }}
+          placeholder="Buscar (usuario, acción, detalle, ID...)"
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
+          aria-label="Búsqueda full-text en el log de auditoría"
+          title="Busca en nombre, email, acción, ID de entidad y dentro de los detalles (metadata JSON)"
         />
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}>

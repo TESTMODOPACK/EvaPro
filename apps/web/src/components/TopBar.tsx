@@ -85,9 +85,9 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
           className="hamburger-btn"
           onClick={onMenuClick}
           style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: 'var(--accent)' }}
-          aria-label="Menu"
+          aria-label="Abrir menú de navegación"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
@@ -137,30 +137,39 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
           border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
           overflow: 'hidden', height: '30px',
         }}>
-          {(['es', 'en', 'pt'] as SupportedLocale[]).map((lang, i) => (
-            <button
-              key={lang}
-              onClick={() => handleLangChange(lang)}
-              title={lang === 'es' ? 'Español' : lang === 'en' ? 'English' : 'Português'}
-              style={{
-                padding: '0 9px',
-                height: '100%',
-                border: 'none',
-                borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
-                background: locale === lang ? 'rgba(201,147,58,0.12)' : 'transparent',
-                color: locale === lang ? 'var(--gold)' : 'var(--text-muted)',
-                fontWeight: locale === lang ? 700 : 400,
-                fontSize: '0.7rem',
-                letterSpacing: '0.04em',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={(e) => { if (locale !== lang) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-              onMouseLeave={(e) => { if (locale !== lang) e.currentTarget.style.background = 'transparent'; }}
-            >
-              {LANG_FLAGS[lang]}
-            </button>
-          ))}
+          {(['es', 'en', 'pt'] as SupportedLocale[]).map((lang, i) => {
+            const langName = lang === 'es' ? 'Español' : lang === 'en' ? 'English' : 'Português';
+            const isActive = locale === lang;
+            return (
+              <button
+                key={lang}
+                onClick={() => handleLangChange(lang)}
+                title={langName}
+                aria-label={`Cambiar idioma a ${langName}${isActive ? ' (seleccionado)' : ''}`}
+                aria-pressed={isActive}
+                style={{
+                  padding: '0 9px',
+                  height: '100%',
+                  border: 'none',
+                  borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
+                  background: isActive ? 'rgba(201,147,58,0.12)' : 'transparent',
+                  color: isActive ? 'var(--gold)' : 'var(--text-muted)',
+                  fontWeight: isActive ? 700 : 400,
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.04em',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  outline: 'none',
+                }}
+                onFocus={(e) => { e.currentTarget.style.outline = '2px solid var(--accent)'; e.currentTarget.style.outlineOffset = '-2px'; }}
+                onBlur={(e) => { e.currentTarget.style.outline = 'none'; }}
+                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+              >
+                {LANG_FLAGS[lang]}
+              </button>
+            );
+          })}
         </div>
 
         <NotificationBell />

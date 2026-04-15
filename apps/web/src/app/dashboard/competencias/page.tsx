@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
@@ -25,6 +25,10 @@ function CompetencyMatrixTab() {
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
+  /** Set de niveles JERÁRQUICOS expandidos. Default: vacío (todos colapsados)
+   *  porque en organizaciones con +50 cargos la tabla se vuelve inmanejable.
+   *  El user clickea cada nivel para abrir solo lo que le interesa. */
+  const [expandedLevels, setExpandedLevels] = useState<Set<number | 'unassigned'>>(new Set());
 
   useEffect(() => {
     if (!token) return;
@@ -56,6 +60,35 @@ function CompetencyMatrixTab() {
 
   const levelMap = new Map(roleComps.map((rc: any) => [`${rc.position}|${rc.competencyId}`, rc.expectedLevel]));
   const levelColor = (level: number) => level >= 8 ? '#10b981' : level >= 5 ? '#f59e0b' : level >= 3 ? '#6366f1' : '#94a3b8';
+
+  // Agrupar cargos filtrados por nivel jerárquico para vista colapsable
+  const positionsByLevel = new Map<number | 'unassigned', string[]>();
+  for (const pos of filteredPositions) {
+    const lv = posLevelMap.get(pos);
+    const key: number | 'unassigned' = (lv != null && lv > 0) ? lv : 'unassigned';
+    const arr = positionsByLevel.get(key) || [];
+    arr.push(pos);
+    positionsByLevel.set(key, arr);
+  }
+  // Orden: niveles numéricos asc, luego "unassigned" al final
+  const sortedLevelKeys: Array<number | 'unassigned'> = [
+    ...Array.from(positionsByLevel.keys())
+      .filter((k): k is number => typeof k === 'number')
+      .sort((a, b) => a - b),
+    ...(positionsByLevel.has('unassigned') ? ['unassigned' as const] : []),
+  ];
+
+  const toggleLevel = (key: number | 'unassigned') => {
+    setExpandedLevels((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const expandAll = () => setExpandedLevels(new Set(sortedLevelKeys));
+  const collapseAll = () => setExpandedLevels(new Set());
+  const allExpanded = sortedLevelKeys.length > 0 && sortedLevelKeys.every((k) => expandedLevels.has(k));
 
   if (loading) return <Spinner />;
 
@@ -97,12 +130,31 @@ function CompetencyMatrixTab() {
         </span>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+      {/* Legend + expand/collapse all */}
+      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', alignItems: 'center', flexWrap: 'wrap' }}>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#10b981', marginRight: 4 }} />Alto (8-10)</span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#f59e0b', marginRight: 4 }} />Medio (5-7)</span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#6366f1', marginRight: 4 }} />Básico (3-4)</span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#94a3b8', marginRight: 4 }} />Inicial (1-2)</span>
+        {sortedLevelKeys.length > 1 && (
+          <button
+            onClick={allExpanded ? collapseAll : expandAll}
+            style={{
+              marginLeft: 'auto',
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              padding: '0.3rem 0.7rem',
+              borderRadius: 'var(--radius-sm, 6px)',
+              cursor: 'pointer',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+            }}
+            aria-label={allExpanded ? 'Colapsar todos los niveles' : 'Expandir todos los niveles'}
+          >
+            {allExpanded ? '⊖ Colapsar todos' : '⊕ Expandir todos'}
+          </button>
+        )}
       </div>
 
       {roleComps.length === 0 ? (
@@ -126,27 +178,86 @@ function CompetencyMatrixTab() {
               </tr>
             </thead>
             <tbody>
-              {filteredPositions.map(pos => {
-                const level = posLevelMap.get(pos);
-                const hasAnyComp = filteredCompetencies.some(c => levelMap.has(`${pos}|${c.id}`));
+              {sortedLevelKeys.map((levelKey) => {
+                const cargosInLevel = positionsByLevel.get(levelKey) || [];
+                const isExpanded = expandedLevels.has(levelKey);
+                const levelLabel = levelKey === 'unassigned' ? 'Cargos sin nivel asignado' : `Nivel ${levelKey}`;
+                const totalCols = filteredCompetencies.length + 1;
+                // Contadores agregados por nivel (cuántos cargos tienen al menos una comp)
+                const withComps = cargosInLevel.filter((p) => filteredCompetencies.some((c) => levelMap.has(`${p}|${c.id}`))).length;
+                const withoutComps = cargosInLevel.length - withComps;
                 return (
-                  <tr key={pos} style={{ background: hasAnyComp ? 'transparent' : 'rgba(239,68,68,0.03)' }}>
-                    <td style={{ padding: '0.4rem 0.6rem', borderBottom: '1px solid var(--border)', fontWeight: 600, position: 'sticky', left: 0, background: hasAnyComp ? 'var(--bg-base)' : 'rgba(239,68,68,0.03)', zIndex: 1 }}>
-                      {pos}
-                      {level != null && level > 0 && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.3rem' }}>Nv.{level}</span>}
-                      {!hasAnyComp && <span style={{ fontSize: '0.62rem', color: 'var(--danger)', marginLeft: '0.3rem' }}>sin asignar</span>}
-                    </td>
-                    {filteredCompetencies.map(c => {
-                      const lv = levelMap.get(`${pos}|${c.id}`);
+                  <React.Fragment key={String(levelKey)}>
+                    {/* Header colapsable del nivel */}
+                    <tr
+                      onClick={() => toggleLevel(levelKey)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleLevel(levelKey);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-expanded={isExpanded}
+                      aria-label={`${isExpanded ? 'Colapsar' : 'Expandir'} ${levelLabel}`}
+                      style={{ cursor: 'pointer', background: 'var(--bg-surface)' }}
+                    >
+                      <td
+                        colSpan={totalCols}
+                        style={{
+                          padding: '0.55rem 0.75rem',
+                          borderBottom: '1px solid var(--border)',
+                          borderTop: '1px solid var(--border)',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          color: 'var(--text-primary)',
+                          position: 'sticky',
+                          left: 0,
+                          background: 'var(--bg-surface)',
+                          zIndex: 2,
+                        }}
+                      >
+                        <span aria-hidden="true" style={{ display: 'inline-block', width: 14, transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                          ▶
+                        </span>
+                        <span style={{ marginLeft: '0.4rem' }}>{levelLabel}</span>
+                        <span style={{ marginLeft: '0.6rem', fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+                          {cargosInLevel.length} cargo{cargosInLevel.length !== 1 ? 's' : ''}
+                          {withoutComps > 0 && (
+                            <span style={{ color: 'var(--danger)', marginLeft: '0.4rem' }}>
+                              · {withoutComps} sin competencias
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+
+                    {/* Filas de cargos del nivel — solo si expandido */}
+                    {isExpanded && cargosInLevel.map((pos) => {
+                      const level = posLevelMap.get(pos);
+                      const hasAnyComp = filteredCompetencies.some((c) => levelMap.has(`${pos}|${c.id}`));
                       return (
-                        <td key={c.id} style={{ padding: '0.3rem 0.5rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
-                          {lv != null ? (
-                            <span style={{ display: 'inline-block', width: 28, height: 28, lineHeight: '28px', borderRadius: 4, fontWeight: 700, fontSize: '0.78rem', color: '#fff', background: levelColor(lv) }}>{lv}</span>
-                          ) : <span style={{ color: 'var(--border)' }}>—</span>}
-                        </td>
+                        <tr key={pos} style={{ background: hasAnyComp ? 'transparent' : 'rgba(239,68,68,0.03)' }}>
+                          <td style={{ padding: '0.4rem 0.6rem 0.4rem 1.6rem', borderBottom: '1px solid var(--border)', fontWeight: 600, position: 'sticky', left: 0, background: hasAnyComp ? 'var(--bg-base)' : 'rgba(239,68,68,0.03)', zIndex: 1 }}>
+                            {pos}
+                            {level != null && level > 0 && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.3rem' }}>Nv.{level}</span>}
+                            {!hasAnyComp && <span style={{ fontSize: '0.62rem', color: 'var(--danger)', marginLeft: '0.3rem' }}>sin asignar</span>}
+                          </td>
+                          {filteredCompetencies.map((c) => {
+                            const lv = levelMap.get(`${pos}|${c.id}`);
+                            return (
+                              <td key={c.id} style={{ padding: '0.3rem 0.5rem', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+                                {lv != null ? (
+                                  <span style={{ display: 'inline-block', width: 28, height: 28, lineHeight: '28px', borderRadius: 4, fontWeight: 700, fontSize: '0.78rem', color: '#fff', background: levelColor(lv) }}>{lv}</span>
+                                ) : <span style={{ color: 'var(--border)' }}>—</span>}
+                              </td>
+                            );
+                          })}
+                        </tr>
                       );
                     })}
-                  </tr>
+                  </React.Fragment>
                 );
               })}
             </tbody>

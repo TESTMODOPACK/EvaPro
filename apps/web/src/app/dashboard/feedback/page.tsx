@@ -13,6 +13,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
+import SearchableSelect from '@/components/SearchableSelect';
 
 type ActiveTab = 'checkins' | 'quick' | 'locations';
 type QuickSubTab = 'received' | 'given';
@@ -228,12 +229,18 @@ function CheckInsTab() {
                 {ciDepts.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
-            <select className="input" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} style={{ width: '100%' }}>
-              <option value="">Seleccionar colaborador ({users.length} disponibles)...</option>
-              {users.map((u: any) => (
-                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}{u.department ? ` — ${u.department}` : ''}{u.position ? ` (${u.position})` : ''}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={form.employeeId}
+              onChange={(v) => setForm({ ...form, employeeId: v })}
+              placeholder={`Seleccionar colaborador (${users.length} disponibles)...`}
+              ariaLabel="Colaborador para el check-in"
+              options={users.map((u: any) => ({
+                value: u.id,
+                label: `${u.firstName} ${u.lastName}`,
+                hint: [u.department, u.position].filter(Boolean).join(' · '),
+                initials: `${(u.firstName || '?')[0]}${(u.lastName || '?')[0]}`.toUpperCase(),
+              }))}
+            />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div>

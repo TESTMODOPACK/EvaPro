@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
@@ -23,6 +24,7 @@ export default function ResultadosEncuestaPage() {
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const toast = useToastStore((s) => s.toast);
+  const queryClient = useQueryClient();
   const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
   const { isBlocked: aiBlocked } = useAiQuota();
 
@@ -105,6 +107,10 @@ export default function ResultadosEncuestaPage() {
     try {
       const analysis = await api.surveys.generateAiAnalysis(token, surveyId, force);
       setAiAnalysis(analysis);
+      // Invalidar cache del AiQuotaBar — el backend SÍ descontó el crédito,
+      // pero el frontend cachea el contador 30s con staleTime, lo que hacía
+      // que el usuario viera "20 de 1500" sin refrescar la página.
+      await queryClient.invalidateQueries({ queryKey: ['ai', 'quota'] });
       toast(force ? 'Análisis AI regenerado exitosamente' : 'Análisis AI generado exitosamente', 'success');
     } catch (e: any) {
       toast(e.message || 'Error al generar análisis AI', 'error');
