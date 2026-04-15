@@ -208,6 +208,34 @@ async function main() {
     }
     console.log(`[startup] Integrity fixes checked (${integrityFixes.length} items)`);
 
+    // ── 6. Pre-FK orphan nullify (surgical, idempotent) ─────────────────
+    // Adding @ManyToOne to UUID columns that previously had no FK constraint
+    // will fail on TypeORM synchronize if any row points to a user that no
+    // longer exists. We NULL those specific orphan references (nullable
+    // columns only) so the FK constraint can be created cleanly. This is a
+    // controlled, targeted cleanup — not a mass nullify — and only touches
+    // rows whose referenced user_id is already gone.
+    const orphanFkFixes: Array<{ table: string; col: string }> = [
+      { table: 'user_departures', col: 'processed_by' },
+      { table: 'user_movements', col: 'approved_by' },
+      { table: 'contracts', col: 'rejected_by' },
+      { table: 'objectives', col: 'approved_by' },
+    ];
+    for (const { table, col } of orphanFkFixes) {
+      try {
+        const res = await client.query(
+          `UPDATE "${table}" AS t SET "${col}" = NULL
+             WHERE t."${col}" IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = t."${col}")`,
+        );
+        if (res.rowCount && res.rowCount > 0) {
+          console.log(`[startup] Nullified ${res.rowCount} orphan ${table}.${col} reference(s)`);
+        }
+      } catch (err: any) {
+        // Table may not exist yet on very first sync — safe to skip
+      }
+    }
+
     console.log('[startup] Done — all checks passed, no data modified destructively');
   } catch (err: any) {
     console.error('[startup] Error:', err.message);

@@ -63,6 +63,10 @@ export class Contract {
   @Column({ type: 'uuid', name: 'rejected_by', nullable: true })
   rejectedBy: string | null;
 
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'rejected_by' })
+  rejector: User | null;
+
   @Column({ type: 'jsonb', name: 'status_history', nullable: true, default: '[]', comment: 'Array of {status, date, userId, reason?}' })
   statusHistory: Array<{ status: string; date: string; userId?: string; reason?: string }>;
 
