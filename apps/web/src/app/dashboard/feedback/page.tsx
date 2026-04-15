@@ -11,6 +11,7 @@ import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbac
 import { useUsers } from '@/hooks/useUsers';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
+import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 
 type ActiveTab = 'checkins' | 'quick' | 'locations';
@@ -62,6 +63,7 @@ function userName(user?: { firstName: string; lastName: string }) {
 function CheckInsTab() {
   const { t } = useTranslation();
   const { user, token } = useAuthStore();
+  const toast = useToastStore();
   const role = user?.role || '';
   const currentUserId = user?.userId || '';
   const canCreateCheckIn = role === 'tenant_admin' || role === 'manager' || role === 'super_admin';
@@ -138,6 +140,10 @@ function CheckInsTab() {
         onSuccess: () => {
           setForm({ employeeId: '', scheduledDate: '', scheduledTime: '', topic: '', locationId: '' });
           setShowForm(false);
+          toast.success('Check-in agendado correctamente');
+        },
+        onError: (err: any) => {
+          toast.error(err?.message || 'Error al agendar el check-in');
         },
       },
     );

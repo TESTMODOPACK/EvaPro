@@ -5,6 +5,7 @@ import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { formatCLP } from '@/lib/format';
 import { formatRutInput, validateRut, formatRut } from '@/lib/rut';
+import TenantHealthBadge from '@/components/TenantHealthBadge';
 
 function Spinner() {
   return (
@@ -784,6 +785,7 @@ export default function TenantsPage() {
                     <th style={{ whiteSpace: 'nowrap' }}>Plan</th>
                     <th style={{ whiteSpace: 'nowrap' }}>Max Emp.</th>
                     <th style={{ whiteSpace: 'nowrap' }}>Estado</th>
+                    <th style={{ whiteSpace: 'nowrap' }} title="Estado de salud del tenant: suscripción vigente, uso del plan, trial, vencimientos">Salud</th>
                     <th style={{ whiteSpace: 'nowrap' }}>Creado</th>
                     <th style={{ whiteSpace: 'nowrap' }}>Acciones</th>
                   </tr>
@@ -813,6 +815,16 @@ export default function TenantsPage() {
                         <span className={`badge ${t.isActive ? 'badge-success' : 'badge-danger'}`}>
                           {t.isActive ? 'Activo' : 'Inactivo'}
                         </span>
+                      </td>
+                      <td>
+                        <TenantHealthBadge
+                          size="sm"
+                          input={{
+                            tenant: { isActive: t.isActive, createdAt: t.createdAt },
+                            subscription: getSubscription(t.id) as any,
+                            activeUsers: (t as any).userCount ?? null,
+                          }}
+                        />
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                         {new Date(t.createdAt).toLocaleDateString('es-ES')}

@@ -12,6 +12,8 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import EmptyState from '@/components/EmptyState';
+import { useToastStore } from '@/store/toast.store';
 
 const ICONS: Record<string, string> = {
   star: '\u2B50', trophy: '\uD83C\uDFC6', rocket: '\uD83D\uDE80', heart: '\u2764\uFE0F',
@@ -101,6 +103,7 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
   const { data: usersPage } = useUsers(1, 500);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  const toast = useToastStore();
   const { data: competencies } = useQuery({
     queryKey: ['competencies'],
     queryFn: () => api.development.competencies.list(token!),
@@ -128,14 +131,17 @@ function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any })
     try {
       await createMut.mutateAsync({ toUserId, message, valueId: valueId || undefined });
       setToUserId(''); setMessage(''); setValueId('');
+      toast.success('Reconocimiento enviado ✨');
       onSuccess();
     } catch (err: any) {
-      setError(err?.message || 'Error al enviar reconocimiento');
+      const msg = err?.message || 'Error al enviar reconocimiento';
+      setError(msg);
+      toast.error(msg);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+    <form id="new-recognition-form" onSubmit={handleSubmit} className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
       <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 700 }}>{'✨'} {t('reconocimientos.sendTitle')}</h4>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
         <select className="input" value={deptFilter} onChange={(e) => { setDeptFilter(e.target.value); setToUserId(''); }}>
@@ -436,9 +442,24 @@ function ReconocimientosPageContent() {
             if (token) api.recognition.budget(token).then(setBudget).catch(() => {});
           }} t={t} />
           {wall?.data?.length === 0 ? (
-            <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{'✨'}</p>
-              <p>{t('reconocimientos.emptyWall')}</p>
+            <div className="card">
+              <EmptyState
+                icon="✨"
+                title={t('reconocimientos.emptyWall')}
+                description="Los reconocimientos públicos refuerzan la cultura del equipo. Da el primero y reconoce el trabajo de alguien que lo merece."
+                ctaLabel="Enviar mi primer reconocimiento"
+                ctaOnClick={() => {
+                  const el = document.getElementById('new-recognition-form');
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Focus en el primer input del form para UX keyboard-friendly
+                    const firstInput = el.querySelector('select, input, textarea') as HTMLElement | null;
+                    if (firstInput) setTimeout(() => firstInput.focus(), 300);
+                  } else {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
+              />
             </div>
           ) : (
             <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: '600px', overflowY: 'auto' }}>

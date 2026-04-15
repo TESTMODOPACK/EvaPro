@@ -12,6 +12,7 @@ import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { SignatureBadge } from '@/components/SignatureModal';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
+import EmptyState from '@/components/EmptyState';
 import { getScaleLevel } from '@/lib/scales';
 import { useCycles } from '@/hooks/useCycles';
 import { useGapAnalysisIndividual, useCompetencyRadar } from '@/hooks/useReports';
@@ -603,7 +604,15 @@ export default function MiDesempenoPage() {
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{myDevPlans.filter((p: any) => !pdiStatusFilter || p.status === pdiStatusFilter).length} planes</span>
               </div>
               {myDevPlans.filter((p: any) => !pdiStatusFilter || p.status === pdiStatusFilter).length === 0 ? (
-                <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin planes de desarrollo.</div>
+                <div className="card">
+                  <EmptyState
+                    icon="📘"
+                    title="Aún no tienes planes de desarrollo"
+                    description="Un plan de desarrollo (PDI) te ayuda a organizar tus objetivos de aprendizaje y crecimiento profesional. Habla con tu jefatura para crear el primero."
+                    ctaLabel="Ver mi perfil"
+                    ctaHref="/dashboard/perfil"
+                  />
+                </div>
               ) : myDevPlans.filter((p: any) => !pdiStatusFilter || p.status === pdiStatusFilter).map((plan: any) => {
                 const actions = plan.actions || [];
                 const completedAct = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
@@ -987,7 +996,14 @@ export default function MiDesempenoPage() {
                   byUser[uid].plans.push(p);
                 }
                 return Object.keys(byUser).length === 0 ? (
-                  <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin planes de desarrollo del equipo.</div>
+                  <div className="card">
+                    <EmptyState
+                      icon="📘"
+                      title="Tu equipo aún no tiene planes de desarrollo"
+                      description="Un PDI ayuda a tus colaboradores a organizar su crecimiento. Comienza creándoles uno desde la ficha de cada persona."
+                      compact
+                    />
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {Object.entries(byUser).map(([uid, { name, plans }]) => (

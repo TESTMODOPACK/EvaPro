@@ -9,6 +9,7 @@ import { usePendingEvaluations, useMyCompletedEvaluations } from '@/hooks/useEva
 import { useAuthStore } from '@/store/auth.store';
 import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
 import Link from 'next/link';
+import EmptyState from '@/components/EmptyState';
 import {
   cycleStatusLabel, cycleStatusBadge,
   cycleTypeBadge, assignmentStatusLabel as evalStatusLabels,
@@ -37,13 +38,39 @@ function getUrgencyInfo(dueDate: string | null | undefined): { label: string; co
 }
 
 function estimateTime(ev: any): string | null {
+  const count = questionCount(ev);
+  return count > 0 ? `~${Math.max(1, Math.round(count * 12 / 60))} min` : null;
+}
+
+/** Número total de preguntas del template. Útil para preview + tiempo estimado. */
+function questionCount(ev: any): number {
   try {
     const sections = ev.cycle?.template?.sections;
-    if (!sections) return null;
+    if (!sections) return 0;
     const parsed = typeof sections === 'string' ? JSON.parse(sections) : sections;
-    const count = Array.isArray(parsed) ? parsed.reduce((s: number, sec: any) => s + (Array.isArray(sec.questions) ? sec.questions.length : 0), 0) : 0;
-    return count > 0 ? `~${Math.max(1, Math.round(count * 12 / 60))} min` : null;
-  } catch { return null; }
+    return Array.isArray(parsed) ? parsed.reduce((s: number, sec: any) => s + (Array.isArray(sec.questions) ? sec.questions.length : 0), 0) : 0;
+  } catch { return 0; }
+}
+
+/** Intercepta el click del botón Responder con un confirm que resume lo que
+ *  el evaluador está a punto de ver. Si cancela, previene la navegación. */
+function confirmBeforeRespond(e: React.MouseEvent, ev: any, isOverdue: boolean): void {
+  const qCount = questionCount(ev);
+  const time = estimateTime(ev);
+  const cycleName = ev.cycle?.name || '--';
+  const relation = ev.relationType || '';
+  const lines = [
+    '¿Comenzar evaluación?',
+    '',
+    `Ciclo: ${cycleName}`,
+    `Relación: ${relation}`,
+  ];
+  if (qCount > 0) lines.push(`Preguntas: ${qCount}`);
+  if (time) lines.push(`Tiempo estimado: ${time}`);
+  if (isOverdue) lines.push('', '⚠️ Esta evaluación está vencida. Respóndela lo antes posible.');
+  lines.push('', 'Podrás guardar y continuar después.');
+  const ok = typeof window !== 'undefined' ? window.confirm(lines.join('\n')) : true;
+  if (!ok) e.preventDefault();
 }
 
 const typeLabels: Record<string, string> = {
@@ -300,13 +327,35 @@ function EmployeeEvaluationsView() {
                     })()}
                   </div>
                 </div>
-                <Link
-                  href={`/dashboard/evaluaciones/${ev.cycleId}/responder/${ev.id}`}
-                  className="btn-primary"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
-                >
-                  {t('evaluaciones.respond')}
-                </Link>
+                {(() => {
+                  const urgency = getUrgencyInfo(ev.dueDate);
+                  const isOverdue = urgency.color === '#ef4444';
+                  return (
+                    <Link
+                      href={`/dashboard/evaluaciones/${ev.cycleId}/responder/${ev.id}`}
+                      onClick={(e) => confirmBeforeRespond(e, ev, isOverdue)}
+                      aria-label={isOverdue ? `${t('evaluaciones.respond')} — evaluación vencida` : t('evaluaciones.respond')}
+                      className={isOverdue ? '' : 'btn-primary'}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.82rem',
+                        whiteSpace: 'nowrap',
+                        ...(isOverdue ? {
+                          background: '#ef4444',
+                          color: '#fff',
+                          borderRadius: 'var(--radius-sm, 8px)',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.3rem',
+                        } : {}),
+                      }}
+                    >
+                      {isOverdue && <span aria-hidden="true">⚠️ </span>}{t('evaluaciones.respond')}
+                    </Link>
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -607,21 +656,14 @@ function AdminEvaluationsView() {
       {isLoading ? (
         <PageSkeleton cards={0} tableRows={4} />
       ) : !cycles || cycles.length === 0 ? (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-          </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            {t('evaluaciones.noCycles')}
-          </p>
-          {isAdmin && (
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-              {t('evaluaciones.createFirstCycle')}
-            </p>
-          )}
+        <div className="card">
+          <EmptyState
+            icon="📋"
+            title={t('evaluaciones.noCycles')}
+            description={isAdmin ? t('evaluaciones.createFirstCycle') : 'Cuando tu organización lance un ciclo de evaluación aparecerá aquí. Mientras tanto, puedes completar tu perfil o registrar objetivos.'}
+            ctaLabel={isAdmin ? 'Crear primer ciclo' : undefined}
+            ctaHref={isAdmin ? '/dashboard/evaluaciones/nuevo' : undefined}
+          />
         </div>
       ) : (
         <div

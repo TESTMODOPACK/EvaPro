@@ -7,6 +7,7 @@ import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
+import EmptyState from '@/components/EmptyState';
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   draft: { label: 'Borrador', badge: 'badge-ghost' },
@@ -133,15 +134,14 @@ function PostulantesPageContent() {
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><span className="spinner" /></div>
       ) : processes.length === 0 ? (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-          </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{t('postulantes.list.noProcesses')}</p>
-          {isAdmin && <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('postulantes.list.createFirst')}</p>}
+        <div className="card">
+          <EmptyState
+            icon="📄"
+            title={t('postulantes.list.noProcesses')}
+            description={isAdmin ? t('postulantes.list.createFirst') : 'Cuando se abra un proceso de reclutamiento aparecerá aquí. Aprovecha para postularte si corresponde a tu perfil.'}
+            ctaLabel={isAdmin ? 'Crear primer proceso' : undefined}
+            ctaHref={isAdmin ? '/dashboard/postulantes/nuevo' : undefined}
+          />
         </div>
       ) : (
         <div className="animate-fade-up-delay-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
