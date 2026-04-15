@@ -7,4 +7,10 @@ export class CreateDepartureDto {
   reasonCategory?: DepartureReasonCategory;
   reasonDetail?: string;
   wouldRehire?: boolean | null;
+  /**
+   * (Opcional) id del nuevo manager al cual reasignar los reportes directos
+   * del usuario que se está desvinculando. Si se omite, sus reportes quedan
+   * con managerId = null (sin jefatura hasta nueva asignación manual).
+   */
+  reassignToManagerId?: string | null;
 }

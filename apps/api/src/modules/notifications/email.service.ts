@@ -270,6 +270,34 @@ export class EmailService {
     );
   }
 
+  // ─── Template: Welcome Back (boomerang rehire) ──────────────────────────
+
+  async sendWelcomeBack(
+    email: string,
+    data: { firstName: string; orgName: string; tempPassword: string; tenantId?: string; daysInactive?: number },
+  ) {
+    await this.send(
+      email,
+      `Te damos la bienvenida nuevamente a Eva360 — ${data.orgName}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Tu cuenta en ${data.orgName} ha sido reactivada.`,
+        body: `
+          ${this.heading('¡Bienvenido/a de vuelta! 👋')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tu cuenta en <strong>${data.orgName}</strong> ha sido reactivada${data.daysInactive ? ` (estuvo inactiva ${data.daysInactive} día${data.daysInactive === 1 ? '' : 's'})` : ''}.`)}
+          ${this.paragraph('Por seguridad, tu contraseña anterior ya no es válida. Te asignamos una temporal:')}
+          ${this.infoBox([
+            { label: 'Tu email', value: email },
+            { label: 'Contraseña temporal', value: `<code style="font-family:monospace;background:#f1f5f9;padding:2px 6px;border-radius:4px;">${data.tempPassword}</code>` },
+          ])}
+          ${this.alertBox('Por seguridad debes cambiar tu contraseña al iniciar sesión. Si tenías 2FA activo, deberás configurarlo nuevamente.', 'warning')}
+          ${this.cta('Ingresar a la plataforma', `${this.appUrl}/login`)}
+          ${this.divider()}
+          ${this.smallText('Si no esperabas este correo, contacta a tu administrador inmediatamente.')}
+        `,
+      }),
+    );
+  }
+
   // ─── Template: Check-in Scheduled ────────────────────────────────────────
 
   async sendCheckinScheduled(

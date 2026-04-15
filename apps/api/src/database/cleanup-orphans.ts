@@ -198,6 +198,13 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS "idx_org_dev_action_initiative" ON "org_development_actions" ("initiative_id")`,
       `CREATE INDEX IF NOT EXISTS "idx_org_dev_action_assigned" ON "org_development_actions" ("assigned_to_id")`,
       `CREATE INDEX IF NOT EXISTS "idx_recruitment_interview_candidate" ON "recruitment_interviews" ("candidate_id")`,
+      // Stage A departure cascade: token invalidation counter (starts at 0)
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "token_version" integer NOT NULL DEFAULT 0`,
+      // Stage B departure cascade: add 'cancelled' value to AssignmentStatus
+      // enum (PENDING|IN_PROGRESS|COMPLETED → + CANCELLED). ADD VALUE IF NOT
+      // EXISTS is idempotent. TypeORM's default enum type name is
+      // <table>_<column>_enum.
+      `ALTER TYPE "evaluation_assignments_status_enum" ADD VALUE IF NOT EXISTS 'cancelled'`,
     ];
     for (const sql of integrityFixes) {
       try {

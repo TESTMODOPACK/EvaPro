@@ -38,6 +38,19 @@ const DEPARTURE_TYPE_LABELS: Record<string, string> = {
   contract_end: 'Fin de contrato', abandonment: 'Abandono', mutual_agreement: 'Mutuo acuerdo',
 };
 
+const DEPARTURE_REASON_LABELS: Record<string, string> = {
+  better_offer: 'Mejor oferta',
+  work_climate: 'Clima laboral',
+  performance: 'Desempeño',
+  restructuring: 'Reestructuración',
+  personal: 'Motivos personales',
+  relocation: 'Cambio de ciudad',
+  career_growth: 'Crecimiento de carrera',
+  compensation: 'Compensación',
+  health: 'Salud',
+  other: 'Otro',
+};
+
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   general: { label: 'General', color: '#64748b' },
   performance: { label: 'Desempeño', color: '#6366f1' },
@@ -108,6 +121,37 @@ export default function UserProfilePage() {
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [movForm, setMovForm] = useState({ movementType: 'department_change', effectiveDate: new Date().toISOString().split('T')[0], fromDepartment: '', toDepartment: '', fromPosition: '', toPosition: '', reason: '' });
   const [savingMovement, setSavingMovement] = useState(false);
+
+  // Departure form
+  const [showDepartureForm, setShowDepartureForm] = useState(false);
+  const [depForm, setDepForm] = useState<{
+    departureType: string;
+    departureDate: string;
+    isVoluntary: boolean;
+    reasonCategory: string;
+    reasonDetail: string;
+    wouldRehire: 'yes' | 'no' | 'unknown';
+    reassignToManagerId: string;
+  }>({
+    departureType: 'resignation',
+    departureDate: new Date().toISOString().split('T')[0],
+    isVoluntary: true,
+    reasonCategory: '',
+    reasonDetail: '',
+    wouldRehire: 'unknown',
+    reassignToManagerId: '',
+  });
+  const [savingDeparture, setSavingDeparture] = useState(false);
+  // List of potential managers (active managers + admins) for reassignment
+  const [availableManagers, setAvailableManagers] = useState<Array<{ id: string; firstName: string; lastName: string; role: string }>>([]);
+
+  // Stage C: reactivation + edit/cancel departure
+  const [showReactivateForm, setShowReactivateForm] = useState(false);
+  const [reactForm, setReactForm] = useState<{ reasonForReactivation: string; managerId: string }>({ reasonForReactivation: '', managerId: '' });
+  const [savingReactivation, setSavingReactivation] = useState(false);
+  const [editingDepartureId, setEditingDepartureId] = useState<string | null>(null);
+  const [editDepForm, setEditDepForm] = useState<{ reasonCategory: string; reasonDetail: string; wouldRehire: 'yes' | 'no' | 'unknown' }>({ reasonCategory: '', reasonDetail: '', wouldRehire: 'unknown' });
+  const [savingEditDeparture, setSavingEditDeparture] = useState(false);
 
   const isAdmin = currentUser?.role === 'tenant_admin' || currentUser?.role === 'super_admin';
   const isManager = currentUser?.role === 'manager' || isAdmin;
@@ -193,6 +237,148 @@ export default function UserProfilePage() {
       toast.error(err.message || 'Error al registrar movimiento');
     } finally {
       setSavingMovement(false);
+    }
+  };
+
+  // Load available managers (for reassignment dropdown) lazily when form opens
+  const loadAvailableManagers = useCallback(async () => {
+    if (!token || availableManagers.length > 0) return;
+    try {
+      const res = await api.users.list(token, 1, 200, { status: 'active' });
+      const list = (res.data || [])
+        .filter((u: any) => u.id !== userId && (u.role === 'manager' || u.role === 'tenant_admin'))
+        .map((u: any) => ({ id: u.id, firstName: u.firstName, lastName: u.lastName, role: u.role }));
+      setAvailableManagers(list);
+    } catch { /* silent */ }
+  }, [token, userId, availableManagers.length]);
+
+  const handleRegisterDeparture = async () => {
+    if (!token || !depForm.departureDate) return;
+    const confirmed = confirm(
+      `¿Confirmar desvinculación?\n\n` +
+      `Se aplicará de forma automática (transacción atómica):\n\n` +
+      `── Seguridad ──\n` +
+      `• Desactiva al usuario inmediatamente\n` +
+      `• Cierra todas sus sesiones activas (JWT invalidado)\n` +
+      `• Elimina su configuración de 2FA\n\n` +
+      `── Jerarquía ──\n` +
+      `• Reasigna sus reportes directos ${depForm.reassignToManagerId ? 'al manager seleccionado' : '(quedarán sin jefatura)'}\n\n` +
+      `── Trabajo en curso ──\n` +
+      `• Objetivos activos/draft/pendientes → abandonados\n` +
+      `• Planes de desarrollo (PDI) activos → cancelados\n` +
+      `• Acciones PDI pendientes → canceladas\n` +
+      `• Check-ins agendados → cancelados\n` +
+      `• Evaluaciones pendientes/en progreso (como evaluador o evaluado) → canceladas\n` +
+      `• Notificaciones no leídas → archivadas\n` +
+      `• Candidaturas internas activas → rechazadas\n` +
+      `• Entries de calibración pendientes → retirados\n\n` +
+      `Esta acción NO se puede deshacer desde la UI.`,
+    );
+    if (!confirmed) return;
+
+    setSavingDeparture(true);
+    try {
+      const payload: any = {
+        departureType: depForm.departureType,
+        departureDate: depForm.departureDate,
+        isVoluntary: depForm.isVoluntary,
+      };
+      if (depForm.reasonCategory) payload.reasonCategory = depForm.reasonCategory;
+      if (depForm.reasonDetail.trim()) payload.reasonDetail = depForm.reasonDetail.trim();
+      if (depForm.wouldRehire !== 'unknown') payload.wouldRehire = depForm.wouldRehire === 'yes';
+      if (depForm.reassignToManagerId) payload.reassignToManagerId = depForm.reassignToManagerId;
+
+      await api.users.registerDeparture(token, userId, payload);
+      toast.success('Desvinculación registrada');
+      setShowDepartureForm(false);
+      // Reload user + departures
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al registrar desvinculación');
+    } finally {
+      setSavingDeparture(false);
+    }
+  };
+
+  // ─── Stage C handlers ─────────────────────────────────────────────────
+  const isSuperAdmin = currentUser?.role === 'super_admin';
+
+  const handleReactivateUser = async () => {
+    if (!token) return;
+    const confirmed = confirm(
+      `¿Reactivar a este usuario?\n\n` +
+      `Esto:\n` +
+      `• Activará al usuario y limpiará su fecha de desvinculación\n` +
+      `• Le enviará un email de bienvenida con una contraseña temporal\n` +
+      `• Forzará cambio de contraseña al primer login\n` +
+      `• Invalidará cualquier token JWT residual\n\n` +
+      `⚠️ NO se restaurarán sus objetivos, PDI, evaluaciones ni otros registros cancelados previamente — deben re-generarse manualmente si corresponde.\n\n` +
+      `¿Continuar?`,
+    );
+    if (!confirmed) return;
+
+    setSavingReactivation(true);
+    try {
+      const payload: any = {};
+      if (reactForm.reasonForReactivation.trim()) payload.reasonForReactivation = reactForm.reasonForReactivation.trim();
+      if (reactForm.managerId) payload.managerId = reactForm.managerId;
+      const res = await api.users.reactivate(token, userId, payload);
+      toast.success(`Usuario reactivado. Email enviado a ${res.tempPasswordSentTo}`);
+      setShowReactivateForm(false);
+      setReactForm({ reasonForReactivation: '', managerId: '' });
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al reactivar usuario');
+    } finally {
+      setSavingReactivation(false);
+    }
+  };
+
+  const handleStartEditDeparture = (d: any) => {
+    setEditingDepartureId(d.id);
+    setEditDepForm({
+      reasonCategory: d.reasonCategory || '',
+      reasonDetail: d.reasonDetail || '',
+      wouldRehire: d.wouldRehire === true ? 'yes' : d.wouldRehire === false ? 'no' : 'unknown',
+    });
+  };
+
+  const handleSaveEditDeparture = async () => {
+    if (!token || !editingDepartureId) return;
+    setSavingEditDeparture(true);
+    try {
+      const payload: any = {
+        reasonCategory: editDepForm.reasonCategory || null,
+        reasonDetail: editDepForm.reasonDetail.trim() || null,
+        wouldRehire: editDepForm.wouldRehire === 'yes' ? true : editDepForm.wouldRehire === 'no' ? false : null,
+      };
+      await api.users.updateDeparture(token, userId, editingDepartureId, payload);
+      toast.success('Registro de desvinculación actualizado');
+      setEditingDepartureId(null);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al actualizar desvinculación');
+    } finally {
+      setSavingEditDeparture(false);
+    }
+  };
+
+  const handleCancelDeparture = async (d: any) => {
+    if (!token) return;
+    const reason = prompt(
+      `Cancelar esta desvinculación (del ${new Date(d.departureDate).toLocaleDateString()})?\n\n` +
+      `Esto eliminará el registro y reactivará al usuario si está inactivo.\n` +
+      `⚠️ NO se restaurarán objetivos, PDI, evaluaciones ni otros registros cancelados previamente.\n\n` +
+      `Motivo (requerido):`,
+    );
+    if (!reason || !reason.trim()) return;
+
+    try {
+      const res = await api.users.cancelDeparture(token, userId, d.id, reason.trim());
+      toast.success(res.reactivated ? 'Desvinculación cancelada y usuario reactivado' : 'Desvinculación cancelada');
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al cancelar desvinculación');
     }
   };
 
@@ -509,10 +695,167 @@ export default function UserProfilePage() {
                 Movimientos internos y salidas registradas
               </p>
             </div>
-            <button className="btn-primary" onClick={() => setShowMovementForm(!showMovementForm)}>
-              {showMovementForm ? 'Cancelar' : '+ Registrar Movimiento'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {isAdmin && !user?.isActive && user?.departureDate && (
+                <button
+                  onClick={() => {
+                    setShowReactivateForm(!showReactivateForm);
+                    if (!showReactivateForm) loadAvailableManagers();
+                  }}
+                  style={{
+                    background: showReactivateForm ? 'var(--bg-surface)' : '#10b981',
+                    color: showReactivateForm ? 'var(--text-primary)' : '#fff',
+                    border: showReactivateForm ? '1px solid var(--border)' : 'none',
+                    padding: '0.5rem 0.9rem',
+                    borderRadius: 'var(--radius-sm, 8px)',
+                    cursor: 'pointer',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {showReactivateForm ? 'Cancelar' : '↻ Reactivar Usuario'}
+                </button>
+              )}
+              {isAdmin && user?.isActive && (
+                <button
+                  onClick={() => {
+                    setShowDepartureForm(!showDepartureForm);
+                    if (!showDepartureForm) loadAvailableManagers();
+                  }}
+                  style={{
+                    background: showDepartureForm ? 'var(--bg-surface)' : '#ef4444',
+                    color: showDepartureForm ? 'var(--text-primary)' : '#fff',
+                    border: showDepartureForm ? '1px solid var(--border)' : 'none',
+                    padding: '0.5rem 0.9rem',
+                    borderRadius: 'var(--radius-sm, 8px)',
+                    cursor: 'pointer',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {showDepartureForm ? 'Cancelar' : '× Registrar Desvinculación'}
+                </button>
+              )}
+              <button className="btn-primary" onClick={() => setShowMovementForm(!showMovementForm)}>
+                {showMovementForm ? 'Cancelar' : '+ Registrar Movimiento'}
+              </button>
+            </div>
           </div>
+
+          {/* Reactivation form */}
+          {showReactivateForm && (
+            <div style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 'var(--radius-sm, 8px)', padding: '1.25rem', marginBottom: '1.25rem' }}>
+              <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.08)', borderRadius: '6px', fontSize: '0.78rem', color: '#065f46' }}>
+                ↻ Reactivación de usuario desvinculado. Se enviará un email con contraseña temporal. Los objetivos/PDI/evaluaciones previos <strong>no se restauran</strong> automáticamente.
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>Asignar manager (opcional)</label>
+                <select style={inputStyle} value={reactForm.managerId} onChange={(e) => setReactForm({ ...reactForm, managerId: e.target.value })}>
+                  <option value="">— Sin manager asignado —</option>
+                  {availableManagers.map(m => (
+                    <option key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.role === 'tenant_admin' ? 'Admin' : 'Manager'})</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>Motivo de reactivación (opcional)</label>
+                <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} placeholder="Ej: Acepta nueva oferta, regreso tras licencia, etc." value={reactForm.reasonForReactivation} onChange={(e) => setReactForm({ ...reactForm, reasonForReactivation: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleReactivateUser}
+                  disabled={savingReactivation}
+                  style={{
+                    background: '#10b981', color: '#fff', border: 'none',
+                    padding: '0.55rem 1rem', borderRadius: 'var(--radius-sm, 8px)',
+                    cursor: savingReactivation ? 'not-allowed' : 'pointer',
+                    fontSize: '0.85rem', fontWeight: 600, opacity: savingReactivation ? 0.6 : 1,
+                  }}
+                >
+                  {savingReactivation ? 'Reactivando...' : 'Confirmar reactivación'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Departure form */}
+          {showDepartureForm && (
+            <div style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm, 8px)', padding: '1.25rem', marginBottom: '1.25rem' }}>
+              <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', borderRadius: '6px', fontSize: '0.78rem', color: '#b91c1c' }}>
+                ⚠️ La desvinculación es <strong>irreversible desde la UI</strong>: desactiva al usuario, invalida sus sesiones, reasigna sus reportes directos y limpia su 2FA.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Tipo de salida</label>
+                  <select style={inputStyle} value={depForm.departureType} onChange={(e) => setDepForm({ ...depForm, departureType: e.target.value, isVoluntary: ['resignation', 'retirement', 'mutual_agreement'].includes(e.target.value) })}>
+                    <option value="resignation">Renuncia</option>
+                    <option value="termination">Despido</option>
+                    <option value="retirement">Jubilación</option>
+                    <option value="contract_end">Fin de contrato</option>
+                    <option value="abandonment">Abandono</option>
+                    <option value="mutual_agreement">Mutuo acuerdo</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Fecha efectiva</label>
+                  <input type="date" style={inputStyle} value={depForm.departureDate} onChange={(e) => setDepForm({ ...depForm, departureDate: e.target.value })} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Categoría de motivo</label>
+                  <select style={inputStyle} value={depForm.reasonCategory} onChange={(e) => setDepForm({ ...depForm, reasonCategory: e.target.value })}>
+                    <option value="">— Sin especificar —</option>
+                    {Object.entries(DEPARTURE_REASON_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>¿Recontratable?</label>
+                  <select style={inputStyle} value={depForm.wouldRehire} onChange={(e) => setDepForm({ ...depForm, wouldRehire: e.target.value as 'yes' | 'no' | 'unknown' })}>
+                    <option value="unknown">Sin determinar</option>
+                    <option value="yes">Sí</option>
+                    <option value="no">No</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>Reasignar reportes directos a</label>
+                <select style={inputStyle} value={depForm.reassignToManagerId} onChange={(e) => setDepForm({ ...depForm, reassignToManagerId: e.target.value })}>
+                  <option value="">— Dejar sin jefatura (managerId = null) —</option>
+                  {availableManagers.map(m => (
+                    <option key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.role === 'tenant_admin' ? 'Admin' : 'Manager'})</option>
+                  ))}
+                </select>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+                  Sólo se ofrecen usuarios activos con rol manager o tenant_admin.
+                </p>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>Detalle adicional (opcional)</label>
+                <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} placeholder="Ej: Aceptó oferta en otra empresa, cierre de proyecto, etc." value={depForm.reasonDetail} onChange={(e) => setDepForm({ ...depForm, reasonDetail: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <input type="checkbox" id="isVoluntary" checked={depForm.isVoluntary} onChange={(e) => setDepForm({ ...depForm, isVoluntary: e.target.checked })} />
+                <label htmlFor="isVoluntary" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>Salida voluntaria</label>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleRegisterDeparture}
+                  disabled={savingDeparture || !depForm.departureDate}
+                  style={{
+                    background: '#ef4444', color: '#fff', border: 'none',
+                    padding: '0.55rem 1rem', borderRadius: 'var(--radius-sm, 8px)',
+                    cursor: savingDeparture ? 'not-allowed' : 'pointer',
+                    fontSize: '0.85rem', fontWeight: 600, opacity: savingDeparture ? 0.6 : 1,
+                  }}
+                >
+                  {savingDeparture ? 'Registrando...' : 'Confirmar desvinculación'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Create movement form */}
           {showMovementForm && (
@@ -573,19 +916,81 @@ export default function UserProfilePage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {/* Departures */}
-              {departures.map((d: any) => (
-                <div key={d.id} style={{ padding: '0.85rem 1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', borderLeft: '3px solid #ef4444' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>Salida de la empresa</span>
-                      <span style={badgeStyle('#ef4444')}>{DEPARTURE_TYPE_LABELS[d.departureType] || d.departureType}</span>
-                      <span style={badgeStyle(d.isVoluntary ? '#f59e0b' : '#ef4444')}>{d.isVoluntary ? 'Voluntaria' : 'Involuntaria'}</span>
+              {departures.map((d: any, idx: number) => {
+                const isEditing = editingDepartureId === d.id;
+                const isLatest = idx === 0; // departures are sorted DESC by date
+                return (
+                  <div key={d.id} style={{ padding: '0.85rem 1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', borderLeft: '3px solid #ef4444' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>Salida de la empresa</span>
+                        <span style={badgeStyle('#ef4444')}>{DEPARTURE_TYPE_LABELS[d.departureType] || d.departureType}</span>
+                        <span style={badgeStyle(d.isVoluntary ? '#f59e0b' : '#ef4444')}>{d.isVoluntary ? 'Voluntaria' : 'Involuntaria'}</span>
+                        {d.reasonCategory && <span style={badgeStyle('#64748b')}>{DEPARTURE_REASON_LABELS[d.reasonCategory] || d.reasonCategory}</span>}
+                        {d.wouldRehire === true && <span style={badgeStyle('#10b981')}>Recontratable</span>}
+                        {d.wouldRehire === false && <span style={badgeStyle('#ef4444')}>No recontratable</span>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{fmtDate(d.departureDate)}</span>
+                        {isAdmin && !isEditing && (
+                          <button
+                            onClick={() => handleStartEditDeparture(d)}
+                            title="Editar detalles"
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-muted)', padding: '0.2rem 0.4rem' }}
+                          >
+                            ✏️
+                          </button>
+                        )}
+                        {isSuperAdmin && !isEditing && isLatest && (
+                          <button
+                            onClick={() => handleCancelDeparture(d)}
+                            title="Cancelar desvinculación (reactiva al usuario)"
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#ef4444', padding: '0.2rem 0.4rem' }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{fmtDate(d.departureDate)}</span>
+                    {!isEditing && d.reasonDetail && (
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>{d.reasonDetail}</p>
+                    )}
+                    {isEditing && (
+                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--bg-main, #fafafa)', borderRadius: '6px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <div>
+                            <label style={labelStyle}>Categoría</label>
+                            <select style={inputStyle} value={editDepForm.reasonCategory} onChange={(e) => setEditDepForm({ ...editDepForm, reasonCategory: e.target.value })}>
+                              <option value="">— Sin especificar —</option>
+                              {Object.entries(DEPARTURE_REASON_LABELS).map(([k, v]) => (
+                                <option key={k} value={k}>{v}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={labelStyle}>¿Recontratable?</label>
+                            <select style={inputStyle} value={editDepForm.wouldRehire} onChange={(e) => setEditDepForm({ ...editDepForm, wouldRehire: e.target.value as 'yes' | 'no' | 'unknown' })}>
+                              <option value="unknown">Sin determinar</option>
+                              <option value="yes">Sí</option>
+                              <option value="no">No</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <label style={labelStyle}>Detalle</label>
+                          <textarea style={{ ...inputStyle, minHeight: '50px', resize: 'vertical' }} value={editDepForm.reasonDetail} onChange={(e) => setEditDepForm({ ...editDepForm, reasonDetail: e.target.value })} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                          <button onClick={() => setEditingDepartureId(null)} style={{ padding: '0.35rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem' }}>Cancelar</button>
+                          <button onClick={handleSaveEditDeparture} disabled={savingEditDeparture} style={{ padding: '0.35rem 0.75rem', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '6px', cursor: savingEditDeparture ? 'not-allowed' : 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
+                            {savingEditDeparture ? 'Guardando...' : 'Guardar'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {d.reasonDetail && <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>{d.reasonDetail}</p>}
-                </div>
-              ))}
+                );
+              })}
 
               {/* Movements */}
               {movements.map((m: any) => {

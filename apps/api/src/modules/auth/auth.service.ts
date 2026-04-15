@@ -51,6 +51,9 @@ export class AuthService {
       role: user.role,
       firstName: user.firstName || '',
       lastName: user.lastName || '',
+      // tv: bump en BD invalida todos los JWTs emitidos (usado por cascade
+      // de desvinculación y cualquier logout remoto futuro).
+      tv: user.tokenVersion ?? 0,
     };
 
     // Log successful login — super_admin logs are system-level (tenantId=null)
@@ -109,6 +112,7 @@ export class AuthService {
       role: user.role,
       firstName: user.firstName || '',
       lastName: user.lastName || '',
+      tv: user.tokenVersion ?? 0,
     };
 
     // Same per-tenant timeout logic as login

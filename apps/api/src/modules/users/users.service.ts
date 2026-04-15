@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not, In } from 'typeorm';
+import { DataSource, Repository, IsNull, Not, In } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { UserNote } from './entities/user-note.entity';
@@ -19,10 +19,13 @@ import { Position } from '../tenants/entities/position.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateDepartureDto } from './dto/create-departure.dto';
+import { UpdateDepartureDto } from './dto/update-departure.dto';
+import { ReactivateUserDto } from './dto/reactivate-user.dto';
 import { CreateMovementDto } from './dto/create-movement.dto';
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../notifications/email.service';
 import { looksLikeRut, normalizeRut, validateRut } from '../../common/utils/rut-validator';
 
 @Injectable()
@@ -47,6 +50,8 @@ export class UsersService {
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
+    private readonly emailService: EmailService,
+    private readonly dataSource: DataSource,
   ) {}
 
   private static readonly DEFAULT_DEPARTMENTS = [
@@ -474,6 +479,37 @@ export class UsersService {
 
   // ─── Departure Tracking ────────────────────────────────────────────────
 
+  /**
+   * Registra una desvinculación con cascade atómico (transacción).
+   *
+   * ═══ Etapa A (seguridad / jerarquía) ═══
+   *   1. Inserta UserDeparture (snapshot de dept/cargo al momento de la salida)
+   *   2. Si dto.reassignToManagerId fue provisto: valida que sea manager/admin
+   *      activo del mismo tenant, y reasigna todos los direct reports. Si no
+   *      se provee, sus reportes quedan con managerId = null.
+   *   3. Limpia 2FA (silent — el usuario ya no debe poder usar la cuenta)
+   *   4. Desactiva user + setea departureDate
+   *   5. Incrementa tokenVersion → invalida todos los JWTs emitidos
+   *
+   * ═══ Etapa B (trabajo en curso) ═══
+   *   6. Objetivos del user (DRAFT/PENDING_APPROVAL/ACTIVE) → ABANDONED
+   *   7. Desliga children: parent_objective_id = NULL en objetivos de OTROS
+   *      users que apuntaban a objetivos recién abandonados
+   *   8. DevelopmentPlans del user (borrador/activo/en_revision) → cancelado
+   *   9. DevelopmentActions asignadas al user o en planes del user → cancelada
+   *  10. CheckIns (manager_id o employee_id = user, requested/scheduled) → cancelled
+   *  11. EvaluationAssignments (evaluator o evaluatee = user, pending/in_progress)
+   *      → cancelled
+   *  12. Notifications no-leídas del user → marked as read (archive)
+   *  13. RecruitmentCandidates (candidate_type='internal', user_id=user, stage
+   *      no-terminal) → rejected + recruiter_notes con razón
+   *  14. CalibrationEntries (user_id=user, status != agreed) → status='withdrawn'
+   *
+   *  15. Audit log con metadata estructurada del cascade completo
+   *
+   * Si cualquier paso falla, toda la transacción hace rollback y el usuario
+   * queda ACTIVE. El audit log es fire-and-forget post-commit (no crítico).
+   */
   async registerDeparture(
     userId: string,
     tenantId: string,
@@ -484,35 +520,270 @@ export class UsersService {
     if (user.tenantId !== tenantId) throw new NotFoundException('Usuario no encontrado');
     if (!user.isActive) throw new BadRequestException('El usuario ya está inactivo');
 
-    // Create departure record
-    const departure = this.departureRepo.create({
-      tenantId,
-      userId,
-      departureDate: new Date(dto.departureDate),
-      departureType: dto.departureType,
-      isVoluntary: dto.isVoluntary,
-      reasonCategory: dto.reasonCategory || null,
-      reasonDetail: dto.reasonDetail || null,
-      lastDepartment: user.department || null,
-      lastPosition: user.position || null,
-      wouldRehire: dto.wouldRehire ?? null,
-      processedBy: processedById,
-    });
-    const saved = await this.departureRepo.save(departure);
+    // Validación pre-transacción del manager de reasignación (si se provee)
+    let reassignManager: User | null = null;
+    if (dto.reassignToManagerId) {
+      if (dto.reassignToManagerId === userId) {
+        throw new BadRequestException('No se puede reasignar reportes al propio usuario desvinculado');
+      }
+      reassignManager = await this.userRepository.findOne({
+        where: { id: dto.reassignToManagerId, tenantId },
+      });
+      if (!reassignManager) {
+        throw new BadRequestException('Manager de reasignación no encontrado en la organización');
+      }
+      if (!reassignManager.isActive) {
+        throw new BadRequestException('El manager de reasignación está inactivo');
+      }
+      if (reassignManager.role !== 'manager' && reassignManager.role !== 'tenant_admin') {
+        throw new BadRequestException('El usuario de reasignación no es manager ni admin');
+      }
+    }
 
-    // Deactivate user
-    user.isActive = false;
-    user.departureDate = new Date(dto.departureDate);
-    await this.userRepository.save(user);
+    const departureDateObj = new Date(dto.departureDate);
+    const snapshotDept = user.department || null;
+    const snapshotPos = user.position || null;
 
-    // Audit
-    await this.auditService.log(tenantId, processedById, 'user.departed', 'user', userId, {
-      departureType: dto.departureType,
-      isVoluntary: dto.isVoluntary,
-      reasonCategory: dto.reasonCategory,
-      lastDepartment: user.department,
-      lastPosition: user.position,
-    }).catch(() => {});
+    // Cascade atómico
+    const cascadeResult =
+      await this.dataSource.transaction(async (em) => {
+        // ─── Etapa A ───────────────────────────────────────────────
+
+        // 1. Departure record
+        const departure = em.getRepository(UserDeparture).create({
+          tenantId,
+          userId,
+          departureDate: departureDateObj,
+          departureType: dto.departureType,
+          isVoluntary: dto.isVoluntary,
+          reasonCategory: dto.reasonCategory || null,
+          reasonDetail: dto.reasonDetail || null,
+          lastDepartment: snapshotDept,
+          lastPosition: snapshotPos,
+          wouldRehire: dto.wouldRehire ?? null,
+          processedBy: processedById,
+        });
+        const saved = await em.getRepository(UserDeparture).save(departure);
+
+        // 2. Reasignar direct reports
+        const userRepo = em.getRepository(User);
+        const newManagerId = dto.reassignToManagerId || null;
+        const updateResult = await userRepo.update(
+          { tenantId, managerId: userId, isActive: true },
+          { managerId: newManagerId as any }, // TS: User.managerId is `string` but DB column is nullable
+        );
+        const reportsAffected = updateResult.affected ?? 0;
+
+        // 3-5. Desactivar user + limpiar 2FA + bump tokenVersion (un solo UPDATE).
+        // Se usa QueryBuilder para poder usar expresión SQL raw `token_version + 1`
+        // de forma atómica en el mismo UPDATE (evita read-then-write race).
+        const clearedTwoFactor = !!user.twoFactorEnabled || !!user.twoFactorSecret;
+        await em
+          .createQueryBuilder()
+          .update(User)
+          .set({
+            isActive: false,
+            departureDate: departureDateObj,
+            twoFactorEnabled: false,
+            twoFactorSecret: null,
+            tokenVersion: () => '"token_version" + 1',
+          })
+          .where('id = :id', { id: userId })
+          .execute();
+
+        // ─── Etapa B (trabajo en curso) ───────────────────────────
+        // Todos los UPDATEs se filtran por tenant_id para aislar multi-tenant
+        // y por status para no tocar entidades ya en estado terminal.
+        // Usamos em.query() con parámetros posicionales para simplicidad;
+        // cada entidad que no exista (tabla ausente en primera corrida) se
+        // maneja individualmente con try/catch para no abortar la transacción.
+
+        /**
+         * Ejecuta un UPDATE raw y retorna el número de filas afectadas.
+         * TypeORM+pg devuelve `[rows, rowCount]` para UPDATEs simples, pero
+         * algunos paths legacy devuelven sólo `rows` o un Result object.
+         * Probamos varios formatos en orden; si ninguno encaja devolvemos 0
+         * (la operación igualmente se ejecutó — sólo se pierde el contador).
+         *
+         * Si la tabla/columna no existe (primer deploy pre-sync) el error se
+         * ignora. Cualquier otro error aborta la transacción.
+         */
+        const safeExec = async (sql: string, params: any[]): Promise<number> => {
+          try {
+            const res: any = await em.query(sql, params);
+            if (Array.isArray(res) && res.length === 2 && typeof res[1] === 'number') {
+              return res[1]; // [rows, rowCount]
+            }
+            if (res && typeof res.rowCount === 'number') {
+              return res.rowCount; // pg Result object
+            }
+            if (res && typeof res.affected === 'number') {
+              return res.affected; // TypeORM UpdateResult shape
+            }
+            return 0;
+          } catch (err) {
+            const msg = (err as any)?.message || '';
+            if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('column')) {
+              return 0;
+            }
+            throw err;
+          }
+        };
+
+        // 6. Objetivos: abandonar los activos/draft/pending del user
+        const objectivesAbandoned = await safeExec(
+          `UPDATE objectives SET status = 'abandoned', updated_at = NOW()
+             WHERE user_id = $1 AND tenant_id = $2
+               AND status IN ('draft', 'pending_approval', 'active')`,
+          [userId, tenantId],
+        );
+
+        // 7. Desligar children: objetivos de OTROS users que apuntaban a los
+        //    objetivos recién abandonados → parent_objective_id = NULL
+        const childrenDetached = await safeExec(
+          `UPDATE objectives SET parent_objective_id = NULL, updated_at = NOW()
+             WHERE tenant_id = $1
+               AND parent_objective_id IN (
+                 SELECT id FROM objectives
+                  WHERE user_id = $2 AND tenant_id = $1 AND status = 'abandoned'
+               )
+               AND user_id <> $2`,
+          [tenantId, userId],
+        );
+
+        // 8. DevelopmentPlans del user → cancelado
+        const plansCancelled = await safeExec(
+          `UPDATE development_plans SET status = 'cancelado', updated_at = NOW()
+             WHERE user_id = $1 AND tenant_id = $2
+               AND status IN ('borrador', 'activo', 'en_revision')`,
+          [userId, tenantId],
+        );
+
+        // 9. DevelopmentActions en planes del user → cancelada.
+        //    development_actions no tiene assigned_to_id; se scopea vía
+        //    plan_id → plan.user_id (dueño del PDI).
+        const actionsCancelled = await safeExec(
+          `UPDATE development_actions SET status = 'cancelada', updated_at = NOW()
+             WHERE tenant_id = $1
+               AND status IN ('pendiente', 'en_progreso')
+               AND plan_id IN (SELECT id FROM development_plans WHERE user_id = $2 AND tenant_id = $1)`,
+          [tenantId, userId],
+        );
+
+        // 10. CheckIns: manager o employee = user, no-terminales → cancelled
+        const checkinsCancelled = await safeExec(
+          `UPDATE checkins SET status = 'cancelled', updated_at = NOW()
+             WHERE tenant_id = $1
+               AND status IN ('requested', 'scheduled')
+               AND (manager_id = $2 OR employee_id = $2)`,
+          [tenantId, userId],
+        );
+
+        // 11. EvaluationAssignments: evaluator o evaluatee = user, pending/in_progress
+        const assignmentsCancelled = await safeExec(
+          `UPDATE evaluation_assignments SET status = 'cancelled'
+             WHERE tenant_id = $1
+               AND status IN ('pending', 'in_progress')
+               AND (evaluator_id = $2 OR evaluatee_id = $2)`,
+          [tenantId, userId],
+        );
+
+        // 12. Notifications no-leídas del user → marcar como leídas
+        //     (Notification entity no tiene read_at; updated_at lo registra TypeORM)
+        const notificationsArchived = await safeExec(
+          `UPDATE notifications SET is_read = true, updated_at = NOW()
+             WHERE user_id = $1 AND tenant_id = $2 AND is_read = false`,
+          [userId, tenantId],
+        );
+
+        // 13. RecruitmentCandidates: candidaturas internas activas → rejected
+        const candidaturesRejected = await safeExec(
+          `UPDATE recruitment_candidates
+              SET stage = 'rejected',
+                  recruiter_notes = COALESCE(recruiter_notes, '') ||
+                    CASE WHEN recruiter_notes IS NULL OR recruiter_notes = '' THEN '' ELSE E'\n' END ||
+                    '[Auto ' || TO_CHAR(NOW(), 'YYYY-MM-DD') || '] Candidato desvinculado de la organización',
+                  updated_at = NOW()
+             WHERE tenant_id = $1
+               AND candidate_type = 'internal'
+               AND user_id = $2
+               AND stage NOT IN ('hired', 'rejected')`,
+          [tenantId, userId],
+        );
+
+        // 14. CalibrationEntries: status != agreed → withdrawn.
+        //     calibration_entries no tiene tenant_id (se scopea vía session);
+        //     hacemos JOIN implícito para aislar multi-tenant defensivamente.
+        const calibrationWithdrawn = await safeExec(
+          `UPDATE calibration_entries SET status = 'withdrawn', updated_at = NOW()
+             WHERE user_id = $1
+               AND status IN ('pending', 'discussed')
+               AND session_id IN (
+                 SELECT id FROM calibration_sessions WHERE tenant_id = $2
+               )`,
+          [userId, tenantId],
+        );
+
+        return {
+          saved,
+          reportsAffected,
+          tokensInvalidated: true,
+          clearedTwoFactor,
+          objectivesAbandoned,
+          childrenDetached,
+          plansCancelled,
+          actionsCancelled,
+          checkinsCancelled,
+          assignmentsCancelled,
+          notificationsArchived,
+          candidaturesRejected,
+          calibrationWithdrawn,
+        };
+      });
+
+    const {
+      saved,
+      reportsAffected,
+      tokensInvalidated,
+      clearedTwoFactor,
+      objectivesAbandoned,
+      childrenDetached,
+      plansCancelled,
+      actionsCancelled,
+      checkinsCancelled,
+      assignmentsCancelled,
+      notificationsArchived,
+      candidaturesRejected,
+      calibrationWithdrawn,
+    } = cascadeResult;
+
+    // 15. Audit (post-commit, fire-and-forget) con metadata completa
+    await this.auditService
+      .log(tenantId, processedById, 'user.departed', 'user', userId, {
+        departureType: dto.departureType,
+        isVoluntary: dto.isVoluntary,
+        reasonCategory: dto.reasonCategory ?? null,
+        lastDepartment: snapshotDept,
+        lastPosition: snapshotPos,
+        cascade: {
+          // Etapa A
+          reportsReassigned: reportsAffected,
+          reassignedTo: dto.reassignToManagerId ?? null,
+          clearedTwoFactor,
+          tokensInvalidated,
+          // Etapa B
+          objectivesAbandoned,
+          childrenDetached,
+          plansCancelled,
+          actionsCancelled,
+          checkinsCancelled,
+          assignmentsCancelled,
+          notificationsArchived,
+          candidaturesRejected,
+          calibrationWithdrawn,
+        },
+      })
+      .catch(() => {});
 
     return saved;
   }
@@ -522,6 +793,240 @@ export class UsersService {
       where: { userId, tenantId },
       order: { departureDate: 'DESC' },
     });
+  }
+
+  // ─── Stage C: Reactivación / Edit / Cancel departure ──────────────────
+
+  /**
+   * Reactiva un usuario previamente desvinculado (boomerang rehire).
+   *
+   * Acciones atómicas (una sola transacción):
+   *   1. Valida que user.isActive === false (si ya está activo, 400)
+   *   2. Pre-flight: verifica que su email sigue disponible (no colisión)
+   *   3. Opcionalmente reasigna un nuevo manager (valida activo/rol)
+   *   4. Genera password temporal + bump tokenVersion + mustChangePassword
+   *   5. Setea isActive = true, departureDate = null
+   *   6. Audit log `user.reactivated` con metadata
+   *   7. Post-commit: envía email "welcome back" con temp password
+   *
+   * NO intenta restaurar objetivos/PDI/evaluaciones/etc del Stage B cascade.
+   * Esos registros quedan en su estado final (ABANDONED / CANCELLED) y el
+   * admin debe re-generarlos manualmente si corresponde.
+   */
+  async reactivateUser(
+    userId: string,
+    tenantId: string,
+    dto: ReactivateUserDto,
+    processedById: string,
+  ): Promise<{ ok: boolean; tempPasswordSentTo: string }> {
+    const user = await this.findByIdScoped(userId, tenantId);
+    if (user.isActive) throw new BadRequestException('El usuario ya está activo');
+
+    // Pre-flight: email collision check (alguien pudo haber tomado el email)
+    const emailCollision = await this.userRepository.findOne({
+      where: { tenantId, email: user.email, id: Not(userId), isActive: true },
+    });
+    if (emailCollision) {
+      throw new ConflictException(
+        `El email ${user.email} ya está en uso por otro usuario activo. ` +
+        'Debe cambiar el email del otro usuario antes de reactivar.',
+      );
+    }
+
+    // Validación de manager de reasignación (si se provee)
+    if (dto.managerId) {
+      if (dto.managerId === userId) {
+        throw new BadRequestException('Un usuario no puede ser su propio manager');
+      }
+      const newManager = await this.userRepository.findOne({
+        where: { id: dto.managerId, tenantId },
+      });
+      if (!newManager) throw new BadRequestException('Manager no encontrado');
+      if (!newManager.isActive) throw new BadRequestException('El manager está inactivo');
+      if (newManager.role !== 'manager' && newManager.role !== 'tenant_admin') {
+        throw new BadRequestException('El usuario asignado no tiene rol de manager o admin');
+      }
+    }
+
+    // Generar password temporal + hash
+    const tempPassword = Math.random().toString(36).slice(2, 10) + 'A1!';
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+    const daysInactive = user.departureDate
+      ? Math.floor((Date.now() - new Date(user.departureDate).getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    const lastDepartureDate = user.departureDate;
+
+    // Cascade atómico
+    await this.dataSource.transaction(async (em) => {
+      await em
+        .createQueryBuilder()
+        .update(User)
+        .set({
+          isActive: true,
+          departureDate: null as any,
+          passwordHash,
+          mustChangePassword: true,
+          tokenVersion: () => '"token_version" + 1',
+          ...(dto.managerId !== undefined ? { managerId: (dto.managerId || null) as any } : {}),
+        })
+        .where('id = :id', { id: userId })
+        .execute();
+    });
+
+    // Audit (post-commit)
+    await this.auditService
+      .log(tenantId, processedById, 'user.reactivated', 'user', userId, {
+        lastDepartureDate,
+        daysInactive,
+        reasonForReactivation: dto.reasonForReactivation || null,
+        managerAssigned: dto.managerId || null,
+      })
+      .catch(() => {});
+
+    // Email welcome-back (fire-and-forget)
+    try {
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      await this.emailService.sendWelcomeBack(user.email, {
+        firstName: user.firstName,
+        orgName: tenant?.name || 'Eva360',
+        tempPassword,
+        tenantId,
+        daysInactive: daysInactive ?? undefined,
+      });
+    } catch {
+      // Email no-crítico; el admin puede reenviar invite si falla
+    }
+
+    return { ok: true, tempPasswordSentTo: user.email };
+  }
+
+  /**
+   * Edita los campos de diagnóstico/seguimiento de un registro de
+   * desvinculación existente. Sólo se permite modificar reasonCategory,
+   * reasonDetail, wouldRehire (los datos legales son inmutables).
+   */
+  async updateDeparture(
+    userId: string,
+    departureId: string,
+    tenantId: string,
+    dto: UpdateDepartureDto,
+    processedById: string,
+  ): Promise<UserDeparture> {
+    const departure = await this.departureRepo.findOne({
+      where: { id: departureId, userId, tenantId },
+    });
+    if (!departure) throw new NotFoundException('Registro de desvinculación no encontrado');
+
+    const changes: Record<string, { from: any; to: any }> = {};
+    if (dto.reasonCategory !== undefined && dto.reasonCategory !== departure.reasonCategory) {
+      changes.reasonCategory = { from: departure.reasonCategory, to: dto.reasonCategory };
+      departure.reasonCategory = dto.reasonCategory;
+    }
+    if (dto.reasonDetail !== undefined && dto.reasonDetail !== departure.reasonDetail) {
+      changes.reasonDetail = { from: departure.reasonDetail, to: dto.reasonDetail };
+      departure.reasonDetail = dto.reasonDetail;
+    }
+    if (dto.wouldRehire !== undefined && dto.wouldRehire !== departure.wouldRehire) {
+      changes.wouldRehire = { from: departure.wouldRehire, to: dto.wouldRehire };
+      departure.wouldRehire = dto.wouldRehire;
+    }
+
+    if (Object.keys(changes).length === 0) return departure;
+
+    const saved = await this.departureRepo.save(departure);
+
+    await this.auditService
+      .log(tenantId, processedById, 'user_departure.edited', 'user_departure', departureId, {
+        userId,
+        fieldsChanged: Object.keys(changes),
+        changes,
+      })
+      .catch(() => {});
+
+    return saved;
+  }
+
+  /**
+   * Cancela una desvinculación registrada por error (soft rollback):
+   *   1. Valida que el registro sea el MÁS RECIENTE del usuario (no se
+   *      puede rollbackear una desvinculación antigua si hay otra posterior)
+   *   2. Si el usuario está inactivo, lo reactiva (sin email welcome-back
+   *      — el admin lo notifica manualmente)
+   *   3. Elimina el registro UserDeparture
+   *   4. Audit log `user_departure.cancelled` con snapshot del registro
+   *
+   * NO restaura el cascade Stage B (objetivos/PDI/evals quedan en su
+   * estado final — admin debe re-generar manualmente si corresponde).
+   * NO restaura direct reports reasignados (el nuevo manager ya opera —
+   * romper eso es peor que mantenerlo).
+   */
+  async cancelDeparture(
+    userId: string,
+    departureId: string,
+    tenantId: string,
+    processedById: string,
+    reason?: string,
+  ): Promise<{ ok: boolean; reactivated: boolean }> {
+    const departure = await this.departureRepo.findOne({
+      where: { id: departureId, userId, tenantId },
+    });
+    if (!departure) throw new NotFoundException('Registro de desvinculación no encontrado');
+
+    // Verificar que sea el más reciente (tiebreaker: createdAt DESC si
+    // dos desvinculaciones comparten fecha — no debería pasar pero defensivo)
+    const latest = await this.departureRepo.findOne({
+      where: { userId, tenantId },
+      order: { departureDate: 'DESC', createdAt: 'DESC' },
+    });
+    if (!latest || latest.id !== departureId) {
+      throw new BadRequestException(
+        'Sólo se puede cancelar la desvinculación más reciente del usuario',
+      );
+    }
+
+    const user = await this.findByIdScoped(userId, tenantId);
+
+    const wasInactive = !user.isActive;
+    const snapshot = {
+      departureDate: departure.departureDate,
+      departureType: departure.departureType,
+      isVoluntary: departure.isVoluntary,
+      reasonCategory: departure.reasonCategory,
+      reasonDetail: departure.reasonDetail,
+      wouldRehire: departure.wouldRehire,
+    };
+
+    // Soft rollback atómico
+    await this.dataSource.transaction(async (em) => {
+      // 1. Reactivar user (si estaba inactivo)
+      if (wasInactive) {
+        await em
+          .createQueryBuilder()
+          .update(User)
+          .set({
+            isActive: true,
+            departureDate: null as any,
+            tokenVersion: () => '"token_version" + 1',
+          })
+          .where('id = :id', { id: userId })
+          .execute();
+      }
+      // 2. Eliminar el registro de desvinculación
+      await em.getRepository(UserDeparture).delete({ id: departureId });
+    });
+
+    await this.auditService
+      .log(tenantId, processedById, 'user_departure.cancelled', 'user_departure', departureId, {
+        userId,
+        reactivated: wasInactive,
+        reason: reason || null,
+        cancelledDeparture: snapshot,
+        warning: 'El cascade de trabajo en curso (objetivos, PDI, evaluaciones) NO se restauró — el admin debe re-generarlos manualmente si corresponde',
+      })
+      .catch(() => {});
+
+    return { ok: true, reactivated: wasInactive };
   }
 
   // ─── Internal Movement Tracking ────────────────────────────────────────
