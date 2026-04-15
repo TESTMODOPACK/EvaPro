@@ -301,7 +301,6 @@ export default function UserProfilePage() {
   };
 
   // ─── Stage C handlers ─────────────────────────────────────────────────
-  const isSuperAdmin = currentUser?.role === 'super_admin';
 
   const handleReactivateUser = async () => {
     if (!token) return;
@@ -941,7 +940,7 @@ export default function UserProfilePage() {
                             ✏️
                           </button>
                         )}
-                        {isSuperAdmin && !isEditing && isLatest && (
+                        {isAdmin && !isEditing && isLatest && (
                           <button
                             onClick={() => handleCancelDeparture(d)}
                             title="Cancelar desvinculación (reactiva al usuario)"
