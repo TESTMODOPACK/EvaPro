@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 
-export function useChangelog(limit = 5) {
+export function useSystemChangelog(limit = 5) {
   const token = useAuthStore((s) => s.token);
   return useQuery({
     queryKey: ['system', 'changelog', limit],

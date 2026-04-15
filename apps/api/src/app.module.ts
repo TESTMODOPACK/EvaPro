@@ -38,6 +38,7 @@ import { HealthModule } from './modules/health/health.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+import { SystemErrorAuditInterceptor } from './common/interceptors/system-error-audit.interceptor';
 
 @Module({
   imports: [
@@ -123,6 +124,14 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,
+    },
+    // SystemErrorAuditInterceptor — captura excepciones 5xx / no-HTTP y
+    // las registra como 'system.error' en el audit log. Complementa a
+    // Sentry (que reporta al dashboard externo) dejando rastro interno
+    // para búsqueda forense desde el módulo de Auditoría.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SystemErrorAuditInterceptor,
     },
   ],
 })

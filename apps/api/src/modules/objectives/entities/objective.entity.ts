@@ -87,6 +87,10 @@ export class Objective {
   @Column({ type: 'uuid', name: 'approved_by', nullable: true })
   approvedBy: string | null;
 
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'approved_by' })
+  approver: User | null;
+
   @Column({ type: 'timestamptz', name: 'approved_at', nullable: true })
   approvedAt: Date | null;
 

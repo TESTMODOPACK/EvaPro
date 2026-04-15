@@ -53,9 +53,10 @@ export class AuthService {
       lastName: user.lastName || '',
     };
 
-    // Log successful login
+    // Log successful login — super_admin logs are system-level (tenantId=null)
+    // to prevent them from leaking into tenant_admin audit views.
     await this.auditService.log(
-      user.tenantId || null,
+      user.role === 'super_admin' ? null : (user.tenantId || null),
       user.id,
       'login',
       'User',
@@ -167,7 +168,7 @@ export class AuthService {
     try {
       const user = await this.usersService.findByEmail(email, tenantSlug);
       await this.auditService.log(
-        user?.tenantId || null,
+        user?.role === 'super_admin' ? null : (user?.tenantId || null),
         user?.id || null,
         'login.failed',
         'User',
@@ -200,7 +201,13 @@ export class AuthService {
     user.resetCodeExpires = null;
     await this.userRepo.save(user);
 
-    await this.auditService.log(user.tenantId, user.id, 'password.changed_first_login', 'User', user.id).catch(() => {});
+    await this.auditService.log(
+      user.role === 'super_admin' ? null : (user.tenantId || null),
+      user.id,
+      'password.changed_first_login',
+      'User',
+      user.id,
+    ).catch(() => {});
   }
 
   async resetPassword(email: string, code: string, newPassword: string, tenantSlug?: string): Promise<void> {
@@ -262,7 +269,13 @@ export class AuthService {
 
     user.twoFactorEnabled = true;
     await this.userRepo.save(user);
-    await this.auditService.log(user.tenantId, userId, '2fa.enabled', 'User', userId).catch(() => {});
+    await this.auditService.log(
+      user.role === 'super_admin' ? null : (user.tenantId || null),
+      userId,
+      '2fa.enabled',
+      'User',
+      userId,
+    ).catch(() => {});
     return { enabled: true };
   }
 
@@ -280,7 +293,13 @@ export class AuthService {
     user.twoFactorEnabled = false;
     user.twoFactorSecret = null;
     await this.userRepo.save(user);
-    await this.auditService.log(user.tenantId, userId, '2fa.disabled', 'User', userId).catch(() => {});
+    await this.auditService.log(
+      user.role === 'super_admin' ? null : (user.tenantId || null),
+      userId,
+      '2fa.disabled',
+      'User',
+      userId,
+    ).catch(() => {});
     return { disabled: true };
   }
 

@@ -426,10 +426,19 @@ export class UsersService {
         fromPosition: prevPos || null,
         toPosition: dto.position || user.position || null,
       })).catch(() => {}); // fire-and-forget, don't block update
-      this.auditService.log(user.tenantId, user.id, deptChanged ? 'user.department_changed' : 'user.position_changed', 'user', user.id, {
-        from: { department: prevDept, position: prevPos },
-        to: { department: user.department, position: user.position },
-      }).catch(() => {});
+      // Actor is the caller (manager/admin), target is the edited user.
+      // Fallback to target user when caller wasn't passed (legacy paths).
+      this.auditService.log(
+        user.tenantId,
+        callerUserId || user.id,
+        deptChanged ? 'user.department_changed' : 'user.position_changed',
+        'user',
+        user.id,
+        {
+          from: { department: prevDept, position: prevPos },
+          to: { department: user.department, position: user.position },
+        },
+      ).catch(() => {});
     }
 
     if (dto.hierarchyLevel !== undefined) user.hierarchyLevel = dto.hierarchyLevel;

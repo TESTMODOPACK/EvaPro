@@ -82,6 +82,10 @@ export class UserDeparture {
   @Column({ type: 'uuid', name: 'processed_by', nullable: true })
   processedBy: string | null;
 
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'processed_by' })
+  processor: User | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

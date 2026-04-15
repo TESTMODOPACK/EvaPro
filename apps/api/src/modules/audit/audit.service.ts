@@ -46,6 +46,50 @@ export class AuditService {
     await this.auditRepo.save(entry);
   }
 
+  /**
+   * Helper seguro para registrar fallos de sistema en el audit log.
+   * Nunca lanza (fire-and-forget). Trunca el stack para no inflar BD.
+   *
+   * - `cron.failed`        → fallo de un job programado
+   * - `notification.failed`→ fallo al enviar notificación/email
+   * - `access.denied`      → intento de acceso bloqueado por guard
+   * - `system.error`       → puente genérico desde Sentry beforeSend
+   */
+  async logFailure(
+    action: 'cron.failed' | 'notification.failed' | 'access.denied' | 'system.error',
+    opts: {
+      tenantId?: string | null;
+      userId?: string | null;
+      entityType?: string;
+      entityId?: string;
+      error?: unknown;
+      metadata?: Record<string, any>;
+      ipAddress?: string;
+    } = {},
+  ): Promise<void> {
+    try {
+      const err = opts.error as any;
+      const errMsg = err?.message ? String(err.message) : err ? String(err) : undefined;
+      const errStack = err?.stack ? String(err.stack).split('\n').slice(0, 8).join('\n') : undefined;
+      const metadata = {
+        ...(opts.metadata || {}),
+        ...(errMsg ? { errorMessage: errMsg.slice(0, 500) } : {}),
+        ...(errStack ? { stack: errStack } : {}),
+      };
+      await this.log(
+        opts.tenantId ?? null,
+        opts.userId ?? null,
+        action,
+        opts.entityType,
+        opts.entityId,
+        Object.keys(metadata).length ? metadata : undefined,
+        opts.ipAddress,
+      );
+    } catch {
+      // Never let the audit logger itself throw.
+    }
+  }
+
   async findAll(
     page: number,
     limit: number,
@@ -133,6 +177,8 @@ export class AuditService {
     const maxCap = (filters as any)._internalMaxLimit || 200;
     const limit = Math.min(Math.max(1, filters.limit || 25), maxCap);
 
+    // Join excludes super_admin actors so system-level actions never leak into
+    // a tenant's audit view, even if legacy rows carry a tenantId.
     const qb = this.auditRepo.createQueryBuilder('log')
       .leftJoin('users', 'u', 'u.id = log.user_id AND u.tenant_id = log.tenant_id')
       .select([
@@ -147,7 +193,12 @@ export class AuditService {
         "COALESCE(u.first_name || ' ' || u.last_name, 'Sistema') as \"userName\"",
         'u.email as "userEmail"',
       ])
-      .where('log.tenant_id = :tenantId', { tenantId });
+      .where('log.tenant_id = :tenantId', { tenantId })
+      // Defensive isolation: never surface super_admin/system actions in
+      // tenant-scoped views, regardless of any legacy tenant_id value.
+      .andWhere(
+        "(log.user_id IS NULL OR EXISTS (SELECT 1 FROM users usr WHERE usr.id = log.user_id AND usr.role <> 'super_admin'))",
+      );
 
     if (filters.dateFrom) {
       qb.andWhere('log.created_at >= :dateFrom', { dateFrom: filters.dateFrom });
