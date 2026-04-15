@@ -1126,6 +1126,38 @@ export class EvaluationsService {
     return results;
   }
 
+  /**
+   * Valida que `actorRole/actorId` pueda ver las evaluaciones recibidas por
+   * `targetUserId`. Reglas:
+   *   · super_admin / tenant_admin → cualquier usuario del mismo tenant
+   *   · manager                    → solo si target es self o direct report
+   *   · employee                   → solo self
+   *
+   * Lanza ForbiddenException si la operación no está permitida.
+   */
+  async assertCanViewUserEvaluations(
+    targetUserId: string,
+    actorId: string,
+    tenantId: string,
+    actorRole: string,
+  ): Promise<void> {
+    if (actorRole === 'super_admin' || actorRole === 'tenant_admin') return;
+    if (targetUserId === actorId) return;
+    if (actorRole === 'manager') {
+      const target = await this.userRepo.findOne({
+        where: { id: targetUserId, tenantId },
+        select: ['id', 'managerId'],
+      });
+      if (!target) throw new NotFoundException('Usuario no encontrado');
+      if (target.managerId !== actorId) {
+        throw new ForbiddenException('Solo puedes ver evaluaciones de tu equipo directo');
+      }
+      return;
+    }
+    // employee u otros: solo self
+    throw new ForbiddenException('No tienes permiso para ver las evaluaciones de este usuario');
+  }
+
   /** Get evaluations where the user is the EVALUATEE (someone evaluated me) */
   async findEvaluationsOfUser(userId: string, tenantId: string): Promise<any[]> {
     const assignments = await this.assignmentRepo.find({

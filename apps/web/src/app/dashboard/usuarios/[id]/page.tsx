@@ -6,6 +6,8 @@ import { useAuthStore } from '@/store/auth.store';
 import { api, UserData, UserNoteData, PerformanceHistoryEntry } from '@/lib/api';
 import { getRoleLabel, getRoleColor } from '@/lib/roles';
 import { useToastStore } from '@/store/toast.store';
+import EvaluationResponseViewer from '@/components/EvaluationResponseViewer';
+import { ScoreBadge } from '@/components/ScoreBadge';
 
 function Spinner() {
   return (
@@ -115,6 +117,12 @@ export default function UserProfilePage() {
   const [noteForm, setNoteForm] = useState({ title: '', content: '', category: 'general', isConfidential: false });
   const [savingNote, setSavingNote] = useState(false);
 
+  // Retroalimentación recibida (evaluaciones donde este user fue el evaluado)
+  const [receivedEvals, setReceivedEvals] = useState<any[]>([]);
+  const [loadingReceivedEvals, setLoadingReceivedEvals] = useState(false);
+  const [feedbackViewerId, setFeedbackViewerId] = useState<string | null>(null);
+  const [feedbackCycleFilter, setFeedbackCycleFilter] = useState<string>('');
+
   // Movement tracking
   const [movements, setMovements] = useState<any[]>([]);
   const [departures, setDepartures] = useState<any[]>([]);
@@ -181,6 +189,13 @@ export default function UserProfilePage() {
           fetch(`${API}/users/${userId}/movements`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
           fetch(`${API}/users/${userId}/departures`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
         ]).then(([movs, deps]) => { setMovements(movs); setDepartures(deps); }).catch(() => {});
+
+        // Retroalimentación recibida (evaluaciones donde este user es el evaluado)
+        setLoadingReceivedEvals(true);
+        api.evaluations.receivedByUser(token, userId)
+          .then((evs) => setReceivedEvals(Array.isArray(evs) ? evs : []))
+          .catch(() => setReceivedEvals([]))
+          .finally(() => setLoadingReceivedEvals(false));
       }
     } catch (err) {
       console.error(err);
@@ -684,6 +699,96 @@ export default function UserProfilePage() {
         </div>
       )}
 
+      {/* ─── Retroalimentación Recibida ───────────────────────────────────
+          Lista de evaluaciones completadas donde este colaborador fue el
+          evaluado. Al clickear una fila se abre el detalle con las respuestas
+          cualitativas (texto libre) que dejó cada evaluador. */}
+      {isManager && (
+        <div className="animate-fade-up-delay-2" style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.15rem' }}>Retroalimentación Recibida</h2>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Evaluaciones completadas donde este colaborador fue el evaluado. Haz clic en una fila para ver las respuestas.
+              </p>
+            </div>
+            {receivedEvals.length > 0 && (
+              <div>
+                <select
+                  value={feedbackCycleFilter}
+                  onChange={(e) => setFeedbackCycleFilter(e.target.value)}
+                  style={{ fontSize: '0.78rem', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius-sm, 6px)', border: '1px solid var(--border)', background: 'var(--bg-surface)' }}
+                >
+                  <option value="">Todos los ciclos</option>
+                  {Array.from(new Set(receivedEvals.map((e: any) => e.cycle?.id).filter(Boolean))).map((cid) => {
+                    const cName = receivedEvals.find((e: any) => e.cycle?.id === cid)?.cycle?.name || '—';
+                    return <option key={cid} value={cid}>{cName}</option>;
+                  })}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {loadingReceivedEvals ? (
+            <Spinner />
+          ) : receivedEvals.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem' }}>
+              Aún no hay evaluaciones completadas para este colaborador.
+            </p>
+          ) : (
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Evaluador</th>
+                    <th>Tipo</th>
+                    <th>Ciclo</th>
+                    <th>Nota</th>
+                    <th>Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receivedEvals
+                    .filter((ev: any) => !feedbackCycleFilter || ev.cycle?.id === feedbackCycleFilter)
+                    .map((ev: any) => {
+                      const evaluatorName = ev.evaluator
+                        ? `${ev.evaluator.firstName || ''} ${ev.evaluator.lastName || ''}`.trim()
+                        : (ev.relationType === 'self' ? 'Autoevaluación' : '—');
+                      const relLabel: Record<string, string> = {
+                        self: 'Auto', manager: 'Jefatura', peer: 'Par', direct_report: 'Subordinado', external: 'Externo',
+                      };
+                      return (
+                        <tr
+                          key={ev.id}
+                          onClick={() => setFeedbackViewerId(ev.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setFeedbackViewerId(ev.id);
+                            }
+                          }}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`Ver respuestas de ${evaluatorName}`}
+                          style={{ cursor: 'pointer' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover, rgba(0,0,0,0.03))'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                        >
+                          <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{evaluatorName}</td>
+                          <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '—'}</td>
+                          <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? fmtDate(ev.completedAt) : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ─── Historial de Movimientos ─────────────────────────────────────── */}
       {isManager && (
         <div className="animate-fade-up-delay-2" style={cardStyle}>
@@ -1018,6 +1123,12 @@ export default function UserProfilePage() {
           )}
         </div>
       )}
+
+      {/* Modal viewer para ver respuestas de retroalimentación recibida */}
+      <EvaluationResponseViewer
+        assignmentId={feedbackViewerId}
+        onClose={() => setFeedbackViewerId(null)}
+      />
     </div>
   );
 }

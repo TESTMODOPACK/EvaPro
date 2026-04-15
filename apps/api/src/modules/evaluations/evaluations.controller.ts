@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { EvaluationsService } from './evaluations.service';
@@ -236,6 +237,30 @@ export class EvaluationsController {
   @Get('evaluations/received')
   findEvaluationsReceived(@Request() req: any) {
     return this.evaluationsService.findEvaluationsOfUser(req.user.userId, req.user.tenantId);
+  }
+
+  /** Evaluations where an arbitrary userId was EVALUATED.
+   *
+   *  Reglas de acceso (de mayor a menor permiso):
+   *    · super_admin / tenant_admin → cualquier usuario del tenant
+   *    · manager                    → sí mismo, o reportes directos
+   *    · employee                   → solo sí mismo
+   *
+   *  Las respuestas de evaluaciones contienen feedback sensible (pares,
+   *  subordinados) — por eso la validación manager↔team es estricta. */
+  @Get('users/:userId/received-evaluations')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  async findEvaluationsByUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Request() req: any,
+  ) {
+    await this.evaluationsService.assertCanViewUserEvaluations(
+      userId,
+      req.user.userId,
+      req.user.tenantId,
+      req.user.role,
+    );
+    return this.evaluationsService.findEvaluationsOfUser(userId, req.user.tenantId);
   }
 
   @Get('evaluations/:assignmentId')

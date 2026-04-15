@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
 import Link from 'next/link';
 import EmptyState from '@/components/EmptyState';
+import EvaluationResponseViewer from '@/components/EvaluationResponseViewer';
 import {
   cycleStatusLabel, cycleStatusBadge,
   cycleTypeBadge, assignmentStatusLabel as evalStatusLabels,
@@ -108,6 +109,9 @@ function EmployeeEvaluationsView() {
   const [compCycleFilter, setCompCycleFilter] = useState('');
   const [compPage, setCompPage] = useState(1);
   const compPageSize = 10;
+
+  // Viewer modal — al clickear una fila se abre con el detalle de respuestas
+  const [viewerAssignmentId, setViewerAssignmentId] = useState<string | null>(null);
 
   // ── Pending filters + pagination ────────────────────────────────────
   const [pendCycleFilter, setPendCycleFilter] = useState('');
@@ -425,7 +429,22 @@ function EmployeeEvaluationsView() {
                 </thead>
                 <tbody>
                   {completed.map((ev: any) => (
-                    <tr key={ev.id}>
+                    <tr
+                      key={ev.id}
+                      onClick={() => setViewerAssignmentId(ev.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setViewerAssignmentId(ev.id);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Ver detalle de evaluación de ${ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : 'evaluado'}`}
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover, rgba(0,0,0,0.03))'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                    >
                       <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>
                         {ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}
                         {ev.evaluateeId === userId && <span className="badge badge-accent" style={{ marginLeft: '0.4rem', fontSize: '0.6rem' }}>{t('evaluaciones.you')}</span>}
@@ -471,6 +490,12 @@ function EmployeeEvaluationsView() {
           </>
         )}
       </div>
+
+      {/* Modal de lectura de respuestas — se abre al clickear una fila completada */}
+      <EvaluationResponseViewer
+        assignmentId={viewerAssignmentId}
+        onClose={() => setViewerAssignmentId(null)}
+      />
     </div>
   );
 }

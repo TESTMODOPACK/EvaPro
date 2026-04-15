@@ -600,6 +600,11 @@ export const api = {
       request<AssignmentData[]>("/evaluations/completed", {}, token),
     received: (token: string) =>
       request<any[]>("/evaluations/received", {}, token),
+    /** Lista evaluaciones RECIBIDAS por un user arbitrario — requiere
+     *  permisos admin/manager (o ser el propio user). Útil para la ficha de
+     *  colaborador donde el manager ve la retroalimentación de su equipo. */
+    receivedByUser: (token: string, userId: string) =>
+      request<any[]>(`/users/${userId}/received-evaluations`, {}, token),
     getDetail: (token: string, assignmentId: string) =>
       request<{ assignment: AssignmentData; template: TemplateData | null; response: ResponseData | null }>(
         `/evaluations/${assignmentId}`, {}, token,

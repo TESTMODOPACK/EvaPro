@@ -13,6 +13,7 @@ import { SignatureBadge } from '@/components/SignatureModal';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
 import EmptyState from '@/components/EmptyState';
+import EvaluationResponseViewer from '@/components/EvaluationResponseViewer';
 import { getScaleLevel } from '@/lib/scales';
 import { useCycles } from '@/hooks/useCycles';
 import { useGapAnalysisIndividual, useCompetencyRadar } from '@/hooks/useReports';
@@ -161,6 +162,8 @@ export default function MiDesempenoPage() {
 
   // Expandables
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  // Viewer modal de evaluaciones recibidas (ver respuestas cualitativas)
+  const [viewerAssignmentId, setViewerAssignmentId] = useState<string | null>(null);
   const [expandedTeamMember, setExpandedTeamMember] = useState<string | null>(null);
   const [expandedFbRecipient, setExpandedFbRecipient] = useState<string | null>(null);
   // signModal removed — was dead code (setSignModal never called with value)
@@ -245,6 +248,30 @@ export default function MiDesempenoPage() {
   const scoreDelta = displayScore != null && previousScore?.avgOverall != null
     ? Number(displayScore) - Number(previousScore.avgOverall)
     : null;
+
+  // ── Evolución por Ciclo (Opción B) ─────────────────────────────────
+  // Solo toma los ÚLTIMOS 4 ciclos CERRADOS (status === 'closed'), ordenados
+  // cronológicamente por endDate. Si el user tenía assignments en un ciclo
+  // cerrado pero nunca completaron sus evaluaciones (avgOverall === null),
+  // se muestra el ciclo como "Sin evaluación" en vez de 0.0 para no confundir
+  // al usuario con una nota inexistente.
+  const MAX_EVOLUTION_CYCLES = 4;
+  const strictlyClosedCycles = (allCycles || []).filter((c: any) => c.status === 'closed');
+  const scoreByCycleId = new Map<string, number | null>();
+  for (const h of cycles) scoreByCycleId.set(h.cycleId, h.avgOverall ?? null);
+  const evolutionCycles = [...strictlyClosedCycles]
+    .sort((a: any, b: any) => {
+      const aT = new Date(a.endDate || a.startDate || 0).getTime();
+      const bT = new Date(b.endDate || b.startDate || 0).getTime();
+      return aT - bT; // ASC — más antiguo primero, evolución se lee de izquierda a derecha
+    })
+    .slice(-MAX_EVOLUTION_CYCLES)
+    .map((c: any) => ({
+      cycleId: c.id,
+      cycleName: c.name,
+      endDate: c.endDate,
+      avgOverall: scoreByCycleId.get(c.id) ?? null,
+    }));
 
   // Personal evaluations: where I'm the evaluatee (received endpoint)
   const myEvaluationsReceived = received;
@@ -381,6 +408,68 @@ export default function MiDesempenoPage() {
           {/* ─── Mis Evaluaciones ─── */}
           {personalTab === 'evaluaciones' && (
             <div className="animate-fade-up">
+              {/* ── Evolución por Ciclo (ARRIBA de los filtros) ───────────
+                  Vista histórica, no se afecta por los filtros de abajo.
+                  Muestra los últimos 4 ciclos cerrados con tu promedio. */}
+              {evolutionCycles.length > 0 && (
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
+                    <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>Evolución por Ciclo</h3>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.02em' }}>
+                      Últimos {MAX_EVOLUTION_CYCLES} ciclos cerrados
+                    </span>
+                  </div>
+                  <p style={{ margin: '0 0 0.9rem', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                    Promedio general que obtuviste en cada ciclo de evaluación ya cerrado. Te permite ver tu evolución a lo largo del tiempo.
+                    Solo se consideran ciclos que han sido formalmente cerrados; los ciclos en curso no aparecen porque todavía pueden cambiar.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                    {evolutionCycles.map((c) => {
+                      const hasScore = c.avgOverall != null && Number.isFinite(Number(c.avgOverall));
+                      const score = hasScore ? Number(c.avgOverall) : null;
+                      const level = score != null ? getScaleLevel(score) : null;
+                      const barColor = level?.color || 'var(--border)';
+                      const barWidth = score != null ? `${(score / 10) * 100}%` : '0%';
+                      return (
+                        <div key={c.cycleId} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ minWidth: 180, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                            {c.cycleName}
+                            {c.endDate && (
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '1px' }}>
+                                {new Date(c.endDate).toLocaleDateString('es-CL', { month: 'short', year: 'numeric' })}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden', opacity: hasScore ? 1 : 0.45 }}>
+                            <div style={{ height: '100%', width: barWidth, background: barColor, borderRadius: 4, transition: 'width 0.35s ease' }} />
+                          </div>
+                          <div style={{ minWidth: 90, textAlign: 'right' }}>
+                            {hasScore ? (
+                              <ScoreBadge score={score} size="sm" />
+                            ) : (
+                              <span
+                                title="Este ciclo se cerró pero no tienes evaluaciones completadas en él. Puede ser porque no fuiste incluido/a o no hubo evaluadores asignados."
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 600,
+                                  color: 'var(--text-muted)',
+                                  background: 'rgba(148,163,184,0.12)',
+                                  padding: '0.15rem 0.5rem',
+                                  borderRadius: '999px',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                Sin evaluación
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Filters */}
               <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <select style={selectStyle} value={evalStatusFilter} onChange={(e) => setEvalStatusFilter(e.target.value)}>
@@ -470,7 +559,22 @@ export default function MiDesempenoPage() {
                               const respId = ev.response?.id || ev.responseId;
                               const sigs = respId ? signatureMap[respId] : null;
                               return (
-                                <tr key={i}>
+                                <tr
+                                  key={i}
+                                  onClick={() => setViewerAssignmentId(ev.id)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      setViewerAssignmentId(ev.id);
+                                    }
+                                  }}
+                                  tabIndex={0}
+                                  role="button"
+                                  aria-label={`Ver respuestas de ${evaluatorName}`}
+                                  style={{ cursor: 'pointer' }}
+                                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover, rgba(0,0,0,0.03))'; }}
+                                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                                >
                                   <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{evaluatorName}</td>
                                   <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
                                   <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
@@ -489,25 +593,9 @@ export default function MiDesempenoPage() {
               );
               })()}
 
-              {/* Evolution */}
-              {cycles.length > 0 && (
-                <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Evolución por Ciclo</h3>
-                  {cycles.map((c: any, i: number) => {
-                    const score = Number(c.avgOverall || 0);
-                    const level = getScaleLevel(score);
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                        <div style={{ minWidth: 140, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{c.cycleName || c.name}</div>
-                        <div style={{ flex: 1, height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${(score / 10) * 100}%`, background: level?.color || '#94a3b8', borderRadius: 4 }} />
-                        </div>
-                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: level?.color, minWidth: 40 }}>{score.toFixed(1)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              {/* Nota: el bloque "Evolución por Ciclo" se movió ARRIBA de los
+                  filtros al comienzo de la pestaña "Mis Evaluaciones" para dar
+                  contexto antes de ver los detalles. Ver arriba. */}
 
               {/* Radar — usa el filtro de ciclo superior (evalCycleFilter) */}
               {closedCycles.length > 0 && (
@@ -1044,6 +1132,12 @@ export default function MiDesempenoPage() {
         </>
       )}
 
+      {/* Modal de lectura de respuestas — se abre al clickear una fila de
+          "Evaluaciones Recibidas" para ver qué respondió cada evaluador. */}
+      <EvaluationResponseViewer
+        assignmentId={viewerAssignmentId}
+        onClose={() => setViewerAssignmentId(null)}
+      />
     </div>
   );
 }
