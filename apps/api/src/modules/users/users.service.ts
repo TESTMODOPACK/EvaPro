@@ -476,16 +476,32 @@ export class UsersService {
   // ─── Departure Tracking ────────────────────────────────────────────────
 
   /**
-   * Registra una desvinculación con cascade atómico (transacción):
+   * Registra una desvinculación con cascade atómico (transacción).
+   *
+   * ═══ Etapa A (seguridad / jerarquía) ═══
    *   1. Inserta UserDeparture (snapshot de dept/cargo al momento de la salida)
    *   2. Si dto.reassignToManagerId fue provisto: valida que sea manager/admin
-   *      activo del mismo tenant y jerarquía correcta, y reasigna todos los
-   *      direct reports del desvinculado. Si no se provee, sus reportes
-   *      quedan con managerId = null.
+   *      activo del mismo tenant, y reasigna todos los direct reports. Si no
+   *      se provee, sus reportes quedan con managerId = null.
    *   3. Limpia 2FA (silent — el usuario ya no debe poder usar la cuenta)
    *   4. Desactiva user + setea departureDate
    *   5. Incrementa tokenVersion → invalida todos los JWTs emitidos
-   *   6. Audit log con metadata estructurada del cascade completo
+   *
+   * ═══ Etapa B (trabajo en curso) ═══
+   *   6. Objetivos del user (DRAFT/PENDING_APPROVAL/ACTIVE) → ABANDONED
+   *   7. Desliga children: parent_objective_id = NULL en objetivos de OTROS
+   *      users que apuntaban a objetivos recién abandonados
+   *   8. DevelopmentPlans del user (borrador/activo/en_revision) → cancelado
+   *   9. DevelopmentActions asignadas al user o en planes del user → cancelada
+   *  10. CheckIns (manager_id o employee_id = user, requested/scheduled) → cancelled
+   *  11. EvaluationAssignments (evaluator o evaluatee = user, pending/in_progress)
+   *      → cancelled
+   *  12. Notifications no-leídas del user → marked as read (archive)
+   *  13. RecruitmentCandidates (candidate_type='internal', user_id=user, stage
+   *      no-terminal) → rejected + recruiter_notes con razón
+   *  14. CalibrationEntries (user_id=user, status != agreed) → status='withdrawn'
+   *
+   *  15. Audit log con metadata estructurada del cascade completo
    *
    * Si cualquier paso falla, toda la transacción hace rollback y el usuario
    * queda ACTIVE. El audit log es fire-and-forget post-commit (no crítico).
@@ -525,8 +541,10 @@ export class UsersService {
     const snapshotPos = user.position || null;
 
     // Cascade atómico
-    const { saved, reportsAffected, tokensInvalidated, clearedTwoFactor } =
+    const cascadeResult =
       await this.dataSource.transaction(async (em) => {
+        // ─── Etapa A ───────────────────────────────────────────────
+
         // 1. Departure record
         const departure = em.getRepository(UserDeparture).create({
           tenantId,
@@ -569,15 +587,173 @@ export class UsersService {
           .where('id = :id', { id: userId })
           .execute();
 
+        // ─── Etapa B (trabajo en curso) ───────────────────────────
+        // Todos los UPDATEs se filtran por tenant_id para aislar multi-tenant
+        // y por status para no tocar entidades ya en estado terminal.
+        // Usamos em.query() con parámetros posicionales para simplicidad;
+        // cada entidad que no exista (tabla ausente en primera corrida) se
+        // maneja individualmente con try/catch para no abortar la transacción.
+
+        /**
+         * Ejecuta un UPDATE raw y retorna el número de filas afectadas.
+         * TypeORM+pg devuelve `[rows, rowCount]` para UPDATEs simples, pero
+         * algunos paths legacy devuelven sólo `rows` o un Result object.
+         * Probamos varios formatos en orden; si ninguno encaja devolvemos 0
+         * (la operación igualmente se ejecutó — sólo se pierde el contador).
+         *
+         * Si la tabla/columna no existe (primer deploy pre-sync) el error se
+         * ignora. Cualquier otro error aborta la transacción.
+         */
+        const safeExec = async (sql: string, params: any[]): Promise<number> => {
+          try {
+            const res: any = await em.query(sql, params);
+            if (Array.isArray(res) && res.length === 2 && typeof res[1] === 'number') {
+              return res[1]; // [rows, rowCount]
+            }
+            if (res && typeof res.rowCount === 'number') {
+              return res.rowCount; // pg Result object
+            }
+            if (res && typeof res.affected === 'number') {
+              return res.affected; // TypeORM UpdateResult shape
+            }
+            return 0;
+          } catch (err) {
+            const msg = (err as any)?.message || '';
+            if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('column')) {
+              return 0;
+            }
+            throw err;
+          }
+        };
+
+        // 6. Objetivos: abandonar los activos/draft/pending del user
+        const objectivesAbandoned = await safeExec(
+          `UPDATE objectives SET status = 'abandoned', updated_at = NOW()
+             WHERE user_id = $1 AND tenant_id = $2
+               AND status IN ('draft', 'pending_approval', 'active')`,
+          [userId, tenantId],
+        );
+
+        // 7. Desligar children: objetivos de OTROS users que apuntaban a los
+        //    objetivos recién abandonados → parent_objective_id = NULL
+        const childrenDetached = await safeExec(
+          `UPDATE objectives SET parent_objective_id = NULL, updated_at = NOW()
+             WHERE tenant_id = $1
+               AND parent_objective_id IN (
+                 SELECT id FROM objectives
+                  WHERE user_id = $2 AND tenant_id = $1 AND status = 'abandoned'
+               )
+               AND user_id <> $2`,
+          [tenantId, userId],
+        );
+
+        // 8. DevelopmentPlans del user → cancelado
+        const plansCancelled = await safeExec(
+          `UPDATE development_plans SET status = 'cancelado', updated_at = NOW()
+             WHERE user_id = $1 AND tenant_id = $2
+               AND status IN ('borrador', 'activo', 'en_revision')`,
+          [userId, tenantId],
+        );
+
+        // 9. DevelopmentActions en planes del user → cancelada.
+        //    development_actions no tiene assigned_to_id; se scopea vía
+        //    plan_id → plan.user_id (dueño del PDI).
+        const actionsCancelled = await safeExec(
+          `UPDATE development_actions SET status = 'cancelada', updated_at = NOW()
+             WHERE tenant_id = $1
+               AND status IN ('pendiente', 'en_progreso')
+               AND plan_id IN (SELECT id FROM development_plans WHERE user_id = $2 AND tenant_id = $1)`,
+          [tenantId, userId],
+        );
+
+        // 10. CheckIns: manager o employee = user, no-terminales → cancelled
+        const checkinsCancelled = await safeExec(
+          `UPDATE checkins SET status = 'cancelled', updated_at = NOW()
+             WHERE tenant_id = $1
+               AND status IN ('requested', 'scheduled')
+               AND (manager_id = $2 OR employee_id = $2)`,
+          [tenantId, userId],
+        );
+
+        // 11. EvaluationAssignments: evaluator o evaluatee = user, pending/in_progress
+        const assignmentsCancelled = await safeExec(
+          `UPDATE evaluation_assignments SET status = 'cancelled'
+             WHERE tenant_id = $1
+               AND status IN ('pending', 'in_progress')
+               AND (evaluator_id = $2 OR evaluatee_id = $2)`,
+          [tenantId, userId],
+        );
+
+        // 12. Notifications no-leídas del user → marcar como leídas
+        //     (Notification entity no tiene read_at; updated_at lo registra TypeORM)
+        const notificationsArchived = await safeExec(
+          `UPDATE notifications SET is_read = true, updated_at = NOW()
+             WHERE user_id = $1 AND tenant_id = $2 AND is_read = false`,
+          [userId, tenantId],
+        );
+
+        // 13. RecruitmentCandidates: candidaturas internas activas → rejected
+        const candidaturesRejected = await safeExec(
+          `UPDATE recruitment_candidates
+              SET stage = 'rejected',
+                  recruiter_notes = COALESCE(recruiter_notes, '') ||
+                    CASE WHEN recruiter_notes IS NULL OR recruiter_notes = '' THEN '' ELSE E'\n' END ||
+                    '[Auto ' || TO_CHAR(NOW(), 'YYYY-MM-DD') || '] Candidato desvinculado de la organización',
+                  updated_at = NOW()
+             WHERE tenant_id = $1
+               AND candidate_type = 'internal'
+               AND user_id = $2
+               AND stage NOT IN ('hired', 'rejected')`,
+          [tenantId, userId],
+        );
+
+        // 14. CalibrationEntries: status != agreed → withdrawn.
+        //     calibration_entries no tiene tenant_id (se scopea vía session);
+        //     hacemos JOIN implícito para aislar multi-tenant defensivamente.
+        const calibrationWithdrawn = await safeExec(
+          `UPDATE calibration_entries SET status = 'withdrawn', updated_at = NOW()
+             WHERE user_id = $1
+               AND status IN ('pending', 'discussed')
+               AND session_id IN (
+                 SELECT id FROM calibration_sessions WHERE tenant_id = $2
+               )`,
+          [userId, tenantId],
+        );
+
         return {
           saved,
           reportsAffected,
           tokensInvalidated: true,
           clearedTwoFactor,
+          objectivesAbandoned,
+          childrenDetached,
+          plansCancelled,
+          actionsCancelled,
+          checkinsCancelled,
+          assignmentsCancelled,
+          notificationsArchived,
+          candidaturesRejected,
+          calibrationWithdrawn,
         };
       });
 
-    // 6. Audit (post-commit, fire-and-forget)
+    const {
+      saved,
+      reportsAffected,
+      tokensInvalidated,
+      clearedTwoFactor,
+      objectivesAbandoned,
+      childrenDetached,
+      plansCancelled,
+      actionsCancelled,
+      checkinsCancelled,
+      assignmentsCancelled,
+      notificationsArchived,
+      candidaturesRejected,
+      calibrationWithdrawn,
+    } = cascadeResult;
+
+    // 15. Audit (post-commit, fire-and-forget) con metadata completa
     await this.auditService
       .log(tenantId, processedById, 'user.departed', 'user', userId, {
         departureType: dto.departureType,
@@ -586,10 +762,21 @@ export class UsersService {
         lastDepartment: snapshotDept,
         lastPosition: snapshotPos,
         cascade: {
+          // Etapa A
           reportsReassigned: reportsAffected,
           reassignedTo: dto.reassignToManagerId ?? null,
           clearedTwoFactor,
           tokensInvalidated,
+          // Etapa B
+          objectivesAbandoned,
+          childrenDetached,
+          plansCancelled,
+          actionsCancelled,
+          checkinsCancelled,
+          assignmentsCancelled,
+          notificationsArchived,
+          candidaturesRejected,
+          calibrationWithdrawn,
         },
       })
       .catch(() => {});

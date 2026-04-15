@@ -24,6 +24,9 @@ export enum AssignmentStatus {
   PENDING = 'pending',
   IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
+  /** Cancelada automáticamente por cascade de desvinculación (Stage B) o
+   *  por acción administrativa. El metadata del audit log registra la razón. */
+  CANCELLED = 'cancelled',
 }
 
 @Entity('evaluation_assignments')

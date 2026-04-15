@@ -247,11 +247,24 @@ export default function UserProfilePage() {
   const handleRegisterDeparture = async () => {
     if (!token || !depForm.departureDate) return;
     const confirmed = confirm(
-      `¿Confirmar desvinculación?\n\nEsto:\n` +
-      `• Desactivará al usuario inmediatamente\n` +
-      `• Cerrará todas sus sesiones activas\n` +
-      `• Reasignará sus reportes directos ${depForm.reassignToManagerId ? 'al manager seleccionado' : '(quedarán sin jefatura)'}\n` +
-      `• Eliminará su configuración de 2FA\n\nEsta acción NO se puede deshacer desde la UI.`,
+      `¿Confirmar desvinculación?\n\n` +
+      `Se aplicará de forma automática (transacción atómica):\n\n` +
+      `── Seguridad ──\n` +
+      `• Desactiva al usuario inmediatamente\n` +
+      `• Cierra todas sus sesiones activas (JWT invalidado)\n` +
+      `• Elimina su configuración de 2FA\n\n` +
+      `── Jerarquía ──\n` +
+      `• Reasigna sus reportes directos ${depForm.reassignToManagerId ? 'al manager seleccionado' : '(quedarán sin jefatura)'}\n\n` +
+      `── Trabajo en curso ──\n` +
+      `• Objetivos activos/draft/pendientes → abandonados\n` +
+      `• Planes de desarrollo (PDI) activos → cancelados\n` +
+      `• Acciones PDI pendientes → canceladas\n` +
+      `• Check-ins agendados → cancelados\n` +
+      `• Evaluaciones pendientes/en progreso (como evaluador o evaluado) → canceladas\n` +
+      `• Notificaciones no leídas → archivadas\n` +
+      `• Candidaturas internas activas → rechazadas\n` +
+      `• Entries de calibración pendientes → retirados\n\n` +
+      `Esta acción NO se puede deshacer desde la UI.`,
     );
     if (!confirmed) return;
 
