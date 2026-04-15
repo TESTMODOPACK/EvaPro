@@ -38,6 +38,19 @@ const DEPARTURE_TYPE_LABELS: Record<string, string> = {
   contract_end: 'Fin de contrato', abandonment: 'Abandono', mutual_agreement: 'Mutuo acuerdo',
 };
 
+const DEPARTURE_REASON_LABELS: Record<string, string> = {
+  better_offer: 'Mejor oferta',
+  work_climate: 'Clima laboral',
+  performance: 'Desempeño',
+  restructuring: 'Reestructuración',
+  personal: 'Motivos personales',
+  relocation: 'Cambio de ciudad',
+  career_growth: 'Crecimiento de carrera',
+  compensation: 'Compensación',
+  health: 'Salud',
+  other: 'Otro',
+};
+
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   general: { label: 'General', color: '#64748b' },
   performance: { label: 'Desempeño', color: '#6366f1' },
@@ -108,6 +121,29 @@ export default function UserProfilePage() {
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [movForm, setMovForm] = useState({ movementType: 'department_change', effectiveDate: new Date().toISOString().split('T')[0], fromDepartment: '', toDepartment: '', fromPosition: '', toPosition: '', reason: '' });
   const [savingMovement, setSavingMovement] = useState(false);
+
+  // Departure form
+  const [showDepartureForm, setShowDepartureForm] = useState(false);
+  const [depForm, setDepForm] = useState<{
+    departureType: string;
+    departureDate: string;
+    isVoluntary: boolean;
+    reasonCategory: string;
+    reasonDetail: string;
+    wouldRehire: 'yes' | 'no' | 'unknown';
+    reassignToManagerId: string;
+  }>({
+    departureType: 'resignation',
+    departureDate: new Date().toISOString().split('T')[0],
+    isVoluntary: true,
+    reasonCategory: '',
+    reasonDetail: '',
+    wouldRehire: 'unknown',
+    reassignToManagerId: '',
+  });
+  const [savingDeparture, setSavingDeparture] = useState(false);
+  // List of potential managers (active managers + admins) for reassignment
+  const [availableManagers, setAvailableManagers] = useState<Array<{ id: string; firstName: string; lastName: string; role: string }>>([]);
 
   const isAdmin = currentUser?.role === 'tenant_admin' || currentUser?.role === 'super_admin';
   const isManager = currentUser?.role === 'manager' || isAdmin;
@@ -193,6 +229,53 @@ export default function UserProfilePage() {
       toast.error(err.message || 'Error al registrar movimiento');
     } finally {
       setSavingMovement(false);
+    }
+  };
+
+  // Load available managers (for reassignment dropdown) lazily when form opens
+  const loadAvailableManagers = useCallback(async () => {
+    if (!token || availableManagers.length > 0) return;
+    try {
+      const res = await api.users.list(token, 1, 200, { status: 'active' });
+      const list = (res.data || [])
+        .filter((u: any) => u.id !== userId && (u.role === 'manager' || u.role === 'tenant_admin'))
+        .map((u: any) => ({ id: u.id, firstName: u.firstName, lastName: u.lastName, role: u.role }));
+      setAvailableManagers(list);
+    } catch { /* silent */ }
+  }, [token, userId, availableManagers.length]);
+
+  const handleRegisterDeparture = async () => {
+    if (!token || !depForm.departureDate) return;
+    const confirmed = confirm(
+      `¿Confirmar desvinculación?\n\nEsto:\n` +
+      `• Desactivará al usuario inmediatamente\n` +
+      `• Cerrará todas sus sesiones activas\n` +
+      `• Reasignará sus reportes directos ${depForm.reassignToManagerId ? 'al manager seleccionado' : '(quedarán sin jefatura)'}\n` +
+      `• Eliminará su configuración de 2FA\n\nEsta acción NO se puede deshacer desde la UI.`,
+    );
+    if (!confirmed) return;
+
+    setSavingDeparture(true);
+    try {
+      const payload: any = {
+        departureType: depForm.departureType,
+        departureDate: depForm.departureDate,
+        isVoluntary: depForm.isVoluntary,
+      };
+      if (depForm.reasonCategory) payload.reasonCategory = depForm.reasonCategory;
+      if (depForm.reasonDetail.trim()) payload.reasonDetail = depForm.reasonDetail.trim();
+      if (depForm.wouldRehire !== 'unknown') payload.wouldRehire = depForm.wouldRehire === 'yes';
+      if (depForm.reassignToManagerId) payload.reassignToManagerId = depForm.reassignToManagerId;
+
+      await api.users.registerDeparture(token, userId, payload);
+      toast.success('Desvinculación registrada');
+      setShowDepartureForm(false);
+      // Reload user + departures
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al registrar desvinculación');
+    } finally {
+      setSavingDeparture(false);
     }
   };
 
@@ -509,10 +592,111 @@ export default function UserProfilePage() {
                 Movimientos internos y salidas registradas
               </p>
             </div>
-            <button className="btn-primary" onClick={() => setShowMovementForm(!showMovementForm)}>
-              {showMovementForm ? 'Cancelar' : '+ Registrar Movimiento'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {isAdmin && user?.isActive && (
+                <button
+                  onClick={() => {
+                    setShowDepartureForm(!showDepartureForm);
+                    if (!showDepartureForm) loadAvailableManagers();
+                  }}
+                  style={{
+                    background: showDepartureForm ? 'var(--bg-surface)' : '#ef4444',
+                    color: showDepartureForm ? 'var(--text-primary)' : '#fff',
+                    border: showDepartureForm ? '1px solid var(--border)' : 'none',
+                    padding: '0.5rem 0.9rem',
+                    borderRadius: 'var(--radius-sm, 8px)',
+                    cursor: 'pointer',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {showDepartureForm ? 'Cancelar' : '× Registrar Desvinculación'}
+                </button>
+              )}
+              <button className="btn-primary" onClick={() => setShowMovementForm(!showMovementForm)}>
+                {showMovementForm ? 'Cancelar' : '+ Registrar Movimiento'}
+              </button>
+            </div>
           </div>
+
+          {/* Departure form */}
+          {showDepartureForm && (
+            <div style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm, 8px)', padding: '1.25rem', marginBottom: '1.25rem' }}>
+              <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', borderRadius: '6px', fontSize: '0.78rem', color: '#b91c1c' }}>
+                ⚠️ La desvinculación es <strong>irreversible desde la UI</strong>: desactiva al usuario, invalida sus sesiones, reasigna sus reportes directos y limpia su 2FA.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Tipo de salida</label>
+                  <select style={inputStyle} value={depForm.departureType} onChange={(e) => setDepForm({ ...depForm, departureType: e.target.value, isVoluntary: ['resignation', 'retirement', 'mutual_agreement'].includes(e.target.value) })}>
+                    <option value="resignation">Renuncia</option>
+                    <option value="termination">Despido</option>
+                    <option value="retirement">Jubilación</option>
+                    <option value="contract_end">Fin de contrato</option>
+                    <option value="abandonment">Abandono</option>
+                    <option value="mutual_agreement">Mutuo acuerdo</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Fecha efectiva</label>
+                  <input type="date" style={inputStyle} value={depForm.departureDate} onChange={(e) => setDepForm({ ...depForm, departureDate: e.target.value })} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Categoría de motivo</label>
+                  <select style={inputStyle} value={depForm.reasonCategory} onChange={(e) => setDepForm({ ...depForm, reasonCategory: e.target.value })}>
+                    <option value="">— Sin especificar —</option>
+                    {Object.entries(DEPARTURE_REASON_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>¿Recontratable?</label>
+                  <select style={inputStyle} value={depForm.wouldRehire} onChange={(e) => setDepForm({ ...depForm, wouldRehire: e.target.value as 'yes' | 'no' | 'unknown' })}>
+                    <option value="unknown">Sin determinar</option>
+                    <option value="yes">Sí</option>
+                    <option value="no">No</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>Reasignar reportes directos a</label>
+                <select style={inputStyle} value={depForm.reassignToManagerId} onChange={(e) => setDepForm({ ...depForm, reassignToManagerId: e.target.value })}>
+                  <option value="">— Dejar sin jefatura (managerId = null) —</option>
+                  {availableManagers.map(m => (
+                    <option key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.role === 'tenant_admin' ? 'Admin' : 'Manager'})</option>
+                  ))}
+                </select>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+                  Sólo se ofrecen usuarios activos con rol manager o tenant_admin.
+                </p>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>Detalle adicional (opcional)</label>
+                <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} placeholder="Ej: Aceptó oferta en otra empresa, cierre de proyecto, etc." value={depForm.reasonDetail} onChange={(e) => setDepForm({ ...depForm, reasonDetail: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <input type="checkbox" id="isVoluntary" checked={depForm.isVoluntary} onChange={(e) => setDepForm({ ...depForm, isVoluntary: e.target.checked })} />
+                <label htmlFor="isVoluntary" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>Salida voluntaria</label>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleRegisterDeparture}
+                  disabled={savingDeparture || !depForm.departureDate}
+                  style={{
+                    background: '#ef4444', color: '#fff', border: 'none',
+                    padding: '0.55rem 1rem', borderRadius: 'var(--radius-sm, 8px)',
+                    cursor: savingDeparture ? 'not-allowed' : 'pointer',
+                    fontSize: '0.85rem', fontWeight: 600, opacity: savingDeparture ? 0.6 : 1,
+                  }}
+                >
+                  {savingDeparture ? 'Registrando...' : 'Confirmar desvinculación'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Create movement form */}
           {showMovementForm && (

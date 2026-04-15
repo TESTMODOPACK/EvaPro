@@ -198,6 +198,8 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS "idx_org_dev_action_initiative" ON "org_development_actions" ("initiative_id")`,
       `CREATE INDEX IF NOT EXISTS "idx_org_dev_action_assigned" ON "org_development_actions" ("assigned_to_id")`,
       `CREATE INDEX IF NOT EXISTS "idx_recruitment_interview_candidate" ON "recruitment_interviews" ("candidate_id")`,
+      // Stage A departure cascade: token invalidation counter (starts at 0)
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "token_version" integer NOT NULL DEFAULT 0`,
     ];
     for (const sql of integrityFixes) {
       try {

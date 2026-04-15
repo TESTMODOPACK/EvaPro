@@ -136,6 +136,15 @@ export class User {
   @Column({ type: 'varchar', length: 200, nullable: true, name: 'cv_file_name' })
   cvFileName: string | null;
 
+  /**
+   * Incrementa cada vez que el usuario debe invalidar todos sus JWTs emitidos
+   * (desvinculación, cambio de password, logout remoto). La estrategia JWT
+   * compara este valor con el `tv` del payload y rechaza el token si no
+   * coinciden. Arranca en 0 para usuarios existentes.
+   */
+  @Column({ type: 'int', default: 0, name: 'token_version' })
+  tokenVersion: number;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }

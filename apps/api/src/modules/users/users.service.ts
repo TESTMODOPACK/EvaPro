@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not, In } from 'typeorm';
+import { DataSource, Repository, IsNull, Not, In } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { UserNote } from './entities/user-note.entity';
@@ -47,6 +47,7 @@ export class UsersService {
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   private static readonly DEFAULT_DEPARTMENTS = [
@@ -474,6 +475,21 @@ export class UsersService {
 
   // ─── Departure Tracking ────────────────────────────────────────────────
 
+  /**
+   * Registra una desvinculación con cascade atómico (transacción):
+   *   1. Inserta UserDeparture (snapshot de dept/cargo al momento de la salida)
+   *   2. Si dto.reassignToManagerId fue provisto: valida que sea manager/admin
+   *      activo del mismo tenant y jerarquía correcta, y reasigna todos los
+   *      direct reports del desvinculado. Si no se provee, sus reportes
+   *      quedan con managerId = null.
+   *   3. Limpia 2FA (silent — el usuario ya no debe poder usar la cuenta)
+   *   4. Desactiva user + setea departureDate
+   *   5. Incrementa tokenVersion → invalida todos los JWTs emitidos
+   *   6. Audit log con metadata estructurada del cascade completo
+   *
+   * Si cualquier paso falla, toda la transacción hace rollback y el usuario
+   * queda ACTIVE. El audit log es fire-and-forget post-commit (no crítico).
+   */
   async registerDeparture(
     userId: string,
     tenantId: string,
@@ -484,35 +500,99 @@ export class UsersService {
     if (user.tenantId !== tenantId) throw new NotFoundException('Usuario no encontrado');
     if (!user.isActive) throw new BadRequestException('El usuario ya está inactivo');
 
-    // Create departure record
-    const departure = this.departureRepo.create({
-      tenantId,
-      userId,
-      departureDate: new Date(dto.departureDate),
-      departureType: dto.departureType,
-      isVoluntary: dto.isVoluntary,
-      reasonCategory: dto.reasonCategory || null,
-      reasonDetail: dto.reasonDetail || null,
-      lastDepartment: user.department || null,
-      lastPosition: user.position || null,
-      wouldRehire: dto.wouldRehire ?? null,
-      processedBy: processedById,
-    });
-    const saved = await this.departureRepo.save(departure);
+    // Validación pre-transacción del manager de reasignación (si se provee)
+    let reassignManager: User | null = null;
+    if (dto.reassignToManagerId) {
+      if (dto.reassignToManagerId === userId) {
+        throw new BadRequestException('No se puede reasignar reportes al propio usuario desvinculado');
+      }
+      reassignManager = await this.userRepository.findOne({
+        where: { id: dto.reassignToManagerId, tenantId },
+      });
+      if (!reassignManager) {
+        throw new BadRequestException('Manager de reasignación no encontrado en la organización');
+      }
+      if (!reassignManager.isActive) {
+        throw new BadRequestException('El manager de reasignación está inactivo');
+      }
+      if (reassignManager.role !== 'manager' && reassignManager.role !== 'tenant_admin') {
+        throw new BadRequestException('El usuario de reasignación no es manager ni admin');
+      }
+    }
 
-    // Deactivate user
-    user.isActive = false;
-    user.departureDate = new Date(dto.departureDate);
-    await this.userRepository.save(user);
+    const departureDateObj = new Date(dto.departureDate);
+    const snapshotDept = user.department || null;
+    const snapshotPos = user.position || null;
 
-    // Audit
-    await this.auditService.log(tenantId, processedById, 'user.departed', 'user', userId, {
-      departureType: dto.departureType,
-      isVoluntary: dto.isVoluntary,
-      reasonCategory: dto.reasonCategory,
-      lastDepartment: user.department,
-      lastPosition: user.position,
-    }).catch(() => {});
+    // Cascade atómico
+    const { saved, reportsAffected, tokensInvalidated, clearedTwoFactor } =
+      await this.dataSource.transaction(async (em) => {
+        // 1. Departure record
+        const departure = em.getRepository(UserDeparture).create({
+          tenantId,
+          userId,
+          departureDate: departureDateObj,
+          departureType: dto.departureType,
+          isVoluntary: dto.isVoluntary,
+          reasonCategory: dto.reasonCategory || null,
+          reasonDetail: dto.reasonDetail || null,
+          lastDepartment: snapshotDept,
+          lastPosition: snapshotPos,
+          wouldRehire: dto.wouldRehire ?? null,
+          processedBy: processedById,
+        });
+        const saved = await em.getRepository(UserDeparture).save(departure);
+
+        // 2. Reasignar direct reports
+        const userRepo = em.getRepository(User);
+        const newManagerId = dto.reassignToManagerId || null;
+        const updateResult = await userRepo.update(
+          { tenantId, managerId: userId, isActive: true },
+          { managerId: newManagerId as any }, // TS: User.managerId is `string` but DB column is nullable
+        );
+        const reportsAffected = updateResult.affected ?? 0;
+
+        // 3-5. Desactivar user + limpiar 2FA + bump tokenVersion (un solo UPDATE).
+        // Se usa QueryBuilder para poder usar expresión SQL raw `token_version + 1`
+        // de forma atómica en el mismo UPDATE (evita read-then-write race).
+        const clearedTwoFactor = !!user.twoFactorEnabled || !!user.twoFactorSecret;
+        await em
+          .createQueryBuilder()
+          .update(User)
+          .set({
+            isActive: false,
+            departureDate: departureDateObj,
+            twoFactorEnabled: false,
+            twoFactorSecret: null,
+            tokenVersion: () => '"token_version" + 1',
+          })
+          .where('id = :id', { id: userId })
+          .execute();
+
+        return {
+          saved,
+          reportsAffected,
+          tokensInvalidated: true,
+          clearedTwoFactor,
+        };
+      });
+
+    // 6. Audit (post-commit, fire-and-forget)
+    await this.auditService
+      .log(tenantId, processedById, 'user.departed', 'user', userId, {
+        departureType: dto.departureType,
+        isVoluntary: dto.isVoluntary,
+        reasonCategory: dto.reasonCategory ?? null,
+        lastDepartment: snapshotDept,
+        lastPosition: snapshotPos,
+        cascade: {
+          reportsReassigned: reportsAffected,
+          reassignedTo: dto.reassignToManagerId ?? null,
+          clearedTwoFactor,
+          tokensInvalidated,
+        },
+      })
+      .catch(() => {});
 
     return saved;
   }

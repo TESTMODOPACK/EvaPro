@@ -524,6 +524,27 @@ export const api = {
       request<{ mismatches: any[]; fixed: number }>(`/users/normalize-departments?apply=${apply}`, { method: "POST" }, token),
     orgChart: (token: string) =>
       request<any[]>("/users/org-chart", {}, token),
+    registerDeparture: (
+      token: string,
+      userId: string,
+      dto: {
+        departureType: string;
+        departureDate: string;
+        isVoluntary: boolean;
+        reasonCategory?: string;
+        reasonDetail?: string;
+        wouldRehire?: boolean | null;
+        reassignToManagerId?: string | null;
+      },
+    ) =>
+      request<any>(`/users/${userId}/departure`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }, token),
+    listDepartures: (token: string, userId: string) =>
+      request<any[]>(`/users/${userId}/departures`, {}, token),
+    listMovements: (token: string, userId: string) =>
+      request<any[]>(`/users/${userId}/movements`, {}, token),
   },
 
   cycles: {
