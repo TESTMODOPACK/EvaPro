@@ -240,9 +240,13 @@ export class UsersController {
     return this.usersService.updateDeparture(id, depId, req.user.tenantId, dto, req.user.userId);
   }
 
-  /** DELETE /users/:id/departures/:depId — Cancelar desvinculación (soft rollback) */
+  /** DELETE /users/:id/departures/:depId — Cancelar desvinculación (soft rollback).
+   *  Consistente con registrar/editar/reactivar: el tenant_admin puede corregir
+   *  sus propios errores. super_admin se mantiene por patrón transversal del
+   *  módulo (rol de soporte). Ver docs/FASES_PENDIENTES.md para la
+   *  segregación futura del rol super_admin. */
   @Delete(':id/departures/:depId')
-  @Roles('super_admin')
+  @Roles('super_admin', 'tenant_admin')
   cancelDeparture(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('depId', ParseUUIDPipe) depId: string,
