@@ -27,6 +27,7 @@ export interface UserData {
   role: string; managerId: string | null; department: string | null;
   departmentId?: string | null; position: string | null; positionId?: string | null;
   hireDate: string | null; isActive: boolean; createdAt: string;
+  departureDate?: string | null;
   // Demographic (optional)
   gender?: string | null; birthDate?: string | null; nationality?: string | null;
   seniorityLevel?: string | null; contractType?: string | null; workLocation?: string | null;
@@ -545,6 +546,30 @@ export const api = {
       request<any[]>(`/users/${userId}/departures`, {}, token),
     listMovements: (token: string, userId: string) =>
       request<any[]>(`/users/${userId}/movements`, {}, token),
+    reactivate: (
+      token: string,
+      userId: string,
+      dto: { reasonForReactivation?: string; managerId?: string | null } = {},
+    ) =>
+      request<{ ok: boolean; tempPasswordSentTo: string }>(`/users/${userId}/reactivate`, {
+        method: 'POST',
+        body: JSON.stringify(dto),
+      }, token),
+    updateDeparture: (
+      token: string,
+      userId: string,
+      departureId: string,
+      dto: { reasonCategory?: string | null; reasonDetail?: string | null; wouldRehire?: boolean | null },
+    ) =>
+      request<any>(`/users/${userId}/departures/${departureId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(dto),
+      }, token),
+    cancelDeparture: (token: string, userId: string, departureId: string, reason?: string) =>
+      request<{ ok: boolean; reactivated: boolean }>(`/users/${userId}/departures/${departureId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason: reason || undefined }),
+      }, token),
   },
 
   cycles: {

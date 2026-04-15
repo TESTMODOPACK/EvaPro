@@ -19,10 +19,13 @@ import { Position } from '../tenants/entities/position.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateDepartureDto } from './dto/create-departure.dto';
+import { UpdateDepartureDto } from './dto/update-departure.dto';
+import { ReactivateUserDto } from './dto/reactivate-user.dto';
 import { CreateMovementDto } from './dto/create-movement.dto';
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../notifications/email.service';
 import { looksLikeRut, normalizeRut, validateRut } from '../../common/utils/rut-validator';
 
 @Injectable()
@@ -47,6 +50,7 @@ export class UsersService {
     private readonly auditService: AuditService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
+    private readonly emailService: EmailService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -789,6 +793,240 @@ export class UsersService {
       where: { userId, tenantId },
       order: { departureDate: 'DESC' },
     });
+  }
+
+  // ─── Stage C: Reactivación / Edit / Cancel departure ──────────────────
+
+  /**
+   * Reactiva un usuario previamente desvinculado (boomerang rehire).
+   *
+   * Acciones atómicas (una sola transacción):
+   *   1. Valida que user.isActive === false (si ya está activo, 400)
+   *   2. Pre-flight: verifica que su email sigue disponible (no colisión)
+   *   3. Opcionalmente reasigna un nuevo manager (valida activo/rol)
+   *   4. Genera password temporal + bump tokenVersion + mustChangePassword
+   *   5. Setea isActive = true, departureDate = null
+   *   6. Audit log `user.reactivated` con metadata
+   *   7. Post-commit: envía email "welcome back" con temp password
+   *
+   * NO intenta restaurar objetivos/PDI/evaluaciones/etc del Stage B cascade.
+   * Esos registros quedan en su estado final (ABANDONED / CANCELLED) y el
+   * admin debe re-generarlos manualmente si corresponde.
+   */
+  async reactivateUser(
+    userId: string,
+    tenantId: string,
+    dto: ReactivateUserDto,
+    processedById: string,
+  ): Promise<{ ok: boolean; tempPasswordSentTo: string }> {
+    const user = await this.findByIdScoped(userId, tenantId);
+    if (user.isActive) throw new BadRequestException('El usuario ya está activo');
+
+    // Pre-flight: email collision check (alguien pudo haber tomado el email)
+    const emailCollision = await this.userRepository.findOne({
+      where: { tenantId, email: user.email, id: Not(userId), isActive: true },
+    });
+    if (emailCollision) {
+      throw new ConflictException(
+        `El email ${user.email} ya está en uso por otro usuario activo. ` +
+        'Debe cambiar el email del otro usuario antes de reactivar.',
+      );
+    }
+
+    // Validación de manager de reasignación (si se provee)
+    if (dto.managerId) {
+      if (dto.managerId === userId) {
+        throw new BadRequestException('Un usuario no puede ser su propio manager');
+      }
+      const newManager = await this.userRepository.findOne({
+        where: { id: dto.managerId, tenantId },
+      });
+      if (!newManager) throw new BadRequestException('Manager no encontrado');
+      if (!newManager.isActive) throw new BadRequestException('El manager está inactivo');
+      if (newManager.role !== 'manager' && newManager.role !== 'tenant_admin') {
+        throw new BadRequestException('El usuario asignado no tiene rol de manager o admin');
+      }
+    }
+
+    // Generar password temporal + hash
+    const tempPassword = Math.random().toString(36).slice(2, 10) + 'A1!';
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+    const daysInactive = user.departureDate
+      ? Math.floor((Date.now() - new Date(user.departureDate).getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    const lastDepartureDate = user.departureDate;
+
+    // Cascade atómico
+    await this.dataSource.transaction(async (em) => {
+      await em
+        .createQueryBuilder()
+        .update(User)
+        .set({
+          isActive: true,
+          departureDate: null as any,
+          passwordHash,
+          mustChangePassword: true,
+          tokenVersion: () => '"token_version" + 1',
+          ...(dto.managerId !== undefined ? { managerId: (dto.managerId || null) as any } : {}),
+        })
+        .where('id = :id', { id: userId })
+        .execute();
+    });
+
+    // Audit (post-commit)
+    await this.auditService
+      .log(tenantId, processedById, 'user.reactivated', 'user', userId, {
+        lastDepartureDate,
+        daysInactive,
+        reasonForReactivation: dto.reasonForReactivation || null,
+        managerAssigned: dto.managerId || null,
+      })
+      .catch(() => {});
+
+    // Email welcome-back (fire-and-forget)
+    try {
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      await this.emailService.sendWelcomeBack(user.email, {
+        firstName: user.firstName,
+        orgName: tenant?.name || 'Eva360',
+        tempPassword,
+        tenantId,
+        daysInactive: daysInactive ?? undefined,
+      });
+    } catch {
+      // Email no-crítico; el admin puede reenviar invite si falla
+    }
+
+    return { ok: true, tempPasswordSentTo: user.email };
+  }
+
+  /**
+   * Edita los campos de diagnóstico/seguimiento de un registro de
+   * desvinculación existente. Sólo se permite modificar reasonCategory,
+   * reasonDetail, wouldRehire (los datos legales son inmutables).
+   */
+  async updateDeparture(
+    userId: string,
+    departureId: string,
+    tenantId: string,
+    dto: UpdateDepartureDto,
+    processedById: string,
+  ): Promise<UserDeparture> {
+    const departure = await this.departureRepo.findOne({
+      where: { id: departureId, userId, tenantId },
+    });
+    if (!departure) throw new NotFoundException('Registro de desvinculación no encontrado');
+
+    const changes: Record<string, { from: any; to: any }> = {};
+    if (dto.reasonCategory !== undefined && dto.reasonCategory !== departure.reasonCategory) {
+      changes.reasonCategory = { from: departure.reasonCategory, to: dto.reasonCategory };
+      departure.reasonCategory = dto.reasonCategory;
+    }
+    if (dto.reasonDetail !== undefined && dto.reasonDetail !== departure.reasonDetail) {
+      changes.reasonDetail = { from: departure.reasonDetail, to: dto.reasonDetail };
+      departure.reasonDetail = dto.reasonDetail;
+    }
+    if (dto.wouldRehire !== undefined && dto.wouldRehire !== departure.wouldRehire) {
+      changes.wouldRehire = { from: departure.wouldRehire, to: dto.wouldRehire };
+      departure.wouldRehire = dto.wouldRehire;
+    }
+
+    if (Object.keys(changes).length === 0) return departure;
+
+    const saved = await this.departureRepo.save(departure);
+
+    await this.auditService
+      .log(tenantId, processedById, 'user_departure.edited', 'user_departure', departureId, {
+        userId,
+        fieldsChanged: Object.keys(changes),
+        changes,
+      })
+      .catch(() => {});
+
+    return saved;
+  }
+
+  /**
+   * Cancela una desvinculación registrada por error (soft rollback):
+   *   1. Valida que el registro sea el MÁS RECIENTE del usuario (no se
+   *      puede rollbackear una desvinculación antigua si hay otra posterior)
+   *   2. Si el usuario está inactivo, lo reactiva (sin email welcome-back
+   *      — el admin lo notifica manualmente)
+   *   3. Elimina el registro UserDeparture
+   *   4. Audit log `user_departure.cancelled` con snapshot del registro
+   *
+   * NO restaura el cascade Stage B (objetivos/PDI/evals quedan en su
+   * estado final — admin debe re-generar manualmente si corresponde).
+   * NO restaura direct reports reasignados (el nuevo manager ya opera —
+   * romper eso es peor que mantenerlo).
+   */
+  async cancelDeparture(
+    userId: string,
+    departureId: string,
+    tenantId: string,
+    processedById: string,
+    reason?: string,
+  ): Promise<{ ok: boolean; reactivated: boolean }> {
+    const departure = await this.departureRepo.findOne({
+      where: { id: departureId, userId, tenantId },
+    });
+    if (!departure) throw new NotFoundException('Registro de desvinculación no encontrado');
+
+    // Verificar que sea el más reciente (tiebreaker: createdAt DESC si
+    // dos desvinculaciones comparten fecha — no debería pasar pero defensivo)
+    const latest = await this.departureRepo.findOne({
+      where: { userId, tenantId },
+      order: { departureDate: 'DESC', createdAt: 'DESC' },
+    });
+    if (!latest || latest.id !== departureId) {
+      throw new BadRequestException(
+        'Sólo se puede cancelar la desvinculación más reciente del usuario',
+      );
+    }
+
+    const user = await this.findByIdScoped(userId, tenantId);
+
+    const wasInactive = !user.isActive;
+    const snapshot = {
+      departureDate: departure.departureDate,
+      departureType: departure.departureType,
+      isVoluntary: departure.isVoluntary,
+      reasonCategory: departure.reasonCategory,
+      reasonDetail: departure.reasonDetail,
+      wouldRehire: departure.wouldRehire,
+    };
+
+    // Soft rollback atómico
+    await this.dataSource.transaction(async (em) => {
+      // 1. Reactivar user (si estaba inactivo)
+      if (wasInactive) {
+        await em
+          .createQueryBuilder()
+          .update(User)
+          .set({
+            isActive: true,
+            departureDate: null as any,
+            tokenVersion: () => '"token_version" + 1',
+          })
+          .where('id = :id', { id: userId })
+          .execute();
+      }
+      // 2. Eliminar el registro de desvinculación
+      await em.getRepository(UserDeparture).delete({ id: departureId });
+    });
+
+    await this.auditService
+      .log(tenantId, processedById, 'user_departure.cancelled', 'user_departure', departureId, {
+        userId,
+        reactivated: wasInactive,
+        reason: reason || null,
+        cancelledDeparture: snapshot,
+        warning: 'El cascade de trabajo en curso (objetivos, PDI, evaluaciones) NO se restauró — el admin debe re-generarlos manualmente si corresponde',
+      })
+      .catch(() => {});
+
+    return { ok: true, reactivated: wasInactive };
   }
 
   // ─── Internal Movement Tracking ────────────────────────────────────────

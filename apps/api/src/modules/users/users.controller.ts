@@ -24,6 +24,8 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateDepartureDto } from './dto/create-departure.dto';
+import { UpdateDepartureDto } from './dto/update-departure.dto';
+import { ReactivateUserDto } from './dto/reactivate-user.dto';
 import { CreateMovementDto } from './dto/create-movement.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -211,6 +213,43 @@ export class UsersController {
     @Request() req: any,
   ) {
     return this.usersService.getUserDepartures(id, req.user.tenantId);
+  }
+
+  // ─── Stage C: Reactivación / Edit / Cancel departure ────────────────────
+
+  /** POST /users/:id/reactivate — Reactivar usuario desvinculado */
+  @Post(':id/reactivate')
+  @Roles('super_admin', 'tenant_admin')
+  reactivateUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: ReactivateUserDto,
+  ) {
+    return this.usersService.reactivateUser(id, req.user.tenantId, dto, req.user.userId);
+  }
+
+  /** PATCH /users/:id/departures/:depId — Editar categoría/detalle/rehire */
+  @Patch(':id/departures/:depId')
+  @Roles('super_admin', 'tenant_admin')
+  updateDeparture(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('depId', ParseUUIDPipe) depId: string,
+    @Request() req: any,
+    @Body() dto: UpdateDepartureDto,
+  ) {
+    return this.usersService.updateDeparture(id, depId, req.user.tenantId, dto, req.user.userId);
+  }
+
+  /** DELETE /users/:id/departures/:depId — Cancelar desvinculación (soft rollback) */
+  @Delete(':id/departures/:depId')
+  @Roles('super_admin')
+  cancelDeparture(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('depId', ParseUUIDPipe) depId: string,
+    @Request() req: any,
+    @Body() body: { reason?: string } = {},
+  ) {
+    return this.usersService.cancelDeparture(id, depId, req.user.tenantId, req.user.userId, body.reason);
   }
 
   // ─── Internal Movement Tracking ───────────────────────────────────────────
