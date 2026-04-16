@@ -13,7 +13,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Competency, CompetencyStatus } from './entities/competency.entity';
 import { DevelopmentPlan } from './entities/development-plan.entity';
-import { DevelopmentAction } from './entities/development-action.entity';
+import { DevelopmentAction, DevelopmentActionStatus } from './entities/development-action.entity';
 import { DevelopmentComment } from './entities/development-comment.entity';
 import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
@@ -656,10 +656,76 @@ export class DevelopmentService {
     return saved;
   }
 
-  async completeAction(tenantId: string, actionId: string) {
+  /**
+   * Marca una acción de desarrollo como completada.
+   *
+   * Reglas de negocio:
+   *   1. El plan debe estar ACTIVO (o en revisión). Si está en borrador,
+   *      cancelado o completado, se rechaza con 409 — el manager tiene que
+   *      activar el plan primero.
+   *   2. Permisos:
+   *      · employee → solo puede completar acciones de SU plan (plan.userId)
+   *      · manager  → solo si el owner del plan es su direct report
+   *      · tenant_admin / super_admin → siempre pueden
+   *   3. Si la acción ya está completada, no-op (idempotente).
+   *
+   *   4. Al completar, se setea completedAt = now() (usado por el UI para
+   *      mostrar "Cumplida en tiempo" vs "Tardía" comparando con dueDate).
+   */
+  async completeAction(
+    tenantId: string,
+    actionId: string,
+    actorId: string,
+    actorRole: string,
+  ) {
     const action = await this.actionRepo.findOne({ where: { id: actionId, tenantId } });
-    if (!action) throw new NotFoundException('Accion no encontrada');
-    action.status = 'completada';
+    if (!action) throw new NotFoundException('Acción no encontrada');
+
+    // Idempotencia
+    if (action.status === DevelopmentActionStatus.COMPLETADA) {
+      return action;
+    }
+
+    // 1. Estado del plan
+    const plan = await this.planRepo.findOne({ where: { id: action.planId, tenantId } });
+    if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
+    if (plan.status === 'borrador') {
+      throw new ConflictException(
+        'El plan está en borrador. Debe ser activado por un manager o admin antes de poder completar acciones.',
+      );
+    }
+    if (plan.status === 'cancelado') {
+      throw new ConflictException('El plan fue cancelado; no se pueden completar acciones.');
+    }
+    if (plan.status === 'completado') {
+      throw new ConflictException('El plan ya está completado; no se pueden modificar sus acciones.');
+    }
+
+    // 2. Permisos
+    if (actorRole !== 'super_admin' && actorRole !== 'tenant_admin') {
+      if (actorRole === 'employee') {
+        if (plan.userId !== actorId) {
+          throw new ForbiddenException('Solo puedes completar acciones de tu propio plan de desarrollo.');
+        }
+      } else if (actorRole === 'manager') {
+        // Manager: only can complete actions of its direct reports
+        const owner = await this.userRepo.findOne({
+          where: { id: plan.userId, tenantId },
+          select: ['id', 'managerId'],
+        });
+        if (!owner) throw new NotFoundException('Colaborador del plan no encontrado');
+        if (owner.managerId !== actorId) {
+          throw new ForbiddenException(
+            'Solo puedes completar acciones de planes de tu equipo directo. El colaborador debería marcarla como completada él/ella mismo/a.',
+          );
+        }
+      } else {
+        throw new ForbiddenException('Rol no autorizado para completar acciones de desarrollo.');
+      }
+    }
+
+    // 3. Marcar como completada
+    action.status = DevelopmentActionStatus.COMPLETADA;
     action.completedAt = new Date();
     const saved = await this.actionRepo.save(action);
     await this.recalculateProgress(action.planId);
@@ -678,7 +744,7 @@ export class DevelopmentService {
 
   private async recalculateProgress(planId: string) {
     const total = await this.actionRepo.count({ where: { planId } });
-    const completed = await this.actionRepo.count({ where: { planId, status: 'completada' } });
+    const completed = await this.actionRepo.count({ where: { planId, status: DevelopmentActionStatus.COMPLETADA } });
 
     const plan = await this.planRepo.findOne({ where: { id: planId } });
     if (!plan) return;
@@ -893,7 +959,7 @@ export class DevelopmentService {
       const userName = p.user ? `${p.user.firstName || ''} ${p.user.lastName || ''}`.trim() : '';
       const creatorName = p.creator ? `${p.creator.firstName || ''} ${p.creator.lastName || ''}`.trim() : '';
       const actions = p.actions || [];
-      const completed = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+      const completed = actions.filter((a: any) => a.status === 'completada').length;
       const progress = actions.length > 0 ? Math.round((completed / actions.length) * 100) : 0;
       rows.push([
         this.escapeCsv(p.title || 'Sin título'), this.escapeCsv(userName),
@@ -939,7 +1005,7 @@ export class DevelopmentService {
       const userName = p.user ? `${p.user.firstName || ''} ${p.user.lastName || ''}`.trim() : '';
       const creatorName = p.creator ? `${p.creator.firstName || ''} ${p.creator.lastName || ''}`.trim() : '';
       const actions = p.actions || [];
-      const completed = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+      const completed = actions.filter((a: any) => a.status === 'completada').length;
       const progress = actions.length > 0 ? Math.round((completed / actions.length) * 100) : 0;
       ws2.addRow([p.title || 'Sin título', userName, this.pdiStatusLabels[p.status] || p.status,
         actions.length, completed, progress, creatorName,
@@ -1017,7 +1083,7 @@ export class DevelopmentService {
         const userName = p.user ? `${p.user.firstName || ''} ${p.user.lastName || ''}`.trim() : '';
         const creatorName = p.creator ? `${p.creator.firstName || ''} ${p.creator.lastName || ''}`.trim() : '';
         const actions = p.actions || [];
-        const completed = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+        const completed = actions.filter((a: any) => a.status === 'completada').length;
         const progress = actions.length > 0 ? Math.round((completed / actions.length) * 100) : 0;
         return [p.title || 'Sin título', userName, this.pdiStatusLabels[p.status] || p.status,
           `${completed}/${actions.length}`, `${progress}%`, creatorName];

@@ -1,5 +1,5 @@
 import {
-  Column, CreateDateColumn, Entity, PrimaryGeneratedColumn,
+  Column, CreateDateColumn, UpdateDateColumn, Entity, PrimaryGeneratedColumn,
   Index, ManyToOne, JoinColumn,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
@@ -53,4 +53,9 @@ export class Badge {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
+
+  /** Mutado cada vez que el admin edita el badge (nombre, criterios,
+   *  pointsReward, soft-delete). Inicialmente igual a createdAt. */
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
 }

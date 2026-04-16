@@ -16,7 +16,15 @@ const logger = new Logger('DatabaseModule');
         // constraints, and loses data on any entity change. It is therefore
         // permanently disabled in production — use proper migrations instead.
         // Dev/test may still use synchronize for convenience.
+        // NO existe env var DB_SYNC que pueda override esto en prod; si
+        // alguien la setea a 'true' en prod emitimos un warning loud y la
+        // ignoramos. Ver docs/MIGRATIONS.md para el patrón correcto.
         const synchronize = !isProduction;
+        if (isProduction && process.env.DB_SYNC === 'true') {
+          logger.warn(
+            'DB_SYNC=true detected in production — IGNORED. synchronize is permanently disabled in prod to prevent destructive schema changes. Use migrations or cleanup-orphans.ts instead.',
+          );
+        }
 
         // ─── Connection pool ──────────────────────────────────────────
         // Configurable via env vars para ajustar sin rebuild.

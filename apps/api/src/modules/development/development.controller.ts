@@ -310,7 +310,12 @@ export class DevelopmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.developmentService.completeAction(req.user.tenantId, id);
+    return this.developmentService.completeAction(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Delete('actions/:id')

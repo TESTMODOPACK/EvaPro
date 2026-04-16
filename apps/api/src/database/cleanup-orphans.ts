@@ -200,11 +200,151 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS "idx_recruitment_interview_candidate" ON "recruitment_interviews" ("candidate_id")`,
       // Stage A departure cascade: token invalidation counter (starts at 0)
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "token_version" integer NOT NULL DEFAULT 0`,
+      // Task T2: badges.updated_at para auditar ediciones y soft-delete
+      `ALTER TABLE "badges" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz NOT NULL DEFAULT NOW()`,
       // Stage B departure cascade: add 'cancelled' value to AssignmentStatus
       // enum (PENDING|IN_PROGRESS|COMPLETED → + CANCELLED). ADD VALUE IF NOT
       // EXISTS is idempotent. TypeORM's default enum type name is
       // <table>_<column>_enum.
       `ALTER TYPE "evaluation_assignments_status_enum" ADD VALUE IF NOT EXISTS 'cancelled'`,
+
+      // ── Task T1: varchar status → PostgreSQL native enum ───────────────
+      // Idempotent migration. Patrón por columna:
+      //   1. Pre-check: NULL valores fuera del enum para evitar que el
+      //      ALTER falle con "invalid input value". Se loguea cuántos.
+      //   2. CREATE TYPE guarded con DO (IF NOT EXISTS no existe para TYPE).
+      //   3. ALTER COLUMN TYPE con USING cast. Si ya es enum, no-op.
+      // El ALTER y el pre-check usan RAISE NOTICE para ser visibles en logs
+      // (no silenciosos). Si el ALTER falla por razones distintas de "ya es
+      // enum", el error se reporta.
+      //
+      // redemption_transactions.status
+      `DO $$
+      DECLARE cnt int;
+      BEGIN
+        UPDATE "redemption_transactions" SET "status" = 'pending'
+         WHERE "status" NOT IN ('pending','approved','delivered','cancelled');
+        GET DIAGNOSTICS cnt = ROW_COUNT;
+        IF cnt > 0 THEN RAISE NOTICE 'Normalized % rows in redemption_transactions.status', cnt; END IF;
+      END $$`,
+      `DO $$ BEGIN
+        CREATE TYPE "redemption_transactions_status_enum" AS ENUM ('pending','approved','delivered','cancelled');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN
+        ALTER TABLE "redemption_transactions"
+          ALTER COLUMN "status" DROP DEFAULT,
+          ALTER COLUMN "status" TYPE "redemption_transactions_status_enum"
+            USING "status"::text::"redemption_transactions_status_enum",
+          ALTER COLUMN "status" SET DEFAULT 'pending'::"redemption_transactions_status_enum";
+      EXCEPTION
+        WHEN datatype_mismatch THEN NULL; -- ya es enum
+        WHEN others THEN RAISE NOTICE 'redemption_transactions.status migration skipped: %', SQLERRM;
+      END $$`,
+
+      // subscriptions.status
+      `DO $$
+      DECLARE cnt int;
+      BEGIN
+        UPDATE "subscriptions" SET "status" = 'active'
+         WHERE "status" NOT IN ('active','trial','suspended','cancelled','expired');
+        GET DIAGNOSTICS cnt = ROW_COUNT;
+        IF cnt > 0 THEN RAISE NOTICE 'Normalized % rows in subscriptions.status', cnt; END IF;
+      END $$`,
+      `DO $$ BEGIN
+        CREATE TYPE "subscriptions_status_enum" AS ENUM ('active','trial','suspended','cancelled','expired');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN
+        ALTER TABLE "subscriptions"
+          ALTER COLUMN "status" DROP DEFAULT,
+          ALTER COLUMN "status" TYPE "subscriptions_status_enum"
+            USING "status"::text::"subscriptions_status_enum",
+          ALTER COLUMN "status" SET DEFAULT 'active'::"subscriptions_status_enum";
+      EXCEPTION
+        WHEN datatype_mismatch THEN NULL;
+        WHEN others THEN RAISE NOTICE 'subscriptions.status migration skipped: %', SQLERRM;
+      END $$`,
+
+      // invoices.type + invoices.status
+      `DO $$
+      DECLARE cnt int;
+      BEGIN
+        UPDATE "invoices" SET "type" = 'invoice'
+         WHERE "type" NOT IN ('invoice','credit_note');
+        GET DIAGNOSTICS cnt = ROW_COUNT;
+        IF cnt > 0 THEN RAISE NOTICE 'Normalized % rows in invoices.type', cnt; END IF;
+
+        UPDATE "invoices" SET "status" = 'draft'
+         WHERE "status" NOT IN ('draft','sent','paid','overdue','cancelled');
+        GET DIAGNOSTICS cnt = ROW_COUNT;
+        IF cnt > 0 THEN RAISE NOTICE 'Normalized % rows in invoices.status', cnt; END IF;
+      END $$`,
+      `DO $$ BEGIN
+        CREATE TYPE "invoices_type_enum" AS ENUM ('invoice','credit_note');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN
+        ALTER TABLE "invoices"
+          ALTER COLUMN "type" DROP DEFAULT,
+          ALTER COLUMN "type" TYPE "invoices_type_enum"
+            USING "type"::text::"invoices_type_enum",
+          ALTER COLUMN "type" SET DEFAULT 'invoice'::"invoices_type_enum";
+      EXCEPTION
+        WHEN datatype_mismatch THEN NULL;
+        WHEN others THEN RAISE NOTICE 'invoices.type migration skipped: %', SQLERRM;
+      END $$`,
+      `DO $$ BEGIN
+        CREATE TYPE "invoices_status_enum" AS ENUM ('draft','sent','paid','overdue','cancelled');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN
+        ALTER TABLE "invoices"
+          ALTER COLUMN "status" DROP DEFAULT,
+          ALTER COLUMN "status" TYPE "invoices_status_enum"
+            USING "status"::text::"invoices_status_enum",
+          ALTER COLUMN "status" SET DEFAULT 'draft'::"invoices_status_enum";
+      EXCEPTION
+        WHEN datatype_mismatch THEN NULL;
+        WHEN others THEN RAISE NOTICE 'invoices.status migration skipped: %', SQLERRM;
+      END $$`,
+
+      // development_actions.status + development_actions.priority
+      `DO $$
+      DECLARE cnt int;
+      BEGIN
+        UPDATE "development_actions" SET "status" = 'pendiente'
+         WHERE "status" NOT IN ('pendiente','en_progreso','completada','cancelada');
+        GET DIAGNOSTICS cnt = ROW_COUNT;
+        IF cnt > 0 THEN RAISE NOTICE 'Normalized % rows in development_actions.status', cnt; END IF;
+
+        UPDATE "development_actions" SET "priority" = 'media'
+         WHERE "priority" NOT IN ('alta','media','baja');
+        GET DIAGNOSTICS cnt = ROW_COUNT;
+        IF cnt > 0 THEN RAISE NOTICE 'Normalized % rows in development_actions.priority', cnt; END IF;
+      END $$`,
+      `DO $$ BEGIN
+        CREATE TYPE "development_actions_status_enum" AS ENUM ('pendiente','en_progreso','completada','cancelada');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN
+        ALTER TABLE "development_actions"
+          ALTER COLUMN "status" DROP DEFAULT,
+          ALTER COLUMN "status" TYPE "development_actions_status_enum"
+            USING "status"::text::"development_actions_status_enum",
+          ALTER COLUMN "status" SET DEFAULT 'pendiente'::"development_actions_status_enum";
+      EXCEPTION
+        WHEN datatype_mismatch THEN NULL;
+        WHEN others THEN RAISE NOTICE 'development_actions.status migration skipped: %', SQLERRM;
+      END $$`,
+      `DO $$ BEGIN
+        CREATE TYPE "development_actions_priority_enum" AS ENUM ('alta','media','baja');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN
+        ALTER TABLE "development_actions"
+          ALTER COLUMN "priority" DROP DEFAULT,
+          ALTER COLUMN "priority" TYPE "development_actions_priority_enum"
+            USING "priority"::text::"development_actions_priority_enum",
+          ALTER COLUMN "priority" SET DEFAULT 'media'::"development_actions_priority_enum";
+      EXCEPTION
+        WHEN datatype_mismatch THEN NULL;
+        WHEN others THEN RAISE NOTICE 'development_actions.priority migration skipped: %', SQLERRM;
+      END $$`,
     ];
     for (const sql of integrityFixes) {
       try {

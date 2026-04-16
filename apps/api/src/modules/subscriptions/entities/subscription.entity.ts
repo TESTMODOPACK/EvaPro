@@ -46,9 +46,7 @@ export class Subscription {
   @JoinColumn({ name: 'plan_id' })
   plan: SubscriptionPlan;
 
-  // Stored as varchar to preserve the existing production schema. The
-  // SubscriptionStatus TS enum constrains writes at the service layer.
-  @Column({ type: 'varchar', length: 30, default: SubscriptionStatus.ACTIVE })
+  @Column({ type: 'enum', enum: SubscriptionStatus, default: SubscriptionStatus.ACTIVE })
   status: SubscriptionStatus;
 
   @Column({ type: 'date', name: 'start_date' })

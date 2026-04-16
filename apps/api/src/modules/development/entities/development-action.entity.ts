@@ -12,6 +12,19 @@ import { Tenant } from '../../tenants/entities/tenant.entity';
 import { DevelopmentPlan } from './development-plan.entity';
 import { Competency } from './competency.entity';
 
+export enum DevelopmentActionStatus {
+  PENDIENTE = 'pendiente',
+  EN_PROGRESO = 'en_progreso',
+  COMPLETADA = 'completada',
+  CANCELADA = 'cancelada',
+}
+
+export enum DevelopmentActionPriority {
+  ALTA = 'alta',
+  MEDIA = 'media',
+  BAJA = 'baja',
+}
+
 @Entity('development_actions')
 @Index('idx_devaction_plan', ['tenantId', 'planId'])
 @Index('idx_devaction_plan_status', ['planId', 'status'])
@@ -49,11 +62,11 @@ export class DevelopmentAction {
   @JoinColumn({ name: 'competency_id' })
   competency: Competency | null;
 
-  @Column({ type: 'varchar', length: 30, default: 'pendiente' })
-  status: string; // pendiente | en_progreso | completada | cancelada
+  @Column({ type: 'enum', enum: DevelopmentActionStatus, default: DevelopmentActionStatus.PENDIENTE })
+  status: DevelopmentActionStatus;
 
-  @Column({ type: 'varchar', length: 20, default: 'media' })
-  priority: string; // alta | media | baja
+  @Column({ type: 'enum', enum: DevelopmentActionPriority, default: DevelopmentActionPriority.MEDIA })
+  priority: DevelopmentActionPriority;
 
   @Column({ type: 'date', name: 'due_date', nullable: true })
   dueDate: Date | null;

@@ -44,10 +44,10 @@ export class Invoice {
   @Column({ type: 'varchar', length: 30, name: 'invoice_number' })
   invoiceNumber: string;
 
-  @Column({ type: 'varchar', length: 20, default: InvoiceType.INVOICE })
+  @Column({ type: 'enum', enum: InvoiceType, default: InvoiceType.INVOICE })
   type: InvoiceType;
 
-  @Column({ type: 'varchar', length: 20, default: InvoiceStatus.DRAFT })
+  @Column({ type: 'enum', enum: InvoiceStatus, default: InvoiceStatus.DRAFT })
   status: InvoiceStatus;
 
   @Column({ type: 'date', name: 'issue_date' })

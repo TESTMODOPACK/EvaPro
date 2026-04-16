@@ -51,10 +51,7 @@ export class RedemptionTransaction {
   @Column({ type: 'int', name: 'points_spent' })
   pointsSpent: number;
 
-  // Stored as varchar for compatibility with the existing production schema
-  // (no migrations yet). The RedemptionStatus TS enum + service-layer
-  // validation in updateRedemptionStatus() guarantee only legal values.
-  @Column({ type: 'varchar', length: 30, default: RedemptionStatus.PENDING })
+  @Column({ type: 'enum', enum: RedemptionStatus, default: RedemptionStatus.PENDING })
   status: RedemptionStatus;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
