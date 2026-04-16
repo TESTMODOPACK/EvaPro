@@ -1244,30 +1244,84 @@ function DesarrolloPageContent() {
                                     {t('desarrollo.actions.dueDate')}: {new Date(action.dueDate).toLocaleDateString('es-CL')}
                                   </div>
                                 )}
+                                {/* Fecha de cumplimiento visible solo cuando está completada.
+                                    Incluye indicador "en tiempo" vs "N días tarde" comparando
+                                    completedAt con dueDate para medir puntualidad del plan. */}
+                                {action.status === 'completada' && action.completedAt && (() => {
+                                  const completedDate = new Date(action.completedAt);
+                                  const dueDate = action.dueDate ? new Date(action.dueDate) : null;
+                                  const diffDays = dueDate
+                                    ? Math.ceil((completedDate.getTime() - dueDate.setHours(23, 59, 59, 999)) / 86_400_000)
+                                    : null;
+                                  const onTime = diffDays == null || diffDays <= 0;
+                                  return (
+                                    <div style={{ fontSize: '0.72rem', color: onTime ? '#065f46' : '#b45309', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                      <span>✓ Completada: {completedDate.toLocaleDateString('es-CL')}</span>
+                                      {dueDate && (
+                                        <span
+                                          title={onTime ? 'Cumplida en tiempo o antes del plazo' : `Cumplida ${diffDays} día${diffDays !== 1 ? 's' : ''} después del plazo`}
+                                          style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: 700,
+                                            padding: '0.1rem 0.4rem',
+                                            borderRadius: '999px',
+                                            background: onTime ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                                            color: onTime ? '#065f46' : '#b45309',
+                                          }}
+                                        >
+                                          {onTime ? 'En tiempo' : `${diffDays}d tarde`}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                 <span className={action.status === 'completada' ? 'badge badge-success' : 'badge badge-warning'} style={{ fontSize: '0.7rem' }}>
                                   {action.status === 'completada' ? t('desarrollo.actions.statusCompleted') : t('desarrollo.actions.statusPending')}
                                 </span>
-                                {action.status !== 'completada' && (
-                                  <>
-                                    <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} onClick={() => {
-                                      setEditingActionId(action.id);
-                                      setEditActionForm({
-                                        title: action.title || '',
-                                        type: action.type || 'curso',
-                                        competencyId: action.competencyId || '',
-                                        dueDate: action.dueDate ? action.dueDate.split('T')[0] : '',
-                                        description: action.description || '',
-                                      });
-                                    }}>
-                                      {t('common.edit')}
-                                    </button>
-                                    <button className="btn-primary" style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} onClick={() => handleCompleteAction(action.id)}>
-                                      {t('desarrollo.complete')}
-                                    </button>
-                                  </>
-                                )}
+                                {action.status !== 'completada' && (() => {
+                                  // Reglas de negocio para "Completar":
+                                  //   · Plan en borrador → no se puede completar nada (el manager
+                                  //     debe activarlo primero). Botón deshabilitado.
+                                  //   · Plan cancelado/completado → no se pueden modificar acciones.
+                                  //   · El employee puede completar SU plan; el manager puede
+                                  //     hacer override. El backend valida el ownership; el UI
+                                  //     refleja el estado del plan para evitar 409 confusos.
+                                  const planIsDraft = selectedPlan?.status === 'borrador';
+                                  const planClosed = selectedPlan?.status === 'cancelado' || selectedPlan?.status === 'completado';
+                                  const disabled = planIsDraft || planClosed;
+                                  const disabledReason = planIsDraft
+                                    ? 'Activa el plan primero para poder completar acciones'
+                                    : planClosed
+                                    ? 'El plan está cerrado'
+                                    : undefined;
+                                  return (
+                                    <>
+                                      <button className="btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }} onClick={() => {
+                                        setEditingActionId(action.id);
+                                        setEditActionForm({
+                                          title: action.title || '',
+                                          type: action.type || 'curso',
+                                          competencyId: action.competencyId || '',
+                                          dueDate: action.dueDate ? action.dueDate.split('T')[0] : '',
+                                          description: action.description || '',
+                                        });
+                                      }}>
+                                        {t('common.edit')}
+                                      </button>
+                                      <button
+                                        className="btn-primary"
+                                        style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem', opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
+                                        disabled={disabled}
+                                        title={disabledReason}
+                                        onClick={() => !disabled && handleCompleteAction(action.id)}
+                                      >
+                                        {t('desarrollo.complete')}
+                                      </button>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </div>
                           )}

@@ -45,7 +45,7 @@ import { CalibrationEntry } from '../modules/talent/entities/calibration-entry.e
 
 import { Competency } from '../modules/development/entities/competency.entity';
 import { DevelopmentPlan } from '../modules/development/entities/development-plan.entity';
-import { DevelopmentAction } from '../modules/development/entities/development-action.entity';
+import { DevelopmentAction, DevelopmentActionStatus, DevelopmentActionPriority } from '../modules/development/entities/development-action.entity';
 import { DevelopmentComment } from '../modules/development/entities/development-comment.entity';
 
 import { Notification, NotificationType } from '../modules/notifications/entities/notification.entity';
@@ -707,8 +707,8 @@ async function seedDemoFull() {
             description: 'Actividad clave para el desarrollo de la competencia identificada.',
             actionType: actionTypes[(i + a) % actionTypes.length],
             competencyId: competencies.length > 0 ? competencies[(i + a) % competencies.length].id : undefined,
-            status: a === 0 ? 'completada' : a === 1 ? 'en_progreso' : 'pendiente',
-            priority: a === 0 ? 'alta' : 'media',
+            status: a === 0 ? DevelopmentActionStatus.COMPLETADA : a === 1 ? DevelopmentActionStatus.EN_PROGRESO : DevelopmentActionStatus.PENDIENTE,
+            priority: a === 0 ? DevelopmentActionPriority.ALTA : DevelopmentActionPriority.MEDIA,
             dueDate: daysFromNow(30 + a * 30),
             completedAt: a === 0 ? daysAgo(5) : undefined,
           }));

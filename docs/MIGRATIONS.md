@@ -114,3 +114,63 @@ Los archivos `.sql` en `sql/` son migraciones ad-hoc anteriores al sistema de mi
 - Las migraciones se registran en la tabla `migrations` de PostgreSQL. No borrar esa tabla.
 - Si la BD esta vacia (primer deploy), `migration:run` aplica TODAS las migraciones en orden cronologico.
 - `migration:generate` requiere una BD corriendo con el schema actual para poder comparar.
+
+---
+
+## Patrón alternativo: `cleanup-orphans.ts` (startup idempotente)
+
+Además de las migraciones formales de TypeORM, Eva360 ejecuta al arranque el
+script `apps/api/src/database/cleanup-orphans.ts`. Ese script aplica cambios
+idempotentes que son seguros de correr siempre:
+
+- `ADD COLUMN IF NOT EXISTS` — agrega columnas nuevas sin perder data
+- `CREATE INDEX IF NOT EXISTS` — índices faltantes
+- `ALTER TYPE ... ADD VALUE IF NOT EXISTS` — agregar valores a enums existentes
+- Pre-check + `UPDATE` de filas huérfanas antes de agregar FK constraints
+- `DO $$ ... CREATE TYPE ... EXCEPTION WHEN duplicate_object THEN NULL` —
+  crear enums nativos (PostgreSQL no soporta `CREATE TYPE IF NOT EXISTS`)
+- `DO $$ ... ALTER COLUMN ... USING cast ... EXCEPTION WHEN others THEN
+  RAISE NOTICE` — convertir columnas varchar→enum, con visibilidad de
+  errores (no silenciosa) pero sin bloquear el arranque si ya se aplicó.
+
+### Cuándo usar una migración formal vs cleanup-orphans
+
+| Escenario | Usar |
+|---|---|
+| Cambio destructivo (DROP COLUMN, DROP TABLE) | **Migración formal** |
+| Rename de columna con data | **Migración formal** (con down() inverso) |
+| Agregar columna nullable / con default | Cleanup-orphans OK |
+| Agregar índice | Cleanup-orphans OK |
+| Agregar valor a enum existente | Cleanup-orphans (`ALTER TYPE ADD VALUE IF NOT EXISTS`) |
+| Convertir varchar→enum en columna existente | Cleanup-orphans con pre-check + USING cast |
+| Backfill de datos simple (NULL a default) | Cleanup-orphans con WHERE específico |
+
+### Regla de oro de `cleanup-orphans.ts`
+
+**NO borra datos**. No hay `DROP TABLE`, `DELETE FROM`, `TRUNCATE`, ni
+`SET column = NULL` masivos. Solo el `NULL` quirúrgico para habilitar FKs.
+Cualquier operación destructiva requiere aprobación explícita y debe ir
+en una migración formal con `down()`, ejecutada manualmente.
+
+---
+
+## DB_SYNC en producción — REGLA ESTRICTA
+
+**Nunca setear `NODE_ENV=development` o `DB_SYNC=true` en un servidor
+productivo**. El código en `database.module.ts` protege contra esto:
+
+```ts
+const isProduction = process.env.NODE_ENV === 'production';
+const synchronize = !isProduction;  // false en prod
+```
+
+Si `synchronize: true` corre en prod, TypeORM puede:
+- DROP columnas que parecen "sobrantes" pero contienen data
+- Recrear índices perdiendo configuración custom
+- Alterar tipos de columnas destructivamente
+
+Política de deploy:
+1. `NODE_ENV` siempre es `production` en el servidor
+2. `DB_SYNC` NO es una env var reconocida; no la agregues
+3. Cambios de schema → migración formal o cleanup-orphans idempotente
+4. Si un PR incluye `synchronize: true` hardcoded, rechazarlo en review

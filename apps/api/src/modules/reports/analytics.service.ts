@@ -67,15 +67,15 @@ export class AnalyticsService {
       const actions = plan.actions || [];
       for (const a of actions) {
         totalActions++;
-        if (a.status === 'completada' || a.status === 'completed') completedActions++;
-        if (a.dueDate && new Date(a.dueDate) < now && a.status !== 'completada' && a.status !== 'completed') overdueActions++;
+        if (a.status === 'completada') completedActions++;
+        if (a.dueDate && new Date(a.dueDate) < now && a.status !== 'completada' && a.status !== 'cancelada') overdueActions++;
       }
 
       const dept = (plan.user as any)?.department || 'Sin departamento';
       if (!byDepartment[dept]) byDepartment[dept] = { total: 0, completed: 0, avgProgress: 0, plans: [] };
       byDepartment[dept].total++;
       if (plan.status === 'completado') byDepartment[dept].completed++;
-      const progress = actions.length > 0 ? Math.round(actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length / actions.length * 100) : 0;
+      const progress = actions.length > 0 ? Math.round(actions.filter((a: any) => a.status === 'completada').length / actions.length * 100) : 0;
       byDepartment[dept].avgProgress += progress;
       const rawName = (plan.user as any) ? `${(plan.user as any).firstName || ''} ${(plan.user as any).lastName || ''}`.trim() : '';
       const userName = rawName || 'N/A';
@@ -86,7 +86,7 @@ export class AnalyticsService {
         status: plan.status,
         progress,
         totalActions: actions.length,
-        completedActions: actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length,
+        completedActions: actions.filter((a: any) => a.status === 'completada').length,
       });
     }
 
@@ -140,7 +140,7 @@ export class AnalyticsService {
     for (const p of allPlans) {
       const actions = p.actions || [];
       totalActions += actions.length;
-      completedActions += actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+      completedActions += actions.filter((a: any) => a.status === 'completada').length;
     }
 
     // Top departments by completed plans
@@ -162,7 +162,7 @@ export class AnalyticsService {
       byYear[year].total++;
       if (p.status === 'completado') byYear[year].completed++;
       const actions = p.actions || [];
-      const completedActs = actions.filter((a: any) => a.status === 'completada' || a.status === 'completed').length;
+      const completedActs = actions.filter((a: any) => a.status === 'completada').length;
       byYear[year].plans.push({
         id: p.id,
         title: p.title,

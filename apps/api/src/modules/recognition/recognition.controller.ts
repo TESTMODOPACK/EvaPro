@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, Res,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, Res,
   ParseUUIDPipe, ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
 import { Response } from 'express';
@@ -72,6 +72,25 @@ export class RecognitionController {
   @Roles('super_admin', 'tenant_admin')
   createBadge(@Request() req: any, @Body() dto: CreateBadgeDto) {
     return this.service.createBadge(req.user.tenantId, dto);
+  }
+
+  /** Editar un badge (nombre, icono, criterios, etc.). No toca isActive. */
+  @Patch('badges/:id')
+  @Roles('super_admin', 'tenant_admin')
+  updateBadge(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: Partial<CreateBadgeDto>,
+  ) {
+    return this.service.updateBadge(req.user.tenantId, id, dto);
+  }
+
+  /** Soft-delete: isActive=false + deactivatedAt=now. Preserva referencias
+   *  históricas (user_badges earned con ese badge siguen intactas). */
+  @Delete('badges/:id')
+  @Roles('super_admin', 'tenant_admin')
+  deleteBadge(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.service.softDeleteBadge(req.user.tenantId, id);
   }
 
   @Get('badges/mine')
@@ -251,6 +270,13 @@ export class RecognitionController {
     @Body() dto: any,
   ) {
     return this.service.updateChallenge(req.user.tenantId, id, dto);
+  }
+
+  /** Soft-delete: isActive=false + deactivatedAt=now. No borra histórico. */
+  @Delete('challenges/:id')
+  @Roles('super_admin', 'tenant_admin')
+  deleteChallenge(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.service.softDeleteChallenge(req.user.tenantId, id);
   }
 
   // ─── Leaderboard Opt-in ──────────────────────────────────────────

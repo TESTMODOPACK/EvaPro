@@ -250,6 +250,37 @@ export class RecognitionService {
     return saved;
   }
 
+  /** Editar badge existente. Scopeado por tenantId. No toca isActive/deactivatedAt. */
+  async updateBadge(tenantId: string, id: string, dto: {
+    name?: string; description?: string; icon?: string; color?: string; criteria?: any; pointsReward?: number;
+  }) {
+    const badge = await this.badgeRepo.findOne({ where: { id, tenantId } });
+    if (!badge) throw new NotFoundException('Badge no encontrado');
+    if (dto.name !== undefined) badge.name = dto.name;
+    if (dto.description !== undefined) badge.description = dto.description;
+    if (dto.icon !== undefined) badge.icon = dto.icon;
+    if (dto.color !== undefined) badge.color = dto.color;
+    if (dto.criteria !== undefined) badge.criteria = dto.criteria;
+    if (dto.pointsReward !== undefined) badge.pointsReward = dto.pointsReward;
+    const saved = await this.badgeRepo.save(badge);
+    await invalidateCache(this.cacheManager, `badges:${tenantId}`);
+    return saved;
+  }
+
+  /** Soft-delete: isActive=false + deactivatedAt=now. Los user_badges
+   *  históricos siguen intactos (earned stays earned). getBadges filtra por
+   *  isActive=true así que desaparece del catálogo visible. */
+  async softDeleteBadge(tenantId: string, id: string) {
+    const badge = await this.badgeRepo.findOne({ where: { id, tenantId } });
+    if (!badge) throw new NotFoundException('Badge no encontrado');
+    if (!badge.isActive) return { ok: true, alreadyDeleted: true };
+    badge.isActive = false;
+    badge.deactivatedAt = new Date();
+    await this.badgeRepo.save(badge);
+    await invalidateCache(this.cacheManager, `badges:${tenantId}`);
+    return { ok: true, id };
+  }
+
   async getUserBadges(tenantId: string, userId: string) {
     return this.userBadgeRepo
       .createQueryBuilder('ub')
@@ -933,10 +964,30 @@ export class RecognitionService {
     if (dto.criteriaType !== undefined) challenge.criteriaType = dto.criteriaType;
     if (dto.criteriaThreshold !== undefined) challenge.criteriaThreshold = dto.criteriaThreshold;
     if (dto.pointsReward !== undefined) challenge.pointsReward = dto.pointsReward;
-    if (dto.isActive !== undefined) challenge.isActive = dto.isActive;
+    if (dto.isActive !== undefined) {
+      // Mantener coherente deactivatedAt con el flag de activo.
+      if (challenge.isActive === true && dto.isActive === false) {
+        challenge.deactivatedAt = new Date();
+      } else if (challenge.isActive === false && dto.isActive === true) {
+        challenge.deactivatedAt = null;
+      }
+      challenge.isActive = dto.isActive;
+    }
     if (dto.startDate !== undefined) challenge.startDate = dto.startDate ? new Date(dto.startDate) : null;
     if (dto.endDate !== undefined) challenge.endDate = dto.endDate ? new Date(dto.endDate) : null;
     return this.challengeRepo.save(challenge);
+  }
+
+  /** Soft-delete de un challenge: isActive=false + deactivatedAt=now.
+   *  Preserva el histórico de participantes/ganadores. */
+  async softDeleteChallenge(tenantId: string, id: string) {
+    const challenge = await this.challengeRepo.findOne({ where: { id, tenantId } });
+    if (!challenge) throw new NotFoundException('Desafío no encontrado');
+    if (!challenge.isActive) return { ok: true, alreadyDeleted: true };
+    challenge.isActive = false;
+    challenge.deactivatedAt = new Date();
+    await this.challengeRepo.save(challenge);
+    return { ok: true, id };
   }
 
   /** Get user's progress on all active challenges */
