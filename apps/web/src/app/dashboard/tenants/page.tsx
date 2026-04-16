@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { formatCLP } from '@/lib/format';
 import { formatRutInput, validateRut, formatRut } from '@/lib/rut';
 import TenantHealthBadge from '@/components/TenantHealthBadge';
+import ImpersonateTenantButton from '@/components/ImpersonateTenantButton';
 
 function Spinner() {
   return (
@@ -70,7 +71,11 @@ export default function TenantsPage() {
   const [uploadResult, setUploadResult] = useState<any>(null);
 
   // Admin modal state
+  // `admins` = lista completa de tenant_admin activos del tenant (antes usábamos
+  // `.find()` y sólo cargábamos el primero, perdiendo al resto). `adminData`
+  // sigue siendo el admin actualmente en modo edición (null = modo creación).
   const [adminModalTenant, setAdminModalTenant] = useState<Tenant | null>(null);
+  const [admins, setAdmins] = useState<any[]>([]);
   const [adminData, setAdminData] = useState<any>(null);
   const [adminForm, setAdminForm] = useState({ email: '', firstName: '', lastName: '', rut: '', password: '', hireDate: '', department: '', position: '', hierarchyLevel: '' });
   const [adminDepts, setAdminDepts] = useState<string[]>([]);
@@ -254,14 +259,34 @@ export default function TenantsPage() {
     setError('');
   };
 
-  const openAdminModal = async (t: Tenant) => {
-    setAdminModalTenant(t);
+  const resetAdminForm = () => {
     setAdminData(null);
-    setAdminError('');
-    setAdminSuccess('');
     setShowNewDept(false);
     setShowNewPos(false);
     setAdminForm({ email: '', firstName: '', lastName: '', rut: '', password: '', hireDate: '', department: '', position: '', hierarchyLevel: '' });
+  };
+
+  // Carga (o recarga) la lista completa de tenant_admin del tenant. Pedimos
+  // status=all porque queremos incluir también inactivos en otra iteración; por
+  // ahora filtramos en el render a los activos. limit alto (50) para cubrir
+  // casos de tenants con varios encargados.
+  const loadAdmins = async (tenantId: string) => {
+    if (!token) return;
+    try {
+      const res: any = await api.users.list(token, 1, 50, { role: 'tenant_admin', tenantId });
+      const users = (res as any).data || res || [];
+      setAdmins(users.filter((u: any) => u.role === 'tenant_admin'));
+    } catch {
+      setAdmins([]);
+    }
+  };
+
+  const openAdminModal = async (t: Tenant) => {
+    setAdminModalTenant(t);
+    setAdminError('');
+    setAdminSuccess('');
+    setAdmins([]);
+    resetAdminForm();
 
     // Load tenant departments and positions from table (with settings fallback)
     let depts: string[] = [];
@@ -290,30 +315,48 @@ export default function TenantsPage() {
     setAdminDepts(depts);
     setAdminPositions(positions);
 
-    // Load existing admin
-    if (token) {
-      try {
-        const res: any = await api.users.list(token, 1, 5, { role: 'tenant_admin', tenantId: t.id });
-        const users = (res as any).data || res || [];
-        const admin = users.find((u: any) => u.role === 'tenant_admin');
-        if (admin) {
-          setAdminData(admin);
-          setAdminForm({
-            email: admin.email || '',
-            firstName: admin.firstName || '',
-            lastName: admin.lastName || '',
-            rut: admin.rut ? formatRut(admin.rut) : '',
-            password: '',
-            hireDate: admin.hireDate ? admin.hireDate.slice(0, 10) : '',
-            department: admin.department || '',
-            position: admin.position || '',
-            hierarchyLevel: '',
-          });
-          // If admin's department/position not in catalog, show as custom
-          if (admin.department && !depts.includes(admin.department)) setShowNewDept(true);
-          if (admin.position && !positions.some((p: any) => p.name === admin.position)) setShowNewPos(true);
-        }
-      } catch {}
+    // Load all admins (no prefill — form starts blank for creation)
+    await loadAdmins(t.id);
+  };
+
+  // Carga un admin existente en el formulario para editarlo. El botón primario
+  // pasa a "Actualizar encargado" mientras adminData está seteado.
+  const editAdmin = (admin: any) => {
+    setAdminData(admin);
+    setAdminError('');
+    setAdminSuccess('');
+    setAdminForm({
+      email: admin.email || '',
+      firstName: admin.firstName || '',
+      lastName: admin.lastName || '',
+      rut: admin.rut ? formatRut(admin.rut) : '',
+      password: '',
+      hireDate: admin.hireDate ? admin.hireDate.slice(0, 10) : '',
+      department: admin.department || '',
+      position: admin.position || '',
+      hierarchyLevel: '',
+    });
+    // If admin's department/position not in catalog, show as custom
+    setShowNewDept(!!(admin.department && !adminDepts.includes(admin.department)));
+    setShowNewPos(!!(admin.position && !adminPositions.some((p: any) => p.name === admin.position)));
+  };
+
+  // Soft-delete: usa el endpoint existente DELETE /users/:id. Super_admin puede
+  // desactivar cross-tenant (ver users.service.remove que lo permite cuando
+  // callerRole === 'super_admin'). Refrescamos la lista tras la llamada.
+  const deactivateAdmin = async (admin: any) => {
+    if (!token || !adminModalTenant) return;
+    const fullName = `${admin.firstName || ''} ${admin.lastName || ''}`.trim() || admin.email;
+    if (!confirm(`\u00bfDesactivar al encargado "${fullName}"? Perder\u00e1 acceso inmediatamente.`)) return;
+    try {
+      await api.users.remove(token, admin.id);
+      setAdminSuccess(`Encargado "${fullName}" desactivado`);
+      // Si el admin desactivado era el que estaba en edición, limpiar form
+      if (adminData?.id === admin.id) resetAdminForm();
+      await loadAdmins(adminModalTenant.id);
+      setTimeout(() => setAdminSuccess(''), 3000);
+    } catch (e: any) {
+      setAdminError(e?.message || 'Error al desactivar encargado');
     }
   };
 
@@ -325,7 +368,7 @@ export default function TenantsPage() {
     if (!adminForm.lastName?.trim()) { setAdminError('Apellidos es obligatorio'); return; }
     if (!adminForm.rut?.trim()) { setAdminError('RUT es obligatorio'); return; }
     if (!validateRut(adminForm.rut)) { setAdminError('RUT invalido. Verifique el formato y digito verificador.'); return; }
-    if (!adminData && !adminForm.password?.trim()) { setAdminError('Contrase\u00f1a es obligatoria para nuevo administrador'); return; }
+    if (!adminData && !adminForm.password?.trim()) { setAdminError('Contrase\u00f1a es obligatoria para nuevo encargado'); return; }
     if (showNewDept && !adminForm.department?.trim()) { setAdminError('Nombre del departamento es obligatorio'); return; }
     if (showNewPos && !adminForm.position?.trim()) { setAdminError('Nombre del cargo es obligatorio'); return; }
     if (showNewPos && (!adminForm.hierarchyLevel || Number(adminForm.hierarchyLevel) < 1)) { setAdminError('Nivel jer\u00e1rquico es obligatorio para cargo nuevo (1 = m\u00e1s alto)'); return; }
@@ -350,7 +393,7 @@ export default function TenantsPage() {
           upd.hierarchyLevel = Number(adminForm.hierarchyLevel);
         }
         await api.users.update(token, adminData.id, upd);
-        setAdminSuccess('Administrador actualizado correctamente');
+        setAdminSuccess('Encargado del sistema actualizado correctamente');
       } else {
         // Create new admin
         await api.users.create(token, {
@@ -367,9 +410,13 @@ export default function TenantsPage() {
           hierarchyLevel: adminForm.hierarchyLevel ? Number(adminForm.hierarchyLevel) : undefined,
           mustChangePassword: true,
         });
-        setAdminSuccess('Administrador creado correctamente');
+        setAdminSuccess('Encargado del sistema creado correctamente');
       }
-      setTimeout(() => { setAdminModalTenant(null); setAdminSuccess(''); }, 2000);
+      // Refrescar lista y limpiar form. Dejamos el modal abierto para que el
+      // super_admin siga gestionando (crear más, editar otros, desactivar).
+      await loadAdmins(adminModalTenant.id);
+      resetAdminForm();
+      setTimeout(() => setAdminSuccess(''), 3000);
     } catch (e: any) {
       setAdminError(e.message || 'Error al guardar');
     }
@@ -835,9 +882,13 @@ export default function TenantsPage() {
                             Editar
                           </button>
                           <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: 'var(--accent)' }}
-                            onClick={() => openAdminModal(t)}>
-                            Admin
+                            onClick={() => openAdminModal(t)}
+                            title="Gestionar encargados del sistema">
+                            Encargados
                           </button>
+                          {t.isActive && (
+                            <ImpersonateTenantButton tenantId={t.id} tenantName={t.name} />
+                          )}
                           {t.isActive && (
                             <button
                               className="btn-ghost"
@@ -862,9 +913,9 @@ export default function TenantsPage() {
       {adminModalTenant && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setAdminModalTenant(null); }}>
-          <div className="card" style={{ padding: '1.75rem', width: '520px', maxHeight: '85vh', overflowY: 'auto', position: 'relative' }}>
+          <div className="card" style={{ padding: '1.75rem', width: '560px', maxHeight: '85vh', overflowY: 'auto', position: 'relative' }}>
             <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1.25rem' }}>
-              {adminData ? `Administrador de ${adminModalTenant.name}` : `Nuevo Administrador de ${adminModalTenant.name}`}
+              Encargados del sistema — {adminModalTenant.name}
             </h3>
 
             {adminError && (
@@ -877,6 +928,61 @@ export default function TenantsPage() {
                 {adminSuccess}
               </div>
             )}
+
+            {/* Lista de encargados activos — editar o desactivar por fila.
+                Antes sólo cargábamos al primero con .find(), perdiendo al resto. */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                Activos ({admins.filter((a: any) => a.isActive).length})
+              </div>
+              {admins.filter((a: any) => a.isActive).length === 0 ? (
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '0.6rem 0.75rem', background: 'var(--bg-surface)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                  No hay encargados activos. Crea el primero usando el formulario.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {admins.filter((a: any) => a.isActive).map((a: any) => {
+                    const isEditing = adminData?.id === a.id;
+                    return (
+                      <div key={a.id} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: '0.75rem', padding: '0.55rem 0.75rem',
+                        background: isEditing ? 'rgba(99,102,241,0.08)' : 'var(--bg-surface)',
+                        border: `1px solid ${isEditing ? 'rgba(99,102,241,0.3)' : 'var(--border)'}`,
+                        borderRadius: 'var(--radius-sm)',
+                      }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {`${a.firstName || ''} ${a.lastName || ''}`.trim() || a.email}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {a.email}{a.position ? ` · ${a.position}` : ''}{a.department ? ` · ${a.department}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                          <button type="button" className="btn-ghost"
+                            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                            onClick={() => editAdmin(a)}
+                            disabled={adminSaving}>
+                            {isEditing ? 'Editando…' : 'Editar'}
+                          </button>
+                          <button type="button" className="btn-ghost"
+                            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', color: 'var(--danger)' }}
+                            onClick={() => deactivateAdmin(a)}
+                            disabled={adminSaving}>
+                            Desactivar
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+              {adminData ? 'Editar encargado' : 'Nuevo encargado'}
+            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
               <div style={{ gridColumn: '1 / -1' }}>
@@ -1014,11 +1120,20 @@ export default function TenantsPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
               <button className="btn-primary" onClick={saveAdmin} disabled={adminSaving}>
-                {adminSaving ? 'Guardando...' : adminData ? 'Actualizar' : 'Crear administrador'}
+                {adminSaving ? 'Guardando...' : adminData ? 'Actualizar encargado' : 'Crear encargado'}
               </button>
-              <button className="btn-ghost" onClick={() => setAdminModalTenant(null)}>Cancelar</button>
+              {adminData && (
+                <button type="button" className="btn-ghost" onClick={resetAdminForm} disabled={adminSaving}
+                  title="Limpiar el formulario y volver al modo creación">
+                  Cancelar edición
+                </button>
+              )}
+              <div style={{ flex: 1 }} />
+              <button className="btn-ghost" onClick={() => setAdminModalTenant(null)} disabled={adminSaving}>
+                Cerrar
+              </button>
             </div>
           </div>
         </div>

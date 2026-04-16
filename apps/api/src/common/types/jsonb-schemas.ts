@@ -15,6 +15,82 @@
  *   - Never store data that isn't documented in one of these types.
  */
 
+// ─── User.notificationPreferences ───────────────────────────────────────────
+
+/**
+ * Per-user opt-in/opt-out map for transactional email categories.
+ *
+ * Stored in `user.notification_preferences` (JSONB, default `{}`).
+ *
+ * Absence of a key means "default — send". An explicit `false` means the user
+ * opted out of that category. Explicit `true` is equivalent to absence but is
+ * kept so the unsubscribe UI can display the state deterministically.
+ *
+ * Only the keys below are meaningful. Unknown keys are ignored by the email
+ * service but NOT stripped — they are kept for forward compatibility in case
+ * an older client writes a new category before the server knows about it.
+ *
+ * `transactional` is intentionally NOT in this map: password resets, OTP for
+ * contract signatures, account invitations, GDPR flow emails, and billing
+ * lifecycle notices are always sent regardless of any opt-out.
+ */
+export type NotificationCategory =
+  | 'evaluations'      // cycle launched, reminders, cycle closed
+  | 'feedback'         // feedback received, check-ins scheduled/overdue/rejected
+  | 'objectives'       // OKR assigned, at-risk, completed
+  | 'recognitions'     // public peer recognitions received
+  | 'development'      // PDI assigned, actions overdue, initiatives
+  | 'surveys'          // climate survey invitations
+  | 'digests'          // weekly manager/employee summaries
+  | 'pending_reviews'; // admin review queues (templates, etc.)
+
+export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
+  'evaluations',
+  'feedback',
+  'objectives',
+  'recognitions',
+  'development',
+  'surveys',
+  'digests',
+  'pending_reviews',
+];
+
+export type UserNotificationPreferences = Partial<Record<NotificationCategory, boolean>>;
+
+// ─── Tenant.settings.passwordPolicy ─────────────────────────────────────────
+
+/**
+ * Per-tenant password policy. Stored under `tenant.settings.passwordPolicy`.
+ *
+ * All fields optional — omitted fields fall back to built-in defaults in
+ * `PasswordPolicyService.resolvePolicy()`. Values outside the safe range are
+ * clamped at read time (never rejected at write) so a misconfigured UI can't
+ * lock out a tenant entirely.
+ */
+export interface PasswordPolicy {
+  /** Clamped to [8, 64]. Default 8. */
+  minLength?: number;
+  requireUppercase?: boolean;   // default true
+  requireLowercase?: boolean;   // default true
+  requireNumber?: boolean;      // default true
+  requireSymbol?: boolean;      // default false
+  /**
+   * Days before password expires and user is forced to change.
+   * null / undefined / 0 = never expire. Clamped to [0, 365].
+   */
+  expiryDays?: number | null;
+  /**
+   * How many previous passwords to reject on change (bcrypt-compared).
+   * 0 = disabled. Hard cap: 24 (any higher is silently clamped to prevent
+   * DoS — each check costs one bcrypt.compare, ~100ms).
+   */
+  historyCount?: number;
+  /** Failed attempts before lockout. 0 = disable lockout. Default 5. Max 50. */
+  lockoutThreshold?: number;
+  /** Lockout duration. Default 15. Clamped to [1, 1440] (up to 24h). */
+  lockoutDurationMinutes?: number;
+}
+
 // ─── Tenant.settings ────────────────────────────────────────────────────────
 
 /**
@@ -63,6 +139,9 @@ export interface TenantSettings {
   // Notification preferences
   emailNotifications?: boolean;
   notificationTypes?: Record<string, boolean>;
+
+  // Password policy (see PasswordPolicy interface for per-field docs).
+  passwordPolicy?: PasswordPolicy;
 
   // Feature flags
   aiEnabled?: boolean;

@@ -9,6 +9,17 @@ export enum UserRole {
 }
 
 export class CreateUserDto {
+  /**
+   * Target tenant for the new user. Only super_admin can set this — tenant_admins
+   * always create in their own tenant (the controller ignores this field for non-
+   * super_admin callers). Declared here so the global ValidationPipe's
+   * `whitelist: true` does not silently strip it from the body before the
+   * controller can read it. Required for super_admin (validated in controller).
+   */
+  @IsUUID()
+  @IsOptional()
+  tenantId?: string;
+
   @IsEmail()
   email: string;
 

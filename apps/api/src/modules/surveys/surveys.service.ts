@@ -305,6 +305,8 @@ export class SurveysService {
         surveyTitle: survey.title,
         dueDate: survey.endDate.toISOString().split('T')[0],
         isAnonymous: survey.isAnonymous,
+        tenantId,
+        userId: u.id,
       }).catch((e) => this.logger.error(`Error sending survey email to ${u.email}: ${e.message}`));
     }
 

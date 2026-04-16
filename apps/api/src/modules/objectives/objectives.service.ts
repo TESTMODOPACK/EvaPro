@@ -94,6 +94,7 @@ export class ObjectivesService {
         objectiveType: dto.type || 'OKR',
         targetDate: dto.targetDate ? new Date(dto.targetDate).toLocaleDateString('es-CL') : undefined,
         tenantId,
+        userId: owner.id,
       }).catch(() => {});
     }
 
@@ -315,6 +316,7 @@ export class ObjectivesService {
           objectiveType: obj.type || 'OKR',
           assignedBy: `${employee.firstName} ${employee.lastName}`,
           tenantId,
+          userId: manager.id,
         }).catch(() => {});
       }
     }
@@ -343,6 +345,7 @@ export class ObjectivesService {
         objectiveType: obj.type || 'OKR',
         targetDate: obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : undefined,
         tenantId,
+        userId: owner.id,
       }).catch(() => {});
     }
 
@@ -369,6 +372,7 @@ export class ObjectivesService {
         objectiveTitle: `[Rechazado] ${obj.title}`,
         objectiveType: reason ? `Motivo: ${reason}` : 'Sin motivo especificado',
         tenantId,
+        userId: owner.id,
       }).catch(() => {});
     }
 
@@ -478,6 +482,7 @@ export class ObjectivesService {
             objectiveTitle: obj.title,
             objectiveType: obj.type || 'OKR',
             tenantId,
+            userId: manager.id,
           }).catch(() => {});
         }
       }

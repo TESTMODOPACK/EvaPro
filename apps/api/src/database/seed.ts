@@ -537,19 +537,31 @@ async function seed() {
     const resolvePosId = (name?: string) => name ? posIdMap.get(name.toLowerCase()) || null : null;
 
     /* ── Super Admin ─────────────────────────────────────────────────────── */
+    // super_admin no pertenece a ningún tenant (tenant_id=NULL). El jwt.strategy
+    // lo permite explícitamente. Antes estaba seeded con tenantId=tenant.id
+    // (Demo), lo que causaba que el fallback de users.controller creara nuevos
+    // usuarios en Demo Company — cross-tenant leak. department/departmentId no
+    // aplican porque esos catálogos son por-tenant.
     let superAdmin: any = await userRepo.findOne({
-      where: { email: 'superadmin@evapro.demo', tenantId: tenant.id },
+      where: { email: 'superadmin@evapro.demo' },
     });
     if (!superAdmin) {
       const pwHash = await bcrypt.hash('EvaPro2026!', 10);
       superAdmin = await userRepo.save(userRepo.create({
         email: 'superadmin@evapro.demo', passwordHash: pwHash,
         firstName: 'Super', lastName: 'Admin',
-        role: 'super_admin', department: 'Tecnología', departmentId: resolveDeptId('Tecnología'),
-        position: 'Super Administrador', positionId: resolvePosId('Super Administrador'),
-        isActive: true, tenantId: tenant.id,
+        role: 'super_admin',
+        position: 'Super Administrador',
+        isActive: true, tenantId: null,
       } as any));
-      console.log('\u2705  Super Admin created: superadmin@evapro.demo');
+      console.log('\u2705  Super Admin created: superadmin@evapro.demo (tenant_id=NULL)');
+    } else if (superAdmin.tenantId) {
+      // Backfill: super_admin existing con tenantId residual → limpiar para
+      // evitar el cross-tenant leak descrito arriba.
+      superAdmin.tenantId = null;
+      superAdmin.tokenVersion = (superAdmin.tokenVersion ?? 0) + 1;
+      await userRepo.save(superAdmin);
+      console.log('\u2699\uFE0F   Super Admin tenantId cleared (was residual from old seed)');
     }
 
     /* ── Tenant Admin ────────────────────────────────────────────────────── */

@@ -586,4 +586,176 @@ export class InvoicesService {
     }
     return d;
   }
+
+  // ─── Dunning (B2) ─────────────────────────────────────────────────────
+  //
+  // Scans all invoices past their due date and escalates them through the
+  // stages below. Invoked by a dedicated daily cron in reminders.service;
+  // idempotent — each invoice stores its current `dunning.stage` and only
+  // advances when `daysOverdue` crosses the next threshold.
+  //
+  //   stage 3  → friendly reminder
+  //   stage 7  → urgent warning (mentions suspension)
+  //   stage 14 → suspend subscription + email "cuenta suspendida"
+  //   stage 30 → final warning before cancellation
+  //   stage 37 → cancel subscription + email "cuenta cancelada"
+
+  private readonly appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
+
+  private dunningTargetStage(daysOverdue: number): 0 | 3 | 7 | 14 | 30 | 37 {
+    if (daysOverdue >= 37) return 37;
+    if (daysOverdue >= 30) return 30;
+    if (daysOverdue >= 14) return 14;
+    if (daysOverdue >= 7) return 7;
+    if (daysOverdue >= 3) return 3;
+    return 0;
+  }
+
+  async processDunning(): Promise<{ processed: number; advanced: number }> {
+    const now = new Date();
+    // Only invoices still owed. `dueDate < now` catches both SENT-but-overdue
+    // rows that haven't been flipped yet and explicit OVERDUE rows.
+    const candidates = await this.invoiceRepo
+      .createQueryBuilder('i')
+      .where('i.status IN (:...statuses)', { statuses: [InvoiceStatus.SENT, InvoiceStatus.OVERDUE] })
+      .andWhere('i.dueDate < :now', { now })
+      .leftJoinAndSelect('i.tenant', 'tenant')
+      .leftJoinAndSelect('i.subscription', 'subscription')
+      .getMany();
+
+    let advanced = 0;
+
+    for (const invoice of candidates) {
+      const daysOverdue = Math.floor(
+        (now.getTime() - new Date(invoice.dueDate).getTime()) / (24 * 60 * 60 * 1000),
+      );
+      const target = this.dunningTargetStage(daysOverdue);
+      if (target === 0) continue;
+      const currentStage = invoice.dunning?.stage ?? 0;
+      if (currentStage >= target) continue;
+
+      // Flip SENT → OVERDUE status once we cross any threshold.
+      if (invoice.status === InvoiceStatus.SENT) {
+        invoice.status = InvoiceStatus.OVERDUE;
+      }
+
+      // Find a contact for the tenant. Prefer tenant_admin; fall back to any
+      // active user of the tenant.
+      const recipient = await this.userRepo.findOne({
+        where: { tenantId: invoice.tenantId, role: 'tenant_admin', isActive: true },
+      });
+      const recipientEmail = recipient?.email || null;
+      const payUrl = `${this.appUrl}/dashboard/mi-suscripcion`;
+      const amount = Number(invoice.total);
+      const orgName = invoice.tenant?.name || '';
+
+      try {
+        if (target === 3 && recipientEmail) {
+          await this.emailService.sendInvoiceOverdueFriendly(recipientEmail, {
+            firstName: recipient!.firstName,
+            orgName,
+            invoiceNumber: invoice.invoiceNumber,
+            amount,
+            currency: invoice.currency,
+            daysOverdue,
+            payUrl,
+            tenantId: invoice.tenantId,
+          });
+        } else if (target === 7 && recipientEmail) {
+          await this.emailService.sendInvoiceOverdueUrgent(recipientEmail, {
+            firstName: recipient!.firstName,
+            orgName,
+            invoiceNumber: invoice.invoiceNumber,
+            amount,
+            currency: invoice.currency,
+            daysOverdue,
+            suspendsInDays: 14 - daysOverdue < 0 ? 0 : 14 - daysOverdue,
+            payUrl,
+            tenantId: invoice.tenantId,
+          });
+        } else if (target === 14) {
+          // ORDER MATTERS: flip the subscription state FIRST, email SECOND.
+          // If the email send fails mid-batch, at least the auth state is
+          // consistent for the user on their next dashboard load. If the
+          // DB update fails, no email is sent and the stage does not
+          // advance — the cron will retry tomorrow.
+          if (invoice.subscription?.status !== SubscriptionStatus.SUSPENDED &&
+              invoice.subscription?.status !== SubscriptionStatus.CANCELLED) {
+            await this.subRepo.update(invoice.subscriptionId, { status: SubscriptionStatus.SUSPENDED });
+            await this.auditService.log(
+              invoice.tenantId,
+              null,
+              'subscription.suspended_by_dunning',
+              'Subscription',
+              invoice.subscriptionId,
+              { invoiceId: invoice.id, daysOverdue },
+            ).catch(() => undefined);
+          }
+          if (recipientEmail) {
+            await this.emailService.sendAccountSuspended(recipientEmail, {
+              firstName: recipient!.firstName,
+              orgName,
+              invoiceNumber: invoice.invoiceNumber,
+              payUrl,
+              cancelsInDays: 37 - daysOverdue < 0 ? 0 : 37 - daysOverdue,
+              tenantId: invoice.tenantId,
+            });
+          } else {
+            // No recipient — the tenant will be suspended silently. Flag
+            // for ops review so they can chase a contact out-of-band.
+            await this.auditService.log(
+              invoice.tenantId,
+              null,
+              'subscription.suspended_no_contact',
+              'Subscription',
+              invoice.subscriptionId,
+              { invoiceId: invoice.id, daysOverdue },
+            ).catch(() => undefined);
+          }
+        } else if (target === 30 && recipientEmail) {
+          await this.emailService.sendAccountCancellationWarning(recipientEmail, {
+            firstName: recipient!.firstName,
+            orgName,
+            payUrl,
+            tenantId: invoice.tenantId,
+          });
+        } else if (target === 37) {
+          // Cancellation is the most destructive step — flip state first
+          // so no further billing side-effects happen on the cancelled sub,
+          // then notify. If the email fails, the user still finds out from
+          // their dashboard / login attempt.
+          if (invoice.subscription?.status !== SubscriptionStatus.CANCELLED) {
+            await this.subRepo.update(invoice.subscriptionId, { status: SubscriptionStatus.CANCELLED });
+            await this.auditService.log(
+              invoice.tenantId,
+              null,
+              'subscription.cancelled_by_dunning',
+              'Subscription',
+              invoice.subscriptionId,
+              { invoiceId: invoice.id, daysOverdue },
+            ).catch(() => undefined);
+          }
+          if (recipientEmail) {
+            await this.emailService.sendAccountCancelled(recipientEmail, {
+              firstName: recipient!.firstName,
+              orgName,
+              tenantId: invoice.tenantId,
+            });
+          }
+        }
+      } catch (err: any) {
+        // Email/DB failure on one invoice must not abort the rest of the batch.
+        this.logger.error(
+          `Dunning stage=${target} failed for invoice ${invoice.id}: ${err?.message || err}`,
+        );
+        continue;
+      }
+
+      invoice.dunning = { stage: target, lastEmailAt: now.toISOString() };
+      await this.invoiceRepo.save(invoice);
+      advanced++;
+    }
+
+    return { processed: candidates.length, advanced };
+  }
 }

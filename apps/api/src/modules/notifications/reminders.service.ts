@@ -13,8 +13,11 @@ import { DevelopmentPlan } from '../development/entities/development-plan.entity
 import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { InvoicesService } from '../subscriptions/invoices.service';
 import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
+import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 /**
  * Servicio de recordatorios automáticos.
@@ -55,9 +58,15 @@ export class RemindersService {
     private readonly userRepo: Repository<User>,
     @Inject(forwardRef(() => SubscriptionsService))
     private readonly subscriptionsService: SubscriptionsService,
+    @Inject(forwardRef(() => InvoicesService))
+    private readonly invoicesService: InvoicesService,
     @Inject(forwardRef(() => ReportsService))
     private readonly reportsService: ReportsService,
     private readonly auditService: AuditService,
+    @InjectRepository(Subscription)
+    private readonly subscriptionRepo: Repository<Subscription>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
   ) {}
 
   /** Registra un fallo de cron en el audit log (fire-and-forget). */
@@ -163,10 +172,10 @@ export class RemindersService {
               if (existing) { existing.count++; }
               else { evaluatorMap.set(a.evaluatorId, { email: a.evaluator.email, firstName: a.evaluator.firstName, count: 1 }); }
             }
-            for (const [, ev] of evaluatorMap) {
+            for (const [evId, ev] of evaluatorMap) {
               this.emailService.sendEvaluationReminder(ev.email, {
                 firstName: ev.firstName, cycleName: cycle.name, pendingCount: ev.count,
-                daysLeft, cycleId: cycle.id, tenantId: cycle.tenantId,
+                daysLeft, cycleId: cycle.id, tenantId: cycle.tenantId, userId: evId,
               }).catch(() => {});
             }
           }
@@ -283,7 +292,7 @@ export class RemindersService {
           const user = data.user || await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
           if (!user?.email) continue;
           this.emailService.sendOkrAtRisk(user.email, {
-            firstName: user.firstName, objectives: data.objectives, tenantId: data.tenantId,
+            firstName: user.firstName, objectives: data.objectives, tenantId: data.tenantId, userId,
           }).catch(() => {});
         }
       }
@@ -342,7 +351,7 @@ export class RemindersService {
           const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
           if (!user?.email) continue;
           this.emailService.sendPdiActionOverdue(user.email, {
-            firstName: user.firstName, actions: data.actions, tenantId: data.tenantId,
+            firstName: user.firstName, actions: data.actions, tenantId: data.tenantId, userId,
           }).catch(() => {});
         }
       }
@@ -430,6 +439,7 @@ export class RemindersService {
             this.emailService.sendCheckinScheduled(ci.employee.email, {
               firstName: ci.employee.firstName, managerName: mgrName,
               scheduledAt, topic: ci.topic, checkinId: ci.id, tenantId: ci.tenantId,
+              userId: ci.employeeId,
             }).catch(() => {});
           }
           // Email to manager
@@ -438,6 +448,7 @@ export class RemindersService {
             this.emailService.sendCheckinScheduled(ci.manager.email, {
               firstName: ci.manager.firstName, managerName: empName,
               scheduledAt, topic: ci.topic, checkinId: ci.id, tenantId: ci.tenantId,
+              userId: ci.managerId,
             }).catch(() => {});
           }
         }
@@ -508,7 +519,7 @@ export class RemindersService {
         for (const { manager, daysSince } of overdueManagers) {
           if (!manager.email) continue;
           this.emailService.sendCheckinOverdue(manager.email, {
-            firstName: manager.firstName, daysSince, tenantId: manager.tenantId,
+            firstName: manager.firstName, daysSince, tenantId: manager.tenantId, userId: manager.id,
           }).catch(() => {});
         }
       }
@@ -1264,6 +1275,7 @@ export class RemindersService {
           overduePdi,
           atRiskObjectives: atRiskObj,
           tenantId: mgr.tenantId,
+          userId: mgr.id,
         }).catch((err) => this.logger.warn(`Failed to send weekly summary to ${mgr.email}: ${err.message}`));
         sent++;
       }
@@ -1342,6 +1354,7 @@ export class RemindersService {
           upcomingCheckins,
           newRecognitions,
           tenantId: emp.tenantId,
+          userId: emp.id,
         }).catch((err) => this.logger.warn(`Failed to send weekly summary to ${emp.email}: ${err.message}`));
         sent++;
       }
@@ -1350,6 +1363,257 @@ export class RemindersService {
     } catch (error) {
       this.logger.error(`[Cron] Error in sendWeeklyEmployeeSummary: ${error}`);
       await this.recordCronFailure('sendWeeklyEmployeeSummary', error);
+    }
+  }
+
+  // ─── C1 Password expiry warning (daily 10am) ─────────────────────────
+  //
+  // Walks tenants with `settings.passwordPolicy.expiryDays > 0`, then their
+  // active users, and sends a single email as the user crosses the 7/3/1
+  // day thresholds. Dedupe key: `user.notificationPreferences.__password_expiry_sent`
+  // (a list of buckets already emailed for the CURRENT password cycle —
+  // reset when the user changes their password).
+  //
+  // Transactional email (never respects unsubscribe): password rotation is
+  // core to the account's security posture.
+  @Cron('0 10 * * *')
+  async warnPasswordExpiry() {
+    this.logger.log('[Cron] Scanning for password expiry warnings...');
+    try {
+      // Fetch active tenants that have password expiry enabled. The JSONB
+      // path query filters in-DB instead of hydrating all tenants.
+      const tenants = await this.tenantRepo
+        .createQueryBuilder('t')
+        .where(`(t.settings->'passwordPolicy'->>'expiryDays')::int > 0`)
+        .andWhere('t.isActive = true')
+        .select(['t.id', 't.name', 't.settings'])
+        .getMany()
+        .catch(() => [] as Tenant[]);
+
+      let sent = 0;
+      const now = new Date();
+
+      for (const t of tenants) {
+        const expiryDays = Number((t.settings as any)?.passwordPolicy?.expiryDays || 0);
+        if (!expiryDays || expiryDays <= 0) continue;
+
+        const users = await this.userRepo.find({
+          where: { tenantId: t.id, isActive: true },
+          select: ['id', 'email', 'firstName', 'passwordChangedAt', 'notificationPreferences'],
+        });
+
+        for (const u of users) {
+          if (!u.email || !u.passwordChangedAt) continue;
+          const expiresAt = new Date(u.passwordChangedAt).getTime() + expiryDays * 24 * 60 * 60 * 1000;
+          const daysLeft = Math.ceil((expiresAt - now.getTime()) / (24 * 60 * 60 * 1000));
+          // We only fire on the 7, 3 and 1 day buckets. Anything else is
+          // ignored on this run.
+          let bucket: number | null = null;
+          if (daysLeft === 7) bucket = 7;
+          else if (daysLeft === 3) bucket = 3;
+          else if (daysLeft === 1) bucket = 1;
+          if (bucket === null) continue;
+
+          const prefs: any = u.notificationPreferences ?? {};
+          const alreadySent: number[] = Array.isArray(prefs.__password_expiry_sent)
+            ? prefs.__password_expiry_sent
+            : [];
+          if (alreadySent.includes(bucket)) continue;
+
+          try {
+            await this.emailService.sendPasswordExpiringSoon(u.email, {
+              firstName: u.firstName,
+              orgName: t.name,
+              daysLeft: bucket,
+              tenantId: t.id,
+            });
+            await this.userRepo.update(u.id, {
+              notificationPreferences: {
+                ...prefs,
+                __password_expiry_sent: [...alreadySent, bucket].sort((a, b) => b - a),
+              },
+            });
+            sent++;
+          } catch (err: any) {
+            this.logger.warn(`Password expiry email failed for user ${u.id}: ${err?.message || err}`);
+          }
+        }
+      }
+
+      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} password expiry warnings`);
+    } catch (error) {
+      this.logger.error(`[Cron] Error in warnPasswordExpiry: ${error}`);
+      await this.recordCronFailure('warnPasswordExpiry', error);
+    }
+  }
+
+  // ─── B2 Dunning (daily 9am) ──────────────────────────────────────────
+  //
+  // Walks every invoice past its due date and escalates it through the
+  // stages (3/7/14/30/37) defined in invoices.service. Idempotent: each
+  // invoice stores its current `dunning.stage` and advances only once per
+  // threshold. Failures on individual invoices are logged but do not
+  // abort the batch.
+  @Cron('0 9 * * *')
+  async escalateOverdueInvoices() {
+    this.logger.log('[Cron] Processing dunning for overdue invoices...');
+    try {
+      const result = await this.invoicesService.processDunning();
+      if (result.advanced > 0) {
+        this.logger.log(
+          `[Cron] Dunning advanced ${result.advanced} invoices (scanned ${result.processed})`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(`[Cron] Error in escalateOverdueInvoices: ${error}`);
+      await this.recordCronFailure('escalateOverdueInvoices', error);
+    }
+  }
+
+  // ─── B3 Trial nurture (daily 9:15am) ─────────────────────────────────
+  //
+  // Walks all subscriptions in TRIAL or recently-EXPIRED state and emits
+  // the appropriate email in the 6-step sequence based on days since
+  // start (for TRIAL) or days since expiry (for EXPIRED). Dedupe via
+  // `subscription.nurture_emails_sent` JSONB array — we append the stage
+  // key only after a successful send so a flaky email API doesn't cause
+  // the stage to be permanently skipped.
+  //
+  // Welcome (day 0) is ALSO sent synchronously from SubscriptionsService
+  // when a new TRIAL is created, so the user gets it within minutes.
+  // We still guard here in case creation missed it (legacy tenants).
+  @Cron('15 9 * * *')
+  async sendTrialNurtureEmails() {
+    this.logger.log('[Cron] Sending trial nurture emails...');
+    try {
+      const cutoffExpired = new Date();
+      cutoffExpired.setDate(cutoffExpired.getDate() - 21); // only last 21 days of expired
+
+      const subs = await this.subscriptionRepo
+        .createQueryBuilder('s')
+        .where('s.status IN (:...statuses)', {
+          statuses: [SubscriptionStatus.TRIAL, SubscriptionStatus.EXPIRED],
+        })
+        .andWhere('s.updated_at >= :cutoff', { cutoff: cutoffExpired })
+        .leftJoinAndSelect('s.tenant', 'tenant')
+        .leftJoinAndSelect('s.plan', 'plan')
+        .getMany();
+
+      let sent = 0;
+      const now = new Date();
+      for (const sub of subs) {
+        // Find a tenant_admin to email (same pattern as dunning).
+        const admin = await this.userRepo.findOne({
+          where: { tenantId: sub.tenantId, role: 'tenant_admin', isActive: true },
+        });
+        if (!admin?.email) continue;
+
+        const already = new Set(sub.nurtureEmailsSent || []);
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
+        const daysSinceStart = Math.floor(
+          (now.getTime() - new Date(sub.startDate).getTime()) / (24 * 60 * 60 * 1000),
+        );
+        const tenantName = sub.tenant?.name || '';
+
+        const dispatch = async (
+          stage: string,
+          send: () => Promise<void>,
+        ) => {
+          if (already.has(stage)) return;
+          try {
+            await send();
+            const updated = [...(sub.nurtureEmailsSent || []), stage];
+            await this.subscriptionRepo.update(sub.id, { nurtureEmailsSent: updated });
+            sub.nurtureEmailsSent = updated;
+            already.add(stage);
+            sent++;
+          } catch (err: any) {
+            this.logger.warn(
+              `Trial nurture ${stage} failed for sub ${sub.id}: ${err?.message || err}`,
+            );
+          }
+        };
+
+        if (sub.status === SubscriptionStatus.TRIAL) {
+          // Clamp the ranges to 1-day buckets so a cron run late by a few
+          // hours still picks the right day.
+          if (daysSinceStart >= 0 && daysSinceStart < 1) {
+            await dispatch('welcome', () =>
+              this.emailService.sendTrialWelcome(admin.email, {
+                firstName: admin.firstName,
+                orgName: tenantName,
+                tenantId: sub.tenantId,
+              }),
+            );
+          }
+          if (daysSinceStart >= 3 && daysSinceStart < 4) {
+            await dispatch('day3', () =>
+              this.emailService.sendTrialDay3CheckIn(admin.email, {
+                firstName: admin.firstName,
+                orgName: tenantName,
+                tenantId: sub.tenantId,
+              }),
+            );
+          }
+          if (daysSinceStart >= 7 && daysSinceStart < 8) {
+            await dispatch('day7', () =>
+              this.emailService.sendTrialDay7Value(admin.email, {
+                firstName: admin.firstName,
+                orgName: tenantName,
+                tenantId: sub.tenantId,
+              }),
+            );
+          }
+          if (daysSinceStart >= 11 && daysSinceStart < 12) {
+            const daysLeft = sub.trialEndsAt
+              ? Math.max(
+                  0,
+                  Math.ceil(
+                    (new Date(sub.trialEndsAt).getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+                  ),
+                )
+              : 3;
+            await dispatch('day11', () =>
+              this.emailService.sendTrialDay11Urgency(admin.email, {
+                firstName: admin.firstName,
+                orgName: tenantName,
+                daysLeft,
+                tenantId: sub.tenantId,
+              }),
+            );
+          }
+        } else if (sub.status === SubscriptionStatus.EXPIRED && sub.trialEndsAt) {
+          const daysSinceExpiry = Math.floor(
+            (now.getTime() - new Date(sub.trialEndsAt).getTime()) / (24 * 60 * 60 * 1000),
+          );
+          if (daysSinceExpiry >= 0 && daysSinceExpiry < 1) {
+            await dispatch('expired', () =>
+              this.emailService.sendTrialExpired(admin.email, {
+                firstName: admin.firstName,
+                orgName: tenantName,
+                planName: sub.plan?.name || 'Plan',
+                planPrice: sub.plan?.monthlyPrice ? String(sub.plan.monthlyPrice) : '',
+                tenantId: sub.tenantId,
+              }),
+            );
+          }
+          if (daysSinceExpiry >= 3 && daysSinceExpiry < 4) {
+            await dispatch('recovery', () =>
+              this.emailService.sendTrialRecovery(admin.email, {
+                firstName: admin.firstName,
+                orgName: tenantName,
+                discountPercentage: 20,
+                tenantId: sub.tenantId,
+              }),
+            );
+          }
+        }
+      }
+
+      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} trial nurture emails`);
+    } catch (error) {
+      this.logger.error(`[Cron] Error in sendTrialNurtureEmails: ${error}`);
+      await this.recordCronFailure('sendTrialNurtureEmails', error);
     }
   }
 }

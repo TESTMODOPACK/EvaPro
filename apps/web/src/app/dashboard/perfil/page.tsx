@@ -9,6 +9,9 @@ import { useLocaleStore, SupportedLocale } from '@/store/locale.store';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
+import GdprPrivacyCard from '@/components/GdprPrivacyCard';
+import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
+import { usePasswordPolicy } from '@/hooks/usePasswordPolicy';
 
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: '0.78rem', fontWeight: 600,
@@ -34,6 +37,7 @@ export default function PerfilPage() {
   const [cvDeleting, setCvDeleting] = useState(false);
   const cvInputRef = useRef<HTMLInputElement>(null);
   const toast = useToastStore((s) => s.toast);
+  const { data: policy } = usePasswordPolicy();
 
   const handleLanguageChange = async (lang: SupportedLocale) => {
     setLocale(lang);
@@ -234,6 +238,7 @@ export default function PerfilPage() {
             <div>
               <label style={labelStyle}>{t('settings.security.newPassword')}</label>
               <input className="input" type="password" placeholder="••••••••" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+              {policy && <PasswordStrengthMeter password={newPassword} policy={policy} />}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <button type="submit" className="btn-primary" disabled={!currentPassword || !newPassword} style={{ opacity: !currentPassword || !newPassword ? 0.5 : 1 }}>
@@ -244,6 +249,9 @@ export default function PerfilPage() {
             </div>
           </form>
         </div>
+
+        {/* Privacidad y datos personales (GDPR) */}
+        <GdprPrivacyCard />
       </div>
     </div>
   );

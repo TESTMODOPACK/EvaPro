@@ -62,6 +62,27 @@ async function bootstrap() {
     logger.warn('METRICS_USER/METRICS_PASSWORD not set — /metrics endpoint is UNPROTECTED');
   }
 
+  // ─── Cookies (required by SSO callback for signed state cookie) ─────
+  // Must come before any body parsers so cookie-parser populates req.cookies
+  // on every route, including webhook paths that use raw body.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const cookieParser = require('cookie-parser');
+  app.use(cookieParser());
+
+  // ─── Webhook raw body ─────────────────────────────────────────────────
+  // Stripe and MercadoPago verify webhook signatures against the EXACT bytes
+  // they sent. If Nest's JSON parser touches the body first, Stripe's
+  // `constructEvent` will throw "signature verification failed" for every
+  // legitimate event. We register express.raw() BEFORE the global JSON
+  // parser for the two webhook endpoints only.
+  //
+  // Important: paths must match the controller routes exactly — any global
+  // prefix (none here) would need to be prepended.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const express = require('express');
+  app.use('/webhooks/stripe', express.raw({ type: '*/*', limit: '1mb' }));
+  app.use('/webhooks/mercadopago', express.raw({ type: '*/*', limit: '1mb' }));
+
   // Increase body size limit for base64 file uploads (CVs, attachments stored in DB)
   app.useBodyParser('json', { limit: '10mb' });
   app.useBodyParser('urlencoded', { limit: '10mb', extended: true } as any);

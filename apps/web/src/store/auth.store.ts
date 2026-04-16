@@ -12,6 +12,11 @@ export interface AuthUser {
   role: string;
   firstName: string;
   lastName: string;
+  /** Populated when the active JWT is an impersonation token. Drives the
+   *  red banner + "Salir de impersonación" button. */
+  impersonatedBy?: string;
+  impersonationReason?: string;
+  impersonationExpiresAt?: string; // ISO 8601
 }
 
 interface AuthState {
@@ -80,6 +85,12 @@ export function decodeJwtPayload(token: string): AuthUser | null {
   try {
     const base64 = token.split('.')[1];
     const payload = JSON.parse(atob(base64));
+    const impersonatedBy = payload.impersonatedBy as string | undefined;
+    const impersonationReason = payload.impersonationReason as string | undefined;
+    const impersonationExpiresAt =
+      typeof payload.exp === 'number' && impersonatedBy
+        ? new Date(payload.exp * 1000).toISOString()
+        : undefined;
     return {
       userId: payload.sub,
       email: payload.email,
@@ -87,6 +98,9 @@ export function decodeJwtPayload(token: string): AuthUser | null {
       role: payload.role,
       firstName: payload.firstName || '',
       lastName: payload.lastName || '',
+      impersonatedBy,
+      impersonationReason,
+      impersonationExpiresAt,
     };
   } catch {
     return null;

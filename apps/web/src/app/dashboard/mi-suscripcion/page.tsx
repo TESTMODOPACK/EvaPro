@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
 import { FEATURE_LABELS } from '@/lib/feature-routes';
+import PendingInvoicesCard from '@/components/PendingInvoicesCard';
 
 const featureLabels = FEATURE_LABELS;
 
@@ -194,6 +195,11 @@ export default function MiSuscripcionPage() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           Plan y límites de tu organización
         </p>
+      </div>
+
+      {/* Outstanding invoices — tenant_admin only, auto-hidden when none. */}
+      <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
+        <PendingInvoicesCard />
       </div>
 
       {/* Guide toggle */}

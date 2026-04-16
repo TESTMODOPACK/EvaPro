@@ -7,6 +7,9 @@ import { useMySubscription } from '@/hooks/useSubscription';
 import { formatRut, formatRutInput } from '@/lib/rut';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import GdprTenantTab from '@/components/GdprTenantTab';
+import PasswordPolicyForm from '@/components/PasswordPolicyForm';
+import SsoConfigForm from '@/components/SsoConfigForm';
 
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: '0.78rem', fontWeight: 600,
@@ -14,7 +17,7 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.05em',
 };
 
-type SettingsTab = 'organizacion' | 'notificaciones' | 'feedback';
+type SettingsTab = 'organizacion' | 'notificaciones' | 'feedback' | 'privacidad' | 'seguridad';
 
 function Toggle({ value, onChange, size = 'md' }: { value: boolean; onChange: () => void; size?: 'sm' | 'md' }) {
   const w = size === 'sm' ? 38 : 44;
@@ -189,6 +192,8 @@ export default function AjustesPage() {
         { id: 'organizacion', label: t('settings.tabs.organization'), icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
         { id: 'notificaciones', label: t('settings.tabs.notifications'), icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0' },
         { id: 'feedback', label: t('settings.tabs.feedback'), icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
+        { id: 'privacidad', label: 'Privacidad y datos', icon: 'M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z' },
+        { id: 'seguridad', label: 'Seguridad', icon: 'M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z' },
       ];
 
   return (
@@ -736,6 +741,34 @@ export default function AjustesPage() {
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* TAB: Privacidad y datos (tenant_admin) — GDPR tenant export + audit  */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'privacidad' && isTenantAdmin && (
+        <div className="animate-fade-up">
+          <GdprTenantTab />
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* TAB: Seguridad (tenant_admin) — password policy                       */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'seguridad' && isTenantAdmin && (
+        <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <PasswordPolicyForm
+            tenantSettings={tenantSettings}
+            onSaved={() => {
+              // Refetch the tenant settings so the form reflects what the
+              // server persisted (post-clamp). Replacement-style refetch:
+              // we don't have a queryClient here because the page uses
+              // manual fetch via api.tenants.*. A simple reload works.
+              window.location.reload();
+            }}
+          />
+          <SsoConfigForm />
         </div>
       )}
 

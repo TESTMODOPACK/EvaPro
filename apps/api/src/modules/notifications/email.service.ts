@@ -2,7 +2,20 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { User } from '../users/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
+import { signToken } from '../../common/utils/signed-token';
+import {
+  NotificationCategory,
+  UserNotificationPreferences,
+} from '../../common/types/jsonb-schemas';
+
+/**
+ * Purpose + TTL for the stateless unsubscribe token. Kept in sync with
+ * `unsubscribe.service.ts` — if either file changes, update both.
+ */
+const UNSUBSCRIBE_PURPOSE = 'unsubscribe';
+const UNSUBSCRIBE_TOKEN_TTL_SECONDS = 180 * 24 * 60 * 60; // 180 days
 
 /**
  * EmailService — Beautiful branded transactional emails for Eva360.
@@ -20,6 +33,8 @@ export class EmailService {
   constructor(
     @Optional() @InjectRepository(Tenant)
     private readonly tenantRepo?: Repository<Tenant>,
+    @Optional() @InjectRepository(User)
+    private readonly userRepo?: Repository<User>,
     @Optional() private readonly auditService?: AuditService,
   ) {
     this.init();
@@ -71,11 +86,36 @@ export class EmailService {
   }
 
   /**
-   * Check if email notifications are enabled for a tenant + category.
-   * Categories: 'evaluations', 'feedback', 'objectives', 'recognitions'
-   * Returns true if no tenantId (system emails always sent) or if enabled.
+   * Check if email notifications are enabled for a tenant + category + user.
+   *
+   * Precedence (most specific wins on "block"):
+   *  1. User opt-out (new — `user.notification_preferences[category] === false`)
+   *  2. Tenant category toggle
+   *  3. Tenant master toggle
+   *
+   * Default is `true` (send) on any missing data or error — we prefer to
+   * err on the side of communicating rather than silently drop.
+   *
+   * Transactional methods (password reset, OTP, invitation, GDPR, billing
+   * lifecycle) MUST NOT call this — they are always sent unconditionally.
    */
-  async isEmailEnabled(tenantId?: string, category?: string): Promise<boolean> {
+  async isEmailEnabled(tenantId?: string, category?: string, userId?: string): Promise<boolean> {
+    // User-level opt-out first — it's the most specific signal.
+    if (userId && category && this.userRepo) {
+      try {
+        const user = await this.userRepo.findOne({
+          where: { id: userId },
+          select: ['id', 'notificationPreferences'],
+        });
+        if (user) {
+          const prefs = (user.notificationPreferences ?? {}) as UserNotificationPreferences;
+          if (prefs[category as NotificationCategory] === false) return false;
+        }
+      } catch {
+        // Fall through to tenant-level check on any DB error.
+      }
+    }
+
     if (!tenantId || !this.tenantRepo) return true;
     try {
       const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
@@ -90,27 +130,91 @@ export class EmailService {
     }
   }
 
-  /** Wraps body with org branding (logo + name) fetched from tenant */
+  // ─── Unsubscribe helpers ──────────────────────────────────────────────────
+
+  /** Mint a stateless HMAC token valid for 180 days. Returns empty string
+   *  if JWT_SECRET isn't configured (send() will then omit the header). */
+  private mintUnsubscribeToken(userId: string, tenantId: string | null): string {
+    try {
+      return signToken({ uid: userId, tid: tenantId }, UNSUBSCRIBE_PURPOSE, UNSUBSCRIBE_TOKEN_TTL_SECONDS);
+    } catch (err: any) {
+      this.logger.warn(`Failed to mint unsubscribe token: ${err?.message || err}`);
+      return '';
+    }
+  }
+
+  private buildUnsubscribeHeaders(token: string): Record<string, string> | undefined {
+    if (!token) return undefined;
+    const url = `${this.appUrl}/unsubscribe?token=${encodeURIComponent(token)}`;
+    // RFC 2369 + RFC 8058. Gmail uses `List-Unsubscribe-Post` for 1-click.
+    return {
+      'List-Unsubscribe': `<${url}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    };
+  }
+
+  /**
+   * Wraps body with org branding (logo + name) fetched from tenant.
+   *
+   * If `userIdForUnsubscribe` is provided, a fresh HMAC token is minted and
+   * passed into `wrap()` so the footer renders a public unsubscribe link.
+   * Omit for broadcast emails (multiple recipients sharing one render) or
+   * for transactional mails where unsubscribe doesn't apply.
+   */
   private async wrapWithBranding(tenantId: string | undefined, opts: {
     body: string; preheader?: string; accentColor?: string;
+    userIdForUnsubscribe?: string;
   }): Promise<string> {
     const branding = await this.getOrgBranding(tenantId);
-    return this.wrap({ ...opts, orgLogoUrl: branding.logoUrl, orgName: branding.orgName });
+    const unsubscribeToken = opts.userIdForUnsubscribe
+      ? this.mintUnsubscribeToken(opts.userIdForUnsubscribe, tenantId ?? null)
+      : '';
+    const unsubscribeUrl = unsubscribeToken
+      ? `${this.appUrl}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
+      : undefined;
+    return this.wrap({
+      body: opts.body,
+      preheader: opts.preheader,
+      accentColor: opts.accentColor,
+      orgLogoUrl: branding.logoUrl,
+      orgName: branding.orgName,
+      unsubscribeUrl,
+    });
   }
 
   // ─── Core send ────────────────────────────────────────────────────────────
 
-  async send(to: string | string[], subject: string, html: string, tenantId?: string): Promise<void> {
+  /**
+   * Send a branded HTML email.
+   *
+   * @param opts.userIdForUnsubscribe  When provided, an unsubscribe HMAC token
+   *   is minted and the `List-Unsubscribe` / `List-Unsubscribe-Post` headers
+   *   are added so Gmail/Outlook render a native opt-out button. Must be the
+   *   id of the ONLY recipient — if the email is a broadcast to multiple users
+   *   do NOT pass this (there is no valid single-user token for broadcasts).
+   */
+  async send(
+    to: string | string[],
+    subject: string,
+    html: string,
+    tenantId?: string,
+    opts?: { userIdForUnsubscribe?: string },
+  ): Promise<void> {
     const recipients = Array.isArray(to) ? to : [to];
     const from = await this.getFromAddress(tenantId);
+    const headers = opts?.userIdForUnsubscribe
+      ? this.buildUnsubscribeHeaders(this.mintUnsubscribeToken(opts.userIdForUnsubscribe, tenantId ?? null))
+      : undefined;
 
     if (!this.resend) {
-      this.logger.log(`[EMAIL PREVIEW]\nFrom: ${from}\nTo: ${recipients.join(', ')}\nSubject: ${subject}\n---`);
+      this.logger.log(`[EMAIL PREVIEW]\nFrom: ${from}\nTo: ${recipients.join(', ')}\nSubject: ${subject}${headers ? `\nList-Unsubscribe: ${headers['List-Unsubscribe']}` : ''}\n---`);
       return;
     }
 
     try {
-      const result = await this.resend.emails.send({ from, to: recipients, subject, html });
+      const payload: any = { from, to: recipients, subject, html };
+      if (headers) payload.headers = headers;
+      const result = await this.resend.emails.send(payload);
       this.logger.log(`✉️  Email sent: to=${recipients.join(', ')}, from=${from}, id=${result?.data?.id || 'ok'}`);
     } catch (err: any) {
       this.logger.error(`❌ Email FAILED: to=${recipients.join(', ')}, from=${from}, error=${err?.message}`);
@@ -130,17 +234,23 @@ export class EmailService {
     html: string,
     attachments: Array<{ filename: string; content: string; contentType: string }>,
     tenantId?: string,
+    opts?: { userIdForUnsubscribe?: string },
   ): Promise<void> {
     const recipients = Array.isArray(to) ? to : [to];
     const from = await this.getFromAddress(tenantId);
+    const headers = opts?.userIdForUnsubscribe
+      ? this.buildUnsubscribeHeaders(this.mintUnsubscribeToken(opts.userIdForUnsubscribe, tenantId ?? null))
+      : undefined;
 
     if (!this.resend) {
-      this.logger.log(`[EMAIL PREVIEW+ATTACHMENT]\nFrom: ${from}\nTo: ${recipients.join(', ')}\nSubject: ${subject}\nAttachments: ${attachments.map(a => a.filename).join(', ')}\n---`);
+      this.logger.log(`[EMAIL PREVIEW+ATTACHMENT]\nFrom: ${from}\nTo: ${recipients.join(', ')}\nSubject: ${subject}\nAttachments: ${attachments.map(a => a.filename).join(', ')}${headers ? `\nList-Unsubscribe: ${headers['List-Unsubscribe']}` : ''}\n---`);
       return;
     }
 
     try {
-      const result = await this.resend.emails.send({ from, to: recipients, subject, html, attachments });
+      const payload: any = { from, to: recipients, subject, html, attachments };
+      if (headers) payload.headers = headers;
+      const result = await this.resend.emails.send(payload);
       this.logger.log(`✉️  Email+attachment sent: to=${recipients.join(', ')}, from=${from}, id=${result?.data?.id || 'ok'}`);
     } catch (err: any) {
       this.logger.error(`❌ Email+attachment FAILED: to=${recipients.join(', ')}, from=${from}, error=${err?.message}`);
@@ -157,9 +267,9 @@ export class EmailService {
 
   async sendCycleLaunched(
     email: string,
-    data: { firstName: string; cycleName: string; cycleType: string; dueDate: string; cycleId: string; tenantId?: string },
+    data: { firstName: string; cycleName: string; cycleType: string; dueDate: string; cycleId: string; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations', data.userId))) return;
     const typeLabel: Record<string, string> = {
       '90': 'Evaluación 90°', '180': 'Evaluación 180°',
       '270': 'Evaluación 270°', '360': 'Evaluación 360°',
@@ -171,6 +281,7 @@ export class EmailService {
       `Nueva evaluación asignada: ${data.cycleName}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Tienes una nueva ${label} pendiente. Fecha límite: ${data.dueDate}`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading(`Hola, ${data.firstName} 👋`)}
           ${this.paragraph(`Se ha iniciado el ciclo de evaluación <strong>${data.cycleName}</strong> y tienes evaluaciones pendientes por completar.`)}
@@ -184,6 +295,8 @@ export class EmailService {
           ${this.smallText('Si no debes participar en este ciclo, contacta a tu administrador de RRHH.')}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -191,9 +304,9 @@ export class EmailService {
 
   async sendEvaluationReminder(
     email: string,
-    data: { firstName: string; cycleName: string; pendingCount: number; daysLeft: number; cycleId: string; tenantId?: string },
+    data: { firstName: string; cycleName: string; pendingCount: number; daysLeft: number; cycleId: string; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations', data.userId))) return;
     const urgency = data.daysLeft <= 1 ? '🚨 Urgente' : data.daysLeft <= 3 ? '⚠️ Pronto vence' : '🔔 Recordatorio';
 
     await this.send(
@@ -202,6 +315,7 @@ export class EmailService {
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Te ${data.daysLeft === 1 ? 'queda 1 día' : `quedan ${data.daysLeft} días`} para completar tus evaluaciones.`,
         accentColor: data.daysLeft <= 1 ? '#ef4444' : data.daysLeft <= 3 ? '#f59e0b' : '#C9933A',
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading(`${urgency}: evaluaciones pendientes`)}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tienes <strong>${data.pendingCount} evaluación${data.pendingCount > 1 ? 'es' : ''} pendiente${data.pendingCount > 1 ? 's' : ''}</strong> en el ciclo <strong>${data.cycleName}</strong>.`)}
@@ -214,6 +328,8 @@ export class EmailService {
           ${this.cta('Completar ahora', `${this.appUrl}/dashboard/evaluaciones`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -221,14 +337,15 @@ export class EmailService {
 
   async sendCycleClosed(
     email: string,
-    data: { firstName: string; cycleName: string; cycleId: string; tenantId?: string },
+    data: { firstName: string; cycleName: string; cycleId: string; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'evaluations', data.userId))) return;
     await this.send(
       email,
       `Resultados disponibles: ${data.cycleName}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `El ciclo ${data.cycleName} ha finalizado. Tus resultados están disponibles.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Resultados de evaluación listos ✅')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, el ciclo de evaluación <strong>${data.cycleName}</strong> ha concluido y tus resultados están disponibles en la plataforma.`)}
@@ -238,6 +355,8 @@ export class EmailService {
           ${this.smallText('Si tienes preguntas sobre tus resultados, consulta con tu jefatura directa o con el área de RRHH.')}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -302,14 +421,15 @@ export class EmailService {
 
   async sendCheckinScheduled(
     email: string,
-    data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string; tenantId?: string },
+    data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback', data.userId))) return;
     await this.send(
       email,
       `Check-in 1:1 agendado con ${data.managerName}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Tienes un check-in programado para el ${data.scheduledAt}.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Check-in 1:1 agendado 📅')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se ha agendado una reunión 1:1 contigo.`)}
@@ -321,16 +441,19 @@ export class EmailService {
           ${this.cta('Ver detalles', `${this.appUrl}/dashboard/feedback`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
   /** Build the check-in HTML without sending — used by FeedbackService to attach .ics. Returns null if emails disabled. */
   async buildCheckinScheduledHtml(
-    data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string; tenantId?: string },
+    data: { firstName: string; managerName: string; scheduledAt: string; topic?: string; checkinId: string; tenantId?: string; userId?: string },
   ): Promise<string | null> {
-    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return null;
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback', data.userId))) return null;
     return this.wrapWithBranding(data.tenantId, {
       preheader: `Tienes un check-in programado para el ${data.scheduledAt}.`,
+      userIdForUnsubscribe: data.userId,
       body: `
         ${this.heading('Check-in 1:1 agendado 📅')}
         ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se ha agendado una reunión 1:1 contigo.`)}
@@ -349,9 +472,9 @@ export class EmailService {
 
   async sendOkrAtRisk(
     email: string,
-    data: { firstName: string; objectives: Array<{ title: string; progress: number; daysLeft: number }>; tenantId?: string },
+    data: { firstName: string; objectives: Array<{ title: string; progress: number; daysLeft: number }>; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'objectives'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'objectives', data.userId))) return;
     const list = data.objectives
       .map((o) => `<li style="margin-bottom:0.5rem;"><strong>${o.title}</strong> — ${o.progress}% completado, vence en ${o.daysLeft} días</li>`)
       .join('');
@@ -362,6 +485,7 @@ export class EmailService {
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Tienes objetivos que están en riesgo de no alcanzarse antes de su fecha límite.`,
         accentColor: '#f59e0b',
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('⚠️ Objetivos en riesgo')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, los siguientes objetivos están retrasados respecto a su progreso esperado:`)}
@@ -372,6 +496,8 @@ export class EmailService {
           ${this.cta('Revisar mis objetivos', `${this.appUrl}/dashboard/objetivos`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -411,8 +537,10 @@ export class EmailService {
       targetDate: string | null;
       responsibleName: string | null;
       tenantId?: string;
+      userId?: string;
     },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'development', data.userId))) return;
     const deptLabel = data.department ?? 'Toda la empresa';
     const rows: Array<{ label: string; value: string }> = [
       { label: 'Plan', value: `${data.planTitle} (${data.planYear})` },
@@ -426,6 +554,7 @@ export class EmailService {
       `Nueva iniciativa de desarrollo asignada: ${data.initiativeTitle}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Has sido incluido/a en la iniciativa "${data.initiativeTitle}" del plan ${data.planTitle}.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading(`Iniciativa de desarrollo asignada 🚀`)}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, has sido incluido/a en una nueva iniciativa de desarrollo organizacional.`)}
@@ -436,6 +565,8 @@ export class EmailService {
           ${this.smallText('Si tienes preguntas sobre esta iniciativa, consulta con el responsable o con el área de RRHH.')}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -443,13 +574,15 @@ export class EmailService {
 
   async sendPendingReview(
     email: string,
-    data: { adminName: string; itemType: 'plantilla' | 'competencia'; itemName: string; proposedBy: string; tenantId?: string },
+    data: { adminName: string; itemType: 'plantilla' | 'competencia'; itemName: string; proposedBy: string; tenantId?: string; userId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'pending_reviews', data.userId))) return;
     await this.send(
       email,
       `Nueva ${data.itemType} pendiente de revisión: ${data.itemName}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `${data.proposedBy} ha propuesto una nueva ${data.itemType} que requiere tu aprobación.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading(`Nueva ${data.itemType} para revisar 📋`)}
           ${this.paragraph(`Hola <strong>${data.adminName}</strong>, <strong>${data.proposedBy}</strong> ha propuesto una nueva ${data.itemType} que requiere tu revisión y aprobación.`)}
@@ -464,6 +597,8 @@ export class EmailService {
           )}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -471,15 +606,16 @@ export class EmailService {
 
   async sendRecognitionReceived(
     email: string,
-    data: { firstName: string; fromName: string; message: string; valueName?: string; points: number; tenantId?: string },
+    data: { firstName: string; fromName: string; message: string; valueName?: string; points: number; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'recognitions'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'recognitions', data.userId))) return;
     const msgPreview = data.message.length > 120 ? data.message.substring(0, 120) + '...' : data.message;
     await this.send(
       email,
       `${data.fromName} te ha reconocido`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Has recibido un reconocimiento de ${data.fromName}. +${data.points} puntos.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading(`Has recibido un reconocimiento ⭐`)}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, <strong>${data.fromName}</strong> te ha enviado un reconocimiento:`)}
@@ -493,6 +629,8 @@ export class EmailService {
           ${this.cta('Ver reconocimientos', `${this.appUrl}/dashboard/reconocimientos`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -564,8 +702,9 @@ export class EmailService {
 
   async sendSurveyInvitation(
     email: string,
-    data: { firstName: string; surveyTitle: string; dueDate: string; isAnonymous: boolean; tenantId?: string },
+    data: { firstName: string; surveyTitle: string; dueDate: string; isAnonymous: boolean; tenantId?: string; userId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'surveys', data.userId))) return;
     const anonymousNote = data.isAnonymous
       ? 'Tus respuestas serán completamente <strong>anónimas</strong>. No se registrará tu identidad.'
       : 'Tus respuestas serán confidenciales y solo visibles para el equipo de RRHH.';
@@ -575,6 +714,7 @@ export class EmailService {
       `Nueva encuesta de clima: ${data.surveyTitle}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Se te ha asignado la encuesta "${data.surveyTitle}". Fecha límite: ${data.dueDate}.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Encuesta de Clima Organizacional')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se te ha invitado a participar en la siguiente encuesta:`)}
@@ -588,6 +728,8 @@ export class EmailService {
           ${this.smallText('Si tienes problemas para acceder, ingresa a la plataforma y busca la sección "Encuestas de Clima".')}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -602,9 +744,10 @@ export class EmailService {
       message: string;
       competencyName?: string;
       tenantId?: string;
+      userId?: string;
     },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback', data.userId))) return;
     const sentimentLabel = data.sentiment === 'positive' ? 'positivo' : data.sentiment === 'constructive' ? 'constructivo' : '';
     const sentimentIcon = data.sentiment === 'positive' ? '⭐' : data.sentiment === 'constructive' ? '💡' : '💬';
 
@@ -613,6 +756,7 @@ export class EmailService {
       `${sentimentIcon} Nuevo feedback ${sentimentLabel} recibido`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `${data.senderName} te ha enviado feedback${sentimentLabel ? ' ' + sentimentLabel : ''}.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading(`Feedback recibido ${sentimentIcon}`)}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, <strong>${data.senderName}</strong> te ha enviado feedback${sentimentLabel ? ' <strong>' + sentimentLabel + '</strong>' : ''}:`)}
@@ -624,6 +768,8 @@ export class EmailService {
           ${this.cta('Ver mi feedback', `${this.appUrl}/dashboard/mi-desempeno`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -631,9 +777,9 @@ export class EmailService {
 
   async sendObjectiveAssigned(
     email: string,
-    data: { firstName: string; objectiveTitle: string; objectiveType: string; targetDate?: string; assignedBy?: string; tenantId?: string },
+    data: { firstName: string; objectiveTitle: string; objectiveType: string; targetDate?: string; assignedBy?: string; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'objectives'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'objectives', data.userId))) return;
     const typeLabels: Record<string, string> = { OKR: 'OKR', KPI: 'KPI', SMART: 'SMART', individual: 'Individual' };
     const typeLabel = typeLabels[data.objectiveType] || data.objectiveType;
     const rows: Array<{ label: string; value: string }> = [
@@ -648,6 +794,7 @@ export class EmailService {
       `Nuevo objetivo asignado: ${data.objectiveTitle}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Se te ha asignado el objetivo "${data.objectiveTitle}".`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Nuevo objetivo asignado 🎯')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se te ha asignado un nuevo objetivo:`)}
@@ -656,6 +803,8 @@ export class EmailService {
           ${this.cta('Ver mis objetivos', `${this.appUrl}/dashboard/objetivos`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -663,9 +812,11 @@ export class EmailService {
 
   async sendPdiAssigned(
     email: string,
-    data: { firstName: string; planTitle: string; createdByName?: string; tenantId?: string },
+    data: { firstName: string; planTitle: string; createdByName?: string; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    // NOTE: PDI (Plan de Desarrollo Individual) belongs to the 'development'
+    // category, NOT 'feedback'. Prior version used 'feedback' — fixed here.
+    if (!(await this.isEmailEnabled(data.tenantId, 'development', data.userId))) return;
     const rows: Array<{ label: string; value: string }> = [
       { label: 'Plan', value: data.planTitle },
     ];
@@ -676,6 +827,7 @@ export class EmailService {
       `Plan de desarrollo asignado: ${data.planTitle}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Se te ha asignado el plan de desarrollo "${data.planTitle}".`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Plan de desarrollo asignado 📋')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, se te ha creado un plan de desarrollo individual (PDI):`)}
@@ -684,6 +836,8 @@ export class EmailService {
           ${this.cta('Ver mi plan', `${this.appUrl}/dashboard/mi-desempeno`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -691,9 +845,10 @@ export class EmailService {
 
   async sendPdiActionOverdue(
     email: string,
-    data: { firstName: string; actions: Array<{ description: string; dueDate: string; planTitle: string }>; tenantId?: string },
+    data: { firstName: string; actions: Array<{ description: string; dueDate: string; planTitle: string }>; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    // PDI overdue actions → 'development' category (fixed from 'feedback').
+    if (!(await this.isEmailEnabled(data.tenantId, 'development', data.userId))) return;
     const actionList = data.actions
       .map((a) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:0.85rem;">${a.description.substring(0, 80)}</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:0.85rem;color:#ef4444;white-space:nowrap;">${a.dueDate}</td></tr>`)
       .join('');
@@ -704,6 +859,7 @@ export class EmailService {
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Tienes ${data.actions.length} acción(es) de desarrollo vencida(s). Actualiza su estado.`,
         accentColor: '#ef4444',
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Acciones de desarrollo vencidas ⚠️')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tienes <strong>${data.actions.length}</strong> acción(es) de tu plan de desarrollo que han superado su fecha límite:`)}
@@ -715,6 +871,8 @@ export class EmailService {
           ${this.cta('Ver mi plan de desarrollo', `${this.appUrl}/dashboard/mi-desempeno`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -722,8 +880,9 @@ export class EmailService {
 
   async sendManagerWeeklySummary(
     email: string,
-    data: { firstName: string; pendingEvals: number; overduePdi: number; atRiskObjectives: number; tenantId?: string },
+    data: { firstName: string; pendingEvals: number; overduePdi: number; atRiskObjectives: number; tenantId?: string; userId?: string },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'digests', data.userId))) return;
     const items: string[] = [];
     if (data.pendingEvals > 0) items.push(`📝 <strong>${data.pendingEvals}</strong> evaluación${data.pendingEvals > 1 ? 'es' : ''} pendiente${data.pendingEvals > 1 ? 's' : ''}`);
     if (data.overduePdi > 0) items.push(`📋 <strong>${data.overduePdi}</strong> acción${data.overduePdi > 1 ? 'es' : ''} PDI vencida${data.overduePdi > 1 ? 's' : ''} en tu equipo`);
@@ -736,6 +895,7 @@ export class EmailService {
       `Resumen semanal — ${items.length} tema${items.length > 1 ? 's' : ''} pendiente${items.length > 1 ? 's' : ''}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Hola ${data.firstName}, tienes ${items.length} tema(s) pendiente(s) esta semana.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Resumen semanal de tu equipo')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, este es un resumen de lo que necesita tu atención esta semana:`)}
@@ -745,6 +905,8 @@ export class EmailService {
           <p style="margin-top:1.5rem;font-size:0.72rem;color:#94a3b8;text-align:center;">Este es un resumen automático semanal. Se envía cada lunes.</p>
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -762,8 +924,10 @@ export class EmailService {
       upcomingCheckins: number;
       newRecognitions: number;
       tenantId?: string;
+      userId?: string;
     },
   ) {
+    if (!(await this.isEmailEnabled(data.tenantId, 'digests', data.userId))) return;
     const items: string[] = [];
     if (data.pendingEvals > 0) items.push(`📝 <strong>${data.pendingEvals}</strong> evaluación${data.pendingEvals > 1 ? 'es' : ''} pendiente${data.pendingEvals > 1 ? 's' : ''} de responder`);
     if (data.overdueActions > 0) items.push(`📚 <strong>${data.overdueActions}</strong> acción${data.overdueActions > 1 ? 'es' : ''} de tu PDI vencida${data.overdueActions > 1 ? 's' : ''}`);
@@ -777,6 +941,7 @@ export class EmailService {
       `Tu semana en Eva360 — ${items.length} novedad${items.length !== 1 ? 'es' : ''}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `Hola ${data.firstName}, esto es lo que tienes esta semana en Eva360.`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('☀️ Tu semana en Eva360')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, este es el resumen de lo que está pasando con tu desarrollo y evaluaciones esta semana:`)}
@@ -786,6 +951,8 @@ export class EmailService {
           <p style="margin-top:1.5rem;font-size:0.72rem;color:#94a3b8;text-align:center;">Este es un resumen automático semanal. Se envía cada lunes — si no quieres recibirlo, contacta a tu administrador.</p>
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -793,14 +960,15 @@ export class EmailService {
 
   async sendObjectiveCompleted(
     email: string,
-    data: { managerName: string; employeeName: string; objectiveTitle: string; objectiveType: string; tenantId?: string },
+    data: { managerName: string; employeeName: string; objectiveTitle: string; objectiveType: string; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'objectives'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'objectives', data.userId))) return;
     await this.send(
       email,
       `Objetivo completado: ${data.objectiveTitle}`,
       await this.wrapWithBranding(data.tenantId, {
         preheader: `${data.employeeName} ha completado el objetivo "${data.objectiveTitle}".`,
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Objetivo completado ✅')}
           ${this.paragraph(`Hola <strong>${data.managerName}</strong>, <strong>${data.employeeName}</strong> ha alcanzado el 100% de progreso en su objetivo:`)}
@@ -813,6 +981,8 @@ export class EmailService {
           ${this.cta('Ver objetivos del equipo', `${this.appUrl}/dashboard/objetivos`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -820,9 +990,9 @@ export class EmailService {
 
   async sendCheckinOverdue(
     email: string,
-    data: { firstName: string; daysSince: number | null; tenantId?: string },
+    data: { firstName: string; daysSince: number | null; tenantId?: string; userId?: string },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback', data.userId))) return;
     const daysMsg = data.daysSince
       ? `Han pasado <strong>${data.daysSince} días</strong> desde tu último check-in.`
       : 'No tienes check-ins registrados con tu equipo.';
@@ -833,6 +1003,7 @@ export class EmailService {
       await this.wrapWithBranding(data.tenantId, {
         preheader: data.daysSince ? `Han pasado ${data.daysSince} días sin check-ins.` : 'Agenda un check-in con tu equipo.',
         accentColor: '#f59e0b',
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Check-in pendiente 📅')}
           ${this.paragraph(`Hola <strong>${data.firstName}</strong>, ${daysMsg}`)}
@@ -840,6 +1011,8 @@ export class EmailService {
           ${this.cta('Agendar check-in', `${this.appUrl}/dashboard/feedback`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -855,9 +1028,10 @@ export class EmailService {
       scheduledTime?: string;
       reason: string;
       tenantId?: string;
+      userId?: string;
     },
   ) {
-    if (!(await this.isEmailEnabled(data.tenantId, 'feedback'))) return;
+    if (!(await this.isEmailEnabled(data.tenantId, 'feedback', data.userId))) return;
     const timeLabel = data.scheduledTime ? ` a las ${data.scheduledTime}` : '';
     await this.send(
       email,
@@ -865,6 +1039,7 @@ export class EmailService {
       await this.wrapWithBranding(data.tenantId, {
         preheader: `${data.employeeName} ha rechazado el check-in "${data.topic}".`,
         accentColor: '#f59e0b',
+        userIdForUnsubscribe: data.userId,
         body: `
           ${this.heading('Check-in rechazado')}
           ${this.paragraph(`Hola <strong>${data.managerName}</strong>, <strong>${data.employeeName}</strong> ha rechazado el check-in programado.`)}
@@ -877,6 +1052,8 @@ export class EmailService {
           ${this.cta('Ver check-ins', `${this.appUrl}/dashboard/checkins`)}
         `,
       }),
+      undefined,
+      { userIdForUnsubscribe: data.userId },
     );
   }
 
@@ -905,14 +1082,629 @@ export class EmailService {
     );
   }
 
+  // ─── Payment transactional emails (never respect unsubscribe) ────────────
+
+  /** Confirmation after a successful online payment. Triggered from the
+   *  Stripe/MercadoPago webhook flow. */
+  async sendPaymentReceived(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      amount: number;
+      currency: string;
+      invoiceNumber: string;
+      tenantId?: string;
+    },
+  ) {
+    const formattedAmount = this.formatAmount(data.amount, data.currency);
+    await this.send(
+      email,
+      `✓ Pago recibido — ${data.invoiceNumber}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Hemos recibido el pago de ${formattedAmount}. Gracias.`,
+        body: `
+          ${this.heading('Pago recibido ✓')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, confirmamos que recibimos el pago de tu factura.`)}
+          ${this.infoBox([
+            { label: 'Organización', value: data.orgName || '—' },
+            { label: 'Factura', value: data.invoiceNumber },
+            { label: 'Monto', value: formattedAmount },
+          ])}
+          ${this.paragraph('Tu acceso al servicio continúa sin interrupciones. Puedes descargar el comprobante desde la plataforma.')}
+          ${this.cta('Ver mi suscripción', `${this.appUrl}/dashboard/mi-suscripcion`)}
+          ${this.divider()}
+          ${this.smallText('Si tienes dudas sobre este pago, responde a este correo y el equipo de soporte te contactará.')}
+        `,
+      }),
+    );
+  }
+
+  /** Sent when a provider rejects a payment attempt. Includes the reason
+   *  the provider gave (when available) to help the user fix it (e.g.
+   *  "insufficient_funds", "expired_card"). */
+  async sendPaymentFailed(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      amount: number;
+      currency: string;
+      invoiceNumber: string;
+      failureReason: string;
+      retryUrl: string;
+      tenantId?: string;
+    },
+  ) {
+    const formattedAmount = this.formatAmount(data.amount, data.currency);
+    await this.send(
+      email,
+      `⚠️ No pudimos procesar tu pago — ${data.invoiceNumber}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: 'Tu pago no pudo procesarse. Puedes reintentar con otra tarjeta.',
+        accentColor: '#ef4444',
+        body: `
+          ${this.heading('Pago no procesado')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, el pago de tu factura <strong>${data.invoiceNumber}</strong> no pudo completarse.`)}
+          ${this.infoBox([
+            { label: 'Organización', value: data.orgName || '—' },
+            { label: 'Monto', value: formattedAmount },
+            { label: 'Motivo', value: data.failureReason },
+          ])}
+          ${this.alertBox('Tu acceso al servicio puede verse afectado si el pago no se regulariza pronto. Reintentar con otra tarjeta suele resolverlo.', 'warning')}
+          ${this.cta('Reintentar pago', data.retryUrl)}
+          ${this.divider()}
+          ${this.smallText('Si este problema persiste, contacta a tu banco o al equipo de soporte de Eva360.')}
+        `,
+      }),
+    );
+  }
+
+  // ─── Impersonation emails (transactional) ──────────────────────────────
+
+  /**
+   * Sent when a super_admin starts impersonating a tenant user. The target
+   * (usually a tenant_admin) learns about the access immediately, creating
+   * an out-of-band audit trail independent of our audit_log table.
+   */
+  async sendImpersonationStarted(
+    email: string,
+    data: {
+      firstName: string;
+      superAdminName: string;
+      reason: string;
+      durationMinutes: number;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `Soporte Eva360 ha accedido a tu cuenta`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `${data.superAdminName} inició una sesión de soporte en tu cuenta.`,
+        accentColor: '#f59e0b',
+        body: `
+          ${this.heading('Acceso de soporte iniciado 🔍')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, un agente de soporte de Eva360 ha iniciado una sesión en tu cuenta con fines de asistencia.`)}
+          ${this.infoBox([
+            { label: 'Agente', value: data.superAdminName },
+            { label: 'Motivo', value: data.reason },
+            { label: 'Duración máxima', value: `${data.durationMinutes} minutos` },
+          ])}
+          ${this.alertBox('Toda acción realizada durante esta sesión queda registrada en el log de auditoría con la identidad del agente. La sesión termina automáticamente al cerrar o al cumplirse la duración máxima.', 'info')}
+          ${this.smallText('Si no solicitaste esta asistencia, responde a este correo inmediatamente para que investiguemos.')}
+        `,
+      }),
+    );
+  }
+
+  /**
+   * Follow-up sent when the impersonation session ends IF it lasted more
+   * than 5 minutes. Short diagnostic sessions skip this to avoid noise.
+   */
+  async sendImpersonationEnded(
+    email: string,
+    data: {
+      firstName: string;
+      superAdminName: string;
+      durationMinutes: number;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `Sesión de soporte finalizada`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `${data.superAdminName} terminó la sesión de soporte en tu cuenta.`,
+        body: `
+          ${this.heading('Sesión de soporte finalizada ✓')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, la sesión de soporte iniciada por <strong>${data.superAdminName}</strong> ha finalizado.`)}
+          ${this.infoBox([
+            { label: 'Duración', value: `${data.durationMinutes} minutos` },
+          ])}
+          ${this.smallText('Puedes revisar el detalle completo de las acciones realizadas en el log de auditoría de tu tenant.')}
+        `,
+      }),
+    );
+  }
+
+  // ─── Password policy emails (transactional) ─────────────────────────────
+
+  /**
+   * Sent 7/3/1 days before `passwordChangedAt + expiryDays`. Dedupe keyed by
+   * bucket in `user.notificationPreferences.__password_expiry_sent` so the
+   * daily cron doesn't spam.
+   */
+  async sendPasswordExpiringSoon(
+    email: string,
+    data: { firstName: string; orgName: string; daysLeft: number; tenantId?: string },
+  ) {
+    const urgency = data.daysLeft <= 1 ? '🚨' : data.daysLeft <= 3 ? '⚠️' : '🔔';
+    await this.send(
+      email,
+      `${urgency} Tu contraseña vence en ${data.daysLeft} día${data.daysLeft === 1 ? '' : 's'}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Cambia tu contraseña antes de que expire para evitar perder el acceso.`,
+        accentColor: data.daysLeft <= 1 ? '#ef4444' : '#f59e0b',
+        body: `
+          ${this.heading(`Tu contraseña vence pronto ${urgency}`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, la política de contraseñas de <strong>${data.orgName || 'tu organización'}</strong> indica que tu contraseña vencerá en <strong>${data.daysLeft} día${data.daysLeft === 1 ? '' : 's'}</strong>.`)}
+          ${this.alertBox('Si no cambias tu contraseña antes del vencimiento, deberás hacerlo la próxima vez que inicies sesión.', 'warning')}
+          ${this.cta('Cambiar contraseña ahora', `${this.appUrl}/dashboard/perfil`)}
+          ${this.smallText('Si no recuerdas tu contraseña actual, usa el flujo de recuperación desde la pantalla de login.')}
+        `,
+      }),
+    );
+  }
+
+  // ─── Trial nurture emails (transactional, onboarding sequence) ───────────
+  //
+  // These 6 emails kick off on trial creation and walk the admin through
+  // the 14-day trial + 3-day post-expiry window. They are transactional in
+  // spirit — no per-category opt-out — but if a user cancels the trial
+  // subscription the cron simply stops emailing because status changes.
+
+  async sendTrialWelcome(
+    email: string,
+    data: { firstName: string; orgName: string; tenantId?: string },
+  ) {
+    await this.send(
+      email,
+      `Bienvenido/a a Eva360 — tu trial comienza hoy 🎉`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `En 3 pasos lanzas tu primer ciclo de evaluación.`,
+        body: `
+          ${this.heading(`Bienvenido/a a Eva360 👋`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tu cuenta de <strong>${data.orgName}</strong> está activa con un trial de <strong>14 días</strong>. Tienes acceso completo para que puedas explorar la plataforma.`)}
+          ${this.infoBox([
+            { label: 'Paso 1', value: 'Invita a tu equipo (usuarios + jefaturas)' },
+            { label: 'Paso 2', value: 'Define competencias y cargos' },
+            { label: 'Paso 3', value: 'Lanza tu primer ciclo de evaluación' },
+          ])}
+          ${this.paragraph('Cualquier duda, responde a este correo — un especialista te ayudará a arrancar.')}
+          ${this.cta('Ir a mi dashboard', `${this.appUrl}/dashboard`)}
+        `,
+      }),
+    );
+  }
+
+  async sendTrialDay3CheckIn(
+    email: string,
+    data: { firstName: string; orgName: string; tenantId?: string },
+  ) {
+    await this.send(
+      email,
+      `¿Cómo vas con Eva360?`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Un video corto para sacar el máximo a tu trial.`,
+        body: `
+          ${this.heading(`¿Cómo vas? 🤔`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, ya llevas 3 días probando Eva360 en <strong>${data.orgName}</strong>. Te dejamos un check-list de lo esencial:`)}
+          <ul style="padding-left:1.5rem;margin:0 0 1rem;color:#334155;font-size:0.92rem;line-height:1.7;">
+            <li>Cargar al equipo (mínimo 3 personas para probar 360°).</li>
+            <li>Crear o adaptar una plantilla de evaluación.</li>
+            <li>Definir las competencias que mides hoy.</li>
+          </ul>
+          ${this.paragraph('Si algún paso te bloquea, respondemos en menos de 2 horas hábiles.')}
+          ${this.cta('Continuar en mi dashboard', `${this.appUrl}/dashboard`)}
+        `,
+      }),
+    );
+  }
+
+  async sendTrialDay7Value(
+    email: string,
+    data: { firstName: string; orgName: string; tenantId?: string },
+  ) {
+    await this.send(
+      email,
+      `Descubre OKRs y calibración en Eva360`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Dos funciones que hacen la diferencia en equipos de 20+.`,
+        body: `
+          ${this.heading(`Ya conoces lo básico — pasemos a lo grande 🚀`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, a 7 días del trial, estas dos funciones suelen ser las que deciden compras:`)}
+          ${this.infoBox([
+            { label: 'OKRs', value: 'Objetivos y Key Results conectados a evaluaciones.' },
+            { label: 'Calibración', value: 'Comparador de desempeño entre jefaturas para evitar sesgos.' },
+          ])}
+          ${this.paragraph('Puedes activarlos desde el menú lateral. Si tienes dudas, agendemos 20 minutos.')}
+          ${this.cta('Explorar funcionalidades', `${this.appUrl}/dashboard`)}
+        `,
+      }),
+    );
+  }
+
+  async sendTrialDay11Urgency(
+    email: string,
+    data: { firstName: string; orgName: string; daysLeft: number; tenantId?: string },
+  ) {
+    await this.send(
+      email,
+      `Tu trial termina en ${data.daysLeft} día${data.daysLeft === 1 ? '' : 's'}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Elige un plan para no perder el acceso.`,
+        accentColor: '#f59e0b',
+        body: `
+          ${this.heading(`Tu trial termina en ${data.daysLeft} día${data.daysLeft === 1 ? '' : 's'} ⏰`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, el trial de <strong>${data.orgName}</strong> está por vencer. Elige un plan para mantener el acceso a evaluaciones, OKRs, PDI y el resto.`)}
+          ${this.alertBox('Tus datos quedan intactos si no eliges plan a tiempo — simplemente el acceso queda bloqueado hasta regularizar.', 'info')}
+          ${this.cta('Ver planes y precios', `${this.appUrl}/dashboard/mi-suscripcion`)}
+          ${this.smallText('Si necesitas asesoría para elegir, responde este correo y te contactamos.')}
+        `,
+      }),
+    );
+  }
+
+  async sendTrialExpired(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      planName: string;
+      planPrice: string;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `Tu trial terminó — reactiva en un click`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Tus datos están a salvo. Elige un plan para continuar.`,
+        body: `
+          ${this.heading(`Tu trial terminó`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, el trial de <strong>${data.orgName}</strong> ha finalizado. Tus datos (usuarios, evaluaciones, competencias) están guardados y listos para continuar cuando actives un plan.`)}
+          ${data.planName ? this.infoBox([
+            { label: 'Plan sugerido', value: data.planName },
+            ...(data.planPrice ? [{ label: 'Valor', value: data.planPrice }] : []),
+          ]) : ''}
+          ${this.cta('Activar mi plan', `${this.appUrl}/dashboard/mi-suscripcion`)}
+          ${this.smallText('Si prefieres hablar con un asesor antes de decidir, estamos a un correo de distancia.')}
+        `,
+      }),
+    );
+  }
+
+  async sendTrialRecovery(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      discountPercentage: number;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `Te extrañamos — ${data.discountPercentage}% off para volver`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Cupón VUELVE20 — válido esta semana.`,
+        body: `
+          ${this.heading(`Te extrañamos 👋`)}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, sabemos que evaluar al equipo toma tiempo. Te ofrecemos un <strong>${data.discountPercentage}% de descuento</strong> sobre tu primer mes si activas tu suscripción esta semana.`)}
+          ${this.infoBox([
+            { label: 'Cupón', value: 'VUELVE20' },
+            { label: 'Válido por', value: '7 días' },
+            { label: 'Aplica a', value: 'Primer mes de cualquier plan' },
+          ])}
+          ${this.cta('Activar con descuento', `${this.appUrl}/dashboard/mi-suscripcion`)}
+          ${this.smallText('Al confirmar tu plan, responde este correo mencionando el cupón y lo aplicamos a tu factura.')}
+        `,
+      }),
+    );
+  }
+
+  // ─── Dunning emails (transactional — billing is core) ────────────────────
+
+  /** Day +3 overdue — friendly reminder. */
+  async sendInvoiceOverdueFriendly(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      invoiceNumber: string;
+      amount: number;
+      currency: string;
+      daysOverdue: number;
+      payUrl: string;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `Recordatorio: factura ${data.invoiceNumber} vencida`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Tu factura venció hace ${data.daysOverdue} días. Regulariza el pago para mantener tu acceso.`,
+        body: `
+          ${this.heading('Recordatorio de pago 📅')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tu factura <strong>${data.invoiceNumber}</strong> de <strong>${data.orgName}</strong> venció hace ${data.daysOverdue} días.`)}
+          ${this.infoBox([
+            { label: 'Factura', value: data.invoiceNumber },
+            { label: 'Monto', value: this.formatAmount(data.amount, data.currency) },
+            { label: 'Días vencida', value: String(data.daysOverdue) },
+          ])}
+          ${this.paragraph('Puedes pagar online con tarjeta o transferencia desde tu panel. Si ya realizaste el pago, puedes ignorar este mensaje.')}
+          ${this.cta('Pagar ahora', data.payUrl)}
+        `,
+      }),
+    );
+  }
+
+  /** Day +7 overdue — urgent, mentions upcoming suspension. */
+  async sendInvoiceOverdueUrgent(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      invoiceNumber: string;
+      amount: number;
+      currency: string;
+      daysOverdue: number;
+      suspendsInDays: number;
+      payUrl: string;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `⚠️ Urgente: tu cuenta será suspendida en ${data.suspendsInDays} días`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Regulariza tu factura ${data.invoiceNumber} antes de que tu cuenta sea suspendida.`,
+        accentColor: '#f59e0b',
+        body: `
+          ${this.heading('⚠️ Pago urgente pendiente')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, la factura <strong>${data.invoiceNumber}</strong> de <strong>${data.orgName}</strong> lleva ${data.daysOverdue} días vencida.`)}
+          ${this.alertBox(`Tu acceso a Eva360 será <strong>suspendido en ${data.suspendsInDays} días</strong> si el pago no se regulariza. Los datos no se pierden, pero no podrás acceder a evaluaciones, objetivos ni reportes.`, 'warning')}
+          ${this.infoBox([
+            { label: 'Factura', value: data.invoiceNumber },
+            { label: 'Monto', value: this.formatAmount(data.amount, data.currency) },
+          ])}
+          ${this.cta('Pagar ahora', data.payUrl)}
+          ${this.smallText('Si tienes dificultades para pagar, contacta a soporte y podemos ofrecer alternativas.')}
+        `,
+      }),
+    );
+  }
+
+  /** Day +14 — the actual suspension event. */
+  async sendAccountSuspended(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      invoiceNumber: string;
+      payUrl: string;
+      cancelsInDays: number;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `Tu cuenta ha sido suspendida — ${data.orgName}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: 'Tu acceso a Eva360 está suspendido. Regulariza el pago para reactivar.',
+        accentColor: '#ef4444',
+        body: `
+          ${this.heading('Cuenta suspendida 🚫')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tu suscripción de <strong>${data.orgName}</strong> ha sido suspendida por impago de la factura <strong>${data.invoiceNumber}</strong>.`)}
+          ${this.alertBox(`Tus datos están intactos y tu cuenta se <strong>reactivará automáticamente</strong> tras procesar el pago. Si no regulas en <strong>${data.cancelsInDays} días</strong>, la cuenta quedará cancelada definitivamente.`, 'danger')}
+          ${this.cta('Pagar y reactivar', data.payUrl)}
+          ${this.divider()}
+          ${this.smallText('Si consideras que esto es un error o necesitas coordinar el pago, responde a este correo y el equipo de soporte te ayudará.')}
+        `,
+      }),
+    );
+  }
+
+  /** Day +30 — final warning before cancellation. */
+  async sendAccountCancellationWarning(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      payUrl: string;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `Último aviso: cancelación en 7 días — ${data.orgName}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: 'Tu cuenta será cancelada definitivamente en 7 días si no se regulariza el pago.',
+        accentColor: '#ef4444',
+        body: `
+          ${this.heading('Último aviso antes de cancelación')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tu cuenta de <strong>${data.orgName}</strong> lleva 30 días suspendida. En <strong>7 días</strong> será <strong>cancelada definitivamente</strong>.`)}
+          ${this.alertBox('Si se cancela, conservarás acceso a tus datos solo a través de una solicitud GDPR de export. No podrás retomar el servicio sin crear una suscripción nueva.', 'danger')}
+          ${this.cta('Regularizar pago ahora', data.payUrl)}
+          ${this.smallText('Responde a este correo si necesitas ayuda para cerrar este proceso.')}
+        `,
+      }),
+    );
+  }
+
+  /** Day +37 — terminal cancellation. */
+  async sendAccountCancelled(
+    email: string,
+    data: {
+      firstName: string;
+      orgName: string;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      `Cuenta cancelada — ${data.orgName}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: 'Tu cuenta ha sido cancelada por falta de pago.',
+        accentColor: '#ef4444',
+        body: `
+          ${this.heading('Cuenta cancelada')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, tu cuenta de <strong>${data.orgName}</strong> en Eva360 ha sido cancelada por falta de pago prolongada.`)}
+          ${this.paragraph('Si deseas retomar el servicio, contáctanos — podemos ayudarte a restablecer la suscripción con los datos preservados por un período limitado.')}
+          ${this.divider()}
+          ${this.smallText('Gracias por haber usado Eva360.')}
+        `,
+      }),
+    );
+  }
+
+  /** Helper — format an amount with the correct style per currency. */
+  private formatAmount(amount: number, currency: string): string {
+    const c = (currency || '').toUpperCase();
+    if (c === 'CLP') {
+      // No decimals, dot as thousands separator.
+      return `$${Math.round(amount).toLocaleString('es-CL')} CLP`;
+    }
+    if (c === 'USD') {
+      return `US$${amount.toFixed(2)}`;
+    }
+    if (c === 'UF') {
+      return `${amount.toFixed(2)} UF`;
+    }
+    return `${amount} ${currency}`;
+  }
+
+  // ─── GDPR transactional emails (never respect unsubscribe) ────────────────
+
+  /**
+   * Delivered when a data-export request has finished generating. The link
+   * is time-boxed; after `expiresAt` the backend stops serving it.
+   */
+  async sendGdprExportReady(
+    email: string,
+    data: {
+      firstName: string;
+      downloadUrl: string;
+      expiresAt: string;
+      scope: 'user' | 'tenant';
+      orgName?: string;
+      tenantId?: string;
+    },
+  ) {
+    const scopeLabel = data.scope === 'tenant' ? 'la organización' : 'tu cuenta';
+    await this.send(
+      email,
+      'Tu export de datos está listo',
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Descarga el archivo antes del ${data.expiresAt}.`,
+        body: `
+          ${this.heading('Tu export de datos está listo 📦')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, hemos terminado de procesar tu solicitud de exportación de datos de ${scopeLabel}${data.orgName ? ` <strong>${data.orgName}</strong>` : ''}.`)}
+          ${this.cta('Descargar archivo', data.downloadUrl)}
+          ${this.infoBox([
+            { label: 'Formato', value: 'ZIP (JSON + PDF resumen)' },
+            { label: 'Válido hasta', value: data.expiresAt },
+          ])}
+          ${this.alertBox('El enlace expira en 7 días por seguridad. Descárgalo lo antes posible y guárdalo en un lugar seguro.', 'info')}
+          ${this.smallText('Si no solicitaste este export, contacta al administrador de tu organización o al equipo de soporte inmediatamente.')}
+        `,
+      }),
+    );
+  }
+
+  /**
+   * Delivered when a user initiates account deletion. Contains a 6-digit code
+   * they must type back into the UI to confirm. The confirmation is a
+   * security control — we do NOT allow one-step deletions.
+   */
+  async sendGdprDeleteConfirmationCode(
+    email: string,
+    data: {
+      firstName: string;
+      code: string;
+      expiryMinutes: number;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      'Código para confirmar eliminación de tu cuenta',
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Código de confirmación: ${data.code}. Expira en ${data.expiryMinutes} minutos.`,
+        accentColor: '#ef4444',
+        body: `
+          ${this.heading('Confirmación de eliminación de cuenta ⚠️')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, hemos recibido una solicitud para <strong>eliminar permanentemente</strong> tu cuenta en Eva360.`)}
+          ${this.paragraph('Ingresa el siguiente código en la pantalla de confirmación para continuar:')}
+          <div style="background:rgba(239,68,68,0.08);border:2px solid #ef4444;border-radius:12px;padding:20px;text-align:center;margin:0 0 1.5rem;">
+            <span style="font-size:2.2rem;font-weight:800;letter-spacing:0.3em;color:#991b1b;">${data.code}</span>
+          </div>
+          ${this.alertBox(`<strong>Esta acción es irreversible.</strong> Al confirmar, tu cuenta será desactivada y tus datos personales anonimizados. Tus evaluaciones históricas, firmas y auditoría se conservarán por obligación legal, pero sin datos identificables asociados a tu persona.`, 'danger')}
+          ${this.alertBox(`El código expira en <strong>${data.expiryMinutes} minutos</strong>. Si no solicitaste esta eliminación, <strong>ignora este correo</strong> — tu cuenta queda intacta.`, 'warning')}
+          ${this.divider()}
+          ${this.smallText('Por seguridad, nunca compartas este código con nadie. Eva360 nunca te pedirá este código por teléfono o chat.')}
+        `,
+      }),
+    );
+  }
+
+  /**
+   * Sent to the user's old email address right after the anonymization
+   * transaction commits. Serves as a receipt and final audit of the deletion.
+   * (The email lands before we anonymize, because we call send() before the
+   * transaction — see anonymizer.service.ts for order.)
+   */
+  async sendGdprDeleteConfirmed(
+    email: string,
+    data: {
+      firstName: string;
+      orgName?: string;
+      tenantId?: string;
+    },
+  ) {
+    await this.send(
+      email,
+      'Tu cuenta ha sido eliminada',
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: 'Confirmamos que tu cuenta ha sido eliminada.',
+        body: `
+          ${this.heading('Cuenta eliminada ✓')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, confirmamos que tu cuenta en Eva360${data.orgName ? ` (<strong>${data.orgName}</strong>)` : ''} ha sido eliminada.`)}
+          ${this.paragraph('Tus datos personales identificables han sido anonimizados. Los registros de evaluaciones históricas y auditoría se conservan conforme a obligaciones legales, pero sin datos que te identifiquen.')}
+          ${this.infoBox([
+            { label: 'Cuenta', value: email },
+            { label: 'Fecha de eliminación', value: new Date().toLocaleDateString('es-CL') },
+          ])}
+          ${this.paragraph('Si consideras que esto fue un error o tienes dudas, responde a este correo y el equipo de soporte te contactará. Gracias por haber usado Eva360.')}
+          ${this.divider()}
+          ${this.smallText('Este es el último correo que recibirás desde Eva360 asociado a esta cuenta.')}
+        `,
+      }),
+    );
+  }
+
   // ─── HTML Builder Helpers ──────────────────────────────────────────────────
 
-  private wrap({ body, preheader = '', accentColor = '#C9933A', orgLogoUrl, orgName }: {
+  private wrap({ body, preheader = '', accentColor = '#C9933A', orgLogoUrl, orgName, unsubscribeUrl }: {
     body: string;
     preheader?: string;
     accentColor?: string;
     orgLogoUrl?: string | null;
     orgName?: string;
+    /** If set, renders a "Darse de baja" link in the footer. Leave
+     *  undefined for broadcasts or transactional emails. */
+    unsubscribeUrl?: string;
   }): string {
     // Build the org logo row: if an org logo is provided, show it above the Eva360 header
     const orgLogoHtml = orgLogoUrl ? `
@@ -967,7 +1759,8 @@ export class EmailService {
               © ${new Date().getFullYear()} Eva360. Todos los derechos reservados.<br>
               <a href="${this.appUrl}" style="color:#C9933A;text-decoration:none;">ascenda.cl</a>
               &nbsp;·&nbsp;
-              <a href="${this.appUrl}/dashboard/ajustes" style="color:#94a3b8;text-decoration:none;">Preferencias de notificación</a>
+              <a href="${this.appUrl}/dashboard/ajustes" style="color:#94a3b8;text-decoration:none;">Preferencias</a>
+              ${unsubscribeUrl ? `&nbsp;·&nbsp;<a href="${unsubscribeUrl}" style="color:#94a3b8;text-decoration:none;">Darse de baja</a>` : ''}
             </p>
           </td>
         </tr>

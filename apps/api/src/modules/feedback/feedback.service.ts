@@ -364,6 +364,7 @@ export class FeedbackService {
         scheduledTime: ci.scheduledTime || undefined,
         reason: dto.reason,
         tenantId,
+        userId: ci.managerId,
       }).catch(() => {});
     }
 
@@ -427,6 +428,7 @@ export class FeedbackService {
         topic: checkIn.topic,
         checkinId: checkIn.id,
         tenantId,
+        userId: employee.id,
       });
       if (!html) return; // Emails disabled for this tenant
 
@@ -439,6 +441,8 @@ export class FeedbackService {
           content: Buffer.from(icsContent).toString('base64'),
           contentType: 'text/calendar',
         }],
+        undefined,
+        { userIdForUnsubscribe: employee.id },
       );
       await this.checkInRepo.update(checkIn.id, { emailSent: true });
       // NO loggeamos el email (PII) — solo el checkInId para diagnosticar.
@@ -621,6 +625,7 @@ export class FeedbackService {
         sentiment: dto.sentiment || 'neutral',
         message: dto.message,
         tenantId,
+        userId: recipientUser.id,
       }).catch(() => {});
     }
 

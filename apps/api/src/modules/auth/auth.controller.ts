@@ -1,6 +1,9 @@
-import { Controller, Post, Body, Req, UseGuards, Request, UnauthorizedException, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, UseGuards, Request, UnauthorizedException, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
+import { PasswordPolicyService } from './password-policy.service';
+import { SsoService } from './sso/sso.service';
+import { NoImpersonation } from '../../common/decorators/no-impersonation.decorator';
 import { LoginDto } from './dto/login.dto';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
@@ -157,21 +160,49 @@ function getClientIp(req: any): string {
 }
 
 // ─── Password policy ───────────────────────────────────────────────────
-const PASSWORD_MIN_LENGTH = 8;
-const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-const PASSWORD_POLICY_MSG = 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.';
-
-function validatePasswordPolicy(password: string): void {
-  if (!password || password.length < PASSWORD_MIN_LENGTH || !PASSWORD_POLICY_REGEX.test(password)) {
-    throw new BadRequestException(PASSWORD_POLICY_MSG);
-  }
-}
+// The hardcoded regex that used to live here was replaced by a tenant-
+// configurable `PasswordPolicyService` (Grupo C / C1). The validation is
+// enforced inside auth.service methods (changePasswordFirstLogin,
+// resetPassword) because they have access to the resolved tenantId. The
+// controller stays thin and just delegates.
 
 // ─── Controller ────────────────────────────────────────────────────────
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordPolicyService: PasswordPolicyService,
+    private readonly ssoService: SsoService,
+  ) {}
+
+  /**
+   * GET /auth/password-policy — returns the ACTIVE password rules for the
+   * caller's tenant, already merged with defaults and clamped. The frontend
+   * uses this to render the strength meter with accurate rules (we never
+   * hardcode the policy client-side).
+   */
+  @Get('password-policy')
+  @UseGuards(AuthGuard('jwt'))
+  async passwordPolicy(@Request() req: any) {
+    return this.passwordPolicyService.resolvePolicy(req.user.tenantId ?? null);
+  }
+
+  /**
+   * GET /auth/password-policy/public — same as above but keyed by email so
+   * the unauthenticated force-change modal on /login can show the right
+   * rules before the user has a session. We do NOT reveal whether the email
+   * exists — if the email is unknown we still return the default policy.
+   */
+  @Get('password-policy/public')
+  async passwordPolicyPublic(@Req() req: any) {
+    const email = typeof req.query?.email === 'string' ? req.query.email : '';
+    const tenantSlug = typeof req.query?.tenantSlug === 'string' ? req.query.tenantSlug : undefined;
+    if (!email) return this.passwordPolicyService.resolvePolicy(null);
+    // findByEmail is tenant-scoped; `null` tenantId → default policy.
+    const tenantId = await this.authService.resolveTenantIdForEmail(email, tenantSlug);
+    return this.passwordPolicyService.resolvePolicy(tenantId);
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -192,6 +223,30 @@ export class AuthController {
       recordFailedAttempt(clientIp, loginDto.email);
       await this.authService.logFailedLogin(loginDto.email, clientIp, loginDto.tenantId);
       throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    // SSO enforcement — if the tenant has `requireSso=true` for this user's
+    // email domain, password login is blocked. Super_admin is exempt (never
+    // locked out by a broken IdP).
+    if (user.role !== 'super_admin') {
+      const ssoGate = await this.ssoService.isSsoRequiredForEmail(user.email, user.tenantId);
+      if (ssoGate.required) {
+        return {
+          requiresSso: true,
+          message: 'Tu organización requiere iniciar sesión con SSO.',
+          loginUrl: ssoGate.loginUrl,
+        };
+      }
+    }
+
+    // Password expired? Block the session and force a change without
+    // emitting the full JWT (user will hit /auth/change-password next).
+    if ((user as any).passwordExpired) {
+      return {
+        mustChangePassword: true,
+        reason: 'expired',
+        message: 'Tu contraseña ha expirado. Debes cambiarla para continuar.',
+      };
     }
 
     // 2FA check: if enabled and no code provided, return requires2FA flag
@@ -243,9 +298,9 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: any) {
     const clientIp = getClientIp(req);
     // Rate limit por IP+email para bloquear bruteforce del codigo de 6
-    // digitos. 5 intentos -> bloqueo por 10 min.
+    // digitos. 5 intentos -> bloqueo por 10 min. Policy validation happens
+    // inside auth.service.resetPassword with tenant-scoped rules.
     checkResetCodeLimit(clientIp, dto.email);
-    validatePasswordPolicy(dto.newPassword);
     try {
       await this.authService.resetPassword(dto.email, dto.code, dto.newPassword, dto.tenantSlug);
     } catch (err) {
@@ -259,12 +314,14 @@ export class AuthController {
   }
 
   @Post('change-password')
+  @NoImpersonation()
   @HttpCode(HttpStatus.OK)
   async changePassword(@Body() dto: { email: string; currentPassword: string; newPassword: string; tenantSlug?: string }) {
     if (!dto.email || !dto.currentPassword || !dto.newPassword) {
       throw new BadRequestException('Todos los campos son requeridos.');
     }
-    validatePasswordPolicy(dto.newPassword);
+    // Policy validation happens inside auth.service.changePasswordFirstLogin
+    // where we have the user's tenantId for per-tenant rules.
     await this.authService.changePasswordFirstLogin(dto.email, dto.currentPassword, dto.newPassword, dto.tenantSlug);
     return { message: 'Contraseña actualizada exitosamente.' };
   }
@@ -273,6 +330,7 @@ export class AuthController {
 
   /** Generate 2FA secret and QR URI */
   @Post('2fa/setup')
+  @NoImpersonation()
   @UseGuards(AuthGuard('jwt'))
   @HttpCode(HttpStatus.OK)
   async setup2FA(@Request() req: any) {
@@ -281,6 +339,7 @@ export class AuthController {
 
   /** Verify code and enable 2FA */
   @Post('2fa/enable')
+  @NoImpersonation()
   @UseGuards(AuthGuard('jwt'))
   @HttpCode(HttpStatus.OK)
   async enable2FA(@Request() req: any, @Body() dto: { code: string }) {
@@ -290,6 +349,7 @@ export class AuthController {
 
   /** Disable 2FA (requires password) */
   @Post('2fa/disable')
+  @NoImpersonation()
   @UseGuards(AuthGuard('jwt'))
   @HttpCode(HttpStatus.OK)
   async disable2FA(@Request() req: any, @Body() dto: { password: string }) {

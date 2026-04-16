@@ -88,6 +88,15 @@ export class Subscription {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  /**
+   * Dedupe guard for the trial nurture sequence. Valid keys match the ones
+   * in `nurture.service`: 'welcome', 'day3', 'day7', 'day11', 'expired',
+   * 'recovery'. Each key is appended exactly once after a successful send
+   * so the cron never re-emails the same stage.
+   */
+  @Column({ type: 'jsonb', name: 'nurture_emails_sent', default: () => "'[]'" })
+  nurtureEmailsSent: string[];
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

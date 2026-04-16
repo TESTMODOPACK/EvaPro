@@ -460,6 +460,7 @@ export class DevelopmentService {
           planTitle: dto.title || saved.title || 'Plan de desarrollo',
           createdByName: creator ? `${creator.firstName} ${creator.lastName}` : undefined,
           tenantId,
+          userId: owner.id,
         }).catch(() => {});
       }
     }
@@ -610,6 +611,7 @@ export class DevelopmentService {
         firstName: owner.firstName,
         planTitle: `[Requiere firma] ${plan.title}`,
         tenantId,
+        userId: owner.id,
       }).catch(() => {});
     }
 

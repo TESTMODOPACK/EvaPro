@@ -85,6 +85,8 @@ export class OrgDevelopmentService {
             department: initiative.department,
             targetDate: targetDateLabel,
             responsibleName,
+            tenantId,
+            userId: u.id,
           })
           .catch((err) =>
             this.logger.warn(
