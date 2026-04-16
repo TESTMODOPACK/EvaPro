@@ -110,8 +110,26 @@ export class UsersController {
   @Post()
   @Roles('super_admin', 'tenant_admin')
   create(@Request() req: any, @Body() dto: CreateUserDto) {
-    // super_admin can create users in any tenant by passing tenantId in body
-    const tenantId = (req.user.role === 'super_admin' && (dto as any).tenantId) ? (dto as any).tenantId : req.user.tenantId;
+    let tenantId: string;
+    if (req.user.role === 'super_admin') {
+      // super_admin MUST specify tenantId explicitly. We used to fall back to
+      // req.user.tenantId silently, but if the super_admin's user row had a
+      // residual tenantId from an old seed (it had tenantId=<demo_tenant_id>),
+      // every new user was silently created in Demo Company — a cross-tenant
+      // leak. Fail loud if the body didn't carry it. CreateUserDto now
+      // whitelists the field so the global ValidationPipe no longer strips it.
+      if (!dto.tenantId) {
+        throw new BadRequestException(
+          'super_admin debe especificar tenantId en el body para crear usuarios.',
+        );
+      }
+      tenantId = dto.tenantId;
+    } else {
+      // tenant_admin: always use their own tenantId. If the body tries to
+      // smuggle a different tenantId, ignore it silently (they can't create
+      // cross-tenant).
+      tenantId = req.user.tenantId;
+    }
     return this.usersService.create(tenantId, dto);
   }
 

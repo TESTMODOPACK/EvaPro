@@ -10,7 +10,13 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid', name: 'tenant_id' })
+  // tenantId puede ser NULL en DB para super_admin (jwt.strategy:45-48 lo
+  // permite explícitamente). Mantenemos el tipo TS como `string` para no
+  // rompede los ~40 consumidores existentes que asumen string; los sitios que
+  // chequean explícitamente super_admin (jwt.strategy, auth.service.refreshToken)
+  // ya manejan el caso null con `tenantId || null`. El `as any` en los callers
+  // que hacen `tenantId: null` sigue funcionando con nullable:true en la columna.
+  @Column({ type: 'uuid', name: 'tenant_id', nullable: true })
   tenantId: string;
 
   @ManyToOne(() => Tenant)

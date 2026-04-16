@@ -287,6 +287,13 @@ async function main() {
       // <table>_<column>_enum.
       `ALTER TYPE "evaluation_assignments_status_enum" ADD VALUE IF NOT EXISTS 'cancelled'`,
 
+      // super_admin no pertenece a ningún tenant: tenant_id debe aceptar NULL
+      // para ese único registro. Antes se creaba el super_admin con tenantId=
+      // demoTenantId, lo que habilitaba una fuga cross-tenant (ver fix en
+      // users.controller.ts). DROP NOT NULL es idempotente en Postgres — no
+      // falla si la columna ya es nullable.
+      `ALTER TABLE "users" ALTER COLUMN "tenant_id" DROP NOT NULL`,
+
       // ── Task T1: varchar status → PostgreSQL native enum ───────────────
       // Idempotent migration. Patrón por columna:
       //   1. Pre-check: NULL valores fuera del enum para evitar que el
