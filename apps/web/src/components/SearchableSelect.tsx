@@ -59,6 +59,7 @@ export default function SearchableSelect({
   const [query, setQuery] = useState('');
   const [highlightIndex, setHighlightIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
@@ -75,13 +76,16 @@ export default function SearchableSelect({
     );
   }, [options, query]);
 
-  // Cerrar al click fuera
+  // Cerrar al click fuera — devuelve foco al trigger (a11y)
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
         setQuery('');
+        // Devolver foco al trigger para que el keyboard user pueda seguir
+        // navegando por Tab sin perder la posición en el formulario.
+        setTimeout(() => triggerRef.current?.focus(), 0);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -113,6 +117,7 @@ export default function SearchableSelect({
       e.preventDefault();
       setOpen(false);
       setQuery('');
+      setTimeout(() => triggerRef.current?.focus(), 0);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlightIndex((i) => Math.min(i + 1, filtered.length - 1 + (clearLabel ? 1 : 0)));
@@ -147,8 +152,9 @@ export default function SearchableSelect({
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
-      {/* Trigger (read-only display) */}
+      {/* Trigger (read-only display) — recibe foco al cerrar (a11y) */}
       <div
+        ref={triggerRef}
         id={id}
         role="combobox"
         aria-expanded={open}

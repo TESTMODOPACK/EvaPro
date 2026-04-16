@@ -71,6 +71,34 @@ export class RemindersService {
     });
   }
 
+  /**
+   * Guard centralizada: verifica que un userId sigue activo antes de
+   * enviarle notificación o email. Evita notificar a usuarios
+   * desvinculados cuyas entidades relacionadas no fueron canceladas
+   * (ej. desactivación manual sin cascade, o entidades legacy).
+   *
+   * Se usa dentro de los crons antes de llamar a
+   * notificationsService.create() o emailService.send*(). Es más
+   * eficiente que agregar JOINs isActive en 18 queries distintas.
+   *
+   * Cache in-memory para la duración del batch (set purgado al final).
+   */
+  private readonly _activeCache = new Map<string, boolean>();
+  private async isUserActive(userId: string): Promise<boolean> {
+    if (this._activeCache.has(userId)) return this._activeCache.get(userId)!;
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['id', 'isActive'],
+    });
+    const active = user?.isActive ?? false;
+    this._activeCache.set(userId, active);
+    return active;
+  }
+  /** Limpia el cache entre corridas de cron (cada cron llama clear al final). */
+  private clearActiveCache(): void {
+    this._activeCache.clear();
+  }
+
   // ─── 1. Evaluaciones pendientes (cada 6 horas) ───────────────────────
 
   @Cron(CronExpression.EVERY_6_HOURS)

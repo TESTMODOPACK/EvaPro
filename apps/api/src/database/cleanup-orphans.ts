@@ -202,6 +202,11 @@ async function main() {
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "token_version" integer NOT NULL DEFAULT 0`,
       // Task T2: badges.updated_at para auditar ediciones y soft-delete
       `ALTER TABLE "badges" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz NOT NULL DEFAULT NOW()`,
+      // Índice GIN en audit_logs.metadata para acelerar la búsqueda
+      // full-text (CAST(metadata AS text) ILIKE '%...%') introducida en
+      // audit.service.findByTenant. Sin este índice, tenants con 100k+
+      // rows en audit_logs verían queries de ~2-5s. Con GIN → ~50ms.
+      `CREATE INDEX IF NOT EXISTS "idx_audit_metadata_gin" ON "audit_logs" USING GIN ("metadata")`,
       // Stage B departure cascade: add 'cancelled' value to AssignmentStatus
       // enum (PENDING|IN_PROGRESS|COMPLETED → + CANCELLED). ADD VALUE IF NOT
       // EXISTS is idempotent. TypeORM's default enum type name is

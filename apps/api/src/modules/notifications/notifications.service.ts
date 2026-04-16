@@ -74,7 +74,15 @@ export class NotificationsService {
     title: string;
     message: string;
     metadata?: Record<string, any>;
-  }): Promise<Notification> {
+  }): Promise<Notification | null> {
+    // Guard: skip silent si el usuario fue desvinculado (isActive=false).
+    // Evita acumular notificaciones para personas que ya no entran.
+    const isActive = await this.userRepo.findOne({
+      where: { id: data.userId },
+      select: ['id', 'isActive'],
+    });
+    if (!isActive?.isActive) return null;
+
     const notif = this.notifRepo.create({
       tenantId: data.tenantId,
       userId: data.userId,
@@ -127,7 +135,18 @@ export class NotificationsService {
   ): Promise<void> {
     if (notifications.length === 0) return;
 
-    let toInsert = notifications;
+    // Pre-filter: excluir usuarios inactivos (desvinculados) para no
+    // acumular notificaciones que nadie verá. Un solo query batched
+    // en vez de N lookups individuales.
+    const uniqueUserIds = [...new Set(notifications.map((n) => n.userId))];
+    const activeUsers = uniqueUserIds.length > 0
+      ? await this.userRepo.find({
+          where: uniqueUserIds.map((id) => ({ id, isActive: true })),
+          select: ['id'],
+        })
+      : [];
+    const activeIds = new Set(activeUsers.map((u) => u.id));
+    let toInsert = notifications.filter((n) => activeIds.has(n.userId));
 
     if (options.dedupe !== false) {
       const hoursBack = options.dedupeHoursBack ?? 12;
