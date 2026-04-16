@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { formatCLP } from '@/lib/format';
 import { formatRutInput, validateRut, formatRut } from '@/lib/rut';
 import TenantHealthBadge from '@/components/TenantHealthBadge';
+import ImpersonateTenantButton from '@/components/ImpersonateTenantButton';
 
 function Spinner() {
   return (
@@ -838,6 +839,9 @@ export default function TenantsPage() {
                             onClick={() => openAdminModal(t)}>
                             Admin
                           </button>
+                          {t.isActive && (
+                            <ImpersonateTenantButton tenantId={t.id} tenantName={t.name} />
+                          )}
                           {t.isActive && (
                             <button
                               className="btn-ghost"

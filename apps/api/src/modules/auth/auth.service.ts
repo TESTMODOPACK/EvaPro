@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
+import { PasswordPolicyService } from './password-policy.service';
 
 @Injectable()
 export class AuthService {
@@ -23,11 +24,34 @@ export class AuthService {
     private readonly tenantRepo: Repository<Tenant>,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
+    private readonly passwordPolicy: PasswordPolicyService,
   ) {}
 
   async validateUser(email: string, pass: string, tenantId?: string): Promise<any> {
     const user = await this.usersService.findByEmail(email, tenantId);
-    if (!user || !user.passwordHash || !(await bcrypt.compare(pass, user.passwordHash))) {
+    if (!user || !user.passwordHash) {
+      // Don't reveal which half failed. Also don't increment lockout — we
+      // can't pin a counter to a non-existent user. The controller's IP-
+      // level rate limiter handles that case.
+      return null;
+    }
+
+    // Lockout short-circuit. Resolve the tenant's policy once per login
+    // rather than on every failed bcrypt — the read is cached upstream.
+    const policy = await this.passwordPolicy.resolvePolicy(user.tenantId ?? null);
+    const minsLeft = this.passwordPolicy.minutesUntilUnlocked(user);
+    if (minsLeft !== null) {
+      // Still locked — don't even bother comparing the password.
+      throw new UnauthorizedException(
+        `Cuenta bloqueada temporalmente. Intenta de nuevo en ${minsLeft} minuto${minsLeft > 1 ? 's' : ''}.`,
+      );
+    }
+
+    const validPassword = await bcrypt.compare(pass, user.passwordHash);
+    if (!validPassword) {
+      // Record against the actual user id so a brute-force doesn't hit a
+      // moving target when the attacker varies the email case/spelling.
+      await this.passwordPolicy.recordFailedAttempt(user.id, policy).catch(() => undefined);
       return null;
     }
 
@@ -39,8 +63,15 @@ export class AuthService {
       return null;
     }
 
+    // Password correct + user/tenant active — reset lockout counters.
+    await this.passwordPolicy.clearFailedAttempts(user.id).catch(() => undefined);
+
+    // Surface expiry status so the caller can force a password change
+    // without issuing a full session token.
+    const expired = this.passwordPolicy.isExpired(user, policy);
+
     const { passwordHash, ...result } = user;
-    return result;
+    return { ...result, passwordExpired: expired };
   }
 
   async login(user: any, ipAddress?: string) {
@@ -137,6 +168,21 @@ export class AuthService {
     };
   }
 
+  /**
+   * Resolve the tenantId for an email (used by the public password-policy
+   * endpoint so the force-change modal on /login can fetch the right rules
+   * WITHOUT leaking whether the email exists). Returns null on any failure —
+   * the caller falls back to the default policy.
+   */
+  async resolveTenantIdForEmail(email: string, tenantSlug?: string): Promise<string | null> {
+    try {
+      const user = await this.usersService.findByEmail(email, tenantSlug);
+      return user?.tenantId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   // ─── Password Reset ──────────────────────────────────────────────────
 
   async requestPasswordReset(email: string, tenantSlug?: string): Promise<void> {
@@ -199,11 +245,31 @@ export class AuthService {
       throw new BadRequestException('La nueva contraseña debe ser diferente a la actual');
     }
 
-    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    // Tenant-scoped policy validation (replaces the hardcoded regex).
+    const policy = await this.passwordPolicy.resolvePolicy(user.tenantId ?? null);
+    const err = this.passwordPolicy.validate(newPassword, policy);
+    if (err) throw new BadRequestException(err);
+
+    // Reject reuse of any of the last N passwords (if history enforcement is on).
+    if (await this.passwordPolicy.matchesHistory(user.id, newPassword, policy.historyCount)) {
+      throw new BadRequestException(
+        `La nueva contraseña no puede ser igual a las últimas ${policy.historyCount} ya usadas.`,
+      );
+    }
+
+    const newHash = await bcrypt.hash(newPassword, this.passwordPolicy.bcryptRounds);
+    user.passwordHash = newHash;
     user.mustChangePassword = false;
     user.resetCode = null;
     user.resetCodeExpires = null;
+    // Bump token_version so older JWTs (including the force-change redirect
+    // one) are invalidated — the user must re-login with the new password.
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
+
+    // Persist in history + stamp passwordChangedAt — done after save so a
+    // transaction rollback on save() prevents an orphan history row.
+    await this.passwordPolicy.recordChange(user.id, newHash);
 
     await this.auditService.log(
       user.role === 'super_admin' ? null : (user.tenantId || null),
@@ -229,11 +295,40 @@ export class AuthService {
       throw new BadRequestException('Código inválido o expirado');
     }
 
-    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    // Validate against the tenant's policy (replaces the controller's regex).
+    const policy = await this.passwordPolicy.resolvePolicy(user.tenantId ?? null);
+    const err = this.passwordPolicy.validate(newPassword, policy);
+    if (err) throw new BadRequestException(err);
+
+    if (await this.passwordPolicy.matchesHistory(user.id, newPassword, policy.historyCount)) {
+      throw new BadRequestException(
+        `La nueva contraseña no puede ser igual a las últimas ${policy.historyCount} ya usadas.`,
+      );
+    }
+
+    const newHash = await bcrypt.hash(newPassword, this.passwordPolicy.bcryptRounds);
+    user.passwordHash = newHash;
     user.resetCode = null;
     user.resetCodeExpires = null;
     user.mustChangePassword = false;
+    // Bump token_version so any session stolen with the previous password
+    // is immediately invalidated — without this, an attacker who captured
+    // the old JWT could still use it until natural expiry.
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    // Reset any lockout so the user can log in with the new password.
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
     await this.userRepo.save(user);
+
+    await this.passwordPolicy.recordChange(user.id, newHash);
+
+    await this.auditService.log(
+      user.role === 'super_admin' ? null : (user.tenantId || null),
+      user.id,
+      'password.reset',
+      'User',
+      user.id,
+    ).catch(() => {});
   }
 
   // ─── 2FA / MFA ─────────────────────────────────────────────────────

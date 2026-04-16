@@ -13,6 +13,7 @@ import { DevelopmentPlan } from '../development/entities/development-plan.entity
 import { CheckIn } from '../feedback/entities/checkin.entity';
 import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { ReportsModule } from '../reports/reports.module';
 import { AuditModule } from '../audit/audit.module';
@@ -29,6 +30,7 @@ import { AuditModule } from '../audit/audit.module';
       CheckIn,
       User,
       Tenant,
+      Subscription,
     ]),
     forwardRef(() => SubscriptionsModule),
     forwardRef(() => ReportsModule),

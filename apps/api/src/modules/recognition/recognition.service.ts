@@ -201,6 +201,8 @@ export class RecognitionService {
           message: dto.message,
           valueName: valueName || undefined,
           points: DEFAULT_RECOGNITION_POINTS,
+          tenantId,
+          userId: toUserData.id,
         }).catch(() => {});
       }
 

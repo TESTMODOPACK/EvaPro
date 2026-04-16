@@ -89,6 +89,16 @@ export class Invoice {
   @OneToMany(() => InvoiceLine, (line) => line.invoice, { cascade: true, eager: true })
   lines: InvoiceLine[];
 
+  /**
+   * Dunning state for this invoice. Populated by `processDunning()` as it
+   * escalates through stages (3/7/14/30/37 days past due). Dedupes emails:
+   * if `stage >= targetStage`, the cron skips it on subsequent runs.
+   *
+   * Shape: `{ stage?: 3|7|14|30|37, lastEmailAt?: ISO-8601 }`.
+   */
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  dunning: { stage?: number; lastEmailAt?: string };
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

@@ -3,7 +3,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { pinoLoggerConfig } from './common/logger/pino-logger.config';
@@ -36,9 +36,13 @@ import { SurveysModule } from './modules/surveys/surveys.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { HealthModule } from './modules/health/health.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
+import { UnsubscribeModule } from './modules/unsubscribe/unsubscribe.module';
+import { GdprModule } from './modules/gdpr/gdpr.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { SystemErrorAuditInterceptor } from './common/interceptors/system-error-audit.interceptor';
+import { NoImpersonationGuard } from './common/guards/no-impersonation.guard';
 
 @Module({
   imports: [
@@ -100,6 +104,9 @@ import { SystemErrorAuditInterceptor } from './common/interceptors/system-error-
     ContractsModule,
     HealthModule,
     MetricsModule,
+    UnsubscribeModule,
+    GdprModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -132,6 +139,13 @@ import { SystemErrorAuditInterceptor } from './common/interceptors/system-error-
     {
       provide: APP_INTERCEPTOR,
       useClass: SystemErrorAuditInterceptor,
+    },
+    // NoImpersonationGuard — global guard that enforces the @NoImpersonation()
+    // metadata on security-sensitive handlers. It's a no-op for endpoints
+    // without the decorator, so the perf cost is negligible.
+    {
+      provide: APP_GUARD,
+      useClass: NoImpersonationGuard,
     },
   ],
 })

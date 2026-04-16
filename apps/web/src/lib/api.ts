@@ -179,9 +179,13 @@ async function request<T>(
 
   if (!res.ok) {
     // If 401 Unauthorized, clear stale/demo auth and redirect to login
-    // Skip redirect for auth endpoints (login, reset-password) so error messages show inline
+    // Skip redirect for:
+    //   - auth endpoints (login, reset-password) so error messages show inline
+    //   - public endpoints (unsubscribe, etc.) whose 401 means "bad token in URL"
+    //     and NOT "session expired"; redirecting would trash the user's context.
     const isAuthEndpoint = path.startsWith("/auth/");
-    if (res.status === 401 && typeof window !== "undefined" && !isAuthEndpoint) {
+    const isPublicEndpoint = path.startsWith("/public/");
+    if (res.status === 401 && typeof window !== "undefined" && !isAuthEndpoint && !isPublicEndpoint) {
       localStorage.removeItem("evapro-auth");
       window.location.href = "/login";
       throw new Error("Sesión expirada");
@@ -1152,6 +1156,9 @@ export const api = {
       const qs = params.toString();
       return request<any[]>(`/invoices${qs ? `?${qs}` : ''}`, {}, token);
     },
+    /** Invoices of the current tenant — tenant_admin only. Used by the
+     *  "Pagar facturas pendientes" section on /mi-suscripcion. */
+    my: (token: string) => request<any[]>('/invoices/my', {}, token),
     stats: (token: string) => request<any>("/invoices/stats", {}, token),
     generate: (token: string, subscriptionId: string) =>
       request<any>(`/invoices/generate/${subscriptionId}`, { method: "POST" }, token),
@@ -1166,5 +1173,230 @@ export const api = {
     cancel: (token: string, id: string) =>
       request<any>(`/invoices/${id}/cancel`, { method: "PATCH" }, token),
     pdfUrl: (id: string) => `${BASE_URL}/invoices/${id}/pdf`,
+  },
+
+  // ─── Impersonation (super_admin) ───────────────────────────────────────
+  impersonation: {
+    /** Start an impersonation session. Caller must be super_admin.
+     *  Returns a new JWT the UI should swap into the auth store. */
+    start: (
+      token: string,
+      dto: { tenantId: string; reason: string; targetUserId?: string },
+    ) =>
+      request<{
+        access_token: string;
+        expiresAt: string;
+        targetUser: {
+          id: string;
+          email: string;
+          firstName: string;
+          lastName: string;
+          role: string;
+        };
+        tenant: { id: string; name: string };
+      }>(
+        '/support/impersonate',
+        { method: 'POST', body: JSON.stringify(dto) },
+        token,
+      ),
+    /** End an impersonation session. Must be called with the
+     *  impersonation JWT; returns the original super_admin's token. */
+    end: (token: string) =>
+      request<{ access_token: string }>(
+        '/support/impersonate/end',
+        { method: 'POST' },
+        token,
+      ),
+  },
+
+  // ─── SSO ───────────────────────────────────────────────────────────────
+  sso: {
+    /** Tenant admin: fetch current OIDC config (clientSecret is redacted). */
+    getConfig: (token: string) =>
+      request<{
+        hasSecret: boolean;
+        issuerUrl?: string;
+        clientId?: string;
+        enabled?: boolean;
+        requireSso?: boolean;
+        allowedEmailDomains?: string[];
+        roleMapping?: Record<string, string[]>;
+      }>('/auth/sso/config', {}, token),
+    /** Tenant admin: create/update OIDC config. Backend validates the issuer.
+     *  `clientSecret` is optional on edit — omitted means "keep stored". */
+    upsertConfig: (
+      token: string,
+      dto: {
+        issuerUrl: string;
+        clientId: string;
+        clientSecret?: string;
+        enabled?: boolean;
+        requireSso?: boolean;
+        allowedEmailDomains?: string[];
+        roleMapping?: Record<string, string[]>;
+      },
+    ) =>
+      request<{ success: boolean }>(
+        '/auth/sso/config',
+        { method: 'POST', body: JSON.stringify(dto) },
+        token,
+      ),
+    /** Tenant admin: disable SSO without deleting config. */
+    disable: (token: string) =>
+      request<{ success: boolean }>('/auth/sso/config', { method: 'DELETE' }, token),
+    /** Public: returns SSO URL for the given email's domain, if enabled. */
+    discover: (email: string, tenantSlug?: string) =>
+      request<{ ssoEnabled: boolean; ssoLoginUrl?: string; tenantName?: string }>(
+        '/auth/sso/discover',
+        { method: 'POST', body: JSON.stringify({ email, tenantSlug }) },
+      ),
+  },
+
+  // ─── Auth policy (authenticated) ───────────────────────────────────────
+  passwordPolicy: {
+    /** Active password policy for the current tenant (authenticated). */
+    current: (token: string) =>
+      request<{
+        minLength: number;
+        requireUppercase: boolean;
+        requireLowercase: boolean;
+        requireNumber: boolean;
+        requireSymbol: boolean;
+        expiryDays: number | null;
+        historyCount: number;
+        lockoutThreshold: number;
+        lockoutDurationMinutes: number;
+      }>('/auth/password-policy', {}, token),
+    /** Same, but unauthenticated — keyed by email. Used by /login force-change
+     *  modal to show the right rules before the user has a session. Does
+     *  not reveal whether the email exists. */
+    byEmail: (email: string, tenantSlug?: string) => {
+      const params = new URLSearchParams({ email });
+      if (tenantSlug) params.set('tenantSlug', tenantSlug);
+      return request<{
+        minLength: number;
+        requireUppercase: boolean;
+        requireLowercase: boolean;
+        requireNumber: boolean;
+        requireSymbol: boolean;
+        expiryDays: number | null;
+        historyCount: number;
+        lockoutThreshold: number;
+        lockoutDurationMinutes: number;
+      }>(`/auth/password-policy/public?${params.toString()}`);
+    },
+  },
+
+  // ─── Payments (authenticated) ──────────────────────────────────────────
+  payments: {
+    /** Providers enabled in this deployment. Used by PayInvoiceModal to
+     *  only show the options that actually work. */
+    listProviders: (token: string) =>
+      request<Array<{ name: 'stripe' | 'mercadopago'; enabled: boolean }>>(
+        '/payments/providers',
+        {},
+        token,
+      ),
+    /** Start a checkout. Returns a URL the browser should redirect to. */
+    createCheckout: (
+      token: string,
+      invoiceId: string,
+      provider: 'stripe' | 'mercadopago',
+    ) =>
+      request<{ sessionId: string; checkoutUrl: string; provider: string }>(
+        '/payments/checkout',
+        { method: 'POST', body: JSON.stringify({ invoiceId, provider }) },
+        token,
+      ),
+    /** Poll after redirect to see if the webhook has landed. */
+    getSession: (token: string, sessionId: string) =>
+      request<{
+        id: string;
+        provider: 'stripe' | 'mercadopago';
+        status: 'pending' | 'paid' | 'failed' | 'cancelled' | 'expired';
+        failureReason: string | null;
+        amount: string;
+        currency: string;
+        invoiceId: string;
+        completedAt: string | null;
+      }>(`/payments/sessions/${sessionId}`, {}, token),
+  },
+
+  // ─── GDPR (authenticated) ──────────────────────────────────────────────
+  gdpr: {
+    exportMyData: (token: string) =>
+      request<{ requestId: string; status: string; estimatedMinutes: number }>(
+        "/gdpr/export-my-data",
+        { method: "POST" },
+        token,
+      ),
+    requestDelete: (token: string) =>
+      request<{ requestId: string; expiresInMinutes: number }>(
+        "/gdpr/delete-my-account",
+        { method: "POST" },
+        token,
+      ),
+    confirmDelete: (token: string, requestId: string, code: string) =>
+      request<{ success: boolean }>(
+        "/gdpr/delete-my-account/confirm",
+        { method: "POST", body: JSON.stringify({ requestId, code }) },
+        token,
+      ),
+    myRequests: (token: string) =>
+      request<Array<{
+        id: string;
+        type: string;
+        status: string;
+        fileUrl: string | null;
+        fileExpiresAt: string | null;
+        errorMessage: string | null;
+        metadata: Record<string, unknown>;
+        requestedAt: string;
+        completedAt: string | null;
+      }>>("/gdpr/my-requests", {}, token),
+    exportTenantData: (token: string, anonymize?: boolean) =>
+      request<{ requestId: string; status: string; estimatedMinutes: number }>(
+        `/gdpr/export-tenant-data${anonymize ? "?anonymize=true" : ""}`,
+        { method: "POST" },
+        token,
+      ),
+    tenantRequests: (token: string) =>
+      request<Array<{
+        id: string;
+        userId: string;
+        type: string;
+        status: string;
+        fileExpiresAt: string | null;
+        errorMessage: string | null;
+        metadata: Record<string, unknown>;
+        requestedAt: string;
+        completedAt: string | null;
+      }>>("/gdpr/tenant-requests", {}, token),
+  },
+
+  // ─── Public unsubscribe (NO auth) ──────────────────────────────────────
+  // Invoked from /unsubscribe?token=xxx. Token is an HMAC-signed payload
+  // embedded in transactional emails; no Authorization header is sent.
+  publicUnsubscribe: {
+    validate: (token: string) =>
+      request<{
+        email: string;
+        firstName: string;
+        orgName: string;
+        preferences: Record<string, boolean>;
+      }>("/public/unsubscribe/validate", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      }),
+    update: (token: string, preferences: Record<string, boolean>) =>
+      request<{ success: boolean }>("/public/unsubscribe/update", {
+        method: "POST",
+        body: JSON.stringify({ token, preferences }),
+      }),
+    unsubscribeAll: (token: string) =>
+      request<{ success: boolean }>("/public/unsubscribe/all", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      }),
   },
 };

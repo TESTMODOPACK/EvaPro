@@ -959,7 +959,7 @@ export class EvaluationsService {
         if (ev.email) {
           this.emailService.sendCycleLaunched(ev.email, {
             firstName: ev.firstName, cycleName: cycle.name,
-            cycleType: cycle.type, dueDate: dueDateStr, cycleId: cycle.id, tenantId,
+            cycleType: cycle.type, dueDate: dueDateStr, cycleId: cycle.id, tenantId, userId: ev.id,
           }).catch((err) => {
             this.logger.error(
               `Failed to send cycle-launched email to ${ev.email} for cycle ${cycle.id}: ${err?.message || err}`,
@@ -1030,7 +1030,7 @@ export class EvaluationsService {
       for (const ev of evaluatees) {
         if (!ev.email) continue;
         this.emailService.sendCycleClosed(ev.email, {
-          firstName: ev.firstName, cycleName: cycle.name, cycleId: id, tenantId,
+          firstName: ev.firstName, cycleName: cycle.name, cycleId: id, tenantId, userId: ev.id,
         }).catch(() => {});
         // In-app notification: signature pending for results
         this.notificationsService.create({

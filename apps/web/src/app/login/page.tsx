@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
 import { useAuthStore, decodeJwtPayload } from "@/store/auth.store";
 import { formatRutInput, validateRut, normalizeRut } from "@/lib/rut";
+import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
+import { usePasswordPolicyForEmail } from "@/hooks/usePasswordPolicy";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,6 +36,64 @@ export default function LoginPage() {
   const [recoveryStep, setRecoveryStep] = useState<"email" | "code">("email");
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [recoveryMsg, setRecoveryMsg] = useState("");
+
+  // Fetch the tenant-scoped password policy when the force-change modal opens.
+  // Keyed by email so the modal shows the ACTIVE rules (not defaults) even
+  // before the user has a session token.
+  const { policy: forceChangePolicy } = usePasswordPolicyForEmail(
+    showForceChange ? email : null,
+    tenantRut.trim() ? normalizeRut(tenantRut.trim()) : undefined,
+  );
+
+  // SSO discovery state — populated when the user types an email that maps
+  // to a tenant with SSO enabled. When `ssoLoginUrl` is set we show a "Login
+  // with SSO" button instead of the password field.
+  const [ssoDiscoverUrl, setSsoDiscoverUrl] = useState<string | null>(null);
+  const [ssoDiscoverOrg, setSsoDiscoverOrg] = useState<string>('');
+
+  useEffect(() => {
+    // Debounce the discover call so we don't hit the backend on every
+    // keystroke. 500ms feels natural for an email field.
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      setSsoDiscoverUrl(null);
+      setSsoDiscoverOrg('');
+      return;
+    }
+    const handle = setTimeout(() => {
+      const tenantIdentifier = tenantRut.trim() ? normalizeRut(tenantRut.trim()) : undefined;
+      api.sso
+        .discover(trimmed.toLowerCase(), tenantIdentifier)
+        .then((res) => {
+          if (res.ssoEnabled && res.ssoLoginUrl) {
+            setSsoDiscoverUrl(res.ssoLoginUrl);
+            setSsoDiscoverOrg(res.tenantName || '');
+          } else {
+            setSsoDiscoverUrl(null);
+            setSsoDiscoverOrg('');
+          }
+        })
+        .catch(() => {
+          setSsoDiscoverUrl(null);
+        });
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [email, tenantRut]);
+
+  // SSO callback: the IdP redirects to /login?sso_token=xxx. If present,
+  // finish the session client-side and navigate to the dashboard.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('sso_token');
+    if (!token) return;
+    const user = decodeJwtPayload(token);
+    if (user) {
+      setAuth(token, user);
+      router.replace('/dashboard');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -64,7 +124,13 @@ export default function LoginPage() {
       if (show2FA && twoFactorCode) loginPayload.twoFactorCode = twoFactorCode;
 
       const result = await api.auth.login(loginPayload.email, loginPayload.password, loginPayload.tenantSlug, loginPayload.twoFactorCode);
-      const { access_token, mustChangePassword, requires2FA } = result as any;
+      const { access_token, mustChangePassword, requires2FA, requiresSso, loginUrl } = result as any;
+
+      // Tenant forces SSO — redirect to the provider immediately.
+      if (requiresSso && loginUrl) {
+        window.location.href = loginUrl;
+        return;
+      }
 
       // 2FA required — show code input
       if (requires2FA) {
@@ -74,7 +140,15 @@ export default function LoginPage() {
       }
 
       const user = decodeJwtPayload(access_token);
-      if (!user) throw new Error("Token inválido");
+      if (!user) {
+        // mustChangePassword path: no token issued, we still want the modal.
+        if (mustChangePassword) {
+          setShowForceChange(true);
+          setLoading(false);
+          return;
+        }
+        throw new Error("Token inválido");
+      }
 
       if (mustChangePassword) {
         setShowForceChange(true);
@@ -254,6 +328,45 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* SSO discovery banner — shown when the email's domain has an
+                 active IdP configured for the tenant. Offers a one-click
+                 redirect instead of asking for a password. */}
+            {ssoDiscoverUrl && (
+              <div
+                style={{
+                  padding: '0.75rem 1rem',
+                  background: 'rgba(201,147,58,0.08)',
+                  border: '1px solid rgba(201,147,58,0.3)',
+                  borderRadius: 'var(--radius-sm)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', flex: 1, minWidth: 0 }}>
+                  {ssoDiscoverOrg
+                    ? `${ssoDiscoverOrg} usa inicio de sesión único (SSO).`
+                    : 'Tu organización tiene SSO configurado.'}
+                </div>
+                <a
+                  href={ssoDiscoverUrl}
+                  style={{
+                    background: 'var(--accent)',
+                    color: '#fff',
+                    textDecoration: 'none',
+                    padding: '0.45rem 0.9rem',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Iniciar con SSO →
+                </a>
+              </div>
+            )}
+
             <div>
               <label htmlFor="login-password" style={labelStyle}>{t('login.password')}</label>
               <div style={{ position: "relative" }}>
@@ -395,27 +508,29 @@ export default function LoginPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div>
                 <label style={labelStyle}>Nueva contraseña</label>
-                <input className="input" type="password" placeholder="Mínimo 8 caracteres, 1 mayúscula, 1 número" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
+                <input className="input" type="password" placeholder="Escribe tu nueva contraseña" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
+                {/* Authoritative rules come from the backend per-tenant
+                    policy; client-side rendering is purely informative. */}
+                <PasswordStrengthMeter password={newPwd} policy={forceChangePolicy} />
               </div>
               <div>
                 <label style={labelStyle}>Confirmar contraseña</label>
                 <input className="input" type="password" placeholder="Repetir nueva contraseña" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} />
-              </div>
-              <div style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-                <span style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.15rem" }}>Requisitos de la contraseña:</span>
-                <span style={{ color: newPwd.length >= 8 ? "#10b981" : "var(--text-muted)" }}>{newPwd.length >= 8 ? "✓" : "○"} Mínimo 8 caracteres</span>
-                <span style={{ color: /[A-Z]/.test(newPwd) ? "#10b981" : "var(--text-muted)" }}>{/[A-Z]/.test(newPwd) ? "✓" : "○"} Al menos una letra mayúscula</span>
-                <span style={{ color: /[a-z]/.test(newPwd) ? "#10b981" : "var(--text-muted)" }}>{/[a-z]/.test(newPwd) ? "✓" : "○"} Al menos una letra minúscula</span>
-                <span style={{ color: /\d/.test(newPwd) ? "#10b981" : "var(--text-muted)" }}>{/\d/.test(newPwd) ? "✓" : "○"} Al menos un número</span>
-                <span style={{ color: newPwd && confirmPwd && newPwd === confirmPwd ? "#10b981" : "var(--text-muted)" }}>{newPwd && confirmPwd && newPwd === confirmPwd ? "✓" : "○"} Las contraseñas coinciden</span>
+                {newPwd && confirmPwd && newPwd !== confirmPwd && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
+                    Las contraseñas no coinciden.
+                  </div>
+                )}
               </div>
               <button className="btn-primary" disabled={changePwdLoading || !newPwd || !confirmPwd}
                 style={{ padding: "0.7rem 1.5rem", opacity: changePwdLoading ? 0.6 : 1 }}
                 onClick={async () => {
                   setChangePwdMsg('');
                   if (newPwd !== confirmPwd) { setChangePwdMsg('Las contraseñas no coinciden'); return; }
-                  if (newPwd.length < 8 || !/[A-Z]/.test(newPwd) || !/[a-z]/.test(newPwd) || !/\d/.test(newPwd)) {
-                    setChangePwdMsg('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.');
+                  // Policy validation on the server is authoritative — we
+                  // just catch obvious empty-input UX issues here.
+                  if (newPwd.length < forceChangePolicy.minLength) {
+                    setChangePwdMsg(`La contraseña debe tener al menos ${forceChangePolicy.minLength} caracteres.`);
                     return;
                   }
                   setChangePwdLoading(true);

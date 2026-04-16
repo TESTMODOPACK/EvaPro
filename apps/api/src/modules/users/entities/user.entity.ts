@@ -145,6 +145,26 @@ export class User {
   @Column({ type: 'int', default: 0, name: 'token_version' })
   tokenVersion: number;
 
+  // ─── Password policy tracking (C1) ───────────────────────────────────
+  /**
+   * Timestamp of the last successful password change. `null` for pre-existing
+   * users who haven't rotated their password since this feature shipped —
+   * they're treated as "never expired" until they rotate, which is the
+   * pragmatic backfill policy (don't lock out the whole base on day 1).
+   */
+  @Column({ type: 'timestamptz', nullable: true, name: 'password_changed_at' })
+  passwordChangedAt: Date | null;
+
+  /** Resets to 0 on every successful login. Compared against
+   *  `tenant.settings.passwordPolicy.lockoutThreshold`. */
+  @Column({ type: 'int', default: 0, name: 'failed_login_attempts' })
+  failedLoginAttempts: number;
+
+  /** Null unless the user is currently locked out. We don't remove the lock
+   *  eagerly — `validateUser` checks `locked_until > now` each login. */
+  @Column({ type: 'timestamptz', nullable: true, name: 'locked_until' })
+  lockedUntil: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }

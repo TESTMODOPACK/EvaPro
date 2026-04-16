@@ -22,6 +22,7 @@ import { User } from '../users/entities/user.entity';
 import { EvaluationCycle, CycleType, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../notifications/email.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { PlanFeature } from '../../common/constants/plan-features';
 
@@ -47,6 +48,8 @@ export class SubscriptionsService {
     private readonly auditService: AuditService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    @Inject(forwardRef(() => EmailService))
+    private readonly emailService: EmailService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -162,6 +165,31 @@ export class SubscriptionsService {
         dto.tenantId, changedBy, 'subscription.created', 'subscription', saved.id,
         { planCode: plan.code, planName: plan.name, status: sub.status },
       );
+    }
+
+    // Trial nurture welcome — send synchronously so the admin gets the
+    // email in minutes rather than ~24h from the next cron run. Record
+    // the stage so the cron never re-sends.
+    if (saved.status === SubscriptionStatus.TRIAL) {
+      try {
+        const admin = await this.userRepo.findOne({
+          where: { tenantId: dto.tenantId, role: 'tenant_admin', isActive: true },
+        });
+        const tenant = await this.tenantRepo.findOne({ where: { id: dto.tenantId } });
+        if (admin?.email) {
+          await this.emailService.sendTrialWelcome(admin.email, {
+            firstName: admin.firstName,
+            orgName: tenant?.name || '',
+            tenantId: dto.tenantId,
+          });
+          await this.subRepo.update(saved.id, { nurtureEmailsSent: ['welcome'] });
+        }
+      } catch (err: any) {
+        // Never block subscription creation because of a flaky email.
+        // The cron will pick up 'welcome' on its first run since the
+        // marker wasn't persisted.
+        this.logger?.warn?.(`Trial welcome email failed: ${err?.message || err}`);
+      }
     }
 
     return this.findById(saved.id);

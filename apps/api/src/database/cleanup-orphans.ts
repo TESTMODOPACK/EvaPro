@@ -85,11 +85,78 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS idx_calib_tenant_cycle ON calibration_sessions(tenant_id, cycle_id)`,
       `CREATE INDEX IF NOT EXISTS idx_calib_dept_id ON calibration_sessions(department_id)`,
       `CREATE INDEX IF NOT EXISTS idx_calib_entry_session ON calibration_entries(session_id)`,
+      // GDPR requests table — created here (not via TypeORM synchronize) so
+      // the module can load even before synchronize runs on first boot.
+      `CREATE TABLE IF NOT EXISTS gdpr_requests (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NULL,
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+        type varchar(30) NOT NULL,
+        status varchar(30) NOT NULL DEFAULT 'pending',
+        file_url varchar(1000) NULL,
+        file_expires_at timestamptz NULL,
+        confirmation_code varchar(10) NULL,
+        confirmation_code_expires timestamptz NULL,
+        error_message text NULL,
+        metadata jsonb NOT NULL DEFAULT '{}',
+        requested_at timestamptz NOT NULL DEFAULT now(),
+        completed_at timestamptz NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_gdpr_requests_user ON gdpr_requests(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_gdpr_requests_tenant ON gdpr_requests(tenant_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_gdpr_requests_status ON gdpr_requests(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_gdpr_requests_type_requested ON gdpr_requests(type, requested_at)`,
+      // Payment sessions — Stripe / MercadoPago handshake idempotency.
+      `CREATE TABLE IF NOT EXISTS payment_sessions (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        invoice_id uuid NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        initiated_by uuid NULL REFERENCES users(id) ON DELETE SET NULL,
+        provider varchar(20) NOT NULL,
+        external_id varchar(255) NULL,
+        checkout_url varchar(1000) NULL,
+        amount numeric(12,2) NOT NULL,
+        currency varchar(10) NOT NULL,
+        status varchar(30) NOT NULL DEFAULT 'pending',
+        failure_reason varchar(500) NULL,
+        metadata jsonb NOT NULL DEFAULT '{}',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        completed_at timestamptz NULL
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_sessions_provider_ext
+        ON payment_sessions(provider, external_id)
+        WHERE external_id IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS idx_payment_sessions_tenant ON payment_sessions(tenant_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_payment_sessions_invoice ON payment_sessions(invoice_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_payment_sessions_status ON payment_sessions(status)`,
+      // Grupo C — auth
+      `CREATE TABLE IF NOT EXISTS password_history (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        password_hash varchar(255) NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_password_history_user_created ON password_history(user_id, created_at)`,
+      `CREATE TABLE IF NOT EXISTS oidc_configurations (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+        issuer_url varchar(500) NOT NULL,
+        client_id varchar(255) NOT NULL,
+        client_secret_enc varchar(1000) NOT NULL,
+        enabled boolean NOT NULL DEFAULT false,
+        require_sso boolean NOT NULL DEFAULT false,
+        allowed_email_domains jsonb NOT NULL DEFAULT '[]',
+        role_mapping jsonb NOT NULL DEFAULT '{}',
+        metadata jsonb NOT NULL DEFAULT '{}',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_oidc_configurations_enabled ON oidc_configurations(enabled)`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }
     }
-    console.log('[startup] Calibration tables ensured');
+    console.log('[startup] Calibration + GDPR tables ensured');
 
     // ── 1. Pre-add nullable/default columns ────────────────────────────
     // Evita conflictos de TypeORM ALTER en tablas con datos existentes.
@@ -110,6 +177,13 @@ async function main() {
       { table: 'checkins', column: 'minutes', sql: `ALTER TABLE "checkins" ADD COLUMN IF NOT EXISTS "minutes" text NULL` },
       { table: 'users', column: 'cv_url', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "cv_url" varchar(500) NULL` },
       { table: 'users', column: 'cv_file_name', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "cv_file_name" varchar(200) NULL` },
+      // Grupo B — billing
+      { table: 'invoices', column: 'dunning', sql: `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "dunning" jsonb DEFAULT '{}'` },
+      { table: 'subscriptions', column: 'nurture_emails_sent', sql: `ALTER TABLE "subscriptions" ADD COLUMN IF NOT EXISTS "nurture_emails_sent" jsonb DEFAULT '[]'` },
+      // Grupo C — auth (password policy tracking)
+      { table: 'users', column: 'password_changed_at', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_changed_at" timestamptz NULL` },
+      { table: 'users', column: 'failed_login_attempts', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "failed_login_attempts" int NOT NULL DEFAULT 0` },
+      { table: 'users', column: 'locked_until', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "locked_until" timestamptz NULL` },
     ];
 
     for (const fix of columnFixes) {

@@ -10,6 +10,8 @@ import TopBar from '@/components/TopBar';
 import Toast from '@/components/Toast';
 import { CommandPalette } from '@/components/CommandPalette';
 import { useMySubscription } from '@/hooks/useSubscription';
+import PastDueBanner from '@/components/PastDueBanner';
+import ImpersonationBanner from '@/components/ImpersonationBanner';
 
 function OnboardingBanner({ onDismiss }: { onDismiss: () => void }) {
   const { t } = useTranslation();
@@ -260,6 +262,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         overflowY: 'auto',
       }}>
         {showOnboarding && <OnboardingBanner onDismiss={dismissOnboarding} />}
+        {/* ImpersonationBanner first — if active, the operator should see it
+            before anything else. It's auto-hidden when the JWT has no
+            impersonation claims, so it's safe to always mount. */}
+        <ImpersonationBanner />
+        <PastDueBanner />
         {children}
       </main>
       <Toast />
