@@ -356,6 +356,50 @@ export default function MiDesempenoPage() {
         </div>
       </div>
 
+      {/* G5: Mini widget de logros recientes — visible cuando hay badges */}
+      {myBadges.length > 0 && (
+        <div className="animate-fade-up" style={{ marginBottom: '1rem' }}>
+          <div className="card" style={{ padding: '0.85rem 1.15rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: '0 0 auto' }}>
+              <span style={{ fontSize: '1.5rem' }}>🏅</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.15rem' }}>
+                {myBadges.length} badge{myBadges.length !== 1 ? 's' : ''} obtenido{myBadges.length !== 1 ? 's' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {(myBadges as any[]).slice(0, 5).map((ub: any) => (
+                  <span
+                    key={ub.id}
+                    title={`${ub.badge?.name || 'Badge'} — ${ub.earnedAt ? new Date(ub.earnedAt).toLocaleDateString('es-CL') : ''}`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                      padding: '0.15rem 0.5rem',
+                      background: 'rgba(99,102,241,0.08)',
+                      borderRadius: '999px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      color: ub.badge?.color || '#6366f1',
+                    }}
+                  >
+                    {ub.badge?.icon || '⭐'} {ub.badge?.name || 'Badge'}
+                  </span>
+                ))}
+                {myBadges.length > 5 && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>+{myBadges.length - 5} más</span>
+                )}
+              </div>
+            </div>
+            <a
+              href="/dashboard/reconocimientos"
+              style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none', whiteSpace: 'nowrap' }}
+            >
+              Ver logros →
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* KPI Row: Team (only manager/admin) */}
       {hasTeam && (
         <div className="animate-fade-up" style={{ marginBottom: '1.25rem' }}>

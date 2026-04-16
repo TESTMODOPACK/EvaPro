@@ -11,6 +11,9 @@ import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
+import { RecognitionService } from '../recognition/recognition.service';
+import { PointsSource } from '../recognition/entities/user-points.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ObjectivesService {
@@ -29,6 +32,8 @@ export class ObjectivesService {
     private readonly cycleRepo: Repository<EvaluationCycle>,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
+    private readonly recognitionService: RecognitionService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ─── Validation Helpers ──────────────────────────────────────────────────────
@@ -438,6 +443,28 @@ export class ObjectivesService {
     });
     const saved = await this.updateRepo.save(update);
     this.auditService.log(tenantId, userId, 'objective.progress_updated', 'objective', objectiveId, { title: obj.title, previousProgress: obj.progress, newProgress: dto.progressValue, notes: dto.notes }).catch(() => {});
+
+    // ── Gamificación: puntos + notificación al completar objetivo ──
+    if (obj.status === ObjectiveStatus.COMPLETED) {
+      // G4: +10 puntos al completar un objetivo
+      this.recognitionService.addPoints(
+        tenantId, obj.userId, 10, PointsSource.OBJECTIVE_COMPLETED,
+        `Objetivo "${obj.title}" completado`, objectiveId,
+      ).catch(() => {});
+
+      // Notificación de logro al colaborador
+      this.notificationsService.create({
+        tenantId,
+        userId: obj.userId,
+        type: 'general' as any,
+        title: '🏆 ¡Objetivo cumplido!',
+        message: `Completaste tu objetivo "${obj.title}". +10 puntos sumados a tu perfil. ¡Sigue así!`,
+        metadata: { objectiveId, objectiveCompleted: true },
+      }).catch(() => {});
+
+      // Auto-badge check por si hay badges que requieran N objetivos completados
+      this.recognitionService.checkAutoBadges(tenantId, obj.userId).catch(() => {});
+    }
 
     // Notify manager when objective is completed
     if (dto.progressValue >= 100) {

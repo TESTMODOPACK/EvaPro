@@ -22,6 +22,8 @@ import { Position } from '../tenants/entities/position.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RecognitionService } from '../recognition/recognition.service';
+import { PointsSource } from '../recognition/entities/user-points.entity';
 import { NotificationType } from '../notifications/entities/notification.entity';
 
 @Injectable()
@@ -46,6 +48,7 @@ export class DevelopmentService {
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
+    private readonly recognitionService: RecognitionService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -756,7 +759,8 @@ export class DevelopmentService {
     action.status = DevelopmentActionStatus.COMPLETADA;
     action.completedAt = new Date();
     const saved = await this.actionRepo.save(action);
-    await this.recalculateProgress(action.planId);
+    // Pasa actionId para que recalculateProgress dispare los puntos de gamificación
+    await this.recalculateProgress(action.planId, action.id);
     return saved;
   }
 
@@ -770,21 +774,76 @@ export class DevelopmentService {
 
   // ─── Progress Recalculation ────────────────────────────────────────────
 
-  private async recalculateProgress(planId: string) {
+  /**
+   * Recalcula el progreso del plan y dispara gamificación:
+   *   · Puntos al completar acción (+5)
+   *   · Milestone notifications (50%, 75%, 100%)
+   *   · Puntos al completar plan completo (+25)
+   *   · Badge auto-check vía RecognitionService
+   */
+  private async recalculateProgress(planId: string, justCompletedActionId?: string) {
     const total = await this.actionRepo.count({ where: { planId } });
     const completed = await this.actionRepo.count({ where: { planId, status: DevelopmentActionStatus.COMPLETADA } });
 
     const plan = await this.planRepo.findOne({ where: { id: planId } });
     if (!plan) return;
 
+    const previousProgress = plan.progress;
     plan.progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const planJustCompleted = total > 0 && completed === total && plan.status === 'activo';
 
-    if (total > 0 && completed === total && plan.status === 'activo') {
+    if (planJustCompleted) {
       plan.status = 'completado';
       plan.completedAt = new Date();
     }
 
     await this.planRepo.save(plan);
+
+    // ── Gamificación (fire-and-forget, no bloquea el flujo principal) ──
+
+    // G1: Puntos al completar acción (+5)
+    if (justCompletedActionId) {
+      this.recognitionService.addPoints(
+        plan.tenantId, plan.userId, 5, PointsSource.PDI_ACTION_COMPLETED,
+        'Acción de desarrollo completada', justCompletedActionId,
+      ).catch(() => {});
+    }
+
+    // G3: Milestone notifications (solo si el progreso cruzó el umbral)
+    const milestones = [50, 75, 100];
+    for (const m of milestones) {
+      if (previousProgress < m && plan.progress >= m && m < 100) {
+        this.notificationsService.create({
+          tenantId: plan.tenantId,
+          userId: plan.userId,
+          type: 'general' as any,
+          title: `🎯 ¡${m}% de tu PDI completado!`,
+          message: `Tu plan "${plan.title}" alcanzó el ${m}% de progreso. ${m === 75 ? '¡Falta poco para terminar!' : '¡Buen avance, sigue así!'}`,
+          metadata: { planId, progress: m, milestone: true },
+        }).catch(() => {});
+      }
+    }
+
+    // G2: Puntos + notificación al completar plan completo (+25)
+    if (planJustCompleted) {
+      this.recognitionService.addPoints(
+        plan.tenantId, plan.userId, 25, PointsSource.PDI_PLAN_COMPLETED,
+        `Plan de desarrollo "${plan.title}" completado`, planId,
+      ).catch(() => {});
+
+      this.notificationsService.create({
+        tenantId: plan.tenantId,
+        userId: plan.userId,
+        type: 'general' as any,
+        title: '🏆 ¡Plan de Desarrollo completado!',
+        message: `Felicitaciones — completaste todas las acciones de tu plan "${plan.title}". Los puntos fueron sumados a tu perfil.`,
+        metadata: { planId, progress: 100, planCompleted: true },
+      }).catch(() => {});
+
+      // Trigger auto-badge check (si hay badges configurados con criteria
+      // que cuenten planes completados, se otorgarán automáticamente).
+      this.recognitionService.checkAutoBadges(plan.tenantId, plan.userId).catch(() => {});
+    }
   }
 
   // ─── Comments ──────────────────────────────────────────────────────────

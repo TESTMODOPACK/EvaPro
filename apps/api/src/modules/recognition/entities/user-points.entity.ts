@@ -15,6 +15,10 @@ export enum PointsSource {
   CHECKIN_COMPLETED = 'checkin_completed',
   FEEDBACK_GIVEN = 'feedback_given',
   CHALLENGE_COMPLETED = 'challenge_completed',
+  /** Gamificación PDI: puntos al completar una acción de desarrollo. */
+  PDI_ACTION_COMPLETED = 'pdi_action_completed',
+  /** Gamificación PDI: puntos al completar un plan de desarrollo entero. */
+  PDI_PLAN_COMPLETED = 'pdi_plan_completed',
   MANUAL = 'manual',
 }
 

@@ -13,12 +13,14 @@ import { DevelopmentService } from './development.service';
 import { DevelopmentController } from './development.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RecognitionModule } from '../recognition/recognition.module';
 
 @Module({
   imports: [
     AuditModule,
     SubscriptionsModule,
     NotificationsModule,
+    RecognitionModule,
     TypeOrmModule.forFeature([Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment, User, TalentAssessment, Position]),
   ],
   controllers: [DevelopmentController],
