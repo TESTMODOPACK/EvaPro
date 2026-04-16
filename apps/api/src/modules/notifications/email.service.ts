@@ -748,6 +748,47 @@ export class EmailService {
     );
   }
 
+  /**
+   * Resumen semanal para EMPLOYEES regulares (no managers). Se envía cada
+   * lunes 8am, distinto template y datos que el de managers. Solo se manda
+   * si hay al menos UNA cosa que reportar (no spamear con emails vacíos).
+   */
+  async sendEmployeeWeeklySummary(
+    email: string,
+    data: {
+      firstName: string;
+      pendingEvals: number;
+      overdueActions: number;
+      upcomingCheckins: number;
+      newRecognitions: number;
+      tenantId?: string;
+    },
+  ) {
+    const items: string[] = [];
+    if (data.pendingEvals > 0) items.push(`📝 <strong>${data.pendingEvals}</strong> evaluación${data.pendingEvals > 1 ? 'es' : ''} pendiente${data.pendingEvals > 1 ? 's' : ''} de responder`);
+    if (data.overdueActions > 0) items.push(`📚 <strong>${data.overdueActions}</strong> acción${data.overdueActions > 1 ? 'es' : ''} de tu PDI vencida${data.overdueActions > 1 ? 's' : ''}`);
+    if (data.upcomingCheckins > 0) items.push(`🤝 <strong>${data.upcomingCheckins}</strong> check-in${data.upcomingCheckins > 1 ? 's' : ''} agendado${data.upcomingCheckins > 1 ? 's' : ''} esta semana`);
+    if (data.newRecognitions > 0) items.push(`✨ <strong>${data.newRecognitions}</strong> reconocimiento${data.newRecognitions > 1 ? 's' : ''} nuevo${data.newRecognitions > 1 ? 's' : ''} para vos esta semana`);
+
+    const listHtml = items.map((i) => `<li style="padding:6px 0;font-size:0.9rem;color:#334155;">${i}</li>`).join('');
+
+    await this.send(
+      email,
+      `Tu semana en Eva360 — ${items.length} novedad${items.length !== 1 ? 'es' : ''}`,
+      await this.wrapWithBranding(data.tenantId, {
+        preheader: `Hola ${data.firstName}, esto es lo que tienes esta semana en Eva360.`,
+        body: `
+          ${this.heading('☀️ Tu semana en Eva360')}
+          ${this.paragraph(`Hola <strong>${data.firstName}</strong>, este es el resumen de lo que está pasando con tu desarrollo y evaluaciones esta semana:`)}
+          <ul style="margin:1rem 0;padding-left:1.5rem;">${listHtml}</ul>
+          ${data.newRecognitions > 0 ? this.paragraph('🎉 ¡Buen trabajo! Alguien valoró tu aporte. Pasá a leer el reconocimiento completo.') : this.paragraph('Mantené tus evaluaciones y acciones al día. Tu jefatura está pendiente de tu progreso.')}
+          ${this.cta('Ir a Mi Desempeño', `${this.appUrl}/dashboard/mi-desempeno`)}
+          <p style="margin-top:1.5rem;font-size:0.72rem;color:#94a3b8;text-align:center;">Este es un resumen automático semanal. Se envía cada lunes — si no quieres recibirlo, contacta a tu administrador.</p>
+        `,
+      }),
+    );
+  }
+
   // ─── Template: Objective Completed ────────────────────────────────────────
 
   async sendObjectiveCompleted(

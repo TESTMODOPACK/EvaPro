@@ -35,6 +35,18 @@ export class AuditController {
     return this.auditService.findAll(page, limit, { action, tenantId, dateFrom, dateTo, entityType, searchText });
   }
 
+  /** Resumen de fallos operativos (últimos N días) para el widget del
+   *  dashboard del admin. Default: 7 días. */
+  @Get('tenant/failure-summary')
+  @Roles('super_admin', 'tenant_admin')
+  failureSummary(
+    @Request() req: any,
+    @Query('daysBack', new DefaultValuePipe(7), ParseIntPipe) daysBack: number,
+  ) {
+    const safeDays = Math.min(Math.max(1, daysBack), 90); // cap [1, 90]
+    return this.auditService.getFailureSummary(req.user.tenantId, safeDays);
+  }
+
   // Tenant admin (+ super_admin): own organization logs with advanced filters
   @Get('tenant')
   @Roles('super_admin', 'tenant_admin')

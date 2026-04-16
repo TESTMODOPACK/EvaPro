@@ -7,6 +7,7 @@ import { CalibrationSession } from './entities/calibration-session.entity';
 import { CalibrationEntry } from './entities/calibration-entry.entity';
 import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
+import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { User } from '../users/entities/user.entity';
 import { Department } from '../tenants/entities/department.entity';
 import { AuditService } from '../audit/audit.service';
@@ -68,6 +69,8 @@ export class TalentService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Department)
     private readonly departmentRepo: Repository<Department>,
+    @InjectRepository(EvaluationCycle)
+    private readonly cycleRepo: Repository<EvaluationCycle>,
     private readonly auditService: AuditService,
   ) {}
 
@@ -236,6 +239,62 @@ export class TalentService {
     }
 
     return { boxes, total: assessments.length };
+  }
+
+  /**
+   * Resumen de personas en cuadrantes 1-3 del 9-Box (talento en riesgo:
+   * dysfunctional, underperformer, risk). Se usa en el CommandCenter del
+   * dashboard del admin como alerta proactiva.
+   *
+   * Si no se pasa cycleId, busca el último ciclo CERRADO del tenant.
+   * Si no hay ningún ciclo cerrado, devuelve count: 0.
+   */
+  async getTalentRiskCount(
+    tenantId: string,
+    cycleId?: string,
+  ): Promise<{
+    count: number;
+    cycleId: string | null;
+    cycleName: string | null;
+    quadrants: { 1: number; 2: number; 3: number };
+  }> {
+    let targetCycleId = cycleId;
+    let cycleName: string | null = null;
+    if (!targetCycleId) {
+      // Último ciclo CLOSED del tenant
+      const lastCycle = await this.cycleRepo.findOne({
+        where: { tenantId, status: 'closed' as any },
+        order: { endDate: 'DESC' },
+      });
+      if (!lastCycle) {
+        return { count: 0, cycleId: null, cycleName: null, quadrants: { 1: 0, 2: 0, 3: 0 } };
+      }
+      targetCycleId = lastCycle.id;
+      cycleName = lastCycle.name;
+    } else {
+      const c = await this.cycleRepo.findOne({ where: { id: targetCycleId, tenantId } });
+      cycleName = c?.name ?? null;
+    }
+
+    const rows = await this.assessmentRepo
+      .createQueryBuilder('t')
+      .select('t.nineBoxPosition', 'position')
+      .addSelect('COUNT(*)', 'count')
+      .where('t.tenantId = :tenantId', { tenantId })
+      .andWhere('t.cycleId = :cycleId', { cycleId: targetCycleId })
+      .andWhere('t.nineBoxPosition IN (1, 2, 3)')
+      .groupBy('t.nineBoxPosition')
+      .getRawMany();
+
+    const quadrants = { 1: 0, 2: 0, 3: 0 };
+    for (const r of rows) {
+      const pos = parseInt(r.position, 10) as 1 | 2 | 3;
+      if (pos === 1 || pos === 2 || pos === 3) {
+        quadrants[pos] = parseInt(r.count, 10);
+      }
+    }
+    const count = quadrants[1] + quadrants[2] + quadrants[3];
+    return { count, cycleId: targetCycleId, cycleName, quadrants };
   }
 
   async getSegmentation(tenantId: string, cycleId: string, managerId?: string): Promise<any> {

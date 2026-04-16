@@ -318,6 +318,15 @@ export const api = {
       if (filters.searchText) params.set('searchText', filters.searchText);
       return request<any>(`/audit-logs/tenant?${params.toString()}`, {}, token);
     },
+    /** Resumen de fallos operativos (cron/notification/access/system) — widget admin */
+    failureSummary: (token: string, daysBack = 7) =>
+      request<{
+        daysBack: number;
+        periodStart: string;
+        counts: { 'cron.failed': number; 'notification.failed': number; 'access.denied': number; 'system.error': number };
+        total: number;
+        lastFailureAt: string | null;
+      }>(`/audit-logs/tenant/failure-summary?daysBack=${daysBack}`, {}, token),
     exportCsv: (token: string, filters: { dateFrom?: string; dateTo?: string; entityType?: string; action?: string; evidenceOnly?: boolean; searchText?: string } = {}) => {
       const params = new URLSearchParams();
       if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
@@ -392,6 +401,11 @@ export const api = {
   talent: {
     generate: (token: string, cycleId: string) =>
       request<any[]>(`/talent/generate/${cycleId}`, { method: "POST" }, token),
+    /** Talento en cuadrantes 1-3 del 9-Box (alerta del CommandCenter admin) */
+    riskCount: (token: string, cycleId?: string) =>
+      request<{ count: number; cycleId: string | null; cycleName: string | null; quadrants: Record<string, number> }>(
+        `/talent/risk-count${cycleId ? `?cycleId=${cycleId}` : ''}`, {}, token,
+      ),
     findByCycle: (token: string, cycleId: string) =>
       request<any[]>(`/talent/cycle/${cycleId}`, {}, token),
     nineBox: (token: string, cycleId: string) =>
@@ -904,6 +918,11 @@ export const api = {
       update: (token: string, id: string, data: any) => request<any>(`/development/plans/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       activate: (token: string, id: string) => request<any>(`/development/plans/${id}/activate`, { method: "POST" }, token),
       complete: (token: string, id: string) => request<any>(`/development/plans/${id}/complete`, { method: "POST" }, token),
+      /** Planes activos sin acciones cargadas (alerta del CommandCenter admin). */
+      withoutActions: (token: string) =>
+        request<{ count: number; samples: Array<{ id: string; title: string; userId: string }> }>(
+          '/development/plans/without-actions', {}, token,
+        ),
     },
     actions: {
       create: (token: string, planId: string, data: any) => request<any>(`/development/plans/${planId}/actions`, { method: "POST", body: JSON.stringify(data) }, token),
@@ -1056,6 +1075,11 @@ export const api = {
   surveys: {
     list: (token: string) => request<any[]>("/surveys", {}, token),
     findById: (token: string, id: string) => request<any>(`/surveys/${id}`, {}, token),
+    /** Encuestas activas próximas a cerrar con < 50% participación */
+    lowParticipation: (token: string) =>
+      request<Array<{ id: string; title: string; endDate: string | null; daysLeft: number | null; participationPct: number; respondents: number; assigned: number }>>(
+        '/surveys/low-participation', {}, token,
+      ),
     create: (token: string, dto: any) =>
       request<any>("/surveys", { method: "POST", body: JSON.stringify(dto) }, token),
     update: (token: string, id: string, dto: any) =>

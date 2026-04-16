@@ -6,6 +6,7 @@ import { CalibrationSession } from './entities/calibration-session.entity';
 import { CalibrationEntry } from './entities/calibration-entry.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
+import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { User } from '../users/entities/user.entity';
 import { Department } from '../tenants/entities/department.entity';
 import { TalentService } from './talent.service';
@@ -22,6 +23,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
       CalibrationEntry,
       EvaluationAssignment,
       EvaluationResponse,
+      EvaluationCycle,
       User,
       Department,
     ]),

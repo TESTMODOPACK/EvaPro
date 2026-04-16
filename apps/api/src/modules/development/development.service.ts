@@ -672,6 +672,34 @@ export class DevelopmentService {
    *   4. Al completar, se setea completedAt = now() (usado por el UI para
    *      mostrar "Cumplida en tiempo" vs "Tardía" comparando con dueDate).
    */
+  /**
+   * Resumen para el dashboard del admin: cuántos planes activos no tienen
+   * NINGUNA acción cargada (sospechoso — un PDI sin acciones es un plan
+   * vacío que nunca se completará).
+   *
+   * Devuelve el count + lista mínima (id, title, userId) de hasta 5 ejemplos.
+   */
+  async getActivePlansWithoutActions(
+    tenantId: string,
+  ): Promise<{ count: number; samples: Array<{ id: string; title: string; userId: string }> }> {
+    const rows = await this.planRepo
+      .createQueryBuilder('p')
+      .leftJoin('development_actions', 'a', 'a.plan_id = p.id')
+      .select('p.id', 'id')
+      .addSelect('p.title', 'title')
+      .addSelect('p.user_id', 'userId')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .andWhere("p.status = 'activo'")
+      .groupBy('p.id')
+      .having('COUNT(a.id) = 0')
+      .limit(50) // nunca devolver más que esto al admin
+      .getRawMany();
+    return {
+      count: rows.length,
+      samples: rows.slice(0, 5).map((r) => ({ id: r.id, title: r.title, userId: r.userId })),
+    };
+  }
+
   async completeAction(
     tenantId: string,
     actionId: string,

@@ -28,6 +28,15 @@ import { PlanFeature } from '../../common/constants/plan-features';
 export class TalentController {
   constructor(private readonly talentService: TalentService) {}
 
+  /** Resumen rápido para el dashboard del admin: cuántas personas en
+   *  cuadrantes 1-3 del 9-Box (talento en riesgo) en el último ciclo cerrado.
+   *  Si se pasa cycleId vía query, se usa ese ciclo. */
+  @Get('risk-count')
+  @Roles('super_admin', 'tenant_admin')
+  getRiskCount(@Request() req: any, @Query('cycleId') cycleId?: string) {
+    return this.talentService.getTalentRiskCount(req.user.tenantId, cycleId);
+  }
+
   // ─── Assessments ───────────────────────────────────────────────────────
 
   @Post('generate/:cycleId')

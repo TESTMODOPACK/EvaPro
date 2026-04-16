@@ -422,6 +422,64 @@ export class SurveysService {
 
   // ─── Results ───────────────────────────────────────────────────────────
 
+  /**
+   * Encuestas activas que terminarán pronto Y tienen baja participación.
+   * Se usa en el CommandCenter del dashboard del admin como alerta.
+   *
+   * Reglas:
+   *   - status === 'active'
+   *   - endDate ≤ ahora + `daysWindow` (default 5 días por cerrar)
+   *   - participación < `threshold` (default 50%)
+   *
+   * Retorna metadata mínima por encuesta: id, title, daysLeft, %participación.
+   */
+  async getLowParticipationActiveSurveys(
+    tenantId: string,
+    threshold: number = 50,
+    daysWindow: number = 5,
+  ): Promise<Array<{ id: string; title: string; endDate: Date | null; daysLeft: number | null; participationPct: number; respondents: number; assigned: number }>> {
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + daysWindow * 86_400_000);
+    // Sólo encuestas activas; si tienen endDate, filtramos por ventana.
+    const activeSurveys = await this.surveyRepo.find({
+      where: { tenantId, status: 'active' },
+    });
+    if (activeSurveys.length === 0) return [];
+
+    const out = [] as Array<{ id: string; title: string; endDate: Date | null; daysLeft: number | null; participationPct: number; respondents: number; assigned: number }>;
+    for (const survey of activeSurveys) {
+      const end = survey.endDate ? new Date(survey.endDate) : null;
+      // Si tiene endDate y queda fuera de la ventana de alerta, skip
+      if (end && end > windowEnd) continue;
+      // Si ya venció (endDate < ahora), también lo incluimos — el admin
+      // necesita saber que está sin cerrar manualmente.
+      const assigned = await this.assignmentRepo.count({ where: { surveyId: survey.id, tenantId } });
+      if (assigned === 0) continue; // no asignada → no aplica alerta de baja participación
+      const respondents = await this.responseRepo.count({ where: { surveyId: survey.id, tenantId, isComplete: true } });
+      const participationPct = Math.round((respondents / assigned) * 100);
+      if (participationPct >= threshold) continue;
+
+      const daysLeft = end ? Math.ceil((end.getTime() - now.getTime()) / 86_400_000) : null;
+      out.push({
+        id: survey.id,
+        title: survey.title,
+        endDate: end,
+        daysLeft,
+        participationPct,
+        respondents,
+        assigned,
+      });
+    }
+    // Ordenar por más urgentes primero (menos días restantes / más vencidas)
+    out.sort((a, b) => {
+      if (a.daysLeft == null && b.daysLeft == null) return a.participationPct - b.participationPct;
+      if (a.daysLeft == null) return 1;
+      if (b.daysLeft == null) return -1;
+      return a.daysLeft - b.daysLeft;
+    });
+    return out;
+  }
+
   async getResults(tenantId: string, surveyId: string): Promise<any> {
     const survey = await this.findById(tenantId, surveyId);
     const responses = await this.responseRepo.find({ where: { surveyId, tenantId, isComplete: true } });
