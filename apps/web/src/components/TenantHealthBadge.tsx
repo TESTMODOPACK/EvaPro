@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export type TenantHealthStatus = 'healthy' | 'at_risk' | 'critical' | 'no_sub' | 'trial';
 
@@ -101,12 +102,25 @@ export function computeTenantHealth(input: TenantHealthInput): HealthResult {
  * (title attribute) muestra las razones que justifican el estado.
  */
 export default function TenantHealthBadge({ input, size = 'md' }: { input: TenantHealthInput; size?: 'sm' | 'md' }) {
+  const { t } = useTranslation();
   const h = computeTenantHealth(input);
   const fontSize = size === 'sm' ? '0.68rem' : '0.75rem';
   const padding = size === 'sm' ? '0.1rem 0.45rem' : '0.2rem 0.6rem';
+
+  // Mapear label del computeTenantHealth a i18n (el compute sigue devolviendo
+  // español como fallback para contextos sin React/i18n).
+  const i18nLabelMap: Record<TenantHealthStatus, string> = {
+    healthy: t('components.tenantHealth.healthy'),
+    at_risk: t('components.tenantHealth.atRisk'),
+    critical: t('components.tenantHealth.critical'),
+    trial: t('components.tenantHealth.trial'),
+    no_sub: t('components.tenantHealth.noSub'),
+  };
+  const translatedLabel = i18nLabelMap[h.status] || h.label;
+
   return (
     <span
-      title={h.reasons.length ? h.reasons.join(' · ') : h.label}
+      title={h.reasons.length ? h.reasons.join(' · ') : translatedLabel}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -125,7 +139,7 @@ export default function TenantHealthBadge({ input, size = 'md' }: { input: Tenan
       {h.status === 'critical' && '🔴 '}
       {h.status === 'trial' && '🔵 '}
       {h.status === 'no_sub' && '⚪ '}
-      {h.label}
+      {translatedLabel}
     </span>
   );
 }
