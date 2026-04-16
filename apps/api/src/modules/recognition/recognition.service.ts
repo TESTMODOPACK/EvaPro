@@ -326,7 +326,10 @@ export class RecognitionService {
   }
 
   /** Check auto-badges — optimized: batch queries + skip already-earned */
-  private async checkAutoBadges(tenantId: string, userId: string) {
+  /** Revisa badges auto-award basados en criteria (recognitions_received,
+   *  total_points, etc.). Público para que otros módulos (PDI, objetivos)
+   *  puedan dispararlo tras acciones que suman puntos. */
+  async checkAutoBadges(tenantId: string, userId: string) {
     // 1. Get all active badges with criteria
     const badges = await this.badgeRepo.find({ where: { tenantId, isActive: true } });
     const withCriteria = badges.filter((b) => b.criteria?.type && b.criteria?.threshold);

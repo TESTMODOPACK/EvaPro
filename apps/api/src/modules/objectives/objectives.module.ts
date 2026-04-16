@@ -11,12 +11,14 @@ import { ObjectivesService } from './objectives.service';
 import { ObjectivesController } from './objectives.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RecognitionModule } from '../recognition/recognition.module';
 
 @Module({
   imports: [
     AuditModule,
     SubscriptionsModule,
     NotificationsModule,
+    RecognitionModule,
     TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User, EvaluationCycle]),
   ],
   controllers: [ObjectivesController],
