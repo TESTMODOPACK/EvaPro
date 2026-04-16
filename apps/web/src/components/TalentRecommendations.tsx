@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 
 type BoxUsers = { users?: any[] };
 interface NineBoxData {
@@ -40,9 +41,10 @@ export default function TalentRecommendations({
   nineBoxData: NineBoxData | null;
   cycleId: string;
 }) {
+  const { t } = useTranslation();
   if (!nineBoxData?.boxes) return null;
 
-  const recommendations = buildRecommendations(nineBoxData, cycleId);
+  const recommendations = buildRecommendations(nineBoxData, cycleId, t);
   if (recommendations.length === 0) return null;
 
   return (
@@ -56,14 +58,14 @@ export default function TalentRecommendations({
         borderRadius: 'var(--radius, 12px)',
         borderLeft: '4px solid var(--accent)',
       }}
-      aria-label="Recomendaciones accionables basadas en el 9-Box"
+      aria-label={t('components.talentRecommendations.title')}
     >
       <div style={{ marginBottom: '0.85rem' }}>
         <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <span aria-hidden="true">💡</span> Recomendaciones accionables
+          <span aria-hidden="true">💡</span> {t('components.talentRecommendations.title')}
         </h3>
         <p style={{ margin: '0.2rem 0 0', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-          Análisis automático del 9-Box. Priorizado por urgencia de acción.
+          {t('components.talentRecommendations.subtitle')}
         </p>
       </div>
 
@@ -150,7 +152,7 @@ function usersInBoxes(data: NineBoxData, boxes: number[]): any[] {
 }
 
 /** Reglas de negocio que transforman la matriz en acciones accionables. */
-function buildRecommendations(data: NineBoxData, cycleId: string): Recommendation[] {
+function buildRecommendations(data: NineBoxData, cycleId: string, t: (key: string) => string): Recommendation[] {
   const recs: Recommendation[] = [];
 
   // 1. STARS (box 9) en flight risk alto → retención urgente
@@ -161,11 +163,11 @@ function buildRecommendations(data: NineBoxData, cycleId: string): Recommendatio
       id: 'stars-flight-risk',
       severity: 'critical',
       icon: '🚨',
-      title: 'Top talent en riesgo de salida',
-      description: 'Colaboradores en cuadrante "Estrella" con señal de flight risk alto. Activa conversación de retención inmediata: revisa comp & ben, trayectoria y bloqueadores.',
+      title: t('components.talentRecommendations.starsRisk'),
+      description: t('components.talentRecommendations.starsRiskDesc'),
       userCount: starsAtRisk.length,
       sampleNames: starsAtRisk.map(userName),
-      ctaLabel: 'Ver lista',
+      ctaLabel: t('components.talentRecommendations.viewList'),
       ctaHref: `/dashboard/talento?cycle=${encodeURIComponent(cycleId)}&pool=star&risk=high`,
     });
   }
@@ -180,11 +182,11 @@ function buildRecommendations(data: NineBoxData, cycleId: string): Recommendatio
       id: 'stars-no-succession',
       severity: 'warning',
       icon: '👑',
-      title: 'Sucesión sin pipeline listo',
-      description: 'Estrellas que aún no están listas para asumir rol superior. Define plan de sucesión con mentoría, proyectos de alcance y fast-track de desarrollo.',
+      title: t('components.talentRecommendations.succession'),
+      description: t('components.talentRecommendations.successionDesc'),
       userCount: starsNoSuccession.length,
       sampleNames: starsNoSuccession.map(userName),
-      ctaLabel: 'Planificar',
+      ctaLabel: t('components.talentRecommendations.plan'),
       ctaHref: '/dashboard/desarrollo',
     });
   }
@@ -202,11 +204,11 @@ function buildRecommendations(data: NineBoxData, cycleId: string): Recommendatio
         id: 'high-potential-pdi',
         severity: 'info',
         icon: '🌱',
-        title: 'Alto potencial para acelerar',
-        description: 'Colaboradores con potencial alto y desempeño sólido que se beneficiarían de un PDI robusto. Invierte en ellos antes de que busquen afuera.',
+        title: t('components.talentRecommendations.highPotential'),
+        description: t('components.talentRecommendations.highPotentialDesc'),
         userCount: withGap.length,
         sampleNames: withGap.map(userName),
-        ctaLabel: 'Crear PDI',
+        ctaLabel: t('components.talentRecommendations.createPdi'),
         ctaHref: '/dashboard/desarrollo',
       });
     }
@@ -219,11 +221,11 @@ function buildRecommendations(data: NineBoxData, cycleId: string): Recommendatio
       id: 'underperformers',
       severity: 'warning',
       icon: '⚖️',
-      title: 'Decisión pendiente sobre bajo desempeño',
-      description: 'Colaboradores sostenidamente por debajo del promedio. Activa PIP (plan de mejora con plazos) o gestiona salida con dignidad. Postergar solo empeora el equipo.',
+      title: t('components.talentRecommendations.underperformers'),
+      description: t('components.talentRecommendations.underperformersDesc'),
       userCount: under.length,
       sampleNames: under.map(userName),
-      ctaLabel: 'Revisar casos',
+      ctaLabel: t('components.talentRecommendations.reviewCases'),
       ctaHref: `/dashboard/talento?cycle=${encodeURIComponent(cycleId)}&pool=underperformer`,
     });
   }
@@ -235,11 +237,11 @@ function buildRecommendations(data: NineBoxData, cycleId: string): Recommendatio
       id: 'inconsistent-mentoring',
       severity: 'info',
       icon: '🎯',
-      title: 'Desempeño irregular — oportunidad de coaching',
-      description: 'Potencial alto pero entrega inconsistente. Suele ser falta de foco, mentor adecuado o claridad de expectativas. Check-ins frecuentes y metas SMART ayudan mucho.',
+      title: t('components.talentRecommendations.inconsistent'),
+      description: t('components.talentRecommendations.inconsistentDesc'),
       userCount: inconsistent.length,
       sampleNames: inconsistent.map(userName),
-      ctaLabel: 'Agendar 1:1',
+      ctaLabel: t('components.talentRecommendations.schedule1on1'),
       ctaHref: '/dashboard/feedback',
     });
   }
