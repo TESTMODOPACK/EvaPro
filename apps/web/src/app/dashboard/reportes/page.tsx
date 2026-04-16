@@ -395,16 +395,24 @@ export default function ReportesPage() {
 
                     return (
                       <>
-                        {/* KPIs Organización */}
+                        {/* KPIs Organización — para managers se muestra solo
+                            el promedio + completitud como REFERENCIA comparativa
+                            (sin headcount ni deptos, que podrían revelar data
+                            de equipos ajenos en orgs pequeñas). Admins ven todo. */}
                         <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.3rem' }}>
-                          {'🏢'} Organización
+                          {'🏢'} {isAdmin ? 'Organización' : 'Referencia organizacional'}
                         </div>
+                        {!isAdmin && (
+                          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '-0.1rem 0 0.5rem', fontStyle: 'italic' }}>
+                            Promedio general de la empresa para que compares con tu equipo. Sin detalle por área.
+                          </p>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
                           <KPI label="Promedio Global" value={orgAvg.toFixed(1)} color={getScoreColor(orgAvg)} sub={getScoreLabel(orgAvg)} />
-                          <KPI label="Colaboradores Eval." value={orgTotal || '--'} />
-                          <KPI label="Departamentos" value={allOrgDepts.length || depts.length} />
+                          {isAdmin && <KPI label="Colaboradores Eval." value={orgTotal || '--'} />}
+                          {isAdmin && <KPI label="Departamentos" value={allOrgDepts.length || depts.length} />}
                           <KPI label="Completitud" value={`${orgCompletion}%`} color={orgCompletion >= 80 ? 'var(--success)' : 'var(--warning)'} />
-                          <KPI label="Evaluaciones" value={orgEvals} />
+                          {isAdmin && <KPI label="Evaluaciones" value={orgEvals} />}
                         </div>
 
                         {/* KPIs Mi Equipo (solo para managers) */}
@@ -427,29 +435,40 @@ export default function ReportesPage() {
                     );
                   })()}
 
-                  {/* Department Ranking BarChart */}
-                  {depts.length > 0 && (
-                    <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Ranking por Departamento</h4>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Puntaje promedio de evaluación por área, ordenado de mayor a menor (escala 1-10).</p>
-                      <div style={{ height: Math.max(200, depts.length * 35) }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={depts} layout="vertical" margin={{ left: 100 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                            <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 11 }} />
-                            <YAxis type="category" dataKey="department" tick={{ fontSize: 11 }} width={95} />
-                            <Tooltip />
-                            <Bar dataKey="avgScore" name="Promedio" radius={[0, 4, 4, 0]}>
-                              {depts.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
+                  {/* Department Ranking BarChart — para managers solo muestra
+                      los departamentos de su equipo (privacidad). Admins ven toda la org. */}
+                  {(() => {
+                    const visibleDepts = isAdmin ? depts : depts.filter((d: any) => teamDepts.has(d.department));
+                    return visibleDepts.length > 0 && (
+                      <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+                        <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                          {isAdmin ? 'Ranking por Departamento' : 'Desempeño de tu equipo por área'}
+                        </h4>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                          {isAdmin
+                            ? 'Puntaje promedio de evaluación por área, ordenado de mayor a menor (escala 1-10).'
+                            : 'Solo departamentos donde tienes reportes directos. Para referencia: promedio global = ' + (depts.length > 0 ? (depts.reduce((s: number, d: any) => s + d.avgScore * (d.count || 1), 0) / depts.reduce((s: number, d: any) => s + (d.count || 1), 0)).toFixed(1) : '—') + '.'}
+                        </p>
+                        <div style={{ height: Math.max(200, visibleDepts.length * 35) }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={visibleDepts} layout="vertical" margin={{ left: 100 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                              <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 11 }} />
+                              <YAxis type="category" dataKey="department" tick={{ fontSize: 11 }} width={95} />
+                              <Tooltip />
+                              <Bar dataKey="avgScore" name="Promedio" radius={[0, 4, 4, 0]}>
+                                {visibleDepts.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
-                  {/* Top / Bottom 3 */}
-                  {depts.length >= 3 && (
+                  {/* Top / Bottom 3 — solo visible para admins (managers no
+                      deben ver ranking cross-org completo por privacidad). */}
+                  {isAdmin && depts.length >= 3 && (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                       <div className="card" style={{ padding: '1rem' }}>
                         <h4 style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--success)' }}>▲ Top 3 Departamentos</h4>
@@ -478,33 +497,42 @@ export default function ReportesPage() {
                     </div>
                   )}
 
-                  {/* Semáforo de áreas */}
-                  {depts.length > 0 && (
+                  {/* Semáforo de áreas — para managers solo muestra sus
+                      departamentos, para admins muestra toda la org. */}
+                  {(() => {
+                    const semDepts = isAdmin ? depts : depts.filter((d: any) => teamDepts.has(d.department));
+                    return semDepts.length > 0 && (
                     <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Semáforo de Áreas</h4>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Vista rápida del estado de cada departamento. 🟢 ≥7.0 (Alto) | 🟡 5.0-6.9 (Medio) | 🔴 &lt;5.0 (Bajo).</p>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                        {isAdmin ? 'Semáforo de Áreas' : 'Semáforo de tu equipo'}
+                      </h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                        {isAdmin
+                          ? 'Vista rápida del estado de cada departamento. 🟢 ≥7.0 (Alto) | 🟡 5.0-6.9 (Medio) | 🔴 <5.0 (Bajo).'
+                          : 'Solo áreas donde tienes reportes directos. 🟢 ≥7.0 | 🟡 5.0-6.9 | 🔴 <5.0.'}
+                      </p>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
-                        {depts.map((d: any) => {
+                        {semDepts.map((d: any) => {
                           const score = Number(d.avgScore);
                           const color = score >= 7 ? 'var(--success)' : score >= 5 ? 'var(--warning)' : 'var(--danger)';
-                          const isMine = teamDepts.has(d.department);
                           return (
                             <div key={d.department} style={{
                               display: 'flex', alignItems: 'center', gap: '0.5rem',
                               padding: '0.5rem 0.75rem',
-                              background: isMine ? 'rgba(201,147,58,0.06)' : 'var(--bg-surface)',
+                              background: 'var(--bg-surface)',
                               borderRadius: 'var(--radius-sm)',
-                              border: isMine ? '1px solid rgba(201,147,58,0.2)' : '1px solid transparent',
+                              border: '1px solid transparent',
                             }}>
                               <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                              <span style={{ fontSize: '0.82rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isMine ? 600 : 400 }}>{d.department}{isMine ? ' ★' : ''}</span>
+                              <span style={{ fontSize: '0.82rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.department}</span>
                               <span style={{ fontSize: '0.85rem', fontWeight: 700, color, flexShrink: 0 }}>{score.toFixed(1)}</span>
                             </div>
                           );
                         })}
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Heatmap */}
                   <PerformanceHeatmap cycleId={selectedCycleId} />

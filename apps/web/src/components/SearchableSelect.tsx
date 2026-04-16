@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface SearchableSelectOption {
   value: string;
@@ -55,6 +56,7 @@ export default function SearchableSelect({
   ariaLabel,
   id,
 }: SearchableSelectProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightIndex, setHighlightIndex] = useState(0);
@@ -206,8 +208,8 @@ export default function SearchableSelect({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Buscar..."
-              aria-label="Filtrar opciones"
+              placeholder={t('components.searchableSelect.searchPlaceholder')}
+              aria-label={t('components.searchableSelect.filterLabel')}
               style={{
                 width: '100%',
                 padding: '0.4rem 0.6rem',

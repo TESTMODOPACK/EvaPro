@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { ScoreBadge } from './ScoreBadge';
+import { useTranslation } from 'react-i18next';
 
 /**
  * EvaluationResponseViewer — vista de solo lectura de las respuestas que un
@@ -29,7 +30,9 @@ export interface EvaluationResponseViewerProps {
   mode?: 'modal' | 'inline';
 }
 
-const RELATION_LABEL: Record<string, string> = {
+// Labels de relación resueltos vía i18n en el componente ViewerBody.
+// Fallback hardcoded si i18n no está disponible.
+const RELATION_LABEL_FALLBACK: Record<string, string> = {
   self: 'Autoevaluación',
   manager: 'Jefatura',
   peer: 'Par',
@@ -140,6 +143,17 @@ function ViewerBody({
   onClose?: () => void;
   mode: 'modal' | 'inline';
 }) {
+  const { t } = useTranslation();
+  const relationLabel = (key: string) => {
+    const i18nMap: Record<string, string> = {
+      self: t('components.evaluationViewer.self'),
+      manager: t('components.evaluationViewer.manager'),
+      peer: t('components.evaluationViewer.peer'),
+      direct_report: t('components.evaluationViewer.directReport'),
+      external: t('components.evaluationViewer.external'),
+    };
+    return i18nMap[key] || RELATION_LABEL_FALLBACK[key] || key;
+  };
   if (loading) {
     return (
       <div style={{ padding: '3rem', textAlign: 'center' }}>
@@ -213,7 +227,7 @@ function ViewerBody({
           </h2>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 0.75rem', marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
             <span>
-              <strong style={{ color: 'var(--text-secondary)' }}>{RELATION_LABEL[assignment?.relationType] || assignment?.relationType}</strong>
+              <strong style={{ color: 'var(--text-secondary)' }}>{relationLabel(assignment?.relationType) || assignment?.relationType}</strong>
               {' · '}por {evaluatorName}
             </span>
             {assignment?.cycle?.name && <span>Ciclo: <strong style={{ color: 'var(--text-secondary)' }}>{assignment.cycle.name}</strong></span>}

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 
 interface FailureCounts {
   'cron.failed': number;
@@ -20,31 +21,13 @@ export interface OperationalFailuresWidgetProps {
   loading?: boolean;
 }
 
-const FAILURE_META: Record<keyof FailureCounts, { label: string; icon: string; description: string; auditFilter: string }> = {
-  'cron.failed': {
-    label: 'Crons fallidos',
-    icon: '⏱️',
-    description: 'Jobs programados con error (recordatorios, escalamientos, digest).',
-    auditFilter: 'cron.failed',
-  },
-  'notification.failed': {
-    label: 'Notificaciones',
-    icon: '📨',
-    description: 'Emails o notificaciones que no se pudieron entregar.',
-    auditFilter: 'notification.failed',
-  },
-  'access.denied': {
-    label: 'Accesos denegados',
-    icon: '🚫',
-    description: 'Intentos de acceso bloqueados por permisos insuficientes.',
-    auditFilter: 'access.denied',
-  },
-  'system.error': {
-    label: 'Errores de sistema',
-    icon: '🔥',
-    description: 'Excepciones 5xx no manejadas. Revisa Sentry para el stack completo.',
-    auditFilter: 'system.error',
-  },
+// Las labels/descriptions se resuelven por i18n dentro del componente.
+// Los iconos y el filtro de auditoría son estáticos.
+const FAILURE_META: Record<keyof FailureCounts, { i18nKey: string; icon: string; auditFilter: string }> = {
+  'cron.failed': { i18nKey: 'cronFailed', icon: '⏱️', auditFilter: 'cron.failed' },
+  'notification.failed': { i18nKey: 'notificationFailed', icon: '📨', auditFilter: 'notification.failed' },
+  'access.denied': { i18nKey: 'accessDenied', icon: '🚫', auditFilter: 'access.denied' },
+  'system.error': { i18nKey: 'systemError', icon: '🔥', auditFilter: 'system.error' },
 };
 
 /**
@@ -61,6 +44,7 @@ export default function OperationalFailuresWidget({
   lastFailureAt,
   loading,
 }: OperationalFailuresWidgetProps) {
+  const { t } = useTranslation();
   if (loading) {
     return (
       <section className="card animate-fade-up" style={{ padding: '1.25rem 1.4rem', marginBottom: '1.25rem' }}>
@@ -89,10 +73,10 @@ export default function OperationalFailuresWidget({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: allClear ? 0 : '0.85rem' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <span aria-hidden="true">🛠️</span> Fallos operativos
+            <span aria-hidden="true">🛠️</span> {t('components.operationalFailures.title')}
           </h2>
           <p style={{ margin: '0.2rem 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Últimos {daysBack} días · Eventos del registro de auditoría
+            {t('components.operationalFailures.period', { days: daysBack })}
             {lastFailureAt && ` · Último: ${new Date(lastFailureAt).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
           </p>
         </div>
@@ -109,14 +93,14 @@ export default function OperationalFailuresWidget({
               borderRadius: 'var(--radius-sm, 6px)',
             }}
           >
-            Ver todos →
+            {t('components.operationalFailures.viewAll')} →
           </Link>
         )}
       </div>
 
       {allClear ? (
         <p style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: '#065f46' }}>
-          ✅ Sin fallos operativos registrados en el periodo. Todo funcionando con normalidad.
+          ✅ {t('components.operationalFailures.allClear')}
         </p>
       ) : (
         <div
@@ -130,11 +114,24 @@ export default function OperationalFailuresWidget({
             const meta = FAILURE_META[key];
             const count = counts[key] ?? 0;
             const hasFailures = count > 0;
+            // Mapa de i18n keys: cronFailed → components.operationalFailures.cronFailed/cronDesc
+            const labelMap: Record<string, string> = {
+              cronFailed: t('components.operationalFailures.cronFailed'),
+              notificationFailed: t('components.operationalFailures.notificationFailed'),
+              accessDenied: t('components.operationalFailures.accessDenied'),
+              systemError: t('components.operationalFailures.systemError'),
+            };
+            const descMap: Record<string, string> = {
+              cronFailed: t('components.operationalFailures.cronDesc'),
+              notificationFailed: t('components.operationalFailures.notificationDesc'),
+              accessDenied: t('components.operationalFailures.accessDesc'),
+              systemError: t('components.operationalFailures.systemDesc'),
+            };
             return (
               <Link
                 key={key}
                 href={`/dashboard/auditoria?dateFrom=${dateFrom}&action=${encodeURIComponent(meta.auditFilter)}`}
-                title={meta.description}
+                title={descMap[meta.i18nKey] || key}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -151,7 +148,7 @@ export default function OperationalFailuresWidget({
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <span aria-hidden="true">{meta.icon}</span>
-                  {meta.label}
+                  {labelMap[meta.i18nKey] || key}
                 </div>
                 <div
                   style={{
@@ -166,7 +163,7 @@ export default function OperationalFailuresWidget({
                 </div>
                 {hasFailures && (
                   <div style={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 600, marginTop: '0.25rem' }}>
-                    Investigar →
+                    {t('components.operationalFailures.investigate')} →
                   </div>
                 )}
               </Link>

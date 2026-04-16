@@ -1495,8 +1495,7 @@
         "close": "Cerrar",
         "editBtn": "Editar",
         "updated": "Datos actualizados",
-        "saveError": "Error al guardar",
-        "linkedinPlaceholder": "URL de perfil"
+        "saveError": "Error al guardar"
       },
       "notFound": "Proceso no encontrado",
       "noCandidates": "No hay candidatos en este proceso"
@@ -2526,7 +2525,12 @@
       "correlationTitle": "Correlación:",
       "correlationDesc": "Coeficiente Pearson entre clima y desempeño por departamento. Valores ≥0.5 indican relación fuerte positiva.",
       "whyTitle": "¿Por qué es relevante?",
-      "whyItems": ["Organizaciones con mejor clima tienen hasta 21% más productividad", "Permite intervenciones preventivas en vez de reactivas", "Identifica riesgo de rotación en áreas de alto desempeño", "Alinea planes de desarrollo con datos reales"],
+      "whyItems": [
+        "Organizaciones con mejor clima tienen hasta 21% más productividad",
+        "Permite intervenciones preventivas en vez de reactivas",
+        "Identifica riesgo de rotación en áreas de alto desempeño",
+        "Alinea planes de desarrollo con datos reales"
+      ],
       "permissions": "Administradores ven toda la organización. Encargados ven solo su equipo."
     }
   },
@@ -2587,6 +2591,83 @@
       "signatureTitle": "Firma electrónica",
       "signatureDesc": "Los contratos se firman con código OTP enviado a su correo. Genera hash SHA-256 como evidencia.",
       "permissions": "Los administradores pueden ver y firmar contratos."
+    }
+  },
+  "components": {
+    "commandCenter": {
+      "title": "Centro de comando",
+      "subtitle": "Resumen de lo que requiere tu atención hoy",
+      "allClear": "No hay acciones urgentes pendientes. Tu organización está al día.",
+      "critical": "CRÍTICO",
+      "warning": "ATENCIÓN",
+      "info": "INFO",
+      "ok": "OK",
+      "view": "Ver"
+    },
+    "operationalFailures": {
+      "title": "Fallos operativos",
+      "period": "Últimos {{days}} días · Eventos del registro de auditoría",
+      "allClear": "Sin fallos operativos registrados en el periodo. Todo funcionando con normalidad.",
+      "viewAll": "Ver todos",
+      "investigate": "Investigar",
+      "cronFailed": "Crons fallidos",
+      "cronDesc": "Jobs programados con error (recordatorios, escalamientos, digest).",
+      "notificationFailed": "Notificaciones",
+      "notificationDesc": "Emails o notificaciones que no se pudieron entregar.",
+      "accessDenied": "Accesos denegados",
+      "accessDesc": "Intentos de acceso bloqueados por permisos insuficientes.",
+      "systemError": "Errores de sistema",
+      "systemDesc": "Excepciones 5xx no manejadas. Revisa Sentry para el stack completo."
+    },
+    "evaluationViewer": {
+      "title": "Detalle de evaluación",
+      "overallScore": "Nota general",
+      "close": "Cerrar",
+      "loading": "Cargando evaluación...",
+      "noResponse": "Esta evaluación aún no ha sido respondida.",
+      "noTemplate": "No se pudo cargar la estructura del formulario.",
+      "noAnswer": "— Sin respuesta —",
+      "completedOn": "Completada",
+      "self": "Autoevaluación",
+      "manager": "Jefatura",
+      "peer": "Par",
+      "directReport": "Subordinado",
+      "external": "Externo"
+    },
+    "tenantHealth": {
+      "healthy": "Saludable",
+      "atRisk": "Atención",
+      "critical": "Crítico",
+      "trial": "Trial",
+      "noSub": "Sin plan",
+      "inactive": "Inactivo",
+      "expired": "Vencido",
+      "limitExceeded": "Límite superado"
+    },
+    "talentRecommendations": {
+      "title": "Recomendaciones accionables",
+      "subtitle": "Análisis automático del 9-Box. Priorizado por urgencia de acción.",
+      "starsRisk": "Top talent en riesgo de salida",
+      "starsRiskDesc": "Colaboradores en cuadrante \"Estrella\" con señal de flight risk alto. Activa conversación de retención inmediata.",
+      "succession": "Sucesión sin pipeline listo",
+      "successionDesc": "Estrellas que aún no están listas para asumir rol superior. Define plan de sucesión.",
+      "highPotential": "Alto potencial para acelerar",
+      "highPotentialDesc": "Colaboradores con potencial alto y desempeño sólido que se beneficiarían de un PDI robusto.",
+      "underperformers": "Decisión pendiente sobre bajo desempeño",
+      "underperformersDesc": "Colaboradores sostenidamente por debajo del promedio. Activa PIP o gestiona salida con dignidad.",
+      "inconsistent": "Desempeño irregular — oportunidad de coaching",
+      "inconsistentDesc": "Potencial alto pero entrega inconsistente. Check-ins frecuentes y metas SMART ayudan mucho.",
+      "viewList": "Ver lista",
+      "plan": "Planificar",
+      "createPdi": "Crear PDI",
+      "reviewCases": "Revisar casos",
+      "schedule1on1": "Agendar 1:1"
+    },
+    "searchableSelect": {
+      "searchPlaceholder": "Buscar...",
+      "noResults": "Sin coincidencias",
+      "filterLabel": "Filtrar opciones",
+      "of": "de"
     }
   }
 }

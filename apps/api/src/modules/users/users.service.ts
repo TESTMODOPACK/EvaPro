@@ -757,6 +757,40 @@ export class UsersService {
       calibrationWithdrawn,
     } = cascadeResult;
 
+    // ── Post-commit: Signature rerouting ─────────────────────────────
+    // Si el desvinculado era tenant_admin y hay contratos pending_signature,
+    // alertar a los admins restantes para que asuman las firmas pendientes.
+    // El modelo DocumentSignature no tiene "pending" (solo registra firmas
+    // ya realizadas), pero los contratos SÍ quedan en pending_signature
+    // esperando que alguien firme. Esta notificación cierra ese gap.
+    if (user.role === 'tenant_admin') {
+      try {
+        const pendingContracts = await this.dataSource.query(
+          `SELECT COUNT(*) AS cnt FROM contracts WHERE tenant_id = $1 AND status = 'pending_signature'`,
+          [tenantId],
+        );
+        const pendingCount = parseInt(pendingContracts?.[0]?.cnt || '0', 10);
+        if (pendingCount > 0) {
+          const remainingAdmins = await this.userRepository.find({
+            where: { tenantId, role: 'tenant_admin', isActive: true, id: Not(userId) },
+            select: ['id'],
+          });
+          for (const admin of remainingAdmins) {
+            await this.notificationsService.create({
+              tenantId,
+              userId: admin.id,
+              type: 'general' as any,
+              title: `Contratos pendientes de firma — admin desvinculado`,
+              message: `${user.firstName} ${user.lastName} fue desvinculado/a y hay ${pendingCount} contrato(s) pendiente(s) de firma. Revisa y firma los contratos que queden sin firmante.`,
+              metadata: { departedUserId: userId, pendingContracts: pendingCount },
+            }).catch(() => {});
+          }
+        }
+      } catch {
+        // No-crítico — la firma sigue pendiente, solo faltó la notificación
+      }
+    }
+
     // 15. Audit (post-commit, fire-and-forget) con metadata completa
     await this.auditService
       .log(tenantId, processedById, 'user.departed', 'user', userId, {
