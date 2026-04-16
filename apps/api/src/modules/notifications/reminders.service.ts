@@ -1246,4 +1246,82 @@ export class RemindersService {
       await this.recordCronFailure('sendWeeklyManagerSummary', error);
     }
   }
+
+  // ─── 17. Resumen semanal para EMPLOYEES (lunes 8:15am) ─────────────
+  // Schedule offset 15 minutos del de managers para no apilarlos.
+  // Solo envía si hay AL MENOS UNA cosa que reportar (no spamear).
+
+  @Cron('15 8 * * 1')
+  async sendWeeklyEmployeeSummary() {
+    this.logger.log('[Cron] Sending weekly employee summaries...');
+    try {
+      const employees = await this.userRepo.find({
+        where: { role: 'employee', isActive: true },
+        select: ['id', 'email', 'firstName', 'tenantId'],
+      });
+
+      let sent = 0;
+      const today = new Date();
+      const todayIso = today.toISOString().split('T')[0];
+      const inSevenDays = new Date(today.getTime() + 7 * 86_400_000);
+      const inSevenIso = inSevenDays.toISOString().split('T')[0];
+
+      for (const emp of employees) {
+        if (!emp.email) continue;
+
+        // 1. Evaluaciones pendientes que el employee tiene que responder
+        //    (donde él es evaluador, no evaluado).
+        const pendingEvals = await this.assignmentRepo.count({
+          where: {
+            evaluatorId: emp.id,
+            tenantId: emp.tenantId,
+            status: In([AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS]),
+          },
+        });
+
+        // 2. Acciones vencidas en SU propio PDI (acciones de planes
+        //    cuyo userId === employee.id, dueDate < today, status no terminal).
+        const overdueActions = await this.actionRepo.createQueryBuilder('a')
+          .innerJoin(DevelopmentPlan, 'p', 'p.id = a.plan_id AND p.tenant_id = a.tenant_id')
+          .where('p.user_id = :uid', { uid: emp.id })
+          .andWhere('a.tenant_id = :tid', { tid: emp.tenantId })
+          .andWhere('a.status NOT IN (:...done)', { done: ['completada', 'cancelada'] })
+          .andWhere('a.due_date < :today', { today: todayIso })
+          .getCount();
+
+        // 3. Check-ins agendados esta semana (próximos 7 días) en los
+        //    que el employee participa (como manager o como employee).
+        const upcomingCheckins = await this.checkinRepo.createQueryBuilder('c')
+          .where('c.tenant_id = :tid', { tid: emp.tenantId })
+          .andWhere('(c.employee_id = :uid OR c.manager_id = :uid)', { uid: emp.id })
+          .andWhere('c.status IN (:...active)', { active: ['scheduled', 'requested'] })
+          .andWhere('c.scheduled_date >= :today', { today: todayIso })
+          .andWhere('c.scheduled_date <= :horizon', { horizon: inSevenIso })
+          .getCount();
+
+        // newRecognitions queda en 0 por ahora (módulo Recognition no
+        // está inyectado en este service para evitar dependencia circular
+        // entre Notifications y Recognition. Se puede agregar más adelante
+        // refactorizando el patrón de imports).
+        const newRecognitions = 0;
+
+        if (pendingEvals === 0 && overdueActions === 0 && upcomingCheckins === 0 && newRecognitions === 0) continue;
+
+        await this.emailService.sendEmployeeWeeklySummary(emp.email, {
+          firstName: emp.firstName,
+          pendingEvals,
+          overdueActions,
+          upcomingCheckins,
+          newRecognitions,
+          tenantId: emp.tenantId,
+        }).catch((err) => this.logger.warn(`Failed to send weekly summary to ${emp.email}: ${err.message}`));
+        sent++;
+      }
+
+      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} weekly employee summaries`);
+    } catch (error) {
+      this.logger.error(`[Cron] Error in sendWeeklyEmployeeSummary: ${error}`);
+      await this.recordCronFailure('sendWeeklyEmployeeSummary', error);
+    }
+  }
 }

@@ -21,6 +21,7 @@ import { NextActionsWidget } from '@/components/NextActionsWidget';
 import { useRecognitionWall } from '@/hooks/useRecognition';
 import { OnboardingChecklist } from '@/components/OnboardingChecklist';
 import CommandCenter, { CommandAlert } from '@/components/CommandCenter';
+import OperationalFailuresWidget from '@/components/OperationalFailuresWidget';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
 
 function Spinner() {
@@ -1675,6 +1676,40 @@ function AdminDashboard() {
   // Penúltimo ciclo cerrado → sirve de baseline para calcular δ en los KPIs.
   const previousClosedId = closedCycles[1]?.id;
   const [previousExecData, setPreviousExecData] = useState<any>(null);
+  // Widget "Fallos operativos" — agrega audit logs de cron/notif/access/system
+  // de los últimos 7 días. Refresca cuando el dashboard se monta.
+  const [failureSummary, setFailureSummary] = useState<any | null>(null);
+  const [loadingFailures, setLoadingFailures] = useState(true);
+
+  // Señales para 3 alertas adicionales del CommandCenter:
+  //   · Talento en cuadrantes 1-3 del 9-Box (último ciclo cerrado)
+  //   · Encuestas activas con baja participación próximas a cerrar
+  //   · PDIs activos sin acciones cargadas
+  const [talentRisk, setTalentRisk] = useState<{ count: number; cycleName: string | null } | null>(null);
+  const [lowSurveys, setLowSurveys] = useState<Array<{ id: string; title: string; daysLeft: number | null; participationPct: number }>>([]);
+  const [emptyPlans, setEmptyPlans] = useState<{ count: number } | null>(null);
+
+  // Carga separada del summary de fallos — independiente del bloque grande
+  // de KPIs porque depende solo del token y los últimos 7 días de audit.
+  useEffect(() => {
+    if (!token) return;
+    setLoadingFailures(true);
+    api.auditLogs
+      .failureSummary(token, 7)
+      .then((data) => setFailureSummary(data))
+      .catch(() => setFailureSummary(null))
+      .finally(() => setLoadingFailures(false));
+  }, [token]);
+
+  // Cargar señales de las 3 alertas extra (talent risk, low surveys, empty plans)
+  // en paralelo. Errores se silencian (cada alerta se renderiza solo si tiene
+  // datos, así que la ausencia simplemente NO emite alerta).
+  useEffect(() => {
+    if (!token) return;
+    api.talent.riskCount(token).then((d) => setTalentRisk({ count: d.count, cycleName: d.cycleName })).catch(() => {});
+    api.surveys.lowParticipation(token).then((d) => setLowSurveys(d || [])).catch(() => {});
+    api.development.plans.withoutActions(token).then((d) => setEmptyPlans({ count: d.count })).catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -1847,6 +1882,52 @@ function AdminDashboard() {
         ctaLabel: 'Ver plan',
       });
     }
+  }
+
+  // Alerta: Talento en riesgo (cuadrantes 1-3 del 9-Box, último ciclo cerrado)
+  if (talentRisk && talentRisk.count > 0) {
+    commandAlerts.push({
+      id: 'talent-risk',
+      severity: talentRisk.count >= 5 ? 'critical' : 'warning',
+      icon: '⚠️',
+      title: `${talentRisk.count} colaborador${talentRisk.count !== 1 ? 'es' : ''} en cuadrante de riesgo`,
+      description: `Identificados en el 9-Box${talentRisk.cycleName ? ` del ciclo "${talentRisk.cycleName}"` : ''}. Requieren atención: PIP, conversación de carrera o salida planificada.`,
+      count: talentRisk.count,
+      href: '/dashboard/talento',
+      ctaLabel: 'Ver en 9-Box',
+    });
+  }
+
+  // Alerta: Encuestas con baja participación próximas a cerrar
+  if (lowSurveys.length > 0) {
+    const overdue = lowSurveys.filter((s) => s.daysLeft != null && s.daysLeft < 0).length;
+    const sample = lowSurveys[0];
+    commandAlerts.push({
+      id: 'low-survey-participation',
+      severity: overdue > 0 ? 'critical' : 'warning',
+      icon: '📊',
+      title: `${lowSurveys.length} encuesta${lowSurveys.length !== 1 ? 's' : ''} con baja participación`,
+      description: sample
+        ? `${sample.title} — ${sample.participationPct}% de participación${sample.daysLeft != null ? (sample.daysLeft >= 0 ? `, vence en ${sample.daysLeft} día${sample.daysLeft !== 1 ? 's' : ''}` : `, vencida hace ${Math.abs(sample.daysLeft)} día${Math.abs(sample.daysLeft) !== 1 ? 's' : ''}`) : ''}.`
+        : 'Recordatorio a los participantes puede mejorar el resultado.',
+      count: lowSurveys.length,
+      href: '/dashboard/encuestas-clima',
+      ctaLabel: 'Revisar',
+    });
+  }
+
+  // Alerta: PDIs activos sin acciones cargadas
+  if (emptyPlans && emptyPlans.count > 0) {
+    commandAlerts.push({
+      id: 'empty-pdis',
+      severity: 'warning',
+      icon: '📚',
+      title: `${emptyPlans.count} PDI${emptyPlans.count !== 1 ? 's' : ''} activo${emptyPlans.count !== 1 ? 's' : ''} sin acciones`,
+      description: 'Planes de desarrollo creados pero sin acciones cargadas. Sin acciones no avanzan; el manager debería completarlos o cerrarlos.',
+      count: emptyPlans.count,
+      href: '/dashboard/desarrollo',
+      ctaLabel: 'Revisar',
+    });
   }
 
   const kpiStyle: React.CSSProperties = { padding: '0.85rem', textAlign: 'center' };
@@ -2054,6 +2135,15 @@ function AdminDashboard() {
         subtitle="Resumen de lo que requiere tu atención hoy"
       />
 
+      {/* Widget de fallos operativos — agrega cron.failed, notification.failed,
+          access.denied, system.error de los últimos 7 días desde audit_logs.
+          Cada contador es clickeable y abre la auditoría con filtro aplicado. */}
+      <OperationalFailuresWidget
+        counts={failureSummary?.counts}
+        daysBack={failureSummary?.daysBack ?? 7}
+        lastFailureAt={failureSummary?.lastFailureAt}
+        loading={loadingFailures}
+      />
 
       {/* Two column grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>

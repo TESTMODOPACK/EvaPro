@@ -169,6 +169,15 @@ export class DevelopmentController {
 
   // ─── Plans (requires PDI feature) ──────────────────────────────────────
 
+  /** Planes activos sin acciones cargadas. Para alerta del CommandCenter. */
+  @Get('plans/without-actions')
+  @UseGuards(FeatureGuard)
+  @Feature(PlanFeature.PDI)
+  @Roles('super_admin', 'tenant_admin')
+  findPlansWithoutActions(@Request() req: any) {
+    return this.developmentService.getActivePlansWithoutActions(req.user.tenantId);
+  }
+
   @Get('plans')
   @UseGuards(FeatureGuard)
   @Feature(PlanFeature.PDI)

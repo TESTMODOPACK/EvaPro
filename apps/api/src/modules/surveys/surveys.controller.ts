@@ -46,6 +46,14 @@ export class SurveysController {
     return this.surveysService.getTrends(req.user.tenantId);
   }
 
+  /** Encuestas activas próximas a cerrar con baja participación.
+   *  Para el widget CommandCenter del admin dashboard. */
+  @Get('low-participation')
+  @Roles('super_admin', 'tenant_admin')
+  getLowParticipation(@Request() req: any) {
+    return this.surveysService.getLowParticipationActiveSurveys(req.user.tenantId);
+  }
+
   /** Get survey detail — employees need access to respond */
   @Get(':id')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')

@@ -16,6 +16,16 @@ const EVIDENCE_ACTIONS = [
   'pdi.status_changed',
 ];
 
+/** Acciones consideradas "fallos operativos" — ver Stage B audit (commit
+ *  d67406a). Se muestran agregadas en el dashboard del tenant_admin. */
+export const FAILURE_ACTIONS = [
+  'cron.failed',
+  'notification.failed',
+  'access.denied',
+  'system.error',
+] as const;
+export type FailureAction = (typeof FAILURE_ACTIONS)[number];
+
 @Injectable()
 export class AuditService {
   constructor(
@@ -248,6 +258,65 @@ export class AuditService {
 
     const totalPages = Math.ceil(total / limit);
     return { data: result, total, page, limit, totalPages, hasNext: page < totalPages };
+  }
+
+  /**
+   * Resumen de fallos operativos para el widget del admin dashboard.
+   *
+   * Devuelve el conteo por tipo de fallo en los últimos N días (default 7).
+   * Mantiene la misma regla de scoping multi-tenant que findByTenant
+   * (excluye logs de super_admin) y filtra solo las acciones de fallo.
+   *
+   * Útil para detectar rápidamente:
+   *   · cron.failed         → un job programado se cayó
+   *   · notification.failed → emails que no se enviaron (Resend down, etc.)
+   *   · access.denied       → tenta tivas de acceso bloqueadas (auditoría seguridad)
+   *   · system.error        → 5xx no manejados (Sentry también los recibe)
+   */
+  async getFailureSummary(
+    tenantId: string,
+    daysBack: number = 7,
+  ): Promise<{
+    daysBack: number;
+    periodStart: Date;
+    counts: Record<FailureAction, number>;
+    total: number;
+    lastFailureAt: Date | null;
+  }> {
+    const periodStart = new Date(Date.now() - daysBack * 86_400_000);
+
+    const rows = await this.auditRepo
+      .createQueryBuilder('log')
+      .leftJoin('users', 'u', 'u.id = log.user_id AND u.tenant_id = log.tenant_id')
+      .select('log.action', 'action')
+      .addSelect('COUNT(*)', 'count')
+      .addSelect('MAX(log.created_at)', 'lastAt')
+      .where('log.tenant_id = :tenantId', { tenantId })
+      .andWhere('log.action IN (:...actions)', { actions: [...FAILURE_ACTIONS] })
+      .andWhere('log.created_at >= :periodStart', { periodStart })
+      // Misma regla defensiva que findByTenant: nunca incluir actores
+      // super_admin (sus errores son system-level, no del tenant).
+      .andWhere(
+        "(log.user_id IS NULL OR EXISTS (SELECT 1 FROM users usr WHERE usr.id = log.user_id AND usr.role <> 'super_admin'))",
+      )
+      .groupBy('log.action')
+      .getRawMany();
+
+    const counts: Record<FailureAction, number> = {
+      'cron.failed': 0,
+      'notification.failed': 0,
+      'access.denied': 0,
+      'system.error': 0,
+    };
+    let lastFailureAt: Date | null = null;
+    for (const r of rows) {
+      const action = r.action as FailureAction;
+      if (action in counts) counts[action] = parseInt(r.count, 10);
+      const at = r.lastAt ? new Date(r.lastAt) : null;
+      if (at && (!lastFailureAt || at > lastFailureAt)) lastFailureAt = at;
+    }
+    const total = Object.values(counts).reduce((s, v) => s + v, 0);
+    return { daysBack, periodStart, counts, total, lastFailureAt };
   }
 
   async exportTenantCsv(tenantId: string, filters: { dateFrom?: string; dateTo?: string; action?: string; entityType?: string; evidenceOnly?: boolean; searchText?: string } = {}): Promise<string> {
