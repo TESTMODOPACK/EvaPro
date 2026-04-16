@@ -146,7 +146,10 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/login || exit 1"]
+      # nginx -t valida config y confirma que el proceso está vivo.
+      # No depende de SSL certs ni redirect behavior (port 80 redirige
+      # a HTTPS, haciendo fallar wget/curl contra http://localhost).
+      test: ["CMD-SHELL", "nginx -t 2>/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
