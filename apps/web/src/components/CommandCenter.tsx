@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 
 export type AlertSeverity = 'critical' | 'warning' | 'info' | 'success';
 
@@ -35,13 +36,16 @@ const SEVERITY_STYLES: Record<AlertSeverity, { color: string; bg: string; border
  */
 export default function CommandCenter({
   alerts,
-  title = 'Centro de comando',
+  title,
   subtitle,
 }: {
   alerts: CommandAlert[];
   title?: string;
   subtitle?: string;
 }) {
+  const { t } = useTranslation();
+  const displayTitle = title ?? t('components.commandCenter.title');
+  const displaySubtitle = subtitle ?? t('components.commandCenter.subtitle');
   const sorted = [...alerts].sort((a, b) => {
     const order: AlertSeverity[] = ['critical', 'warning', 'info', 'success'];
     return order.indexOf(a.severity) - order.indexOf(b.severity);
@@ -64,10 +68,10 @@ export default function CommandCenter({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-            🎯 {title}
+            🎯 {displayTitle}
           </h2>
-          {subtitle && (
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{subtitle}</p>
+          {displaySubtitle && (
+            <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{displaySubtitle}</p>
           )}
         </div>
         {alerts.length > 0 && (
@@ -90,7 +94,7 @@ export default function CommandCenter({
             textAlign: 'center',
           }}
         >
-          ✅ No hay acciones urgentes pendientes. Tu organización está al día.
+          ✅ {t('components.commandCenter.allClear')}
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.5rem' }}>
