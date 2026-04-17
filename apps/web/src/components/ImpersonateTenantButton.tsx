@@ -75,7 +75,7 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'rgba(0,0,0,0.45)',
             zIndex: 10000,
             display: 'flex',
             alignItems: 'center',
@@ -83,43 +83,47 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
             padding: '1rem',
           }}
         >
+          {/* Mismo patrón que el modal de Encargados: card 580px, overflowY
+              auto contra clipping en viewports bajos, X en la esquina,
+              header h3 + subtítulo con el nombre del tenant en strong. */}
           <div
             onClick={(e) => e.stopPropagation()}
             className="card animate-fade-up"
             role="dialog"
             aria-modal="true"
-            style={{ padding: '1.75rem', maxWidth: 520, width: '100%', position: 'relative' }}
+            style={{
+              padding: '1.75rem',
+              width: '580px',
+              maxWidth: '100%',
+              maxHeight: '88vh',
+              overflowY: 'auto',
+              position: 'relative',
+            }}
           >
-            {/* Botón X para cerrar en la esquina superior derecha */}
+            {/* X para cerrar en la esquina superior derecha */}
             <button
               type="button"
               aria-label="Cerrar"
               onClick={() => !loading && setOpen(false)}
               disabled={loading}
               style={{
-                position: 'absolute',
-                top: '0.75rem',
-                right: '0.75rem',
+                position: 'absolute', top: '0.75rem', right: '0.75rem',
                 width: 28, height: 28,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'transparent',
-                border: 'none',
-                borderRadius: '50%',
+                background: 'transparent', border: 'none', borderRadius: '50%',
                 cursor: loading ? 'not-allowed' : 'pointer',
-                color: 'var(--text-muted)',
-                fontSize: '1.1rem',
-                lineHeight: 1,
+                color: 'var(--text-muted)', fontSize: '1.2rem', lineHeight: 1,
               }}
-              onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-              onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseOver={(e) => { if (!loading) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
               ×
             </button>
 
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '0.25rem', paddingRight: '2rem' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.25rem', paddingRight: '2rem' }}>
               Iniciar impersonación
-            </h2>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
               Sesión de soporte sobre <strong style={{ color: 'var(--text-primary)' }}>{tenantName}</strong>
             </p>
 
@@ -144,43 +148,30 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
               </span>
             </div>
 
-            <label
-              style={{
-                display: 'block',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                color: 'var(--text-secondary)',
-                marginBottom: '0.4rem',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}
-            >
+            <div style={{ height: 1, background: 'var(--border)', marginBottom: '1.1rem' }} />
+
+            <div style={{
+              fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)',
+              textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem',
+            }}>
               Motivo (ticket, email del cliente, etc.)
-            </label>
+            </div>
             <textarea
               className="input"
-              rows={3}
+              rows={4}
               placeholder="ej. Ticket #123 — cliente reporta que no puede lanzar su ciclo."
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={loading}
               autoFocus
               maxLength={500}
-              style={{ resize: 'vertical', minHeight: 80 }}
+              style={{ resize: 'vertical', minHeight: 96 }}
             />
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: 4 }}>
               {reason.length}/500 (mínimo 5)
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setOpen(false)}
-                disabled={loading}
-              >
-                Cancelar
-              </button>
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="btn-primary"
@@ -188,6 +179,15 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
                 disabled={loading || reason.trim().length < 5}
               >
                 {loading ? 'Iniciando…' : 'Iniciar impersonación'}
+              </button>
+              <div style={{ flex: 1 }} />
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setOpen(false)}
+                disabled={loading}
+              >
+                Cancelar
               </button>
             </div>
           </div>
