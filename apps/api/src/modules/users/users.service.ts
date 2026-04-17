@@ -1440,11 +1440,19 @@ export class UsersService {
 
   // ─── Invitations ─────────────────────────────────────────────────────────
 
-  async resendInvite(tenantId: string, userId: string): Promise<{ ok: boolean }> {
-    const user = await this.userRepository.findOne({
-      where: { id: userId, tenantId },
-      relations: ['tenant'],
-    });
+  /**
+   * Reenvía invitación al user objetivo.
+   *
+   * @param userId  id del user a quien se le reenvía
+   * @param tenantId  si se provee, restringe la búsqueda a ese tenant
+   *                  (tenant_admin solo puede operar sobre su propio tenant).
+   *                  Si es `undefined`, busca por id sin filtrar por tenant
+   *                  (super_admin puede reenviar cross-tenant).
+   */
+  async resendInvite(userId: string, tenantId?: string): Promise<{ ok: boolean }> {
+    const where: any = { id: userId };
+    if (tenantId) where.tenantId = tenantId;
+    const user = await this.userRepository.findOne({ where, relations: ['tenant'] });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     const tempPassword = Math.random().toString(36).slice(2, 10) + 'A1!';
@@ -1457,7 +1465,9 @@ export class UsersService {
       { firstName: user.firstName, tempPassword },
     ).catch(() => {});
 
-    await this.auditService.log(tenantId, userId, 'user.invite_resent', 'user', userId);
+    // Logueamos sobre el tenant del user (no del caller) para que el audit
+    // log quede scoped al tenant correcto cuando super_admin opera cross-tenant.
+    await this.auditService.log(user.tenantId, userId, 'user.invite_resent', 'user', userId);
     return { ok: true };
   }
 
