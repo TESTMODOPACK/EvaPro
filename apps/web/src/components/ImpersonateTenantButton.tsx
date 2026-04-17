@@ -69,37 +69,14 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
         Impersonar
       </button>
 
+      {/* CLON EXACTO del modal de Encargados (tenants/page.tsx:912+):
+          - overlay zIndex 9999, sin padding (no 1rem), onClick solo en backdrop
+          - card sin animate-fade-up, sin role dialog, sin maxWidth:100%
+          - estructura idéntica: card 580px + padding 1.75rem + X + h3 + p */}
       {open && (
-        <div
-          onClick={() => !loading && setOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.45)',
-            zIndex: 10000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
-          }}
-        >
-          {/* Mismo patrón que el modal de Encargados: card 580px, overflowY
-              auto contra clipping en viewports bajos, X en la esquina,
-              header h3 + subtítulo con el nombre del tenant en strong. */}
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="card animate-fade-up"
-            role="dialog"
-            aria-modal="true"
-            style={{
-              padding: '1.75rem',
-              width: '580px',
-              maxWidth: '100%',
-              maxHeight: '88vh',
-              overflowY: 'auto',
-              position: 'relative',
-            }}
-          >
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
+          onClick={(e) => { if (e.target === e.currentTarget && !loading) setOpen(false); }}>
+          <div className="card" style={{ padding: '1.75rem', width: '580px', maxHeight: '88vh', overflowY: 'auto', position: 'relative' }}>
             {/* X para cerrar en la esquina superior derecha */}
             <button
               type="button"
