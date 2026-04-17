@@ -1,7 +1,8 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
+import { DataSource, Repository, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
+import { runWithCronLock } from '../../common/utils/cron-lock';
 import { NotificationsService } from './notifications.service';
 import { EmailService } from './email.service';
 import { NotificationType } from './entities/notification.entity';
@@ -67,6 +68,9 @@ export class RemindersService {
     private readonly subscriptionRepo: Repository<Subscription>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    // Requerido por runWithCronLock (pg advisory locks para dedup en
+    // deployment multi-replica).
+    private readonly dataSource: DataSource,
   ) {}
 
   /** Registra un fallo de cron en el audit log (fire-and-forget). */
@@ -1032,22 +1036,29 @@ export class RemindersService {
 
   @Cron('0 1 * * *')
   async expireTrialSubscriptions() {
-    this.logger.log('[Cron] Checking expired trial subscriptions...');
-    try {
-      const count = await this.subscriptionsService.expireTrials();
-      if (count > 0) {
-        this.logger.log(`[Cron] Expired ${count} trial subscriptions`);
+    // P0: distributed lock — en multi-replica, 2x expiración concurrente
+    // podrían disparar 2x bumps de status y 2x emails "tu trial venció".
+    await runWithCronLock('expireTrialSubscriptions', this.dataSource, this.logger, async () => {
+      this.logger.log('[Cron] Checking expired trial subscriptions...');
+      try {
+        const count = await this.subscriptionsService.expireTrials();
+        if (count > 0) {
+          this.logger.log(`[Cron] Expired ${count} trial subscriptions`);
+        }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in expireTrialSubscriptions: ${error}`);
+        await this.recordCronFailure('expireTrialSubscriptions', error);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in expireTrialSubscriptions: ${error}`);
-      await this.recordCronFailure('expireTrialSubscriptions', error);
-    }
+    });
   }
 
   // ─── 13. Alertas de vencimiento de suscripción (diario 8:30am) ────
 
   @Cron('30 8 * * *')
   async alertSubscriptionExpiring() {
+    // P0: distributed lock — evita mandar el email "tu suscripción vence
+    // en N días" 2x al admin en replicas concurrentes.
+    await runWithCronLock('alertSubscriptionExpiring', this.dataSource, this.logger, async () => {
     this.logger.log('[Cron] Checking expiring subscriptions...');
     try {
       const now = new Date();
@@ -1116,12 +1127,17 @@ export class RemindersService {
       this.logger.error(`[Cron] Error in alertSubscriptionExpiring: ${error}`);
       await this.recordCronFailure('alertSubscriptionExpiring', error);
     }
+    });
   }
 
   // ─── 14. Auto-cierre de ciclos vencidos + generación de informe (diario 0:00) ──
 
   @Cron('0 0 * * *')
   async autoCloseCycles() {
+    // P0: distributed lock — el cron cambia status de ciclos y manda
+    // emails. 2 replicas podrían cerrar el mismo ciclo 2x + duplicar
+    // emails a todos los participantes.
+    await runWithCronLock('autoCloseCycles', this.dataSource, this.logger, async () => {
     this.logger.log('[Cron] Checking for cycles to auto-close...');
     try {
       const today = new Date();
@@ -1201,22 +1217,27 @@ export class RemindersService {
       this.logger.error(`[Cron] Error in autoCloseCycles: ${error}`);
       await this.recordCronFailure('autoCloseCycles', error);
     }
+    });
   }
 
   // ─── 15. Auto-renovación de suscripciones (diario 2am) ───────────────
 
   @Cron('0 2 * * *')
   async processAutoRenewals() {
-    this.logger.log('[Cron] Processing auto-renewals...');
-    try {
-      const result = await this.subscriptionsService.processAutoRenewals();
-      if (result.renewed > 0 || result.suspended > 0) {
-        this.logger.log(`[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended`);
+    // P0: distributed lock — auto-renovación CREA INVOICES. 2 replicas =
+    // facturas duplicadas al cliente. Este es el bug financiero más caro.
+    await runWithCronLock('processAutoRenewals', this.dataSource, this.logger, async () => {
+      this.logger.log('[Cron] Processing auto-renewals...');
+      try {
+        const result = await this.subscriptionsService.processAutoRenewals();
+        if (result.renewed > 0 || result.suspended > 0) {
+          this.logger.log(`[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended`);
+        }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
+        await this.recordCronFailure('processAutoRenewals', error);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
-      await this.recordCronFailure('processAutoRenewals', error);
-    }
+    });
   }
 
   // ─── 16. Resumen semanal para managers (lunes 8am) ────────────────
@@ -1378,6 +1399,11 @@ export class RemindersService {
   // core to the account's security posture.
   @Cron('0 10 * * *')
   async warnPasswordExpiry() {
+    // P0: distributed lock — la dedup por `__password_expiry_sent` mitiga
+    // en ejecuciones seriales, pero 2 replicas concurrentes podrían leer
+    // el array antes de que la otra escriba → 2 emails. El lock garantiza
+    // serial execution por tick.
+    await runWithCronLock('warnPasswordExpiry', this.dataSource, this.logger, async () => {
     this.logger.log('[Cron] Scanning for password expiry warnings...');
     try {
       // Fetch active tenants that have password expiry enabled. The JSONB
@@ -1445,6 +1471,7 @@ export class RemindersService {
       this.logger.error(`[Cron] Error in warnPasswordExpiry: ${error}`);
       await this.recordCronFailure('warnPasswordExpiry', error);
     }
+    });
   }
 
   // ─── B2 Dunning (daily 9am) ──────────────────────────────────────────
@@ -1456,18 +1483,22 @@ export class RemindersService {
   // abort the batch.
   @Cron('0 9 * * *')
   async escalateOverdueInvoices() {
-    this.logger.log('[Cron] Processing dunning for overdue invoices...');
-    try {
-      const result = await this.invoicesService.processDunning();
-      if (result.advanced > 0) {
-        this.logger.log(
-          `[Cron] Dunning advanced ${result.advanced} invoices (scanned ${result.processed})`,
-        );
+    // P0: distributed lock — dunning duplicado en multi-replica causaría
+    // 2x emails "tu factura está vencida" al cliente + 2x avance de stage.
+    await runWithCronLock('escalateOverdueInvoices', this.dataSource, this.logger, async () => {
+      this.logger.log('[Cron] Processing dunning for overdue invoices...');
+      try {
+        const result = await this.invoicesService.processDunning();
+        if (result.advanced > 0) {
+          this.logger.log(
+            `[Cron] Dunning advanced ${result.advanced} invoices (scanned ${result.processed})`,
+          );
+        }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in escalateOverdueInvoices: ${error}`);
+        await this.recordCronFailure('escalateOverdueInvoices', error);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in escalateOverdueInvoices: ${error}`);
-      await this.recordCronFailure('escalateOverdueInvoices', error);
-    }
+    });
   }
 
   // ─── B3 Trial nurture (daily 9:15am) ─────────────────────────────────
@@ -1484,6 +1515,10 @@ export class RemindersService {
   // We still guard here in case creation missed it (legacy tenants).
   @Cron('15 9 * * *')
   async sendTrialNurtureEmails() {
+    // P0: distributed lock — los emails nurture dependen de un array
+    // JSONB (`nurtureEmailsSent`) para dedup. 2 replicas leyendo antes
+    // de que la otra escriba mandarían el mismo stage 2x al cliente.
+    await runWithCronLock('sendTrialNurtureEmails', this.dataSource, this.logger, async () => {
     this.logger.log('[Cron] Sending trial nurture emails...');
     try {
       const cutoffExpired = new Date();
@@ -1615,5 +1650,25 @@ export class RemindersService {
       this.logger.error(`[Cron] Error in sendTrialNurtureEmails: ${error}`);
       await this.recordCronFailure('sendTrialNurtureEmails', error);
     }
+    });
   }
+
+  // ─── TODO: aplicar runWithCronLock a los 13 crons restantes ─────────
+  //
+  // Los siguientes crons todavía NO tienen distributed lock. Son los de
+  // "recordatorios" (no mutan estado financiero, no mandan emails a
+  // clientes finales por default):
+  //
+  //   - remindPendingEvaluations, remindCycleClosing, remindObjectivesAtRisk,
+  //     remindOverduePDIActions, remindUpcomingCheckins, remindOverdueCheckins,
+  //     escalateMissedCheckins, escalateOverdueEvaluations,
+  //     escalateUnresponsiveEvaluators, escalateOverduePDIActions,
+  //     escalateCriticalObjectives, remindPDIRequired, sendWeeklyManagerSummary,
+  //     sendWeeklyEmployeeSummary, cleanupOldNotifications
+  //
+  // Plus `remindIncompleteSurveys` en surveys.service.ts.
+  //
+  // Si alguno se vuelve crítico (empieza a mandar emails a clientes finales,
+  // o muta estado financiero), wrap con runWithCronLock siguiendo el mismo
+  // patrón que los de arriba.
 }

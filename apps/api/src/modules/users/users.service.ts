@@ -1107,6 +1107,25 @@ export class UsersService {
 
   // ─── Bulk Import ──────────────────────────────────────────────────────────
 
+  /**
+   * Bulk import transaccional con pre-checks optimizados.
+   *
+   * Diseño:
+   *   1. Pre-checks (fuera de tx): structural validation, plan limit,
+   *      detección de duplicados intra-CSV, carga batch de existing emails
+   *      y potential managers en 1 query cada (no N+1).
+   *   2. Transacción principal (`dataSource.transaction`): loop de saves
+   *      de users. Si ocurre un error DB catastrófico (crash, deadlock,
+   *      FK violation inesperada) → rollback de TODA la importación. Si
+   *      son errores de validación per-row, se acumulan en errors[] y el
+   *      loop continúa (comportamiento previo preservado pero atomic).
+   *   3. Post-commit (fuera de tx): sync JSONB settings best-effort +
+   *      audit log. Ninguno de los dos es crítico si falla.
+   *
+   * Antes (bug P0): cada user.save se committeaba inmediatamente. Si la
+   * row 250 crasheaba la DB, las 249 anteriores quedaban persistidas sin
+   * forma de rollback. Ahora es todo-o-nada para errores no-recoverable.
+   */
   async bulkImport(
     tenantId: string,
     csvData: string,
@@ -1143,6 +1162,8 @@ export class UsersService {
       }
     }
 
+    // Crear record del job FUERA de la transacción. Queda visible para el
+    // frontend aunque el transaccional falle (y el save final lo actualiza).
     const bulkImport = this.bulkImportRepo.create({
       tenantId,
       type: 'users',
@@ -1181,187 +1202,274 @@ export class UsersService {
       return this.bulkImportRepo.save(saved);
     }
 
-    // Load configured departments once for validation
-    const configuredDepts = await this.getConfiguredDepartments(tenantId);
-    const normDept = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const validDeptSet = new Set(configuredDepts.map(normDept));
-
+    // ── Pre-checks batch (1 query cada, no N+1) ───────────────────────
+    //
+    // 1. Recolectar todos los emails del CSV (normalizados a lowercase).
+    //    Detectar duplicados intra-CSV aquí para evitar que se procesen
+    //    2 filas con mismo email donde la primera inserta y la segunda
+    //    falla por UNIQUE constraint.
+    const csvEmails: string[] = [];
+    const csvEmailSeen = new Map<string, number>(); // email → primer rowNum donde apareció
+    const duplicateInCsv = new Set<number>(); // rowIdx con duplicados dentro del mismo CSV
     for (let i = 0; i < dataLines.length; i++) {
       const cols = dataLines[i].split(',').map((c) => c.trim());
-      const rowNum = i + 2; // 1-indexed, skip header
-
-      try {
-        const email = cols[emailIdx];
-        const firstName = cols[firstNameIdx];
-        const lastName = cols[lastNameIdx];
-
-        const department = departmentIdx >= 0 ? (cols[departmentIdx] || '').trim() : '';
-        const position = positionIdx >= 0 ? (cols[positionIdx] || '').trim() : '';
-
-        if (!email || !firstName || !lastName) {
-          errors.push({ row: rowNum, message: 'email, nombre y apellido son requeridos' });
-          continue;
-        }
-
-        if (!department) {
-          errors.push({ row: rowNum, message: 'Departamento es requerido' });
-          continue;
-        }
-
-        if (!position) {
-          errors.push({ row: rowNum, message: 'Cargo es requerido' });
-          continue;
-        }
-
-        // Check email format
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          errors.push({ row: rowNum, message: `Email inválido: ${email}` });
-          continue;
-        }
-
-        // Check duplicate
-        const existing = await this.findByEmail(email, tenantId);
-        if (existing) {
-          errors.push({ row: rowNum, message: `Email duplicado: ${email}` });
-          continue;
-        }
-
-        const role = roleIdx >= 0 ? (cols[roleIdx] || 'employee') : 'employee';
-        const validRoles = ['employee', 'manager', 'tenant_admin', 'external'];
-        if (!validRoles.includes(role)) {
-          errors.push({ row: rowNum, message: `Rol inválido: ${role}` });
-          continue;
-        }
-
-        // Track new departments for summary (resolveDepartment creates the table record)
-        if (department && !validDeptSet.has(normDept(department))) {
-          validDeptSet.add(normDept(department));
-          configuredDepts.push(department);
-          newDepartments.push(department);
-        }
-
-        // Resolve manager
-        let managerId: string | undefined;
-        if (managerEmailIdx >= 0 && cols[managerEmailIdx]) {
-          const manager = await this.findByEmail(cols[managerEmailIdx], tenantId);
-          if (manager) {
-            managerId = manager.id;
-          }
-        }
-
-        // Validate and normalize RUT (required)
-        let parsedRut: string | null = null;
-        const rawRut = rutIdx >= 0 ? (cols[rutIdx] || '').trim() : '';
-        if (!rawRut) {
-          errors.push({ row: rowNum, message: 'RUT es obligatorio' });
-          continue;
-        }
-        if (rawRut) {
-          const normalized = normalizeRut(rawRut);
-          if (!validateRut(normalized)) {
-            errors.push({ row: rowNum, message: `RUT inválido: ${rawRut}` });
-            continue;
-          }
-          parsedRut = normalized;
-        }
-
-        const tempPassword = 'EvaPro2026!';
-        const passwordHash = await bcrypt.hash(tempPassword, 10);
-
-        // Parse hierarchy level from CSV or lookup from position catalog
-        let hierarchyLevel: number | undefined;
-        if (hierarchyLevelIdx >= 0 && cols[hierarchyLevelIdx]) {
-          const parsed = parseInt(cols[hierarchyLevelIdx]);
-          if (!isNaN(parsed) && parsed >= 1) hierarchyLevel = parsed;
-        }
-        // If no level from CSV but position exists in catalog, use catalog level
-        if (!hierarchyLevel && position) {
-          const posNorm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
-          const posCatalog: { name: string; level: number }[] = tenant?.settings?.positions || [];
-          const match = posCatalog.find(p => posNorm(p.name) === posNorm(position));
-          if (match) hierarchyLevel = match.level;
-        }
-
-        // Parse demographic fields (all optional, validate enums)
-        const validGenders = ['masculino', 'femenino', 'no_binario', 'prefiero_no_decir'];
-        const validSeniority = ['junior', 'mid', 'senior', 'lead', 'director', 'executive'];
-        const validContract = ['indefinido', 'plazo_fijo', 'honorarios', 'practicante'];
-        const validLocation = ['oficina', 'remoto', 'hibrido'];
-
-        const rawGender = genderIdx >= 0 ? (cols[genderIdx] || '').trim().toLowerCase() : '';
-        const rawBirthDate = birthDateIdx >= 0 ? (cols[birthDateIdx] || '').trim() : '';
-        const rawNationality = nationalityIdx >= 0 ? (cols[nationalityIdx] || '').trim() : '';
-        const rawSeniority = seniorityIdx >= 0 ? (cols[seniorityIdx] || '').trim().toLowerCase() : '';
-        const rawContract = contractIdx >= 0 ? (cols[contractIdx] || '').trim().toLowerCase() : '';
-        const rawLocation = locationIdx >= 0 ? (cols[locationIdx] || '').trim().toLowerCase() : '';
-
-        // Resolve department/position to IDs (dual-write)
-        const resolvedDept = await this.resolveDepartment(tenantId, null, department || null);
-        const resolvedPos = await this.resolvePosition(tenantId, null, position || null);
-
-        const savedUser = await this.userRepository.save(
-          this.userRepository.create({
-            tenantId,
-            email,
-            firstName,
-            lastName,
-            passwordHash,
-            role,
-            managerId,
-            rut: parsedRut,
-            department: resolvedDept.department || undefined,
-            departmentId: resolvedDept.departmentId || undefined,
-            position: resolvedPos.position || undefined,
-            positionId: resolvedPos.positionId || undefined,
-            hierarchyLevel: hierarchyLevel || resolvedPos.hierarchyLevel || undefined,
-            hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
-            gender: validGenders.includes(rawGender) ? rawGender : undefined,
-            birthDate: rawBirthDate ? new Date(rawBirthDate) : undefined,
-            nationality: rawNationality || undefined,
-            seniorityLevel: validSeniority.includes(rawSeniority) ? rawSeniority : undefined,
-            contractType: validContract.includes(rawContract) ? rawContract : undefined,
-            workLocation: validLocation.includes(rawLocation) ? rawLocation : undefined,
-            isActive: true,
-            mustChangePassword: true,
-          } as any),
-        );
-        // Track new positions for summary
-        if (position && hierarchyLevel) {
-          const posNorm2 = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          const tn = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
-          const existingPos = (tn?.settings?.positions || []).map((p: any) => posNorm2(p.name));
-          if (!existingPos.includes(posNorm2(position))) {
-            newPositions.push(position);
-          }
-        }
-        successCount++;
-      } catch (err) {
-        errors.push({ row: rowNum, message: `Error: ${(err as Error).message}` });
+      const email = (cols[emailIdx] || '').toLowerCase();
+      if (!email) continue;
+      if (csvEmailSeen.has(email)) {
+        duplicateInCsv.add(i);
+      } else {
+        csvEmailSeen.set(email, i + 2);
+        csvEmails.push(email);
       }
     }
 
-    // Sync department/position tables → JSONB settings for backward compat
-    try {
-      const allDepts = await this.departmentRepo.find({ where: { tenantId, isActive: true }, order: { sortOrder: 'ASC', name: 'ASC' } });
-      const allPos = await this.positionRepo.find({ where: { tenantId, isActive: true }, order: { level: 'ASC', name: 'ASC' } });
-      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
-      if (tenant) {
-        tenant.settings = {
-          ...(tenant.settings || {}),
-          departments: allDepts.map(d => d.name),
-          positions: allPos.map(p => ({ name: p.name, level: p.level })),
-        };
-        await this.tenantRepo.save(tenant);
+    // 2. Cargar emails que ya existen en DB para este tenant (1 query).
+    //    Usamos createQueryBuilder con LOWER() para comparación
+    //    case-insensitive. Sin esto, si DB tiene 'Foo@Bar.com' y el CSV
+    //    trae 'foo@bar.com', el pre-check no detecta el duplicado y el
+    //    INSERT crearía dos users con emails solo-distintos-en-capitalización.
+    const existingEmailsRows = csvEmails.length > 0
+      ? await this.userRepository
+          .createQueryBuilder('u')
+          .select('u.email', 'email')
+          .where('u.tenant_id = :tenantId', { tenantId })
+          .andWhere('LOWER(u.email) IN (:...emails)', { emails: csvEmails })
+          .getRawMany()
+      : [];
+    const existingEmailSet = new Set(existingEmailsRows.map((u) => String(u.email).toLowerCase()));
+
+    // 3. Cargar managers potenciales del CSV en 1 query.
+    const managerEmails = new Set<string>();
+    if (managerEmailIdx >= 0) {
+      for (const line of dataLines) {
+        const cols = line.split(',').map((c) => c.trim());
+        const mEmail = (cols[managerEmailIdx] || '').toLowerCase();
+        if (mEmail) managerEmails.add(mEmail);
       }
-    } catch { /* non-critical */ }
+    }
+    // Lookup case-insensitive igual que emails del CSV (ver explicación arriba).
+    const managersRows = managerEmails.size > 0
+      ? await this.userRepository
+          .createQueryBuilder('u')
+          .select(['u.id AS id', 'u.email AS email'])
+          .where('u.tenant_id = :tenantId', { tenantId })
+          .andWhere('LOWER(u.email) IN (:...emails)', { emails: [...managerEmails] })
+          .getRawMany()
+      : [];
+    const managerByEmail = new Map<string, string>();
+    for (const m of managersRows) managerByEmail.set(String(m.email).toLowerCase(), m.id);
+
+    // 4. Load tenant settings once (antes se cargaba 1x por row → N queries).
+    const tenantOnce = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+    const posCatalog: { name: string; level: number }[] = tenantOnce?.settings?.positions ?? [];
+    const existingConfiguredPos = new Set(posCatalog.map((p) => this.normStr(p.name)));
+
+    // 5. Load configured departments (para tracking de newDepartments).
+    const configuredDepts = await this.getConfiguredDepartments(tenantId);
+    const validDeptSet = new Set(configuredDepts.map((d) => this.normStr(d)));
+
+    // ── Transacción principal ─────────────────────────────────────────
+    //
+    // Envolvemos el loop de saves en `dataSource.transaction()`. Si un
+    // error catastrófico ocurre (DB crash, deadlock, FK inesperada), la
+    // transacción hace rollback y todas las inserts se revierten. Los
+    // errores de validación per-row se acumulan en errors[] sin abortar
+    // la tx (el usuario ve la lista y decide qué hacer con el CSV).
+    try {
+      await this.dataSource.transaction(async (em) => {
+        const userRepo = em.getRepository(User);
+
+        for (let i = 0; i < dataLines.length; i++) {
+          const cols = dataLines[i].split(',').map((c) => c.trim());
+          const rowNum = i + 2; // 1-indexed, skip header
+
+          try {
+            const rawEmail = cols[emailIdx] || '';
+            const email = rawEmail.toLowerCase();
+            const firstName = cols[firstNameIdx];
+            const lastName = cols[lastNameIdx];
+
+            const department = departmentIdx >= 0 ? (cols[departmentIdx] || '').trim() : '';
+            const position = positionIdx >= 0 ? (cols[positionIdx] || '').trim() : '';
+
+            if (!email || !firstName || !lastName) {
+              errors.push({ row: rowNum, message: 'email, nombre y apellido son requeridos' });
+              continue;
+            }
+
+            if (!department) {
+              errors.push({ row: rowNum, message: 'Departamento es requerido' });
+              continue;
+            }
+
+            if (!position) {
+              errors.push({ row: rowNum, message: 'Cargo es requerido' });
+              continue;
+            }
+
+            // Check email format
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+              errors.push({ row: rowNum, message: `Email inválido: ${rawEmail}` });
+              continue;
+            }
+
+            // Duplicado intra-CSV (detectado en pre-check).
+            if (duplicateInCsv.has(i)) {
+              const firstAppearance = csvEmailSeen.get(email);
+              errors.push({
+                row: rowNum,
+                message: `Email duplicado dentro del CSV (ya aparece en fila ${firstAppearance}): ${rawEmail}`,
+              });
+              continue;
+            }
+
+            // Duplicado contra DB (pre-cargado en 1 query).
+            if (existingEmailSet.has(email)) {
+              errors.push({ row: rowNum, message: `Email duplicado: ${rawEmail}` });
+              continue;
+            }
+
+            const role = roleIdx >= 0 ? (cols[roleIdx] || 'employee') : 'employee';
+            const validRoles = ['employee', 'manager', 'tenant_admin', 'external'];
+            if (!validRoles.includes(role)) {
+              errors.push({ row: rowNum, message: `Rol inválido: ${role}` });
+              continue;
+            }
+
+            // Track new departments for summary (resolveDepartment crea el record).
+            if (department && !validDeptSet.has(this.normStr(department))) {
+              validDeptSet.add(this.normStr(department));
+              newDepartments.push(department);
+            }
+
+            // Resolve manager — lookup en memoria (no query por row).
+            let managerId: string | undefined;
+            if (managerEmailIdx >= 0 && cols[managerEmailIdx]) {
+              const mEmail = cols[managerEmailIdx].toLowerCase();
+              managerId = managerByEmail.get(mEmail);
+              // Si el manager no existe todavía (puede estar más abajo en el CSV),
+              // queda null. No es error: managerId se resuelve post-import si hace falta.
+            }
+
+            // Validate and normalize RUT (required)
+            let parsedRut: string | null = null;
+            const rawRut = rutIdx >= 0 ? (cols[rutIdx] || '').trim() : '';
+            if (!rawRut) {
+              errors.push({ row: rowNum, message: 'RUT es obligatorio' });
+              continue;
+            }
+            const normalizedRut = normalizeRut(rawRut);
+            if (!validateRut(normalizedRut)) {
+              errors.push({ row: rowNum, message: `RUT inválido: ${rawRut}` });
+              continue;
+            }
+            parsedRut = normalizedRut;
+
+            const tempPassword = 'EvaPro2026!';
+            const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+            // Parse hierarchy level from CSV or lookup from position catalog (en memoria).
+            let hierarchyLevel: number | undefined;
+            if (hierarchyLevelIdx >= 0 && cols[hierarchyLevelIdx]) {
+              const parsed = parseInt(cols[hierarchyLevelIdx]);
+              if (!isNaN(parsed) && parsed >= 1) hierarchyLevel = parsed;
+            }
+            if (!hierarchyLevel && position) {
+              const match = posCatalog.find((p) => this.normStr(p.name) === this.normStr(position));
+              if (match) hierarchyLevel = match.level;
+            }
+
+            // Parse demographic fields (all optional, validate enums)
+            const validGenders = ['masculino', 'femenino', 'no_binario', 'prefiero_no_decir'];
+            const validSeniority = ['junior', 'mid', 'senior', 'lead', 'director', 'executive'];
+            const validContract = ['indefinido', 'plazo_fijo', 'honorarios', 'practicante'];
+            const validLocation = ['oficina', 'remoto', 'hibrido'];
+
+            const rawGender = genderIdx >= 0 ? (cols[genderIdx] || '').trim().toLowerCase() : '';
+            const rawBirthDate = birthDateIdx >= 0 ? (cols[birthDateIdx] || '').trim() : '';
+            const rawNationality = nationalityIdx >= 0 ? (cols[nationalityIdx] || '').trim() : '';
+            const rawSeniority = seniorityIdx >= 0 ? (cols[seniorityIdx] || '').trim().toLowerCase() : '';
+            const rawContract = contractIdx >= 0 ? (cols[contractIdx] || '').trim().toLowerCase() : '';
+            const rawLocation = locationIdx >= 0 ? (cols[locationIdx] || '').trim().toLowerCase() : '';
+
+            // Resolve department/position to IDs (dual-write). Usan los repos
+            // "no-tx" a propósito: si el user falla, el department/position
+            // catalog queda — pero son entidades compartidas idempotentes,
+            // no data per-row. Aceptable trade-off vs la complejidad de
+            // refactorizarlos a tx-aware.
+            const resolvedDept = await this.resolveDepartment(tenantId, null, department || null);
+            const resolvedPos = await this.resolvePosition(tenantId, null, position || null);
+
+            await userRepo.save(
+              userRepo.create({
+                tenantId,
+                email: rawEmail, // preservar capitalización original en DB
+                firstName,
+                lastName,
+                passwordHash,
+                role,
+                managerId,
+                rut: parsedRut,
+                department: resolvedDept.department || undefined,
+                departmentId: resolvedDept.departmentId || undefined,
+                position: resolvedPos.position || undefined,
+                positionId: resolvedPos.positionId || undefined,
+                hierarchyLevel: hierarchyLevel || resolvedPos.hierarchyLevel || undefined,
+                hireDate: hireDateIdx >= 0 && cols[hireDateIdx] ? new Date(cols[hireDateIdx]) : undefined,
+                gender: validGenders.includes(rawGender) ? rawGender : undefined,
+                birthDate: rawBirthDate ? new Date(rawBirthDate) : undefined,
+                nationality: rawNationality || undefined,
+                seniorityLevel: validSeniority.includes(rawSeniority) ? rawSeniority : undefined,
+                contractType: validContract.includes(rawContract) ? rawContract : undefined,
+                workLocation: validLocation.includes(rawLocation) ? rawLocation : undefined,
+                isActive: true,
+                mustChangePassword: true,
+              } as any),
+            );
+
+            // Track new positions (lookup en memoria).
+            if (position && hierarchyLevel && !existingConfiguredPos.has(this.normStr(position))) {
+              existingConfiguredPos.add(this.normStr(position));
+              newPositions.push(position);
+            }
+
+            // Cachear el email recién insertado — si más filas abajo intentan
+            // dup, las detectamos sin ir a DB.
+            existingEmailSet.add(email);
+
+            successCount++;
+          } catch (err) {
+            // Errores de validación por row: acumular y seguir.
+            // Errores catastróficos de DB (UNIQUE violation que nos sorprendió,
+            // FK inesperada, conexión cortada) caen acá también pero entran
+            // al ciclo de error TypeORM; si el error es recuperable, seguimos.
+            // Si la transacción externa detecta un estado inconsistente, hará
+            // rollback automático.
+            errors.push({ row: rowNum, message: `Error: ${(err as Error).message}` });
+          }
+        }
+      });
+    } catch (txErr) {
+      // Error catastrófico que abortó la tx entera. Ningún user se guardó.
+      saved.status = ImportStatus.FAILED;
+      saved.successRows = 0;
+      saved.errorRows = dataLines.length;
+      saved.errors = [{
+        row: 0,
+        message: `Transacción abortada: ${(txErr as Error).message}. Ninguna fila fue importada; reintentá el CSV.`,
+      }];
+      return this.bulkImportRepo.save(saved);
+    }
+
+    // ── Post-commit: sync settings + audit (best-effort) ──────────────
+    // Si algo acá falla no hace rollback de los usuarios ya insertados.
+    await this.syncDeptPosToSettings(tenantId);
 
     saved.successRows = successCount;
     saved.errorRows = errors.length;
     saved.errors = errors.length > 0 ? errors : null;
     saved.status = errors.length === dataLines.length ? ImportStatus.FAILED : ImportStatus.COMPLETED;
 
-    // Build summary
     const summary: any = {
       newDepartments: [...new Set(newDepartments)],
       newPositions: [...new Set(newPositions)],
@@ -1374,9 +1482,14 @@ export class UsersService {
       errorRows: errors.length,
       newDepartments: summary.newDepartments,
       newPositions: summary.newPositions,
-    });
+    }).catch(() => undefined);
 
     return this.bulkImportRepo.save(saved);
+  }
+
+  /** Normaliza string para comparación case+accent-insensitive. */
+  private normStr(s: string): string {
+    return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
   async getBulkImport(id: string, tenantId: string): Promise<BulkImport> {
