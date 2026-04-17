@@ -62,6 +62,7 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
           padding: '0.25rem 0.6rem',
           fontSize: '0.78rem',
           color: 'var(--accent)',
+          whiteSpace: 'nowrap',
         }}
         title="Inicia una sesión de soporte actuando como el admin de este tenant (auditado, 1h máx.)"
       >
