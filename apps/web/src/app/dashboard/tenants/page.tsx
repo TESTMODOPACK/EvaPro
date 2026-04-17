@@ -7,6 +7,7 @@ import { formatCLP } from '@/lib/format';
 import { formatRutInput, validateRut, formatRut } from '@/lib/rut';
 import TenantHealthBadge from '@/components/TenantHealthBadge';
 import ImpersonateTenantButton from '@/components/ImpersonateTenantButton';
+import PasswordInput from '@/components/PasswordInput';
 
 function Spinner() {
   return (
@@ -913,10 +914,32 @@ export default function TenantsPage() {
       {adminModalTenant && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setAdminModalTenant(null); }}>
-          <div className="card" style={{ padding: '1.75rem', width: '560px', maxHeight: '85vh', overflowY: 'auto', position: 'relative' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1.25rem' }}>
-              Encargados del sistema — {adminModalTenant.name}
+          <div className="card" style={{ padding: '1.75rem', width: '580px', maxHeight: '88vh', overflowY: 'auto', position: 'relative' }}>
+            {/* X para cerrar en la esquina superior derecha */}
+            <button
+              type="button"
+              aria-label="Cerrar"
+              onClick={() => setAdminModalTenant(null)}
+              disabled={adminSaving}
+              style={{
+                position: 'absolute', top: '0.75rem', right: '0.75rem',
+                width: 28, height: 28,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'transparent', border: 'none', borderRadius: '50%',
+                cursor: adminSaving ? 'not-allowed' : 'pointer',
+                color: 'var(--text-muted)', fontSize: '1.2rem', lineHeight: 1,
+              }}
+              onMouseOver={(e) => { if (!adminSaving) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              ×
+            </button>
+            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.25rem', paddingRight: '2rem' }}>
+              Encargados del sistema
             </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{adminModalTenant.name}</strong>
+            </p>
 
             {adminError && (
               <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.82rem', marginBottom: '1rem' }}>
@@ -980,8 +1003,14 @@ export default function TenantsPage() {
               )}
             </div>
 
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-              {adminData ? 'Editar encargado' : 'Nuevo encargado'}
+            <div style={{ height: 1, background: 'var(--border)', marginBottom: '1.1rem' }} />
+            <div style={{
+              fontSize: '0.75rem', fontWeight: 700, color: adminData ? 'var(--accent)' : 'var(--text-secondary)',
+              textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.6rem',
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+            }}>
+              <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: adminData ? 'var(--accent)' : 'var(--text-muted)' }} />
+              {adminData ? `Editando: ${adminData.email}` : 'Nuevo encargado'}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
@@ -1011,9 +1040,13 @@ export default function TenantsPage() {
               </div>
               <div>
                 <label style={labelStyle}>{adminData ? 'Nueva contrase\u00f1a' : 'Contrase\u00f1a *'}</label>
-                <input style={inputStyle} type="text" value={adminForm.password}
-                  onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
-                  placeholder={adminData ? 'Sin cambios' : '********'} />
+                <PasswordInput
+                  value={adminForm.password}
+                  onChange={(v) => setAdminForm({ ...adminForm, password: v })}
+                  placeholder={adminData ? 'Sin cambios' : '********'}
+                  autoComplete="new-password"
+                  style={inputStyle}
+                />
                 {adminData && <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Dejar vac&iacute;o para no cambiar</p>}
               </div>
               <div>
