@@ -30,6 +30,7 @@ import { CreateMovementDto } from './dto/create-movement.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UploadsService } from '../uploads/uploads.service';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('users')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -133,31 +134,53 @@ export class UsersController {
     return this.usersService.create(tenantId, dto);
   }
 
-  /** POST /users/bulk-import */
+  /** POST /users/bulk-import
+   *
+   * Importa usuarios masivos desde CSV. super_admin debe especificar tenantId
+   * explícitamente (body o ?tenantId=) para evitar fugas cross-tenant.
+   * tenant_admin siempre importa a su propio tenant (ignora body.tenantId).
+   */
   @Post('bulk-import')
   @Roles('super_admin', 'tenant_admin')
-  bulkImport(@Request() req: any, @Body('csv') csv: string) {
-    return this.usersService.bulkImport(req.user.tenantId, csv, req.user.userId);
+  bulkImport(
+    @Request() req: any,
+    @Body() body: { csv: string; tenantId?: string },
+    @Query('tenantId') qTenantId?: string,
+  ) {
+    const tenantId = resolveOperatingTenantId(req.user, body?.tenantId ?? qTenantId);
+    return this.usersService.bulkImport(tenantId, body?.csv, req.user.userId);
   }
 
-  /** POST /users/invite-bulk — invite multiple users by email list */
+  /** POST /users/invite-bulk — invite multiple users by email list
+   *
+   * super_admin debe pasar tenantId en el body para indicar a qué tenant
+   * pertenecen los invitados. tenant_admin invita a su propio tenant.
+   */
   @Post('invite-bulk')
   @Roles('super_admin', 'tenant_admin')
   inviteBulk(
     @Request() req: any,
-    @Body() body: { emails: string[]; role?: string },
+    @Body() body: { emails: string[]; role?: string; tenantId?: string },
   ) {
-    return this.usersService.inviteBulk(req.user.tenantId, body.emails ?? [], body.role);
+    const tenantId = resolveOperatingTenantId(req.user, body?.tenantId);
+    return this.usersService.inviteBulk(tenantId, body?.emails ?? [], body?.role);
   }
 
-  /** POST /users/:id/resend-invite */
+  /** POST /users/:id/resend-invite
+   *
+   * Reenvía invitación (con nueva password temporal) al user objetivo.
+   * super_admin puede reenviar a usuarios de cualquier tenant (pasa
+   * tenantId=undefined al service, que busca por id sin filtrar por tenant).
+   * tenant_admin solo puede reenviar a usuarios de su tenant.
+   */
   @Post(':id/resend-invite')
   @Roles('super_admin', 'tenant_admin')
   resendInvite(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.usersService.resendInvite(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.resendInvite(id, tenantId);
   }
 
   /** GET /users/bulk-imports/:id */
@@ -169,14 +192,20 @@ export class UsersController {
     return this.usersService.getBulkImport(id, req.user.tenantId);
   }
 
-  /** POST /users/normalize-departments — Fix user departments that don't match configured list */
+  /** POST /users/normalize-departments — Fix user departments that don't match configured list
+   *
+   * super_admin debe pasar ?tenantId= para indicar sobre qué tenant operar.
+   * tenant_admin normaliza departamentos de su propio tenant.
+   */
   @Post('normalize-departments')
   @Roles('super_admin', 'tenant_admin')
   normalizeDepartments(
     @Request() req: any,
     @Query('apply') apply?: string,
+    @Query('tenantId') qTenantId?: string,
   ) {
-    return this.usersService.normalizeDepartments(req.user.tenantId, apply === 'true');
+    const tenantId = resolveOperatingTenantId(req.user, qTenantId);
+    return this.usersService.normalizeDepartments(tenantId, apply === 'true');
   }
 
   /** POST /users/fill-fake-ruts — Generate valid fake RUTs for users without one */
