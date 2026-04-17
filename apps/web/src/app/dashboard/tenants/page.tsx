@@ -877,12 +877,15 @@ export default function TenantsPage() {
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                         {new Date(t.createdAt).toLocaleDateString('es-ES')}
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }} onClick={() => startEdit(t)}>
+                      <td style={{ minWidth: 320 }}>
+                        {/* flexWrap permite que los botones caigan a una segunda
+                            fila cuando la columna es angosta, en vez de truncar
+                            el texto de "Impersonar"/"Desactivar". */}
+                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', rowGap: '0.35rem' }}>
+                          <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', whiteSpace: 'nowrap' }} onClick={() => startEdit(t)}>
                             Editar
                           </button>
-                          <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: 'var(--accent)' }}
+                          <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: 'var(--accent)', whiteSpace: 'nowrap' }}
                             onClick={() => openAdminModal(t)}
                             title="Gestionar encargados del sistema">
                             Encargados
@@ -893,7 +896,7 @@ export default function TenantsPage() {
                           {t.isActive && (
                             <button
                               className="btn-ghost"
-                              style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: 'var(--danger)' }}
+                              style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: 'var(--danger)', whiteSpace: 'nowrap' }}
                               onClick={() => handleDeactivate(t.id, t.name)}
                             >
                               Desactivar
