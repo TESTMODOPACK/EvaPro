@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { useAuthStore, decodeJwtPayload } from "@/store/auth.store";
 import { formatRutInput, validateRut, normalizeRut } from "@/lib/rut";
 import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
+import PasswordInput from "@/components/PasswordInput";
 import { usePasswordPolicyForEmail } from "@/hooks/usePasswordPolicy";
 
 export default function LoginPage() {
@@ -25,6 +26,11 @@ export default function LoginPage() {
   const [showForceChange, setShowForceChange] = useState(false);
   const [show2FA, setShow2FA] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  // Campo editable "Contraseña actual" dentro del modal de cambio forzado.
+  // Arranca prellenado con el password que el usuario usó para loguearse
+  // (state `password`), pero puede corregirse si fuera distinto — p. ej.
+  // si la entidad que creó al usuario puso una temporal diferente.
+  const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [changePwdLoading, setChangePwdLoading] = useState(false);
@@ -143,6 +149,7 @@ export default function LoginPage() {
       if (!user) {
         // mustChangePassword path: no token issued, we still want the modal.
         if (mustChangePassword) {
+          setCurrentPwd(password);
           setShowForceChange(true);
           setLoading(false);
           return;
@@ -151,6 +158,10 @@ export default function LoginPage() {
       }
 
       if (mustChangePassword) {
+        // Prefill el campo "Contraseña actual" con lo que el usuario acaba
+        // de tipear para loguearse — es lo esperado en la UX normal, pero
+        // queda editable por si la temporal era distinta.
+        setCurrentPwd(password);
         setShowForceChange(true);
         setLoading(false);
         return;
@@ -507,25 +518,54 @@ export default function LoginPage() {
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div>
+                <label style={labelStyle}>Contraseña actual</label>
+                <PasswordInput
+                  className="input"
+                  value={currentPwd}
+                  onChange={setCurrentPwd}
+                  placeholder="La que usaste para entrar"
+                  autoComplete="current-password"
+                  disabled={changePwdLoading}
+                />
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  Verificamos que coincida con la que tienes guardada antes de cambiarla.
+                </p>
+              </div>
+              <div>
                 <label style={labelStyle}>Nueva contraseña</label>
-                <input className="input" type="password" placeholder="Escribe tu nueva contraseña" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
+                <PasswordInput
+                  className="input"
+                  value={newPwd}
+                  onChange={setNewPwd}
+                  placeholder="Escribe tu nueva contraseña"
+                  autoComplete="new-password"
+                  disabled={changePwdLoading}
+                />
                 {/* Authoritative rules come from the backend per-tenant
                     policy; client-side rendering is purely informative. */}
                 <PasswordStrengthMeter password={newPwd} policy={forceChangePolicy} />
               </div>
               <div>
                 <label style={labelStyle}>Confirmar contraseña</label>
-                <input className="input" type="password" placeholder="Repetir nueva contraseña" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} />
+                <PasswordInput
+                  className="input"
+                  value={confirmPwd}
+                  onChange={setConfirmPwd}
+                  placeholder="Repetir nueva contraseña"
+                  autoComplete="new-password"
+                  disabled={changePwdLoading}
+                />
                 {newPwd && confirmPwd && newPwd !== confirmPwd && (
                   <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
                     Las contraseñas no coinciden.
                   </div>
                 )}
               </div>
-              <button className="btn-primary" disabled={changePwdLoading || !newPwd || !confirmPwd}
+              <button className="btn-primary" disabled={changePwdLoading || !currentPwd || !newPwd || !confirmPwd}
                 style={{ padding: "0.7rem 1.5rem", opacity: changePwdLoading ? 0.6 : 1 }}
                 onClick={async () => {
                   setChangePwdMsg('');
+                  if (!currentPwd) { setChangePwdMsg('Ingresa tu contraseña actual'); return; }
                   if (newPwd !== confirmPwd) { setChangePwdMsg('Las contraseñas no coinciden'); return; }
                   // Policy validation on the server is authoritative — we
                   // just catch obvious empty-input UX issues here.
@@ -536,7 +576,7 @@ export default function LoginPage() {
                   setChangePwdLoading(true);
                   try {
                     const tenantIdentifier = tenantRut.trim() ? normalizeRut(tenantRut.trim()) : undefined;
-                    await api.auth.changePassword(email.trim(), password, newPwd, tenantIdentifier);
+                    await api.auth.changePassword(email.trim(), currentPwd, newPwd, tenantIdentifier);
                     setChangePwdMsg('Contraseña actualizada exitosamente. Iniciando sesión...');
                     // Now login again with new password
                     setTimeout(async () => {

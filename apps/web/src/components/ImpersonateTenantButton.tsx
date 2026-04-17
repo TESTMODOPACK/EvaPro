@@ -55,17 +55,13 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
     <>
       <button
         type="button"
+        className="btn-ghost"
         onClick={() => setOpen(true)}
         disabled={disabled}
         style={{
-          padding: '6px 12px',
-          borderRadius: 'var(--radius-sm)',
-          background: 'transparent',
-          color: 'var(--accent)',
-          border: '1px solid var(--accent)',
+          padding: '0.25rem 0.6rem',
           fontSize: '0.78rem',
-          fontWeight: 600,
-          cursor: disabled ? 'not-allowed' : 'pointer',
+          color: 'var(--accent)',
         }}
         title="Inicia una sesión de soporte actuando como el admin de este tenant (auditado, 1h máx.)"
       >
@@ -91,29 +87,67 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
             className="card animate-fade-up"
             role="dialog"
             aria-modal="true"
-            style={{ padding: '1.75rem', maxWidth: 500, width: '100%' }}
+            style={{ padding: '1.75rem', maxWidth: 520, width: '100%', position: 'relative' }}
           >
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+            {/* Botón X para cerrar en la esquina superior derecha */}
+            <button
+              type="button"
+              aria-label="Cerrar"
+              onClick={() => !loading && setOpen(false)}
+              disabled={loading}
+              style={{
+                position: 'absolute',
+                top: '0.75rem',
+                right: '0.75rem',
+                width: 28, height: 28,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '50%',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                color: 'var(--text-muted)',
+                fontSize: '1.1rem',
+                lineHeight: 1,
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+              onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              ×
+            </button>
+
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '0.25rem', paddingRight: '2rem' }}>
               Iniciar impersonación
             </h2>
-            <p
-              style={{
-                fontSize: '0.85rem',
-                color: 'var(--text-secondary)',
-                marginBottom: '1rem',
-                lineHeight: 1.5,
-              }}
-            >
-              Accederás al dashboard de <strong>{tenantName}</strong> actuando como su
-              tenant_admin. Duración máxima: <strong>1 hora</strong>. Toda acción queda
-              registrada en el audit log con tu identidad.
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              Sesión de soporte sobre <strong style={{ color: 'var(--text-primary)' }}>{tenantName}</strong>
             </p>
+
+            {/* Banner informativo con tono de advertencia suave */}
+            <div style={{
+              padding: '0.75rem 0.9rem',
+              background: 'rgba(245,158,11,0.08)',
+              border: '1px solid rgba(245,158,11,0.25)',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.8rem',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.5,
+              marginBottom: '1.1rem',
+              display: 'flex',
+              gap: '0.6rem',
+              alignItems: 'flex-start',
+            }}>
+              <span style={{ fontSize: '1rem', lineHeight: 1, flexShrink: 0 }}>⚠</span>
+              <span>
+                Vas a actuar como su <strong>tenant_admin</strong> por máximo <strong>1 hora</strong>.
+                Todas tus acciones quedan registradas en el audit log con tu identidad de super_admin.
+              </span>
+            </div>
 
             <label
               style={{
                 display: 'block',
-                fontSize: '0.78rem',
-                fontWeight: 600,
+                fontSize: '0.72rem',
+                fontWeight: 700,
                 color: 'var(--text-secondary)',
                 marginBottom: '0.4rem',
                 textTransform: 'uppercase',
@@ -131,9 +165,10 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
               disabled={loading}
               autoFocus
               maxLength={500}
+              style={{ resize: 'vertical', minHeight: 80 }}
             />
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: 4 }}>
-              {reason.length}/500
+              {reason.length}/500 (mínimo 5)
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
@@ -142,25 +177,14 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
                 className="btn-ghost"
                 onClick={() => setOpen(false)}
                 disabled={loading}
-                style={{ fontSize: '0.875rem' }}
               >
                 Cancelar
               </button>
               <button
                 type="button"
+                className="btn-primary"
                 onClick={submit}
                 disabled={loading || reason.trim().length < 5}
-                style={{
-                  padding: '0.5rem 1.25rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  fontWeight: 700,
-                  fontSize: '0.875rem',
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  opacity: loading ? 0.6 : 1,
-                }}
               >
                 {loading ? 'Iniciando…' : 'Iniciar impersonación'}
               </button>
