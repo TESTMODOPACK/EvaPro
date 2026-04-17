@@ -402,9 +402,34 @@ export class AuthService {
     return { disabled: true };
   }
 
-  /** Verify 2FA code during login */
-  verify2FACode(user: any, code: string): boolean {
+  /**
+   * Verify 2FA code during login.
+   *
+   * Invariantes de seguridad (todos deben cumplirse para que retorne true):
+   *
+   *   1. `user` proviene de `validateUser()`, que ya lo resolvió por
+   *      email+password+tenantSlug — garantiza que no hay cross-tenant
+   *      manipulation aquí. Si este método se llama desde otro contexto
+   *      en el futuro, el caller es responsable de scopear `user`.
+   *
+   *   2. `user.twoFactorEnabled === true` — requerido explícitamente
+   *      (antes se confiaba en que el caller chequeó). Un user con
+   *      `twoFactorSecret` seteado pero no-enabled (hizo setup pero no
+   *      completó enable) NO puede autenticar con TOTP.
+   *
+   *   3. `user.twoFactorSecret` presente y `code` válido contra ese
+   *      secret. El TOTP lib usa una ventana de tolerancia de ±30s para
+   *      clock drift, lo cual no es configurable desde aquí.
+   *
+   *   4. `code` es un string de 6 dígitos. Cualquier otra cosa (null,
+   *      undefined, string vacío, formato raro) retorna false sin
+   *      leakear info sobre por qué falló.
+   */
+  verify2FACode(user: { twoFactorEnabled?: boolean; twoFactorSecret?: string | null } | null, code: string): boolean {
+    if (!user) return false;
+    if (user.twoFactorEnabled !== true) return false;
     if (!user.twoFactorSecret) return false;
+    if (!code || typeof code !== 'string' || !/^\d{6}$/.test(code)) return false;
     return verifyTotp(user.twoFactorSecret, code);
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Inject, forwardRef, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Between, LessThanOrEqual, MoreThanOrEqual, ILike } from 'typeorm';
+import { DataSource, Repository, In, Between, LessThanOrEqual, MoreThanOrEqual, ILike } from 'typeorm';
 import { Invoice, InvoiceStatus, InvoiceType } from './entities/invoice.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
 import { Subscription, SubscriptionStatus } from './entities/subscription.entity';
@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
+import { runWithBlockingAdvisoryLock } from '../../common/utils/cron-lock';
 
 @Injectable()
 export class InvoicesService {
@@ -34,6 +35,9 @@ export class InvoicesService {
     private readonly emailService: EmailService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    // Requerido por runWithBlockingAdvisoryLock en generateInvoice — evita
+    // que 2 requests paralelos asignen el mismo invoice_number.
+    private readonly dataSource: DataSource,
   ) {}
 
   // ─── Invoice Number Generation ──────────────────────────────────────
@@ -95,75 +99,90 @@ export class InvoicesService {
         throw new BadRequestException(`Ya existe una factura para este período (${existing.invoiceNumber})`);
       }
 
-      const invoiceNumber = await this.getNextInvoiceNumber();
-      const dueDate = new Date(periodStart);
-      dueDate.setDate(dueDate.getDate() + 15); // 15 days to pay
+      // P0: critical section (get next number + save invoice) envuelta
+      // en advisory lock para prevenir race condition. Antes: dos
+      // requests paralelos podían leer el mismo MAX, generar el mismo
+      // invoice_number, y el UNIQUE constraint rompía al segundo
+      // mid-checkout (dejando al cliente con error 409). Ahora serializamos
+      // por-`EVA-YYYY` global (compartido entre tenants porque la numeración
+      // es única global; si cambia a per-tenant, scopear el lock).
+      const savedWithNumber = await runWithBlockingAdvisoryLock(
+        `invoice-numbering:${new Date().getFullYear()}`,
+        this.dataSource,
+        async () => {
+          const invoiceNumber = await this.getNextInvoiceNumber();
+          const dueDate = new Date(periodStart);
+          dueDate.setDate(dueDate.getDate() + 15); // 15 days to pay
 
-      // Build lines
-      const lines: Partial<InvoiceLine>[] = [];
+          // Build lines
+          const lines: Partial<InvoiceLine>[] = [];
 
-      // Line 1: Plan base
-      const planPrice = this.getPlanPriceForPeriod(sub);
-      if (planPrice > 0) {
-        const periodLabel = { monthly: 'Mensual', quarterly: 'Trimestral', semiannual: 'Semestral', annual: 'Anual' }[billingPeriod] || 'Mensual';
-        lines.push({
-          concept: `Plan ${sub.plan?.name || 'Base'} — ${periodLabel}`,
-          quantity: 1,
-          unitPrice: planPrice,
-          total: planPrice,
-        });
-      }
+          // Line 1: Plan base
+          const planPrice = this.getPlanPriceForPeriod(sub);
+          if (planPrice > 0) {
+            const periodLabel = { monthly: 'Mensual', quarterly: 'Trimestral', semiannual: 'Semestral', annual: 'Anual' }[billingPeriod] || 'Mensual';
+            lines.push({
+              concept: `Plan ${sub.plan?.name || 'Base'} — ${periodLabel}`,
+              quantity: 1,
+              unitPrice: planPrice,
+              total: planPrice,
+            });
+          }
 
-      // Line 2: AI Addon (if any)
-      if (sub.aiAddonCalls > 0 && Number(sub.aiAddonPrice) > 0) {
-        const months = this.getMonthsInPeriod(billingPeriod);
-        const addonTotal = Number(sub.aiAddonPrice) * months;
-        lines.push({
-          concept: `Add-on IA +${sub.aiAddonCalls} análisis/mes`,
-          quantity: months,
-          unitPrice: Number(sub.aiAddonPrice),
-          total: addonTotal,
-        });
-      }
+          // Line 2: AI Addon (if any)
+          if (sub.aiAddonCalls > 0 && Number(sub.aiAddonPrice) > 0) {
+            const months = this.getMonthsInPeriod(billingPeriod);
+            const addonTotal = Number(sub.aiAddonPrice) * months;
+            lines.push({
+              concept: `Add-on IA +${sub.aiAddonCalls} análisis/mes`,
+              quantity: months,
+              unitPrice: Number(sub.aiAddonPrice),
+              total: addonTotal,
+            });
+          }
 
-      if (lines.length === 0) {
-        throw new BadRequestException(`El plan asignado no tiene precio configurado (monthlyPrice=${sub.plan?.monthlyPrice || 0}). Configure el precio antes de facturar o asigne un plan pagado.`);
-      }
+          if (lines.length === 0) {
+            throw new BadRequestException(`El plan asignado no tiene precio configurado (monthlyPrice=${sub.plan?.monthlyPrice || 0}). Configure el precio antes de facturar o asigne un plan pagado.`);
+          }
 
-      const subtotal = lines.reduce((s, l) => s + (l.total || 0), 0);
-      const taxRate = 19; // IVA Chile
-      const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
-      const total = Math.round((subtotal + taxAmount) * 100) / 100;
+          const subtotal = lines.reduce((s, l) => s + (l.total || 0), 0);
+          const taxRate = 19; // IVA Chile
+          const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+          const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
-      const invoice = this.invoiceRepo.create({
-        tenantId: sub.tenantId,
-        subscriptionId: sub.id,
-        invoiceNumber,
-        type: InvoiceType.INVOICE,
-        status: InvoiceStatus.DRAFT,
-        issueDate: now,
-        dueDate,
-        periodStart: periodStart,
-        periodEnd,
-        subtotal,
-        taxRate,
-        taxAmount,
-        total,
-        currency: sub.plan?.currency || 'UF',
-      });
+          const invoice = this.invoiceRepo.create({
+            tenantId: sub.tenantId,
+            subscriptionId: sub.id,
+            invoiceNumber,
+            type: InvoiceType.INVOICE,
+            status: InvoiceStatus.DRAFT,
+            issueDate: now,
+            dueDate,
+            periodStart: periodStart,
+            periodEnd,
+            subtotal,
+            taxRate,
+            taxAmount,
+            total,
+            currency: sub.plan?.currency || 'UF',
+          });
 
-      const saved = await this.invoiceRepo.save(invoice);
+          const saved = await this.invoiceRepo.save(invoice);
 
-      // Save lines
-      for (const line of lines) {
-        await this.lineRepo.save(this.lineRepo.create({ ...line, invoiceId: saved.id }));
-      }
+          // Save lines (dentro del lock también — consistencia atómica)
+          for (const line of lines) {
+            await this.lineRepo.save(this.lineRepo.create({ ...line, invoiceId: saved.id }));
+          }
 
-      if (userId) {
-        await this.auditService.log(sub.tenantId, userId, 'invoice.generated', 'invoice', saved.id, { invoiceNumber, total }).catch(() => {});
-      }
+          if (userId) {
+            await this.auditService.log(sub.tenantId, userId, 'invoice.generated', 'invoice', saved.id, { invoiceNumber, total }).catch(() => {});
+          }
 
-      return this.invoiceRepo.findOne({ where: { id: saved.id }, relations: ['tenant', 'lines'] }) as Promise<Invoice>;
+          return saved;
+        },
+      );
+
+      return this.invoiceRepo.findOne({ where: { id: savedWithNumber.id }, relations: ['tenant', 'lines'] }) as Promise<Invoice>;
     } catch (err: any) {
       // Rethrow business exceptions as-is so the 400 message reaches the client.
       if (err instanceof NotFoundException || err instanceof BadRequestException) throw err;

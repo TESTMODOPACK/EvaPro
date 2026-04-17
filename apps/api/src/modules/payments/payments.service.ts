@@ -184,10 +184,23 @@ export class PaymentsService {
   }
 
   /**
-   * Apply a webhook event to a session. This is the path that actually
-   * finalizes a payment — marks the session, marks the invoice, sends email.
-   * Must be idempotent: repeating the same event produces no additional
-   * side-effects.
+   * Apply a webhook event to a session. Este es el path que finaliza un
+   * pago — marca sesión + factura + envía email. Diseñado para ser
+   * idempotente y seguro frente a:
+   *
+   *  - **Retries de Stripe/MP** (3x con backoff por event). La atomic
+   *    UPDATE "WHERE status='pending'" garantiza que solo un webhook
+   *    gana la transición; los demás ven affected=0 y retornan handled
+   *    sin side-effects (sin email duplicado, sin markAsPaid 2x).
+   *
+   *  - **markAsPaid falla después del lock**. Si después de adquirir el
+   *    lock (session → paid) el `invoicesService.markAsPaid()` lanza,
+   *    revertimos la session a 'pending' y re-throw. Así el próximo
+   *    webhook puede reintentar sin quedar con estado inconsistente
+   *    (session=paid + invoice=SENT + dunning cobrando).
+   *
+   *  - **Out-of-order events** (payment.failed llega antes que el
+   *    payment.succeeded real): terminal states rechazan downgrades.
    */
   async applyWebhookEvent(
     provider: PaymentProviderName,
@@ -207,11 +220,11 @@ export class PaymentsService {
       return { handled: false, reason: 'session not found' };
     }
 
-    // Idempotency: if already terminal with the matching outcome, noop.
+    // Idempotency fast-path: si ya es terminal con el outcome matching, noop.
     if (session.status === 'paid' && event.type === 'payment.succeeded') return { handled: true };
     if (session.status === 'failed' && event.type === 'payment.failed') return { handled: true };
     if (session.status === 'cancelled' && event.type === 'payment.cancelled') return { handled: true };
-    // Don't allow a terminal status to be downgraded (e.g. paid → failed).
+    // No permitir downgrades desde terminal (e.g. paid → failed).
     if (['paid', 'failed', 'cancelled', 'expired'].includes(session.status)) {
       this.logger.warn(
         `Webhook tried to transition session ${session.id} from ${session.status} to ${event.type}; ignoring`,
@@ -220,86 +233,155 @@ export class PaymentsService {
     }
 
     if (event.type === 'payment.succeeded') {
-      // Mark the invoice as paid — InvoicesService handles reactivation of
-      // a suspended subscription internally.
-      try {
-        await this.invoicesService.markAsPaid(session.invoiceId, {
-          paymentMethod: provider,
-          transactionRef: event.externalId,
-          notes: `Pago procesado vía ${provider}`,
-        }, session.initiatedBy);
-      } catch (err: any) {
-        this.logger.error(`markAsPaid failed for invoice ${session.invoiceId}: ${err?.message}`);
-        // We still flag the session as paid because the money IS in the
-        // provider account; the operator can reconcile manually from audit.
-      }
-      session.status = 'paid';
-      session.completedAt = new Date();
-      await this.sessionRepo.save(session);
+      return this.applyPaymentSucceeded(provider, event, session);
+    }
 
-      // Fetch recipients for the receipt email.
+    if (event.type === 'payment.failed' || event.type === 'payment.cancelled') {
+      return this.applyPaymentFailedOrCancelled(provider, event, session);
+    }
+
+    return { handled: false, reason: 'unhandled event type' };
+  }
+
+  /**
+   * Handler de payment.succeeded. Acquire atomic del lock via UPDATE WHERE
+   * status='pending'; si no lo gana, asume que otro webhook concurrente lo
+   * tomó (idempotente). Si gana, ejecuta markAsPaid — si falla, revierte.
+   */
+  private async applyPaymentSucceeded(
+    provider: PaymentProviderName,
+    event: WebhookEvent,
+    session: PaymentSession,
+  ): Promise<{ handled: boolean; reason?: string }> {
+    // Atomic acquire: solo gana el webhook que logra pasar pending → paid.
+    // Los concurrentes ven affected=0 y salen sin side-effects.
+    const result = await this.sessionRepo
+      .createQueryBuilder()
+      .update(PaymentSession)
+      .set({ status: 'paid', completedAt: new Date() })
+      .where('id = :id AND status = :prev', { id: session.id, prev: 'pending' })
+      .execute();
+
+    if ((result.affected ?? 0) === 0) {
+      // Otro webhook ya ganó la transición. Noop idempotente — el trabajo
+      // (markAsPaid, email) lo hace el ganador.
+      this.logger.log(
+        `Session ${session.id} already transitioned to paid by a concurrent webhook; skipping duplicate side-effects`,
+      );
+      return { handled: true, reason: 'concurrent webhook already processed' };
+    }
+
+    // Somos el ganador del lock. Ejecutar markAsPaid.
+    try {
+      await this.invoicesService.markAsPaid(session.invoiceId, {
+        paymentMethod: provider,
+        transactionRef: event.externalId!,
+        notes: `Pago procesado vía ${provider}`,
+      }, session.initiatedBy);
+    } catch (err: any) {
+      // CRÍTICO: markAsPaid falló DESPUÉS de que ya marcamos la session
+      // como paid. Si dejamos así, dunning seguirá enviando emails al
+      // cliente que ya pagó (invoice queda en SENT). Revertimos el lock
+      // para que el próximo retry del webhook pueda tomarlo de nuevo.
+      await this.sessionRepo
+        .createQueryBuilder()
+        .update(PaymentSession)
+        .set({ status: 'pending', completedAt: null })
+        .where('id = :id', { id: session.id })
+        .execute();
+      this.logger.error(
+        `markAsPaid failed for invoice ${session.invoiceId} after session lock; reverted session ${session.id} to pending for retry. Err: ${err?.message}`,
+      );
+      // Re-throw para que el webhook controller devuelva 5xx y el provider
+      // reintente. Stripe/MP hacen hasta 3 reintentos con backoff — darle la
+      // oportunidad a la DB/servicio de recuperarse.
+      throw err;
+    }
+
+    // Post-commit: email + audit (fire-and-forget OK; si fallan, el estado
+    // persistente ya quedó consistente — el email a lo sumo se pierde, no
+    // corrompe data).
+    const user = await this.userRepo.findOne({ where: { id: session.initiatedBy } });
+    const tenant = await this.tenantRepo.findOne({ where: { id: session.tenantId } });
+    if (user?.email) {
+      this.emailService
+        .sendPaymentReceived(user.email, {
+          firstName: user.firstName,
+          orgName: tenant?.name || '',
+          amount: Number(session.amount),
+          currency: session.currency,
+          invoiceNumber: String(session.metadata?.invoiceNumber || ''),
+          tenantId: session.tenantId,
+        })
+        .catch((err) => this.logger.warn(`Payment-received email failed: ${err?.message}`));
+    }
+
+    this.auditService
+      .log(session.tenantId, session.initiatedBy, 'payment.succeeded', 'PaymentSession', session.id, {
+        provider,
+        invoiceId: session.invoiceId,
+        amount: session.amount,
+        currency: session.currency,
+      })
+      .catch(() => undefined);
+    return { handled: true };
+  }
+
+  /**
+   * Handler de payment.failed / payment.cancelled. Mismo patrón de
+   * atomic acquire para prevenir emails duplicados en retries concurrentes.
+   */
+  private async applyPaymentFailedOrCancelled(
+    provider: PaymentProviderName,
+    event: WebhookEvent,
+    session: PaymentSession,
+  ): Promise<{ handled: boolean; reason?: string }> {
+    const newStatus = event.type === 'payment.failed' ? 'failed' : 'cancelled';
+    const result = await this.sessionRepo
+      .createQueryBuilder()
+      .update(PaymentSession)
+      .set({
+        status: newStatus,
+        failureReason: event.failureReason || null,
+        completedAt: new Date(),
+      })
+      .where('id = :id AND status = :prev', { id: session.id, prev: 'pending' })
+      .execute();
+
+    if ((result.affected ?? 0) === 0) {
+      this.logger.log(
+        `Session ${session.id} already transitioned by a concurrent webhook; skipping duplicate side-effects`,
+      );
+      return { handled: true, reason: 'concurrent webhook already processed' };
+    }
+
+    if (event.type === 'payment.failed') {
       const user = await this.userRepo.findOne({ where: { id: session.initiatedBy } });
       const tenant = await this.tenantRepo.findOne({ where: { id: session.tenantId } });
       if (user?.email) {
         this.emailService
-          .sendPaymentReceived(user.email, {
+          .sendPaymentFailed(user.email, {
             firstName: user.firstName,
             orgName: tenant?.name || '',
             amount: Number(session.amount),
             currency: session.currency,
             invoiceNumber: String(session.metadata?.invoiceNumber || ''),
+            failureReason: event.failureReason || 'Pago rechazado por el proveedor',
+            retryUrl: `${this.appUrl}/dashboard/mi-suscripcion`,
             tenantId: session.tenantId,
           })
-          .catch((err) => this.logger.warn(`Payment-received email failed: ${err?.message}`));
+          .catch((err) => this.logger.warn(`Payment-failed email failed: ${err?.message}`));
       }
-
-      this.auditService
-        .log(session.tenantId, session.initiatedBy, 'payment.succeeded', 'PaymentSession', session.id, {
-          provider,
-          invoiceId: session.invoiceId,
-          amount: session.amount,
-          currency: session.currency,
-        })
-        .catch(() => undefined);
-      return { handled: true };
     }
 
-    if (event.type === 'payment.failed' || event.type === 'payment.cancelled') {
-      session.status = event.type === 'payment.failed' ? 'failed' : 'cancelled';
-      session.failureReason = event.failureReason || null;
-      session.completedAt = new Date();
-      await this.sessionRepo.save(session);
+    this.auditService
+      .log(session.tenantId, session.initiatedBy, `payment.${event.type.split('.')[1]}`, 'PaymentSession', session.id, {
+        provider,
+        invoiceId: session.invoiceId,
+        reason: event.failureReason ?? null,
+      })
+      .catch(() => undefined);
 
-      if (event.type === 'payment.failed') {
-        const user = await this.userRepo.findOne({ where: { id: session.initiatedBy } });
-        const tenant = await this.tenantRepo.findOne({ where: { id: session.tenantId } });
-        if (user?.email) {
-          this.emailService
-            .sendPaymentFailed(user.email, {
-              firstName: user.firstName,
-              orgName: tenant?.name || '',
-              amount: Number(session.amount),
-              currency: session.currency,
-              invoiceNumber: String(session.metadata?.invoiceNumber || ''),
-              failureReason: event.failureReason || 'Pago rechazado por el proveedor',
-              retryUrl: `${this.appUrl}/dashboard/mi-suscripcion`,
-              tenantId: session.tenantId,
-            })
-            .catch((err) => this.logger.warn(`Payment-failed email failed: ${err?.message}`));
-        }
-      }
-
-      this.auditService
-        .log(session.tenantId, session.initiatedBy, `payment.${event.type.split('.')[1]}`, 'PaymentSession', session.id, {
-          provider,
-          invoiceId: session.invoiceId,
-          reason: event.failureReason ?? null,
-        })
-        .catch(() => undefined);
-
-      return { handled: true };
-    }
-
-    return { handled: false, reason: 'unhandled event type' };
+    return { handled: true };
   }
 }
