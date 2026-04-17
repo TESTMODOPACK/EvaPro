@@ -4,7 +4,11 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
-COPY package.json ./
+# IMPORTANT: copiar .npmrc ANTES del install. Sin shamefully-hoist=true
+# el build falla en runtime con "Cannot find module 'express'" porque pnpm
+# deja express dentro de @nestjs/platform-express/node_modules/ y Sentry
+# require-in-the-middle hace require('express') al top-level.
+COPY package.json .npmrc ./
 RUN pnpm install --no-frozen-lockfile
 COPY . .
 RUN pnpm run build
