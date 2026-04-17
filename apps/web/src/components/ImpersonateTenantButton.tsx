@@ -133,6 +133,12 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
             }}>
               Motivo (ticket, email del cliente, etc.)
             </div>
+            {/* Sin autoFocus: el browser hacía scrollIntoView al textarea y
+                saltaba el h3 + banner (el modal interno se scrolleaba hacia
+                abajo dejando el título fuera del área visible). El modal de
+                Encargados no sufre esto porque su primer input está arriba.
+                Si queremos foco automático lo haríamos con useRef + focus({
+                preventScroll: true }) después de montar. */}
             <textarea
               className="input"
               rows={4}
@@ -140,7 +146,6 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={loading}
-              autoFocus
               maxLength={500}
               style={{ resize: 'vertical', minHeight: 96 }}
             />
