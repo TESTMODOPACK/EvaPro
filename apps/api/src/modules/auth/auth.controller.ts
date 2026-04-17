@@ -152,12 +152,10 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 /** Extract the client IP from a request, handling x-forwarded-for. */
-function getClientIp(req: any): string {
-  const ip = req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress;
-  if (typeof ip === 'string') return ip.split(',')[0].trim();
-  if (Array.isArray(ip) && ip.length > 0) return ip[0];
-  return 'unknown';
-}
+// P1.3: getClientIp centralizado en common/utils — usa req.ip resolvido
+// por Express con trust proxy (main.ts). Antes leía el header directo,
+// falseable por cualquier atacante.
+import { getClientIp } from '../../common/utils/get-client-ip';
 
 // ─── Password policy ───────────────────────────────────────────────────
 // The hardcoded regex that used to live here was replaced by a tenant-

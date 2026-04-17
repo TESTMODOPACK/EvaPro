@@ -30,6 +30,20 @@ async function bootstrap() {
 
   const logger = new Logger('Bootstrap');
 
+  // ─── Trust proxy (X-Forwarded-For validation) ────────────────────────
+  // El API corre detrás de nginx dentro de la misma red de Docker. nginx
+  // setea X-Forwarded-For con la IP real del cliente. Sin esto, Express
+  // usa req.connection.remoteAddress (que es la IP del contenedor nginx,
+  // no la del cliente real) → el rate limit cuenta TODO como "una sola
+  // IP" y un atacante puede brute-forcear sin fricción.
+  //
+  // `'loopback, linklocal, uniquelocal'` cubre las redes privadas Docker
+  // (172.x.x.x y similar) + localhost. Rechaza X-Forwarded-For vencido
+  // desde IPs públicas (atacante externo mandando el header) porque solo
+  // confía en proxies en redes internas. Así el req.ip resuelto refleja
+  // la IP real del cliente, no el header falseable.
+  app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+
   // ─── Graceful shutdown ────────────────────────────────────────────────
   // Hace que NestJS responda a SIGTERM/SIGINT cerrando los modulos en
   // orden (destroyers de repositorios, cron jobs, conexiones DB) antes de
@@ -99,23 +113,43 @@ async function bootstrap() {
     next();
   });
 
-  // CORS – reflect the request origin so credentials work with any frontend URL
+  // ─── CORS con validación obligatoria en producción ──────────────────
+  //
+  // Antes usaba reflect mode (callback(null, origin)) como fallback si
+  // FRONTEND_URL no estaba seteado. Eso dejaba prod abierto a cualquier
+  // origen si alguien olvidaba la env var → CSRF posible.
+  //
+  // Ahora:
+  //   - En prod (NODE_ENV=production): FRONTEND_URL es OBLIGATORIO.
+  //     Sin él, el container falla al bootstrap. No hay modo reflect.
+  //   - En dev/test: mantener reflect como conveniencia local.
   const frontendUrl = process.env.FRONTEND_URL;
   const allowedOrigins = frontendUrl
-    ? frontendUrl.split(',').map((u) => u.trim())
+    ? frontendUrl.split(',').map((u) => u.trim()).filter((u) => u.length > 0)
     : null;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction && (!allowedOrigins || allowedOrigins.length === 0)) {
+    // Falla loud: mejor que el container crashee y el deploy falle al
+    // rollout que silenciosamente quedar con CORS abierto a cualquier
+    // origen.
+    throw new Error(
+      'FRONTEND_URL is required in production. Set it to the exact frontend origin(s) (comma-separated if multiple). Reflect-all-origins mode is disabled in production.',
+    );
+  }
 
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: string | boolean) => void) => {
-      // Allow requests with no origin (curl, mobile apps, server-to-server)
+      // Requests sin origin (curl, mobile apps, server-to-server) siempre
+      // permitidos — el CORS header solo aplica a navegadores.
       if (!origin) return callback(null, true);
-      // If FRONTEND_URL is set, check against whitelist
+      // Si hay whitelist, validar estrictamente contra ella (prod o dev con
+      // FRONTEND_URL seteado).
       if (allowedOrigins && allowedOrigins.length > 0) {
-        if (allowedOrigins.includes(origin)) return callback(null, origin);
-        // Still allow for development/other frontends
+        return callback(null, allowedOrigins.includes(origin));
       }
-      // Reflect origin (permissive — safe for MVP)
-      callback(null, origin);
+      // Solo llega acá en dev/test sin FRONTEND_URL: permitir reflect.
+      return callback(null, origin);
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

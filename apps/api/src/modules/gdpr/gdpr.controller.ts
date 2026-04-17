@@ -17,12 +17,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { NoImpersonation } from '../../common/decorators/no-impersonation.decorator';
 
-function getClientIp(req: any): string | undefined {
-  const ip = req.headers?.['x-forwarded-for'] || req.ip || req.connection?.remoteAddress;
-  if (typeof ip === 'string') return ip.split(',')[0].trim();
-  if (Array.isArray(ip) && ip.length > 0) return ip[0];
-  return undefined;
-}
+// P1.3: getClientIp centralizado (ver auth.controller).
+import { getClientIp } from '../../common/utils/get-client-ip';
 
 @Controller('gdpr')
 @UseGuards(AuthGuard('jwt'), RolesGuard)

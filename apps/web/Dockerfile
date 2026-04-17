@@ -20,7 +20,23 @@ COPY apps/web/ apps/web/
 ARG NEXT_PUBLIC_API_URL=http://api:3000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-# Build Next.js
+# ── Sentry source maps (P1.4) ────────────────────────────────────────
+# Si estos build args están presentes, @sentry/nextjs sube los source
+# maps a Sentry durante el build → los stack traces en el dashboard
+# salen legibles (con los nombres originales de variables/funciones).
+# Si no están, el build no falla — solo se pierde el beneficio de los
+# stack traces bonitos. Crear el token en:
+#   sentry.io → Settings → Auth Tokens → scope: project:releases + project:write
+ARG SENTRY_AUTH_TOKEN=""
+ARG SENTRY_ORG=""
+ARG SENTRY_PROJECT=""
+ARG SENTRY_RELEASE=""
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
+ENV SENTRY_ORG=$SENTRY_ORG
+ENV SENTRY_PROJECT=$SENTRY_PROJECT
+ENV SENTRY_RELEASE=$SENTRY_RELEASE
+
+# Build Next.js (Sentry plugin lee las env vars arriba para subir sourcemaps)
 RUN cd apps/web && pnpm run build
 
 # ── Production stage ────────────────────────────────────────────────
