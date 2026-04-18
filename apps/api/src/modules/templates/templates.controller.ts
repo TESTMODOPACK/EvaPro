@@ -19,6 +19,7 @@ import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('templates')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -77,10 +78,12 @@ export class TemplatesController {
     return template;
   }
 
+  /** P2.6 — Cross-tenant defense (template create). */
   @Post()
   @Roles('super_admin', 'tenant_admin')
   create(@Request() req: any, @Body() dto: CreateTemplateDto) {
-    return this.templatesService.create(req.user.tenantId, req.user.userId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, (dto as any)?.tenantId);
+    return this.templatesService.create(tenantId, req.user.userId, dto);
   }
 
   @Patch(':id')

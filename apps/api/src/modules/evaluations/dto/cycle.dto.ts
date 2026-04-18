@@ -9,6 +9,16 @@ import {
 import { CycleType, CycleStatus, CyclePeriod } from '../entities/evaluation-cycle.entity';
 
 export class CreateCycleDto {
+  /**
+   * Target tenant para super_admin que opera cross-tenant. Whitelist del
+   * ValidationPipe strippea props no declaradas — al declararlo acá el
+   * body lo conserva. El controller lo valida via resolveOperatingTenantId
+   * (super_admin obligatorio; tenant_admin lo ignora si presente).
+   */
+  @IsUUID()
+  @IsOptional()
+  tenantId?: string;
+
   @IsString()
   @IsNotEmpty()
   name: string;

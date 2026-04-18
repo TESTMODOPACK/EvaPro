@@ -20,6 +20,7 @@ import { Response } from 'express';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('talent')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
@@ -125,10 +126,12 @@ export class TalentController {
 
   // ─── Calibration ──────────────────────────────────────────────────────
 
+  /** P2.6 — Cross-tenant defense (calibration session create). */
   @Post('calibration')
   @Roles('super_admin', 'tenant_admin')
   createSession(@Body() dto: any, @Request() req: any) {
-    return this.talentService.createSession(req.user.tenantId, {
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.talentService.createSession(tenantId, {
       ...dto,
       moderatorId: req.user.userId,
     });
