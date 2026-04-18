@@ -13,6 +13,12 @@
 #   - web:   Next.js frontend (puerto 3001 interno)
 #   - nginx: Reverse proxy (puertos 80/443)
 #
+# Log rotation:
+#   Cada servicio tiene un `logging` block con driver json-file y
+#   max-size:50m / max-file:5. Esto evita que `/var/lib/docker/containers/
+#   .../*-json.log` llene el disco del VPS en semanas/meses de uptime.
+#   Rotación nativa Docker, aplica al hacer `docker compose up -d`.
+#
 # Memoria y CPU (ajustar según el tamaño del VPS):
 #   VPS 2 GB  — total reservado 1.72 GB (~86%), queda 280 MB para el host
 #   VPS 4 GB  — duplicar mem_limit de api y web
@@ -43,6 +49,12 @@ services:
       timeout: 5s
       retries: 5
     stop_grace_period: 30s
+    # Log rotation — ver cabecera del archivo.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ── API (NestJS) ───────────────────────────────────────────────────
   api:
@@ -95,6 +107,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
+    # Log rotation — ver cabecera del archivo.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ── Web (Next.js) ──────────────────────────────────────────────────
   web:
@@ -103,6 +121,12 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost/api}
+        # Sentry source maps (P1.4). Si estas vars no están en .env, el
+        # build no falla, solo se pierde la subida de sourcemaps.
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
+        SENTRY_RELEASE: ${SENTRY_RELEASE:-}
     container_name: eva360_web
     restart: unless-stopped
     mem_limit: 384m
@@ -125,6 +149,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    # Log rotation — ver cabecera del archivo.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ── Nginx Reverse Proxy ────────────────────────────────────────────
   nginx:
@@ -153,6 +183,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    # Log rotation — nginx access/error logs también se capturan por Docker.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
 volumes:
   postgres_data:

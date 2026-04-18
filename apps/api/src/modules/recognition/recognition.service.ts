@@ -168,17 +168,42 @@ export class RecognitionService {
 
       return recognition;
     }).then(async (recognition) => {
-      // Non-critical operations outside transaction
-      // Refresh denormalized points summary for both parties (non-critical).
+      // ─── Operaciones post-commit (P1.6) ────────────────────────────
+      //
+      // El flujo crítico (budget deduct + recognition + user_points) ya
+      // está DENTRO de la transacción de arriba. Estas operaciones son
+      // post-commit porque:
+      //
+      //   - refreshUserPointsSummary: es denormalización para performance.
+      //     Si falla, el ledger (user_points) sigue consistente; el next
+      //     refresh arregla la suma. No amerita rollback del recognition.
+      //
+      //   - Gamification (badges, challenges, milestones): heavy y
+      //     idempotentes en retry. Un bug acá no debe impedir que los
+      //     puntos se awarden.
+      //
+      //   - Notifications y emails: UX, no data. Si fallan, el reconocimiento
+      //     se mostró en la UI del receptor igual.
+      //
+      // Cambio vs antes: los `.catch(() => {})` silenciosos ahora loguean
+      // .warn. Antes, si refreshUserPointsSummary fallaba, NADIE se
+      // enteraba — el summary quedaba stale sin rastro. Con logger.warn
+      // aparece en Sentry + pino logs, y ops puede detectar el patrón
+      // (si es recurrente, hay un bug de data a investigar).
       if (!isMonetary) {
-        this.refreshUserPointsSummary(tenantId, dto.toUserId).catch(() => {});
-        this.refreshUserPointsSummary(tenantId, fromUserId).catch(() => {});
+        this.refreshUserPointsSummary(tenantId, dto.toUserId).catch((err) =>
+          this.logger.warn(`refreshUserPointsSummary(toUser=${dto.toUserId.slice(0, 8)}) failed: ${err?.message}`));
+        this.refreshUserPointsSummary(tenantId, fromUserId).catch((err) =>
+          this.logger.warn(`refreshUserPointsSummary(fromUser=${fromUserId.slice(0, 8)}) failed: ${err?.message}`));
       }
-      // Non-critical gamification hooks (fire-and-forget)
-      this.checkAutoBadges(tenantId, dto.toUserId).catch(() => {});
-      this.evaluateChallenges(tenantId, dto.toUserId).catch(() => {});
-      this.evaluateChallenges(tenantId, fromUserId).catch(() => {});
-      this.checkMilestones(tenantId, dto.toUserId).catch(() => {});
+      this.checkAutoBadges(tenantId, dto.toUserId).catch((err) =>
+        this.logger.warn(`checkAutoBadges failed: ${err?.message}`));
+      this.evaluateChallenges(tenantId, dto.toUserId).catch((err) =>
+        this.logger.warn(`evaluateChallenges(toUser) failed: ${err?.message}`));
+      this.evaluateChallenges(tenantId, fromUserId).catch((err) =>
+        this.logger.warn(`evaluateChallenges(fromUser) failed: ${err?.message}`));
+      this.checkMilestones(tenantId, dto.toUserId).catch((err) =>
+        this.logger.warn(`checkMilestones failed: ${err?.message}`));
 
       const msgPreview = dto.message.length > 80 ? dto.message.substring(0, 80) + '...' : dto.message;
       this.notificationsService.create({
@@ -186,7 +211,7 @@ export class RecognitionService {
         title: 'Has recibido un reconocimiento',
         message: `Un compañero te ha reconocido: "${msgPreview}"`,
         metadata: { recognitionId: recognition.id },
-      }).catch(() => {});
+      }).catch((err) => this.logger.warn(`recognition notification failed: ${err?.message}`));
 
       // Send email notification to the recipient
       const fromUser = await this.userRepo.findOne({ where: { id: fromUserId }, select: ['id', 'firstName', 'lastName'] });

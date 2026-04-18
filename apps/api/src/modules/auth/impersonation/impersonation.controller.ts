@@ -29,12 +29,8 @@ class StartImpersonationDto {
   targetUserId?: string;
 }
 
-function getClientIp(req: any): string | undefined {
-  const ip = req.headers?.['x-forwarded-for'] || req.ip || req.connection?.remoteAddress;
-  if (typeof ip === 'string') return ip.split(',')[0].trim();
-  if (Array.isArray(ip) && ip.length > 0) return ip[0];
-  return undefined;
-}
+// P1.3: getClientIp centralizado (ver auth.controller).
+import { getClientIp } from '../../../common/utils/get-client-ip';
 
 /**
  * Support/ops operations. Only super_admin for `start`; the `end` endpoint
