@@ -13,15 +13,25 @@
  * v2: clon del modal de Encargados con `maxHeight: 88vh + overflowY: auto`.
  * v3: quitado `autoFocus` del textarea que causaba scrollIntoView y
  *     dejaba el header fuera del viewport visible.
- * v4 (este): arquitectura **flex 3-zone** con header y footer `flex-shrink:0`
- *     y body `flex:1 + overflowY:auto`. Incluso si el contenido del body
- *     crece o alguien scrollea, el header con el título "Iniciar
- *     impersonación" y los botones de footer SIEMPRE permanecen visibles.
- *     Esto es robusto contra cualquier cacheo, autoFocus accidental de
- *     hijos futuros, o crecimiento del banner.
+ * v4: arquitectura flex 3-zone con header/footer `flex-shrink:0` y body
+ *     `flex:1 + overflowY:auto`. Layout correcto.
+ * v5 (este): **React Portal a document.body**. El bug real era que
+ *     `<main className="main-content">` tiene `overflowY:auto` y varios
+ *     elementos en el árbol del dashboard usan `transform` (hover en
+ *     .btn-primary, iconos rotando con transform, etc.). Un `transform`
+ *     en CUALQUIER ancestor convierte a ese ancestor en el contenedor
+ *     de referencia de `position:fixed`, rompiendo el anclaje al
+ *     viewport del browser. El dialog quedaba atrapado dentro del área
+ *     de contenido con header/footer fuera de la ventana visible.
+ *
+ *     Solución: usar `createPortal` para montar el dialog como hijo
+ *     directo de `document.body`, totalmente fuera del árbol del
+ *     dashboard. Ahora `position:fixed` realmente apunta al viewport
+ *     y las 3 zonas flex (header/body/footer) son siempre visibles.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore, decodeJwtPayload } from '@/store/auth.store';
@@ -98,17 +108,21 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
 }
 
 /**
- * Dialog extraído a componente separado para que el árbol React sea
- * distinto del viejo `ImpersonateTenantButton` — fuerza a Next.js y al
- * browser a emitir/pedir un chunk nuevo, invalidando cualquier cache.
+ * Dialog extraído a componente separado y renderizado con createPortal
+ * al `document.body`. Esto es CRÍTICO: si el dialog se renderiza en el
+ * lugar natural del árbol React, queda dentro de `<main>` que tiene
+ * `overflowY:auto` y hay ancestors con `transform` (btn hover, etc.).
+ * Cualquier `transform` en un ancestor rompe el `position:fixed`
+ * relativo al viewport — CSS spec: el elemento con transform pasa a
+ * ser el contenedor de referencia.
  *
- * Layout: flex column con maxHeight fijo.
+ * Al portalizar a document.body, el dialog queda como hermano del root
+ * de Next.js y `position:fixed` realmente ancla al viewport del browser.
+ *
+ * Layout interno: flex column con maxHeight fijo.
  *   - header:  flex-shrink: 0  → SIEMPRE visible
  *   - body:    flex: 1 1 auto + overflowY: auto → el único que scrollea
  *   - footer:  flex-shrink: 0  → SIEMPRE visible
- *
- * Si el contenido del body crece, solo esa zona scrollea — el título
- * "Iniciar impersonación" y los botones de footer nunca desaparecen.
  */
 function ImpersonationDialog(props: {
   tenantName: string;
@@ -120,7 +134,21 @@ function ImpersonationDialog(props: {
 }) {
   const { tenantName, reason, loading, onReasonChange, onCancel, onSubmit } = props;
 
-  return (
+  // Guard para SSR: document no existe en el servidor. Solo hacemos
+  // createPortal tras el primer render en cliente (evita hydration mismatch).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  // Bloquear scroll del body mientras el modal está abierto
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  if (!mounted) return null;
+
+  const dialog = (
     <div
       role="dialog"
       aria-modal="true"
@@ -128,7 +156,12 @@ function ImpersonationDialog(props: {
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
       style={{
         position: 'fixed',
-        inset: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh',
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
@@ -308,4 +341,8 @@ function ImpersonationDialog(props: {
       </div>
     </div>
   );
+
+  // Portal al document.body para escapar cualquier ancestor con
+  // transform/overflow que rompa `position:fixed` al viewport.
+  return createPortal(dialog, document.body);
 }
