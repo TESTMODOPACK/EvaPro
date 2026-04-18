@@ -189,7 +189,25 @@ export class AiInsightsService {
     return { planUsed, addonUsed: totalAddonUsed, totalUsed, planLimit, addonRemaining, totalLimit, periodStart, periodEnd };
   }
 
-  /** Check plan-based monthly rate limit */
+  /**
+   * Check plan-based monthly rate limit + soft warning al 80%.
+   *
+   * P2.1 — Hard limit + alerta proactiva:
+   *
+   *   Antes: rechazaba solo al 100%. El tenant descubría que agotó créditos
+   *   cuando una operación IA fallaba mid-user-flow. Frustrante y abrupto.
+   *
+   *   Ahora:
+   *     - >= 80% (y <100%): emite notification WARNING al tenant_admin 1x
+   *       por tenant cada 24h (dedup vía query sobre tabla notifications).
+   *       NO bloquea la llamada — el usuario puede seguir operando.
+   *     - >= 100%: igual que antes (rechaza con 400) + emite notification
+   *       EXHAUSTED con la fecha de renovación y link a Mi Suscripción.
+   *
+   *   Las notifications se dedup con una query sobre la tabla — si ya hay
+   *   una del mismo tipo para el mismo tenant en las últimas 24h, skip.
+   *   Evita spam al tenant_admin mientras sigue usando IA en el último 20%.
+   */
   private async checkRateLimit(tenantId: string): Promise<void> {
     const { totalUsed, totalLimit, planLimit, addonRemaining, periodEnd } = await this.getMonthlyCallCount(tenantId);
     if (totalLimit <= 0) {
@@ -198,11 +216,84 @@ export class AiInsightsService {
       );
     }
 
+    // Hard limit al 100% — reject + notification EXHAUSTED (dedup 24h).
     if (totalUsed >= totalLimit) {
       const renewDate = periodEnd.toLocaleDateString('es-CL', { day: 'numeric', month: 'long' });
+      // Fire-and-forget — el reject no debe bloquear por falla de notif.
+      this.notifyAiQuota(tenantId, 'exhausted', { totalUsed, totalLimit, planLimit, addonRemaining, renewDate })
+        .catch((err) => this.logger.warn(`notifyAiQuota(exhausted) failed: ${err?.message}`));
       throw new BadRequestException(
         `Se alcanzó el límite de ${totalLimit} informes de IA (${planLimit} del plan + ${addonRemaining} adicionales). El límite del plan se renueva el ${renewDate}. Puede adquirir créditos adicionales desde Mi Suscripción.`,
       );
+    }
+
+    // Soft warning al 80% — notification WARNING (dedup 24h). No bloquea.
+    const utilization = totalUsed / totalLimit;
+    if (utilization >= 0.8) {
+      this.notifyAiQuota(tenantId, 'warning', { totalUsed, totalLimit, planLimit, addonRemaining, renewDate: periodEnd.toLocaleDateString('es-CL', { day: 'numeric', month: 'long' }) })
+        .catch((err) => this.logger.warn(`notifyAiQuota(warning) failed: ${err?.message}`));
+    }
+  }
+
+  /**
+   * Emite notification in-app al tenant_admin sobre el estado de la cuota
+   * IA. Dedup: si hay otra del mismo tipo en las últimas 24h, skip.
+   *
+   * Fire-and-forget — no debe bloquear el flujo principal si falla.
+   */
+  private async notifyAiQuota(
+    tenantId: string,
+    kind: 'warning' | 'exhausted',
+    ctx: { totalUsed: number; totalLimit: number; planLimit: number; addonRemaining: number; renewDate: string },
+  ): Promise<void> {
+    // Import lazy del NotificationType y Notification repo del notifications module.
+    // Evita tener que agregar Notification entity al constructor de este service.
+    const notifType = kind === 'warning' ? 'ai_quota_warning' : 'ai_quota_exhausted';
+
+    // Buscar admins del tenant (destinatarios).
+    const admins = await this.userRepo.find({
+      where: { tenantId, role: 'tenant_admin', isActive: true },
+      select: ['id'],
+    });
+    if (admins.length === 0) return;
+
+    // Dedup: skip si ya hay una notification del mismo tipo para cualquiera
+    // de estos admins en las últimas 24h. Usamos la tabla via manager para
+    // evitar agregar NotificationRepo al constructor.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const existing = await this.userRepo.manager.getRepository('notifications').findOne({
+      where: {
+        tenantId,
+        userId: In(admins.map((a) => a.id)),
+        type: notifType,
+        createdAt: MoreThan(since),
+      } as any,
+    });
+    if (existing) return;
+
+    // Crear una notification por admin.
+    const title = kind === 'warning'
+      ? `Has usado el 80% de tu cuota IA del mes`
+      : `Se agotó tu cuota IA del mes`;
+    const message = kind === 'warning'
+      ? `Llevas ${ctx.totalUsed} de ${ctx.totalLimit} informes usados (${ctx.planLimit} del plan + ${ctx.addonRemaining} adicionales). La cuota se renueva el ${ctx.renewDate}. Si necesitas más, puedes adquirir créditos desde Mi Suscripción.`
+      : `Usaste los ${ctx.totalLimit} informes incluidos (${ctx.planLimit} del plan + ${ctx.addonRemaining} adicionales). La cuota se renueva el ${ctx.renewDate}. Mientras tanto, puedes adquirir créditos adicionales desde Mi Suscripción.`;
+
+    for (const admin of admins) {
+      await this.notificationsService.create({
+        tenantId,
+        userId: admin.id,
+        type: notifType as any,
+        title,
+        message,
+        metadata: {
+          totalUsed: ctx.totalUsed,
+          totalLimit: ctx.totalLimit,
+          planLimit: ctx.planLimit,
+          addonRemaining: ctx.addonRemaining,
+          renewDate: ctx.renewDate,
+        } as any,
+      }).catch((err) => this.logger.warn(`create notification failed for admin ${admin.id}: ${err?.message}`));
     }
   }
 

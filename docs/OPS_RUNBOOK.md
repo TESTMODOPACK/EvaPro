@@ -169,6 +169,39 @@ Si no hay setup de monitoring aún: ver `.env.example` sección "Metricas Promet
 
 ---
 
+## Data retention (GDPR)
+
+Desde P2.2, un cron diario purga audit logs viejos para cumplir con el principio GDPR de retención finita documentada. Configuración en `.env`:
+
+```
+AUDIT_LOGS_RETENTION_YEARS=2               # operaciones cotidianas
+AUDIT_LOGS_CRITICAL_RETENTION_YEARS=6      # pagos / firmas / GDPR / role changes
+```
+
+**Acciones preservadas 6 años** (no 2):
+- `data.anonymized`, `data.exported` — evidencia GDPR Art. 15/17
+- `payment.succeeded`, `payment.failed`, `payment.refunded`, `payment.cancelled` — SII Chile (exige 6 años de respaldo contable)
+- `contract.signed`, `contract.rejected`, `contract.terminated` — prueba contractual
+- `user.role_changed` — audit trail de privileges (seguridad)
+- `2fa.enabled`, `2fa.disabled` — evidencia de ajustes MFA
+
+El cron corre diario a las 04:30 AM con advisory lock (no se duplica en multi-replica). El DELETE está scoped por `action NOT IN (critical)` para regular y `action IN (critical)` para el bucket extendido.
+
+**Verificación manual:**
+
+```sql
+-- Cuántos rows serían purgados hoy (sin ejecutar)
+SELECT
+  COUNT(*) FILTER (WHERE action NOT IN (<lista>)) AS regulares_a_purgar,
+  COUNT(*) FILTER (WHERE action IN (<lista>)) AS criticos_a_purgar
+FROM audit_logs
+WHERE created_at < NOW() - INTERVAL '2 years';
+```
+
+Si un tenant pide retention distinta (enterprise con política propia): la configuración es por VPS/instalación — para multi-tenant retention diferenciada, migrar a política por-tenant via `tenants.settings`. No implementado en esta fase.
+
+---
+
 ## Alertas recomendadas
 
 Para operar EVA360 con 20+ tenants, recomiendo configurar alertas en al menos estos escenarios:

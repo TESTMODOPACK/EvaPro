@@ -287,6 +287,12 @@ async function main() {
       // <table>_<column>_enum.
       `ALTER TYPE "evaluation_assignments_status_enum" ADD VALUE IF NOT EXISTS 'cancelled'`,
 
+      // P2.1 — Nuevos notification types para alertas de quota IA.
+      // ADD VALUE IF NOT EXISTS es idempotente; no falla si ya existen
+      // (primer deploy tras sync o deploys repetidos).
+      `ALTER TYPE "notifications_type_enum" ADD VALUE IF NOT EXISTS 'ai_quota_warning'`,
+      `ALTER TYPE "notifications_type_enum" ADD VALUE IF NOT EXISTS 'ai_quota_exhausted'`,
+
       // super_admin no pertenece a ningún tenant: tenant_id debe aceptar NULL
       // para ese único registro. Antes se creaba el super_admin con tenantId=
       // demoTenantId, lo que habilitaba una fuga cross-tenant (ver fix en

@@ -100,6 +100,87 @@ export class AuditService {
     }
   }
 
+  /**
+   * Acciones críticas que deben preservarse 6 años (por defecto) por
+   * motivos legales / compliance. Sobreviven al retention regular de 2 años.
+   *
+   *   - data.anonymized / data.exported → evidencia GDPR Art. 15/17
+   *   - payment.* → SII Chile exige 6 años de respaldo contable
+   *   - contract.signed / contract.rejected → prueba contractual
+   *   - user.role_changed → audit trail de privileges (seguridad)
+   *   - 2fa.enabled / 2fa.disabled → evidencia de ajustes de MFA
+   */
+  private static readonly CRITICAL_ACTIONS_FOR_RETENTION = [
+    'data.anonymized',
+    'data.exported',
+    'payment.succeeded',
+    'payment.failed',
+    'payment.refunded',
+    'payment.cancelled',
+    'contract.signed',
+    'contract.rejected',
+    'contract.terminated',
+    'user.role_changed',
+    '2fa.enabled',
+    '2fa.disabled',
+  ] as const;
+
+  /**
+   * Elimina audit logs más viejos que `retentionYears` años, preservando
+   * las acciones críticas (CRITICAL_ACTIONS_FOR_RETENTION) por
+   * `criticalRetentionYears` años (default 6).
+   *
+   * P2.2 — Retention policy:
+   *   GDPR exige retención finita documentada. Hoy la tabla crece
+   *   indefinidamente — 10k+ rows/día en un tenant activo = GB/año.
+   *   Purga diaria con DELETE ... WHERE created_at < threshold.
+   *
+   *   Divido en dos buckets:
+   *     - Regular (2 años): operaciones cotidianas (accesos, reads,
+   *       recordatorios, etc.). Valor investigativo decae rápido.
+   *     - Crítico (6 años): acciones con valor legal/contable/seguridad.
+   *       SII Chile + prueba contractual + evidencia GDPR.
+   *
+   *   Invocado desde reminders.service.ts@Cron con runWithCronLock para
+   *   evitar que 2 replicas corran simultáneamente el DELETE.
+   */
+  async purgeOldAuditLogs(
+    retentionYears: number,
+    criticalRetentionYears: number,
+  ): Promise<{ purgedRegular: number; purgedCritical: number }> {
+    const regularCutoff = new Date();
+    regularCutoff.setFullYear(regularCutoff.getFullYear() - retentionYears);
+
+    const criticalCutoff = new Date();
+    criticalCutoff.setFullYear(criticalCutoff.getFullYear() - criticalRetentionYears);
+
+    // 1. Purga regular: logs viejos que NO son de acciones críticas.
+    const regularResult = await this.auditRepo
+      .createQueryBuilder()
+      .delete()
+      .where('created_at < :cutoff', { cutoff: regularCutoff })
+      .andWhere('action NOT IN (:...critical)', {
+        critical: AuditService.CRITICAL_ACTIONS_FOR_RETENTION,
+      })
+      .execute();
+
+    // 2. Purga crítica: solo logs de acciones críticas que superan el
+    //    retention extendido (6 años).
+    const criticalResult = await this.auditRepo
+      .createQueryBuilder()
+      .delete()
+      .where('created_at < :cutoff', { cutoff: criticalCutoff })
+      .andWhere('action IN (:...critical)', {
+        critical: AuditService.CRITICAL_ACTIONS_FOR_RETENTION,
+      })
+      .execute();
+
+    return {
+      purgedRegular: regularResult.affected ?? 0,
+      purgedCritical: criticalResult.affected ?? 0,
+    };
+  }
+
   async findAll(
     page: number,
     limit: number,
