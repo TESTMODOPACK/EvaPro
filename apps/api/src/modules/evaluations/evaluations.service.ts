@@ -71,8 +71,19 @@ export class EvaluationsService {
       .getMany();
   }
 
-  async findCycleById(id: string, tenantId: string): Promise<EvaluationCycle> {
-    const cycle = await this.cycleRepo.findOne({ where: { id, tenantId } });
+  /**
+   * Busca un ciclo por id. Si tenantId es undefined (super_admin cross-tenant)
+   * busca solo por id; si no, filtra por tenantId (fail-loud 404 si mismatch).
+   *
+   * P3.1 — Patrón cross-tenant para secondary POSTs: el caller pasa undefined
+   *        cuando es super_admin (habilitando cross-tenant intencional), y
+   *        tenantId concreto para cualquier otro rol (scoping mandatorio).
+   *        Todas las operaciones internas deben usar `cycle.tenantId` como
+   *        authoritative — nunca el parámetro tenantId crudo.
+   */
+  async findCycleById(id: string, tenantId: string | undefined): Promise<EvaluationCycle> {
+    const where = tenantId ? { id, tenantId } : { id };
+    const cycle = await this.cycleRepo.findOne({ where });
     if (!cycle) throw new NotFoundException('Ciclo de evaluación no encontrado');
     return cycle;
   }
@@ -325,7 +336,7 @@ export class EvaluationsService {
     }
   }
 
-  async updateCycle(id: string, tenantId: string, dto: UpdateCycleDto, userId?: string): Promise<EvaluationCycle> {
+  async updateCycle(id: string, tenantId: string | undefined, dto: UpdateCycleDto, userId?: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     const effectiveStart = dto.startDate ? new Date(dto.startDate) : cycle.startDate;
     const effectiveEnd = dto.endDate ? new Date(dto.endDate) : cycle.endDate;
@@ -359,17 +370,20 @@ export class EvaluationsService {
     });
     const saved = await this.cycleRepo.save(cycle);
 
-    // Audit log with change details
+    // Audit log with change details — usa saved.tenantId como authoritative
+    // (no el parámetro tenantId, que puede ser undefined si viene de super_admin).
     if (Object.keys(changes).length > 0 && userId) {
-      this.auditService.log(tenantId, userId, 'cycle.updated', 'cycle', id, { changes, cycleName: saved.name }).catch(() => {});
+      this.auditService.log(saved.tenantId, userId, 'cycle.updated', 'cycle', id, { changes, cycleName: saved.name }).catch(() => {});
     }
 
     return saved;
   }
 
-  async getCycleHistory(id: string, tenantId: string): Promise<any[]> {
+  async getCycleHistory(id: string, tenantId: string | undefined): Promise<any[]> {
+    // Resolver el tenantId authoritative desde la entidad (soporta super_admin cross-tenant)
+    const cycle = await this.findCycleById(id, tenantId);
     const logs = await this.auditLogRepo.find({
-      where: { tenantId, entityType: 'cycle', entityId: id },
+      where: { tenantId: cycle.tenantId, entityType: 'cycle', entityId: id },
       order: { createdAt: 'DESC' },
     });
     // Enrich with user names
@@ -386,7 +400,7 @@ export class EvaluationsService {
     }));
   }
 
-  async deleteCycle(id: string, tenantId: string): Promise<void> {
+  async deleteCycle(id: string, tenantId: string | undefined): Promise<void> {
     const cycle = await this.findCycleById(id, tenantId);
     if (cycle.status === CycleStatus.ACTIVE || cycle.status === CycleStatus.PAUSED) {
       throw new BadRequestException('No se puede eliminar un ciclo activo o pausado. Ciérralo primero.');
@@ -840,8 +854,10 @@ export class EvaluationsService {
 
   // ─── Cycle Launch ─────────────────────────────────────────────────────────
 
-  async launchCycle(id: string, tenantId: string, userId: string) {
+  async launchCycle(id: string, tenantId: string | undefined, userId: string) {
     const cycle = await this.findCycleById(id, tenantId);
+    // Authoritative tenantId desde la entidad (soporta super_admin cross-tenant).
+    const effectiveTenantId = cycle.tenantId;
 
     if (cycle.status !== CycleStatus.DRAFT) {
       throw new BadRequestException('Solo se puede lanzar un ciclo en estado borrador');
@@ -849,7 +865,7 @@ export class EvaluationsService {
 
     // B1.2: No duplicate active cycles of same type per tenant
     const existingActive = await this.cycleRepo.findOne({
-      where: { tenantId, type: cycle.type, status: CycleStatus.ACTIVE },
+      where: { tenantId: effectiveTenantId, type: cycle.type, status: CycleStatus.ACTIVE },
     });
     if (existingActive) {
       throw new BadRequestException(
@@ -869,7 +885,7 @@ export class EvaluationsService {
 
     // Read all manual pre-assignments configured by the admin
     const preAssignments = await this.peerAssignmentRepo.find({
-      where: { cycleId: id, tenantId },
+      where: { cycleId: id, tenantId: effectiveTenantId },
     });
 
     if (preAssignments.length === 0) {
@@ -903,7 +919,7 @@ export class EvaluationsService {
 
       // Convert all pre-assignments to evaluation assignments
       const assignments: Partial<EvaluationAssignment>[] = preAssignments.map((pa) => ({
-        tenantId,
+        tenantId: effectiveTenantId,
         cycleId: id,
         evaluateeId: pa.evaluateeId,
         evaluatorId: pa.evaluatorId,
@@ -924,7 +940,7 @@ export class EvaluationsService {
 
       await queryRunner.commitTransaction();
 
-      await this.auditService.log(tenantId, userId, 'cycle.launched', 'cycle', id, {
+      await this.auditService.log(effectiveTenantId, userId, 'cycle.launched', 'cycle', id, {
         assignmentsCreated: assignments.length,
         totalEvaluated: cycle.totalEvaluated,
       });
@@ -959,7 +975,7 @@ export class EvaluationsService {
         if (ev.email) {
           this.emailService.sendCycleLaunched(ev.email, {
             firstName: ev.firstName, cycleName: cycle.name,
-            cycleType: cycle.type, dueDate: dueDateStr, cycleId: cycle.id, tenantId, userId: ev.id,
+            cycleType: cycle.type, dueDate: dueDateStr, cycleId: cycle.id, tenantId: effectiveTenantId, userId: ev.id,
           }).catch((err) => {
             this.logger.error(
               `Failed to send cycle-launched email to ${ev.email} for cycle ${cycle.id}: ${err?.message || err}`,
@@ -971,7 +987,7 @@ export class EvaluationsService {
         //    que el cron de recordatorios, pero con metadata.action
         //    'cycle_launched' para diferenciar en futuros reportes.
         this.notificationsService.create({
-          tenantId,
+          tenantId: effectiveTenantId,
           userId: ev.id,
           type: NotificationType.EVALUATION_PENDING,
           title: `Nuevo ciclo de evaluación: ${cycle.name}`,
@@ -996,8 +1012,10 @@ export class EvaluationsService {
     }
   }
 
-  async closeCycle(id: string, tenantId: string, userId: string): Promise<EvaluationCycle> {
+  async closeCycle(id: string, tenantId: string | undefined, userId: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
+    // Authoritative tenantId desde la entidad (soporta super_admin cross-tenant).
+    const effectiveTenantId = cycle.tenantId;
     if (cycle.status !== CycleStatus.ACTIVE && cycle.status !== CycleStatus.PAUSED) {
       throw new BadRequestException('Solo se puede cerrar un ciclo activo o pausado');
     }
@@ -1010,15 +1028,15 @@ export class EvaluationsService {
       .update(CycleStage)
       .set({ status: StageStatus.COMPLETED })
       .where('cycleId = :cycleId', { cycleId: id })
-      .andWhere('tenantId = :tenantId', { tenantId })
+      .andWhere('tenantId = :tenantId', { tenantId: effectiveTenantId })
       .andWhere('status != :completed', { completed: StageStatus.COMPLETED })
       .execute();
 
-    await this.auditService.log(tenantId, userId, 'cycle.closed', 'cycle', id);
+    await this.auditService.log(effectiveTenantId, userId, 'cycle.closed', 'cycle', id);
 
     // Send email to all evaluatees notifying them that results are available
     const completedAssignments = await this.assignmentRepo.find({
-      where: { cycleId: id, tenantId },
+      where: { cycleId: id, tenantId: effectiveTenantId },
       select: ['evaluateeId'],
     });
     const uniqueEvaluateeIds = [...new Set(completedAssignments.map(a => a.evaluateeId))];
@@ -1030,11 +1048,11 @@ export class EvaluationsService {
       for (const ev of evaluatees) {
         if (!ev.email) continue;
         this.emailService.sendCycleClosed(ev.email, {
-          firstName: ev.firstName, cycleName: cycle.name, cycleId: id, tenantId, userId: ev.id,
+          firstName: ev.firstName, cycleName: cycle.name, cycleId: id, tenantId: effectiveTenantId, userId: ev.id,
         }).catch(() => {});
         // In-app notification: signature pending for results
         this.notificationsService.create({
-          tenantId,
+          tenantId: effectiveTenantId,
           userId: ev.id,
           type: NotificationType.GENERAL,
           title: 'Firma pendiente — Resultados de evaluación',
@@ -1045,14 +1063,14 @@ export class EvaluationsService {
     }
 
     // Cleanup pending evaluation notifications for this closed cycle
-    this.notificationsService.cleanupByMetadata(tenantId, 'cycleId', id, {
+    this.notificationsService.cleanupByMetadata(effectiveTenantId, 'cycleId', id, {
       types: ['evaluation_pending', 'cycle_closing'],
     }).catch((e) => this.logger.warn(`Cycle notification cleanup failed: ${e.message}`));
 
     return saved;
   }
 
-  async pauseCycle(id: string, tenantId: string, userId: string): Promise<EvaluationCycle> {
+  async pauseCycle(id: string, tenantId: string | undefined, userId: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     if (cycle.status !== CycleStatus.ACTIVE) {
       throw new BadRequestException('Solo se puede pausar un ciclo activo');
@@ -1064,11 +1082,12 @@ export class EvaluationsService {
       pausedBy: userId,
     };
     const saved = await this.cycleRepo.save(cycle);
-    await this.auditService.log(tenantId, userId, 'cycle.paused', 'cycle', id);
+    // Usa saved.tenantId (authoritative) — soporta super_admin cross-tenant.
+    await this.auditService.log(saved.tenantId, userId, 'cycle.paused', 'cycle', id);
     return saved;
   }
 
-  async resumeCycle(id: string, tenantId: string, userId: string): Promise<EvaluationCycle> {
+  async resumeCycle(id: string, tenantId: string | undefined, userId: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     if (cycle.status !== CycleStatus.PAUSED) {
       throw new BadRequestException('Solo se puede reanudar un ciclo pausado');
@@ -1081,7 +1100,8 @@ export class EvaluationsService {
       resumedBy: userId,
     };
     const saved = await this.cycleRepo.save(cycle);
-    await this.auditService.log(tenantId, userId, 'cycle.resumed', 'cycle', id);
+    // Usa saved.tenantId (authoritative) — soporta super_admin cross-tenant.
+    await this.auditService.log(saved.tenantId, userId, 'cycle.resumed', 'cycle', id);
     return saved;
   }
 

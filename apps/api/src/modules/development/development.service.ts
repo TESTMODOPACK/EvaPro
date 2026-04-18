@@ -95,17 +95,24 @@ export class DevelopmentService {
     });
   }
 
-  async updateCompetency(tenantId: string, id: string, dto: Partial<Competency>) {
-    const competency = await this.competencyRepo.findOne({ where: { id, tenantId } });
+  /**
+   * P3.2 — Firma tenantId opcional para soportar super_admin cross-tenant.
+   * Si undefined, busca solo por id. Los side-effects (cache invalidate,
+   * audit) usan `competency.tenantId` authoritative desde la entidad.
+   */
+  async updateCompetency(tenantId: string | undefined, id: string, dto: Partial<Competency>) {
+    const where = tenantId ? { id, tenantId } : { id };
+    const competency = await this.competencyRepo.findOne({ where });
     if (!competency) throw new NotFoundException('Competencia no encontrada');
     Object.assign(competency, dto);
     const saved = await this.competencyRepo.save(competency);
-    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
+    await invalidateCache(this.cacheManager, `competencies:${saved.tenantId}`);
     return saved;
   }
 
-  async deactivateCompetency(tenantId: string, id: string) {
-    const competency = await this.competencyRepo.findOne({ where: { id, tenantId } });
+  async deactivateCompetency(tenantId: string | undefined, id: string) {
+    const where = tenantId ? { id, tenantId } : { id };
+    const competency = await this.competencyRepo.findOne({ where });
     if (!competency) throw new NotFoundException('Competencia no encontrada');
 
     // Validate: check if competency is in use before deactivating
@@ -130,7 +137,7 @@ export class DevelopmentService {
     competency.isActive = false;
     competency.deactivatedAt = new Date();
     const saved = await this.competencyRepo.save(competency);
-    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
+    await invalidateCache(this.cacheManager, `competencies:${saved.tenantId}`);
     return saved;
   }
 
@@ -225,8 +232,9 @@ export class DevelopmentService {
   }
 
   /** Admin approves a proposed competency */
-  async approveCompetency(tenantId: string, id: string, reviewerId: string, note?: string) {
-    const comp = await this.competencyRepo.findOne({ where: { id, tenantId } });
+  async approveCompetency(tenantId: string | undefined, id: string, reviewerId: string, note?: string) {
+    const where = tenantId ? { id, tenantId } : { id };
+    const comp = await this.competencyRepo.findOne({ where });
     if (!comp) throw new NotFoundException('Competencia no encontrada');
     if (comp.status !== CompetencyStatus.PROPOSED) {
       throw new BadRequestException('Solo se pueden aprobar competencias en estado "propuesta"');
@@ -236,19 +244,21 @@ export class DevelopmentService {
     comp.reviewNote = note || null;
     comp.reviewedAt = new Date();
     const saved = await this.competencyRepo.save(comp);
-    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
-    this.auditService.log(tenantId, reviewerId, 'competency.approved', 'competency', comp.id, {
+    // Usa saved.tenantId (authoritative) — soporta super_admin cross-tenant.
+    await invalidateCache(this.cacheManager, `competencies:${saved.tenantId}`);
+    this.auditService.log(saved.tenantId, reviewerId, 'competency.approved', 'competency', comp.id, {
       name: comp.name, approvedBy: reviewerId,
     }).catch(() => {});
     return saved;
   }
 
   /** Admin rejects a proposed competency */
-  async rejectCompetency(tenantId: string, id: string, reviewerId: string, note: string) {
+  async rejectCompetency(tenantId: string | undefined, id: string, reviewerId: string, note: string) {
     if (!note || !note.trim()) {
       throw new BadRequestException('Se requiere una nota de rechazo');
     }
-    const comp = await this.competencyRepo.findOne({ where: { id, tenantId } });
+    const where = tenantId ? { id, tenantId } : { id };
+    const comp = await this.competencyRepo.findOne({ where });
     if (!comp) throw new NotFoundException('Competencia no encontrada');
     if (comp.status !== CompetencyStatus.PROPOSED) {
       throw new BadRequestException('Solo se pueden rechazar competencias en estado "propuesta"');
@@ -258,8 +268,8 @@ export class DevelopmentService {
     comp.reviewNote = note.trim();
     comp.reviewedAt = new Date();
     const saved = await this.competencyRepo.save(comp);
-    await invalidateCache(this.cacheManager, `competencies:${tenantId}`);
-    this.auditService.log(tenantId, reviewerId, 'competency.rejected', 'competency', comp.id, {
+    await invalidateCache(this.cacheManager, `competencies:${saved.tenantId}`);
+    this.auditService.log(saved.tenantId, reviewerId, 'competency.rejected', 'competency', comp.id, {
       name: comp.name, rejectedBy: reviewerId, reason: note.trim(),
     }).catch(() => {});
     return saved;
@@ -319,16 +329,18 @@ export class DevelopmentService {
    * pattern is delete + create. This keeps the dual-write of position
    * text↔FK contained to `createRoleCompetency` / `bulkAssignCompetencies`.
    */
-  async updateRoleCompetency(tenantId: string, id: string, expectedLevel: number): Promise<RoleCompetency> {
+  async updateRoleCompetency(tenantId: string | undefined, id: string, expectedLevel: number): Promise<RoleCompetency> {
     if (expectedLevel < 1 || expectedLevel > 10) throw new BadRequestException('El nivel esperado debe estar entre 1 y 10');
-    const rc = await this.roleCompetencyRepo.findOne({ where: { id, tenantId } });
+    const where = tenantId ? { id, tenantId } : { id };
+    const rc = await this.roleCompetencyRepo.findOne({ where });
     if (!rc) throw new NotFoundException('Asignación no encontrada');
     rc.expectedLevel = expectedLevel;
     return this.roleCompetencyRepo.save(rc);
   }
 
-  async deleteRoleCompetency(tenantId: string, id: string): Promise<void> {
-    const rc = await this.roleCompetencyRepo.findOne({ where: { id, tenantId } });
+  async deleteRoleCompetency(tenantId: string | undefined, id: string): Promise<void> {
+    const where = tenantId ? { id, tenantId } : { id };
+    const rc = await this.roleCompetencyRepo.findOne({ where });
     if (!rc) throw new NotFoundException('Asignación no encontrada');
     await this.roleCompetencyRepo.remove(rc);
   }

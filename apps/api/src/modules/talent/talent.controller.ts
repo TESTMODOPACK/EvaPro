@@ -40,13 +40,16 @@ export class TalentController {
 
   // ─── Assessments ───────────────────────────────────────────────────────
 
+  /** P3.4 — Secondary cross-tenant: super_admin → undefined, el service
+   *  resuelve el cycle sin filtro de tenant y usa cycle.tenantId authoritative. */
   @Post('generate/:cycleId')
   @Roles('super_admin', 'tenant_admin', 'manager')
   generate(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
-    return this.talentService.generateAssessments(req.user.tenantId, cycleId, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.talentService.generateAssessments(tenantId, cycleId, req.user.userId);
   }
 
   @Get('cycle/:cycleId')

@@ -85,12 +85,25 @@ export class TalentService {
 
   // ─── Generate Assessments ─────────────────────────────────────────────
 
-  async generateAssessments(tenantId: string, cycleId: string, assessedBy: string): Promise<TalentAssessment[]> {
+  /**
+   * P3.4 — Firma tenantId opcional para soportar super_admin cross-tenant.
+   * Resuelve el cycle primero (fail-loud 404 si no existe o si tenant_admin
+   * intenta tocar otro tenant) y usa cycle.tenantId authoritative en todas
+   * las queries internas.
+   */
+  async generateAssessments(tenantId: string | undefined, cycleId: string, assessedBy: string): Promise<TalentAssessment[]> {
+    // Resolver el ciclo primero — super_admin puede cross-tenant (undefined),
+    // tenant_admin/manager quedan scoped por su tenantId (404 si no pertenece).
+    const cycleWhere = tenantId ? { id: cycleId, tenantId } : { id: cycleId };
+    const cycle = await this.cycleRepo.findOne({ where: cycleWhere });
+    if (!cycle) throw new NotFoundException('Ciclo de evaluación no encontrado');
+    const effectiveTenantId = cycle.tenantId;
+
     // Get all unique evaluatees in this cycle with completed assignments
     const evaluatees = await this.assignmentRepo
       .createQueryBuilder('a')
       .select('a.evaluatee_id', 'evaluateeId')
-      .where('a.tenant_id = :tenantId', { tenantId })
+      .where('a.tenant_id = :tenantId', { tenantId: effectiveTenantId })
       .andWhere('a.cycle_id = :cycleId', { cycleId })
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
       .groupBy('a.evaluatee_id')
@@ -106,7 +119,7 @@ export class TalentService {
         .select('AVG(r.overall_score)', 'avgScore')
         .where('a.evaluatee_id = :evaluateeId', { evaluateeId })
         .andWhere('a.cycle_id = :cycleId', { cycleId })
-        .andWhere('a.tenant_id = :tenantId', { tenantId })
+        .andWhere('a.tenant_id = :tenantId', { tenantId: effectiveTenantId })
         .andWhere('r.overall_score IS NOT NULL')
         .getRawOne();
 
@@ -114,7 +127,7 @@ export class TalentService {
 
       // Check if assessment already exists
       let assessment = await this.assessmentRepo.findOne({
-        where: { tenantId, cycleId, userId: evaluateeId },
+        where: { tenantId: effectiveTenantId, cycleId, userId: evaluateeId },
       });
 
       const nineBox = this.calculateNineBox(performanceScore, assessment?.potentialScore ?? null);
@@ -125,7 +138,7 @@ export class TalentService {
         assessment.talentPool = nineBox.pool;
       } else {
         assessment = this.assessmentRepo.create({
-          tenantId,
+          tenantId: effectiveTenantId,
           cycleId,
           userId: evaluateeId,
           performanceScore,

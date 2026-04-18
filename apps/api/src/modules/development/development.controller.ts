@@ -23,6 +23,7 @@ import { DevelopmentService } from './development.service';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('development')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -39,10 +40,20 @@ export class DevelopmentController {
     return this.developmentService.findAllCompetencies(req.user.tenantId, includeAll);
   }
 
+  /**
+   * P3.2 — Defensa cross-tenant:
+   *   · PRIMARY POSTs (create/propose/seed-defaults): super_admin debe pasar
+   *     tenantId explícito en body (resolveOperatingTenantId falla 400 si no);
+   *     tenant_admin ignora body.tenantId y opera en su propio tenant.
+   *   · SECONDARY (update/approve/reject/delete con :id): super_admin pasa
+   *     tenantId=undefined y el service resuelve vía entity.tenantId
+   *     authoritative. tenant_admin sigue scoped (404 si mismatch).
+   */
   @Post('competencies')
   @Roles('super_admin', 'tenant_admin')
   createCompetency(@Request() req: any, @Body() dto: any) {
-    return this.developmentService.createCompetency(req.user.tenantId, dto, req.user.id);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.developmentService.createCompetency(tenantId, dto, req.user.userId);
   }
 
   @Patch('competencies/:id')
@@ -52,19 +63,24 @@ export class DevelopmentController {
     @Request() req: any,
     @Body() dto: any,
   ) {
-    return this.developmentService.updateCompetency(req.user.tenantId, id, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.developmentService.updateCompetency(tenantId, id, dto);
   }
 
   @Post('competencies/seed-defaults')
   @Roles('super_admin', 'tenant_admin')
-  seedDefaults(@Request() req: any) {
-    return this.developmentService.seedDefaultCompetencies(req.user.tenantId, req.user.userId);
+  seedDefaults(@Request() req: any, @Body() body?: { tenantId?: string }) {
+    const tenantId = resolveOperatingTenantId(req.user, body?.tenantId);
+    return this.developmentService.seedDefaultCompetencies(tenantId, req.user.userId);
   }
 
   @Post('competencies/propose')
   @Roles('super_admin', 'tenant_admin', 'manager')
   proposeCompetency(@Request() req: any, @Body() dto: any) {
-    return this.developmentService.proposeCompetency(req.user.tenantId, req.user.userId, dto);
+    // Manager no puede cross-tenant — el helper acepta eso (super_admin only
+    // needs explicit, los demás usan su req.user.tenantId sin importar body).
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.developmentService.proposeCompetency(tenantId, req.user.userId, dto);
   }
 
   @Get('competencies/pending')
@@ -80,7 +96,8 @@ export class DevelopmentController {
     @Request() req: any,
     @Body() dto: { note?: string },
   ) {
-    return this.developmentService.approveCompetency(req.user.tenantId, id, req.user.userId, dto?.note);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.developmentService.approveCompetency(tenantId, id, req.user.userId, dto?.note);
   }
 
   @Post('competencies/:id/reject')
@@ -90,7 +107,8 @@ export class DevelopmentController {
     @Request() req: any,
     @Body() dto: { note: string },
   ) {
-    return this.developmentService.rejectCompetency(req.user.tenantId, id, req.user.userId, dto?.note);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.developmentService.rejectCompetency(tenantId, id, req.user.userId, dto?.note);
   }
 
   @Delete('competencies/:id')
@@ -99,7 +117,8 @@ export class DevelopmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.developmentService.deactivateCompetency(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.developmentService.deactivateCompetency(tenantId, id);
   }
 
   // B8.3: Competency profile — actual vs expected for a user's role
@@ -133,9 +152,10 @@ export class DevelopmentController {
   @Roles('super_admin', 'tenant_admin')
   createRoleCompetency(
     @Request() req: any,
-    @Body() dto: { position: string; positionId?: string; competencyId: string; expectedLevel: number },
+    @Body() dto: { position: string; positionId?: string; competencyId: string; expectedLevel: number; tenantId?: string },
   ) {
-    return this.developmentService.createRoleCompetency(req.user.tenantId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.developmentService.createRoleCompetency(tenantId, dto);
   }
 
   @Patch('role-competencies/:id')
@@ -145,7 +165,8 @@ export class DevelopmentController {
     @Request() req: any,
     @Body() dto: { expectedLevel: number },
   ) {
-    return this.developmentService.updateRoleCompetency(req.user.tenantId, id, dto.expectedLevel);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.developmentService.updateRoleCompetency(tenantId, id, dto.expectedLevel);
   }
 
   @Delete('role-competencies/:id')
@@ -155,16 +176,18 @@ export class DevelopmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.developmentService.deleteRoleCompetency(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.developmentService.deleteRoleCompetency(tenantId, id);
   }
 
   @Post('role-competencies/bulk')
   @Roles('super_admin', 'tenant_admin')
   bulkAssignCompetencies(
     @Request() req: any,
-    @Body() dto: { position: string; positionId?: string; defaultLevel?: number },
+    @Body() dto: { position: string; positionId?: string; defaultLevel?: number; tenantId?: string },
   ) {
-    return this.developmentService.bulkAssignCompetencies(req.user.tenantId, dto.position, dto.defaultLevel || 5, dto.positionId);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.developmentService.bulkAssignCompetencies(tenantId, dto.position, dto.defaultLevel || 5, dto.positionId);
   }
 
   // ─── Plans (requires PDI feature) ──────────────────────────────────────
