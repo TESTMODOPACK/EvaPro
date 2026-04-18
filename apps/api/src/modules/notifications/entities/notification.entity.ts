@@ -31,6 +31,12 @@ export enum NotificationType {
   PDI_REQUIRED = 'pdi_required',
   SUBSCRIPTION_EXPIRING = 'subscription_expiring',
   SUBSCRIPTION_EXPIRING_URGENT = 'subscription_expiring_urgent',
+  // P2.1 — AI quota warnings: avisar al tenant_admin cuando el consumo IA
+  // se acerca o agota el límite del plan antes de que la operación falle
+  // mid-user-flow. WARNING se envía a 80% del total; EXHAUSTED cuando
+  // la próxima llamada será rechazada (100%).
+  AI_QUOTA_WARNING = 'ai_quota_warning',
+  AI_QUOTA_EXHAUSTED = 'ai_quota_exhausted',
   SURVEY_INVITATION = 'survey_invitation',
   SURVEY_REMINDER = 'survey_reminder',
   SURVEY_CLOSED = 'survey_closed',

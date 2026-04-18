@@ -1653,6 +1653,44 @@ export class RemindersService {
     });
   }
 
+  // ─── P2.2: Retention policy de audit logs (diario 04:30 AM) ────────
+  //
+  // GDPR exige retención finita documentada. Hoy audit_logs crece
+  // indefinidamente — 10k+ rows/día en tenants activos. Purga diaria:
+  //
+  //   - Regular (2 años por default): operaciones cotidianas
+  //   - Crítico (6 años por default): pagos, firmas, role changes, GDPR,
+  //     2FA — acciones con valor legal/contable/seguridad
+  //
+  // Configurable via AUDIT_LOGS_RETENTION_YEARS y
+  // AUDIT_LOGS_CRITICAL_RETENTION_YEARS del .env. Envuelto con
+  // runWithCronLock para evitar que 2 replicas borren simultáneo.
+  @Cron('30 4 * * *')
+  async purgeOldAuditLogs() {
+    await runWithCronLock('purgeOldAuditLogs', this.dataSource, this.logger, async () => {
+      this.logger.log('[Cron] Purging old audit logs...');
+      try {
+        const retentionYears = parseInt(process.env.AUDIT_LOGS_RETENTION_YEARS || '2', 10);
+        const criticalRetentionYears = parseInt(process.env.AUDIT_LOGS_CRITICAL_RETENTION_YEARS || '6', 10);
+        if (retentionYears < 1 || criticalRetentionYears < retentionYears) {
+          this.logger.warn(
+            `[Cron] AUDIT_LOGS_RETENTION_YEARS=${retentionYears} CRITICAL=${criticalRetentionYears} inválidos; skipping purge`,
+          );
+          return;
+        }
+        const result = await this.auditService.purgeOldAuditLogs(retentionYears, criticalRetentionYears);
+        if (result.purgedRegular > 0 || result.purgedCritical > 0) {
+          this.logger.log(
+            `[Cron] Audit logs purged: regular=${result.purgedRegular} (>${retentionYears}y), critical=${result.purgedCritical} (>${criticalRetentionYears}y)`,
+          );
+        }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in purgeOldAuditLogs: ${error}`);
+        await this.recordCronFailure('purgeOldAuditLogs', error);
+      }
+    });
+  }
+
   // ─── TODO: aplicar runWithCronLock a los 13 crons restantes ─────────
   //
   // Los siguientes crons todavía NO tienen distributed lock. Son los de

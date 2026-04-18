@@ -8,6 +8,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RecognitionService } from './recognition.service';
 import { CreateRecognitionDto, CreateBadgeDto, AwardBadgeDto, AddReactionDto } from './dto/recognition.dto';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('recognition')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -68,10 +69,12 @@ export class RecognitionController {
     return this.service.getBadges(req.user.tenantId);
   }
 
+  /** P2.5 — Cross-tenant defense: super_admin debe pasar dto.tenantId. */
   @Post('badges')
   @Roles('super_admin', 'tenant_admin')
   createBadge(@Request() req: any, @Body() dto: CreateBadgeDto) {
-    return this.service.createBadge(req.user.tenantId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto.tenantId);
+    return this.service.createBadge(tenantId, dto);
   }
 
   /** Editar un badge (nombre, icono, criterios, etc.). No toca isActive. */
@@ -193,10 +196,12 @@ export class RecognitionController {
     return this.service.listRedemptionItems(req.user.tenantId, isAdmin);
   }
 
+  /** P2.5 — Cross-tenant defense (catalog item). */
   @Post('catalog')
   @Roles('super_admin', 'tenant_admin')
   createCatalogItem(@Request() req: any, @Body() dto: any) {
-    return this.service.createRedemptionItem(req.user.tenantId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.service.createRedemptionItem(tenantId, dto);
   }
 
   @Get('catalog/:id/redemptions')
@@ -250,10 +255,12 @@ export class RecognitionController {
     return this.service.getUserChallenges(req.user.tenantId, req.user.userId);
   }
 
+  /** P2.5 — Cross-tenant defense (challenge). */
   @Post('challenges')
   @Roles('super_admin', 'tenant_admin')
   createChallenge(@Request() req: any, @Body() dto: any) {
-    return this.service.createChallenge(req.user.tenantId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.service.createChallenge(tenantId, dto);
   }
 
   @Get('challenges/:id/participants')

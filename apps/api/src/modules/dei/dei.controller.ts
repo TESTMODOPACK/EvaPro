@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DeiService } from './dei.service';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('dei')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -53,10 +54,12 @@ export class DeiController {
     return this.deiService.listCorrectiveActions(req.user.tenantId);
   }
 
+  /** P2.6 — Cross-tenant defense (corrective action create). */
   @Post('corrective-actions')
   @Roles('super_admin', 'tenant_admin')
   createCorrectiveAction(@Request() req: any, @Body() dto: any) {
-    return this.deiService.createCorrectiveAction(req.user.tenantId, req.user.userId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.deiService.createCorrectiveAction(tenantId, req.user.userId, dto);
   }
 
   @Patch('corrective-actions/:id')

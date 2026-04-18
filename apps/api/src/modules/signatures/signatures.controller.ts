@@ -5,6 +5,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { SignaturesService } from './signatures.service';
+import { getClientIp } from '../../common/utils/get-client-ip';
 
 @Controller('signatures')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -30,10 +31,11 @@ export class SignaturesController {
     @Request() req: any,
     @Body() dto: { documentType: string; documentId: string; code: string },
   ) {
-    const ip = req.headers?.['x-forwarded-for'] || req.ip || req.connection?.remoteAddress;
+    // P2.6 (bonus cleanup): usar getClientIp central (trust proxy-safe) en
+    // vez de leer el header directo (spoofable sin trust proxy).
     return this.signaturesService.verifyAndSign(
       req.user.tenantId, req.user.userId, dto.documentType, dto.documentId, dto.code,
-      typeof ip === 'string' ? ip : ip?.[0],
+      getClientIp(req),
     );
   }
 

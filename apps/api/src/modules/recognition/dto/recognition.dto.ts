@@ -17,6 +17,11 @@ export class CreateRecognitionDto {
 }
 
 export class CreateBadgeDto {
+  /** P2.5 — tenantId para super_admin cross-tenant (whitelist-safe). */
+  @IsUUID()
+  @IsOptional()
+  tenantId?: string;
+
   @IsString()
   @MinLength(2)
   @MaxLength(100)

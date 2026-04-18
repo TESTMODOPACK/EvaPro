@@ -26,6 +26,7 @@ import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objec
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('objectives')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
@@ -33,16 +34,23 @@ import { PlanFeature } from '../../common/constants/plan-features';
 export class ObjectivesController {
   constructor(private readonly objectivesService: ObjectivesService) {}
 
+  /**
+   * P2.5 — Cross-tenant defense: super_admin debe pasar dto.tenantId;
+   * resto de roles opera en su propio tenant (body.tenantId ignorado).
+   * Los demás endpoints (:id/progress, :id/approve, etc.) son defensivos
+   * por findOne tenant-scoped del service.
+   */
   @Post()
   create(@Request() req: any, @Body() dto: CreateObjectiveDto) {
     const role = req.user.role;
+    const tenantId = resolveOperatingTenantId(req.user, (dto as any)?.tenantId);
     // tenant_admin and manager can assign to others via dto.userId
     // employee always creates for themselves
     let targetUserId = req.user.userId;
     if ((role === 'tenant_admin' || role === 'manager') && (dto as any).userId) {
       targetUserId = (dto as any).userId;
     }
-    return this.objectivesService.create(req.user.tenantId, targetUserId, dto);
+    return this.objectivesService.create(tenantId, targetUserId, dto);
   }
 
   @Get()

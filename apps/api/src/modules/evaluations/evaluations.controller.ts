@@ -20,6 +20,7 @@ import { SaveResponseDto, SubmitResponseDto } from './dto/response.dto';
 import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignment.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -42,10 +43,16 @@ export class EvaluationsController {
   }
 
   // Write: admin only
+  //
+  // P2.3 — Defensa cross-tenant: super_admin debe pasar dto.tenantId
+  // explícito (falla 400 si no); tenant_admin ignora body.tenantId y
+  // opera siempre en su propio tenant. Los otros 8 endpoints con :id ya
+  // son defensivos por findOne tenant-scoped del service.
   @Post('evaluation-cycles')
   @Roles('super_admin', 'tenant_admin')
   createCycle(@Request() req: any, @Body() dto: CreateCycleDto) {
-    return this.evaluationsService.createCycle(req.user.tenantId, req.user.userId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto.tenantId);
+    return this.evaluationsService.createCycle(tenantId, req.user.userId, dto);
   }
 
   @Patch('evaluation-cycles/:id')

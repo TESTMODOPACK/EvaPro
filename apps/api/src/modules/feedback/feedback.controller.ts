@@ -24,6 +24,7 @@ import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('feedback')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
@@ -158,13 +159,20 @@ export class FeedbackController {
     return this.feedbackService.findLocations(req.user.tenantId);
   }
 
+  /**
+   * P2.4 — Cross-tenant defense: super_admin debe pasar data.tenantId
+   * explícito al crear location; tenant_admin/manager ignoran body y
+   * operan en su propio. Los endpoints :id (update/delete) ya son
+   * defensivos por findOne scoped del service.
+   */
   @Post('meeting-locations')
   @Roles('super_admin', 'tenant_admin', 'manager')
   createLocation(
     @Request() req: any,
-    @Body() data: { name: string; type: string; address?: string; capacity?: number },
+    @Body() data: { name: string; type: string; address?: string; capacity?: number; tenantId?: string },
   ) {
-    return this.feedbackService.createLocation(req.user.tenantId, data);
+    const tenantId = resolveOperatingTenantId(req.user, data?.tenantId);
+    return this.feedbackService.createLocation(tenantId, data);
   }
 
   @Patch('meeting-locations/:id')

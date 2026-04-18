@@ -19,6 +19,7 @@ import { SurveysService } from './surveys.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('surveys')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -61,11 +62,18 @@ export class SurveysController {
     return this.surveysService.findById(req.user.tenantId, id);
   }
 
-  /** Create a new survey */
+  /** Create a new survey.
+   *
+   * P2.4 — Cross-tenant defense: super_admin debe pasar dto.tenantId
+   * explícito; tenant_admin ignora body.tenantId y crea en su propio.
+   * Los otros endpoints con :id ya son defensivos por surveysService
+   * scoping por tenantId al hacer findById.
+   */
   @Post()
   @Roles('super_admin', 'tenant_admin')
   create(@Request() req: any, @Body() dto: any) {
-    return this.surveysService.create(req.user.tenantId, req.user.userId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.surveysService.create(tenantId, req.user.userId, dto);
   }
 
   /** Update a draft survey */

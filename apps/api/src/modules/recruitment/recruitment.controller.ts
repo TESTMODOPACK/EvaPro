@@ -9,6 +9,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('recruitment')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
@@ -19,10 +20,12 @@ export class RecruitmentController {
 
   // ─── Processes ─────────────────────────────────────────────────────
 
+  /** P2.6 — Cross-tenant defense (recruitment process create). */
   @Post('processes')
   @Roles('super_admin', 'tenant_admin')
   createProcess(@Request() req: any, @Body() dto: any) {
-    return this.service.createProcess(req.user.tenantId, req.user.userId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.service.createProcess(tenantId, req.user.userId, dto);
   }
 
   @Get('processes')
