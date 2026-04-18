@@ -44,10 +44,14 @@ export class EvaluationsController {
 
   // Write: admin only
   //
-  // P2.3 — Defensa cross-tenant: super_admin debe pasar dto.tenantId
-  // explícito (falla 400 si no); tenant_admin ignora body.tenantId y
-  // opera siempre en su propio tenant. Los otros 8 endpoints con :id ya
-  // son defensivos por findOne tenant-scoped del service.
+  // P2.3 — Defensa cross-tenant (primary POST): super_admin debe pasar
+  //        dto.tenantId explícito (falla 400 si no); tenant_admin ignora
+  //        body.tenantId y opera siempre en su propio tenant.
+  // P3.1 — Defensa cross-tenant (secondary POST/PATCH/DELETE): super_admin
+  //        puede actuar cross-tenant pasando tenantId=undefined al service,
+  //        que busca la entidad sin filtro de tenant y usa entity.tenantId
+  //        como authoritative. tenant_admin sigue scoped: si pasa un :id
+  //        que no pertenece a su tenant, findOne retorna 404.
   @Post('evaluation-cycles')
   @Roles('super_admin', 'tenant_admin')
   createCycle(@Request() req: any, @Body() dto: CreateCycleDto) {
@@ -62,7 +66,8 @@ export class EvaluationsController {
     @Request() req: any,
     @Body() dto: UpdateCycleDto,
   ) {
-    return this.evaluationsService.updateCycle(id, req.user.tenantId, dto, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.evaluationsService.updateCycle(id, tenantId, dto, req.user.userId);
   }
 
   @Get('evaluation-cycles/:id/history')
@@ -71,7 +76,8 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.evaluationsService.getCycleHistory(id, req.user.tenantId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.evaluationsService.getCycleHistory(id, tenantId);
   }
 
   @Delete('evaluation-cycles/:id')
@@ -81,7 +87,8 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.evaluationsService.deleteCycle(id, req.user.tenantId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.evaluationsService.deleteCycle(id, tenantId);
   }
 
   @Post('evaluation-cycles/:id/launch')
@@ -90,7 +97,8 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.evaluationsService.launchCycle(id, req.user.tenantId, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.evaluationsService.launchCycle(id, tenantId, req.user.userId);
   }
 
   @Post('evaluation-cycles/:id/close')
@@ -99,7 +107,8 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.evaluationsService.closeCycle(id, req.user.tenantId, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.evaluationsService.closeCycle(id, tenantId, req.user.userId);
   }
 
   @Post('evaluation-cycles/:id/pause')
@@ -108,7 +117,8 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.evaluationsService.pauseCycle(id, req.user.tenantId, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.evaluationsService.pauseCycle(id, tenantId, req.user.userId);
   }
 
   @Post('evaluation-cycles/:id/resume')
@@ -117,7 +127,8 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.evaluationsService.resumeCycle(id, req.user.tenantId, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.evaluationsService.resumeCycle(id, tenantId, req.user.userId);
   }
 
   // ─── Cycle Stages (B3.14) ──────────────────────────────────────────────

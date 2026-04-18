@@ -391,13 +391,16 @@ export class DeiService {
     return this.correctiveActionRepo.save(ca);
   }
 
-  async updateCorrectiveAction(tenantId: string, id: string, dto: {
+  /** P3.3 — Firma tenantId opcional: super_admin cross-tenant → undefined
+   *  busca por id sin filtro; la entity.tenantId queda authoritative. */
+  async updateCorrectiveAction(tenantId: string | undefined, id: string, dto: {
     status?: string;
     action?: string;
     evidence?: string;
     responsibleId?: string;
   }) {
-    const ca = await this.correctiveActionRepo.findOne({ where: { id, tenantId } });
+    const where = tenantId ? { id, tenantId } : { id };
+    const ca = await this.correctiveActionRepo.findOne({ where });
     if (!ca) throw new NotFoundException('Acción correctiva no encontrada');
     const VALID_STATUSES = ['pending', 'in_progress', 'completed', 'cancelled'];
     if (dto.status !== undefined) {

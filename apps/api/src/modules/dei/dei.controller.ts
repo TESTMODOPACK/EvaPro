@@ -42,10 +42,14 @@ export class DeiController {
   // Writes below override the class-level @Roles to exclude `manager` —
   // modificar configuracion DEI o acciones correctivas del tenant entero
   // es responsabilidad de tenant_admin, no de cada jefe de equipo.
+  //
+  // P3.3 — updateConfig: no tiene :id (es 1 config por tenant). Se trata
+  //        como primary: super_admin debe pasar dto.tenantId explícito.
   @Patch('config')
   @Roles('super_admin', 'tenant_admin')
   updateConfig(@Request() req: any, @Body() dto: any) {
-    return this.deiService.updateConfig(req.user.tenantId, dto);
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.deiService.updateConfig(tenantId, dto);
   }
 
   // ─── Corrective Actions ─────────────────────────────────────────────
@@ -62,6 +66,9 @@ export class DeiController {
     return this.deiService.createCorrectiveAction(tenantId, req.user.userId, dto);
   }
 
+  /** P3.3 — Secondary cross-tenant: super_admin → undefined para buscar
+   *  la accion sin filtro de tenant; el service usa entity.tenantId
+   *  authoritative. */
   @Patch('corrective-actions/:id')
   @Roles('super_admin', 'tenant_admin')
   updateCorrectiveAction(
@@ -69,6 +76,7 @@ export class DeiController {
     @Request() req: any,
     @Body() dto: any,
   ) {
-    return this.deiService.updateCorrectiveAction(req.user.tenantId, id, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.deiService.updateCorrectiveAction(tenantId, id, dto);
   }
 }
