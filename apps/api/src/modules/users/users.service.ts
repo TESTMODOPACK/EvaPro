@@ -467,14 +467,103 @@ export class UsersService {
     return saved;
   }
 
+  /**
+   * Soft-delete con cascada esencial en una transacción (P1.8).
+   *
+   * Antes: solo hacía `isActive = false` + audit. Dejaba datos huérfanos:
+   *   - Objectives activos del user seguían en estado 'active' apuntando
+   *     a un user desactivado → aparecían en reports ejecutivos
+   *   - Checkins scheduled/requested no se cancelaban → manager/employee
+   *     recibía notificaciones de sesiones con un user muerto
+   *   - Evaluation assignments pending quedaban colgados → el ciclo no
+   *     podía cerrar limpiamente
+   *   - Notifications unread del user se acumulaban para siempre
+   *   - JWT del user seguía válido (tokenVersion no bumpeado)
+   *
+   * Ahora: transacción atómica con cascada. Para el flow RRHH formal
+   * (registerDeparture) hay cascada MÁS completa con PDI + calibration +
+   * recruitment. Acá solo lo esencial para un soft-delete "simple".
+   */
   async remove(id: string, tenantId: string, callerRole?: string): Promise<void> {
     const user = await this.findById(id);
     if (callerRole !== 'super_admin' && user.tenantId !== tenantId) {
       throw new NotFoundException('Usuario no encontrado');
     }
-    user.isActive = false;
-    await this.userRepository.save(user);
-    this.auditService.log(tenantId, id, 'user.deactivated', 'user', id).catch(() => {});
+    const targetTenantId = user.tenantId;
+    const targetUserId = user.id;
+
+    // safeExec: ignora errores de "tabla/columna no existe" (primer deploy)
+    // pero propaga cualquier otro error para que la transacción haga rollback.
+    const cascadeStats = await this.dataSource.transaction(async (em) => {
+      const safeExec = async (sql: string, params: any[]): Promise<number> => {
+        try {
+          const res: any = await em.query(sql, params);
+          if (Array.isArray(res) && res.length === 2 && typeof res[1] === 'number') return res[1];
+          if (res && typeof res.rowCount === 'number') return res.rowCount;
+          if (res && typeof res.affected === 'number') return res.affected;
+          return 0;
+        } catch (err) {
+          const msg = (err as any)?.message || '';
+          if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('column')) {
+            return 0;
+          }
+          throw err;
+        }
+      };
+
+      // 1. Desactivar + invalidar JWTs + limpiar 2FA (un solo UPDATE atómico)
+      await em
+        .createQueryBuilder()
+        .update(User)
+        .set({
+          isActive: false,
+          twoFactorEnabled: false,
+          twoFactorSecret: null,
+          tokenVersion: () => '"token_version" + 1',
+        })
+        .where('id = :id', { id: targetUserId })
+        .execute();
+
+      // 2. Objectives del user → abandoned
+      const objectivesAbandoned = await safeExec(
+        `UPDATE objectives SET status = 'abandoned', updated_at = NOW()
+           WHERE user_id = $1 AND tenant_id = $2
+             AND status IN ('draft', 'pending_approval', 'active')`,
+        [targetUserId, targetTenantId],
+      );
+
+      // 3. Checkins donde es manager o employee → cancelled
+      const checkinsCancelled = await safeExec(
+        `UPDATE checkins SET status = 'cancelled', updated_at = NOW()
+           WHERE tenant_id = $1
+             AND status IN ('requested', 'scheduled')
+             AND (manager_id = $2 OR employee_id = $2)`,
+        [targetTenantId, targetUserId],
+      );
+
+      // 4. Evaluation assignments pending/in_progress → cancelled
+      const assignmentsCancelled = await safeExec(
+        `UPDATE evaluation_assignments SET status = 'cancelled'
+           WHERE tenant_id = $1
+             AND status IN ('pending', 'in_progress')
+             AND (evaluator_id = $2 OR evaluatee_id = $2)`,
+        [targetTenantId, targetUserId],
+      );
+
+      // 5. Notifications unread del user → marcar como leídas (evita spam post-mortem)
+      const notificationsArchived = await safeExec(
+        `UPDATE notifications SET is_read = true, updated_at = NOW()
+           WHERE user_id = $1 AND tenant_id = $2 AND is_read = false`,
+        [targetUserId, targetTenantId],
+      );
+
+      return { objectivesAbandoned, checkinsCancelled, assignmentsCancelled, notificationsArchived };
+    });
+
+    this.auditService.log(targetTenantId, targetUserId, 'user.deactivated', 'user', targetUserId, {
+      method: 'soft-delete_with_cascade',
+      ...cascadeStats,
+    }).catch(() => undefined);
   }
 
   // ─── Departure Tracking ────────────────────────────────────────────────

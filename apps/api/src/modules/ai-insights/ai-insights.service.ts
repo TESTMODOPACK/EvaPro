@@ -206,7 +206,31 @@ export class AiInsightsService {
     }
   }
 
-  /** After saving an insight, check if an addon credit was consumed and increment the counter */
+  /**
+   * After saving an insight, check if an addon credit was consumed and
+   * increment the counter.
+   *
+   * P1.5 — Fix de race condition:
+   *
+   *   Antes: `count` + `increment` eran 2 queries separadas. Dos requests
+   *   paralelos podían ambos leer `periodUsed > planLimit` y ambos
+   *   incrementar → `aiAddonUsed` avanzaba 2x por 1 crédito consumido
+   *   real. **Revenue leak**: el tenant consume N análisis pero el counter
+   *   cree que gastó 2N — al final del período se factura más de lo debido.
+   *
+   *   Ahora: UPDATE atómico con guard `addon_used < (periodUsed - planLimit)`.
+   *   Si dos requests paralelos tratan de registrar el mismo crédito, solo
+   *   el primero pasa el WHERE; el segundo ve que el contador ya refleja
+   *   ese crédito y es no-op. No hay over-count.
+   *
+   *   Gap menor que queda: si 2 requests llegan al mismo tiempo y ambos
+   *   pasan `checkRateLimit` (porque ven count < limit antes de que el
+   *   primero inserte el insight), ambos pueden crear insight → 1 análisis
+   *   "extra" gratuito por cada burst concurrente. Para cerrarlo haría
+   *   falta envolver check+insert+track en advisory lock por-tenant, que
+   *   es un refactor de 7 callers. Queda como P2 si el costo real lo
+   *   justifica (por ahora: 1-2 análisis gratis por burst es despreciable).
+   */
   private async trackAddonUsage(tenantId: string): Promise<void> {
     try {
       const { planLimit, periodStart } = await this.getSubscriptionAiInfo(tenantId);
@@ -217,14 +241,31 @@ export class AiInsightsService {
         where: { tenantId, createdAt: MoreThan(periodStart) },
       });
 
-      // If usage exceeds plan limit, the latest call consumed an addon credit
+      // Si el uso excede el límite del plan, el último call consumió un
+      // crédito del addon. UPDATE atómico con guard: solo incrementa si
+      // el counter actual todavía NO cubre este excedente (anti-race).
       if (periodUsed > planLimit) {
-        await this.subscriptionRepo.increment(
-          { tenantId, status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]) },
-          'aiAddonUsed',
-          1,
-        );
-        this.logger.log(`Addon credit consumed: tenant=${tenantId.slice(0, 8)}, periodUsed=${periodUsed}, planLimit=${planLimit}`);
+        const expectedAddonThisPeriod = periodUsed - planLimit;
+        const result = await this.subscriptionRepo
+          .createQueryBuilder()
+          .update()
+          .set({ aiAddonUsed: () => '"ai_addon_used" + 1' })
+          .where('tenant_id = :tid', { tid: tenantId })
+          .andWhere('status IN (:...statuses)', {
+            statuses: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL],
+          })
+          .andWhere('ai_addon_used < :threshold', { threshold: expectedAddonThisPeriod })
+          .execute();
+        if ((result.affected ?? 0) > 0) {
+          this.logger.log(
+            `Addon credit consumed: tenant=${tenantId.slice(0, 8)}, periodUsed=${periodUsed}, planLimit=${planLimit}`,
+          );
+        } else {
+          // Otro trackAddonUsage concurrente ya contabilizó este crédito.
+          this.logger.log(
+            `Addon credit already tracked by concurrent request: tenant=${tenantId.slice(0, 8)}`,
+          );
+        }
       }
     } catch (err) {
       // Non-critical — log but don't fail the AI call
