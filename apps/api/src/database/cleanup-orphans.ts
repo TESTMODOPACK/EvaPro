@@ -129,6 +129,36 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS idx_payment_sessions_tenant ON payment_sessions(tenant_id)`,
       `CREATE INDEX IF NOT EXISTS idx_payment_sessions_invoice ON payment_sessions(invoice_id)`,
       `CREATE INDEX IF NOT EXISTS idx_payment_sessions_status ON payment_sessions(status)`,
+      // Leads — captura de prospects pre-venta desde la landing pública.
+      // NO tiene FK a tenants porque un lead es un prospect que aún no es
+      // cliente. Solo se crea el tenant cuando se convierte el lead.
+      `CREATE TABLE IF NOT EXISTS leads (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name varchar(150) NOT NULL,
+        company varchar(150) NOT NULL,
+        role varchar(120) NULL,
+        email varchar(200) NOT NULL,
+        phone varchar(40) NOT NULL,
+        company_size varchar(20) NULL,
+        industry varchar(40) NULL,
+        region varchar(40) NULL,
+        source varchar(40) NULL,
+        message text NOT NULL,
+        origin varchar(30) NOT NULL DEFAULT 'ascenda.cl',
+        ip_address varchar(64) NULL,
+        user_agent varchar(500) NULL,
+        captcha_verdict varchar(30) NOT NULL DEFAULT 'verified',
+        status varchar(20) NOT NULL DEFAULT 'new',
+        internal_notes text NULL,
+        assigned_to uuid NULL REFERENCES users(id) ON DELETE SET NULL,
+        status_changed_at timestamptz NULL,
+        converted_tenant_id uuid NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email)`,
       // Grupo C — auth
       `CREATE TABLE IF NOT EXISTS password_history (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
