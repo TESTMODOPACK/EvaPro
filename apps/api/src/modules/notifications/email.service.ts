@@ -1823,4 +1823,170 @@ export class EmailService {
   private smallText(text: string): string {
     return `<p style="margin:0;font-size:0.8rem;color:#94a3b8;line-height:1.6;">${text}</p>`;
   }
+
+  // ─── Template: Lead captured (auto-responder al prospect) ───────────────
+
+  /**
+   * Email automático que recibe el LEAD al enviar el form de la landing.
+   * "Gracias, te contactamos en 24h" con el branding corporativo Ascenda
+   * (dorado + cream), distinto del branding Eva360 (negro + dorado) para
+   * que quede claro que es Ascenda quien le escribirá.
+   */
+  async sendLeadAutoresponder(
+    email: string,
+    data: { firstName: string; company: string },
+  ): Promise<void> {
+    const subject = 'Gracias por contactarnos — Ascenda';
+    const html = `
+      <!DOCTYPE html>
+      <html><head><meta charset="utf-8"></head>
+      <body style="margin:0;padding:0;background:#FDFAF4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1A1614;">
+        <div style="max-width:560px;margin:2rem auto;background:#FFFFFF;border:1px solid #E5D4A8;border-radius:14px;overflow:hidden;">
+          <div style="background:linear-gradient(135deg,#08090B 0%,#1F1914 100%);padding:2rem;text-align:center;">
+            <div style="font-family:Georgia,serif;font-size:1.8rem;font-weight:700;color:#F5E4A8;letter-spacing:0.12em;">ASCENDA</div>
+            <div style="font-size:0.72rem;color:rgba(245,228,168,0.7);letter-spacing:0.2em;margin-top:0.3rem;">SOCIOS EN CRECIMIENTO COMERCIAL</div>
+          </div>
+          <div style="padding:2.5rem 2rem;">
+            <h2 style="font-family:Georgia,serif;font-size:1.5rem;font-weight:500;margin:0 0 1rem;color:#1A1614;">
+              Hola ${this.escapeHtml(data.firstName)}, gracias por escribirnos.
+            </h2>
+            <p style="font-size:1rem;line-height:1.65;color:#45403C;margin:0 0 1.25rem;">
+              Recibimos tu solicitud de contacto desde <strong>${this.escapeHtml(data.company)}</strong>
+              y ya está en la bandeja de nuestro equipo comercial.
+            </p>
+            <p style="font-size:1rem;line-height:1.65;color:#45403C;margin:0 0 1.5rem;">
+              Un consultor senior de Ascenda te contactará <strong>en menos de 24 horas hábiles</strong>
+              con una propuesta inicial adaptada a tu caso y, si aplica, coordinaremos una demo
+              personalizada de Eva360.
+            </p>
+            <div style="padding:1rem 1.2rem;background:#FCF7EB;border-left:3px solid #C9933A;border-radius:0 8px 8px 0;margin:0 0 1.5rem;">
+              <p style="margin:0;font-size:0.9rem;color:#6B4A18;line-height:1.55;">
+                Mientras tanto, si surgen preguntas urgentes puedes escribirnos directo a
+                <a href="mailto:contacto@ascenda.cl" style="color:#8A6318;font-weight:500;">contacto@ascenda.cl</a>
+                o responder este mismo correo.
+              </p>
+            </div>
+            <p style="font-size:0.95rem;color:#45403C;margin:0;">
+              Saludos,<br/>
+              <strong>Equipo Ascenda</strong>
+            </p>
+          </div>
+          <div style="background:#F4EFE4;padding:1.2rem 2rem;border-top:1px solid #E5D4A8;text-align:center;">
+            <p style="margin:0;font-size:0.78rem;color:#7A746C;">
+              Ascenda SpA · Santiago · Chile
+            </p>
+          </div>
+        </div>
+      </body></html>`;
+    // Sin tenantId — el lead aún no pertenece a ningún tenant.
+    await this.send(email, subject, html);
+  }
+
+  // ─── Template: Lead received (notificación interna) ─────────────────────
+
+  /**
+   * Notificación interna al equipo comercial cuando un nuevo lead llega.
+   * Se envía a contacto@ascenda.cl con todos los detalles del form.
+   */
+  async sendLeadReceivedInternal(data: {
+    leadId: string;
+    name: string;
+    company: string;
+    role: string | null;
+    email: string;
+    phone: string;
+    companySize: string | null;
+    industry: string | null;
+    region: string | null;
+    source: string | null;
+    message: string;
+    origin: string;
+    ipAddress: string | null;
+    captchaVerdict: string;
+  }): Promise<void> {
+    const to = process.env.LEADS_NOTIFY_TO || 'contacto@ascenda.cl';
+    const subject = `🌟 Nuevo lead: ${data.company} (${data.name})`;
+    const escape = (v: string | null | undefined) => (v ? this.escapeHtml(v) : '<span style="color:#9ca3af;">—</span>');
+
+    const html = `
+      <!DOCTYPE html>
+      <html><head><meta charset="utf-8"></head>
+      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;">
+        <div style="max-width:640px;margin:2rem auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+          <div style="background:#08090B;padding:1.25rem 2rem;border-bottom:3px solid #C9933A;">
+            <div style="font-family:Georgia,serif;color:#F5E4A8;font-size:1.2rem;font-weight:700;letter-spacing:0.1em;">ASCENDA · LEADS</div>
+          </div>
+          <div style="padding:1.75rem 2rem;">
+            <h2 style="margin:0 0 0.25rem;font-size:1.3rem;font-weight:700;color:#0f172a;">
+              ${this.escapeHtml(data.company)}
+            </h2>
+            <p style="margin:0 0 1.5rem;font-size:0.9rem;color:#64748b;">
+              ${this.escapeHtml(data.name)}${data.role ? ' · ' + this.escapeHtml(data.role) : ''}
+            </p>
+
+            <table style="width:100%;border-collapse:collapse;font-size:0.9rem;margin:0 0 1.5rem;">
+              <tr>
+                <td style="padding:0.5rem 0.75rem;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;width:35%;">Email</td>
+                <td style="padding:0.5rem 0.75rem;border:1px solid #e2e8f0;">
+                  <a href="mailto:${this.escapeHtml(data.email)}" style="color:#8A6318;font-weight:500;">${this.escapeHtml(data.email)}</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0.5rem 0.75rem;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;">Teléfono</td>
+                <td style="padding:0.5rem 0.75rem;border:1px solid #e2e8f0;">
+                  <a href="tel:${this.escapeHtml(data.phone)}" style="color:#8A6318;font-weight:500;">${this.escapeHtml(data.phone)}</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0.5rem 0.75rem;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;">Tamaño</td>
+                <td style="padding:0.5rem 0.75rem;border:1px solid #e2e8f0;">${escape(data.companySize)}</td>
+              </tr>
+              <tr>
+                <td style="padding:0.5rem 0.75rem;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;">Industria</td>
+                <td style="padding:0.5rem 0.75rem;border:1px solid #e2e8f0;">${escape(data.industry)}</td>
+              </tr>
+              <tr>
+                <td style="padding:0.5rem 0.75rem;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;">Región</td>
+                <td style="padding:0.5rem 0.75rem;border:1px solid #e2e8f0;">${escape(data.region)}</td>
+              </tr>
+              <tr>
+                <td style="padding:0.5rem 0.75rem;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;">Fuente</td>
+                <td style="padding:0.5rem 0.75rem;border:1px solid #e2e8f0;">${escape(data.source)}</td>
+              </tr>
+            </table>
+
+            <h3 style="margin:0 0 0.5rem;font-size:0.85rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;">Mensaje</h3>
+            <div style="padding:1rem 1.2rem;background:#FCF7EB;border-left:3px solid #C9933A;border-radius:0 8px 8px 0;font-size:0.95rem;line-height:1.6;color:#1A1614;white-space:pre-wrap;margin:0 0 1.5rem;">
+${this.escapeHtml(data.message)}
+            </div>
+
+            <div style="background:#f8fafc;padding:0.8rem 1rem;border-radius:8px;font-size:0.78rem;color:#64748b;line-height:1.6;">
+              <strong>Lead ID:</strong> ${this.escapeHtml(data.leadId)}<br/>
+              <strong>Origen:</strong> ${this.escapeHtml(data.origin)} ·
+              <strong>CAPTCHA:</strong> ${this.escapeHtml(data.captchaVerdict)} ·
+              <strong>IP:</strong> ${escape(data.ipAddress)}
+            </div>
+
+            <div style="margin-top:1.5rem;text-align:center;">
+              <a href="${this.appUrl}/dashboard/leads/${encodeURIComponent(data.leadId)}"
+                 style="display:inline-block;padding:0.7rem 1.4rem;background:#C9933A;color:#08090B;text-decoration:none;font-weight:600;border-radius:999px;font-size:0.9rem;">
+                Abrir en el dashboard →
+              </a>
+            </div>
+          </div>
+        </div>
+      </body></html>`;
+    await this.send(to, subject, html);
+  }
+
+  /** Pequeño helper para escapar HTML en campos que vienen del usuario. */
+  private escapeHtml(s: string | null | undefined): string {
+    if (s === null || s === undefined) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 }

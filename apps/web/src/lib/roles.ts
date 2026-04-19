@@ -80,6 +80,8 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/contratos': ['super_admin', 'tenant_admin'],
   '/dashboard/organigrama': ['super_admin', 'tenant_admin', 'manager'],
   '/dashboard/analisis-integrado': ['tenant_admin'],
+  // Pipeline de leads pre-venta (solo super_admin de Ascenda)
+  '/dashboard/leads': ['super_admin'],
 };
 
 // ─── i18n-aware hooks ─────────────────────────────────────────────────────────

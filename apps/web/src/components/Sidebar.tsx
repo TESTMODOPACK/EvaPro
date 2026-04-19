@@ -404,6 +404,7 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/analytics-uso', label: 'Adopción y Uso', icon: icons.analytics },
         { href: '/dashboard/auditoria', label: t('nav.audit', 'Registro de Auditoría'), icon: icons.audit },
         { href: '/dashboard/solicitudes', label: t('nav.requests'), icon: icons.inbox },
+        { href: '/dashboard/leads', label: 'Leads (Ascenda)', icon: icons.inbox },
         { href: '/dashboard/contratos', label: 'Contratos', icon: icons.contracts },
         { href: '/dashboard/perfil', label: 'Mi Perfil', icon: icons.profile },
         { href: '/dashboard/ajustes', label: t('nav.settings', 'Ajustes'), icon: icons.settings },

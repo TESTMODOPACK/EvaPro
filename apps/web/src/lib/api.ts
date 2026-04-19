@@ -1399,4 +1399,72 @@ export const api = {
         body: JSON.stringify({ token }),
       }),
   },
+
+  // ─── Leads (super_admin — pipeline pre-venta) ──────────────────────────
+  leads: {
+    getStats: (token: string) =>
+      request<{
+        new: number;
+        contacted: number;
+        qualified: number;
+        converted: number;
+        discarded: number;
+        total: number;
+      }>("/leads/stats", {}, token),
+
+    list: (token: string, filters?: { status?: string; origin?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.origin) params.set("origin", filters.origin);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      return request<
+        Array<{
+          id: string;
+          name: string;
+          company: string;
+          role: string | null;
+          email: string;
+          phone: string;
+          companySize: string | null;
+          industry: string | null;
+          region: string | null;
+          source: string | null;
+          message: string;
+          origin: string;
+          ipAddress: string | null;
+          captchaVerdict: string;
+          status: "new" | "contacted" | "qualified" | "converted" | "discarded";
+          internalNotes: string | null;
+          assignedTo: string | null;
+          assignee: { id: string; firstName: string; lastName: string } | null;
+          statusChangedAt: string | null;
+          convertedTenantId: string | null;
+          createdAt: string;
+          updatedAt: string;
+        }>
+      >(`/leads${qs}`, {}, token);
+    },
+
+    get: (token: string, id: string) =>
+      request<any>(`/leads/${id}`, {}, token),
+
+    update: (
+      token: string,
+      id: string,
+      dto: {
+        status?: "new" | "contacted" | "qualified" | "converted" | "discarded";
+        internalNotes?: string;
+        assignedTo?: string | null;
+        convertedTenantId?: string | null;
+      },
+    ) =>
+      request<any>(
+        `/leads/${id}`,
+        { method: "PATCH", body: JSON.stringify(dto) },
+        token,
+      ),
+
+    remove: (token: string, id: string) =>
+      request<void>(`/leads/${id}`, { method: "DELETE" }, token),
+  },
 };

@@ -39,6 +39,7 @@ import { MetricsModule } from './modules/metrics/metrics.module';
 import { UnsubscribeModule } from './modules/unsubscribe/unsubscribe.module';
 import { GdprModule } from './modules/gdpr/gdpr.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { LeadsModule } from './modules/leads/leads.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { SystemErrorAuditInterceptor } from './common/interceptors/system-error-audit.interceptor';
@@ -107,6 +108,7 @@ import { NoImpersonationGuard } from './common/guards/no-impersonation.guard';
     UnsubscribeModule,
     GdprModule,
     PaymentsModule,
+    LeadsModule,
   ],
   controllers: [AppController],
   providers: [
