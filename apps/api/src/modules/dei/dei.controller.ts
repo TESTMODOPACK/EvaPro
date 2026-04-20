@@ -11,12 +11,22 @@ import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 export class DeiController {
   constructor(private readonly deiService: DeiService) {}
 
+  /** P7.4 — DEI analytics (demographics, equity, gap-report) quedan
+   *  restringidos a tenant_admin + super_admin. Decisión de política:
+   *   - DEI es responsabilidad HR/C-Level, no de managers individuales.
+   *   - Con equipos pequeños (<5 personas), filtrar por manager revela
+   *     demografía individual → violación de privacidad / DPA.
+   *   - Si un manager necesita composición de su equipo, ya la ve en
+   *     /dashboard/usuarios (con el filtro P6 aplicado).
+   */
   @Get('demographics')
+  @Roles('super_admin', 'tenant_admin')
   getDemographics(@Request() req: any) {
     return this.deiService.getDemographicOverview(req.user.tenantId);
   }
 
   @Get('equity')
+  @Roles('super_admin', 'tenant_admin')
   getEquity(
     @Request() req: any,
     @Query('cycleId', ParseUUIDPipe) cycleId: string,
@@ -25,6 +35,7 @@ export class DeiController {
   }
 
   @Get('gap-report')
+  @Roles('super_admin', 'tenant_admin')
   getGapReport(
     @Request() req: any,
     @Query('cycleId', ParseUUIDPipe) cycleId: string,

@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CheckIn, CheckInStatus } from './entities/checkin.entity';
 import { QuickFeedback, Sentiment } from './entities/quick-feedback.entity';
 import { MeetingLocation } from './entities/meeting-location.entity';
@@ -728,17 +728,65 @@ export class FeedbackService {
 
   // ─── Export ──────────────────────────────────────────────────────────
 
-  async exportFeedbackCsv(tenantId: string): Promise<string> {
+  /**
+   * P7.3 — Manager export: filtra check-ins donde managerId o employeeId
+   * sea del equipo (self + reportes directos) y quick feedback donde
+   * fromUserId o toUserId sea del equipo. Admin (managerId=undefined)
+   * exporta todo el tenant sin filtro.
+   */
+  private async getTeamScopeForFeedbackExport(
+    tenantId: string,
+    managerId: string | undefined,
+  ): Promise<string[] | null> {
+    if (!managerId) return null;
+    const reports = await this.userRepo.find({
+      where: { tenantId, managerId },
+      select: ['id'],
+    });
+    return [managerId, ...reports.map((u) => u.id)];
+  }
+
+  async exportFeedbackCsv(tenantId: string, managerId?: string): Promise<string> {
+    const teamIds = await this.getTeamScopeForFeedbackExport(tenantId, managerId);
+    const checkinWhere: any = { tenantId };
+    const feedbackWhere: any = { tenantId };
+    if (teamIds) {
+      // Manager: ve checkins donde participa un miembro del equipo
+      // (managerId O employeeId). OR requiere array de where clauses.
+      const orClauses: any[] = [
+        { tenantId, managerId: In(teamIds) },
+        { tenantId, employeeId: In(teamIds) },
+      ];
+      const checkins = await this.checkInRepo.find({
+        where: orClauses,
+        relations: ['manager', 'employee'],
+        order: { scheduledDate: 'DESC' },
+      });
+      const feedback = await this.quickFeedbackRepo.find({
+        where: [
+          { tenantId, fromUserId: In(teamIds) },
+          { tenantId, toUserId: In(teamIds) },
+        ],
+        relations: ['fromUser', 'toUser'],
+        order: { createdAt: 'DESC' },
+      });
+      return this.buildFeedbackCsv(checkins, feedback);
+    }
+
     const checkins = await this.checkInRepo.find({
-      where: { tenantId },
+      where: checkinWhere,
       relations: ['manager', 'employee'],
       order: { scheduledDate: 'DESC' },
     });
     const feedback = await this.quickFeedbackRepo.find({
-      where: { tenantId },
+      where: feedbackWhere,
       relations: ['fromUser', 'toUser'],
       order: { createdAt: 'DESC' },
     });
+    return this.buildFeedbackCsv(checkins, feedback);
+  }
+
+  private buildFeedbackCsv(checkins: any[], feedback: any[]): string {
 
     const esc = (v: string) => `"${String(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
     const lines: string[] = [];
@@ -771,17 +819,36 @@ export class FeedbackService {
     return '\uFEFF' + lines.join('\n');
   }
 
-  async exportFeedbackXlsx(tenantId: string): Promise<Buffer> {
-    const checkins = await this.checkInRepo.find({
-      where: { tenantId },
-      relations: ['manager', 'employee'],
-      order: { scheduledDate: 'DESC' },
-    });
-    const feedback = await this.quickFeedbackRepo.find({
-      where: { tenantId },
-      relations: ['fromUser', 'toUser'],
-      order: { createdAt: 'DESC' },
-    });
+  async exportFeedbackXlsx(tenantId: string, managerId?: string): Promise<Buffer> {
+    const teamIds = await this.getTeamScopeForFeedbackExport(tenantId, managerId);
+    const checkins = teamIds
+      ? await this.checkInRepo.find({
+          where: [
+            { tenantId, managerId: In(teamIds) },
+            { tenantId, employeeId: In(teamIds) },
+          ],
+          relations: ['manager', 'employee'],
+          order: { scheduledDate: 'DESC' },
+        })
+      : await this.checkInRepo.find({
+          where: { tenantId },
+          relations: ['manager', 'employee'],
+          order: { scheduledDate: 'DESC' },
+        });
+    const feedback = teamIds
+      ? await this.quickFeedbackRepo.find({
+          where: [
+            { tenantId, fromUserId: In(teamIds) },
+            { tenantId, toUserId: In(teamIds) },
+          ],
+          relations: ['fromUser', 'toUser'],
+          order: { createdAt: 'DESC' },
+        })
+      : await this.quickFeedbackRepo.find({
+          where: { tenantId },
+          relations: ['fromUser', 'toUser'],
+          order: { createdAt: 'DESC' },
+        });
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();

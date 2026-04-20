@@ -230,14 +230,19 @@ export class EvaluationsController {
     return this.evaluationsService.autoGenerateAssignments(req.user.tenantId, cycleId);
   }
 
-  // ─── Assignments — admin + manager can view all; employees see own ────────
+  /** Assignments — admin + manager (con scope a su equipo). Employees usan
+   *  /evaluations/pending|completed|received para ver las suyas.
+   *
+   *  P7.6 — Manager ve solo assignments donde evaluateeId o evaluatorId
+   *  sea del equipo (reportes directos + self). Admin ve todos. */
   @Get('evaluation-cycles/:cycleId/assignments')
   @Roles('super_admin', 'tenant_admin', 'manager')
   findAssignments(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
-    return this.evaluationsService.findAssignmentsByCycle(cycleId, req.user.tenantId);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.evaluationsService.findAssignmentsByCycle(cycleId, req.user.tenantId, managerId);
   }
 
   // ─── User's own evaluations — open to all roles (service scopes by userId) ─

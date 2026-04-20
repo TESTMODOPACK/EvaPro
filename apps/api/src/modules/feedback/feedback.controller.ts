@@ -34,6 +34,8 @@ export class FeedbackController {
 
   // ─── Export ─────────────────────────────────────────────────────────────
 
+  /** P7.3 — Manager exporta solo check-ins de su equipo (donde él o un
+   *  reporte directo participó). Admin exporta todo el tenant. */
   @Get('export')
   @Roles('super_admin', 'tenant_admin', 'manager')
   async exportFeedback(
@@ -41,13 +43,14 @@ export class FeedbackController {
     @Query('format') format: string,
     @Res({ passthrough: true }) res: Response,
   ) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     if (format === 'xlsx') {
-      const buffer = await this.feedbackService.exportFeedbackXlsx(req.user.tenantId);
+      const buffer = await this.feedbackService.exportFeedbackXlsx(req.user.tenantId, managerId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=feedback-checkins.xlsx');
       return res.send(buffer);
     }
-    const csv = await this.feedbackService.exportFeedbackCsv(req.user.tenantId);
+    const csv = await this.feedbackService.exportFeedbackCsv(req.user.tenantId, managerId);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename=feedback-checkins.csv');
     return res.send(csv);

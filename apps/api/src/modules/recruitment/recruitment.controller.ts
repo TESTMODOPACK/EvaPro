@@ -144,9 +144,12 @@ export class RecruitmentController {
 
   // ─── Scorecard ────────────────────────────────────────────────────
 
+  /** P7 — Manager solo ve scorecard de candidatos donde él participó
+   *  como evaluador (submitInterview). Admin ve todos. */
   @Get('candidates/:id/scorecard')
   getScorecard(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getScorecard(req.user.tenantId, id);
+    const managerCheckUserId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.service.getScorecard(req.user.tenantId, id, managerCheckUserId);
   }
 
   @Patch('candidates/:id/adjust-score')
@@ -162,9 +165,12 @@ export class RecruitmentController {
 
   // ─── Comparative (internal processes) ─────────────────────────────
 
+  /** P7 — Manager solo ve comparativa si participó como evaluador en
+   *  alguno de los candidatos del proceso. Admin ve todo. */
   @Get('processes/:id/comparative')
   getComparative(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getComparative(req.user.tenantId, id);
+    const managerCheckUserId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.service.getComparative(req.user.tenantId, id, managerCheckUserId);
   }
 
   @Post('processes/:id/ai-recommendation')

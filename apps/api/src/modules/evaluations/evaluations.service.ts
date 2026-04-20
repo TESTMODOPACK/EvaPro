@@ -1107,8 +1107,34 @@ export class EvaluationsService {
 
   // ─── Assignments ──────────────────────────────────────────────────────────
 
-  async findAssignmentsByCycle(cycleId: string, tenantId: string): Promise<EvaluationAssignment[]> {
+  /**
+   * P7.6 — Si managerId es provisto (caller es manager), filtra
+   * assignments donde evaluateeId o evaluatorId sea del equipo
+   * (reportes directos + self). Admin ve todos los assignments.
+   */
+  async findAssignmentsByCycle(
+    cycleId: string,
+    tenantId: string,
+    managerId?: string,
+  ): Promise<EvaluationAssignment[]> {
     await this.findCycleById(cycleId, tenantId);
+
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      const teamIds = [managerId, ...reports.map((u) => u.id)];
+      return this.assignmentRepo.find({
+        where: [
+          { cycleId, tenantId, evaluateeId: In(teamIds) },
+          { cycleId, tenantId, evaluatorId: In(teamIds) },
+        ],
+        relations: ['evaluatee', 'evaluator'],
+        order: { createdAt: 'ASC' },
+      });
+    }
+
     return this.assignmentRepo.find({
       where: { cycleId, tenantId },
       relations: ['evaluatee', 'evaluator'],

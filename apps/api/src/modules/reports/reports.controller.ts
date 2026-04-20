@@ -89,25 +89,23 @@ export class ReportsController {
     return this.executiveDashboardService.getENPSBySurveyId(req.user.tenantId, surveyId);
   }
 
+  /**
+   * P7 — Manager siempre recibe dashboard scoped a su equipo directo + self.
+   * Antes aceptaba scope=org con privacy filter (<3 deptos), pero decisión
+   * de política: el executive dashboard org-wide es exclusivo de CEO/CHRO
+   * (admin). Si manager pasa scope=org lo ignoramos (no levantamos error
+   * para backward-compat). Admin siempre ve org-wide.
+   */
   @Get('executive-dashboard')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  async executiveDashboard(@Query('cycleId') cycleId: string, @Query('scope') scope: string, @Request() req: any) {
-    // scope=org lets managers fetch org-wide totals for comparison in dashboard
-    const isOrgScope = req.user.role === 'manager' && scope === 'org';
-    const managerId = req.user.role === 'manager' && !isOrgScope ? req.user.userId : undefined;
+  async executiveDashboard(@Query('cycleId') cycleId: string, @Request() req: any) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     this.logAccess(req, 'executive_dashboard', { cycleId });
-    const result = await this.executiveDashboardService.getExecutiveSummary(
+    return this.executiveDashboardService.getExecutiveSummary(
       req.user.tenantId,
       cycleId || undefined,
       managerId,
     );
-    // Privacy: suppress small-count department rows for managers viewing org-wide
-    if (isOrgScope && result?.headcount?.byDepartment) {
-      result.headcount.byDepartment = result.headcount.byDepartment.filter(
-        (d: any) => (d.count || 0) >= 3,
-      );
-    }
-    return result;
   }
 
   // ─── Custom KPIs ──────────────────────────────────────────────────────
@@ -118,10 +116,12 @@ export class ReportsController {
     return this.kpiService.findAll(req.user.tenantId);
   }
 
+  /** P7.1 — Manager recibe KPIs calculados solo sobre su equipo directo. */
   @Get('kpis/calculate')
   @Roles('super_admin', 'tenant_admin', 'manager')
   calculateKpis(@Request() req: any) {
-    return this.kpiService.calculateAll(req.user.tenantId);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.kpiService.calculateAll(req.user.tenantId, managerId);
   }
 
   @Post('kpis')
@@ -364,6 +364,8 @@ export class ReportsController {
 
   // ─── Export ──────────────────────────────────────────────────────────────
 
+  /** P7.1 — Manager exporta solo evaluaciones de su equipo directo
+   *  (antes recibia CSV/XLSX/PDF con toda la organizacion). */
   @Get('cycle/:cycleId/export')
   @Roles('super_admin', 'tenant_admin', 'manager')
   async exportResults(
@@ -378,30 +380,31 @@ export class ReportsController {
       .catch(() => {});
 
     const filterUserId = userId || undefined;
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     const filePrefix = filterUserId ? 'informe-individual' : 'reporte';
 
     if (format === 'pdf') {
-      const pdfBuffer = await this.reportsService.exportPdf(cycleId, req.user.tenantId, filterUserId);
+      const pdfBuffer = await this.reportsService.exportPdf(cycleId, req.user.tenantId, filterUserId, managerId);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename=${filePrefix}-${cycleId}.pdf`);
       return res.send(pdfBuffer);
     }
 
     if (format === 'pptx') {
-      const pptxBuffer = await this.reportsService.exportPptx(cycleId, req.user.tenantId, filterUserId);
+      const pptxBuffer = await this.reportsService.exportPptx(cycleId, req.user.tenantId, filterUserId, managerId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
       res.setHeader('Content-Disposition', `attachment; filename=${filePrefix}-${cycleId}.pptx`);
       return res.send(pptxBuffer);
     }
 
     if (format === 'xlsx') {
-      const xlsxBuffer = await this.reportsService.exportXlsx(cycleId, req.user.tenantId, filterUserId);
+      const xlsxBuffer = await this.reportsService.exportXlsx(cycleId, req.user.tenantId, filterUserId, managerId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename=${filePrefix}-${cycleId}.xlsx`);
       return res.send(xlsxBuffer);
     }
 
-    const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId, filterUserId);
+    const csv = await this.reportsService.exportCsv(cycleId, req.user.tenantId, filterUserId, managerId);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=${filePrefix}-${cycleId}.csv`);
     return res.send(csv);
@@ -646,10 +649,12 @@ export class ReportsController {
     return this.analyticsService.getTurnoverAnalysis(req.user.tenantId);
   }
 
-  /** Movimientos Internos — tenant_admin + manager */
+  /** Movimientos Internos — tenant_admin + manager.
+   *  P7.1 — Manager ve movimientos solo de su equipo directo. */
   @Get('analytics/movements')
   @Roles('tenant_admin', 'manager')
   getInternalMovements(@Request() req: any) {
-    return this.analyticsService.getInternalMovementAnalysis(req.user.tenantId);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.analyticsService.getInternalMovementAnalysis(req.user.tenantId, managerId);
   }
 }

@@ -1,5 +1,5 @@
 import type ExcelJS from 'exceljs';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 // jsPDF and autoTable loaded dynamically in export methods to avoid ESM issues
@@ -306,9 +306,39 @@ export class ReportsService {
     return { managerId, cycleId, team: results };
   }
 
-  async exportCsv(cycleId: string, tenantId: string, userId?: string): Promise<string> {
+  /**
+   * P7.1 — Helper compartido por los 4 export methods (csv/xlsx/pdf/pptx).
+   *
+   * Dado un managerId (si el caller es manager), retorna el Set de
+   * evaluateeIds permitidos (reportes directos + self). Si se pasó userId
+   * específico Y no pertenece al equipo, lanza ForbiddenException.
+   *
+   * Si managerId es undefined (admin), retorna null — el caller no debe
+   * aplicar ningún filtro por equipo.
+   */
+  private async getTeamScopeForExport(
+    tenantId: string,
+    managerId: string | undefined,
+    filterUserId: string | undefined,
+  ): Promise<Set<string> | null> {
+    if (!managerId) return null;
+    const reports = await this.userRepo.find({
+      where: { tenantId, managerId },
+      select: ['id'],
+    });
+    const teamIds = new Set(reports.map((u) => u.id));
+    teamIds.add(managerId); // incluir self
+    if (filterUserId && !teamIds.has(filterUserId)) {
+      throw new ForbiddenException('No tienes acceso a las evaluaciones de este usuario.');
+    }
+    return teamIds;
+  }
+
+  async exportCsv(cycleId: string, tenantId: string, userId?: string, managerId?: string): Promise<string> {
+    const teamIds = await this.getTeamScopeForExport(tenantId, managerId, userId);
     const where: any = { cycleId, tenantId, status: AssignmentStatus.COMPLETED };
     if (userId) where.evaluateeId = userId;
+    else if (teamIds) where.evaluateeId = In([...teamIds]);
     const assignments = await this.assignmentRepo.find({
       where,
       relations: ['evaluatee', 'evaluator'],
@@ -345,10 +375,12 @@ export class ReportsService {
     return '\uFEFF' + rows.join('\n');
   }
 
-  async exportPdf(cycleId: string, tenantId: string, userId?: string): Promise<Buffer> {
+  async exportPdf(cycleId: string, tenantId: string, userId?: string, managerId?: string): Promise<Buffer> {
+    const teamIds = await this.getTeamScopeForExport(tenantId, managerId, userId);
     const summary = await this.cycleSummary(cycleId, tenantId);
     const where: any = { cycleId, tenantId, status: AssignmentStatus.COMPLETED };
     if (userId) where.evaluateeId = userId;
+    else if (teamIds) where.evaluateeId = In([...teamIds]);
     const assignments = await this.assignmentRepo.find({
       where,
       relations: ['evaluatee', 'evaluator'],
@@ -607,12 +639,14 @@ export class ReportsService {
 
   // ─── Export Excel (.xlsx) ───────────────────────────────────────────────
 
-  async exportXlsx(cycleId: string, tenantId: string, userId?: string): Promise<Buffer> {
+  async exportXlsx(cycleId: string, tenantId: string, userId?: string, managerId?: string): Promise<Buffer> {
     const ExcelJS = (await import('exceljs')).default;
 
+    const teamIds = await this.getTeamScopeForExport(tenantId, managerId, userId);
     const summary = await this.cycleSummary(cycleId, tenantId);
     const where: any = { cycleId, tenantId, status: AssignmentStatus.COMPLETED };
     if (userId) where.evaluateeId = userId;
+    else if (teamIds) where.evaluateeId = In([...teamIds]);
     const assignments = await this.assignmentRepo.find({
       where,
       relations: ['evaluatee', 'evaluator'],
@@ -1628,8 +1662,13 @@ export class ReportsService {
 
   // ─── Export PowerPoint ──────────────────────────────────────────────────
 
-  async exportPptx(cycleId: string, tenantId: string, userId?: string): Promise<Buffer> {
+  async exportPptx(cycleId: string, tenantId: string, userId?: string, managerId?: string): Promise<Buffer> {
     const PptxGenJS = (await import('pptxgenjs')).default;
+
+    // P7.1 — Valida acceso + scope del manager (si aplica). El cuerpo del
+    // PPTX mayoritariamente muestra agregados a nivel de ciclo — si es
+    // manager, limitamos a la vista de su equipo via el guard.
+    await this.getTeamScopeForExport(tenantId, managerId, userId);
 
     // Gather data (bell curve and heatmap are in Analytics Cycle, not here)
     const summary = await this.cycleSummary(cycleId, tenantId);

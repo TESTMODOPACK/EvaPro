@@ -106,10 +106,12 @@ export class AiInsightsController {
 
   // ─── Flight Risk Score ─────────────────────────────────────────────────
 
+  /** P7.5 — Manager ve flight-risk solo de su equipo directo + self. */
   @Get('flight-risk')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getFlightRisk(@Request() req: any) {
-    return this.aiService.getFlightRiskScores(req.user.tenantId);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.aiService.getFlightRiskScores(req.user.tenantId, managerId);
   }
 
   // ─── F15: Performance Prediction ──────────────────────────────────────
@@ -134,13 +136,16 @@ export class AiInsightsController {
 
   // ─── F15: Explainability (XAI) ──────────────────────────────────────
 
+  /** P7.5 — Manager solo puede ver explainability de su equipo directo + self. */
   @Get('explainability/:userId')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getExplainability(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
-    return this.aiService.getExplainability(req.user.tenantId, userId);
+    return this.aiService.getExplainability(
+      req.user.tenantId, userId, req.user.role, req.user.userId,
+    );
   }
 
   // ─── Usage Quota ──────────────────────────────────────────────────────
@@ -195,13 +200,26 @@ export class AiInsightsController {
 
   // ─── Cycle Comparison AI ──────────────────────────────────────────────
 
+  /** P6 fix:
+   *    - manager recibe análisis IA filtrado a su equipo directo
+   *      (antes procesaba toda la organización — fuga de datos agregados).
+   *    - super_admin removido del @Roles por consistencia con el endpoint
+   *      tabular `GET /reports/analytics/cycle-comparison` que SOLO permite
+   *      tenant_admin + manager. Super_admin no tiene "ciclos propios" —
+   *      si necesita ver data de un cliente, impersona como tenant_admin
+   *      (queda auditado y usa el JWT del tenant correcto en vez del
+   *      tenantId residual del super_admin, que causaba data leak silencioso
+   *      a Demo Company).
+   */
   @Post('cycle-comparison')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('tenant_admin', 'manager')
   analyzeCycleComparison(
     @Body() body: { cycleIds: string[] },
     @Request() req: any,
   ) {
-    return this.aiService.analyzeCycleComparison(req.user.tenantId, body.cycleIds, req.user.userId);
+    return this.aiService.analyzeCycleComparison(
+      req.user.tenantId, body.cycleIds, req.user.userId, req.user.role,
+    );
   }
 
   // ─── Cache Management ─────────────────────────────────────────────────

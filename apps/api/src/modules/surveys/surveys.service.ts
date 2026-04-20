@@ -494,10 +494,43 @@ export class SurveysService {
     return out;
   }
 
-  async getResults(tenantId: string, surveyId: string): Promise<any> {
+  /**
+   * P7.2 — Manager scope:
+   *   - Si el survey ES anónimo y el caller es manager → 403 (filtrar por
+   *     equipo rompería el anonimato con equipos pequeños; solo admin puede
+   *     ver resultados de encuestas anónimas).
+   *   - Si el survey NO es anónimo y caller es manager → filtra responses
+   *     a las de respondentId ∈ {reportes directos, self}.
+   *   - Admin (managerId=undefined) → sin filtro, igual que antes.
+   */
+  async getResults(tenantId: string, surveyId: string, managerId?: string): Promise<any> {
     const survey = await this.findById(tenantId, surveyId);
-    const responses = await this.responseRepo.find({ where: { surveyId, tenantId, isComplete: true } });
-    const totalAssignments = await this.assignmentRepo.count({ where: { surveyId, tenantId } });
+
+    // Guard anonimato para manager.
+    if (managerId && survey.isAnonymous) {
+      throw new ForbiddenException(
+        'Las encuestas anónimas solo pueden ser revisadas por administradores. Los managers no tienen acceso para preservar el anonimato de los respondientes.',
+      );
+    }
+
+    // Filtro manager (solo si survey NO es anónimo).
+    let teamIds: Set<string> | null = null;
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      teamIds = new Set(reports.map((u) => u.id));
+      teamIds.add(managerId);
+    }
+
+    const responseWhere: any = { surveyId, tenantId, isComplete: true };
+    if (teamIds) responseWhere.respondentId = In([...teamIds]);
+    const responses = await this.responseRepo.find({ where: responseWhere });
+
+    const assignWhere: any = { surveyId, tenantId };
+    if (teamIds) assignWhere.userId = In([...teamIds]);
+    const totalAssignments = await this.assignmentRepo.count({ where: assignWhere });
 
     if (responses.length === 0) {
       return {
@@ -612,9 +645,29 @@ export class SurveysService {
     };
   }
 
-  async getENPS(tenantId: string, surveyId: string): Promise<any> {
+  /** P7.2 — ver getResults para el detalle del manager scope. */
+  async getENPS(tenantId: string, surveyId: string, managerId?: string): Promise<any> {
     const survey = await this.findById(tenantId, surveyId);
-    const responses = await this.responseRepo.find({ where: { surveyId, tenantId, isComplete: true } });
+
+    if (managerId && survey.isAnonymous) {
+      throw new ForbiddenException(
+        'Las encuestas anónimas solo pueden ser revisadas por administradores.',
+      );
+    }
+
+    let teamIds: Set<string> | null = null;
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      teamIds = new Set(reports.map((u) => u.id));
+      teamIds.add(managerId);
+    }
+
+    const responseWhere: any = { surveyId, tenantId, isComplete: true };
+    if (teamIds) responseWhere.respondentId = In([...teamIds]);
+    const responses = await this.responseRepo.find({ where: responseWhere });
 
     const npsQuestions = survey.questions.filter((q) => q.questionType === 'nps');
     const likertQuestions = survey.questions.filter((q) => q.questionType === 'likert_5');
