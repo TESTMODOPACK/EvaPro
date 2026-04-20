@@ -15,6 +15,8 @@ import { SurveyAssignment } from './entities/survey-assignment.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../notifications/email.service';
+import { PushService } from '../notifications/push.service';
+import { buildPushMessage } from '../notifications/push-messages';
 import { AiInsightsService } from '../ai-insights/ai-insights.service';
 import { OrgDevelopmentService } from '../org-development/org-development.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -38,6 +40,7 @@ export class SurveysService {
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
+    private readonly pushService: PushService,
     private readonly aiInsightsService: AiInsightsService,
     private readonly orgDevService: OrgDevelopmentService,
     private readonly subscriptionsService: SubscriptionsService,
@@ -320,6 +323,23 @@ export class SurveysService {
         tenantId: effectiveTenantId,
         userId: u.id,
       }).catch((e) => this.logger.error(`Error sending survey email to ${u.email}: ${e.message}`));
+
+      // v3.0 Push notification a cada target user (fire-and-forget).
+      const pushMsg = buildPushMessage('surveyActive', u.language ?? 'es', {
+        title: survey.title,
+      });
+      this.pushService
+        .sendToUser(
+          u.id,
+          {
+            title: pushMsg.title,
+            body: pushMsg.body,
+            url: `/dashboard/encuestas-clima/${surveyId}/responder`,
+            tag: `survey-${surveyId}`,
+          },
+          'surveys',
+        )
+        .catch(() => undefined);
     }
 
     this.logger.log(`Survey "${survey.title}" launched to ${targetUsers.length} users`);
@@ -341,7 +361,7 @@ export class SurveysService {
 
     const users = await this.userRepo.find({
       where,
-      select: ['id', 'email', 'firstName', 'lastName', 'department', 'role'],
+      select: ['id', 'email', 'firstName', 'lastName', 'department', 'role', 'language'],
     });
     // Exclude super_admin — they are platform administrators, not organization collaborators
     return users.filter((u) => u.role !== 'super_admin');

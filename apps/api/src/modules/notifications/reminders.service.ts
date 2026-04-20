@@ -5,6 +5,7 @@ import { DataSource, Repository, LessThanOrEqual, MoreThanOrEqual, In } from 'ty
 import { runWithCronLock } from '../../common/utils/cron-lock';
 import { NotificationsService } from './notifications.service';
 import { EmailService } from './email.service';
+import { PushService } from './push.service';
 import { NotificationType } from './entities/notification.entity';
 import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
@@ -43,6 +44,7 @@ export class RemindersService {
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
+    private readonly pushService: PushService,
     @InjectRepository(EvaluationAssignment)
     private readonly assignmentRepo: Repository<EvaluationAssignment>,
     @InjectRepository(EvaluationCycle)
@@ -1687,6 +1689,27 @@ export class RemindersService {
       } catch (error) {
         this.logger.error(`[Cron] Error in purgeOldAuditLogs: ${error}`);
         await this.recordCronFailure('purgeOldAuditLogs', error);
+      }
+    });
+  }
+
+  // ─── v3.0: Cron de cleanup para push subscriptions ──────────────────
+  /**
+   * Borra suscripciones push inactivas (>90d sin uso) o con 5+ fallos.
+   * Corre diariamente a las 03:15 AM. Envuelto con runWithCronLock para
+   * dedup en deployment multi-replica. Llama a PushService.
+   */
+  @Cron('15 3 * * *')
+  async purgeDeadPushSubscriptions() {
+    await runWithCronLock('purgeDeadPushSubscriptions', this.dataSource, this.logger, async () => {
+      try {
+        const { deleted } = await this.pushService.pruneDeadSubscriptions(90);
+        if (deleted > 0) {
+          this.logger.log(`[Cron] Push subscriptions purged: ${deleted}`);
+        }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in purgeDeadPushSubscriptions: ${error}`);
+        await this.recordCronFailure('purgeDeadPushSubscriptions', error);
       }
     });
   }

@@ -12,6 +12,7 @@ import { useToastStore } from '@/store/toast.store';
 import GdprPrivacyCard from '@/components/GdprPrivacyCard';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 import { usePasswordPolicy } from '@/hooks/usePasswordPolicy';
+import { NotificationSettingsCard } from '@/components/NotificationSettingsCard';
 
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: '0.78rem', fontWeight: 600,
@@ -249,6 +250,9 @@ export default function PerfilPage() {
             </div>
           </form>
         </div>
+
+        {/* Notificaciones push (v3.0) */}
+        <NotificationSettingsCard />
 
         {/* Privacidad y datos personales (GDPR) */}
         <GdprPrivacyCard />

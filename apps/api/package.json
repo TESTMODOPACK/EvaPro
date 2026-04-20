@@ -11,8 +11,9 @@
         "start": "nest start",
         "start:dev": "nest start --watch",
         "start:debug": "nest start --debug --watch",
-        "start:prod": "node dist/database/cleanup-orphans.js && node dist/main",
+        "start:prod": "node dist/database/cleanup-orphans.js && node dist/database/add-push-tables.js && node dist/main",
         "db:DANGER:reset-schema": "echo '⚠️  ESTO BORRA TODAS LAS TABLAS Y RECREA EL SCHEMA. Solo para entornos de desarrollo.' && ts-node -r tsconfig-paths/register src/database/schema-sync.ts",
+        "db:migrate:push": "ts-node -r tsconfig-paths/register src/database/add-push-tables.ts",
         "db:seed": "ts-node -r tsconfig-paths/register src/database/seed.ts",
         "db:seed-full": "ts-node -r tsconfig-paths/register src/database/seed-demo-full.ts",
         "db:seed:demo": "node dist/database/seed.js && node dist/database/seed-demo-full.js",
@@ -73,7 +74,8 @@
         "resend": "^6.9.4",
         "rxjs": "^7.8.1",
         "stripe": "^22.0.2",
-        "typeorm": "^0.3.28"
+        "typeorm": "^0.3.28",
+        "web-push": "^3.6.7"
     },
     "devDependencies": {
         "@eslint/eslintrc": "^3.2.0",
@@ -89,6 +91,7 @@
         "@types/passport-jwt": "^4.0.1",
         "@types/pg": "^8.11.11",
         "@types/supertest": "^6.0.2",
+        "@types/web-push": "^3.6.4",
         "eslint": "^9.18.0",
         "eslint-config-prettier": "^10.0.1",
         "eslint-plugin-prettier": "^5.2.2",

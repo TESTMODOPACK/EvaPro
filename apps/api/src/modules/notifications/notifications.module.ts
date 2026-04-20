@@ -1,9 +1,12 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Notification } from './entities/notification.entity';
+import { PushSubscription } from './entities/push-subscription.entity';
 import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
 import { EmailService } from './email.service';
+import { PushService } from './push.service';
+import { PushController } from './push.controller';
 import { RemindersService } from './reminders.service';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
@@ -22,6 +25,7 @@ import { AuditModule } from '../audit/audit.module';
   imports: [
     TypeOrmModule.forFeature([
       Notification,
+      PushSubscription,
       EvaluationAssignment,
       EvaluationCycle,
       Objective,
@@ -36,8 +40,8 @@ import { AuditModule } from '../audit/audit.module';
     forwardRef(() => ReportsModule),
     AuditModule,
   ],
-  controllers: [NotificationsController],
-  providers: [NotificationsService, RemindersService, EmailService],
-  exports: [NotificationsService, EmailService],
+  controllers: [NotificationsController, PushController],
+  providers: [NotificationsService, RemindersService, EmailService, PushService],
+  exports: [NotificationsService, EmailService, PushService],
 })
 export class NotificationsModule {}

@@ -114,6 +114,30 @@ export class User {
   @Column({ type: 'varchar', length: 5, default: 'es', nullable: true })
   language: string;
 
+  /**
+   * Preferencias de notificaciones (v3.0). JSON flexible para poder agregar
+   * nuevos tipos sin migration. Estructura:
+   *   {
+   *     pushEnabled: boolean,
+   *     pushEvents: { evaluations, checkins, objectives, feedback, recognitions, surveys },
+   *     quietHours: { enabled, start: "HH:MM", end: "HH:MM", timezone },
+   *     emailEnabled: boolean
+   *   }
+   * Si es NULL → tratar como todo habilitado (defaults conservadores).
+   */
+  @Column({ type: 'jsonb', nullable: true, name: 'notification_prefs' })
+  notificationPrefs: {
+    pushEnabled?: boolean;
+    pushEvents?: Partial<Record<'evaluations' | 'checkins' | 'objectives' | 'feedback' | 'recognitions' | 'surveys', boolean>>;
+    quietHours?: {
+      enabled?: boolean;
+      start?: string;
+      end?: string;
+      timezone?: string;
+    };
+    emailEnabled?: boolean;
+  } | null;
+
   @Column({ type: 'varchar', length: 10, nullable: true, name: 'reset_code' })
   resetCode: string | null;
 
