@@ -182,9 +182,15 @@ export class RecruitmentService {
     return { ...process, candidates, evaluators };
   }
 
-  async updateProcess(tenantId: string, id: string, dto: any): Promise<RecruitmentProcess> {
-    const process = await this.processRepo.findOne({ where: { id, tenantId } });
+  /**
+   * P5.5 — Secondary cross-tenant: tenantId opcional. resolvePos/resolveDept
+   * usan process.tenantId authoritative cuando super_admin hace cross-tenant.
+   */
+  async updateProcess(tenantId: string | undefined, id: string, dto: any): Promise<RecruitmentProcess> {
+    const where = tenantId ? { id, tenantId } : { id };
+    const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
+    const effectiveTenantId = process.tenantId;
 
     // processType is immutable after active
     if (dto.processType && process.status !== ProcessStatus.DRAFT) {
@@ -194,12 +200,12 @@ export class RecruitmentService {
     if (dto.title !== undefined) process.title = dto.title;
     // Dual-write: resolve position and department
     if (dto.positionId !== undefined || dto.position !== undefined) {
-      const rp = await this.resolvePos(tenantId, dto.positionId, dto.position ?? process.position);
+      const rp = await this.resolvePos(effectiveTenantId, dto.positionId, dto.position ?? process.position);
       process.position = rp.position || process.position;
       process.positionId = rp.positionId;
     }
     if (dto.departmentId !== undefined || dto.department !== undefined) {
-      const rd = await this.resolveDept(tenantId, dto.departmentId, dto.department ?? process.department);
+      const rd = await this.resolveDept(effectiveTenantId, dto.departmentId, dto.department ?? process.department);
       process.department = rd.department;
       process.departmentId = rd.departmentId;
     }
@@ -229,9 +235,11 @@ export class RecruitmentService {
 
   // ─── Candidates ───────────────────────────────────────────────────────
 
-  async addExternalCandidate(tenantId: string, processId: string, dto: any): Promise<RecruitmentCandidate> {
-    const process = await this.processRepo.findOne({ where: { id: processId, tenantId } });
+  async addExternalCandidate(tenantId: string | undefined, processId: string, dto: any): Promise<RecruitmentCandidate> {
+    const where = tenantId ? { id: processId, tenantId } : { id: processId };
+    const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
+    const effectiveTenantId = process.tenantId;
     if (process.processType !== 'external') throw new BadRequestException('Este proceso es solo para candidatos externos');
 
     if (!dto.firstName?.trim() || !dto.lastName?.trim()) throw new BadRequestException('Nombres y apellidos son requeridos');
@@ -242,7 +250,7 @@ export class RecruitmentService {
     if (existing) throw new BadRequestException('Ya existe un candidato con ese email en este proceso');
 
     const candidate = this.candidateRepo.create({
-      processId, tenantId, candidateType: 'external',
+      processId, tenantId: effectiveTenantId, candidateType: 'external',
       firstName: dto.firstName.trim(),
       lastName: dto.lastName.trim(),
       email: dto.email.trim(),
@@ -254,12 +262,14 @@ export class RecruitmentService {
     return this.candidateRepo.save(candidate);
   }
 
-  async addInternalCandidate(tenantId: string, processId: string, userId: string): Promise<RecruitmentCandidate> {
-    const process = await this.processRepo.findOne({ where: { id: processId, tenantId } });
+  async addInternalCandidate(tenantId: string | undefined, processId: string, userId: string): Promise<RecruitmentCandidate> {
+    const where = tenantId ? { id: processId, tenantId } : { id: processId };
+    const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
+    const effectiveTenantId = process.tenantId;
     if (process.processType !== 'internal') throw new BadRequestException('Este proceso es solo para candidatos internos');
 
-    const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
+    const user = await this.userRepo.findOne({ where: { id: userId, tenantId: effectiveTenantId } });
     if (!user) throw new NotFoundException('Colaborador no encontrado');
 
     // Check unique user in process
@@ -267,7 +277,7 @@ export class RecruitmentService {
     if (existing) throw new BadRequestException('Este colaborador ya esta en el proceso');
 
     const candidate = this.candidateRepo.create({
-      processId, tenantId, candidateType: 'internal',
+      processId, tenantId: effectiveTenantId, candidateType: 'internal',
       userId,
       firstName: user.firstName,
       lastName: user.lastName,
@@ -276,8 +286,9 @@ export class RecruitmentService {
     return this.candidateRepo.save(candidate);
   }
 
-  async updateCandidate(tenantId: string, candidateId: string, dto: any): Promise<RecruitmentCandidate> {
-    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+  async updateCandidate(tenantId: string | undefined, candidateId: string, dto: any): Promise<RecruitmentCandidate> {
+    const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
+    const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
     if (dto.email !== undefined) candidate.email = dto.email;
     if (dto.phone !== undefined) candidate.phone = dto.phone;
@@ -288,8 +299,9 @@ export class RecruitmentService {
     return this.candidateRepo.save(candidate);
   }
 
-  async updateCandidateStage(tenantId: string, candidateId: string, stage: string): Promise<RecruitmentCandidate> {
-    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+  async updateCandidateStage(tenantId: string | undefined, candidateId: string, stage: string): Promise<RecruitmentCandidate> {
+    const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
+    const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
     candidate.stage = stage as CandidateStage;
     return this.candidateRepo.save(candidate);
@@ -382,8 +394,9 @@ export class RecruitmentService {
 
   // ─── CV & AI ──────────────────────────────────────────────────────────
 
-  async uploadCv(tenantId: string, candidateId: string, cvUrl: string): Promise<RecruitmentCandidate> {
-    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+  async uploadCv(tenantId: string | undefined, candidateId: string, cvUrl: string): Promise<RecruitmentCandidate> {
+    const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
+    const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
     candidate.cvUrl = cvUrl;
     // Auto-advance stage to cv_review when CV is uploaded
@@ -393,12 +406,14 @@ export class RecruitmentService {
     return this.candidateRepo.save(candidate);
   }
 
-  async analyzeCvWithAi(tenantId: string, candidateId: string, generatedBy: string): Promise<any> {
+  async analyzeCvWithAi(tenantId: string | undefined, candidateId: string, generatedBy: string): Promise<any> {
+    const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({
-      where: { id: candidateId, tenantId },
+      where,
       relations: ['process'],
     });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    const effectiveTenantId = candidate.tenantId;
     if (!candidate.cvUrl) throw new BadRequestException('El candidato no tiene CV cargado');
 
     // This will check AI_INSIGHTS feature + monthly limit + weekly limit
@@ -429,7 +444,7 @@ export class RecruitmentService {
 
     // For internal candidates, add historical context
     if (candidate.candidateType === 'internal' && candidate.userId) {
-      const profile = await this.getInternalUserProfile(tenantId, candidate.userId);
+      const profile = await this.getInternalUserProfile(effectiveTenantId, candidate.userId);
       if (profile?.avgScore) context += `Promedio historico de evaluaciones: ${profile.avgScore}/5\n`;
       if (profile?.talentData?.nineBoxPosition) context += `Posicion 9-Box: ${profile.talentData.nineBoxPosition}\n`;
       if (profile?.user?.tenureMonths) context += `Antiguedad: ${profile.user.tenureMonths} meses\n`;
@@ -437,7 +452,7 @@ export class RecruitmentService {
 
     // Use AI insights service to analyze (checks rate limits + creates AiInsight record)
     const analysis = await this.aiInsightsService.analyzeCvForRecruitment(
-      tenantId, candidateId, generatedBy, candidate.cvUrl, context,
+      effectiveTenantId, candidateId, generatedBy, candidate.cvUrl, context,
     );
 
     // Save analysis to candidate
@@ -453,8 +468,9 @@ export class RecruitmentService {
     return { cvUrl: candidate.cvUrl, cvAnalysis: candidate.cvAnalysis, recruiterNotes: candidate.recruiterNotes };
   }
 
-  async addRecruiterNotes(tenantId: string, candidateId: string, notes: string): Promise<void> {
-    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+  async addRecruiterNotes(tenantId: string | undefined, candidateId: string, notes: string): Promise<void> {
+    const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
+    const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
     candidate.recruiterNotes = notes;
     await this.candidateRepo.save(candidate);
@@ -462,8 +478,9 @@ export class RecruitmentService {
 
   // ─── Interviews ───────────────────────────────────────────────────────
 
-  async submitInterview(tenantId: string, evaluatorId: string, candidateId: string, dto: any): Promise<RecruitmentInterview> {
-    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+  async submitInterview(tenantId: string | undefined, evaluatorId: string, candidateId: string, dto: any): Promise<RecruitmentInterview> {
+    const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
+    const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
 
     let interview = await this.interviewRepo.findOne({ where: { candidateId, evaluatorId } });
@@ -570,13 +587,15 @@ export class RecruitmentService {
     };
   }
 
-  async adjustScore(tenantId: string, candidateId: string, adjustment: number, justification: string): Promise<void> {
-    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+  async adjustScore(tenantId: string | undefined, candidateId: string, adjustment: number, justification: string): Promise<void> {
+    const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
+    const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
     candidate.scoreAdjustment = adjustment;
     candidate.scoreJustification = justification;
-    // Recalculate with adjustment
-    await this.recalculateScore(tenantId, candidateId);
+    await this.candidateRepo.save(candidate);
+    // Recalculate with adjustment usando el tenantId authoritative del candidato.
+    await this.recalculateScore(candidate.tenantId, candidateId);
   }
 
   /**
@@ -597,9 +616,10 @@ export class RecruitmentService {
    * Si un componente no tiene datos (ej: no hay entrevistas aun), su peso
    * se redistribuye proporcionalmente entre los que si tienen datos.
    */
-  private async recalculateScore(tenantId: string, candidateId: string): Promise<void> {
+  private async recalculateScore(tenantId: string | undefined, candidateId: string): Promise<void> {
+    const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({
-      where: { id: candidateId, tenantId },
+      where,
       relations: ['process'],
     });
     if (!candidate) return;
@@ -636,7 +656,7 @@ export class RecruitmentService {
     // ── 4. History score (internal only) ─────────────────────────────
     let historyScore: number | null = null;
     if (candidate.candidateType === 'internal' && candidate.userId) {
-      const profile = await this.getInternalUserProfile(tenantId, candidate.userId);
+      const profile = await this.getInternalUserProfile(candidate.tenantId, candidate.userId);
       historyScore = profile?.avgScore ? Math.min(10, Number(profile.avgScore)) : null;
     }
 
@@ -748,12 +768,18 @@ export class RecruitmentService {
     return { process, requirements: process.requirements, rows };
   }
 
-  async generateAiRecommendation(tenantId: string, processId: string, generatedBy: string): Promise<any> {
-    const comparative = await this.getComparative(tenantId, processId);
+  async generateAiRecommendation(tenantId: string | undefined, processId: string, generatedBy: string): Promise<any> {
+    // Resolver process primero para el tenantId authoritative.
+    const processWhere = tenantId ? { id: processId, tenantId } : { id: processId };
+    const processEntity = await this.processRepo.findOne({ where: processWhere });
+    if (!processEntity) throw new NotFoundException('Proceso no encontrado');
+    const effectiveTenantId = processEntity.tenantId;
+
+    const comparative = await this.getComparative(effectiveTenantId, processId);
 
     // Use AI insights service (checks rate limits)
     return this.aiInsightsService.generateRecruitmentRecommendation(
-      tenantId, processId, generatedBy, comparative,
+      effectiveTenantId, processId, generatedBy, comparative,
     );
   }
 }

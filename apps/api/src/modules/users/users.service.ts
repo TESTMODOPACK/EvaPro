@@ -347,9 +347,9 @@ export class UsersService {
     await this.userRepository.update({ id: userId, tenantId }, { cvUrl, cvFileName });
   }
 
-  async update(id: string, tenantId: string, dto: UpdateUserDto, callerRole?: string, callerUserId?: string): Promise<User> {
+  async update(id: string, tenantId: string | undefined, dto: UpdateUserDto, callerRole?: string, callerUserId?: string): Promise<User> {
     const user = await this.findById(id);
-    // super_admin can update any user; others only their own tenant
+    // super_admin can update any user (tenantId=undefined); others only their own tenant.
     if (callerRole !== 'super_admin' && user.tenantId !== tenantId) {
       throw new NotFoundException('Usuario no encontrado');
     }
@@ -484,11 +484,13 @@ export class UsersService {
    * (registerDeparture) hay cascada MÁS completa con PDI + calibration +
    * recruitment. Acá solo lo esencial para un soft-delete "simple".
    */
-  async remove(id: string, tenantId: string, callerRole?: string): Promise<void> {
+  async remove(id: string, tenantId: string | undefined, callerRole?: string): Promise<void> {
     const user = await this.findById(id);
     if (callerRole !== 'super_admin' && user.tenantId !== tenantId) {
       throw new NotFoundException('Usuario no encontrado');
     }
+    // targetTenantId se deriva del user (authoritative). Los downstream side-effects
+    // (audit log, cascade, notifications) deben usar este, no el parámetro tenantId.
     const targetTenantId = user.tenantId;
     const targetUserId = user.id;
 
@@ -601,13 +603,18 @@ export class UsersService {
    */
   async registerDeparture(
     userId: string,
-    tenantId: string,
+    inputTenantId: string | undefined,
     dto: CreateDepartureDto,
     processedById: string,
   ): Promise<UserDeparture> {
     const user = await this.findById(userId);
-    if (user.tenantId !== tenantId) throw new NotFoundException('Usuario no encontrado');
+    // Validación: tenant_admin debe coincidir; super_admin (undefined) puede cross-tenant.
+    if (inputTenantId !== undefined && user.tenantId !== inputTenantId) throw new NotFoundException('Usuario no encontrado');
     if (!user.isActive) throw new BadRequestException('El usuario ya está inactivo');
+    // Shadow el parámetro: dentro del método todo queda scoped al tenant del user
+    // (authoritative) para que todas las queries de cascade, audit y notifications
+    // funcionen correctamente tanto para tenant_admin como super_admin cross-tenant.
+    const tenantId = user.tenantId;
 
     // Validación pre-transacción del manager de reasignación (si se provee)
     let reassignManager: User | null = null;
@@ -938,12 +945,14 @@ export class UsersService {
    */
   async reactivateUser(
     userId: string,
-    tenantId: string,
+    inputTenantId: string | undefined,
     dto: ReactivateUserDto,
     processedById: string,
   ): Promise<{ ok: boolean; tempPasswordSentTo: string }> {
-    const user = await this.findByIdScoped(userId, tenantId);
+    const user = await this.findByIdScoped(userId, inputTenantId);
     if (user.isActive) throw new BadRequestException('El usuario ya está activo');
+    // Shadow: dentro del método todas las queries usan el tenantId authoritative del user.
+    const tenantId = user.tenantId;
 
     // Pre-flight: email collision check (alguien pudo haber tomado el email)
     const emailCollision = await this.userRepository.findOne({
@@ -1032,14 +1041,18 @@ export class UsersService {
   async updateDeparture(
     userId: string,
     departureId: string,
-    tenantId: string,
+    inputTenantId: string | undefined,
     dto: UpdateDepartureDto,
     processedById: string,
   ): Promise<UserDeparture> {
-    const departure = await this.departureRepo.findOne({
-      where: { id: departureId, userId, tenantId },
-    });
+    // Si inputTenantId es undefined (super_admin cross-tenant), busca por id + userId sin filtro.
+    const where = inputTenantId
+      ? { id: departureId, userId, tenantId: inputTenantId }
+      : { id: departureId, userId };
+    const departure = await this.departureRepo.findOne({ where });
     if (!departure) throw new NotFoundException('Registro de desvinculación no encontrado');
+    // Shadow: queries/audit posteriores usan el tenantId authoritative del departure.
+    const tenantId = departure.tenantId;
 
     const changes: Record<string, { from: any; to: any }> = {};
     if (dto.reasonCategory !== undefined && dto.reasonCategory !== departure.reasonCategory) {
@@ -1087,14 +1100,19 @@ export class UsersService {
   async cancelDeparture(
     userId: string,
     departureId: string,
-    tenantId: string,
+    inputTenantId: string | undefined,
     processedById: string,
     reason?: string,
   ): Promise<{ ok: boolean; reactivated: boolean }> {
+    const depWhere = inputTenantId
+      ? { id: departureId, userId, tenantId: inputTenantId }
+      : { id: departureId, userId };
     const departure = await this.departureRepo.findOne({
-      where: { id: departureId, userId, tenantId },
+      where: depWhere,
     });
     if (!departure) throw new NotFoundException('Registro de desvinculación no encontrado');
+    // Shadow: el resto del método opera con el tenantId authoritative del departure.
+    const tenantId = departure.tenantId;
 
     // Verificar que sea el más reciente (tiebreaker: createdAt DESC si
     // dos desvinculaciones comparten fecha — no debería pasar pero defensivo)
@@ -1634,8 +1652,9 @@ export class UsersService {
     return this.noteRepo.save(note);
   }
 
-  async deleteNote(noteId: string, tenantId: string): Promise<void> {
-    const note = await this.noteRepo.findOne({ where: { id: noteId, tenantId } });
+  async deleteNote(noteId: string, tenantId: string | undefined): Promise<void> {
+    const where = tenantId ? { id: noteId, tenantId } : { id: noteId };
+    const note = await this.noteRepo.findOne({ where });
     if (!note) throw new NotFoundException('Nota no encontrada');
     await this.noteRepo.remove(note);
   }

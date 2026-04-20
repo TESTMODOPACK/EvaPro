@@ -38,10 +38,12 @@ export class RecruitmentController {
     return this.service.getProcess(req.user.tenantId, id);
   }
 
+  /** P5.5 — Secondary cross-tenant: super_admin → undefined. */
   @Patch('processes/:id')
   @Roles('super_admin', 'tenant_admin')
   updateProcess(@Request() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
-    return this.service.updateProcess(req.user.tenantId, id, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.updateProcess(tenantId, id, dto);
   }
 
   // ─── Candidates ───────────────────────────────────────────────────
@@ -53,10 +55,11 @@ export class RecruitmentController {
     @Param('id', ParseUUIDPipe) processId: string,
     @Body() dto: any,
   ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     if (dto.userId) {
-      return this.service.addInternalCandidate(req.user.tenantId, processId, dto.userId);
+      return this.service.addInternalCandidate(tenantId, processId, dto.userId);
     }
-    return this.service.addExternalCandidate(req.user.tenantId, processId, dto);
+    return this.service.addExternalCandidate(tenantId, processId, dto);
   }
 
   @Patch('candidates/:id')
@@ -66,7 +69,8 @@ export class RecruitmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: any,
   ) {
-    return this.service.updateCandidate(req.user.tenantId, id, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.updateCandidate(tenantId, id, dto);
   }
 
   @Patch('candidates/:id/stage')
@@ -76,7 +80,8 @@ export class RecruitmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body('stage') stage: string,
   ) {
-    return this.service.updateCandidateStage(req.user.tenantId, id, stage);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.updateCandidateStage(tenantId, id, stage);
   }
 
   @Get('candidates/:id/profile')
@@ -93,13 +98,15 @@ export class RecruitmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body('cvUrl') cvUrl: string,
   ) {
-    return this.service.uploadCv(req.user.tenantId, id, cvUrl);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.uploadCv(tenantId, id, cvUrl);
   }
 
   @Post('candidates/:id/analyze-cv')
   @Roles('super_admin', 'tenant_admin')
   analyzeCv(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.analyzeCvWithAi(req.user.tenantId, id, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.analyzeCvWithAi(tenantId, id, req.user.userId);
   }
 
   @Get('candidates/:id/cv-analysis')
@@ -114,7 +121,8 @@ export class RecruitmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body('notes') notes: string,
   ) {
-    return this.service.addRecruiterNotes(req.user.tenantId, id, notes);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.addRecruiterNotes(tenantId, id, notes);
   }
 
   // ─── Interviews ───────────────────────────────────────────────────
@@ -125,7 +133,8 @@ export class RecruitmentController {
     @Param('id', ParseUUIDPipe) candidateId: string,
     @Body() dto: any,
   ) {
-    return this.service.submitInterview(req.user.tenantId, req.user.userId, candidateId, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.submitInterview(tenantId, req.user.userId, candidateId, dto);
   }
 
   @Get('candidates/:id/interviews')
@@ -147,7 +156,8 @@ export class RecruitmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: { adjustment: number; justification: string },
   ) {
-    return this.service.adjustScore(req.user.tenantId, id, dto.adjustment, dto.justification);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.adjustScore(tenantId, id, dto.adjustment, dto.justification);
   }
 
   // ─── Comparative (internal processes) ─────────────────────────────
@@ -160,7 +170,8 @@ export class RecruitmentController {
   @Post('processes/:id/ai-recommendation')
   @Roles('super_admin', 'tenant_admin')
   generateAiRecommendation(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.generateAiRecommendation(req.user.tenantId, id, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.generateAiRecommendation(tenantId, id, req.user.userId);
   }
 
   /** Recalculate all candidate scores (admin fix after formula change) */

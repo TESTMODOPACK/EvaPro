@@ -87,6 +87,7 @@ export class FeedbackController {
     return this.feedbackService.requestCheckIn(req.user.tenantId, req.user.userId, dto);
   }
 
+  /** P5.6 — Secondary cross-tenant: super_admin → undefined. */
   @Post('checkins/:id/accept')
   @Roles('super_admin', 'tenant_admin', 'manager')
   acceptCheckInRequest(
@@ -94,7 +95,8 @@ export class FeedbackController {
     @Request() req: any,
     @Body() body?: { scheduledDate?: string; scheduledTime?: string; locationId?: string },
   ) {
-    return this.feedbackService.acceptCheckInRequest(req.user.tenantId, id, req.user.userId, body);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.feedbackService.acceptCheckInRequest(tenantId, id, req.user.userId, body);
   }
 
   @Delete('checkins/:id')
@@ -103,7 +105,8 @@ export class FeedbackController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.feedbackService.deleteCheckIn(req.user.tenantId, id, req.user.userId, req.user.role);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.feedbackService.deleteCheckIn(tenantId, id, req.user.userId, req.user.role);
   }
 
   @Post('checkins/:id/complete')
@@ -182,7 +185,8 @@ export class FeedbackController {
     @Request() req: any,
     @Body() data: { name?: string; type?: string; address?: string; capacity?: number },
   ) {
-    return this.feedbackService.updateLocation(req.user.tenantId, id, data);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.feedbackService.updateLocation(tenantId, id, data);
   }
 
   @Delete('meeting-locations/:id')
@@ -192,7 +196,8 @@ export class FeedbackController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.feedbackService.deactivateLocation(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.feedbackService.deactivateLocation(tenantId, id);
   }
 
   // ─── Quick Feedback ───────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ServiceUnavailableException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, MoreThanOrEqual, IsNull, In } from 'typeorm';
+import { DataSource, Repository, MoreThan, MoreThanOrEqual, IsNull, In } from 'typeorm';
+import { createHash } from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { AiInsight, InsightType } from './entities/ai-insight.entity';
 import { ReportsService } from '../reports/reports.service';
@@ -61,6 +62,7 @@ export class AiInsightsService {
     private readonly reportsService: ReportsService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
+    private readonly dataSource: DataSource,
   ) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
@@ -208,6 +210,60 @@ export class AiInsightsService {
    *   una del mismo tipo para el mismo tenant en las últimas 24h, skip.
    *   Evita spam al tenant_admin mientras sigue usando IA en el último 20%.
    */
+  /**
+   * P6 — Cierre de la race window conocida ("1-2 análisis gratis por burst").
+   *
+   * Wrapper que serializa los AI calls del MISMO tenant usando advisory
+   * lock PostgreSQL (session-scoped). Distintos tenants no se bloquean
+   * entre sí (keys distintas). Por-tenant, cuando dos requests llegan
+   * casi simultáneos, el segundo espera hasta que el primero haya
+   * insertado su insight y trackAddonUsage. Así checkRateLimit del
+   * segundo ve el count actualizado y rechaza si corresponde.
+   *
+   * Costo: durante la llamada a Claude (3-10s), otros AI calls del mismo
+   * tenant esperan. Aceptable porque los users del mismo tenant rara vez
+   * disparan múltiples AI calls en paralelo (admin + manager concurrentes).
+   *
+   * Mecánica:
+   *   - pg_advisory_lock(bigint) es un lock server-wide en PostgreSQL
+   *     identificado por un bigint. Si otra connection toma la misma
+   *     clave, bloquea hasta que se libere.
+   *   - Usamos un queryRunner dedicado para mantener la connection viva
+   *     durante toda la vida del lock. Las queries dentro del fn() usan
+   *     otras connections del pool, que NO tienen el lock — pero igual
+   *     bloquean OTROS callers que intenten tomar la misma clave.
+   *   - El lock se libera en el finally, incluso si fn() throws.
+   */
+  async withAiQuotaLock<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+    // Derivamos un bigint estable desde "ai_quota:tenantId" para usar como
+    // clave del advisory lock. Postgres no tiene lock por string nativo;
+    // hashtext() es la alternativa built-in pero produce un int32 — para
+    // reducir colisiones con otros advisory locks del sistema (si los
+    // hubiera) derivamos un int32 propio desde SHA-256.
+    const hash = createHash('sha256').update(`ai_quota:${tenantId}`).digest();
+    // Tomar los primeros 4 bytes como int32 signed (rango ±2B — colisión
+    // extremadamente improbable con ~20 tenants).
+    const lockId = hash.readInt32BE(0);
+
+    const runner = this.dataSource.createQueryRunner();
+    await runner.connect();
+    try {
+      await runner.query('SELECT pg_advisory_lock($1)', [lockId]);
+      try {
+        return await fn();
+      } finally {
+        // Liberar siempre — aún si fn() throws.
+        await runner
+          .query('SELECT pg_advisory_unlock($1)', [lockId])
+          .catch((err) =>
+            this.logger.warn(`pg_advisory_unlock failed for tenant ${tenantId.slice(0, 8)}: ${err?.message}`),
+          );
+      }
+    } finally {
+      await runner.release();
+    }
+  }
+
   private async checkRateLimit(tenantId: string): Promise<void> {
     const { totalUsed, totalLimit, planLimit, addonRemaining, periodEnd } = await this.getMonthlyCallCount(tenantId);
     if (totalLimit <= 0) {
@@ -474,6 +530,7 @@ export class AiInsightsService {
   // ─── 3.2: Summary ──────────────────────────────────────────────────────
 
   async generateSummary(tenantId: string, cycleId: string, userId: string, generatedBy: string): Promise<AiInsight> {
+    return this.withAiQuotaLock(tenantId, async () => {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
@@ -532,11 +589,13 @@ export class AiInsightsService {
     }
 
     return saved;
+    }); // ← cierra withAiQuotaLock
   }
 
   // ─── 3.3: Bias Detection ───────────────────────────────────────────────
 
   async analyzeBias(tenantId: string, cycleId: string, generatedBy: string): Promise<AiInsight> {
+    return this.withAiQuotaLock(tenantId, async () => {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
@@ -630,11 +689,13 @@ export class AiInsightsService {
     }
 
     return saved;
+    }); // ← cierra withAiQuotaLock
   }
 
   // ─── 3.4: Suggestions ──────────────────────────────────────────────────
 
   async generateSuggestions(tenantId: string, cycleId: string, userId: string, generatedBy: string): Promise<AiInsight> {
+    return this.withAiQuotaLock(tenantId, async () => {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
@@ -720,6 +781,7 @@ export class AiInsightsService {
     }
 
     return saved;
+    }); // ← cierra withAiQuotaLock
   }
 
   // ─── Flight Risk Score ──────────────────────────────────────────────────
@@ -1271,6 +1333,7 @@ export class AiInsightsService {
   // ─── Cycle Comparison AI Analysis ────────────────────────────────────
 
   async analyzeCycleComparison(tenantId: string, cycleIds: string[], generatedBy: string): Promise<any> {
+    return this.withAiQuotaLock(tenantId, async () => {
     await this.checkRateLimit(tenantId);
 
     // Fetch cycle data for selected cycles
@@ -1364,6 +1427,7 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
       generatedAt: new Date().toISOString(),
       tokensUsed,
     };
+    }); // ← cierra withAiQuotaLock
   }
 
   // ─── PDF Export ──────────────────────────────────────────────────────
@@ -1490,6 +1554,7 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
     },
     options: { force?: boolean } = {},
   ): Promise<AiInsight> {
+    return this.withAiQuotaLock(tenantId, async () => {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
@@ -1527,6 +1592,7 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
     const saved = await this.insightRepo.save(insight);
     await this.trackAddonUsage(tenantId);
     return saved;
+    }); // ← cierra withAiQuotaLock
   }
 
   // ─── Recruitment AI ─────────────────────────────────────────────────
@@ -1538,6 +1604,7 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
     cvUrl: string,
     context: string,
   ): Promise<any> {
+    return this.withAiQuotaLock(tenantId, async () => {
     // Check rate limits (monthly plan limit + weekly role limit)
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
@@ -1670,6 +1737,7 @@ Responde SOLO con el JSON, sin texto adicional ni markdown.`;
     await this.trackAddonUsage(tenantId);
 
     return { content, tokensUsed };
+    }); // ← cierra withAiQuotaLock (analyzeCvForRecruitment)
   }
 
   async generateRecruitmentRecommendation(
@@ -1678,6 +1746,7 @@ Responde SOLO con el JSON, sin texto adicional ni markdown.`;
     generatedBy: string,
     comparativeData: any,
   ): Promise<any> {
+    return this.withAiQuotaLock(tenantId, async () => {
     await this.checkRateLimit(tenantId);
     await this.checkWeeklyRoleLimit(tenantId, generatedBy);
 
@@ -1731,5 +1800,6 @@ Responde SOLO con el JSON.`;
     await this.trackAddonUsage(tenantId);
 
     return { content, tokensUsed };
+    }); // ← cierra withAiQuotaLock (generateRecruitmentRecommendation)
   }
 }

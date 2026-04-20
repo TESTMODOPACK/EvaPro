@@ -278,10 +278,15 @@ export class RecognitionService {
   }
 
   /** Editar badge existente. Scopeado por tenantId. No toca isActive/deactivatedAt. */
-  async updateBadge(tenantId: string, id: string, dto: {
+  /**
+   * P5.3 — Secondary cross-tenant: tenantId opcional. Cache invalidation
+   * usa saved.tenantId (authoritative) para soportar super_admin cross-tenant.
+   */
+  async updateBadge(tenantId: string | undefined, id: string, dto: {
     name?: string; description?: string; icon?: string; color?: string; criteria?: any; pointsReward?: number;
   }) {
-    const badge = await this.badgeRepo.findOne({ where: { id, tenantId } });
+    const where = tenantId ? { id, tenantId } : { id };
+    const badge = await this.badgeRepo.findOne({ where });
     if (!badge) throw new NotFoundException('Badge no encontrado');
     if (dto.name !== undefined) badge.name = dto.name;
     if (dto.description !== undefined) badge.description = dto.description;
@@ -290,21 +295,22 @@ export class RecognitionService {
     if (dto.criteria !== undefined) badge.criteria = dto.criteria;
     if (dto.pointsReward !== undefined) badge.pointsReward = dto.pointsReward;
     const saved = await this.badgeRepo.save(badge);
-    await invalidateCache(this.cacheManager, `badges:${tenantId}`);
+    await invalidateCache(this.cacheManager, `badges:${saved.tenantId}`);
     return saved;
   }
 
   /** Soft-delete: isActive=false + deactivatedAt=now. Los user_badges
    *  históricos siguen intactos (earned stays earned). getBadges filtra por
    *  isActive=true así que desaparece del catálogo visible. */
-  async softDeleteBadge(tenantId: string, id: string) {
-    const badge = await this.badgeRepo.findOne({ where: { id, tenantId } });
+  async softDeleteBadge(tenantId: string | undefined, id: string) {
+    const where = tenantId ? { id, tenantId } : { id };
+    const badge = await this.badgeRepo.findOne({ where });
     if (!badge) throw new NotFoundException('Badge no encontrado');
     if (!badge.isActive) return { ok: true, alreadyDeleted: true };
     badge.isActive = false;
     badge.deactivatedAt = new Date();
-    await this.badgeRepo.save(badge);
-    await invalidateCache(this.cacheManager, `badges:${tenantId}`);
+    const saved = await this.badgeRepo.save(badge);
+    await invalidateCache(this.cacheManager, `badges:${saved.tenantId}`);
     return { ok: true, id };
   }
 
@@ -318,21 +324,24 @@ export class RecognitionService {
       .getMany();
   }
 
-  async awardBadge(tenantId: string, userId: string, badgeId: string, awardedBy?: string) {
-    const existing = await this.userBadgeRepo.findOne({ where: { tenantId, userId, badgeId } });
-    if (existing) return existing;
-
-    const badge = await this.badgeRepo.findOne({ where: { id: badgeId, tenantId } });
+  async awardBadge(tenantId: string | undefined, userId: string, badgeId: string, awardedBy?: string) {
+    // Resolver el tenantId authoritative desde el badge (soporta super_admin cross-tenant).
+    const badgeWhere = tenantId ? { id: badgeId, tenantId } : { id: badgeId };
+    const badge = await this.badgeRepo.findOne({ where: badgeWhere });
     if (!badge) throw new NotFoundException('Badge no encontrado');
+    const effectiveTenantId = badge.tenantId;
+
+    const existing = await this.userBadgeRepo.findOne({ where: { tenantId: effectiveTenantId, userId, badgeId } });
+    if (existing) return existing;
 
     return this.dataSource.transaction(async (manager) => {
       const ub = await manager.save(manager.getRepository(UserBadge).create({
-        tenantId, userId, badgeId, awardedBy: awardedBy || null,
+        tenantId: effectiveTenantId, userId, badgeId, awardedBy: awardedBy || null,
       }));
 
       if (badge.pointsReward > 0) {
         await manager.save(manager.getRepository(UserPoints).create({
-          tenantId, userId, points: badge.pointsReward, source: PointsSource.BADGE_EARNED,
+          tenantId: effectiveTenantId, userId, points: badge.pointsReward, source: PointsSource.BADGE_EARNED,
           description: `Badge obtenido: ${badge.name}`, referenceId: ub.id,
         }));
       }
@@ -340,10 +349,10 @@ export class RecognitionService {
       return ub;
     }).then(async (ub) => {
       if (badge.pointsReward > 0) {
-        this.refreshUserPointsSummary(tenantId, userId).catch(() => {});
+        this.refreshUserPointsSummary(effectiveTenantId, userId).catch(() => {});
       }
       await this.notificationsService.create({
-        tenantId, userId, type: NotificationType.GENERAL,
+        tenantId: effectiveTenantId, userId, type: NotificationType.GENERAL,
         title: `Has obtenido el badge "${badge.name}"`,
         message: badge.description || `Felicitaciones por obtener el badge ${badge.name}`,
         metadata: { badgeId, userBadgeId: ub.id },
@@ -676,9 +685,10 @@ export class RecognitionService {
 
   // ─── Monetary Approval ──────────────────────────────────────────────
 
-  async approveRecognition(tenantId: string, recognitionId: string, approvedBy: string, approved: boolean) {
+  async approveRecognition(tenantId: string | undefined, recognitionId: string, approvedBy: string, approved: boolean) {
     const recog = await this.dataSource.transaction(async (manager) => {
-      const r = await manager.findOne(Recognition, { where: { id: recognitionId, tenantId } });
+      const where = tenantId ? { id: recognitionId, tenantId } : { id: recognitionId };
+      const r = await manager.findOne(Recognition, { where });
       if (!r) throw new NotFoundException('Reconocimiento no encontrado');
       if (r.approvalStatus !== 'pending') {
         throw new BadRequestException('Este reconocimiento no requiere aprobación o ya fue procesado');
@@ -688,13 +698,14 @@ export class RecognitionService {
       await manager.save(r);
 
       // If approved, award the points now (they were held during creation)
+      // Usa r.tenantId (authoritative desde la entidad).
       if (approved) {
         await manager.save(manager.getRepository(UserPoints).create({
-          tenantId, userId: r.toUserId, points: r.points,
+          tenantId: r.tenantId, userId: r.toUserId, points: r.points,
           source: PointsSource.RECOGNITION_RECEIVED, description: 'Reconocimiento monetario aprobado', referenceId: r.id,
         }));
         await manager.save(manager.getRepository(UserPoints).create({
-          tenantId, userId: r.fromUserId, points: SENDER_POINTS,
+          tenantId: r.tenantId, userId: r.fromUserId, points: SENDER_POINTS,
           source: PointsSource.RECOGNITION_SENT, description: 'Bono por reconocimiento monetario aprobado', referenceId: r.id,
         }));
       }
@@ -704,8 +715,8 @@ export class RecognitionService {
 
     // Refresh denormalized summary after the transaction commits.
     if (approved) {
-      this.refreshUserPointsSummary(tenantId, recog.toUserId).catch(() => {});
-      this.refreshUserPointsSummary(tenantId, recog.fromUserId).catch(() => {});
+      this.refreshUserPointsSummary(recog.tenantId, recog.toUserId).catch(() => {});
+      this.refreshUserPointsSummary(recog.tenantId, recog.fromUserId).catch(() => {});
     }
 
     return recog;
@@ -753,8 +764,9 @@ export class RecognitionService {
     return saved;
   }
 
-  async updateRedemptionItem(tenantId: string, id: string, dto: any) {
-    const item = await this.redemptionItemRepo.findOne({ where: { id, tenantId } });
+  async updateRedemptionItem(tenantId: string | undefined, id: string, dto: any) {
+    const where = tenantId ? { id, tenantId } : { id };
+    const item = await this.redemptionItemRepo.findOne({ where });
     if (!item) throw new NotFoundException('Item no encontrado');
     if (dto.name !== undefined) item.name = dto.name;
     if (dto.description !== undefined) item.description = dto.description;
@@ -838,18 +850,21 @@ export class RecognitionService {
    *   approved → cancelled
    * Cancelling a pending/approved redemption refunds the user's points.
    */
-  async updateRedemptionStatus(tenantId: string, redemptionId: string, newStatus: string) {
+  async updateRedemptionStatus(tenantId: string | undefined, redemptionId: string, newStatus: string) {
     if (!REDEMPTION_STATUS_VALUES.includes(newStatus as RedemptionStatus)) {
       throw new BadRequestException(`Estado inválido. Permitidos: ${REDEMPTION_STATUS_VALUES.join(', ')}`);
     }
     const target = newStatus as RedemptionStatus;
 
+    const txWhere = tenantId ? { id: redemptionId, tenantId } : { id: redemptionId };
     const tx = await this.redemptionTxRepo.findOne({
-      where: { id: redemptionId, tenantId },
+      where: txWhere,
       relations: ['item'],
     });
     if (!tx) throw new NotFoundException('Canje no encontrado');
     if (tx.status === target) return tx;
+    // Authoritative tenantId desde la transacción encontrada.
+    const effectiveTenantId = tx.tenantId;
 
     // Validate transition
     const transitions: Record<RedemptionStatus, RedemptionStatus[]> = {
@@ -873,7 +888,7 @@ export class RecognitionService {
     const savedTx = await this.dataSource.transaction(async (manager) => {
       if (refundIssued) {
         await manager.save(manager.getRepository(UserPoints).create({
-          tenantId,
+          tenantId: effectiveTenantId,
           userId: tx.userId,
           points: tx.pointsSpent,
           source: PointsSource.MANUAL,
@@ -902,7 +917,7 @@ export class RecognitionService {
     // fails, the ledger remains authoritative and subsequent addPoints calls
     // (or the backfill op) will eventually self-heal it.
     if (refundIssued) {
-      this.refreshUserPointsSummary(tenantId, tx.userId).catch((err) => {
+      this.refreshUserPointsSummary(effectiveTenantId, tx.userId).catch((err) => {
         this.logger.warn(`refreshUserPointsSummary(${tx.userId}) after cancel failed: ${err?.message || err}`);
       });
     }
@@ -986,8 +1001,9 @@ export class RecognitionService {
     }));
   }
 
-  async updateChallenge(tenantId: string, id: string, dto: any) {
-    const challenge = await this.challengeRepo.findOne({ where: { id, tenantId } });
+  async updateChallenge(tenantId: string | undefined, id: string, dto: any) {
+    const where = tenantId ? { id, tenantId } : { id };
+    const challenge = await this.challengeRepo.findOne({ where });
     if (!challenge) throw new NotFoundException('Desafío no encontrado');
     if (dto.name !== undefined) challenge.name = dto.name;
     if (dto.description !== undefined) challenge.description = dto.description;
@@ -1010,8 +1026,9 @@ export class RecognitionService {
 
   /** Soft-delete de un challenge: isActive=false + deactivatedAt=now.
    *  Preserva el histórico de participantes/ganadores. */
-  async softDeleteChallenge(tenantId: string, id: string) {
-    const challenge = await this.challengeRepo.findOne({ where: { id, tenantId } });
+  async softDeleteChallenge(tenantId: string | undefined, id: string) {
+    const where = tenantId ? { id, tenantId } : { id };
+    const challenge = await this.challengeRepo.findOne({ where });
     if (!challenge) throw new NotFoundException('Desafío no encontrado');
     if (!challenge.isActive) return { ok: true, alreadyDeleted: true };
     challenge.isActive = false;

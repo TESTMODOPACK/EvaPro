@@ -76,11 +76,16 @@ export class SurveysController {
     return this.surveysService.create(tenantId, req.user.userId, dto);
   }
 
-  /** Update a draft survey */
+  /** Update a draft survey.
+   *
+   * P5.1 — Secondary cross-tenant: super_admin → undefined, el service
+   *        busca por id sin filtro y usa entity.tenantId authoritative.
+   */
   @Patch(':id')
   @Roles('super_admin', 'tenant_admin')
   update(@Param('id', ParseUUIDPipe) id: string, @Request() req: any, @Body() dto: any) {
-    return this.surveysService.update(req.user.tenantId, id, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.surveysService.update(tenantId, id, dto);
   }
 
   /** Delete a survey. tenant_admin can only delete drafts; super_admin
@@ -89,21 +94,24 @@ export class SurveysController {
   @Roles('super_admin', 'tenant_admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.surveysService.delete(req.user.tenantId, id, req.user.role);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.surveysService.delete(tenantId, id, req.user.role);
   }
 
   /** Launch a survey (draft → active) */
   @Post(':id/launch')
   @Roles('super_admin', 'tenant_admin')
   launch(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.surveysService.launch(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.surveysService.launch(tenantId, id);
   }
 
   /** Close a survey (active → closed) */
   @Post(':id/close')
   @Roles('super_admin', 'tenant_admin')
   close(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.surveysService.closeSurvey(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.surveysService.closeSurvey(tenantId, id);
   }
 
   /** Submit survey response */
@@ -177,8 +185,9 @@ export class SurveysController {
     @Request() req: any,
     @Body() body?: { force?: boolean },
   ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.surveysService.generateAiAnalysis(
-      req.user.tenantId,
+      tenantId,
       id,
       req.user.userId,
       body?.force === true,
@@ -200,6 +209,7 @@ export class SurveysController {
     @Request() req: any,
     @Body() dto: { targetPlanId?: string },
   ) {
-    return this.surveysService.createInitiativesFromSurvey(req.user.tenantId, id, dto.targetPlanId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.surveysService.createInitiativesFromSurvey(tenantId, id, dto.targetPlanId);
   }
 }

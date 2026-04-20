@@ -86,6 +86,7 @@ export class TemplatesController {
     return this.templatesService.create(tenantId, req.user.userId, dto);
   }
 
+  /** P5.2 — Secondary cross-tenant: super_admin → undefined. */
   @Patch(':id')
   @Roles('super_admin', 'tenant_admin')
   update(
@@ -93,7 +94,8 @@ export class TemplatesController {
     @Request() req: any,
     @Body() dto: UpdateTemplateDto,
   ) {
-    return this.templatesService.update(id, req.user.tenantId, req.user.userId, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.update(id, tenantId, req.user.userId, dto);
   }
 
   @Get(':id/versions')
@@ -102,7 +104,8 @@ export class TemplatesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.templatesService.getVersionHistory(id, req.user.tenantId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.getVersionHistory(id, tenantId);
   }
 
   @Post(':id/restore/:version')
@@ -112,7 +115,8 @@ export class TemplatesController {
     @Param('version') version: string,
     @Request() req: any,
   ) {
-    return this.templatesService.restoreVersion(id, req.user.tenantId, req.user.userId, parseInt(version, 10));
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.restoreVersion(id, tenantId, req.user.userId, parseInt(version, 10));
   }
 
   @Delete(':id')
@@ -122,7 +126,8 @@ export class TemplatesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.templatesService.remove(id, req.user.tenantId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.remove(id, tenantId);
   }
 
   @Post(':id/duplicate')
@@ -131,7 +136,8 @@ export class TemplatesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.templatesService.duplicate(id, req.user.tenantId, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.duplicate(id, tenantId, req.user.userId);
   }
 
   @Post('import-csv')
@@ -158,7 +164,8 @@ export class TemplatesController {
     @Request() req: any,
     @Body() body: { note?: string },
   ) {
-    return this.templatesService.publish(id, req.user.tenantId, req.user.userId, body?.note);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.publish(id, tenantId, req.user.userId, body?.note);
   }
 
   @Post(':id/reject')
@@ -168,6 +175,7 @@ export class TemplatesController {
     @Request() req: any,
     @Body() body: { note: string },
   ) {
-    return this.templatesService.reject(id, req.user.tenantId, req.user.userId, body?.note);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.reject(id, tenantId, req.user.userId, body?.note);
   }
 }
