@@ -45,7 +45,8 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/facturacion':   ['super_admin'],
   // Tenant user pages (not for super_admin)
   '/dashboard/evaluaciones': ['tenant_admin', 'manager', 'employee', 'external'],
-  '/dashboard/usuarios':     ['tenant_admin'],
+  // P6 — manager ve solo sus reportes directos (backend filtra por managerId).
+  '/dashboard/usuarios':     ['tenant_admin', 'manager'],
   '/dashboard/reportes':     ['tenant_admin', 'manager'],
   '/dashboard/analytics':    ['tenant_admin', 'manager'],
   '/dashboard/informes':     ['tenant_admin', 'manager'],

@@ -216,6 +216,40 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * P6.2 — Guard de acceso por rol para endpoints detail (perfil, notas,
+   * movimientos, desvinculaciones, etc.).
+   *
+   *   - super_admin / tenant_admin  → siempre pasan (admin del tenant).
+   *   - employee                    → solo puede ver su propio perfil (self).
+   *   - manager                     → sus reportes directos + self.
+   *
+   * Siempre retorna 404 (no 403) para no filtrar existencia de IDs
+   * cross-tenant o cross-equipo. Consistente con el patrón del resto del
+   * API (findByIdScoped también tira 404 en mismatch de tenant).
+   */
+  async assertCanAccessUser(
+    callerUserId: string,
+    callerRole: string,
+    targetUserId: string,
+    tenantId: string | undefined,
+  ): Promise<User> {
+    const target = await this.findByIdScoped(targetUserId, tenantId);
+
+    if (callerRole === 'super_admin' || callerRole === 'tenant_admin') {
+      return target;
+    }
+    if (callerUserId === targetUserId) {
+      // Self-access siempre permitido (perfil propio, notas propias, etc.)
+      return target;
+    }
+    if (callerRole === 'manager' && target.managerId === callerUserId) {
+      return target;
+    }
+    // employee con target != self, o manager con user que no es su reporte.
+    throw new NotFoundException('Usuario no encontrado');
+  }
+
   // ─── CRUD ─────────────────────────────────────────────────────────────────
 
   async findAll(
@@ -223,12 +257,29 @@ export class UsersService {
     page = 1,
     limit = 50,
     filters?: { search?: string; department?: string; departmentId?: string; role?: string; position?: string; status?: string },
+    // P6.1 — Scope por rol del caller. Opcionales para backward compat
+    // con callers internos (crons, imports, etc.) que no pasan estos
+    // params y siguen viendo toda la lista.
+    callerRole?: string,
+    callerUserId?: string,
   ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(Math.max(1, limit), 500);
     const qb = this.userRepository.createQueryBuilder('user')
       .where('user.tenantId = :tenantId', { tenantId })
       .andWhere('user.role != :excluded', { excluded: 'super_admin' });
+
+    // P6.1 — Scope manager a sus reportes directos + self.
+    // Sin esto, un manager podría listar TODOS los users del tenant via
+    // `?search=foo` y obtener info sensible. El filtro aplica ANTES de
+    // los demás filtros de búsqueda/paginación para que el counter total
+    // también quede scoped al equipo del manager.
+    if (callerRole === 'manager' && callerUserId) {
+      qb.andWhere(
+        '(user.managerId = :callerUserId OR user.id = :callerUserId)',
+        { callerUserId },
+      );
+    }
 
     if (filters?.search) {
       qb.andWhere(
@@ -1195,10 +1246,17 @@ export class UsersService {
     });
     const saved = await this.movementRepo.save(movement);
 
-    this.auditService.log(tenantId, userId, 'user.movement_registered', 'user', userId, {
+    // P6 fix (bug review): el audit log debe identificar al CALLER
+    // (manager o admin que registra el movimiento), NO al target user.
+    // Antes se usaba `userId` (target) como actor, perdiendo la trazabilidad
+    // de quién hizo la operación. Si approvedById viene (caso normal desde
+    // el controller), lo usamos; si no, fallback al userId (cron o caller
+    // interno sin contexto).
+    this.auditService.log(tenantId, approvedById || userId, 'user.movement_registered', 'user', userId, {
       movementType: dto.movementType,
       from: { department: movement.fromDepartment, position: movement.fromPosition },
       to: { department: movement.toDepartment, position: movement.toPosition },
+      targetUserId: userId,
     }).catch(() => {});
 
     return saved;
@@ -1607,17 +1665,35 @@ export class UsersService {
 
   // ─── User Notes (HR Reports) ───────────────────────────────────────────────
 
-  async listNotes(tenantId: string, userId: string, requesterRole?: string): Promise<UserNote[]> {
-    const where: any = { tenantId, userId };
-    // Gap 2: Managers only see non-confidential notes; admins see all
-    if (requesterRole === 'manager') {
-      where.isConfidential = false;
+  /**
+   * P6.3 — Manager ve notas no-confidenciales MÁS las confidenciales que
+   * él mismo escribió. Las confidenciales de tenant_admin (típicamente
+   * sobre performance sensible del manager o info delicada) se ocultan.
+   *
+   * Admin ve todo. Employee no llega acá (el controller solo permite
+   * super_admin/tenant_admin/manager en GET /users/:id/notes).
+   */
+  async listNotes(
+    tenantId: string,
+    userId: string,
+    requesterRole?: string,
+    requesterUserId?: string,
+  ): Promise<UserNote[]> {
+    const qb = this.noteRepo
+      .createQueryBuilder('note')
+      .leftJoinAndSelect('note.author', 'author', 'author.tenant_id = note.tenant_id')
+      .where('note.tenantId = :tenantId', { tenantId })
+      .andWhere('note.userId = :userId', { userId });
+
+    if (requesterRole === 'manager' && requesterUserId) {
+      qb.andWhere(
+        '(note.is_confidential = false OR note.author_id = :requesterId)',
+        { requesterId: requesterUserId },
+      );
     }
-    return this.noteRepo.find({
-      where,
-      relations: ['author'],
-      order: { createdAt: 'DESC' },
-    });
+
+    qb.orderBy('note.createdAt', 'DESC');
+    return qb.getMany();
   }
 
   async createNote(
@@ -1638,13 +1714,37 @@ export class UsersService {
     return this.noteRepo.save(note);
   }
 
+  /**
+   * P6.2 fix (bug review): manager solo puede editar notas de sus reportes
+   * directos. Antes, un manager con un noteId conocido (ej. filtrado de
+   * logs o enumeración) podía editar notas de cualquier equipo del tenant
+   * — el service solo validaba tenantId sin verificar el target.
+   *
+   * Admin conserva acceso completo.
+   */
   async updateNote(
     noteId: string,
     tenantId: string,
     data: { title?: string; content?: string; category?: string; isConfidential?: boolean },
+    callerUserId?: string,
+    callerRole?: string,
   ): Promise<UserNote> {
     const note = await this.noteRepo.findOne({ where: { id: noteId, tenantId } });
     if (!note) throw new NotFoundException('Nota no encontrada');
+
+    // Guard: manager debe tener al target user como reporte directo.
+    if (callerRole === 'manager' && callerUserId) {
+      const target = await this.userRepository.findOne({
+        where: { id: note.userId, tenantId },
+        select: ['id', 'managerId'],
+      });
+      if (!target || (target.managerId !== callerUserId && target.id !== callerUserId)) {
+        // 404 en vez de 403 — consistente con assertCanAccessUser, no
+        // filtra existencia del noteId a un manager externo.
+        throw new NotFoundException('Nota no encontrada');
+      }
+    }
+
     if (data.title !== undefined) note.title = data.title;
     if (data.content !== undefined) note.content = data.content;
     if (data.category !== undefined) note.category = data.category;

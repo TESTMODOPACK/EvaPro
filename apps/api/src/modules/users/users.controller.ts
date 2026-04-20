@@ -46,7 +46,12 @@ export class UsersController {
     return this.usersService.findById(req.user.userId);
   }
 
-  /** GET /users?page=1&limit=10&search=ana&department=Ventas&role=employee&status=active */
+  /** GET /users?page=1&limit=10&search=ana&department=Ventas&role=employee&status=active
+   *
+   * P6.1 — Scope manager a su equipo directo + self. Antes, un manager
+   * que llegaba aquí podía ver TODOS los users del tenant (incluyendo
+   * info sensible como email/RUT). Ahora el service filtra por
+   * managerId === callerUserId cuando role=manager. */
   @Get()
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   findAll(
@@ -66,7 +71,10 @@ export class UsersController {
       : undefined;
     // super_admin can query any tenant's users via ?tenantId=
     const tenantId = (req.user.role === 'super_admin' && filterTenantId) ? filterTenantId : req.user.tenantId;
-    return this.usersService.findAll(tenantId, page, limit, filters);
+    return this.usersService.findAll(
+      tenantId, page, limit, filters,
+      req.user.role, req.user.userId,
+    );
   }
 
   /** POST /users/me/cv — Upload CV (PDF/DOCX, max 5MB) */
@@ -96,15 +104,22 @@ export class UsersController {
     return this.usersService.getOrgChart(req.user.tenantId);
   }
 
-  /** GET /users/:id */
+  /** GET /users/:id
+   *
+   * P6.2 — Scope por rol via assertCanAccessUser:
+   *   super_admin / tenant_admin → cualquier user del tenant
+   *   manager                    → sus reportes directos + self
+   *   employee                   → solo self
+   */
   @Get(':id')
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    // super_admin can see any user; others only their tenant's users
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.usersService.findByIdScoped(id, tenantId);
+    return this.usersService.assertCanAccessUser(
+      req.user.userId, req.user.role, id, tenantId,
+    );
   }
 
   /** POST /users */
@@ -262,10 +277,13 @@ export class UsersController {
   /** GET /users/:id/departures — Departure history */
   @Get(':id/departures')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  getUserDepartures(
+  async getUserDepartures(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    // P6.2 — Manager solo ve departures de sus reportes directos.
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, tenantId);
     return this.usersService.getUserDepartures(id, req.user.tenantId);
   }
 
@@ -315,51 +333,69 @@ export class UsersController {
 
   // ─── Internal Movement Tracking ───────────────────────────────────────────
 
-  /** POST /users/:id/movement — Register manual internal movement */
+  /** POST /users/:id/movement — Register manual internal movement
+   *
+   *  P6.2 — Manager solo puede registrar movimientos de sus reportes directos. */
   @Post(':id/movement')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  registerMovement(
+  async registerMovement(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() dto: CreateMovementDto,
   ) {
+    const scopedTenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, scopedTenantId);
     return this.usersService.registerMovement(id, req.user.tenantId, dto, req.user.userId);
   }
 
   /** GET /users/:id/movements — Movement history */
   @Get(':id/movements')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  getUserMovements(
+  async getUserMovements(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    const scopedTenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, scopedTenantId);
     return this.usersService.getUserMovements(id, req.user.tenantId);
   }
 
   // ─── User Notes (HR Reports) ───────────────────────────────────────────────
 
-  /** GET /users/:id/notes */
+  /** GET /users/:id/notes
+   *
+   *  P6.2 — Manager solo ve notas de sus reportes directos.
+   *  P6.3 — Manager oculta notas confidenciales que él mismo no escribió
+   *  (son típicamente notas admin-only sobre performance sensible). */
   @Get(':id/notes')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  listNotes(
+  async listNotes(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.usersService.listNotes(req.user.tenantId, id, req.user.role);
+    const scopedTenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, scopedTenantId);
+    return this.usersService.listNotes(req.user.tenantId, id, req.user.role, req.user.userId);
   }
 
   /** POST /users/:id/notes */
   @Post(':id/notes')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  createNote(
+  async createNote(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() body: { title: string; content: string; category?: string; isConfidential?: boolean },
   ) {
+    const scopedTenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, scopedTenantId);
     return this.usersService.createNote(req.user.tenantId, id, req.user.userId, body);
   }
 
-  /** PATCH /users/:id/notes/:noteId */
+  /** PATCH /users/:id/notes/:noteId
+   *
+   *  P6.2 fix: el service valida internamente que (si el caller es
+   *  manager) la nota pertenezca a un user de su equipo directo.
+   *  Super_admin/tenant_admin sin restricción. */
   @Patch(':id/notes/:noteId')
   @Roles('super_admin', 'tenant_admin', 'manager')
   updateNote(
@@ -367,7 +403,9 @@ export class UsersController {
     @Request() req: any,
     @Body() body: { title?: string; content?: string; category?: string; isConfidential?: boolean },
   ) {
-    return this.usersService.updateNote(noteId, req.user.tenantId, body);
+    return this.usersService.updateNote(
+      noteId, req.user.tenantId, body, req.user.userId, req.user.role,
+    );
   }
 
   /** DELETE /users/:id/notes/:noteId */

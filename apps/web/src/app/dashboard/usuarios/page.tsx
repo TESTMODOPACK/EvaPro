@@ -757,16 +757,24 @@ export default function UsuariosPage() {
         </div>
       )}
       <FirstVisitTip
-        id="usuarios-intro"
+        id={isAdmin ? 'usuarios-intro' : 'mi-equipo-intro'}
         icon="👥"
-        title="Gestión de colaboradores"
-        description="Desde aquí creas, edités y desactivas usuarios. Usa la carga masiva por Excel para importar grandes listas. Al desactivar a alguien, se abrirá el flujo de desvinculación con cascade completo (reportes directos, evaluaciones en curso, PDIs, etc.)."
+        title={isAdmin ? 'Gestión de colaboradores' : 'Tu equipo directo'}
+        description={isAdmin
+          ? 'Desde aquí creas, edités y desactivas usuarios. Usa la carga masiva por Excel para importar grandes listas. Al desactivar a alguien, se abrirá el flujo de desvinculación con cascade completo (reportes directos, evaluaciones en curso, PDIs, etc.).'
+          : 'Ves tus reportes directos. Puedes revisar su perfil, historial de desempeño, agregar notas (privadas o visibles para RRHH) y registrar movimientos internos (promociones, traslados). Para crear usuarios nuevos o procesar desvinculaciones, contacta a RRHH.'
+        }
       />
       <div className="animate-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>{t('usuarios.title')}</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
+            {isAdmin ? t('usuarios.title') : 'Mi Equipo'}
+          </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {t('usuarios.subtitle')}
+            {isAdmin
+              ? t('usuarios.subtitle')
+              : 'Tus colaboradores directos. Haz click en Perfil para ver el detalle.'
+            }
           </p>
         </div>
         {isAdmin && (
@@ -1475,7 +1483,20 @@ export default function UsuariosPage() {
         <TableSkeleton rows={8} cols={5} />
       ) : users.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay usuarios registrados</p>
+          {isAdmin ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              No hay usuarios registrados
+            </p>
+          ) : (
+            <>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '0.4rem' }}>
+                Aún no tienes colaboradores asignados
+              </p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                Si crees que esto es un error, contacta a RRHH para revisar tu jerarquía.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="card animate-fade-up-delay-2" style={{ padding: 0, overflow: 'hidden' }}>
