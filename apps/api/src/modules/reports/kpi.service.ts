@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CustomKpi, KpiType } from './entities/custom-kpi.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/evaluation-assignment.entity';
@@ -68,13 +68,33 @@ export class KpiService {
 
   // ─── Calculate KPI Values ─────────────────────────────────────────────
 
-  async calculateAll(tenantId: string): Promise<Array<{ kpi: CustomKpi; value: number | string; formattedValue: string }>> {
+  /**
+   * P7.1 — Si managerId está presente (caller es manager), pre-cargamos
+   * sus reportes directos + self UNA vez y los propagamos a cada KPI
+   * calculation. Admin pasa managerId=undefined → ve todos los KPIs de la
+   * organización sin filtro.
+   */
+  async calculateAll(
+    tenantId: string,
+    managerId?: string,
+  ): Promise<Array<{ kpi: CustomKpi; value: number | string; formattedValue: string }>> {
     const kpis = await this.findAll(tenantId);
     const results: Array<{ kpi: CustomKpi; value: number | string; formattedValue: string }> = [];
 
+    // Pre-cargar team IDs si es manager.
+    let teamIds: Set<string> | null = null;
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      teamIds = new Set(reports.map((u) => u.id));
+      teamIds.add(managerId);
+    }
+
     for (const kpi of kpis) {
       try {
-        const { value, formatted } = await this.calculateKpi(tenantId, kpi);
+        const { value, formatted } = await this.calculateKpi(tenantId, kpi, teamIds);
         results.push({ kpi, value, formattedValue: formatted });
       } catch {
         results.push({ kpi, value: 0, formattedValue: 'Error' });
@@ -83,14 +103,25 @@ export class KpiService {
     return results;
   }
 
-  private async calculateKpi(tenantId: string, kpi: CustomKpi): Promise<{ value: number; formatted: string }> {
+  private async calculateKpi(
+    tenantId: string,
+    kpi: CustomKpi,
+    teamIds: Set<string> | null = null,
+  ): Promise<{ value: number; formatted: string }> {
+    const teamFilter = teamIds ? [...teamIds] : null;
     switch (kpi.type) {
       case KpiType.CYCLE_COMPLETION: {
         const activeCycles = await this.cycleRepo.find({ where: { tenantId, status: CycleStatus.ACTIVE } });
         if (activeCycles.length === 0) return { value: 0, formatted: 'Sin ciclos activos' };
         const cycleId = kpi.config?.cycleId || activeCycles[0].id;
-        const total = await this.assignRepo.count({ where: { cycleId, tenantId } });
-        const completed = await this.assignRepo.count({ where: { cycleId, tenantId, status: AssignmentStatus.COMPLETED } });
+        const totalWhere: any = { cycleId, tenantId };
+        const completedWhere: any = { cycleId, tenantId, status: AssignmentStatus.COMPLETED };
+        if (teamFilter) {
+          totalWhere.evaluateeId = In(teamFilter);
+          completedWhere.evaluateeId = In(teamFilter);
+        }
+        const total = await this.assignRepo.count({ where: totalWhere });
+        const completed = await this.assignRepo.count({ where: completedWhere });
         const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
         return { value: pct, formatted: `${pct}%` };
       }
@@ -101,14 +132,14 @@ export class KpiService {
         const cycles = [...activeCycles, ...closedCycles];
         if (cycles.length === 0) return { value: 0, formatted: 'N/A' };
         const cycleId = kpi.config?.cycleId || cycles[0].id;
-        const result = await this.responseRepo
+        const qb = this.responseRepo
           .createQueryBuilder('r')
           .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
           .where('a.cycleId = :cycleId', { cycleId })
           .andWhere('r.tenantId = :tenantId', { tenantId })
-          .andWhere('r.overall_score IS NOT NULL')
-          .select('AVG(r.overall_score)', 'avg')
-          .getRawOne();
+          .andWhere('r.overall_score IS NOT NULL');
+        if (teamFilter) qb.andWhere('a.evaluatee_id IN (:...teamIds)', { teamIds: teamFilter });
+        const result = await qb.select('AVG(r.overall_score)', 'avg').getRawOne();
         const avg = result?.avg != null ? parseFloat(result.avg) : null;
         const rounded = avg != null ? Math.round(avg * 100) / 100 : 0;
         return { value: rounded, formatted: avg != null ? `${rounded.toFixed(1)} / 10` : 'N/A' };
@@ -128,6 +159,7 @@ export class KpiService {
         } else {
           qb.andWhere('u.department = :dept', { dept });
         }
+        if (teamFilter) qb.andWhere('a.evaluatee_id IN (:...teamIds)', { teamIds: teamFilter });
         const result = await qb
           .andWhere('r.overall_score IS NOT NULL')
           .select('AVG(r.overall_score)', 'avg')
@@ -138,30 +170,41 @@ export class KpiService {
       }
 
       case KpiType.OBJECTIVE_COMPLETION: {
-        const total = await this.objRepo.count({ where: { tenantId } });
-        const completed = await this.objRepo.count({ where: { tenantId, status: ObjectiveStatus.COMPLETED } });
+        const totalWhere: any = { tenantId };
+        const completedWhere: any = { tenantId, status: ObjectiveStatus.COMPLETED };
+        if (teamFilter) {
+          totalWhere.userId = In(teamFilter);
+          completedWhere.userId = In(teamFilter);
+        }
+        const total = await this.objRepo.count({ where: totalWhere });
+        const completed = await this.objRepo.count({ where: completedWhere });
         const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
         return { value: pct, formatted: `${pct}% (${completed}/${total})` };
       }
 
       case KpiType.FEEDBACK_COUNT: {
-        const count = await this.feedbackRepo.count({ where: { tenantId } });
+        const where: any = { tenantId };
+        if (teamFilter) where.toUserId = In(teamFilter);
+        const count = await this.feedbackRepo.count({ where });
         return { value: count, formatted: String(count) };
       }
 
       case KpiType.ACTIVE_USERS: {
-        const count = await this.userRepo.count({ where: { tenantId, isActive: true } });
+        const where: any = { tenantId, isActive: true };
+        if (teamFilter) where.id = In(teamFilter);
+        const count = await this.userRepo.count({ where });
         return { value: count, formatted: String(count) };
       }
 
       case KpiType.AT_RISK_OBJECTIVES: {
         const threshold = kpi.config?.threshold ?? 40;
-        const atRisk = await this.objRepo
+        const qb = this.objRepo
           .createQueryBuilder('o')
           .where('o.tenantId = :tenantId', { tenantId })
           .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE })
-          .andWhere('o.progress < :threshold', { threshold })
-          .getCount();
+          .andWhere('o.progress < :threshold', { threshold });
+        if (teamFilter) qb.andWhere('o.user_id IN (:...teamIds)', { teamIds: teamFilter });
+        const atRisk = await qb.getCount();
         return { value: atRisk, formatted: String(atRisk) };
       }
 

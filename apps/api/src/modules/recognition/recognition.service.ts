@@ -3,7 +3,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { cachedFetch, invalidateCache } from '../../common/cache/cache.helper';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, MoreThan } from 'typeorm';
+import { In, Repository, DataSource, MoreThan } from 'typeorm';
 import { Recognition } from './entities/recognition.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
@@ -71,9 +71,32 @@ export class RecognitionService {
 
   // ─── Recognition Wall (Social Feed) ─────────────────────────────────
 
-  async getWall(tenantId: string, page = 1, limit = 20) {
+  /**
+   * P7.3 — managerId opcional. Si presente, filtra el wall a reconocimientos
+   * donde fromUserId o toUserId ∈ {reportes directos, self}. Usado por los
+   * export methods para manager scope. Para la vista pública del wall,
+   * managerId queda undefined y se muestra todo el tenant (decisión de
+   * política: muro social es público org-wide, como el leaderboard).
+   */
+  async getWall(tenantId: string, page = 1, limit = 20, managerId?: string) {
+    let teamIds: string[] | null = null;
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      teamIds = [managerId, ...reports.map((u) => u.id)];
+    }
+
+    const where = teamIds
+      ? [
+          { tenantId, isPublic: true, fromUserId: In(teamIds) },
+          { tenantId, isPublic: true, toUserId: In(teamIds) },
+        ]
+      : { tenantId, isPublic: true };
+
     const [items, total] = await this.recogRepo.findAndCount({
-      where: { tenantId, isPublic: true },
+      where,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -623,19 +646,41 @@ export class RecognitionService {
 
   // ─── Stats ─────────────────────────────────────────────────────────
 
-  async getStats(tenantId: string) {
-    const totalRecognitions = await this.recogRepo.count({ where: { tenantId } });
+  /**
+   * P7.3 — Si managerId presente (caller es manager), stats filtrados a
+   * reconocimientos donde fromUserId o toUserId ∈ {reportes directos, self}.
+   * Admin (managerId=undefined) ve stats de toda la org.
+   */
+  async getStats(tenantId: string, managerId?: string) {
+    let teamIds: string[] | null = null;
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      teamIds = [managerId, ...reports.map((u) => u.id)];
+    }
+
+    const totalWhere: any = { tenantId };
+    const baseQb = (alias: string) => {
+      const qb = this.recogRepo.createQueryBuilder(alias).where(`${alias}.tenant_id = :tenantId`, { tenantId });
+      if (teamIds) {
+        qb.andWhere(`(${alias}.from_user_id IN (:...teamIds) OR ${alias}.to_user_id IN (:...teamIds))`, { teamIds });
+      }
+      return qb;
+    };
+
+    const totalRecognitions = await baseQb('r').getCount();
+
     const thisMonth = new Date();
     thisMonth.setDate(1);
     thisMonth.setHours(0, 0, 0, 0);
-    const monthlyRecognitions = await this.recogRepo.createQueryBuilder('r')
-      .where('r.tenant_id = :tenantId', { tenantId })
+    const monthlyRecognitions = await baseQb('r')
       .andWhere('r.created_at >= :start', { start: thisMonth })
       .getCount();
 
-    const topValues = await this.recogRepo.createQueryBuilder('r')
+    const topValues = await baseQb('r')
       .innerJoin('r.value', 'v')
-      .where('r.tenant_id = :tenantId', { tenantId })
       .andWhere('r.value_id IS NOT NULL')
       .select('v.name', 'valueName')
       .addSelect('COUNT(r.id)', 'count')
@@ -644,7 +689,9 @@ export class RecognitionService {
       .limit(5)
       .getRawMany();
 
-    const totalBadgesEarned = await this.userBadgeRepo.count({ where: { tenantId } });
+    const badgeWhere: any = { tenantId };
+    if (teamIds) badgeWhere.userId = In(teamIds);
+    const totalBadgesEarned = await this.userBadgeRepo.count({ where: badgeWhere });
 
     return { totalRecognitions, monthlyRecognitions, topValues, totalBadgesEarned };
   }
@@ -1222,8 +1269,8 @@ export class RecognitionService {
     return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
   }
 
-  async exportRecognitionsCsv(tenantId: string): Promise<string> {
-    const wall = await this.getWall(tenantId, 1, 500);
+  async exportRecognitionsCsv(tenantId: string, managerId?: string): Promise<string> {
+    const wall = await this.getWall(tenantId, 1, 500, managerId);
     const items = wall.data || [];
     const rows: string[] = ['De,Para,Mensaje,Valor Corporativo,Puntos,Fecha'];
     for (const r of items) {
@@ -1235,9 +1282,12 @@ export class RecognitionService {
     return '\uFEFF' + rows.join('\n');
   }
 
-  async exportRecognitionsXlsx(tenantId: string): Promise<Buffer> {
-    const wall = await this.getWall(tenantId, 1, 500);
+  async exportRecognitionsXlsx(tenantId: string, managerId?: string): Promise<Buffer> {
+    const wall = await this.getWall(tenantId, 1, 500, managerId);
     const items = wall.data || [];
+    // stats y leaderboard siguen siendo org-wide incluso para manager — son
+    // secciones de contexto (no datos "confidenciales" por equipo). El wall
+    // sí está filtrado para manager.
     const stats = await this.getStats(tenantId);
     const leaderboard = await this.getLeaderboard(tenantId, 'month', 50);
 
@@ -1288,8 +1338,8 @@ export class RecognitionService {
     return Buffer.from(await wb.xlsx.writeBuffer());
   }
 
-  async exportRecognitionsPdf(tenantId: string): Promise<Buffer> {
-    const wall = await this.getWall(tenantId, 1, 200);
+  async exportRecognitionsPdf(tenantId: string, managerId?: string): Promise<Buffer> {
+    const wall = await this.getWall(tenantId, 1, 200, managerId);
     const items = wall.data || [];
     const stats = await this.getStats(tenantId);
 

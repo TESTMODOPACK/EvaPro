@@ -801,7 +801,7 @@ export class AiInsightsService {
    * Score interpretation: 0–30 low, 31–60 medium, 61–100 high risk.
    * This is a deterministic algorithm — no AI call needed.
    */
-  async getFlightRiskScores(tenantId: string): Promise<{
+  async getFlightRiskScores(tenantId: string, managerId?: string): Promise<{
     generatedAt: string;
     totalEmployees: number;
     summary: { low: number; medium: number; high: number };
@@ -815,8 +815,20 @@ export class AiInsightsService {
       factors: Array<{ label: string; value: string; impact: 'positive' | 'neutral' | 'negative' }>;
     }>;
   }> {
+    // P7.5 — Si caller es manager, filtra empleados a su equipo directo + self.
+    // Admin (managerId=undefined) ve riesgo de toda la org.
+    const where: any = { tenantId, role: In(['employee', 'manager']), isActive: true };
+    if (managerId) {
+      // Incluye self + reportes directos.
+      where.id = In([managerId]);
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      where.id = In([managerId, ...reports.map((r) => r.id)]);
+    }
     const employees = await this.userRepo.find({
-      where: { tenantId, role: In(['employee', 'manager']), isActive: true },
+      where,
       select: ['id', 'firstName', 'lastName', 'position', 'department'] as any,
     });
 
@@ -1151,9 +1163,30 @@ export class AiInsightsService {
 
   // ─── F15: Explainability (XAI) ──────────────────────────────────────
 
-  async getExplainability(tenantId: string, userId: string) {
-    // Get flight risk data for this specific user
-    const flightRiskData = await this.getFlightRiskScores(tenantId);
+  async getExplainability(
+    tenantId: string,
+    userId: string,
+    callerRole?: string,
+    callerUserId?: string,
+  ) {
+    // P7.5 — Si caller es manager, solo puede ver explainability de su equipo
+    // (reportes directos + self). Verificamos antes de armar el reporte.
+    if (callerRole === 'manager' && callerUserId && userId !== callerUserId) {
+      const target = await this.userRepo.findOne({
+        where: { id: userId, tenantId },
+        select: ['id', 'managerId'],
+      });
+      if (!target || target.managerId !== callerUserId) {
+        throw new NotFoundException('Usuario no encontrado');
+      }
+    }
+
+    // Get flight risk data for this specific user (pasamos managerId para que
+    // la lista esté scoped cuando caller es manager).
+    const flightRiskData = await this.getFlightRiskScores(
+      tenantId,
+      callerRole === 'manager' ? callerUserId : undefined,
+    );
     const userScore = flightRiskData.scores.find((s) => s.userId === userId);
     if (!userScore) {
       return { available: false, message: 'No se encontraron datos de riesgo para este usuario.' };
@@ -1332,19 +1365,49 @@ export class AiInsightsService {
 
   // ─── Cycle Comparison AI Analysis ────────────────────────────────────
 
-  async analyzeCycleComparison(tenantId: string, cycleIds: string[], generatedBy: string): Promise<any> {
+  /**
+   * P6 fix (bug reportado): cuando caller es manager, el analisis AI
+   * debe procesar SOLO assignments de sus reportes directos + self, igual
+   * que analytics.service.ts getCycleComparison. Antes este endpoint
+   * estaba abierto y el manager recibia analisis IA sobre TODA la
+   * organizacion — fuga de datos agregados de otros equipos.
+   */
+  async analyzeCycleComparison(
+    tenantId: string,
+    cycleIds: string[],
+    generatedBy: string,
+    callerRole?: string,
+  ): Promise<any> {
     return this.withAiQuotaLock(tenantId, async () => {
     await this.checkRateLimit(tenantId);
+
+    // Pre-cargar reportes directos del manager UNA sola vez (fuera del loop
+    // de ciclos). Mismo patron que analytics.service.ts.
+    let managerFilterIds: Set<string> | null = null;
+    if (callerRole === 'manager' && generatedBy) {
+      const directReports = await this.userRepo.find({
+        where: { tenantId, managerId: generatedBy },
+        select: ['id'],
+      });
+      managerFilterIds = new Set(directReports.map((u) => u.id));
+      managerFilterIds.add(generatedBy); // incluir self
+    }
 
     // Fetch cycle data for selected cycles
     const cycles: any[] = [];
     for (const cid of cycleIds) {
       const cycle = await this.cycleRepo.findOne({ where: { id: cid, tenantId } });
       if (!cycle) continue;
-      const assignments = await this.assignmentRepo.find({
+      const allAssignments = await this.assignmentRepo.find({
         where: { cycleId: cid, tenantId },
         relations: ['evaluatee'],
       });
+
+      // Filtrar a reportes directos si es manager.
+      const assignments = managerFilterIds
+        ? allAssignments.filter((a) => managerFilterIds!.has(a.evaluateeId))
+        : allAssignments;
+
       const withScores = assignments.filter((a: any) => a.response?.overallScore != null);
       const scores = withScores.map((a: any) => Number(a.response.overallScore));
       const avg = scores.length > 0 ? Number((scores.reduce((s, v) => s + v, 0) / scores.length).toFixed(2)) : null;

@@ -160,18 +160,23 @@ export class SurveysController {
     return this.surveysService.getResultsByDepartment(req.user.tenantId, id);
   }
 
-  /** Get eNPS — must be before :id/results */
+  /** Get eNPS — must be before :id/results.
+   *  P7.2 — Manager ve eNPS de su equipo (si survey no es anónima). */
   @Get(':id/results/enps')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getENPS(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.surveysService.getENPS(req.user.tenantId, id);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.surveysService.getENPS(req.user.tenantId, id, managerId);
   }
 
-  /** Get aggregated results */
+  /** Get aggregated results.
+   *  P7.2 — Manager ve resultados de su equipo (si survey no es anónima).
+   *  Para surveys anónimas, manager recibe 403. */
   @Get(':id/results')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getResults(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.surveysService.getResults(req.user.tenantId, id);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.surveysService.getResults(req.user.tenantId, id, managerId);
   }
 
   /** Generate AI analysis for a closed survey.
@@ -194,9 +199,14 @@ export class SurveysController {
     );
   }
 
-  /** Get existing AI analysis */
+  /** Get existing AI analysis.
+   *  P7.2 — Manager removido: el análisis IA cacheado se genera sobre
+   *  toda la organización (no scoped por equipo). Si manager lo viera,
+   *  tendría fuga de data agregada de otros equipos. Si en el futuro
+   *  queremos habilitar manager, hay que generar insight separado por
+   *  equipo (caché separado per-manager). Por ahora, admin-only. */
   @Get(':id/ai-analysis')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('super_admin', 'tenant_admin')
   getAiAnalysis(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.surveysService.getAiAnalysis(req.user.tenantId, id);
   }

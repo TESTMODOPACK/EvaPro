@@ -525,7 +525,12 @@ export class RecruitmentService {
 
   // ─── Scorecard ────────────────────────────────────────────────────────
 
-  async getScorecard(tenantId: string, candidateId: string): Promise<any> {
+  /**
+   * P7 — Si managerCheckUserId es provisto (caller es manager), verifica
+   * que haya participado como evaluator en este candidato. Si no, 403.
+   * Admin (managerCheckUserId=undefined) ve cualquier scorecard.
+   */
+  async getScorecard(tenantId: string, candidateId: string, managerCheckUserId?: string): Promise<any> {
     const candidate = await this.candidateRepo.findOne({
       where: { id: candidateId, tenantId },
       relations: ['process', 'user'],
@@ -536,6 +541,16 @@ export class RecruitmentService {
       where: { candidateId },
       relations: ['evaluator'],
     });
+
+    // Manager scope: valida participación como evaluator.
+    if (managerCheckUserId) {
+      const participated = interviews.some((i) => i.evaluatorId === managerCheckUserId);
+      if (!participated) {
+        throw new ForbiddenException(
+          'Solo puedes ver la evaluación de candidatos donde participaste como evaluador.',
+        );
+      }
+    }
 
     // Calculate interview average
     const interviewScores = interviews.filter((i) => i.globalScore != null).map((i) => Number(i.globalScore));
@@ -723,7 +738,12 @@ export class RecruitmentService {
 
   // ─── Comparative (internal only) ─────────────────────────────────────
 
-  async getComparative(tenantId: string, processId: string): Promise<any> {
+  /**
+   * P7 — Si managerCheckUserId es provisto (caller es manager), verifica
+   * que haya participado como evaluator en al menos un candidato del
+   * proceso. Si no, 403.
+   */
+  async getComparative(tenantId: string, processId: string, managerCheckUserId?: string): Promise<any> {
     const process = await this.processRepo.findOne({ where: { id: processId, tenantId } });
     if (!process) throw new NotFoundException('Proceso no encontrado');
 
@@ -732,6 +752,27 @@ export class RecruitmentService {
       relations: ['user'],
       order: { finalScore: 'DESC' },
     });
+
+    // Manager scope: valida participación como evaluator en al menos un
+    // candidato del proceso. Si el proceso no tiene candidatos, tampoco
+    // tiene business el manager de verlo (bug found in review — el guard
+    // anterior se salteaba con candidates.length === 0).
+    if (managerCheckUserId) {
+      if (candidates.length === 0) {
+        throw new ForbiddenException(
+          'Solo puedes ver la comparativa de procesos donde participaste como evaluador.',
+        );
+      }
+      const candidateIds = candidates.map((c) => c.id);
+      const hasParticipated = await this.interviewRepo.count({
+        where: { candidateId: In(candidateIds), evaluatorId: managerCheckUserId },
+      });
+      if (hasParticipated === 0) {
+        throw new ForbiddenException(
+          'Solo puedes ver la comparativa de procesos donde participaste como evaluador.',
+        );
+      }
+    }
 
     const rows = [];
     for (const c of candidates) {

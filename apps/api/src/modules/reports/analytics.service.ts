@@ -453,20 +453,37 @@ export class AnalyticsService {
 
   // ─── 4b. Análisis de Movimientos Internos ──────────────────────────
 
-  async getInternalMovementAnalysis(tenantId: string): Promise<any> {
+  /**
+   * P7.1 — Si managerId es provisto (caller es manager), filtra movimientos
+   * a los de su equipo directo + self. Admin (managerId=undefined) ve
+   * movimientos de toda la organización sin filtro.
+   */
+  async getInternalMovementAnalysis(tenantId: string, managerId?: string): Promise<any> {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+    // Pre-cargar equipo del manager (si aplica).
+    let teamIds: string[] | null = null;
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      teamIds = [managerId, ...reports.map((u) => u.id)];
+    }
 
     // Defense-in-depth: the join enforces u.tenant_id = m.tenant_id. Without
     // that constraint, a stale user_movements row that points at a user in
     // ANOTHER tenant would leak that other user's name into this tenant's
     // report. This happened in prod (Rodrigo Monasterio of Cesce showing up
     // in Demo Company's movements).
-    const movements = await this.movementRepo
+    const qb = this.movementRepo
       .createQueryBuilder('m')
       .innerJoinAndSelect('m.user', 'u', 'u.tenant_id = m.tenant_id')
       .where('m.tenant_id = :tenantId', { tenantId })
-      .andWhere('m.effective_date > :cutoff', { cutoff: twelveMonthsAgo })
+      .andWhere('m.effective_date > :cutoff', { cutoff: twelveMonthsAgo });
+    if (teamIds) qb.andWhere('m.user_id IN (:...teamIds)', { teamIds });
+    const movements = await qb
       .orderBy('m.effective_date', 'DESC')
       .getMany();
 

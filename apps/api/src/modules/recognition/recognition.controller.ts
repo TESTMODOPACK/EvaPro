@@ -17,23 +17,26 @@ export class RecognitionController {
 
   // ─── Recognition Wall ────────────────────────────────────────────
 
-  /** Export recognitions in CSV, XLSX, or PDF */
+  /** Export recognitions in CSV, XLSX, or PDF.
+   *  P7.3 — Manager exporta solo reconocimientos relacionados con su equipo
+   *  (fromUserId o toUserId ∈ {reportes directos, self}). Admin exporta todo. */
   @Get('export')
   @Roles('super_admin', 'tenant_admin', 'manager')
   async exportRecognitions(@Request() req: any, @Query('format') format: string, @Res() res: Response) {
     const tenantId = req.user.tenantId;
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     const ext = format?.toLowerCase() || 'csv';
     if (ext === 'xlsx') {
-      const buffer = await this.service.exportRecognitionsXlsx(tenantId);
+      const buffer = await this.service.exportRecognitionsXlsx(tenantId, managerId);
       res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename=reconocimientos.xlsx' });
       return res.send(buffer);
     }
     if (ext === 'pdf') {
-      const buffer = await this.service.exportRecognitionsPdf(tenantId);
+      const buffer = await this.service.exportRecognitionsPdf(tenantId, managerId);
       res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename=reconocimientos.pdf' });
       return res.send(buffer);
     }
-    const csv = await this.service.exportRecognitionsCsv(tenantId);
+    const csv = await this.service.exportRecognitionsCsv(tenantId, managerId);
     res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=reconocimientos.csv' });
     return res.send(csv);
   }
@@ -164,10 +167,12 @@ export class RecognitionController {
 
   // ─── Stats ──────────────────────────────────────────────────────
 
+  /** P7.3 — Manager ve stats filtrados a reconocimientos de su equipo. */
   @Get('stats')
   @Roles('super_admin', 'tenant_admin', 'manager')
   getStats(@Request() req: any) {
-    return this.service.getStats(req.user.tenantId);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.service.getStats(req.user.tenantId, managerId);
   }
 
   // ─── Points Budget ──────────────────────────────────────────────
