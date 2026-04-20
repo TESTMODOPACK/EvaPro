@@ -355,8 +355,14 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
     {
       title: t('nav.people', 'Personas'),
       items: [
+        // P6 — admin ve "Usuarios" (todos los del tenant); manager ve
+        // "Mi Equipo" (solo sus reportes directos + self) a través del
+        // mismo path /dashboard/usuarios, la page se adapta por rol.
         ...(isAdmin ? [
           { href: '/dashboard/usuarios', label: t('nav.users', 'Usuarios'), icon: icons.users },
+        ] : []),
+        ...(isManager ? [
+          { href: '/dashboard/usuarios', label: 'Mi Equipo', icon: icons.users },
         ] : []),
         { href: '/dashboard/organigrama', label: 'Organigrama', icon: icons.orgChart },
         ...(isAdminOrManager ? [
