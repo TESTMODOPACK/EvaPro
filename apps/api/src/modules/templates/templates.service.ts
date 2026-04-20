@@ -37,13 +37,17 @@ export class TemplatesService {
     });
   }
 
-  async findById(id: string, tenantId: string): Promise<FormTemplate> {
-    const template = await this.templateRepo.findOne({
-      where: [
-        { id, tenantId },
-        { id, tenantId: IsNull() },
-      ],
-    });
+  /**
+   * P5.2 — Secondary cross-tenant pattern: si tenantId es undefined
+   * (super_admin cross-tenant), busca solo por id (incluye globales
+   * automaticamente). Si tenantId es string, incluye su tenant y los
+   * globales (tenantId IS NULL) como el comportamiento original.
+   */
+  async findById(id: string, tenantId: string | undefined): Promise<FormTemplate> {
+    const where = tenantId
+      ? [{ id, tenantId }, { id, tenantId: IsNull() }]
+      : { id };
+    const template = await this.templateRepo.findOne({ where });
     if (!template) throw new NotFoundException('Plantilla no encontrada');
     return template;
   }
@@ -84,7 +88,7 @@ export class TemplatesService {
     return template.translations[lang];
   }
 
-  async update(id: string, tenantId: string, userId: string, dto: UpdateTemplateDto): Promise<FormTemplate> {
+  async update(id: string, tenantId: string | undefined, userId: string, dto: UpdateTemplateDto): Promise<FormTemplate> {
     const template = await this.findById(id, tenantId);
     if (template.tenantId === null) {
       throw new NotFoundException('No se pueden editar plantillas globales');
@@ -123,7 +127,7 @@ export class TemplatesService {
     return this.templateRepo.save(template);
   }
 
-  async getVersionHistory(id: string, tenantId: string) {
+  async getVersionHistory(id: string, tenantId: string | undefined) {
     const template = await this.findById(id, tenantId);
     const history = Array.isArray(template.versionHistory) ? template.versionHistory : [];
     return {
@@ -144,7 +148,7 @@ export class TemplatesService {
     };
   }
 
-  async restoreVersion(id: string, tenantId: string, userId: string, version: number): Promise<FormTemplate> {
+  async restoreVersion(id: string, tenantId: string | undefined, userId: string, version: number): Promise<FormTemplate> {
     const template = await this.findById(id, tenantId);
     if (template.tenantId === null) {
       throw new BadRequestException('No se pueden editar plantillas globales');
@@ -174,7 +178,7 @@ export class TemplatesService {
     return this.templateRepo.save(template);
   }
 
-  async remove(id: string, tenantId: string): Promise<void> {
+  async remove(id: string, tenantId: string | undefined): Promise<void> {
     const template = await this.findById(id, tenantId);
     if (template.tenantId === null) {
       throw new BadRequestException('No se pueden eliminar plantillas globales');
@@ -303,10 +307,15 @@ export class TemplatesService {
     };
   }
 
-  async duplicate(id: string, tenantId: string, userId: string): Promise<FormTemplate> {
+  async duplicate(id: string, tenantId: string | undefined, userId: string): Promise<FormTemplate> {
     const original = await this.findById(id, tenantId);
+    // La copia hereda el tenantId de la plantilla original (authoritative).
+    // Si original es global (tenantId null), la copia queda como global solo
+    // si el caller es super_admin sin tenant contexto; si es tenant_admin,
+    // la copia queda en su tenant.
+    const effectiveTenantId = tenantId ?? original.tenantId;
     const copy = this.templateRepo.create({
-      tenantId,
+      tenantId: effectiveTenantId,
       name: `${original.name} (copia)`,
       description: original.description,
       sections: JSON.parse(JSON.stringify(original.sections)),
@@ -400,8 +409,13 @@ export class TemplatesService {
   }
 
   /** Admin publishes a proposed template */
-  async publish(id: string, tenantId: string, reviewerId: string, note?: string): Promise<FormTemplate> {
+  async publish(id: string, tenantId: string | undefined, reviewerId: string, note?: string): Promise<FormTemplate> {
     const template = await this.findById(id, tenantId);
+    // Consistencia con update/remove: plantillas globales (tenantId=null) no
+    // pasan por workflow de propuesta → revisión; se crean via seed/migración.
+    if (template.tenantId === null) {
+      throw new BadRequestException('No se pueden publicar plantillas globales');
+    }
     if (template.status !== 'proposed') {
       throw new BadRequestException('Solo se pueden publicar plantillas en estado "propuesta"');
     }
@@ -413,11 +427,14 @@ export class TemplatesService {
   }
 
   /** Admin rejects a proposed template */
-  async reject(id: string, tenantId: string, reviewerId: string, note: string): Promise<FormTemplate> {
+  async reject(id: string, tenantId: string | undefined, reviewerId: string, note: string): Promise<FormTemplate> {
     if (!note || !note.trim()) {
       throw new BadRequestException('Se requiere una nota de rechazo');
     }
     const template = await this.findById(id, tenantId);
+    if (template.tenantId === null) {
+      throw new BadRequestException('No se pueden rechazar plantillas globales');
+    }
     if (template.status !== 'proposed') {
       throw new BadRequestException('Solo se pueden rechazar plantillas en estado "propuesta"');
     }

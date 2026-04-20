@@ -77,7 +77,8 @@ export class RecognitionController {
     return this.service.createBadge(tenantId, dto);
   }
 
-  /** Editar un badge (nombre, icono, criterios, etc.). No toca isActive. */
+  /** P5.3 — Secondary cross-tenant: super_admin → undefined.
+   *  Editar un badge (nombre, icono, criterios, etc.). No toca isActive. */
   @Patch('badges/:id')
   @Roles('super_admin', 'tenant_admin')
   updateBadge(
@@ -85,7 +86,8 @@ export class RecognitionController {
     @Request() req: any,
     @Body() dto: Partial<CreateBadgeDto>,
   ) {
-    return this.service.updateBadge(req.user.tenantId, id, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.updateBadge(tenantId, id, dto);
   }
 
   /** Soft-delete: isActive=false + deactivatedAt=now. Preserva referencias
@@ -93,7 +95,8 @@ export class RecognitionController {
   @Delete('badges/:id')
   @Roles('super_admin', 'tenant_admin')
   deleteBadge(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.service.softDeleteBadge(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.softDeleteBadge(tenantId, id);
   }
 
   @Get('badges/mine')
@@ -112,7 +115,8 @@ export class RecognitionController {
   @Post('badges/award')
   @Roles('super_admin', 'tenant_admin', 'manager')
   awardBadge(@Request() req: any, @Body() dto: AwardBadgeDto) {
-    return this.service.awardBadge(req.user.tenantId, dto.userId, dto.badgeId, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.awardBadge(tenantId, dto.userId, dto.badgeId, req.user.userId);
   }
 
   // ─── Points & Leaderboard ───────────────────────────────────────
@@ -186,7 +190,8 @@ export class RecognitionController {
     @Request() req: any,
     @Body() dto: { approved: boolean },
   ) {
-    return this.service.approveRecognition(req.user.tenantId, id, req.user.userId, dto.approved);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.approveRecognition(tenantId, id, req.user.userId, dto.approved);
   }
 
   // ─── Redemption Catalog ──────────────────────────────────────────
@@ -217,7 +222,8 @@ export class RecognitionController {
     @Request() req: any,
     @Body() dto: any,
   ) {
-    return this.service.updateRedemptionItem(req.user.tenantId, id, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.updateRedemptionItem(tenantId, id, dto);
   }
 
   @Post('redeem/:itemId')
@@ -240,7 +246,8 @@ export class RecognitionController {
     @Request() req: any,
     @Body() dto: { status: string },
   ) {
-    return this.service.updateRedemptionStatus(req.user.tenantId, id, dto.status);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.updateRedemptionStatus(tenantId, id, dto.status);
   }
 
   // ─── Challenges (F16 Gamification) ──────────────────────────────
@@ -276,14 +283,16 @@ export class RecognitionController {
     @Request() req: any,
     @Body() dto: any,
   ) {
-    return this.service.updateChallenge(req.user.tenantId, id, dto);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.updateChallenge(tenantId, id, dto);
   }
 
   /** Soft-delete: isActive=false + deactivatedAt=now. No borra histórico. */
   @Delete('challenges/:id')
   @Roles('super_admin', 'tenant_admin')
   deleteChallenge(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.service.softDeleteChallenge(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.service.softDeleteChallenge(tenantId, id);
   }
 
   // ─── Leaderboard Opt-in ──────────────────────────────────────────

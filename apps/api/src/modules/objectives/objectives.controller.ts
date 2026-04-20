@@ -190,13 +190,15 @@ export class ObjectivesController {
     return this.objectivesService.submitForApproval(tenantId, id);
   }
 
+  /** P5.4 — Secondary cross-tenant: super_admin → undefined. */
   @Post(':id/approve')
   @Roles('super_admin', 'tenant_admin', 'manager')
   approve(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.objectivesService.approve(req.user.tenantId, id, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.objectivesService.approve(tenantId, id, req.user.userId);
   }
 
   @Post(':id/reject')
@@ -206,7 +208,8 @@ export class ObjectivesController {
     @Request() req: any,
     @Body() body?: { reason?: string },
   ) {
-    return this.objectivesService.reject(req.user.tenantId, id, req.user.userId, body?.reason);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.objectivesService.reject(tenantId, id, req.user.userId, body?.reason);
   }
 
   @Delete(':id')
@@ -216,7 +219,8 @@ export class ObjectivesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.objectivesService.remove(req.user.tenantId, id);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.objectivesService.remove(tenantId, id);
   }
 
   @Post(':id/progress')

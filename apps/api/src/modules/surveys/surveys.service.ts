@@ -143,21 +143,27 @@ export class SurveysService {
       .getMany();
   }
 
-  async findById(tenantId: string, surveyId: string): Promise<EngagementSurvey> {
-    const survey = await this.surveyRepo
+  /**
+   * P5.1 — Secondary cross-tenant pattern: si tenantId es undefined
+   * (super_admin actuando cross-tenant), busca por id sin filtro de
+   * tenant. El service consumer debe usar `survey.tenantId` authoritative
+   * para todas las operaciones side-effect posteriores.
+   */
+  async findById(tenantId: string | undefined, surveyId: string): Promise<EngagementSurvey> {
+    const qb = this.surveyRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.creator', 'creator', 'creator.tenant_id = s.tenant_id')
       .leftJoinAndSelect('s.questions', 'questions')
       .where('s.id = :id', { id: surveyId })
-      .andWhere('s.tenantId = :tenantId', { tenantId })
-      .orderBy('questions.sortOrder', 'ASC')
-      .getOne();
+      .orderBy('questions.sortOrder', 'ASC');
+    if (tenantId) qb.andWhere('s.tenantId = :tenantId', { tenantId });
+    const survey = await qb.getOne();
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
     return survey;
   }
 
   async update(
-    tenantId: string,
+    tenantId: string | undefined,
     surveyId: string,
     dto: {
       title?: string;
@@ -179,7 +185,8 @@ export class SurveysService {
       }>;
     },
   ): Promise<EngagementSurvey> {
-    const survey = await this.surveyRepo.findOne({ where: { id: surveyId, tenantId } });
+    const where = tenantId ? { id: surveyId, tenantId } : { id: surveyId };
+    const survey = await this.surveyRepo.findOne({ where });
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
     if (survey.status !== 'draft') throw new BadRequestException('Solo se pueden editar encuestas en borrador.');
 
@@ -215,7 +222,8 @@ export class SurveysService {
       }
     });
 
-    return this.findById(tenantId, surveyId);
+    // Usa survey.tenantId authoritative (soporta super_admin cross-tenant).
+    return this.findById(survey.tenantId, surveyId);
   }
 
   /**
@@ -229,9 +237,11 @@ export class SurveysService {
    * contienen datos anonimizados que no deben persistir si el admin decide
    * borrarlas. Las respuestas se eliminan via CASCADE en la relacion FK.
    */
-  async delete(tenantId: string, surveyId: string, callerRole?: string): Promise<void> {
-    const survey = await this.surveyRepo.findOne({ where: { id: surveyId, tenantId } });
+  async delete(tenantId: string | undefined, surveyId: string, callerRole?: string): Promise<void> {
+    const where = tenantId ? { id: surveyId, tenantId } : { id: surveyId };
+    const survey = await this.surveyRepo.findOne({ where });
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
+    const effectiveTenantId = survey.tenantId;
 
     const isAdmin = callerRole === 'super_admin' || callerRole === 'tenant_admin';
 
@@ -242,7 +252,7 @@ export class SurveysService {
 
     // Si la encuesta tiene respuestas, advertir (pero permitir si es super_admin)
     if (survey.status !== 'draft') {
-      const responseCount = await this.responseRepo.count({ where: { surveyId, tenantId } });
+      const responseCount = await this.responseRepo.count({ where: { surveyId, tenantId: effectiveTenantId } });
       if (responseCount > 0) {
         this.logger.warn(
           `Super admin deleting survey "${survey.title}" (${surveyId}) with ${responseCount} responses`,
@@ -252,24 +262,26 @@ export class SurveysService {
 
     // Eliminar insight de AI si existe (no tiene CASCADE a la encuesta)
     try {
-      await this.aiInsightsService.clearCache(tenantId, 'survey_analysis' as any, surveyId);
+      await this.aiInsightsService.clearCache(effectiveTenantId, 'survey_analysis' as any, surveyId);
     } catch { /* ignore — insight may not exist */ }
 
     await this.surveyRepo.remove(survey);
 
     // Cleanup notifications referencing this survey
-    this.notificationsService.cleanupByMetadata(tenantId, 'surveyId', surveyId).catch((e) => this.logger.warn(`Survey notification cleanup failed: ${e.message}`));
+    this.notificationsService.cleanupByMetadata(effectiveTenantId, 'surveyId', surveyId).catch((e) => this.logger.warn(`Survey notification cleanup failed: ${e.message}`));
   }
 
   // ─── Distribution ──────────────────────────────────────────────────────
 
-  async launch(tenantId: string, surveyId: string): Promise<EngagementSurvey> {
+  async launch(tenantId: string | undefined, surveyId: string): Promise<EngagementSurvey> {
     const survey = await this.findById(tenantId, surveyId);
+    // Authoritative tenantId desde la entidad (soporta super_admin cross-tenant).
+    const effectiveTenantId = survey.tenantId;
     if (survey.status !== 'draft') throw new BadRequestException('La encuesta ya fue lanzada.');
     if (!survey.questions || survey.questions.length === 0) throw new BadRequestException('La encuesta no tiene preguntas.');
 
     // Resolve target users
-    const targetUsers = await this.getTargetUsers(tenantId, survey);
+    const targetUsers = await this.getTargetUsers(effectiveTenantId, survey);
     if (targetUsers.length === 0) throw new BadRequestException('No hay usuarios objetivo para esta encuesta.');
 
     // Update status
@@ -280,7 +292,7 @@ export class SurveysService {
     const assignments = targetUsers.map((u) =>
       this.assignmentRepo.create({
         surveyId,
-        tenantId,
+        tenantId: effectiveTenantId,
         userId: u.id,
         status: 'pending',
       }),
@@ -289,7 +301,7 @@ export class SurveysService {
 
     // Send notifications + emails
     const notifications = targetUsers.map((u) => ({
-      tenantId,
+      tenantId: effectiveTenantId,
       userId: u.id,
       type: 'survey_invitation' as any,
       title: 'Nueva encuesta de clima',
@@ -305,13 +317,13 @@ export class SurveysService {
         surveyTitle: survey.title,
         dueDate: survey.endDate.toISOString().split('T')[0],
         isAnonymous: survey.isAnonymous,
-        tenantId,
+        tenantId: effectiveTenantId,
         userId: u.id,
       }).catch((e) => this.logger.error(`Error sending survey email to ${u.email}: ${e.message}`));
     }
 
     this.logger.log(`Survey "${survey.title}" launched to ${targetUsers.length} users`);
-    return this.findById(tenantId, surveyId);
+    return this.findById(effectiveTenantId, surveyId);
   }
 
   private async getTargetUsers(tenantId: string, survey: EngagementSurvey): Promise<User[]> {
@@ -743,16 +755,18 @@ export class SurveysService {
 
   // ─── Close ─────────────────────────────────────────────────────────────
 
-  async closeSurvey(tenantId: string, surveyId: string): Promise<EngagementSurvey> {
-    const survey = await this.surveyRepo.findOne({ where: { id: surveyId, tenantId } });
+  async closeSurvey(tenantId: string | undefined, surveyId: string): Promise<EngagementSurvey> {
+    const where = tenantId ? { id: surveyId, tenantId } : { id: surveyId };
+    const survey = await this.surveyRepo.findOne({ where });
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
+    const effectiveTenantId = survey.tenantId;
     if (survey.status !== 'active') throw new BadRequestException('Solo se pueden cerrar encuestas activas.');
 
     // Validar que tenga al menos 1 respuesta completa antes de cerrar.
     // Cerrar sin respuestas genera reportes vacios y un eNPS sin datos,
     // lo cual confunde al admin cuando ve "0" o "—" en el dashboard.
     const responseCount = await this.responseRepo.count({
-      where: { surveyId, tenantId, isComplete: true },
+      where: { surveyId, tenantId: effectiveTenantId, isComplete: true },
     });
     if (responseCount === 0) {
       throw new BadRequestException(
@@ -764,35 +778,39 @@ export class SurveysService {
     await this.surveyRepo.save(survey);
 
     // Cleanup pending survey notifications (invitation + reminders)
-    this.notificationsService.cleanupByMetadata(tenantId, 'surveyId', surveyId, {
+    this.notificationsService.cleanupByMetadata(effectiveTenantId, 'surveyId', surveyId, {
       types: ['survey_invitation', 'survey_reminder'],
     }).catch(() => {});
 
     this.logger.log(`Survey "${survey.title}" closed with ${responseCount} responses`);
-    return this.findById(tenantId, surveyId);
+    return this.findById(effectiveTenantId, surveyId);
   }
 
   // ─── AI Analysis ───────────────────────────────────────────────────────
 
   async generateAiAnalysis(
-    tenantId: string,
+    tenantId: string | undefined,
     surveyId: string,
     generatedBy: string,
     force = false,
   ): Promise<any> {
-    // Check AI feature
-    await this.checkFeature(tenantId, PlanFeature.AI_INSIGHTS);
+    // Resolver el tenantId authoritative desde la encuesta.
+    const survey = await this.findById(tenantId, surveyId);
+    const effectiveTenantId = survey.tenantId;
 
-    const results = await this.getResults(tenantId, surveyId);
-    const enps = await this.getENPS(tenantId, surveyId);
-    const deptResults = await this.getResultsByDepartment(tenantId, surveyId);
+    // Check AI feature usando el tenantId real de la encuesta.
+    await this.checkFeature(effectiveTenantId, PlanFeature.AI_INSIGHTS);
+
+    const results = await this.getResults(effectiveTenantId, surveyId);
+    const enps = await this.getENPS(effectiveTenantId, surveyId);
+    const deptResults = await this.getResultsByDepartment(effectiveTenantId, surveyId);
 
     if (results.totalResponses === 0) {
       throw new BadRequestException('No hay respuestas para analizar.');
     }
 
     return this.aiInsightsService.analyzeSurvey(
-      tenantId,
+      effectiveTenantId,
       surveyId,
       generatedBy,
       {
@@ -817,11 +835,15 @@ export class SurveysService {
   // ─── Org Development Integration ──────────────────────────────────────
 
   async createInitiativesFromSurvey(
-    tenantId: string,
+    tenantId: string | undefined,
     surveyId: string,
     targetPlanId?: string,
   ): Promise<any> {
-    const analysis = await this.aiInsightsService.getInsight(tenantId, 'survey_analysis' as any, surveyId);
+    // Resolver el tenantId authoritative desde la encuesta.
+    const survey = await this.findById(tenantId, surveyId);
+    const effectiveTenantId = survey.tenantId;
+
+    const analysis = await this.aiInsightsService.getInsight(effectiveTenantId, 'survey_analysis' as any, surveyId);
     if (!analysis) throw new NotFoundException('Primero debe generar el análisis AI de la encuesta.');
 
     const suggestedInitiatives = analysis.content?.suggestedInitiatives;
@@ -833,7 +855,7 @@ export class SurveysService {
     let planId = targetPlanId;
     if (!planId) {
       // Try to find active plan for current year
-      const plans = await this.orgDevService.findAllPlans(tenantId);
+      const plans = await this.orgDevService.findAllPlans(effectiveTenantId);
       const currentYear = new Date().getFullYear();
       const activePlan = plans.find((p) => p.year === currentYear && p.status === 'activo');
       if (activePlan) {
@@ -846,7 +868,7 @@ export class SurveysService {
     const createdInitiatives: any[] = [];
 
     for (const suggestion of suggestedInitiatives) {
-      const initiative = await this.orgDevService.createInitiative(tenantId, planId, {
+      const initiative = await this.orgDevService.createInitiative(effectiveTenantId, planId, {
         title: `[Clima] ${suggestion.title}`,
         description: suggestion.description || undefined,
         department: suggestion.department || null,
@@ -856,7 +878,7 @@ export class SurveysService {
       // Create actions from action items
       if (suggestion.actionItems && Array.isArray(suggestion.actionItems)) {
         for (const actionTitle of suggestion.actionItems) {
-          await this.orgDevService.addAction(tenantId, initiative.id, {
+          await this.orgDevService.addAction(effectiveTenantId, initiative.id, {
             title: actionTitle,
             actionType: 'otro',
           });

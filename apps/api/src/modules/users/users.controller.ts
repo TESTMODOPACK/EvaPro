@@ -218,14 +218,19 @@ export class UsersController {
 
   /** PATCH /users/:id — admins pueden editar cualquier user del tenant;
    *  usuarios no-admin solo pueden editar su propio perfil (validacion en el
-   *  service). */
+   *  service).
+   *
+   *  P5.7 — Secondary cross-tenant: super_admin → undefined para operar
+   *  cross-tenant (soporte). El service valida self-service vs admin via
+   *  `role` que se sigue pasando igual que antes. */
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() dto: UpdateUserDto,
   ) {
-    return this.usersService.update(id, req.user.tenantId, dto, req.user.role, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.update(id, tenantId, dto, req.user.role, req.user.userId);
   }
 
   /** DELETE /users/:id  (soft delete – deactivates) */
@@ -236,7 +241,8 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.usersService.remove(id, req.user.tenantId, req.user.role);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.remove(id, tenantId, req.user.role);
   }
 
   // ─── Departure Tracking ────────────────────────────────────────────────────
@@ -249,7 +255,8 @@ export class UsersController {
     @Request() req: any,
     @Body() dto: CreateDepartureDto,
   ) {
-    return this.usersService.registerDeparture(id, req.user.tenantId, dto, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.registerDeparture(id, tenantId, dto, req.user.userId);
   }
 
   /** GET /users/:id/departures — Departure history */
@@ -272,7 +279,8 @@ export class UsersController {
     @Request() req: any,
     @Body() dto: ReactivateUserDto,
   ) {
-    return this.usersService.reactivateUser(id, req.user.tenantId, dto, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.reactivateUser(id, tenantId, dto, req.user.userId);
   }
 
   /** PATCH /users/:id/departures/:depId — Editar categoría/detalle/rehire */
@@ -284,7 +292,8 @@ export class UsersController {
     @Request() req: any,
     @Body() dto: UpdateDepartureDto,
   ) {
-    return this.usersService.updateDeparture(id, depId, req.user.tenantId, dto, req.user.userId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.updateDeparture(id, depId, tenantId, dto, req.user.userId);
   }
 
   /** DELETE /users/:id/departures/:depId — Cancelar desvinculación (soft rollback).
@@ -300,7 +309,8 @@ export class UsersController {
     @Request() req: any,
     @Body() body: { reason?: string } = {},
   ) {
-    return this.usersService.cancelDeparture(id, depId, req.user.tenantId, req.user.userId, body.reason);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.cancelDeparture(id, depId, tenantId, req.user.userId, body.reason);
   }
 
   // ─── Internal Movement Tracking ───────────────────────────────────────────
@@ -368,6 +378,7 @@ export class UsersController {
     @Param('noteId', ParseUUIDPipe) noteId: string,
     @Request() req: any,
   ) {
-    return this.usersService.deleteNote(noteId, req.user.tenantId);
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.usersService.deleteNote(noteId, tenantId);
   }
 }

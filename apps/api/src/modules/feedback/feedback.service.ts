@@ -177,9 +177,11 @@ export class FeedbackService {
     return this.checkInRepo.save(ci);
   }
 
-  async deleteCheckIn(tenantId: string, id: string, userId: string, role: string): Promise<{ deleted: boolean }> {
-    const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
+  async deleteCheckIn(tenantId: string | undefined, id: string, userId: string, role: string): Promise<{ deleted: boolean }> {
+    const where = tenantId ? { id, tenantId } : { id };
+    const ci = await this.checkInRepo.findOne({ where });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
+    const effectiveTenantId = ci.tenantId;
 
     // Solo el creador (manager) o un admin puede eliminar
     const isAdmin = role === 'super_admin' || role === 'tenant_admin';
@@ -193,7 +195,7 @@ export class FeedbackService {
     }
 
     await this.checkInRepo.remove(ci);
-    this.auditService.log(tenantId, userId, 'checkin.deleted', 'checkin', id, {
+    this.auditService.log(effectiveTenantId, userId, 'checkin.deleted', 'checkin', id, {
       topic: ci.topic, employeeId: ci.employeeId, status: ci.status,
     }).catch(() => {});
 
@@ -243,13 +245,20 @@ export class FeedbackService {
   }
 
   /** Manager accepts a requested check-in — changes status to scheduled */
-  async acceptCheckInRequest(tenantId: string, checkInId: string, managerId: string, data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string }): Promise<CheckIn> {
-    const ci = await this.checkInRepo.findOne({ where: { id: checkInId, tenantId } });
+  async acceptCheckInRequest(tenantId: string | undefined, checkInId: string, managerId: string, data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string }): Promise<CheckIn> {
+    const where = tenantId ? { id: checkInId, tenantId } : { id: checkInId };
+    const ci = await this.checkInRepo.findOne({ where });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
+    const effectiveTenantId = ci.tenantId;
     if (ci.status !== CheckInStatus.REQUESTED) {
       throw new BadRequestException('Solo se pueden aceptar solicitudes pendientes');
     }
-    if (ci.managerId !== managerId) {
+    // Semántica: super_admin puede aceptar cross-tenant (soporte); tenant_admin/manager
+    // siguen validados contra managerId.
+    if (ci.managerId !== managerId && !tenantId) {
+      // Super_admin OK — se acepta en nombre del manager. Log claro para auditoría.
+      this.logger.log(`super_admin ${managerId} accepting check-in ${checkInId} on behalf of manager ${ci.managerId}`);
+    } else if (ci.managerId !== managerId) {
       throw new ForbiddenException('Solo el encargado asignado puede aceptar esta solicitud');
     }
 
@@ -272,16 +281,16 @@ export class FeedbackService {
       .leftJoinAndSelect('c.employee', 'employee', 'employee.tenant_id = c.tenant_id')
       .leftJoinAndSelect('c.location', 'location')
       .where('c.id = :id', { id: checkInId })
-      .andWhere('c.tenantId = :tenantId', { tenantId })
+      .andWhere('c.tenantId = :tenantId', { tenantId: effectiveTenantId })
       .getOne();
 
     if (!saved) return ci; // fallback
 
     // Notify employee that request was accepted
-    const managerUser = await this.userRepo.findOne({ where: { id: managerId }, select: ['id', 'firstName', 'lastName'] });
+    const managerUser = await this.userRepo.findOne({ where: { id: ci.managerId }, select: ['id', 'firstName', 'lastName'] });
     const managerName = managerUser ? `${managerUser.firstName} ${managerUser.lastName}` : 'Tu encargado';
     await this.notificationsService.create({
-      tenantId,
+      tenantId: effectiveTenantId,
       userId: saved.employeeId,
       type: NotificationType.CHECKIN_SCHEDULED,
       title: 'Solicitud de reunión aceptada',
@@ -290,7 +299,7 @@ export class FeedbackService {
     }).catch(() => {});
 
     // Send email invitation
-    await this.sendCheckInInvitation(saved, tenantId);
+    await this.sendCheckInInvitation(saved, effectiveTenantId);
 
     return saved;
   }
@@ -477,8 +486,9 @@ export class FeedbackService {
     return this.locationRepo.save(loc as MeetingLocation);
   }
 
-  async updateLocation(tenantId: string, id: string, data: { name?: string; type?: string; address?: string; capacity?: number }): Promise<MeetingLocation> {
-    const loc = await this.locationRepo.findOne({ where: { id, tenantId } });
+  async updateLocation(tenantId: string | undefined, id: string, data: { name?: string; type?: string; address?: string; capacity?: number }): Promise<MeetingLocation> {
+    const where = tenantId ? { id, tenantId } : { id };
+    const loc = await this.locationRepo.findOne({ where });
     if (!loc) throw new NotFoundException('Lugar no encontrado');
     if (data.name !== undefined) loc.name = data.name;
     if (data.type !== undefined) loc.type = data.type as any;
@@ -487,8 +497,9 @@ export class FeedbackService {
     return this.locationRepo.save(loc);
   }
 
-  async deactivateLocation(tenantId: string, id: string): Promise<void> {
-    const loc = await this.locationRepo.findOne({ where: { id, tenantId } });
+  async deactivateLocation(tenantId: string | undefined, id: string): Promise<void> {
+    const where = tenantId ? { id, tenantId } : { id };
+    const loc = await this.locationRepo.findOne({ where });
     if (!loc) throw new NotFoundException('Lugar no encontrado');
     loc.isActive = false;
     await this.locationRepo.save(loc);

@@ -239,13 +239,19 @@ export class ObjectivesService {
     };
   }
 
-  async findById(tenantId: string, id: string): Promise<Objective> {
-    const obj = await this.objectiveRepo
+  /**
+   * P5.4 — Firma tenantId opcional para soportar super_admin cross-tenant.
+   * Si tenantId es undefined, busca solo por id (cross-tenant).
+   * El resto de los métodos del service siguen pasando string cuando son
+   * acciones user-scoped (update, comments, key-results, progress).
+   */
+  async findById(tenantId: string | undefined, id: string): Promise<Objective> {
+    const qb = this.objectiveRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'user', 'user.tenant_id = o.tenant_id')
-      .where('o.id = :id', { id })
-      .andWhere('o.tenantId = :tenantId', { tenantId })
-      .getOne();
+      .where('o.id = :id', { id });
+    if (tenantId) qb.andWhere('o.tenantId = :tenantId', { tenantId });
+    const obj = await qb.getOne();
     if (!obj) throw new NotFoundException('Objetivo no encontrado');
     return obj;
   }
@@ -324,8 +330,9 @@ export class ObjectivesService {
     return saved;
   }
 
-  async approve(tenantId: string, id: string, approvedBy?: string): Promise<Objective> {
+  async approve(tenantId: string | undefined, id: string, approvedBy?: string): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
+    const effectiveTenantId = obj.tenantId;
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
       throw new BadRequestException('Solo objetivos pendientes de aprobación pueden ser aprobados');
     }
@@ -334,7 +341,7 @@ export class ObjectivesService {
     obj.approvedAt = new Date();
     obj.rejectionReason = null;
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(tenantId, approvedBy || obj.userId, 'objective.approved', 'objective', id, { title: obj.title, approvedBy }).catch(() => {});
+    this.auditService.log(effectiveTenantId, approvedBy || obj.userId, 'objective.approved', 'objective', id, { title: obj.title, approvedBy }).catch(() => {});
 
     // Notify objective owner that it was approved
     const owner = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'email', 'firstName'] });
@@ -344,7 +351,7 @@ export class ObjectivesService {
         objectiveTitle: `[Aprobado] ${obj.title}`,
         objectiveType: obj.type || 'OKR',
         targetDate: obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : undefined,
-        tenantId,
+        tenantId: effectiveTenantId,
         userId: owner.id,
       }).catch(() => {});
     }
@@ -352,8 +359,9 @@ export class ObjectivesService {
     return saved;
   }
 
-  async reject(tenantId: string, id: string, rejectedBy?: string, reason?: string): Promise<Objective> {
+  async reject(tenantId: string | undefined, id: string, rejectedBy?: string, reason?: string): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
+    const effectiveTenantId = obj.tenantId;
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
       throw new BadRequestException('Solo objetivos pendientes de aprobación pueden ser rechazados');
     }
@@ -362,7 +370,7 @@ export class ObjectivesService {
     obj.approvedBy = null;
     obj.approvedAt = null;
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(tenantId, rejectedBy || obj.userId, 'objective.rejected', 'objective', id, { title: obj.title, rejectedBy, reason }).catch(() => {});
+    this.auditService.log(effectiveTenantId, rejectedBy || obj.userId, 'objective.rejected', 'objective', id, { title: obj.title, rejectedBy, reason }).catch(() => {});
 
     // Notify objective owner that it was rejected
     const owner = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'email', 'firstName'] });
@@ -371,7 +379,7 @@ export class ObjectivesService {
         firstName: owner.firstName,
         objectiveTitle: `[Rechazado] ${obj.title}`,
         objectiveType: reason ? `Motivo: ${reason}` : 'Sin motivo especificado',
-        tenantId,
+        tenantId: effectiveTenantId,
         userId: owner.id,
       }).catch(() => {});
     }
@@ -379,11 +387,12 @@ export class ObjectivesService {
     return saved;
   }
 
-  async remove(tenantId: string, id: string): Promise<void> {
+  async remove(tenantId: string | undefined, id: string): Promise<void> {
     const obj = await this.findById(tenantId, id);
+    const effectiveTenantId = obj.tenantId;
     obj.status = ObjectiveStatus.ABANDONED;
     await this.objectiveRepo.save(obj);
-    this.auditService.log(tenantId, obj.userId, 'objective.cancelled', 'objective', id, { title: obj.title }).catch(() => {});
+    this.auditService.log(effectiveTenantId, obj.userId, 'objective.cancelled', 'objective', id, { title: obj.title }).catch(() => {});
   }
 
   // ─── Progress ───────────────────────────────────────────────────────────────
