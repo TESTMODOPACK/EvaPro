@@ -6,7 +6,9 @@ import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useFlightRisk, useRetentionRecommendations } from '@/hooks/useAiInsights';
 import { useDepartments } from '@/hooks/useDepartments';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { useDebounce } from '@/hooks/useDebounce';
+// P8-C: import dinámico de Recharts.
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from '@/components/DynamicCharts';
 
 const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#fb7185'];
 
@@ -609,6 +611,9 @@ function FlightRiskTab() {
   const { data, isLoading, error } = useFlightRisk();
   const { departments } = useDepartments();
   const [search, setSearch] = useState('');
+  // P8-C: debounce para evitar recomputar .filter() en cada keystroke
+  // cuando el dataset es grande (cientos de colaboradores).
+  const debouncedSearch = useDebounce(search, 250);
   const [deptFilter, setDeptFilter] = useState('');
   const [riskFilter, setRiskFilter] = useState('');
 
@@ -625,7 +630,7 @@ function FlightRiskTab() {
   if (!data || !data.scores) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos disponibles. Se requieren evaluaciones completadas, objetivos y feedback para calcular el riesgo.</div>;
 
   const filtered = data.scores.filter((s: any) => {
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !(s.department || '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (debouncedSearch && !s.name.toLowerCase().includes(debouncedSearch.toLowerCase()) && !(s.department || '').toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
     if (deptFilter && s.department !== deptFilter) return false;
     if (riskFilter && s.riskLevel !== riskFilter) return false;
     return true;
@@ -726,6 +731,8 @@ function FlightRiskTab() {
 function RetentionTab() {
   const { data, isLoading, error } = useRetentionRecommendations();
   const [search, setSearch] = useState('');
+  // P8-C: debounce search en recomendaciones (dataset grande).
+  const debouncedSearch = useDebounce(search, 250);
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
   if (error) return (
@@ -737,7 +744,7 @@ function RetentionTab() {
   if (!data || !data.recommendations) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos de retención. Se requiere primero el análisis de riesgo de fuga.</div>;
 
   const filtered = data.recommendations.filter((r: any) =>
-    !search || r.name?.toLowerCase().includes(search.toLowerCase()) || (r.department || '').toLowerCase().includes(search.toLowerCase())
+    !debouncedSearch || r.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) || (r.department || '').toLowerCase().includes(debouncedSearch.toLowerCase())
   );
 
   const actionTypeLabels: Record<string, string> = { pdi: 'Plan de Desarrollo', coaching: 'Coaching', engagement: 'Compromiso', retention: 'Retención', conversation: 'Conversación' };

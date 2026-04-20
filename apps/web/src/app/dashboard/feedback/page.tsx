@@ -8,12 +8,14 @@ import ConfirmModal from '@/components/ConfirmModal';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
 import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
-import { useUsers } from '@/hooks/useUsers';
+import { useActiveUsersForPicker } from '@/hooks/useUsers';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import SearchableSelect from '@/components/SearchableSelect';
+import LoadingState from '@/components/LoadingState';
+import EmptyState from '@/components/EmptyState';
 
 type ActiveTab = 'checkins' | 'quick' | 'locations';
 type QuickSubTab = 'received' | 'given';
@@ -35,12 +37,10 @@ const sentimentIcon: Record<Sentiment, { icon: string; color: string }> = {
   constructive: { icon: '\u2197', color: '#f59e0b' },
 };
 
+// Spinner legacy — usa LoadingState directamente. Wrapper mantenido para
+// backward-compat con los 3 callsites existentes. Migrar cuando toque.
 function Spinner() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-      <span className="spinner" />
-    </div>
-  );
+  return <LoadingState />;
 }
 
 function formatDate(d: string | null | undefined) {
@@ -78,7 +78,7 @@ function CheckInsTab() {
   };
 
   const { data: checkIns, isLoading, refetch: refetchCheckIns } = useCheckIns();
-  const { data: usersPage } = useUsers(1, 500);
+  const { data: usersPage } = useActiveUsersForPicker();
   const { data: locations } = useMeetingLocations();
   const createCheckIn = useCreateCheckIn();
   const completeCheckIn = useCompleteCheckIn();
@@ -421,11 +421,16 @@ function CheckInsTab() {
 
       {/* List */}
       {isLoading ? (
-        <Spinner />
+        <LoadingState message="Cargando check-ins…" />
       ) : sorted.length === 0 ? (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>{t('feedback.noCheckIns')}</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('feedback.noCheckInsHint')}</p>
+        <div className="card">
+          <EmptyState
+            icon="📅"
+            title={t('feedback.noCheckIns')}
+            description={t('feedback.noCheckInsHint')}
+            ctaLabel={canCreateCheckIn ? t('feedback.newCheckIn') : undefined}
+            ctaOnClick={canCreateCheckIn ? () => setShowForm(true) : undefined}
+          />
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -624,7 +629,7 @@ function QuickFeedbackTab() {
   const { data: received, isLoading: loadingReceived } = useReceivedFeedback();
   const { data: given, isLoading: loadingGiven } = useGivenFeedback();
   const { data: summary } = useFeedbackSummary();
-  const { data: usersPage } = useUsers(1, 500);
+  const { data: usersPage } = useActiveUsersForPicker();
   const sendFeedback = useSendQuickFeedback();
   const token = useAuthStore((s) => s.token);
   const { data: competencies } = useQuery({
@@ -878,12 +883,16 @@ function QuickFeedbackTab() {
 
       {/* List */}
       {isLoading ? (
-        <Spinner />
+        <LoadingState message="Cargando feedback…" />
       ) : !feedbackList || feedbackList.length === 0 ? (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            {subTab === 'received' ? t('feedback.noFeedbackReceived') : t('feedback.noFeedbackSent')}
-          </p>
+        <div className="card">
+          <EmptyState
+            icon="💬"
+            title={subTab === 'received' ? t('feedback.noFeedbackReceived') : t('feedback.noFeedbackSent')}
+            description={subTab === 'received'
+              ? 'Pide retroalimentación a tu encargado o colegas. El feedback constructivo es clave para tu crecimiento.'
+              : 'Envía feedback rápido a tus colegas. Reconoce un logro, entrega una observación o simplemente agradece.'}
+          />
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1018,9 +1027,13 @@ function LocationsTab() {
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{(loadError as any)?.message || 'Verifique que su plan incluya la funcionalidad de Feedback.'}</p>
         </div>
       )}
-      {isLoading ? <Spinner /> : !locations || locations.length === 0 ? (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('feedback.noLocations')}</p>
+      {isLoading ? <LoadingState message="Cargando ubicaciones…" /> : !locations || locations.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            icon="📍"
+            title={t('feedback.noLocations')}
+            description="Define ubicaciones (virtuales o físicas) donde se realizarán los check-ins 1:1. Facilita la agenda."
+          />
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

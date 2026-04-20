@@ -1,9 +1,10 @@
 'use client';
 
 import { useSelfVsOthers } from '@/hooks/useReports';
+// P8-C: import dinámico de Recharts.
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 
 const relationLabels: Record<string, string> = {
   self: 'Autoevaluaci\u00f3n', manager: 'Encargado', peer: 'Par',

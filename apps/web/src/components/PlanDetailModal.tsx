@@ -6,9 +6,10 @@
 // botones de editar/completar/agregar — quien quiera modificar debe ir a
 // /dashboard/desarrollo?planId=<id>.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import useFocusTrap from '@/hooks/useFocusTrap';
 import {
   PLAN_STATUS_COLORS,
   PLAN_STATUS_LABELS,
@@ -64,6 +65,10 @@ export function PlanDetailModal({ planId, onClose }: PlanDetailModalProps) {
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // P8-D: focus trap solo cuando el modal está abierto (planId != null).
+  useFocusTrap(dialogRef, !!planId);
 
   // Load plan + comments when a new planId opens the modal.
   useEffect(() => {
@@ -129,6 +134,9 @@ export function PlanDetailModal({ planId, onClose }: PlanDetailModalProps) {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={plan ? 'plan-detail-modal-title' : error ? 'plan-detail-modal-error' : 'plan-detail-modal-loading'}
       style={{
         position: 'fixed',
         inset: 0,
@@ -139,9 +147,13 @@ export function PlanDetailModal({ planId, onClose }: PlanDetailModalProps) {
         justifyContent: 'center',
         padding: '1rem',
       }}
-      onClick={onClose}
+      onClick={(e) => {
+        // P8-A fix drag-close: cierra solo si el click terminó en el overlay.
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
+        ref={dialogRef}
         className="animate-fade-up"
         style={{
           maxWidth: '860px',
@@ -156,11 +168,17 @@ export function PlanDetailModal({ planId, onClose }: PlanDetailModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem' }}>
+            <h2 id="plan-detail-modal-loading" style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Cargando plan
+            </h2>
             <span className="spinner" />
           </div>
         ) : error ? (
           <div style={{ padding: '2rem 1.5rem', textAlign: 'center' }}>
+            <h2 id="plan-detail-modal-error" style={{ color: 'var(--danger)', marginBottom: '1rem', fontSize: '0.95rem', fontWeight: 600 }}>
+              Error al cargar el plan
+            </h2>
             <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</p>
             <button className="btn-ghost" onClick={onClose}>Cerrar</button>
           </div>
@@ -182,7 +200,7 @@ export function PlanDetailModal({ planId, onClose }: PlanDetailModalProps) {
                       )}
                     </div>
                   )}
-                  <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <h2 id="plan-detail-modal-title" style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                     {plan.title || 'Sin título'}
                   </h2>
                   {plan.description && (

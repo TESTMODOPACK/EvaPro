@@ -16,7 +16,10 @@
 
   --text-primary:   #1a1206;
   --text-secondary: #5a4a2e;
-  --text-muted:     #8c7a5a;
+  /* P8-D: --text-muted pasó de #8c7a5a (ratio 3.4:1) a #6a5a3d (ratio
+     5.1:1 sobre --bg-base #f5f5f0) para cumplir WCAG 2.1 AA de texto
+     normal (≥4.5:1). Afecta descripciones, placeholders, subtextos. */
+  --text-muted:     #6a5a3d;
 
   --accent:         #C9933A;
   --accent-hover:   #b07e2e;
@@ -41,6 +44,42 @@
   --gold-dark:      #6B4A18;
   --gold-darker:    #8A5E18;
   --gold-glow:      rgba(201,147,58,0.25);
+
+  /* P8-E: Escala tipográfica sistémica.
+     Antes: decenas de tamaños arbitrarios (0.72, 0.75, 0.78, 0.82, 0.85,
+     0.875, 0.9, 0.92, 1rem, 1.05, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 2rem...).
+     Se conservan los valores legacy para no romper inline styles existentes,
+     pero cualquier UI nueva debería elegir entre esta escala. */
+  --font-xs:        0.72rem;   /* badges, meta, labels uppercase */
+  --font-sm:        0.82rem;   /* body secondary, buttons ghost */
+  --font-base:      0.9rem;    /* body normal */
+  --font-md:        1rem;      /* emphasis inline */
+  --font-lg:        1.1rem;    /* section titles, modal h3 */
+  --font-xl:        1.3rem;    /* page h2 */
+  --font-2xl:       1.6rem;    /* page h1 */
+  --font-3xl:       2rem;      /* landing / hero KPI */
+
+  /* P8-E: Escala de spacing reutilizable. */
+  --space-1:        0.25rem;
+  --space-2:        0.5rem;
+  --space-3:        0.75rem;
+  --space-4:        1rem;
+  --space-5:        1.5rem;
+  --space-6:        2rem;
+  --space-7:        2.5rem;
+  --space-8:        3rem;
+
+  /* P8-E: Gold translucent scale — reemplazar los `rgba(201,147,58,0.XX)`
+     hardcoded que hay 200+ veces en el código. Cada nivel corresponde a
+     un uso específico documentado. */
+  --gold-a-05:      rgba(201,147,58,0.05);
+  --gold-a-08:      rgba(201,147,58,0.08);
+  --gold-a-10:      rgba(201,147,58,0.10);
+  --gold-a-12:      rgba(201,147,58,0.12);
+  --gold-a-15:      rgba(201,147,58,0.15);
+  --gold-a-20:      rgba(201,147,58,0.20);
+  --gold-a-25:      rgba(201,147,58,0.25);
+  --gold-a-30:      rgba(201,147,58,0.30);
 }
 
 /* ── Base ───────────────────────────────────────────────── */
@@ -108,6 +147,11 @@ body {
     box-shadow: var(--shadow-glow);
     transform: translateY(-1px);
   }
+  /* P8-E: :active state para feedback táctil (especialmente en mobile). */
+  .btn-primary:active {
+    transform: translateY(0);
+    box-shadow: none;
+  }
   .btn-primary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
@@ -132,6 +176,99 @@ body {
     color: var(--text-primary);
     border-color: var(--border-strong);
   }
+  .btn-ghost:active {
+    background: var(--gold-a-10);
+  }
+  .btn-ghost:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* P8-E: btn-secondary — llena pero menos prominente que btn-primary.
+     Uso: acciones secundarias importantes (ej: "Exportar", "Duplicar"). */
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 0.88rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    cursor: pointer;
+    transition: var(--transition);
+    text-decoration: none;
+  }
+  .btn-secondary:hover {
+    background: var(--gold-a-10);
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+  .btn-secondary:active {
+    background: var(--gold-a-15);
+  }
+  .btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* P8-E: btn-danger — acciones destructivas (eliminar, cancelar contrato).
+     Siempre requiere confirmación previa via ConfirmModal/DestructiveModal. */
+  .btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--danger);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.88rem;
+    border-radius: var(--radius-sm);
+    border: none;
+    cursor: pointer;
+    transition: var(--transition);
+  }
+  .btn-danger:hover {
+    background: #b91c1c;
+    box-shadow: 0 2px 12px rgba(220,38,38,0.25);
+  }
+  .btn-danger:active {
+    background: #991b1b;
+    box-shadow: none;
+  }
+  .btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* P8-E: btn-text — solo texto con subrayado al hover. Mínima prominencia,
+     para "saltos" de navegación (ej: "Ver todo", "Ir a detalles"). */
+  .btn-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    color: var(--accent);
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: var(--transition);
+  }
+  .btn-text:hover {
+    text-decoration: underline;
+    color: var(--accent-hover);
+  }
+  .btn-text:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 
   .input {
     width: 100%;
@@ -145,10 +282,34 @@ body {
     transition: var(--transition);
     outline: none;
   }
-  .input::placeholder { color: var(--text-muted); }
+  /* P8-D: placeholder explícito más oscuro que --text-muted para cumplir
+     WCAG AA sobre --input-bg #fdfcf9. El navegador reduce opacidad por
+     defecto, compensamos usando var(--text-secondary) que tiene ratio
+     alto (~7.5:1). */
+  .input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+  }
   .input:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  /* P8-D: input:disabled con color preservado para no caer bajo 4.5:1. */
+  .input:disabled {
+    background: #f2ede1;
+    color: var(--text-secondary);
+    opacity: 1;
+    cursor: not-allowed;
+  }
+
+  /* P8-A: Opt-out para botones compactos dentro de tablas densas que ya
+     tienen padding controlado — aplicar .btn-compact para forzar tamaño
+     <44px. Aun así garantizamos 36px mínimo para accesibilidad (borderline
+     pero aceptable dentro de tablas donde el cursor está precisamente
+     colocado). Declarado fuera de media query para aplicar en mobile y
+     desktop consistentemente. */
+  .btn-compact {
+    min-height: 36px !important;
   }
 }
 
@@ -360,10 +521,29 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     grid-template-columns: 1fr !important;
   }
 
-  /* P7b: Fixed sidebar grids (e.g. '1fr 340px') → single column */
-  .main-content div[style*="1fr 340px"],
+  /* P7b: Fixed sidebar grids (e.g. '1fr 340px') → single column.
+     Cobertura ampliada 100-400px + 3-col con px fijos. Si agregas un
+     grid nuevo con ancho px, considera usar .mobile-single-col en el
+     componente para no depender de este listado. */
+  .main-content div[style*="1fr 100px"],
+  .main-content div[style*="1fr 120px"],
+  .main-content div[style*="1fr 140px"],
+  .main-content div[style*="1fr 160px"],
+  .main-content div[style*="1fr 180px"],
+  .main-content div[style*="1fr 200px"],
+  .main-content div[style*="1fr 220px"],
+  .main-content div[style*="1fr 240px"],
+  .main-content div[style*="1fr 260px"],
+  .main-content div[style*="1fr 280px"],
   .main-content div[style*="1fr 300px"],
-  .main-content div[style*="1fr 280px"] {
+  .main-content div[style*="1fr 320px"],
+  .main-content div[style*="1fr 340px"],
+  .main-content div[style*="1fr 360px"],
+  .main-content div[style*="1fr 380px"],
+  .main-content div[style*="1fr 400px"],
+  .main-content div[style*="1fr 120px 160px"],
+  .main-content div[style*="1fr 100px 120px"],
+  .main-content div[style*="1fr 140px 140px"] {
     grid-template-columns: 1fr !important;
   }
 
@@ -402,13 +582,16 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     box-sizing: border-box;
   }
 
-  /* P13: Tables — horizontal scroll */
+  /* P13: Tables — horizontal scroll. min-width bajado de 600 → 360 para
+     que no genere scroll forzoso en iPhones pequeños (375px) cuando la
+     tabla tiene pocas columnas. Si el contenido requiere más ancho el
+     scroll horizontal sigue disponible. */
   .table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
   .table-wrapper table {
-    min-width: 600px;
+    min-width: 360px;
   }
 
   /* P14: Department/label text with fixed min-width in bar charts — shrink */
@@ -449,10 +632,20 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     height: 35px !important;
   }
 
-  /* P19: Touch targets — minimum tap area for primary/ghost action buttons */
-  .main-content .btn-primary,
-  .main-content .btn-ghost {
-    min-height: 36px;
+  /* P19: Touch targets — WCAG 2.1 AA / iOS HIG / Android Material
+     exigen mínimo 44x44px (iOS) o 48x48dp (Material). Subimos a 44px
+     y cubrimos botones en tablas, modales y cualquier .btn-ghost /
+     .btn-primary de la app (no solo main-content). Se excluyen botones
+     que declaran su propio min-height o están en .btn-compact. La
+     clase .btn-compact se define a nivel global (fuera de media query)
+     para que también aplique en desktop. */
+  .btn-primary,
+  .btn-ghost {
+    min-height: 44px;
+  }
+  /* P19b: Checkbox / radio / select nativos — asegurar hit area 40px+ */
+  .main-content select:not([size]) {
+    min-height: 40px;
   }
 
   /* P20: Fixed-width flex items that overflow — force wrap and shrink */
@@ -461,6 +654,25 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
   .main-content div[style*="min-width: 180px"] {
     min-width: 0 !important;
     flex: 1 1 100% !important;
+  }
+
+  /* P21: Modales — asegurar maxHeight 90vh + scroll interno.
+     Aplica a cualquier div hijo directo de un overlay position:fixed
+     con role="dialog" o class="card" dentro de overlay. */
+  div[role="dialog"] > .card,
+  div[role="dialog"] .card {
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* P22: Safe-area inset para iPhone X+ (notch + home indicator).
+     Padding adicional para que el contenido no se solape con la barra. */
+  .main-content {
+    padding-left: env(safe-area-inset-left, 0);
+    padding-right: env(safe-area-inset-right, 0);
+  }
+  .topbar-desktop {
+    padding-top: env(safe-area-inset-top, 0);
   }
 
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 
 const CATEGORIES = [
@@ -23,6 +24,7 @@ export default function SolicitudesPage() {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = role === 'super_admin';
+  const toastError = useToastStore((s) => s.error);
 
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,8 +87,17 @@ export default function SolicitudesPage() {
     if (!token) return;
     setLoading(true);
     const loadFn = isSuperAdmin ? api.tenants.listAllTickets : api.tenants.listTickets;
-    loadFn(token).then(setTickets).catch(() => []).finally(() => setLoading(false));
-  }, [token, isSuperAdmin]);
+    loadFn(token)
+      .then(setTickets)
+      .catch((err) => {
+        // P8-B: ya no silenciamos errores. Informa al usuario en vez
+        // de mostrar una lista vacía sin explicación.
+        console.error('[Solicitudes] Error al cargar tickets:', err);
+        setTickets([]); // Asegurar estado estable aunque ya está [] por default.
+        toastError(err?.message || 'No se pudieron cargar las solicitudes. Verifica tu conexión.');
+      })
+      .finally(() => setLoading(false));
+  }, [token, isSuperAdmin, toastError]);
 
   const handleCreate = async () => {
     if (!token || !form.subject.trim() || !form.description.trim()) return;
@@ -97,7 +108,10 @@ export default function SolicitudesPage() {
       setForm({ category: 'consulta_general', subject: '', description: '', priority: 'normal' });
       setAttachments([]);
       setShowCreate(false);
-    } catch {}
+    } catch (err: any) {
+      // P8-B: feedback explícito al usuario.
+      toastError(err?.message || 'Error al crear la solicitud. Inténtalo de nuevo.');
+    }
     setSaving(false);
   };
 
@@ -110,7 +124,10 @@ export default function SolicitudesPage() {
       setSelectedTicket(updated);
       setResponseText('');
       setResponseAttachments([]);
-    } catch {}
+    } catch (err: any) {
+      // P8-B: feedback explícito al usuario.
+      toastError(err?.message || 'Error al enviar la respuesta.');
+    }
     setResponding(false);
   };
 

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import useFocusTrap from '@/hooks/useFocusTrap';
 
 interface SignatureModalProps {
   documentType: string;
@@ -21,6 +22,20 @@ export default function SignatureModal({ documentType, documentId, documentName,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const submittingRef = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // P8-D: focus trap dentro del dialog.
+  useFocusTrap(dialogRef, true);
+
+  // P8-A: escape key para cerrar. No cerrar en step 'done' (feedback
+  // visual corto de 1.5s) ni mid-submission para no cancelar requests.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading && step !== 'done') onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [loading, step, onCancel]);
 
   const handleRequest = async () => {
     if (!token) return;
@@ -51,15 +66,30 @@ export default function SignatureModal({ documentType, documentId, documentName,
   };
 
   return (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000,
-    }}>
-      <div className="card" style={{ padding: '2rem', maxWidth: '440px', width: '90%' }}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="signature-modal-title"
+      style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1000,
+        padding: '1rem',
+      }}
+      onClick={(e) => {
+        // Close modal when clicking backdrop (not the card).
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="card"
+        style={{ padding: '2rem', maxWidth: '440px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {step === 'request' && (
           <>
-            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', margin: '0 0 0.5rem' }}>
+            <h3 id="signature-modal-title" style={{ fontWeight: 700, fontSize: '1.05rem', margin: '0 0 0.5rem' }}>
               {'✍️'} {t('firmas.signTitle')}
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.6 }}>
@@ -81,7 +111,7 @@ export default function SignatureModal({ documentType, documentId, documentName,
 
         {step === 'verify' && (
           <>
-            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', margin: '0 0 0.5rem' }}>
+            <h3 id="signature-modal-title" style={{ fontWeight: 700, fontSize: '1.05rem', margin: '0 0 0.5rem' }}>
               {t('firmas.enterCode')}
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
@@ -112,7 +142,7 @@ export default function SignatureModal({ documentType, documentId, documentName,
         {step === 'done' && (
           <div style={{ textAlign: 'center', padding: '1rem' }}>
             <p style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>{'✅'}</p>
-            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', margin: '0 0 0.5rem', color: 'var(--success)' }}>
+            <h3 id="signature-modal-title" style={{ fontWeight: 700, fontSize: '1.05rem', margin: '0 0 0.5rem', color: 'var(--success)' }}>
               {t('firmas.signed')}
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>

@@ -14,6 +14,7 @@ import {
 } from '@/hooks/useTemplates';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+import { FirstVisitTip } from '@/components/FirstVisitTip';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -795,6 +796,14 @@ export default function PlantillasPage() {
           </button>
         </div>
       </div>
+
+      {/* P8-B: first-visit tip for users who never built a template. */}
+      <FirstVisitTip
+        id="plantillas-intro"
+        icon="📋"
+        title="Construye plantillas de evaluación reutilizables"
+        description="Crea secciones con preguntas escala (1–5), texto libre o selección múltiple. Asócialas a competencias y reutilízalas en cada ciclo. Publica para bloquear cambios y usa 'Importar CSV' para subir plantillas existentes."
+      />
 
       {/* CSV Import Panel */}
       {showImport && (

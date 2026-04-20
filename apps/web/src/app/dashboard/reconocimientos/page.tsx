@@ -7,7 +7,7 @@ import {
   useRecognitionWall, useCreateRecognition, useAddReaction,
   useMyBadges, useMyPoints, useLeaderboard, useRecognitionStats,
 } from '@/hooks/useRecognition';
-import { useUsers } from '@/hooks/useUsers';
+import { useActiveUsersForPicker } from '@/hooks/useUsers';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
@@ -100,7 +100,9 @@ function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, e
 }
 
 function NewRecognitionForm({ onSuccess, t }: { onSuccess: () => void; t: any }) {
-  const { data: usersPage } = useUsers(1, 500);
+  // P8-C: hook especializado con cache 5min + filter activos solo.
+  // Antes: useUsers(1, 500) hardcoded, re-fetch innecesario en cada mount.
+  const { data: usersPage } = useActiveUsersForPicker();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const toast = useToastStore();

@@ -71,6 +71,12 @@ function timeAgo(iso: string): string {
   return formatDate(iso);
 }
 
+// P8-C: paginación client-side. El endpoint del backend aún no paginará
+// (pipeline de ventas chico), pero evita un DOM gigante si un período de
+// tráfico alto genera 200+ leads. Al hacer backend-side paging en v3.0,
+// reemplazar el slice por llamadas con page param.
+const LEADS_PAGE_SIZE = 50;
+
 export default function LeadsPage() {
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore((s) => s.toast);
@@ -85,6 +91,10 @@ export default function LeadsPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editedStatus, setEditedStatus] = useState<LeadStatus>('new');
   const [editedNotes, setEditedNotes] = useState('');
+  const [page, setPage] = useState(1);
+
+  // Reset page cuando cambia filtro.
+  useEffect(() => { setPage(1); }, [filterStatus]);
 
   useEffect(() => {
     if (!token) return;
@@ -150,6 +160,14 @@ export default function LeadsPage() {
     return leads.filter((l) => l.status === filterStatus);
   }, [leads, filterStatus]);
 
+  // P8-C: slice para paginar sin cambiar el resto del código del render.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / LEADS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedLeads = useMemo(() => {
+    const start = (safePage - 1) * LEADS_PAGE_SIZE;
+    return filtered.slice(start, start + LEADS_PAGE_SIZE);
+  }, [filtered, safePage]);
+
   return (
     <div style={{ padding: '2rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -202,7 +220,7 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((l) => (
+                {paginatedLeads.map((l) => (
                   <tr
                     key={l.id}
                     style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.15s' }}
@@ -244,6 +262,41 @@ export default function LeadsPage() {
                 ))}
               </tbody>
             </table>
+            {/* P8-C: paginación solo visible si excede 1 página. */}
+            {totalPages > 1 && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '0.75rem 1rem', borderTop: '1px solid var(--border)',
+                fontSize: '0.82rem', color: 'var(--text-muted)',
+              }}>
+                <span>
+                  Mostrando {(safePage - 1) * LEADS_PAGE_SIZE + 1}–{Math.min(safePage * LEADS_PAGE_SIZE, filtered.length)} de {filtered.length}
+                </span>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                  <button
+                    className="btn-ghost btn-compact"
+                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                    disabled={safePage <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    aria-label="Página anterior"
+                  >
+                    ← Anterior
+                  </button>
+                  <span style={{ fontWeight: 600 }}>
+                    {safePage} / {totalPages}
+                  </span>
+                  <button
+                    className="btn-ghost btn-compact"
+                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                    disabled={safePage >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    aria-label="Página siguiente"
+                  >
+                    Siguiente →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -7,8 +7,12 @@ import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useDepartments } from '@/hooks/useDepartments';
 
-function OrgNode({ node, depth = 0 }: { node: any; depth?: number }) {
-  const [collapsed, setCollapsed] = useState(depth >= 3);
+function OrgNode({ node, depth = 0, autoCollapseDepth = 3 }: { node: any; depth?: number; autoCollapseDepth?: number }) {
+  // P8-F: default collapsed según autoCollapseDepth que se adapta al tamaño
+  // del árbol — en organizaciones grandes (>80 colaboradores) colapsa más
+  // temprano para evitar render con miles de nodos simultáneos. Cuando el
+  // usuario quiera virtualization real, migrar a react-window.
+  const [collapsed, setCollapsed] = useState(depth >= autoCollapseDepth);
   const hasChildren = node.children?.length > 0;
   const totalDescendants = (n: any): number =>
     (n.children || []).reduce((s: number, c: any) => s + 1 + totalDescendants(c), 0);
@@ -85,7 +89,7 @@ function OrgNode({ node, depth = 0 }: { node: any; depth?: number }) {
       {hasChildren && !collapsed && (
         <div style={{ borderLeft: '2px dashed var(--border)', marginLeft: '0.85rem', paddingLeft: '0.25rem' }}>
           {node.children.map((child: any) => (
-            <OrgNode key={child.id} node={child} depth={depth + 1} />
+            <OrgNode key={child.id} node={child} depth={depth + 1} autoCollapseDepth={autoCollapseDepth} />
           ))}
         </div>
       )}
@@ -203,9 +207,19 @@ export default function OrganigramaPage() {
         </div>
       ) : (
         <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          {filtered.map((root: any) => (
-            <OrgNode key={root.id} node={root} />
-          ))}
+          {/* P8-F: auto-colapso dinámico según total de nodos.
+              >150 → colapsa depth≥2 (ver solo gerencias).
+              50-150 → colapsa depth≥3 (comportamiento clásico).
+              <50 → colapsa depth≥4 (prácticamente todo abierto).  */}
+          {(() => {
+            const totalNodes = (function count(arr: any[]): number {
+              return arr.reduce((s, n) => s + 1 + count(n.children || []), 0);
+            })(filtered);
+            const autoDepth = totalNodes > 150 ? 2 : totalNodes > 50 ? 3 : 4;
+            return filtered.map((root: any) => (
+              <OrgNode key={root.id} node={root} autoCollapseDepth={autoDepth} />
+            ));
+          })()}
         </div>
       )}
     </div>

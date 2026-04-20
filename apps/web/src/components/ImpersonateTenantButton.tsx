@@ -30,12 +30,13 @@
  *     y las 3 zonas flex (header/body/footer) son siempre visibles.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore, decodeJwtPayload } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
+import useFocusTrap from '@/hooks/useFocusTrap';
 
 interface Props {
   tenantId: string;
@@ -139,6 +140,10 @@ function ImpersonationDialog(props: {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
+  // P8-D: focus trap para la dialog.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, mounted);
+
   // Bloquear scroll del body mientras el modal está abierto
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -172,6 +177,7 @@ function ImpersonationDialog(props: {
     >
       {/* Card con 3 zonas en flex column */}
       <div
+        ref={dialogRef}
         className="card"
         style={{
           display: 'flex',

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
+// P8-C: import dinámico de Recharts.
 import {
   LineChart,
   Line,
@@ -14,7 +15,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 import CompetencyRadarChart from '@/components/CompetencyRadarChart';
 import SelfVsOthersChart from '@/components/SelfVsOthersChart';
 import GapAnalysisChart from '@/components/GapAnalysisChart';

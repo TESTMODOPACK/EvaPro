@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import EmptyState from '@/components/EmptyState';
+import LoadingState from '@/components/LoadingState';
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   draft: { label: 'Borrador', badge: 'badge-ghost' },
@@ -132,7 +133,7 @@ function PostulantesPageContent() {
 
       {/* Process list */}
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><span className="spinner" /></div>
+        <LoadingState message="Cargando procesos de reclutamiento…" />
       ) : processes.length === 0 ? (
         <div className="card">
           <EmptyState

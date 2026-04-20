@@ -6,11 +6,12 @@ import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
 import { useCycles } from '@/hooks/useCycles';
+// P8-C: import dinámico de Recharts.
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 
 const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#0891b2', '#8b5cf6', '#ec4899'];
 const PIE_COLORS = { completed: '#10b981', inProgress: '#f59e0b', pending: '#6366f1', draft: '#94a3b8', abandoned: '#ef4444' };

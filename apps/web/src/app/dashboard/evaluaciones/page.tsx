@@ -263,8 +263,12 @@ function EmployeeEvaluationsView() {
         </h2>
 
         {loadingPending ? <Spinner /> : pending.length === 0 ? (
-          <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('evaluaciones.noPending')}</p>
+          <div className="card">
+            <EmptyState
+              icon="✅"
+              title={t('evaluaciones.noPending')}
+              description="No tienes evaluaciones pendientes por responder. Cuando te asignen una, aparecerá aquí."
+            />
           </div>
         ) : (
           <>
@@ -409,10 +413,14 @@ function EmployeeEvaluationsView() {
         )}
 
         {loadingCompleted ? <Spinner /> : filteredCompleted.length === 0 ? (
-          <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              {allCompleted.length === 0 ? t('evaluaciones.noCompletedYet') : 'No se encontraron resultados con los filtros seleccionados'}
-            </p>
+          <div className="card">
+            <EmptyState
+              icon={allCompleted.length === 0 ? '📝' : '🔍'}
+              title={allCompleted.length === 0 ? t('evaluaciones.noCompletedYet') : 'Sin resultados con estos filtros'}
+              description={allCompleted.length === 0
+                ? 'A medida que completes evaluaciones, verás aquí el historial con puntuaciones y detalles.'
+                : 'Prueba limpiando los filtros o busca por otro ciclo.'}
+            />
           </div>
         ) : (
           <>
