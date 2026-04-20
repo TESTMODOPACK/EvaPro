@@ -1,3 +1,4 @@
+import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { DepartureReasonCategory } from '../entities/user-departure.entity';
 
 /**
@@ -11,9 +12,21 @@ import { DepartureReasonCategory } from '../entities/user-departure.entity';
  * consecuencias documentadas (type, date, voluntary). Sólo se permite
  * corregir los campos de diagnóstico/seguimiento post-salida (categoría
  * de razón, detalle textual, elegibilidad de recontratación).
+ *
+ * Nota sobre decoradores: ver nota en CreateDepartureDto — sin decoradores
+ * el body se queda vacío con whitelist:true.
  */
 export class UpdateDepartureDto {
+  @IsOptional()
+  @IsEnum(DepartureReasonCategory)
   reasonCategory?: DepartureReasonCategory | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
   reasonDetail?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
   wouldRehire?: boolean | null;
 }
