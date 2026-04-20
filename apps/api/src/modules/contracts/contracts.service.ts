@@ -863,65 +863,331 @@ RUT: {{legalRepRut}}`,
   }
 
   // ─── PDF Generation ───────────────────────────────────────────────────
+  //
+  // Generador profesional de PDFs de contratos (v2 — Ascenda branded).
+  //
+  // Features:
+  //   - Header/footer en TODAS las páginas
+  //   - Logo Ascenda dibujado con primitivas (5 barras ascendentes + ápice)
+  //   - Numeración "Página X de Y"
+  //   - Typography jerárquica (H1, secciones, body)
+  //   - Sanitización de Unicode → Latin-1 (jsPDF con helvetica default
+  //     renderiza ─, —, –, etc. como "%" si no se normalizan)
+  //   - Parser que detecta: título grande, secciones ("PRIMERO:", "1."),
+  //     separadores horizontales (─, ---), y el resto como body
+  //
+  // La única lib es jsPDF (ya dependencia existente). Sin imágenes
+  // externas para mantener el PDF ligero (~10-30 KB) y reproducible
+  // determinísticamente. El logo se dibuja con rectángulos + círculo
+  // + línea punteada, coincidiendo con el logo oficial de Ascenda.
 
   async generatePdf(contractId: string, tenantId: string | null): Promise<Buffer> {
     const contract = await this.findById(contractId, tenantId);
 
-    // Dynamic import jsPDF
     const { default: jsPDF } = await import('jspdf');
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
-    const margin = 15;
-    const maxW = pageW - margin * 2;
-    let y = 20;
+    const pageH = doc.internal.pageSize.getHeight();
 
-    // Header
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text('Eva360 by ASCENDA PERFORMANCE SpA — Documento contractual', margin, 10);
-    doc.setDrawColor(201, 147, 58);
-    doc.setLineWidth(0.5);
-    doc.line(margin, 13, pageW - margin, 13);
+    // Layout
+    const margin = 18;
+    const contentW = pageW - margin * 2;
+    const headerBottom = 22;    // bajo esta Y empieza el contenido
+    const footerTop = pageH - 18; // sobre esta Y termina el contenido
 
-    // Title
-    doc.setFontSize(14);
-    doc.setTextColor(30);
-    doc.setFont('helvetica', 'bold');
-    doc.text(contract.title || 'Contrato', margin, y);
-    y += 8;
+    // Ascenda brand palette (RGB tuples)
+    type RGB = [number, number, number];
+    const GOLD: RGB       = [201, 147, 58];   // dorado principal
+    const GOLD_LIGHT: RGB = [232, 201, 122];
+    const GOLD_PALE: RGB  = [245, 228, 168];
+    const INK: RGB        = [26, 22, 20];     // casi negro
+    const INK_SOFT: RGB   = [69, 64, 60];
+    const INK_MUTE: RGB   = [122, 116, 108];
+    const LINE: RGB       = [220, 215, 205];
+    const BG_SOFT: RGB    = [252, 247, 235];  // crema para badges
 
-    // Status + dates
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100);
-    const statusLabels: Record<string, string> = {
-      draft: 'Borrador', pending_signature: 'Pendiente de firma', active: 'Activo', expired: 'Expirado',
+    // jsPDF no permite spread en setFillColor, hacemos helpers tipados.
+    const setFill  = (c: RGB) => doc.setFillColor(c[0], c[1], c[2]);
+    const setDraw  = (c: RGB) => doc.setDrawColor(c[0], c[1], c[2]);
+    const setText  = (c: RGB) => doc.setTextColor(c[0], c[1], c[2]);
+
+    // ── Sanitize Unicode → Latin-1 ──────────────────────────────────────
+    // jsPDF helvetica default no soporta chars fuera de Latin-1. Box-drawing
+    // como ─ (U+2500) y em-dash — (U+2014) se renderizan como "%". Las
+    // letras acentuadas (á,é,í,ó,ú,ñ,Ñ,¿,¡) SÍ están en Latin-1 y funcionan.
+    const sanitize = (s: string): string => s
+      .replace(/[\u2014\u2013]/g, '-')             // em-dash, en-dash → -
+      .replace(/[\u201C\u201D\u201F]/g, '"')       // smart double quotes
+      .replace(/[\u2018\u2019\u201B]/g, "'")       // smart single quotes
+      .replace(/\u2026/g, '...')                   // …
+      .replace(/\u2022/g, '*')                     // •
+      .replace(/\u2192/g, '->')                    // →
+      .replace(/[\u2500-\u257F]/g, '-')            // box-drawing
+      .replace(/[\u2000-\u200F\u202F\u205F]/g, ' '); // various Unicode whitespace
+
+    // ── Logo Ascenda: 5 barras ascendentes + ápice ──────────────────────
+    const drawLogo = (x: number, y: number, w: number, h: number) => {
+      const slots = 5;
+      const barW  = w / (slots * 1.35);
+      const gap   = barW * 0.35;
+      const baseY = y + h;
+      // heights = proporción de alto; opacities emuladas mixando dorado ↔ dorado claro
+      const heights    = [0.28, 0.42, 0.62, 0.80, 1.00];
+      const mixWithGold = [0.35, 0.55, 0.72, 0.88, 1.00];
+      for (let i = 0; i < slots; i++) {
+        const bh = h * heights[i];
+        const bx = x + i * (barW + gap);
+        const by = baseY - bh;
+        const mix = mixWithGold[i];
+        const r = Math.round(GOLD_LIGHT[0] * (1 - mix) + GOLD[0] * mix);
+        const g = Math.round(GOLD_LIGHT[1] * (1 - mix) + GOLD[1] * mix);
+        const b = Math.round(GOLD_LIGHT[2] * (1 - mix) + GOLD[2] * mix);
+        doc.setFillColor(r, g, b);
+        doc.roundedRect(bx, by, barW, bh, 0.25, 0.25, 'F');
+      }
+      // Punto luminoso sobre la última barra
+      const apexX = x + 4 * (barW + gap) + barW / 2;
+      const apexY = baseY - h;
+      setFill(GOLD_PALE);
+      doc.circle(apexX, apexY - 0.5, 0.65, 'F');
     };
-    doc.text(`Estado: ${statusLabels[contract.status] || contract.status}`, margin, y);
-    if (contract.effectiveDate) doc.text(`Vigencia: ${new Date(contract.effectiveDate).toLocaleDateString('es-CL')}`, margin + 60, y);
-    y += 6;
+
+    // ── Header de página ────────────────────────────────────────────────
+    const drawHeader = () => {
+      // Logo + brand
+      drawLogo(margin, 7, 10, 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      setText(INK);
+      doc.text('ASCENDA PERFORMANCE SpA', margin + 13, 12);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      setText(INK_MUTE);
+      doc.text('SOCIOS EN CRECIMIENTO COMERCIAL', margin + 13, 15.3);
+
+      // Metadata a la derecha
+      doc.setFontSize(7);
+      setText(INK_MUTE);
+      doc.text('Documento contractual', pageW - margin, 11.5, { align: 'right' });
+      doc.text(
+        `Generado ${new Date().toLocaleDateString('es-CL')}`,
+        pageW - margin, 15.3, { align: 'right' },
+      );
+
+      // Línea dorada separadora
+      setDraw(GOLD);
+      doc.setLineWidth(0.5);
+      doc.line(margin, 19, pageW - margin, 19);
+    };
+
+    // ── Footer de página ────────────────────────────────────────────────
+    const drawFooter = (pageNum: number, totalPages: number) => {
+      // Línea superior delgada
+      setDraw(LINE);
+      doc.setLineWidth(0.2);
+      doc.line(margin, footerTop, pageW - margin, footerTop);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      setText(INK_MUTE);
+      // Línea 1: datos de empresa
+      const ascenda = ASCENDA_COMPANY;
+      const line1 = `${ascenda.legalName}  ·  RUT ${ascenda.rut}  ·  ${ascenda.address}`;
+      doc.text(line1, margin, footerTop + 4);
+      // Línea 2: contacto + dominio
+      const line2 = `${ascenda.supportEmail}  ·  www.ascenda.cl`;
+      setText(GOLD);
+      doc.text(line2, margin, footerTop + 8);
+      // Numeración a la derecha
+      setText(INK_MUTE);
+      doc.text(
+        `Página ${pageNum} de ${totalPages}`,
+        pageW - margin, footerTop + 8, { align: 'right' },
+      );
+    };
+
+    // ── Helpers de contenido ────────────────────────────────────────────
+    let y = headerBottom + 6;
+    let pageNum = 1;
+
+    const ensureSpace = (needed: number) => {
+      if (y + needed > footerTop - 4) {
+        doc.addPage();
+        pageNum++;
+        drawHeader();
+        y = headerBottom + 6;
+      }
+    };
+
+    // ── Renderizar título + badge de estado ─────────────────────────────
+    drawHeader();
+
+    // Título grande
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    setText(INK);
+    const titleLines = doc.splitTextToSize(
+      sanitize(contract.title || 'Contrato'),
+      contentW,
+    );
+    for (const l of titleLines) {
+      ensureSpace(9);
+      doc.text(l, margin, y);
+      y += 7.5;
+    }
+    y += 1;
+
+    // Badge-bar con estado + vigencia + organización
+    const statusLabels: Record<string, string> = {
+      draft: 'BORRADOR',
+      pending_signature: 'PENDIENTE DE FIRMA',
+      active: 'ACTIVO',
+      expired: 'EXPIRADO',
+    };
+    const statusLabel = statusLabels[contract.status] || contract.status.toUpperCase();
+    const vigencia = contract.effectiveDate
+      ? new Date(contract.effectiveDate).toLocaleDateString('es-CL')
+      : '-';
+
+    ensureSpace(14);
+    setFill(BG_SOFT);
+    setDraw(GOLD_LIGHT);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(margin, y, contentW, 9, 1.2, 1.2, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    setText(GOLD);
+    doc.text(statusLabel, margin + 3, y + 5.8);
+    doc.setFont('helvetica', 'normal');
+    setText(INK_SOFT);
+    const statusBadgeW = doc.getTextWidth(statusLabel) + 6;
+    doc.text(`Vigencia: ${vigencia}`, margin + 3 + statusBadgeW + 4, y + 5.8);
     if (contract.tenant?.name) {
-      doc.text(`Organización: ${contract.tenant.name}`, margin, y);
-      y += 6;
+      const orgText = sanitize(`Organización: ${contract.tenant.name}`);
+      doc.text(orgText, pageW - margin - 3, y + 5.8, { align: 'right' });
     }
-    y += 4;
+    y += 14;
 
-    // Content
-    doc.setFontSize(10);
-    doc.setTextColor(30);
-    const content = (contract.content || contract.description || 'Sin contenido').replace(/<[^>]*>/g, ''); // Strip HTML
-    const lines = doc.splitTextToSize(content, maxW);
-    for (const line of lines) {
-      if (y > 275) { doc.addPage(); y = 20; }
-      doc.text(line, margin, y);
-      y += 5;
+    // ── Parsear y renderizar contenido ──────────────────────────────────
+    const rawContent = contract.content || contract.description || 'Sin contenido';
+    const content = sanitize(rawContent).replace(/<[^>]*>/g, '');
+    const lines = content.split('\n');
+
+    // Detectores
+    const isHR = (s: string) => /^[\s-=_*]{3,}$/.test(s.trim());
+    const isBigHeading = (s: string, i: number) => {
+      const t = s.trim();
+      return (
+        i < 3 &&
+        t.length >= 12 &&
+        /[A-ZÁÉÍÓÚÑ]/.test(t) &&
+        !/[a-záéíóúñ]/.test(t) &&
+        !t.includes(':') &&
+        !t.startsWith('-')
+      );
+    };
+    const isSectionTitle = (s: string) => {
+      const t = s.trim();
+      if (t.length < 3) return false;
+      // "PRIMERO:", "SEGUNDO:", "ENTRE LAS PARTES", "ACUERDO DE ..."
+      if (/^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 ,.()\-]+[:]?$/.test(t) && t.length > 4 && !/[a-záéíóúñ]/.test(t)) return true;
+      // "1. DATOS TRATADOS", "2. FINALIDAD DEL ..."
+      if (/^\d+\.\s+[A-ZÁÉÍÓÚÑ]/.test(t)) return true;
+      // "FIRMAS"
+      if (t === 'FIRMAS' || t === 'ACEPTACIÓN' || t === 'ACEPTACION') return true;
+      return false;
+    };
+    const isSubSection = (s: string) => {
+      // Cosas como "PROVEEDOR (\"Ascenda\"):", "CLIENTE (\"...\"):"
+      const t = s.trim();
+      return /^[A-ZÁÉÍÓÚÑ]+\s*\(.*\):\s*$/.test(t);
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      const trimmed = raw.trim();
+
+      // Línea vacía → espacio vertical pequeño
+      if (trimmed === '') {
+        y += 2.8;
+        continue;
+      }
+
+      // Separador horizontal → línea dorada real
+      if (isHR(trimmed)) {
+        ensureSpace(5);
+        y += 1.5;
+        setDraw(GOLD);
+        doc.setLineWidth(0.35);
+        doc.line(margin + 4, y, pageW - margin - 4, y);
+        y += 3.5;
+        continue;
+      }
+
+      // Big heading (título gigante del contrato — solo primeras líneas)
+      if (isBigHeading(trimmed, i)) {
+        ensureSpace(11);
+        y += 1;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        setText(GOLD);
+        const wrapped = doc.splitTextToSize(trimmed, contentW);
+        for (const l of wrapped) {
+          ensureSpace(8);
+          doc.text(l, margin, y);
+          y += 6.5;
+        }
+        y += 2;
+        continue;
+      }
+
+      // Sub-section "PROVEEDOR (...):", "CLIENTE (...):"
+      if (isSubSection(trimmed)) {
+        ensureSpace(8);
+        y += 1;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        setText(GOLD);
+        doc.text(trimmed, margin, y);
+        y += 5;
+        continue;
+      }
+
+      // Section title
+      if (isSectionTitle(trimmed)) {
+        ensureSpace(10);
+        y += 2;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10.5);
+        setText(INK);
+        const wrapped = doc.splitTextToSize(trimmed, contentW);
+        for (const l of wrapped) {
+          ensureSpace(6);
+          doc.text(l, margin, y);
+          y += 5.5;
+        }
+        y += 1.2;
+        continue;
+      }
+
+      // Body normal
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      setText(INK);
+      const wrapped = doc.splitTextToSize(raw, contentW);
+      for (const l of wrapped) {
+        ensureSpace(5);
+        doc.text(l, margin, y);
+        y += 4.7;
+      }
     }
 
-    // Footer
-    y = doc.internal.pageSize.getHeight() - 10;
-    doc.setFontSize(7);
-    doc.setTextColor(150);
-    doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360 by ASCENDA PERFORMANCE SpA`, margin, y);
+    // ── Dibujar footer en TODAS las páginas ─────────────────────────────
+    const totalPages = pageNum;
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      drawFooter(p, totalPages);
+    }
 
     return Buffer.from(doc.output('arraybuffer'));
   }
