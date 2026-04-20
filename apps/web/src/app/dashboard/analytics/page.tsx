@@ -11,6 +11,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
 import { useAiBias, useAnalyzeBias } from '@/hooks/useAiInsights';
+// P8-C: import dinámico de Recharts — reduce bundle inicial en ~150 kB.
 import {
   BarChart,
   Bar,
@@ -22,7 +23,7 @@ import {
   ComposedChart,
   Area,
   Cell,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 
 type AnalyticsTab = 'scores' | 'departments' | 'competencies' | 'teams' | 'bias';
 

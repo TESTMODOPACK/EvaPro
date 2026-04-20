@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+import useFocusTrap from '@/hooks/useFocusTrap';
+
 interface ConfirmModalProps {
   message: string;
   detail?: string;
@@ -19,10 +22,30 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
+  // P8-A: escape key para cerrar, accesibilidad de teclado.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  // P8-D: focus trap dentro del dialog mientras está abierto.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true);
+
   return (
     /* Overlay */
     <div
-      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-message"
+      onClick={(e) => {
+        // P8-A fix drag-close: cierra solo si el click terminó en el
+        // overlay mismo (no si el usuario arrastró desde el card).
+        if (e.target === e.currentTarget) onCancel();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -36,12 +59,15 @@ export default function ConfirmModal({
     >
       {/* Dialog */}
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
         className="card animate-fade-up"
         style={{
           padding: '1.75rem',
           maxWidth: '420px',
           width: '100%',
+          maxHeight: '90vh',
+          overflowY: 'auto',
           boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
         }}
       >
@@ -64,6 +90,7 @@ export default function ConfirmModal({
 
         {/* Message */}
         <p
+          id="confirm-modal-message"
           style={{
             fontWeight: 700,
             fontSize: '1rem',

@@ -5,7 +5,8 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+// P8-C: import dinámico de Recharts.
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from '@/components/DynamicCharts';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: '#94a3b8', sent: '#f59e0b', paid: '#10b981', overdue: '#ef4444', cancelled: '#6b7280',
@@ -94,7 +95,7 @@ export default function FacturacionPage() {
         <div className="animate-fade-up">
           {/* KPIs */}
           {stats && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
               {[
                 { label: 'Facturado (mes)', value: `${stats.totalInvoiced} ${stats.currency}`, color: 'var(--text-primary)' },
                 { label: 'Cobrado', value: `${stats.totalPaid} ${stats.currency}`, color: 'var(--success)' },

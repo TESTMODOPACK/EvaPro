@@ -11,6 +11,7 @@ import { useCompetencyRadar, useSelfVsOthers } from '@/hooks/useReports';
 import { useCycles } from '@/hooks/useCycles';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useUsers } from '@/hooks/useUsers';
+// P8-C: import dinámico de Recharts — reduce bundle inicial.
 import {
   ResponsiveContainer,
   BarChart,
@@ -23,7 +24,7 @@ import {
   Tooltip,
   Cell,
   Legend,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 import { usePerformanceHistory } from '@/hooks/usePerformanceHistory';
 
 function Spinner() {

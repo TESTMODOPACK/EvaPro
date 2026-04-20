@@ -64,6 +64,11 @@ export default function SearchableSelect({
   const triggerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  // P8-D: IDs estables para vincular listbox↔options con aria-activedescendant.
+  // Generamos un id único por instancia (mount-time) para no colisionar.
+  const instanceIdRef = useRef<string>(`ss-${Math.random().toString(36).slice(2, 9)}`);
+  const listboxId = `${instanceIdRef.current}-listbox`;
+  const optionId = (idx: number) => `${instanceIdRef.current}-opt-${idx}`;
 
   const selectedOption = useMemo(
     () => options.find((o) => o.value === value),
@@ -77,6 +82,10 @@ export default function SearchableSelect({
       o.label.toLowerCase().includes(q) || (o.hint || '').toLowerCase().includes(q),
     );
   }, [options, query]);
+
+  // P8-D: total de opciones focuseables para evitar aria-activedescendant
+  // apuntando a ID inexistente cuando la búsqueda no arroja resultados.
+  const totalFocusable = (clearLabel ? 1 : 0) + filtered.length;
 
   // Cerrar al click fuera — devuelve foco al trigger (a11y)
   useEffect(() => {
@@ -106,6 +115,15 @@ export default function SearchableSelect({
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [open]);
+
+  // P8-D: scroll al item highlighted con teclado para que el usuario
+  // visual vea la selección cuando navega por listas largas.
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const items = listRef.current.children;
+    const target = items[highlightIndex] as HTMLElement | undefined;
+    target?.scrollIntoView({ block: 'nearest' });
+  }, [open, highlightIndex]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!open) {
@@ -163,6 +181,10 @@ export default function SearchableSelect({
         aria-haspopup="listbox"
         aria-required={required}
         aria-label={ariaLabel}
+        aria-controls={open ? listboxId : undefined}
+        aria-activedescendant={open && totalFocusable > 0 ? optionId(highlightIndex) : undefined}
+        aria-autocomplete="list"
+        aria-disabled={disabled}
         tabIndex={disabled ? -1 : 0}
         className={className}
         style={triggerStyle}
@@ -226,7 +248,9 @@ export default function SearchableSelect({
           {/* List */}
           <ul
             ref={listRef}
+            id={listboxId}
             role="listbox"
+            aria-label={ariaLabel || 'Opciones'}
             style={{
               listStyle: 'none',
               margin: 0,
@@ -237,6 +261,7 @@ export default function SearchableSelect({
           >
             {clearLabel && (
               <Item
+                id={optionId(0)}
                 isHighlighted={highlightIndex === 0}
                 isSelected={value === ''}
                 onClick={() => {
@@ -251,7 +276,7 @@ export default function SearchableSelect({
               </Item>
             )}
             {filtered.length === 0 ? (
-              <li style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center' }}>
+              <li role="option" aria-selected={false} style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center' }}>
                 {emptyLabel}
               </li>
             ) : (
@@ -260,6 +285,7 @@ export default function SearchableSelect({
                 return (
                   <Item
                     key={opt.value}
+                    id={optionId(adjustedIdx)}
                     isHighlighted={highlightIndex === adjustedIdx}
                     isSelected={opt.value === value}
                     onClick={() => {
@@ -293,6 +319,7 @@ export default function SearchableSelect({
 }
 
 function Item({
+  id,
   children,
   isHighlighted,
   isSelected,
@@ -301,6 +328,7 @@ function Item({
   initials,
   muted,
 }: {
+  id?: string;
   children: React.ReactNode;
   isHighlighted: boolean;
   isSelected: boolean;
@@ -311,6 +339,7 @@ function Item({
 }) {
   return (
     <li
+      id={id}
       role="option"
       aria-selected={isSelected}
       onClick={onClick}

@@ -10,8 +10,9 @@
  * (to present the amount + brand) but hide the unusable option.
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePaymentProviders, useCreateCheckout } from '@/hooks/usePayments';
+import useFocusTrap from '@/hooks/useFocusTrap';
 
 interface PayInvoiceModalProps {
   invoiceId: string;
@@ -29,10 +30,23 @@ export default function PayInvoiceModal({
   const { data: providers, isLoading } = usePaymentProviders();
   const checkout = useCreateCheckout();
   const [error, setError] = useState('');
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // P8-D: focus trap para navegación por teclado dentro del modal.
+  useFocusTrap(dialogRef, true);
 
   const enabled = (providers ?? []).filter((p) => p.enabled);
   const stripeEnabled = enabled.some((p) => p.name === 'stripe');
   const mpEnabled = enabled.some((p) => p.name === 'mercadopago');
+
+  // P8-A: escape key para cerrar, UX consistente con otros modales.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !checkout.isPending) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, checkout.isPending]);
 
   async function pay(provider: 'stripe' | 'mercadopago') {
     setError('');
@@ -48,7 +62,11 @@ export default function PayInvoiceModal({
 
   return (
     <div
-      onClick={onClose}
+      onClick={(e) => {
+        // P8-A fix drag-close + guard isPending: no cerrar si el pago
+        // está en curso, ni si el click inició dentro del card (drag).
+        if (e.target === e.currentTarget && !checkout.isPending) onClose();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -61,13 +79,16 @@ export default function PayInvoiceModal({
       }}
     >
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
         className="card animate-fade-up"
         role="dialog"
         aria-modal="true"
-        style={{ padding: '1.75rem', maxWidth: 460, width: '100%' }}
+        aria-labelledby="pay-invoice-modal-title"
+        style={{ padding: '1.75rem', maxWidth: 460, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
       >
         <h2
+          id="pay-invoice-modal-title"
           style={{
             fontSize: '1.1rem',
             fontWeight: 700,

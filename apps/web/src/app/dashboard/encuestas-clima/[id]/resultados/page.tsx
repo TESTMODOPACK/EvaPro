@@ -8,11 +8,12 @@ import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
+// P8-C: import dinámico de Recharts.
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 
 const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 

@@ -14,7 +14,8 @@ import { useAtRiskObjectives } from '@/hooks/useObjectives';
 import { assignmentStatusLabel, assignmentStatusBadge } from '@/lib/statusMaps';
 import { api } from '@/lib/api';
 import { ScoreBadge, DeltaBadge } from '@/components/ScoreBadge';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+// P8-C: import dinámico de Recharts.
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from '@/components/DynamicCharts';
 import { useSystemChangelog } from '@/hooks/useSystemChangelog';
 import { getRoleLabel } from '@/lib/roles';
 import { NextActionsWidget } from '@/components/NextActionsWidget';

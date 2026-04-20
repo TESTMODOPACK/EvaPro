@@ -1,10 +1,11 @@
 'use client';
 
 import { useCompetencyRadar } from '@/hooks/useReports';
+// P8-C: import dinámico de Recharts.
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ResponsiveContainer, Tooltip, Legend,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 
 const relationLabels: Record<string, string> = {
   self: 'Autoevaluaci\u00f3n', manager: 'Encargado', peer: 'Par',

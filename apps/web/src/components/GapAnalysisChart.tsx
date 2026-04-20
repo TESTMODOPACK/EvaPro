@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+// P8-C: import dinámico de Recharts.
 import {
   BarChart,
   Bar,
@@ -10,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 
 interface GapItem {
   competencyId: string;

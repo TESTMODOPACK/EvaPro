@@ -131,12 +131,15 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
           </div>
         )}
 
-        {/* Language selector */}
+        {/* Language selector.
+            P8-A5: height subido 30 → 38px + min-width 40px por tap target
+            (WCAG 2.1 AA). Ancho del segmento se expande para cumplir 44px
+            cuando padding+contenido lo permiten. */}
         <div style={{
           display: 'flex', alignItems: 'center',
           border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-          overflow: 'hidden', height: '30px',
-        }}>
+          overflow: 'hidden', height: '38px',
+        }} role="group" aria-label="Selector de idioma">
           {(['es', 'en', 'pt'] as SupportedLocale[]).map((lang, i) => {
             const langName = lang === 'es' ? 'Español' : lang === 'en' ? 'English' : 'Português';
             const isActive = locale === lang;
@@ -148,14 +151,15 @@ export default function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
                 aria-label={`Cambiar idioma a ${langName}${isActive ? ' (seleccionado)' : ''}`}
                 aria-pressed={isActive}
                 style={{
-                  padding: '0 9px',
+                  padding: '0 12px',
                   height: '100%',
+                  minWidth: '40px',
                   border: 'none',
                   borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
                   background: isActive ? 'rgba(201,147,58,0.12)' : 'transparent',
                   color: isActive ? 'var(--gold)' : 'var(--text-muted)',
                   fontWeight: isActive ? 700 : 400,
-                  fontSize: '0.7rem',
+                  fontSize: '0.72rem',
                   letterSpacing: '0.04em',
                   cursor: 'pointer',
                   transition: 'all 0.15s',

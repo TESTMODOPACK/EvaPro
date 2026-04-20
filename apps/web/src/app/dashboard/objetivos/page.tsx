@@ -1,6 +1,7 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
+import EmptyState from '@/components/EmptyState';
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -1668,7 +1669,7 @@ function ObjetivosPageContent() {
 
       {/* New objective form */}
       {showForm && (
-        <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+        <div id="form-objectives" className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem', scrollMarginTop: '1rem' }}>
           <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>
             {isEmployee ? 'Proponer Objetivo' : 'Nuevo Objetivo'}
           </h3>
@@ -1869,19 +1870,35 @@ function ObjetivosPageContent() {
       {isLoading ? (
         <Spinner />
       ) : filtered.length === 0 ? (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
-            {objectives && objectives.length > 0
-              ? 'No hay objetivos con este filtro'
-              : 'No hay objetivos registrados'}
-          </p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-            {objectives && objectives.length > 0
-              ? 'Prueba con otro filtro'
-              : isEmployee
-                ? 'Propone tu primer objetivo para comenzar'
-                : 'Crea tu primer objetivo para comenzar'}
-          </p>
+        <div className="card">
+          {objectives && objectives.length > 0 ? (
+            <EmptyState
+              icon="🔍"
+              title="No hay objetivos con este filtro"
+              description="Prueba con otro filtro o revisa los estados activos del equipo."
+            />
+          ) : (
+            <EmptyState
+              icon="🎯"
+              title="Aún no tienes objetivos"
+              description={isEmployee
+                ? 'Propone tu primer objetivo para comenzar a alinear tus metas con los de la organización.'
+                : 'Crea tu primer objetivo OKR para marcar el rumbo de tu equipo.'}
+              ctaLabel={isEmployee ? 'Proponer objetivo' : 'Crear objetivo'}
+              ctaOnClick={() => {
+                setShowForm(true);
+                // P8-B: scroll al formulario para que el usuario vea qué pasó
+                // después de clickear el CTA. 150ms: deja que React renderice
+                // el form antes de buscar el elemento.
+                setTimeout(() => {
+                  document.getElementById('form-objectives')?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start',
+                  });
+                }, 150);
+              }}
+            />
+          )}
         </div>
       ) : (
         <div

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import useFocusTrap from "@/hooks/useFocusTrap";
 
 /**
  * Type-to-confirm modal for irreversible actions (e.g. GDPR account
@@ -33,6 +34,10 @@ export default function DestructiveModal({
 }: DestructiveModalProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // P8-D: focus trap dentro del modal.
+  useFocusTrap(dialogRef, true);
 
   const matches =
     input.trim().toUpperCase() === confirmationPhrase.trim().toUpperCase();
@@ -49,7 +54,11 @@ export default function DestructiveModal({
 
   return (
     <div
-      onClick={() => !isLoading && onCancel()}
+      onClick={(e) => {
+        // P8-A fix drag-close: cierra solo si el click terminó en el
+        // overlay mismo (no si el usuario arrastró desde el card).
+        if (e.target === e.currentTarget && !isLoading) onCancel();
+      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -62,6 +71,7 @@ export default function DestructiveModal({
       }}
     >
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
         className="card animate-fade-up"
         role="dialog"
@@ -71,6 +81,8 @@ export default function DestructiveModal({
           padding: "1.75rem",
           maxWidth: 480,
           width: "100%",
+          maxHeight: "90vh",
+          overflowY: "auto",
           boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
         }}
       >

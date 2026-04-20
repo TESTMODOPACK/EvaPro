@@ -1572,47 +1572,52 @@ export default function UsuariosPage() {
                       <td>
                         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                           <button
-                            className="btn-ghost"
-                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                            className="btn-ghost btn-compact"
+                            style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem' }}
                             onClick={() => router.push(`/dashboard/usuarios/${u.id}`)}
+                            aria-label={`Ver perfil de ${fullName}`}
                           >
                             Perfil
                           </button>
                           {(isAdmin || currentUserRole === 'manager') && (
                             <button
-                              className="btn-ghost"
-                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: 'var(--accent)' }}
+                              className="btn-ghost btn-compact"
+                              style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem', color: 'var(--accent)' }}
                               onClick={() => router.push(`/dashboard/desempeno/${u.id}`)}
                               title="Ver historial de desempeño"
+                              aria-label={`Ver historial de desempeño de ${fullName}`}
                             >
                               Desempeño
                             </button>
                           )}
                           {isAdmin && (
                             <button
-                              className="btn-ghost"
-                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                              className="btn-ghost btn-compact"
+                              style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem' }}
                               onClick={() => handleEdit(u)}
+                              aria-label={`Editar usuario ${fullName}`}
                             >
                               Editar
                             </button>
                           )}
                           {isAdmin && (
                             <button
-                              className="btn-ghost"
-                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: 'var(--danger)' }}
+                              className="btn-ghost btn-compact"
+                              style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem', color: 'var(--danger)' }}
                               onClick={() => handleDelete(u.id, fullName)}
+                              aria-label={`Eliminar usuario ${fullName}`}
                             >
                               Eliminar
                             </button>
                           )}
                           {isAdmin && (
                             <button
-                              className="btn-ghost"
-                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}
+                              className="btn-ghost btn-compact"
+                              style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)', minWidth: '40px' }}
                               disabled={resendingInvite === u.id}
                               onClick={() => handleResendInvite(u.id, u.email)}
                               title="Reenviar invitación por email"
+                              aria-label={`Reenviar invitación a ${u.email}`}
                             >
                               {resendingInvite === u.id ? '...' : '✉'}
                             </button>

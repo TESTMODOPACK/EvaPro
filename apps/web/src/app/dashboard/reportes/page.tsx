@@ -11,10 +11,11 @@ import { api } from '@/lib/api';
 import { getScoreLabel, getScoreColor } from '@/lib/scales';
 import { useToastStore } from '@/store/toast.store';
 import PerformanceHeatmap from '@/components/PerformanceHeatmap';
+// P8-C: import dinámico de Recharts.
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
-} from 'recharts';
+} from '@/components/DynamicCharts';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#fb7185'];
