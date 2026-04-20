@@ -1467,4 +1467,56 @@ export const api = {
     remove: (token: string, id: string) =>
       request<void>(`/leads/${id}`, { method: "DELETE" }, token),
   },
+
+  // ─── Push Notifications (v3.0) ────────────────────────────────────────
+  push: {
+    getVapidKey: (token: string) =>
+      request<{ publicKey: string }>("/notifications/push/vapid-key", {}, token),
+
+    subscribe: (
+      token: string,
+      dto: {
+        endpoint: string;
+        keys: { p256dh: string; auth: string };
+        userAgent?: string;
+      },
+    ) =>
+      request<{ id: string; createdAt: string; lastUsedAt: string }>(
+        "/notifications/push/subscribe",
+        { method: "POST", body: JSON.stringify(dto) },
+        token,
+      ),
+
+    unsubscribe: (token: string, endpoint: string) =>
+      request<void>(
+        `/notifications/push/unsubscribe?endpoint=${encodeURIComponent(endpoint)}`,
+        { method: "DELETE" },
+        token,
+      ),
+
+    listDevices: (token: string) =>
+      request<
+        Array<{
+          id: string;
+          userAgent: string | null;
+          createdAt: string;
+          lastUsedAt: string | null;
+        }>
+      >("/notifications/push/devices", {}, token),
+
+    test: (token: string) =>
+      request<{ sent: number; failed: number; skipped: number }>(
+        "/notifications/push/test",
+        { method: "POST" },
+        token,
+      ),
+
+    metrics: (token: string) =>
+      request<{
+        total: number;
+        activeLast7d: number;
+        failuresLast7d: number;
+        byBrowser: Record<string, number>;
+      }>("/notifications/push/metrics", {}, token),
+  },
 };

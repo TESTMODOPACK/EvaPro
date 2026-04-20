@@ -15,25 +15,45 @@ const inter = Inter({
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  themeColor: '#C9933A',
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#C9933A' },
+    { media: '(prefers-color-scheme: dark)',  color: '#08090B' },
+  ],
+  viewportFit: 'cover',
 };
 
 export const metadata: Metadata = {
-  title: 'Eva360 – Evaluación de Desempeño 360°',
-  description: 'Plataforma integral de evaluación de desempeño 360° para empresas',
+  title: {
+    default: 'EVA360 — Gestión de Desempeño',
+    template: '%s · EVA360',
+  },
+  description: 'Plataforma de evaluaciones de desempeño 360°, feedback continuo, objetivos OKR, reconocimientos y desarrollo de talento por Ascenda.',
+  applicationName: 'EVA360',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'Eva360',
+    statusBarStyle: 'default',
+    title: 'EVA360',
+    startupImage: ['/icons/apple-touch-icon.png'],
   },
   icons: {
-    apple: '/icons/icon.svg',
+    icon: [
+      { url: '/icons/favicon-16.png', sizes: '16x16',   type: 'image/png' },
+      { url: '/icons/favicon-32.png', sizes: '32x32',   type: 'image/png' },
+      { url: '/icons/icon-192.png',   sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png',   sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180' },
+    ],
   },
   other: {
     'mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-status-bar-style': 'default',
+    'apple-mobile-web-app-title': 'EVA360',
   },
 };
 

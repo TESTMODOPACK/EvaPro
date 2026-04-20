@@ -17,6 +17,8 @@ import { ChallengeProgress } from './entities/challenge-progress.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../notifications/email.service';
+import { PushService } from '../notifications/push.service';
+import { buildPushMessage } from '../notifications/push-messages';
 import { NotificationType } from '../notifications/entities/notification.entity';
 
 const MAX_RECOGNITIONS_PER_DAY = 5;
@@ -44,6 +46,7 @@ export class RecognitionService {
     private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
+    private readonly pushService: PushService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -238,7 +241,27 @@ export class RecognitionService {
 
       // Send email notification to the recipient
       const fromUser = await this.userRepo.findOne({ where: { id: fromUserId }, select: ['id', 'firstName', 'lastName'] });
-      const toUserData = await this.userRepo.findOne({ where: { id: dto.toUserId }, select: ['id', 'firstName', 'email'] });
+      const toUserData = await this.userRepo.findOne({ where: { id: dto.toUserId }, select: ['id', 'firstName', 'email', 'language'] });
+
+      // v3.0 Push al destinatario del reconocimiento.
+      if (toUserData && fromUser) {
+        const pushRec = buildPushMessage('recognitionReceived', toUserData.language ?? 'es', {
+          from: `${fromUser.firstName} ${fromUser.lastName}`,
+          message: msgPreview,
+        });
+        this.pushService
+          .sendToUser(
+            dto.toUserId,
+            {
+              title: pushRec.title,
+              body: pushRec.body,
+              url: '/dashboard/reconocimientos',
+              tag: `recognition-${recognition.id}`,
+            },
+            'recognitions',
+          )
+          .catch(() => undefined);
+      }
       if (toUserData?.email && fromUser) {
         const valueName = dto.valueId
           ? (await this.recogRepo.findOne({ where: { id: recognition.id }, relations: ['value'] }))?.value?.name

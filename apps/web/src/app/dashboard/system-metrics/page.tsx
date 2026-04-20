@@ -35,6 +35,7 @@ export default function SystemMetricsPage() {
   const [stats, setStats] = useState<any>(null);
   const [metrics, setMetrics] = useState<any>(null);
   const [aiUsage, setAiUsage] = useState<any[]>([]);
+  const [pushMetrics, setPushMetrics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -45,8 +46,14 @@ export default function SystemMetricsPage() {
       api.tenants.systemStats(token),
       api.tenants.usageMetrics(token),
       api.tenants.aiUsage(token).catch(() => []),
+      api.push.metrics(token).catch(() => null),
     ])
-      .then(([s, m, ai]) => { setStats(s); setMetrics(m); setAiUsage(ai || []); })
+      .then(([s, m, ai, push]) => {
+        setStats(s);
+        setMetrics(m);
+        setAiUsage(ai || []);
+        setPushMetrics(push);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
@@ -236,6 +243,66 @@ export default function SystemMetricsPage() {
           )}
         </div>
       </div>
+
+      {/* ══════ Push Notifications Section (v3.0) ══════ */}
+      {pushMetrics && (
+        <div className="animate-fade-up-delay-2" style={{ marginTop: '2rem' }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '1.3rem' }}>📲</span> Notificaciones Push
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+            Subscripciones activas, tasa de entrega y distribución por navegador
+          </p>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1rem',
+          }}>
+            {[
+              { label: 'Subscripciones totales', value: pushMetrics.total, color: '#6366f1' },
+              { label: 'Activas últimos 7 días', value: pushMetrics.activeLast7d, color: '#10b981' },
+              {
+                label: 'Fallos últimos 7 días',
+                value: pushMetrics.failuresLast7d,
+                color: pushMetrics.failuresLast7d > pushMetrics.total * 0.05 ? '#ef4444' : '#9ca3af',
+              },
+              {
+                label: 'Tasa de éxito',
+                value:
+                  pushMetrics.total > 0
+                    ? `${Math.round((1 - pushMetrics.failuresLast7d / Math.max(pushMetrics.total, 1)) * 100)}%`
+                    : '—',
+                color: '#C9933A',
+              },
+            ].map((k) => (
+              <div key={k.label} className="card" style={{ padding: '1rem' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>{k.label}</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: k.color }}>{k.value}</div>
+              </div>
+            ))}
+          </div>
+          {Object.keys(pushMetrics.byBrowser || {}).length > 0 && (
+            <div className="card" style={{ padding: '1rem' }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                Por navegador
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {Object.entries(pushMetrics.byBrowser as Record<string, number>).map(([browser, count]) => (
+                  <div key={browser} style={{
+                    padding: '0.4rem 0.75rem',
+                    background: 'var(--bg-hover)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.82rem',
+                  }}>
+                    <strong>{browser}</strong>: {count as number}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ══════ AI Usage Section ══════ */}
       <div className="animate-fade-up-delay-3" style={{ marginTop: '2rem' }}>

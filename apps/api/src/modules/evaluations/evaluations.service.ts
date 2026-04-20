@@ -23,6 +23,8 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { EmailService } from '../notifications/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
+import { PushService } from '../notifications/push.service';
+import { buildPushMessage } from '../notifications/push-messages';
 import { PlanFeature } from '../../common/constants/plan-features';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
@@ -57,6 +59,7 @@ export class EvaluationsService {
     private readonly subscriptionsService: SubscriptionsService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
+    private readonly pushService: PushService,
   ) {}
 
   // ─── Cycles ───────────────────────────────────────────────────────────────
@@ -998,6 +1001,33 @@ export class EvaluationsService {
             `Failed to create in-app notification for evaluator ${ev.id} on cycle ${cycle.id}: ${err?.message || err}`,
           );
         });
+
+        // 3) Push notification (v3.0). Fire-and-forget — errores no bloquean
+        //    el launch del ciclo. PushService respeta prefs y quiet hours.
+        //    Usamos la variante bulk (con {{count}} interpolado) porque en
+        //    este scope no tenemos nombre específico del evaluatee — un
+        //    evaluador puede tener N evaluaciones asignadas al lanzar el
+        //    ciclo. La key localiza "colaborador(es)" en cada idioma.
+        const pushMsg = buildPushMessage('evaluationAssignedBulk', ev.language, {
+          count: pendingCount,
+          date: dueDateStr,
+        });
+        this.pushService
+          .sendToUser(
+            ev.id,
+            {
+              title: pushMsg.title,
+              body: pushMsg.body,
+              url: `/dashboard/evaluaciones`,
+              tag: `cycle-launch-${cycle.id}`,
+            },
+            'evaluations',
+          )
+          .catch((err) => {
+            this.logger.warn(
+              `Push failed for evaluator ${ev.id} on cycle ${cycle.id}: ${err?.message || err}`,
+            );
+          });
       }
 
       return {

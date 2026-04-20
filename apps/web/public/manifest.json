@@ -1,32 +1,43 @@
 {
-  "name": "Eva360 - Evaluación de Desempeño 360°",
-  "short_name": "Eva360",
-  "description": "Plataforma integral de evaluación de desempeño 360°",
+  "name": "EVA360 — Gestión de Desempeño",
+  "short_name": "EVA360",
+  "description": "Plataforma de evaluaciones de desempeño, feedback, objetivos y reconocimientos por Ascenda.",
   "start_url": "/dashboard",
+  "scope": "/",
+  "id": "eva360-app",
   "display": "standalone",
-  "background_color": "#1a1206",
-  "theme_color": "#C9933A",
   "orientation": "portrait-primary",
-  "icons": [
-    {
-      "src": "/icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
-    },
-    {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ],
+  "theme_color": "#C9933A",
+  "background_color": "#08090B",
+  "lang": "es-CL",
+  "dir": "ltr",
   "categories": ["business", "productivity"],
-  "lang": "es",
-  "dir": "ltr"
+  "icons": [
+    { "src": "/icons/icon-72.png",   "sizes": "72x72",   "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-96.png",   "sizes": "96x96",   "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-128.png",  "sizes": "128x128", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-144.png",  "sizes": "144x144", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-152.png",  "sizes": "152x152", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-192.png",  "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-384.png",  "sizes": "384x384", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png",  "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Evaluaciones pendientes",
+      "short_name": "Evaluar",
+      "description": "Ver y responder evaluaciones asignadas",
+      "url": "/dashboard/evaluaciones",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Mi desempeño",
+      "short_name": "Desempeño",
+      "description": "Historial de evaluaciones y feedback",
+      "url": "/dashboard/mi-desempeno",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+    }
+  ]
 }

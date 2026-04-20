@@ -1,48 +1,26 @@
 'use client';
 
-import { useEffect } from 'react';
+/**
+ * ServiceWorkerRegister — entry point PWA para el layout raíz.
+ *
+ * Responsabilidades:
+ *   1. Registra /sw.js via useServiceWorker (única instancia del hook).
+ *   2. Renderiza InstallPrompt (banner "Instalar EVA360").
+ *   3. Renderiza UpdateAvailableToast cuando hay nueva versión del SW
+ *      (le pasa los valores como props para no duplicar el hook).
+ */
+
+import { useServiceWorker } from '@/hooks/useServiceWorker';
+import { InstallPrompt } from './InstallPrompt';
+import { UpdateAvailableToast } from './UpdateAvailableToast';
 
 export default function ServiceWorkerRegister() {
-  useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
+  const { updateAvailable, applyUpdate } = useServiceWorker();
 
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((reg) => {
-        console.log('[PWA] Service Worker registered, scope:', reg.scope);
-
-        // Check for updates periodically (every 60 minutes)
-        setInterval(() => {
-          reg.update().catch(() => {});
-        }, 60 * 60 * 1000);
-
-        // Detect when a new SW is waiting
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          if (!newWorker) return;
-
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New version available — tell the waiting SW to activate
-              console.log('[PWA] New version available, activating...');
-              newWorker.postMessage('skipWaiting');
-            }
-          });
-        });
-      })
-      .catch((err) => {
-        console.log('[PWA] Service Worker registration failed:', err);
-      });
-
-    // When a new SW takes control, reload to get fresh assets
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      console.log('[PWA] New Service Worker active, reloading...');
-      window.location.reload();
-    });
-  }, []);
-
-  return null;
+  return (
+    <>
+      <InstallPrompt />
+      <UpdateAvailableToast updateAvailable={updateAvailable} applyUpdate={applyUpdate} />
+    </>
+  );
 }

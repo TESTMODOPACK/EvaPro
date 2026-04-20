@@ -11,6 +11,8 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { EmailService } from '../notifications/email.service';
+import { PushService } from '../notifications/push.service';
+import { buildPushMessage } from '../notifications/push-messages';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
@@ -30,6 +32,7 @@ export class FeedbackService {
     private readonly tenantRepo: Repository<Tenant>,
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
+    private readonly pushService: PushService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -84,7 +87,28 @@ export class FeedbackService {
       metadata: { checkInId: (saved as CheckIn).id },
     }).catch(() => {}); // non-blocking
 
-    const employee = await this.userRepo.findOne({ where: { id: dto.employeeId }, select: ['id', 'firstName', 'lastName'] });
+    const employee = await this.userRepo.findOne({ where: { id: dto.employeeId }, select: ['id', 'firstName', 'lastName', 'language'] });
+
+    // v3.0 Push notification al empleado (fire-and-forget).
+    const scheduledDateStr = dto.scheduledDate ? new Date(dto.scheduledDate).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '';
+    const timeStr = dto.scheduledTime ? ` a las ${dto.scheduledTime.slice(0, 5)}` : '';
+    const checkinMsg = buildPushMessage('checkinScheduled', employee?.language ?? 'es', {
+      other: managerName,
+      date: scheduledDateStr,
+      time: timeStr,
+    });
+    this.pushService
+      .sendToUser(
+        dto.employeeId,
+        {
+          title: checkinMsg.title,
+          body: checkinMsg.body,
+          url: '/dashboard/feedback',
+          tag: `checkin-${(saved as CheckIn).id}`,
+        },
+        'checkins',
+      )
+      .catch((err) => this.logger.warn(`Push checkin failed: ${err?.message}`));
     const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : dto.employeeId;
     this.auditService.log(tenantId, managerId, 'checkin.created', 'checkin', (saved as CheckIn).id, {
       managerName, employeeName, topic: dto.topic, scheduledDate: dto.scheduledDate,
@@ -626,6 +650,24 @@ export class FeedbackService {
       message: `${senderName} te ha enviado feedback ${sentimentLabel}`,
       metadata: { feedbackId: saved.id },
     }).catch(() => {});
+
+    // v3.0 Push notification al destinatario.
+    const recipient = await this.userRepo.findOne({ where: { id: dto.toUserId }, select: ['id', 'language'] });
+    const pushFb = buildPushMessage('feedbackReceived', recipient?.language ?? 'es', {
+      from: senderName,
+    });
+    this.pushService
+      .sendToUser(
+        dto.toUserId,
+        {
+          title: pushFb.title,
+          body: pushFb.body,
+          url: '/dashboard/feedback',
+          tag: `feedback-${saved.id}`,
+        },
+        'feedback',
+      )
+      .catch((err) => this.logger.warn(`Push feedback failed: ${err?.message}`));
 
     // Send email to feedback recipient
     const recipientUser = await this.userRepo.findOne({ where: { id: dto.toUserId }, select: ['id', 'email', 'firstName'] });

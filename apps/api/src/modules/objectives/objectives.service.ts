@@ -14,6 +14,8 @@ import { EmailService } from '../notifications/email.service';
 import { RecognitionService } from '../recognition/recognition.service';
 import { PointsSource } from '../recognition/entities/user-points.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PushService } from '../notifications/push.service';
+import { buildPushMessage } from '../notifications/push-messages';
 
 @Injectable()
 export class ObjectivesService {
@@ -34,6 +36,7 @@ export class ObjectivesService {
     private readonly emailService: EmailService,
     private readonly recognitionService: RecognitionService,
     private readonly notificationsService: NotificationsService,
+    private readonly pushService: PushService,
   ) {}
 
   // ─── Validation Helpers ──────────────────────────────────────────────────────
@@ -314,7 +317,7 @@ export class ObjectivesService {
     // Notify manager that an objective needs approval
     const employee = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'firstName', 'lastName', 'managerId'] });
     if (employee?.managerId) {
-      const manager = await this.userRepo.findOne({ where: { id: employee.managerId }, select: ['id', 'email', 'firstName'] });
+      const manager = await this.userRepo.findOne({ where: { id: employee.managerId }, select: ['id', 'email', 'firstName', 'language'] });
       if (manager?.email) {
         this.emailService.sendObjectiveAssigned(manager.email, {
           firstName: manager.firstName,
@@ -324,6 +327,25 @@ export class ObjectivesService {
           tenantId,
           userId: manager.id,
         }).catch(() => {});
+      }
+      // v3.0 Push al manager con el objetivo pendiente.
+      if (manager) {
+        const pushMsg = buildPushMessage('objectivePendingApproval', manager.language ?? 'es', {
+          employee: `${employee.firstName} ${employee.lastName}`,
+          title: obj.title,
+        });
+        this.pushService
+          .sendToUser(
+            manager.id,
+            {
+              title: pushMsg.title,
+              body: pushMsg.body,
+              url: '/dashboard/objetivos',
+              tag: `obj-approval-${obj.id}`,
+            },
+            'objectives',
+          )
+          .catch(() => undefined);
       }
     }
 

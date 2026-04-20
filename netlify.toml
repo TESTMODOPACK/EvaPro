@@ -9,3 +9,29 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# PWA headers (v3.0) — service worker y manifest NO deben cachearse de manera
+# agresiva, si no los updates no llegan a los usuarios con SW activo.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    Service-Worker-Allowed = "/"
+    Content-Type = "application/javascript; charset=utf-8"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+    Content-Type = "application/manifest+json; charset=utf-8"
+
+[[headers]]
+  for = "/offline.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Íconos: cachear agresivamente (no cambian en runtime).
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
