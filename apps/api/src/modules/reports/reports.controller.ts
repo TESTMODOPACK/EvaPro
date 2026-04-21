@@ -17,6 +17,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ReportsService } from './reports.service';
 import { KpiService } from './kpi.service';
 import { ExecutiveDashboardService } from './executive-dashboard.service';
@@ -28,6 +30,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { User } from '../users/entities/user.entity';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 
 @Controller('reports')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
@@ -39,6 +43,8 @@ export class ReportsController {
     private readonly analyticsService: AnalyticsService,
     private readonly crossAnalysisService: CrossAnalysisService,
     private readonly auditService: AuditService,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   // B7.1: Fire-and-forget audit log for report access.
@@ -152,16 +158,26 @@ export class ReportsController {
    * - employee: can only view their own data
    * - external: denied (no access to individual reports)
    */
-  private validateUserAccess(req: any, targetUserId: string) {
-    const { role, userId } = req.user;
-    if (role === 'external') {
-      throw new ForbiddenException('Los asesores externos no pueden acceder a reportes individuales');
-    }
-    if (role === 'employee' && userId !== targetUserId) {
-      throw new ForbiddenException('Solo puedes ver tus propios resultados');
-    }
-    // manager access: allow self + will be validated by data scope (only their reports show)
-    // tenant_admin/super_admin: full access within tenant
+  /**
+   * Valida acceso a reportes de un target user.
+   *
+   * P10 (audit manager) — ahora valida explícitamente que el manager solo
+   * acceda a data de sus direct reports. Antes el comment decía
+   * "will be validated by data scope" pero eso NO era cierto para
+   * endpoints con :userId en el path (individual, performance-history,
+   * competency-radar, self-vs-others, gap-analysis) que consultaban por
+   * userId directo sin aplicar managerId scope.
+   *
+   * Async para poder hacer la query a users cuando el caller es manager.
+   */
+  private async validateUserAccess(req: any, targetUserId: string) {
+    await assertManagerCanAccessUser(
+      this.userRepo,
+      req.user.userId,
+      req.user.role,
+      targetUserId,
+      req.user.tenantId,
+    );
   }
 
   // ─── Cycle-level reports (admin + manager) ─────────────────────────────
@@ -198,12 +214,12 @@ export class ReportsController {
 
   @Get('cycle/:cycleId/individual/:userId')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  individualResults(
+  async individualResults(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
-    this.validateUserAccess(req, userId);
+    await this.validateUserAccess(req, userId);
     this.logAccess(req, 'individual_results', { cycleId, targetUserId: userId });
     return this.reportsService.individualResults(cycleId, userId, req.user.tenantId, req.user.userId, req.user.role);
   }
@@ -225,12 +241,12 @@ export class ReportsController {
 
   @Get('users/:userId/performance-history')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  performanceHistory(
+  async performanceHistory(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Query('cycleType') cycleType: string,
     @Request() req: any,
   ) {
-    this.validateUserAccess(req, userId);
+    await this.validateUserAccess(req, userId);
     this.logAccess(req, 'performance_history', { targetUserId: userId });
     const filters = cycleType ? { cycleType } : undefined;
     return this.reportsService.getPerformanceHistory(req.user.tenantId, userId, filters);
@@ -255,12 +271,12 @@ export class ReportsController {
   @Get('cycle/:cycleId/competency-radar/:userId')
   @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  competencyRadar(
+  async competencyRadar(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
-    this.validateUserAccess(req, userId);
+    await this.validateUserAccess(req, userId);
     this.logAccess(req, 'competency_radar', { cycleId, targetUserId: userId });
     return this.reportsService.competencyRadar(cycleId, userId, req.user.tenantId);
   }
@@ -268,12 +284,12 @@ export class ReportsController {
   @Get('cycle/:cycleId/self-vs-others/:userId')
   @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  selfVsOthers(
+  async selfVsOthers(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
-    this.validateUserAccess(req, userId);
+    await this.validateUserAccess(req, userId);
     this.logAccess(req, 'self_vs_others', { cycleId, targetUserId: userId });
     return this.reportsService.selfVsOthers(cycleId, userId, req.user.tenantId);
   }
@@ -336,12 +352,12 @@ export class ReportsController {
   @Get('cycle/:cycleId/gap-analysis/:userId')
   @Feature(PlanFeature.ADVANCED_REPORTS)
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  gapAnalysisIndividual(
+  async gapAnalysisIndividual(
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
-    this.validateUserAccess(req, userId);
+    await this.validateUserAccess(req, userId);
     this.logAccess(req, 'gap_analysis_individual', { cycleId, targetUserId: userId });
     return this.reportsService.gapAnalysisIndividual(cycleId, userId, req.user.tenantId);
   }

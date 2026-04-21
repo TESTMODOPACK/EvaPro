@@ -283,7 +283,11 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       title: t('nav.evaluation', 'Evaluación'),
       items: [
         { href: '/dashboard/evaluaciones', label: t('nav.evalCycles', 'Ciclos de Evaluación'), icon: icons.evaluations },
-        ...(isAdminOrManager ? [
+        // P10 audit manager — calibración es admin-only (roles.ts:58 solo
+        // tenant_admin). Managers participan EN sesiones de calibración
+        // pero no las crean ni administran. Antes sidebar usaba
+        // isAdminOrManager → click rechazado por canAccessPage.
+        ...(isAdmin ? [
           { href: '/dashboard/calibracion', label: t('nav.calibration', 'Calibración'), icon: icons.calibration },
         ] : []),
       ],
@@ -296,7 +300,12 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         { href: '/dashboard/informes', label: t('nav.informes', 'Informes por Colaborador'), icon: icons.reports },
         { href: '/dashboard/analytics', label: t('nav.analytics', 'Análisis del Ciclo'), icon: icons.analytics },
         { href: '/dashboard/insights', label: t('nav.aiInsights', 'Informes IA'), icon: icons.talent },
-        { href: '/dashboard/analisis-integrado', label: 'Análisis Integrado', icon: icons.analytics },
+        // P10 audit manager — análisis integrado es admin-only
+        // (roles.ts:89 solo tenant_admin). Agrega cross-analysis de
+        // toda la org, no scopeable a equipo.
+        ...(isAdmin ? [
+          { href: '/dashboard/analisis-integrado', label: 'Análisis Integrado', icon: icons.analytics },
+        ] : []),
         { href: '/dashboard/analytics-pdi', label: 'Cumplimiento PDI', icon: icons.development },
         { href: '/dashboard/analytics-ciclos', label: 'Comparativa de Ciclos', icon: icons.calibration },
         ...(isAdmin ? [
@@ -316,7 +325,11 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         ...(isAdmin ? [
           { href: '/dashboard/competencias', label: t('nav.competencies', 'Competencias'), icon: icons.competencies },
         ] : []),
-        ...(isAdminOrManager ? [
+        // P10 audit manager — Desarrollo Organizacional es admin-only (la ruta
+        // en roles.ts:60 lista solo tenant_admin). Antes el sidebar usaba
+        // isAdminOrManager, inconsistente con el guard de acceso. Fix
+        // alineando ambos a isAdmin.
+        ...(isAdmin ? [
           { href: '/dashboard/desarrollo-organizacional', label: t('nav.orgDev', 'Desarrollo Organizacional'), icon: icons.orgDevelopment },
         ] : []),
       ],
@@ -365,7 +378,11 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
           { href: '/dashboard/usuarios', label: 'Mi Equipo', icon: icons.users },
         ] : []),
         { href: '/dashboard/organigrama', label: 'Organigrama', icon: icons.orgChart },
-        ...(isAdminOrManager ? [
+        // P10 audit manager — DEI analytics son admin-only (roles.ts:70
+        // lista solo tenant_admin). Data agregada DEI es sensible y
+        // reportable a nivel organización, no por equipo. Fix alineando
+        // sidebar a isAdmin.
+        ...(isAdmin ? [
           { href: '/dashboard/dei', label: t('nav.dei', 'Diversidad e Inclusión'), icon: icons.dei },
         ] : []),
       ],
