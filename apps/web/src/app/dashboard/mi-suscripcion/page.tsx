@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
 import { FEATURE_LABELS } from '@/lib/feature-routes';
 import PendingInvoicesCard from '@/components/PendingInvoicesCard';
@@ -57,6 +58,8 @@ const requestStatusBadge: Record<string, string> = {
 };
 
 export default function MiSuscripcionPage() {
+  // P11 audit tenant_admin — guard defensivo: backend @Roles(super_admin, tenant_admin).
+  const authorized = useRequireRole(['super_admin', 'tenant_admin']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [sub, setSub] = useState<any>(null);
@@ -175,6 +178,9 @@ export default function MiSuscripcionPage() {
   const usagePct = maxEmp > 0 ? Math.round((userCount / maxEmp) * 100) : 0;
   const usageColor = usagePct > 90 ? 'var(--danger)' : usagePct > 70 ? 'var(--warning)' : 'var(--success)';
   const hasPendingRequest = myRequests.some((r) => r.status === 'pending');
+
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  if (!authorized) return null;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>

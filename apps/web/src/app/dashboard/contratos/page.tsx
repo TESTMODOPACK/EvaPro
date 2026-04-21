@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
@@ -17,6 +18,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ContratosPage() {
+  // P11 audit tenant_admin — guard defensivo: backend @Roles(super_admin, tenant_admin).
+  const authorized = useRequireRole(['super_admin', 'tenant_admin']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
@@ -83,6 +86,8 @@ export default function ContratosPage() {
     loadSigs();
   }, [token, contracts]);
 
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  if (!authorized) return null;
   if (loading) return <PageSkeleton cards={2} tableRows={5} />;
   if (error) return (
     <div style={{ padding: '2rem 2.5rem' }}>

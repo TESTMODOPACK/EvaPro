@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import { CUSTOM_SETTINGS_DEFAULTS, CUSTOM_SETTINGS_META, CUSTOM_SETTINGS_KEYS } from '@/lib/constants';
@@ -21,6 +22,8 @@ const labelStyle: React.CSSProperties = {
 };
 
 export default function MantenedoresPage() {
+  // P11 audit tenant_admin — guard defensivo: backend @Roles(super_admin, tenant_admin).
+  const authorized = useRequireRole(['super_admin', 'tenant_admin']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore((s) => s.toast);
@@ -151,6 +154,9 @@ export default function MantenedoresPage() {
       [key]: [...CUSTOM_SETTINGS_DEFAULTS[key]],
     }));
   };
+
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  if (!authorized) return null;
 
   if (loading) {
     return (

@@ -3,6 +3,7 @@ import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { api } from '@/lib/api';
 // P8-C: import dinámico de Recharts.
@@ -286,6 +287,8 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
 // ─── Main Page ────────────────────────────────────────────────────────
 
 function AnalisisIntegradoContent() {
+  // P11 audit tenant_admin — guard defensivo: backend reports.controller @Roles(super_admin, tenant_admin, manager).
+  const authorized = useRequireRole(['super_admin', 'tenant_admin', 'manager']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [loading, setLoading] = useState(true);
@@ -407,6 +410,9 @@ function AnalisisIntegradoContent() {
 
     return analyses;
   };
+
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  if (!authorized) return null;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>

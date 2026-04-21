@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 
 function Spinner() {
   return (
@@ -42,6 +43,11 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function AuditLogPage() {
+  // P11 audit tenant_admin — guard defensivo super_admin-only.
+  // Vista cross-tenant (todos los logs de todas las orgs). Tenant_admin
+  // ve el audit de SU tenant en /dashboard/auditoria.
+  const authorized = useRequireRole(['super_admin']);
+
   const token = useAuthStore((s) => s.token);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,6 +117,9 @@ export default function AuditLogPage() {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   const hasActiveFilters = actionFilter || tenantFilter || dateFrom || dateTo || entityType || searchText;
+
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  if (!authorized) return null;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1300px' }}>
