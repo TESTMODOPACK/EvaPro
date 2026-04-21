@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -299,6 +300,8 @@ interface CompetencyForm {
 }
 
 export default function CompetenciasPage() {
+  // P11 audit tenant_admin — guard defensivo: backend @Roles(super_admin, tenant_admin, manager).
+  const authorized = useRequireRole(['super_admin', 'tenant_admin', 'manager']);
   const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const toast = useToastStore();
@@ -457,6 +460,9 @@ export default function CompetenciasPage() {
       },
     });
   }
+
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  if (!authorized) return null;
 
   if (!isAdmin) {
     return (

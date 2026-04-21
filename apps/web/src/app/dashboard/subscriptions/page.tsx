@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { formatCLP } from '@/lib/format';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
 import { FEATURE_LABELS } from '@/lib/feature-routes';
@@ -83,6 +84,11 @@ const labelStyle: React.CSSProperties = {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function SubscriptionsPage() {
+  // P11 audit tenant_admin — guard defensivo super_admin-only.
+  // Esta página gestiona planes SaaS de la plataforma (Ascenda admin).
+  // Tenant_admin ve su propia suscripción en /dashboard/mi-suscripcion.
+  const authorized = useRequireRole(['super_admin']);
+
   const token = useAuthStore((s) => s.token);
 
   const [activeTab, setActiveTab] = useState<'plans' | 'subscriptions' | 'requests'>('plans');
@@ -472,6 +478,8 @@ export default function SubscriptionsPage() {
     transition: 'var(--transition)',
   });
 
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  if (!authorized) return null;
   if (loading) return <Spinner />;
 
   return (

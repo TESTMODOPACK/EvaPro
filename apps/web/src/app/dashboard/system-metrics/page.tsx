@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 
 function Spinner() {
   return (
@@ -31,6 +32,9 @@ const insightTypeLabels: Record<string, string> = {
 };
 
 export default function SystemMetricsPage() {
+  // P11 audit tenant_admin — guard defensivo super_admin-only.
+  const authorized = useRequireRole(['super_admin']);
+
   const token = useAuthStore((s) => s.token);
   const [stats, setStats] = useState<any>(null);
   const [metrics, setMetrics] = useState<any>(null);
@@ -87,6 +91,9 @@ export default function SystemMetricsPage() {
   // Recent failures
   const recentFailures: { date: string; count: number }[] = stats?.recentFailures ?? [];
 
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  // Evita que contenido sensible de super_admin parpadee mientras navega.
+  if (!authorized) return null;
   if (loading) return <Spinner />;
 
   return (

@@ -3,6 +3,7 @@ import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useFlightRisk, useRetentionRecommendations } from '@/hooks/useAiInsights';
 import { useDepartments } from '@/hooks/useDepartments';
@@ -53,6 +54,8 @@ const movementTypeLabels: Record<string, string> = {
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
 function TurnoverPageContent() {
+  // P11 audit tenant_admin — guard defensivo: backend reports.controller @Roles(super_admin, tenant_admin, manager).
+  const authorized = useRequireRole(['super_admin', 'tenant_admin', 'manager']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<any>(null);
@@ -95,6 +98,8 @@ function TurnoverPageContent() {
     setExporting(null);
   };
 
+  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
+  if (!authorized) return null;
   if (loading) return <PageSkeleton cards={4} tableRows={5} />;
   if (error) return (
     <div style={{ padding: '2rem 2.5rem' }}>
