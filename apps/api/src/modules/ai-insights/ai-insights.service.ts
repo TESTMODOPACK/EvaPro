@@ -1085,8 +1085,14 @@ export class AiInsightsService {
 
   // ─── F15: Retention Recommendations ──────────────────────────────────
 
-  async getRetentionRecommendations(tenantId: string) {
-    const flightRiskData = await this.getFlightRiskScores(tenantId);
+  /**
+   * P10 (audit manager) — acepta managerId opcional para scope a team.
+   * Cuando caller es manager, delegamos el filtro a getFlightRiskScores
+   * que ya tiene el scope de equipo directo + self (P7.5). Un manager
+   * solo ve recomendaciones de sus reports, no de toda la organización.
+   */
+  async getRetentionRecommendations(tenantId: string, managerId?: string) {
+    const flightRiskData = await this.getFlightRiskScores(tenantId, managerId);
     const highRisk = flightRiskData.scores.filter((s) => s.riskLevel === 'high');
     const mediumRisk = flightRiskData.scores.filter((s) => s.riskLevel === 'medium').slice(0, 5);
 

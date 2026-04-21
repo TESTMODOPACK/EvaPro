@@ -18,6 +18,8 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ObjectivesService } from './objectives.service';
@@ -27,12 +29,18 @@ import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
 import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
+import { User } from '../users/entities/user.entity';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 
 @Controller('objectives')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
 @Feature(PlanFeature.OKR)
 export class ObjectivesController {
-  constructor(private readonly objectivesService: ObjectivesService) {}
+  constructor(
+    private readonly objectivesService: ObjectivesService,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+  ) {}
 
   /**
    * P2.5 — Cross-tenant defense: super_admin debe pasar dto.tenantId;
@@ -41,7 +49,7 @@ export class ObjectivesController {
    * por findOne tenant-scoped del service.
    */
   @Post()
-  create(@Request() req: any, @Body() dto: CreateObjectiveDto) {
+  async create(@Request() req: any, @Body() dto: CreateObjectiveDto) {
     const role = req.user.role;
     const tenantId = resolveOperatingTenantId(req.user, (dto as any)?.tenantId);
     // tenant_admin and manager can assign to others via dto.userId
@@ -49,6 +57,18 @@ export class ObjectivesController {
     let targetUserId = req.user.userId;
     if ((role === 'tenant_admin' || role === 'manager') && (dto as any).userId) {
       targetUserId = (dto as any).userId;
+    }
+    // P10 audit manager — si el manager asigna objetivo a otro user,
+    // validar que sea direct report. Antes podía asignar a cualquier
+    // user del tenant. tenant_admin/super_admin no necesita validación.
+    if (role === 'manager' && targetUserId !== req.user.userId) {
+      await assertManagerCanAccessUser(
+        this.userRepo,
+        req.user.userId,
+        role,
+        targetUserId,
+        req.user.tenantId,
+      );
     }
     return this.objectivesService.create(tenantId, targetUserId, dto);
   }
@@ -159,17 +179,30 @@ export class ObjectivesController {
   ) {
     const { role, userId, tenantId } = req.user;
 
-    // Employees can only update their own objectives
-    if (role === 'employee') {
-      const objective = await this.objectivesService.findById(tenantId, id);
-      if (objective.userId !== userId) {
-        throw new ForbiddenException('Solo puedes modificar tus propios objetivos');
-      }
-    }
-
-    // External advisors cannot update objectives
+    // External advisors cannot update objectives.
     if (role === 'external') {
       throw new ForbiddenException('Los asesores externos no pueden modificar objetivos');
+    }
+
+    // Employees can only update their own objectives.
+    // P10 audit manager — managers tambien estaban limitados ahora:
+    // solo pueden modificar objetivos propios o de sus direct reports.
+    // Antes un manager podía modificar cualquier objetivo del tenant.
+    if (role === 'employee' || role === 'manager') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (role === 'employee' && objective.userId !== userId) {
+        throw new ForbiddenException('Solo puedes modificar tus propios objetivos');
+      }
+      if (role === 'manager' && objective.userId !== userId) {
+        // Verificar que el owner sea su direct report.
+        await assertManagerCanAccessUser(
+          this.userRepo,
+          userId,
+          role,
+          objective.userId,
+          tenantId,
+        );
+      }
     }
 
     return this.objectivesService.update(tenantId, id, dto);
@@ -193,22 +226,50 @@ export class ObjectivesController {
   /** P5.4 — Secondary cross-tenant: super_admin → undefined. */
   @Post(':id/approve')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  approve(
+  async approve(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    // P10 audit manager — validar que el manager solo apruebe objetivos
+    // de su equipo directo. Antes cualquier manager podía aprobar
+    // objetivos de colaboradores ajenos (IDOR).
+    if (req.user.role === 'manager') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (objective.userId !== req.user.userId) {
+        await assertManagerCanAccessUser(
+          this.userRepo,
+          req.user.userId,
+          req.user.role,
+          objective.userId,
+          req.user.tenantId,
+        );
+      }
+    }
     return this.objectivesService.approve(tenantId, id, req.user.userId);
   }
 
   @Post(':id/reject')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  reject(
+  async reject(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() body?: { reason?: string },
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    // P10 audit manager — mismo check que approve.
+    if (req.user.role === 'manager') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (objective.userId !== req.user.userId) {
+        await assertManagerCanAccessUser(
+          this.userRepo,
+          req.user.userId,
+          req.user.role,
+          objective.userId,
+          req.user.tenantId,
+        );
+      }
+    }
     return this.objectivesService.reject(tenantId, id, req.user.userId, body?.reason);
   }
 

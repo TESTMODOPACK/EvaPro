@@ -14,6 +14,8 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -21,43 +23,58 @@ import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
 import { AiInsightsService } from './ai-insights.service';
 import { InsightType } from './entities/ai-insight.entity';
+import { User } from '../users/entities/user.entity';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 
 @Controller('ai')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
 @Feature(PlanFeature.AI_INSIGHTS)
 export class AiInsightsController {
-  constructor(private readonly aiService: AiInsightsService) {}
+  constructor(
+    private readonly aiService: AiInsightsService,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+  ) {}
 
-  private validateAccess(req: any, targetUserId: string) {
-    const { role, userId } = req.user;
-    if (role === 'employee' && userId !== targetUserId) {
-      throw new ForbiddenException('Solo puedes ver tus propios análisis de IA');
-    }
-    if (role === 'external') {
-      throw new ForbiddenException('Los asesores externos no tienen acceso a análisis de IA');
-    }
+  /**
+   * P10 (audit manager) — ahora valida que el manager solo acceda a
+   * insights de sus direct reports. Antes solo validaba employee→self,
+   * un manager podía leer summaries de cualquier colaborador del tenant.
+   *
+   * Async para poder consultar target.managerId cuando el caller es manager.
+   */
+  private async validateAccess(req: any, targetUserId: string) {
+    await assertManagerCanAccessUser(
+      this.userRepo,
+      req.user.userId,
+      req.user.role,
+      targetUserId,
+      req.user.tenantId,
+    );
   }
 
   // ─── Summary ────────────────────────────────────────────────────────────
 
   @Post('summary/:userId/:cycleId')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  generateSummary(
+  async generateSummary(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
+    // P10 audit manager — validar ownership antes de quemar créditos IA.
+    await this.validateAccess(req, userId);
     return this.aiService.generateSummary(req.user.tenantId, cycleId, userId, req.user.userId);
   }
 
   @Get('summary/:userId/:cycleId')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  getSummary(
+  async getSummary(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
-    this.validateAccess(req, userId);
+    await this.validateAccess(req, userId);
     return this.aiService.getInsight(req.user.tenantId, InsightType.SUMMARY, cycleId, userId);
   }
 
@@ -85,22 +102,24 @@ export class AiInsightsController {
 
   @Post('suggestions/:userId/:cycleId')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  generateSuggestions(
+  async generateSuggestions(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
+    // P10 audit manager — validar ownership antes de quemar créditos IA.
+    await this.validateAccess(req, userId);
     return this.aiService.generateSuggestions(req.user.tenantId, cycleId, userId, req.user.userId);
   }
 
   @Get('suggestions/:userId/:cycleId')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  getSuggestions(
+  async getSuggestions(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
   ) {
-    this.validateAccess(req, userId);
+    await this.validateAccess(req, userId);
     return this.aiService.getInsight(req.user.tenantId, InsightType.SUGGESTIONS, cycleId, userId);
   }
 
@@ -118,20 +137,30 @@ export class AiInsightsController {
 
   @Get('prediction/:userId')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  getPerformancePrediction(
+  async getPerformancePrediction(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
   ) {
-    this.validateAccess(req, userId);
+    await this.validateAccess(req, userId);
     return this.aiService.getPerformancePrediction(req.user.tenantId, userId);
   }
 
   // ─── F15: Retention Recommendations ──────────────────────────────────
 
+  /**
+   * P10 (audit manager) — habilitado para manager con scope a su equipo.
+   * Antes solo admin, inconsistente con /ai/flight-risk (P7.5) que ya
+   * permite a manager ver riesgo de fuga de sus reports. Retention es
+   * la contraparte accionable del flight-risk, debería ir junto.
+   *
+   * Cuando rol=manager, el service filtra recomendaciones solo de
+   * sus direct reports + self.
+   */
   @Get('retention')
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   getRetentionRecommendations(@Request() req: any) {
-    return this.aiService.getRetentionRecommendations(req.user.tenantId);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.aiService.getRetentionRecommendations(req.user.tenantId, managerId);
   }
 
   // ─── F15: Explainability (XAI) ──────────────────────────────────────
@@ -191,7 +220,11 @@ export class AiInsightsController {
     @Request() req: any,
     @Res({ passthrough: true }) res: Response,
   ) {
-    this.validateAccess(req, userId);
+    // P10 audit manager — FIX BYPASS CRÍTICO: validateAccess es async
+    // (requiere query a users para validar manager→team). Sin await,
+    // la Promise quedaba sin esperar y la validación NO ejecutaba.
+    // Un manager podía exportar PDFs de cualquier colaborador del tenant.
+    await this.validateAccess(req, userId);
     const buffer = await this.aiService.exportSummaryPdf(req.user.tenantId, cycleId, userId);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=informe-ia-${userId}.pdf`);
