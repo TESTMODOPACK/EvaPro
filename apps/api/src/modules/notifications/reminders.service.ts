@@ -471,6 +471,55 @@ export class RemindersService {
   async remindOverdueCheckins() {
     this.logger.log('[Cron] Checking overdue check-ins...');
     try {
+      // ── Bug fix: pre-filtros para evitar spam a tenants inactivos ──────
+      //
+      // Sin estas validaciones, el cron notificaba a TODOS los managers +
+      // tenant_admins del sistema cada lunes, independiente de si su tenant
+      // estaba realmente usando Eva360. Caso reportado: tenant recién
+      // onboardeado sin ciclos creados aún recibía "No tienes check-ins
+      // registrados. Agenda una reunión 1:1" — mensaje sin contexto y ruidoso.
+      //
+      // Filtro #1: tenant con al menos un ciclo no-DRAFT (lanzado en algún
+      // momento). DRAFT significa "admin está configurando", no implica uso
+      // real. ACTIVE/PAUSED/CLOSED/CANCELLED implican que el ciclo pasó del
+      // estado inicial → el sistema está en uso.
+      //
+      // Filtro #2: manager con al menos un subordinado directo activo. Un
+      // manager sin equipo no puede agendar 1:1 con nadie, así que el
+      // recordatorio es inútil para ellos.
+      const activeTenantIds = new Set(
+        (
+          await this.cycleRepo
+            .createQueryBuilder('c')
+            .select('DISTINCT c.tenant_id', 'tenantId')
+            .where('c.status != :draft', { draft: CycleStatus.DRAFT })
+            .getRawMany<{ tenantId: string }>()
+        ).map((r) => r.tenantId),
+      );
+
+      if (activeTenantIds.size === 0) {
+        this.logger.log('[Cron] No tenants with launched cycles — skipping check-in reminders');
+        return;
+      }
+
+      // Pre-compute managers con al menos 1 subordinado directo activo.
+      // 1 query total en vez de N queries (una por manager) dentro del loop.
+      const managersWithReports = new Set(
+        (
+          await this.userRepo
+            .createQueryBuilder('u')
+            .select('DISTINCT u.manager_id', 'managerId')
+            .where('u.manager_id IS NOT NULL')
+            .andWhere('u.is_active = true')
+            .getRawMany<{ managerId: string }>()
+        ).map((r) => r.managerId),
+      );
+
+      if (managersWithReports.size === 0) {
+        this.logger.log('[Cron] No managers with active reports — skipping check-in reminders');
+        return;
+      }
+
       const fourteenDaysAgo = new Date();
       fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
@@ -492,6 +541,12 @@ export class RemindersService {
       const overdueManagers: Array<{ manager: typeof managers[0]; daysSince: number | null }> = [];
 
       for (const manager of managers) {
+        // Skip tenants sin ciclos lanzados (filtro #1).
+        if (!activeTenantIds.has(manager.tenantId)) continue;
+
+        // Skip managers sin equipo directo (filtro #2).
+        if (!managersWithReports.has(manager.id)) continue;
+
         const lastCheckin = await this.checkinRepo.findOne({
           where: { tenantId: manager.tenantId, managerId: manager.id },
           order: { scheduledDate: 'DESC' },
