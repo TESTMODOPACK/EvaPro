@@ -1,8 +1,12 @@
 # Fases Pendientes — EvaPro
 
-Este documento lista refactors y decisiones de diseño que quedaron postergadas
-intencionalmente para no bloquear entregas actuales. Cada ítem tiene un
-propietario, un impacto estimado y un punto de entrada al código.
+Este documento lista **refactors técnicos puntuales** (deuda técnica, fixes
+de arquitectura) que quedaron postergados intencionalmente. Cada ítem tiene
+un impacto estimado y un punto de entrada al código.
+
+Para **features estratégicas de producto** pendientes (integraciones Slack/Teams,
+SSO SAML, app nativa, certificaciones, etc.), ver
+[`ROADMAP_V3_X.md`](./ROADMAP_V3_X.md).
 
 ---
 
