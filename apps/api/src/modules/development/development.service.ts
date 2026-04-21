@@ -650,9 +650,44 @@ export class DevelopmentService {
 
   // ─── Actions ───────────────────────────────────────────────────────────
 
-  async addAction(tenantId: string, planId: string, dto: Partial<DevelopmentAction>) {
+  /**
+   * P9 (audit colaborador) — valida ownership del plan antes de agregar
+   * acciones. `actorId` y `actorRole` son opcionales para backward-compat
+   * con callers internos (seeds, crons); si no se pasan, salta la validación.
+   */
+  async addAction(
+    tenantId: string,
+    planId: string,
+    dto: Partial<DevelopmentAction>,
+    actorId?: string,
+    actorRole?: string,
+  ) {
     const plan = await this.planRepo.findOne({ where: { id: planId, tenantId } });
     if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
+
+    // Validación de ownership (mismo patrón que completeAction).
+    // Check explícito de non-empty string para evitar bypass por actorRole=''.
+    const hasActorContext =
+      typeof actorRole === 'string' && actorRole.length > 0 &&
+      typeof actorId === 'string' && actorId.length > 0;
+    if (hasActorContext && actorRole !== 'super_admin' && actorRole !== 'tenant_admin') {
+      if (actorRole === 'employee') {
+        if (plan.userId !== actorId) {
+          throw new ForbiddenException('Solo puedes agregar acciones a tu propio plan de desarrollo.');
+        }
+      } else if (actorRole === 'manager') {
+        const owner = await this.userRepo.findOne({
+          where: { id: plan.userId, tenantId },
+          select: ['id', 'managerId'],
+        });
+        if (!owner) throw new NotFoundException('Colaborador del plan no encontrado');
+        if (owner.managerId !== actorId && plan.userId !== actorId) {
+          throw new ForbiddenException('Solo puedes agregar acciones a planes de tu equipo directo.');
+        }
+      } else {
+        throw new ForbiddenException('Rol no autorizado para agregar acciones de desarrollo.');
+      }
+    }
 
     const action = this.actionRepo.create({
       ...dto,
@@ -664,9 +699,47 @@ export class DevelopmentService {
     return saved;
   }
 
-  async updateAction(tenantId: string, actionId: string, dto: Partial<DevelopmentAction>) {
+  /**
+   * P9 (audit colaborador) — valida ownership del plan antes de modificar
+   * la acción. Fix de IDOR: antes un employee podía PATCH /actions/:id
+   * con id ajeno y editar acciones de PDI de otros. Ahora solo el owner
+   * del plan (o su manager, o admin) puede editar.
+   */
+  async updateAction(
+    tenantId: string,
+    actionId: string,
+    dto: Partial<DevelopmentAction>,
+    actorId?: string,
+    actorRole?: string,
+  ) {
     const action = await this.actionRepo.findOne({ where: { id: actionId, tenantId } });
     if (!action) throw new NotFoundException('Accion no encontrada');
+
+    const hasActorContext =
+      typeof actorRole === 'string' && actorRole.length > 0 &&
+      typeof actorId === 'string' && actorId.length > 0;
+    if (hasActorContext && actorRole !== 'super_admin' && actorRole !== 'tenant_admin') {
+      const plan = await this.planRepo.findOne({ where: { id: action.planId, tenantId } });
+      if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
+
+      if (actorRole === 'employee') {
+        if (plan.userId !== actorId) {
+          throw new ForbiddenException('Solo puedes editar acciones de tu propio plan de desarrollo.');
+        }
+      } else if (actorRole === 'manager') {
+        const owner = await this.userRepo.findOne({
+          where: { id: plan.userId, tenantId },
+          select: ['id', 'managerId'],
+        });
+        if (!owner) throw new NotFoundException('Colaborador del plan no encontrado');
+        if (owner.managerId !== actorId && plan.userId !== actorId) {
+          throw new ForbiddenException('Solo puedes editar acciones de planes de tu equipo directo.');
+        }
+      } else {
+        throw new ForbiddenException('Rol no autorizado para editar acciones de desarrollo.');
+      }
+    }
+
     Object.assign(action, dto);
     const saved = await this.actionRepo.save(action);
     await this.recalculateProgress(action.planId);
@@ -753,15 +826,20 @@ export class DevelopmentService {
           throw new ForbiddenException('Solo puedes completar acciones de tu propio plan de desarrollo.');
         }
       } else if (actorRole === 'manager') {
-        // Manager: only can complete actions of its direct reports
+        // Manager: acciones de su equipo directo O de su propio plan.
+        // P9 audit colaborador — agregamos `|| plan.userId === actorId`
+        // para consistencia con addAction/updateAction: un manager también
+        // es colaborador y puede tener PDI propio. Antes este check
+        // bloqueaba al manager completar acciones de su propio plan,
+        // forzándolo a pedir a un admin que lo haga por él.
         const owner = await this.userRepo.findOne({
           where: { id: plan.userId, tenantId },
           select: ['id', 'managerId'],
         });
         if (!owner) throw new NotFoundException('Colaborador del plan no encontrado');
-        if (owner.managerId !== actorId) {
+        if (owner.managerId !== actorId && plan.userId !== actorId) {
           throw new ForbiddenException(
-            'Solo puedes completar acciones de planes de tu equipo directo. El colaborador debería marcarla como completada él/ella mismo/a.',
+            'Solo puedes completar acciones de planes de tu equipo directo o de tu propio plan.',
           );
         }
       } else {

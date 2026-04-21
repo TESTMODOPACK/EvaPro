@@ -281,6 +281,29 @@ export class UsersService {
       );
     }
 
+    // P9 audit colaborador — employees y external ven una vista REDUCIDA
+    // del directorio. Sin esto, employee podía listar todos los users del
+    // tenant con demographic (gender, birthDate, nationality), seniority,
+    // contractType, rut, hireDate — campos sensibles que otros colegas
+    // no deben ver. La lista sigue siendo útil para buscar a quién dar
+    // feedback/reconocimientos: nombre, email, cargo, departamento.
+    if (callerRole === 'employee' || callerRole === 'external') {
+      qb.select([
+        'user.id',
+        'user.firstName',
+        'user.lastName',
+        'user.email',
+        'user.position',
+        'user.positionId',
+        'user.department',
+        'user.departmentId',
+        'user.role',
+        'user.managerId',
+        'user.isActive',
+        'user.language',
+      ]);
+    }
+
     if (filters?.search) {
       qb.andWhere(
         '(LOWER(user.first_name) LIKE :search OR LOWER(user.last_name) LIKE :search OR LOWER(user.email) LIKE :search)',

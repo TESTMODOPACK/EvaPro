@@ -79,7 +79,13 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/analytics-rotacion': ['tenant_admin'],
   '/dashboard/firmas': ['tenant_admin', 'manager', 'employee'],
   '/dashboard/contratos': ['super_admin', 'tenant_admin'],
-  '/dashboard/organigrama': ['super_admin', 'tenant_admin', 'manager'],
+  // Fix auditoría colaborador (P9) — org-chart es info de directorio,
+  // estándar permitir a todos los roles (BambooHR/Workday/Rippling).
+  '/dashboard/organigrama': ['super_admin', 'tenant_admin', 'manager', 'employee'],
+  // Ruta dinámica /dashboard/desempeno/:userId — mapping necesario para
+  // que `canAccessPage` haga prefix match. El guard en la página maneja
+  // el caso específico de employee intentando ver otro user.
+  '/dashboard/desempeno': ['super_admin', 'tenant_admin', 'manager', 'employee'],
   '/dashboard/analisis-integrado': ['tenant_admin'],
   // Pipeline de leads pre-venta (solo super_admin de Ascenda)
   '/dashboard/leads': ['super_admin'],

@@ -319,7 +319,14 @@ export class DevelopmentController {
     @Request() req: any,
     @Body() dto: any,
   ) {
-    return this.developmentService.addAction(req.user.tenantId, planId, dto);
+    // P9 audit colaborador — pasar actor para validar ownership en service.
+    return this.developmentService.addAction(
+      req.user.tenantId,
+      planId,
+      dto,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Patch('actions/:id')
@@ -331,7 +338,14 @@ export class DevelopmentController {
     @Request() req: any,
     @Body() dto: any,
   ) {
-    return this.developmentService.updateAction(req.user.tenantId, id, dto);
+    // P9 audit colaborador — fix IDOR: pasar actor para validar ownership.
+    return this.developmentService.updateAction(
+      req.user.tenantId,
+      id,
+      dto,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Post('actions/:id/complete')

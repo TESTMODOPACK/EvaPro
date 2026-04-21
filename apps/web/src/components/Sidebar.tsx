@@ -385,9 +385,11 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
         ...(isAdmin ? [
           { href: '/dashboard/plantillas', label: t('nav.templates', 'Plantillas'), icon: icons.templates },
           { href: '/dashboard/mantenedores', label: t('nav.customData', 'Mantenedores'), icon: icons.customData },
-        ] : []),
-        { href: '/dashboard/mi-suscripcion', label: t('nav.subscription', 'Mi Suscripción'), icon: icons.subscription },
-        ...(isAdmin ? [
+          // "Mi Suscripción" expone datos de billing del tenant (facturas,
+          // plan, pagos) — solo admins deben verlo. Antes estaba visible
+          // para todos los roles; employee veía el link pero backend
+          // rechazaba con 403. Fix auditoría colaborador.
+          { href: '/dashboard/mi-suscripcion', label: t('nav.subscription', 'Mi Suscripción'), icon: icons.subscription },
           { href: '/dashboard/contratos', label: 'Contratos', icon: icons.contracts },
         ] : []),
         { href: '/dashboard/perfil', label: 'Mi Perfil', icon: icons.profile },
