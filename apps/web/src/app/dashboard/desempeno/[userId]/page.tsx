@@ -40,6 +40,19 @@ export default function DesempenoPage() {
   const router = useRouter();
   const userId = params.userId as string;
   const token = useAuthStore((s) => s.token);
+  const currentUser = useAuthStore((s) => s.user);
+
+  // Fix auditoría colaborador (P9) — guard frontend defensivo.
+  // El backend ya protege este endpoint (reports.service.ts valida
+  // `role === 'employee' && userId !== targetUserId → 403`), pero sin
+  // este guard el employee cargaba la página y veía errores feos.
+  // Redirige directo a su propio /mi-desempeno si intenta ver otro user.
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === 'employee' && currentUser.userId !== userId) {
+      router.replace('/dashboard/mi-desempeno');
+    }
+  }, [currentUser, userId, router]);
 
   const { data, isLoading } = usePerformanceHistory(userId);
   const { data: cycles } = useCycles();

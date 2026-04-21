@@ -97,9 +97,16 @@ export class UsersController {
     return { deleted: true };
   }
 
-  /** GET /users/org-chart — Hierarchical org chart tree */
+  /** GET /users/org-chart — Hierarchical org chart tree.
+   *
+   * P9 audit colaborador — agregamos 'employee' y 'external' al @Roles.
+   * El org-chart es info de directorio corporativo estándar (BambooHR,
+   * Workday, Rippling permiten a todos verlo). Contiene nombre, cargo,
+   * departamento y jerarquía — campos públicos internos. No expone PII
+   * (no RUT, no email, no demographic).
+   */
   @Get('org-chart')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
   getOrgChart(@Request() req: any) {
     return this.usersService.getOrgChart(req.user.tenantId);
   }

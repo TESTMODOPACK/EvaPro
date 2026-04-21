@@ -106,6 +106,17 @@ export default function UserProfilePage() {
   const toast = useToastStore();
   const currentUser = useAuthStore((s) => s.user);
 
+  // Fix auditoría colaborador (P9) — guard defensivo frontend.
+  // Employee solo puede ver su propio perfil (el backend lo protege
+  // con assertCanAccessUser retornando 404, pero sin este guard la
+  // página carga, pide user, falla con 404 y queda en estado roto).
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === 'employee' && currentUser.userId !== userId) {
+      router.replace('/dashboard/perfil');
+    }
+  }, [currentUser, userId, router]);
+
   const [user, setUser] = useState<UserData | null>(null);
   const [manager, setManager] = useState<UserData | null>(null);
   const [history, setHistory] = useState<PerformanceHistoryEntry[]>([]);
