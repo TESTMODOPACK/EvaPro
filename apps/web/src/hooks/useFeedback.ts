@@ -128,6 +128,24 @@ export function useRejectCheckIn() {
   });
 }
 
+/**
+ * v3.1 — Permite a un participante (manager o employee) proponer un
+ * tema para el 1:1 scheduled. Tras éxito invalida la lista de check-ins
+ * y la query de la agenda mágica de ese check-in específico.
+ */
+export function useAddTopicToCheckIn() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, text }: { id: string; text: string }) =>
+      api.feedback.addTopicToCheckIn(token!, id, text),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] });
+      qc.invalidateQueries({ queryKey: ['feedback', 'checkin', vars.id, 'agenda'] });
+    },
+  });
+}
+
 export function useMeetingLocations() {
   const token = useAuthStore((s) => s.token);
   return useQuery({
