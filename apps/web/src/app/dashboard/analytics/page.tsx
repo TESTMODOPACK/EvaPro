@@ -864,7 +864,10 @@ function AnalyticsPageContent() {
                               <XAxis type="number" domain={[0, 10]} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                               <YAxis type="category" dataKey="department" width={120} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                               <Tooltip content={customTooltip} />
-                              <Bar dataKey="avgScore" name={t('analytics.dept.avgScoreName')} radius={[0, 4, 4, 0]}>
+                              {/* fill en Bar es fallback para Recharts v3 — sin
+                                  él el Bar renderiza negro antes de que los
+                                  Cell apliquen. */}
+                              <Bar dataKey="avgScore" name={t('analytics.dept.avgScoreName')} fill="#6366f1" radius={[0, 4, 4, 0]}>
                                 {chartData.map((d: any, idx: number) => (
                                   <Cell key={idx} fill={isManager && d.isMyDept ? '#C9933A' : '#6366f1'} />
                                 ))}
