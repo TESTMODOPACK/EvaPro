@@ -13,12 +13,31 @@ export function useCheckIns() {
   });
 }
 
+/**
+ * v3.1 — Historial de temas usados en check-ins previos para autocompletar.
+ * Admin ve todo el tenant; manager solo los suyos. StaleTime 5 min: los temas
+ * no cambian tan seguido y evitamos refetch en cada keystroke del combobox.
+ */
+export function useMyTopicsHistory(options?: { enabled?: boolean }) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['feedback', 'my-topics'],
+    queryFn: () => api.feedback.getMyTopicsHistory(token!),
+    enabled: !!token && options?.enabled !== false,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useCreateCheckIn() {
   const token = useAuthStore((s) => s.token);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: any) => api.feedback.createCheckIn(token!, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] });
+      // v3.1 — el nuevo check-in agrega una entrada al historial de temas.
+      qc.invalidateQueries({ queryKey: ['feedback', 'my-topics'] });
+    },
   });
 }
 

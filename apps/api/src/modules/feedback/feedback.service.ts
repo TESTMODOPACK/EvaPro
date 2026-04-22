@@ -449,6 +449,100 @@ export class FeedbackService {
     return saved;
   }
 
+  /**
+   * v3.1 — Retorna el historial agrupado de temas (`topic`) usados en
+   * check-ins, para autocompletar al crear uno nuevo. Se filtra por rol:
+   *
+   *   - super_admin / tenant_admin → todos los check-ins del tenant.
+   *   - manager                    → solo los check-ins donde managerId = userId
+   *                                  (sus propios temas).
+   *   - employee                   → no debería llegar acá (no crea check-ins);
+   *                                  si llega, retorna [].
+   *
+   * Salida: top-20 temas ordenados por `lastUsedAt DESC`. Cada item trae:
+   *   - title       texto del topic
+   *   - usedCount   cuántas veces ese topic apareció
+   *   - lastUsedAt  ISO8601 de la última vez que se usó
+   *   - history     hasta 5 entradas con employeeName + scheduledDate
+   *
+   * Matching case-insensitive sobre `LOWER(topic)` (usuarios tipean con
+   * distinta casing). Ignoramos check-ins `cancelled`/`rejected` para no
+   * proponer temas que nunca se conversaron.
+   */
+  async findMyTopicsHistory(
+    tenantId: string,
+    userId: string,
+    role: string,
+  ): Promise<Array<{
+    title: string;
+    usedCount: number;
+    lastUsedAt: string;
+    history: Array<{ employeeName: string; date: string }>;
+  }>> {
+    if (role === 'employee') return []; // no expone historial a empleados
+
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+
+    const qb = this.checkInRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.employee', 'employee', 'employee.tenant_id = c.tenant_id')
+      .where('c.tenantId = :tenantId', { tenantId })
+      .andWhere('c.status NOT IN (:...blocked)', { blocked: ['cancelled', 'rejected'] });
+
+    if (!isAdmin) {
+      qb.andWhere('c.managerId = :userId', { userId });
+    }
+
+    // Traemos últimos 200 para agrupar en memoria (más simple que SQL pivot;
+    // 200 es suficiente para generar top-20 de temas frecuentes).
+    const rows = await qb.orderBy('c.scheduledDate', 'DESC').take(200).getMany();
+
+    // Agrupar por lowercased topic preservando la primera variante vista
+    // (la más reciente gana el casing del title).
+    const groups = new Map<string, {
+      title: string;
+      usedCount: number;
+      lastUsedAt: string;
+      history: Array<{ employeeName: string; date: string }>;
+    }>();
+
+    for (const ci of rows) {
+      const raw = (ci.topic || '').trim();
+      if (!raw) continue;
+      const key = raw.toLowerCase();
+      const dateIso = (ci.scheduledDate instanceof Date
+        ? ci.scheduledDate
+        : new Date(ci.scheduledDate as any)
+      ).toISOString();
+      const employeeName = ci.employee
+        ? `${ci.employee.firstName} ${ci.employee.lastName}`.trim()
+        : 'Colaborador';
+
+      const existing = groups.get(key);
+      if (existing) {
+        existing.usedCount += 1;
+        // history: mantener sólo las 5 más recientes. Como rows vienen
+        // ordenadas DESC por fecha, la primera en aparecer es la más reciente.
+        if (existing.history.length < 5) {
+          existing.history.push({ employeeName, date: dateIso });
+        }
+        // lastUsedAt ya es el más reciente (primera entrada del grupo).
+      } else {
+        groups.set(key, {
+          title: raw, // conserva el casing del más reciente
+          usedCount: 1,
+          lastUsedAt: dateIso,
+          history: [{ employeeName, date: dateIso }],
+        });
+      }
+    }
+
+    // Ordenar por lastUsedAt DESC y tomar top 20.
+    return Array.from(groups.values())
+      .sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt))
+      .slice(0, 20);
+  }
+
   async findCheckIns(tenantId: string, userId: string, role: string): Promise<CheckIn[]> {
     const isAdminOrManager = role === 'super_admin' || role === 'tenant_admin' || role === 'manager';
     // queryBuilder with tenant guards on every joined relation to prevent

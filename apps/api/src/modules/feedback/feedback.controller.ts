@@ -74,6 +74,21 @@ export class FeedbackController {
     return this.feedbackService.findCheckIns(req.user.tenantId, req.user.userId, req.user.role);
   }
 
+  /**
+   * v3.1 — Historial de temas usados en check-ins previos, para
+   * autocompletar al crear uno nuevo. Admin ve todos los temas del
+   * tenant; manager solo los suyos; employee recibe lista vacía.
+   */
+  @Get('my-topics')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  findMyTopicsHistory(@Request() req: any) {
+    return this.feedbackService.findMyTopicsHistory(
+      req.user.tenantId,
+      req.user.userId,
+      req.user.role,
+    );
+  }
+
   @Patch('checkins/:id')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   updateCheckIn(

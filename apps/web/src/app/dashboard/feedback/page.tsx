@@ -1,12 +1,12 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import ConfirmModal from '@/components/ConfirmModal';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
-import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation } from '@/hooks/useFeedback';
+import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation, useMyTopicsHistory } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useActiveUsersForPicker } from '@/hooks/useUsers';
 import { useDepartments } from '@/hooks/useDepartments';
@@ -339,7 +339,13 @@ function CheckInsTab() {
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
                 {'Tema'}
               </label>
-              <input className="input" type="text" placeholder="Tema del check-in..." value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} style={{ width: '100%' }} />
+              {/* v3.1 — Combobox con historial: sugiere temas previos del usuario
+                  (admin ve del tenant, manager solo los suyos). */}
+              <TopicCombobox
+                value={form.topic}
+                onChange={(t) => setForm({ ...form, topic: t })}
+                placeholder="Tema del check-in..."
+              />
             </div>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
@@ -1439,6 +1445,195 @@ function FeedbackPageContent() {
         {activeTab === 'quick' && <QuickFeedbackTab />}
         {activeTab === 'locations' && isAdminOrManager && <LocationsTab />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * v3.1 — TopicCombobox: input con autocomplete basado en el historial
+ * de temas usados en check-ins previos por este usuario (o del tenant si
+ * es admin). El usuario puede:
+ *   - Escribir libre: crea un tema nuevo.
+ *   - Click en una sugerencia: rellena el input con ese tema.
+ *   - Ver contexto de cada sugerencia: cuántas veces se usó, con quién,
+ *     y cuándo fue la última.
+ *
+ * Funcionamiento:
+ *   - Al enfocar el input, se muestra el dropdown con top-20 temas.
+ *   - Si el usuario tipea, se filtra client-side (case-insensitive).
+ *   - El dropdown se cierra al: blur (con 150ms delay para permitir click
+ *     en las sugerencias), Escape, o click fuera.
+ *   - Si el backend devuelve [] (empleado o tenant sin historial), el input
+ *     funciona como un <input> normal — sin dropdown.
+ *
+ * No usamos una lib externa (Downshift/Combobox) — el alcance es chico.
+ */
+function TopicCombobox({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const { data: topics } = useMyTopicsHistory();
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Filtro case-insensitive por lo que el usuario tipea.
+  const filtered = useMemo(() => {
+    const list = topics || [];
+    const q = value.trim().toLowerCase();
+    if (!q) return list.slice(0, 10);
+    return list
+      .filter((t) => t.title.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [topics, value]);
+
+  // Click afuera → cerrar dropdown.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const showDropdown = open && (topics?.length || 0) > 0 && filtered.length > 0;
+
+  const formatLastUsed = (iso: string): string => {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return '';
+    return d.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+      <input
+        className="input"
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => {
+          if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+          setOpen(true);
+        }}
+        onBlur={() => {
+          // Delay para permitir que un mousedown en el dropdown dispare
+          // onClick antes que el blur cierre el dropdown.
+          closeTimeoutRef.current = setTimeout(() => setOpen(false), 150);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setOpen(false);
+        }}
+        style={{ width: '100%' }}
+        autoComplete="off"
+      />
+      {showDropdown && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 0.25rem)',
+            left: 0,
+            right: 0,
+            maxHeight: '280px',
+            overflowY: 'auto',
+            background: 'var(--surface, #fff)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm, 8px)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            zIndex: 50,
+          }}
+        >
+          <div
+            style={{
+              padding: '0.4rem 0.7rem',
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg-base, #fafaf7)',
+            }}
+          >
+            Temas recientes
+          </div>
+          {filtered.map((t) => {
+            const people = t.history
+              .slice(0, 3)
+              .map((h) => h.employeeName)
+              .filter(Boolean);
+            const peopleStr = people.length > 0
+              ? 'con ' + people.join(', ') + (t.history.length > 3 ? ` y ${t.history.length - 3} más` : '')
+              : '';
+            return (
+              <button
+                key={t.title}
+                type="button"
+                role="option"
+                // Importante: mousedown dispara ANTES de blur → permite
+                // seleccionar sin cerrar el dropdown prematuramente.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(t.title);
+                  setOpen(false);
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '0.55rem 0.75rem',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid var(--border)',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(201,147,58,0.06)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    marginBottom: '0.15rem',
+                  }}
+                >
+                  {t.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: '0.7rem',
+                    color: 'var(--text-muted)',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Usado {t.usedCount} {t.usedCount === 1 ? 'vez' : 'veces'}
+                  {peopleStr ? ' · ' + peopleStr : ''}
+                  {' · último ' + formatLastUsed(t.lastUsedAt)}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
