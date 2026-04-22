@@ -125,11 +125,52 @@ function CheckInsTab() {
   const [ciPage, setCiPage] = useState(1);
   const CI_PAGE_SIZE = 15;
 
-  const sorted = checkIns
+  // v3.1 — Sub-tabs para separar check-ins por rol del usuario en el check-in
+  // y por estado. "Enviadas" = yo soy el manager; "Recibidas" = yo soy el
+  // employee. "Completadas" y "Canceladas" juntan ambos roles.
+  type CiSubTab = 'sent' | 'received' | 'completed' | 'cancelled';
+  const [ciSubTab, setCiSubTab] = useState<CiSubTab>('sent');
+
+  const allSorted = checkIns
     ? [...checkIns].sort((a: any, b: any) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime())
     : [];
+
+  // Aplicar filtro de sub-tab antes de paginar.
+  const matchesSubTab = (ci: any, tab: CiSubTab): boolean => {
+    const openStatus = ci.status === 'scheduled' || ci.status === 'requested';
+    const isMineAsManager = ci.managerId === currentUserId;
+    const isMineAsEmployee = ci.employeeId === currentUserId;
+    switch (tab) {
+      case 'sent':
+        return openStatus && isMineAsManager;
+      case 'received':
+        return openStatus && isMineAsEmployee;
+      case 'completed':
+        return ci.status === 'completed' && (isMineAsManager || isMineAsEmployee);
+      case 'cancelled':
+        return (ci.status === 'cancelled' || ci.status === 'rejected') &&
+          (isMineAsManager || isMineAsEmployee);
+    }
+  };
+
+  // Contadores para los badges (sobre el listado completo, sin paginar).
+  const counts: Record<CiSubTab, number> = {
+    sent: allSorted.filter((ci: any) => matchesSubTab(ci, 'sent')).length,
+    received: allSorted.filter((ci: any) => matchesSubTab(ci, 'received')).length,
+    completed: allSorted.filter((ci: any) => matchesSubTab(ci, 'completed')).length,
+    cancelled: allSorted.filter((ci: any) => matchesSubTab(ci, 'cancelled')).length,
+  };
+
+  const sorted = allSorted.filter((ci: any) => matchesSubTab(ci, ciSubTab));
   const ciTotalPages = Math.max(1, Math.ceil(sorted.length / CI_PAGE_SIZE));
   const pagedCheckIns = sorted.slice((ciPage - 1) * CI_PAGE_SIZE, ciPage * CI_PAGE_SIZE);
+
+  // Reset a página 1 al cambiar de sub-tab.
+  const switchSubTab = (tab: CiSubTab) => {
+    setCiSubTab(tab);
+    setCiPage(1);
+    setExpandedId(null);
+  };
 
   function handleCreate() {
     if (!form.employeeId || !form.scheduledDate || !form.scheduledTime || !form.topic) return;
@@ -456,17 +497,94 @@ function CheckInsTab() {
         </div>
       )}
 
+      {/* v3.1 — Sub-tabs por rol/estado con contadores */}
+      <div
+        role="tablist"
+        aria-label="Filtrar check-ins"
+        style={{
+          display: 'flex',
+          gap: '0.4rem',
+          marginBottom: '1rem',
+          flexWrap: 'wrap',
+          borderBottom: '1px solid var(--border)',
+          paddingBottom: '0.3rem',
+        }}
+      >
+        {([
+          { key: 'sent' as const, label: '📤 Enviadas', hint: 'Reuniones que tú programaste' },
+          { key: 'received' as const, label: '📥 Recibidas', hint: 'Reuniones donde te invitaron' },
+          { key: 'completed' as const, label: '✅ Completadas', hint: 'Reuniones cerradas con minuta' },
+          { key: 'cancelled' as const, label: '✕ Canceladas', hint: 'Anuladas o rechazadas' },
+        ]).map(({ key, label, hint }) => {
+          const active = ciSubTab === key;
+          const count = counts[key];
+          return (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={active}
+              title={hint}
+              onClick={() => switchSubTab(key)}
+              style={{
+                padding: '0.45rem 0.85rem',
+                fontSize: '0.82rem',
+                fontWeight: active ? 700 : 500,
+                color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                background: active ? 'rgba(201,147,58,0.1)' : 'transparent',
+                border: 'none',
+                borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                transition: 'all 0.15s',
+              }}
+            >
+              {label}
+              <span
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  padding: '0.05rem 0.45rem',
+                  borderRadius: '999px',
+                  background: active ? 'var(--accent)' : 'var(--border)',
+                  color: active ? '#fff' : 'var(--text-muted)',
+                  minWidth: '1.4rem',
+                  textAlign: 'center',
+                }}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* List */}
       {isLoading ? (
         <LoadingState message="Cargando check-ins…" />
       ) : sorted.length === 0 ? (
         <div className="card">
           <EmptyState
-            icon="📅"
-            title={t('feedback.noCheckIns')}
-            description={t('feedback.noCheckInsHint')}
-            ctaLabel={canCreateCheckIn ? t('feedback.newCheckIn') : undefined}
-            ctaOnClick={canCreateCheckIn ? () => setShowForm(true) : undefined}
+            icon={ciSubTab === 'sent' ? '📤' : ciSubTab === 'received' ? '📥' : ciSubTab === 'completed' ? '✅' : '✕'}
+            title={
+              ciSubTab === 'sent'
+                ? 'No has enviado invitaciones'
+                : ciSubTab === 'received'
+                  ? 'No tienes invitaciones recibidas'
+                  : ciSubTab === 'completed'
+                    ? 'Aún no tienes check-ins completados'
+                    : 'Sin check-ins cancelados'
+            }
+            description={
+              ciSubTab === 'sent'
+                ? 'Programa tu primer 1:1 con un miembro de tu equipo.'
+                : ciSubTab === 'received'
+                  ? 'Cuando alguien agende un 1:1 contigo, aparecerá aquí.'
+                  : 'Las reuniones cerradas con su minuta aparecerán en esta pestaña.'
+            }
+            ctaLabel={canCreateCheckIn && ciSubTab === 'sent' ? t('feedback.newCheckIn') : undefined}
+            ctaOnClick={canCreateCheckIn && ciSubTab === 'sent' ? () => setShowForm(true) : undefined}
           />
         </div>
       ) : (
@@ -589,26 +707,43 @@ function CheckInsTab() {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {/* v3.1 F1 — Agenda Mágica: deep-link a la página de agenda.
-                      Visible para manager/admin en scheduled; read-only para completed. */}
-                  {hasMagicMeetings && (ci.status === 'scheduled' || ci.status === 'completed') && (
-                    ci.managerId === currentUserId || ci.employeeId === currentUserId || role === 'tenant_admin' || role === 'super_admin'
-                  ) && (
-                    <Link
-                      href={`/dashboard/feedback/${ci.id}/agenda`}
-                      className={ci.status === 'scheduled' ? 'btn-primary' : 'btn-ghost'}
-                      style={{
-                        fontSize: '0.75rem',
-                        padding: '0.3rem 0.65rem',
-                        textDecoration: 'none',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.25rem',
-                      }}
-                    >
-                      ✨ {ci.status === 'scheduled' ? 'Preparar agenda' : 'Ver agenda'}
-                    </Link>
-                  )}
+                  {/* v3.1 F1 — Agenda Mágica: deep-link según rol del usuario.
+                      - Manager del checkin o admin del tenant → "Preparar agenda"
+                        (primary, puede editar).
+                      - Employee del checkin → "Ver agenda" (ghost, read-only).
+                      - Completed → siempre ghost "Ver agenda" para todos. */}
+                  {(() => {
+                    if (!hasMagicMeetings) return null;
+                    if (ci.status !== 'scheduled' && ci.status !== 'completed') return null;
+                    const isCheckinManager = ci.managerId === currentUserId;
+                    const isCheckinEmployee = ci.employeeId === currentUserId;
+                    const isTenantAdmin = role === 'tenant_admin' || role === 'super_admin';
+                    const isParticipantOrAdmin =
+                      isCheckinManager || isCheckinEmployee || isTenantAdmin;
+                    if (!isParticipantOrAdmin) return null;
+
+                    const canPrepare =
+                      ci.status === 'scheduled' && (isCheckinManager || isTenantAdmin);
+                    const className = canPrepare ? 'btn-primary' : 'btn-ghost';
+                    const label = canPrepare ? 'Preparar agenda' : 'Ver agenda';
+
+                    return (
+                      <Link
+                        href={`/dashboard/feedback/${ci.id}/agenda`}
+                        className={className}
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '0.3rem 0.65rem',
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                        }}
+                      >
+                        ✨ {label}
+                      </Link>
+                    );
+                  })()}
                   {/* Manager: Accept a requested check-in */}
                   {ci.status === 'requested' && canCreateCheckIn && ci.managerId === currentUserId && (
                     <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
