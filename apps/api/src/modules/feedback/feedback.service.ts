@@ -1,6 +1,6 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { CheckIn, CheckInStatus } from './entities/checkin.entity';
 import { QuickFeedback, Sentiment } from './entities/quick-feedback.entity';
 import { MeetingLocation } from './entities/meeting-location.entity';
@@ -8,12 +8,32 @@ import { CreateCheckInDto, UpdateCheckInDto, RejectCheckInDto } from './dto/crea
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
 import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
+// v3.1 F1 — Agenda Mágica: lectura de objetivos, reconocimientos + AI opt.
+import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
+import { Recognition } from '../recognition/entities/recognition.entity';
+import { Competency } from '../development/entities/competency.entity';
+import { AiInsightsService } from '../ai-insights/ai-insights.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { EmailService } from '../notifications/email.service';
 import { PushService } from '../notifications/push.service';
 import { buildPushMessage } from '../notifications/push-messages';
 import { AuditService } from '../audit/audit.service';
+
+/**
+ * v3.1 F1 — Versión del generador de la Agenda Mágica. Bump cuando cambie
+ * el shape del jsonb `magicAgenda` para que el frontend pueda detectar
+ * agendas regeneradas vs viejas.
+ */
+const MAGIC_AGENDA_GENERATOR_VERSION = 'v1';
+
+/** Truncado seguro de mensajes largos para previews en la agenda. */
+function truncatePreview(text: string | null | undefined, maxLen = 200): string {
+  if (!text) return '';
+  const t = text.trim();
+  return t.length <= maxLen ? t : t.slice(0, maxLen - 1) + '…';
+}
 
 @Injectable()
 export class FeedbackService {
@@ -30,6 +50,18 @@ export class FeedbackService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    // v3.1 F1 — read-only para snapshot en la agenda mágica.
+    @InjectRepository(Objective)
+    private readonly objectiveRepo: Repository<Objective>,
+    @InjectRepository(Recognition)
+    private readonly recognitionRepo: Repository<Recognition>,
+    @InjectRepository(Competency)
+    private readonly competencyRepo: Repository<Competency>,
+    // v3.1 F1 — opcional (AI suggestions, degradación graceful).
+    @Inject(forwardRef(() => AiInsightsService))
+    private readonly aiInsightsService: AiInsightsService,
+    // v3.1 F1 — para detectar si el tenant tiene plan con AI_INSIGHTS.
+    private readonly subscriptionsService: SubscriptionsService,
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
     private readonly pushService: PushService,
@@ -184,6 +216,13 @@ export class FeedbackService {
       topic: ci.topic, managerId: ci.managerId, employeeId: ci.employeeId,
       rating: ci.rating, actionItemsCount: ci.actionItems?.length || 0,
     }).catch(() => {});
+
+    // v3.1 F1 — Propagar pendientes al próximo 1:1 scheduled (si existe)
+    // entre los mismos 2 usuarios. Fire-and-forget — no bloquea respuesta.
+    this.snapshotPendingForNext(saved).catch((err) =>
+      this.logger.warn(`snapshotPendingForNext (post-complete) failed: ${err?.message}`),
+    );
+
     return saved;
   }
 
@@ -927,5 +966,360 @@ export class FeedbackService {
 
     const buf = await wb.xlsx.writeBuffer();
     return Buffer.from(buf);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // v3.1 F1 — Agenda Mágica de 1:1
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Valida que el caller pueda acceder a la agenda de este check-in.
+   * Rules:
+   *   - Admin (super_admin, tenant_admin) puede ver cualquier check-in del tenant.
+   *   - Manager dueño del check-in (managerId === userId) puede ver/generar.
+   *   - Employee participante puede ver pero NO generar (read-only).
+   *   - Cualquier otro → ForbiddenException.
+   * Retorna el CheckIn con relaciones manager/employee cargadas.
+   */
+  private async assertAccessToCheckinAgenda(
+    tenantId: string,
+    checkinId: string,
+    userId: string,
+    role: string,
+    { requireWrite = false }: { requireWrite?: boolean } = {},
+  ): Promise<CheckIn> {
+    const ci = await this.checkInRepo.findOne({
+      where: { id: checkinId, tenantId },
+      relations: ['manager', 'employee'],
+    });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    const isManager = ci.managerId === userId;
+    const isEmployee = ci.employeeId === userId;
+
+    if (requireWrite) {
+      // Generar/regenerar/editar agenda: solo manager o admin.
+      if (!isAdmin && !isManager) {
+        throw new ForbiddenException(
+          'Solo el manager del check-in o un administrador puede preparar la agenda.',
+        );
+      }
+    } else {
+      // Leer: participante o admin.
+      if (!isAdmin && !isManager && !isEmployee) {
+        throw new ForbiddenException('No tienes acceso a este check-in.');
+      }
+    }
+    return ci;
+  }
+
+  /**
+   * Solo retorna el magicAgenda existente (no regenera). Usado por
+   * GET /feedback/checkins/:id/agenda.
+   */
+  async getMagicAgenda(
+    tenantId: string,
+    checkinId: string,
+    userId: string,
+    role: string,
+  ): Promise<{ magicAgenda: CheckIn['magicAgenda']; carriedOverActionItems: CheckIn['carriedOverActionItems']; hasAi: boolean }> {
+    const ci = await this.assertAccessToCheckinAgenda(tenantId, checkinId, userId, role);
+    // hasAi refleja si el PLAN del tenant incluye AI_INSIGHTS — NO si la
+    // agenda actual tiene sugerencias. El frontend usa este flag para
+    // decidir si mostrar el banner de upgrade vs. el estado "sin sugerencias".
+    // Fail-safe: si el lookup falla, asumimos sin AI (no ofrecemos función).
+    let hasAi = false;
+    try {
+      const sub = await this.subscriptionsService.findByTenantId(tenantId);
+      hasAi = (sub?.plan?.features || []).includes('AI_INSIGHTS');
+    } catch (err: any) {
+      this.logger.warn(
+        `getMagicAgenda: plan lookup failed for tenant ${tenantId.slice(0, 8)}: ${err?.message}`,
+      );
+    }
+    return {
+      magicAgenda: ci.magicAgenda,
+      carriedOverActionItems: ci.carriedOverActionItems || [],
+      hasAi,
+    };
+  }
+
+  /**
+   * Genera la agenda mágica on-demand.
+   *   - Si ya existe y !force → retorna la cacheada (update rápido).
+   *   - Si force → regenera todo (incluye quema de crédito IA si aplica).
+   *
+   * Graceful degradation: si AI_INSIGHTS no está en el plan o la API call
+   * falla, `aiSuggestedTopics = []` y los otros 4 bloques se pueblan igual.
+   */
+  async generateMagicAgenda(
+    tenantId: string,
+    checkinId: string,
+    userId: string,
+    role: string,
+    options: { force?: boolean } = {},
+  ): Promise<CheckIn> {
+    const { force = false } = options;
+    const ci = await this.assertAccessToCheckinAgenda(tenantId, checkinId, userId, role, { requireWrite: true });
+
+    // Resolver features del plan para decidir si llamamos a la IA.
+    // Si falla el lookup, degradamos a "no AI" (seguro).
+    let tenantPlanFeatures: string[] = [];
+    try {
+      const sub = await this.subscriptionsService.findByTenantId(tenantId);
+      tenantPlanFeatures = sub?.plan?.features || [];
+    } catch (err: any) {
+      this.logger.warn(`Failed to resolve plan features for tenant ${tenantId.slice(0, 8)}: ${err?.message}`);
+    }
+
+    // Si ya existe y no es force → retorna el checkin tal cual.
+    if (!force && ci.magicAgenda && ci.magicAgenda.generatorVersion === MAGIC_AGENDA_GENERATOR_VERSION) {
+      return ci;
+    }
+
+    // 1. Pendientes del 1:1 anterior entre el mismo manager y employee.
+    const previousCheckin = await this.checkInRepo.findOne({
+      where: {
+        tenantId,
+        managerId: ci.managerId,
+        employeeId: ci.employeeId,
+        status: CheckInStatus.COMPLETED,
+        id: Not(checkinId),
+      },
+      order: { completedAt: 'DESC' },
+    });
+    const pendingFromPrevious: NonNullable<CheckIn['magicAgenda']>['pendingFromPrevious'] =
+      previousCheckin
+        ? (previousCheckin.actionItems || [])
+            .filter((item) => !item.completed)
+            .map((item) => ({
+              text: item.text,
+              addedByUserId: item.assigneeId || previousCheckin.managerId,
+              addedByName: item.assigneeName,
+              previousCheckinId: previousCheckin.id,
+            }))
+        : [];
+
+    // 2. OKRs activos del employee.
+    const okrs = await this.objectiveRepo.find({
+      where: {
+        tenantId,
+        userId: ci.employeeId,
+        status: In([ObjectiveStatus.ACTIVE, ObjectiveStatus.PENDING_APPROVAL]),
+      },
+      order: { targetDate: 'ASC' },
+      take: 10,
+    });
+    const now = Date.now();
+    const okrSnapshot: NonNullable<CheckIn['magicAgenda']>['okrSnapshot'] = okrs.map((o) => {
+      const daysToTarget =
+        o.targetDate == null
+          ? null
+          : Math.floor((new Date(o.targetDate).getTime() - now) / (1000 * 60 * 60 * 24));
+      return {
+        objectiveId: o.id,
+        title: o.title,
+        progress: o.progress,
+        status: o.status,
+        targetDate: o.targetDate ? new Date(o.targetDate).toISOString().split('T')[0] : null,
+        daysToTarget,
+      };
+    });
+
+    // 3. QuickFeedback dado/recibido por el employee en las últimas 4 semanas.
+    const fourWeeksAgo = new Date();
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+    const feedbacks = await this.quickFeedbackRepo.find({
+      where: [
+        { tenantId, toUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
+        { tenantId, fromUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
+      ],
+      relations: ['fromUser'],
+      order: { createdAt: 'DESC' },
+      take: 10,
+    });
+    const recentFeedback: NonNullable<CheckIn['magicAgenda']>['recentFeedback'] = feedbacks.map((f) => ({
+      feedbackId: f.id,
+      fromUserId: f.fromUserId,
+      fromName: f.fromUser ? `${f.fromUser.firstName} ${f.fromUser.lastName}` : undefined,
+      sentiment: f.sentiment,
+      messagePreview: truncatePreview(f.message),
+      createdAt: f.createdAt.toISOString(),
+    }));
+
+    // 4. Recognitions recibidos por el employee en las últimas 4 semanas.
+    const recognitions = await this.recognitionRepo.find({
+      where: {
+        tenantId,
+        toUserId: ci.employeeId,
+        createdAt: MoreThanOrEqual(fourWeeksAgo),
+      },
+      relations: ['value'],
+      order: { createdAt: 'DESC' },
+      take: 8,
+    });
+    const recentRecognitions: NonNullable<CheckIn['magicAgenda']>['recentRecognitions'] = recognitions.map((r) => ({
+      recognitionId: r.id,
+      valueId: r.valueId,
+      valueName: r.value?.name,
+      messagePreview: truncatePreview(r.message, 140),
+      createdAt: r.createdAt.toISOString(),
+    }));
+
+    // 5. AI-suggested topics — SOLO si el plan tiene AI_INSIGHTS.
+    //    Degradación graceful si falla la API o si el tenant no tiene el plan.
+    const hasAiPlan = tenantPlanFeatures.includes('AI_INSIGHTS');
+    const aiSuggestedTopics: NonNullable<CheckIn['magicAgenda']>['aiSuggestedTopics'] = [];
+    if (hasAiPlan) {
+      try {
+        const insight = await this.aiInsightsService.generateAgendaSuggestions(
+          tenantId,
+          checkinId,
+          {
+            employeeName: ci.employee
+              ? `${ci.employee.firstName} ${ci.employee.lastName}`
+              : 'Colaborador',
+            employeePosition: ci.employee?.position || '',
+            employeeDepartment: ci.employee?.department || '',
+            okrs: okrSnapshot.map((o) => ({
+              title: o.title,
+              progress: o.progress,
+              status: o.status,
+              daysToTarget: o.daysToTarget,
+            })),
+            recentFeedback: recentFeedback.map((f) => ({
+              sentiment: f.sentiment,
+              messagePreview: f.messagePreview,
+              createdAt: f.createdAt,
+            })),
+            recentRecognitions: recentRecognitions.map((r) => ({
+              valueName: r.valueName,
+              messagePreview: r.messagePreview,
+              createdAt: r.createdAt,
+            })),
+            pendingFromPrevious: pendingFromPrevious.map((p) => ({ text: p.text })),
+            checkinTopic: ci.topic,
+          },
+          userId,
+        );
+        const topics = (insight.content?.topics || []) as Array<{
+          topic: string;
+          rationale: string;
+          priority: 'high' | 'med' | 'low';
+        }>;
+        topics.forEach((t, i) => {
+          aiSuggestedTopics.push({
+            id: `${insight.id}:${i}`,
+            topic: t.topic,
+            rationale: t.rationale,
+            priority: t.priority,
+            dismissed: false,
+          });
+        });
+      } catch (err: any) {
+        // No bloquea — solo log + dejar array vacío.
+        this.logger.warn(
+          `generateAgendaSuggestions failed for checkin ${checkinId.slice(0, 8)}: ${err?.message}`,
+        );
+      }
+    }
+
+    // Persistir el snapshot en el checkin.
+    ci.magicAgenda = {
+      pendingFromPrevious,
+      okrSnapshot,
+      recentFeedback,
+      recentRecognitions,
+      aiSuggestedTopics,
+      generatedAt: new Date().toISOString(),
+      generatorVersion: MAGIC_AGENDA_GENERATOR_VERSION,
+    };
+    const saved = await this.checkInRepo.save(ci);
+
+    this.auditService
+      .log(tenantId, userId, 'checkin.agenda_generated', 'checkin', checkinId, {
+        okrs: okrSnapshot.length,
+        feedback: recentFeedback.length,
+        recognitions: recentRecognitions.length,
+        pending: pendingFromPrevious.length,
+        aiTopics: aiSuggestedTopics.length,
+        force,
+      })
+      .catch(() => {});
+
+    return saved;
+  }
+
+  /**
+   * Permite al manager dismissear sugerencias de IA (sin regenerar).
+   * Body: `{ dismissedSuggestionIds: string[] }`.
+   */
+  async patchMagicAgenda(
+    tenantId: string,
+    checkinId: string,
+    userId: string,
+    role: string,
+    body: { dismissedSuggestionIds?: string[] },
+  ): Promise<CheckIn> {
+    const ci = await this.assertAccessToCheckinAgenda(tenantId, checkinId, userId, role, { requireWrite: true });
+    if (!ci.magicAgenda) {
+      throw new BadRequestException('El check-in no tiene una agenda generada todavía.');
+    }
+    const dismissed = new Set(body.dismissedSuggestionIds || []);
+    ci.magicAgenda.aiSuggestedTopics = ci.magicAgenda.aiSuggestedTopics.map((t) =>
+      dismissed.has(t.id) ? { ...t, dismissed: true } : t,
+    );
+    return this.checkInRepo.save(ci);
+  }
+
+  /**
+   * Se invoca internamente al completar un check-in: si quedan actionItems
+   * con `completed=false`, los guarda como `carriedOverActionItems` en el
+   * próximo check-in scheduled entre los mismos 2 usuarios (si existe).
+   * Si no existe próximo check-in scheduled, es no-op (el snapshot quedará
+   * guardado solo cuando se cree uno nuevo — ver generateMagicAgenda que
+   * lee del checkin completado más reciente).
+   */
+  private async snapshotPendingForNext(completedCheckin: CheckIn): Promise<void> {
+    try {
+      const uncompleted = (completedCheckin.actionItems || []).filter((i) => !i.completed);
+      if (uncompleted.length === 0) return;
+
+      const nextCheckin = await this.checkInRepo.findOne({
+        where: {
+          tenantId: completedCheckin.tenantId,
+          managerId: completedCheckin.managerId,
+          employeeId: completedCheckin.employeeId,
+          status: In([CheckInStatus.SCHEDULED, CheckInStatus.REQUESTED]),
+          scheduledDate: MoreThanOrEqual(completedCheckin.completedAt || completedCheckin.scheduledDate),
+        },
+        order: { scheduledDate: 'ASC' },
+      });
+      if (!nextCheckin) return;
+
+      const previousDate = (completedCheckin.completedAt || completedCheckin.scheduledDate || new Date())
+        .toISOString()
+        .split('T')[0];
+
+      const carryItems = uncompleted.map((item) => ({
+        text: item.text,
+        assigneeName: item.assigneeName,
+        dueDate: item.dueDate || null,
+        previousCheckinId: completedCheckin.id,
+        previousCheckinDate: previousDate,
+      }));
+
+      // Append (no overwrite) — si el usuario ya preparó la agenda, los items
+      // se mezclan con los existentes.
+      nextCheckin.carriedOverActionItems = [
+        ...(nextCheckin.carriedOverActionItems || []),
+        ...carryItems,
+      ];
+      await this.checkInRepo.save(nextCheckin);
+    } catch (err: any) {
+      // No bloquea el flujo de completar check-in.
+      this.logger.warn(`snapshotPendingForNext failed: ${err?.message}`);
+    }
   }
 }

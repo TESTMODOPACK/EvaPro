@@ -268,7 +268,8 @@ export type EvaluationAnswers = Record<string, EvaluationAnswerValue>;
 export type AiInsightContent = AiSurveyAnalysis &
   AiPerformanceSummary &
   AiObjectiveSuggestions &
-  AiDevelopmentSuggestions & {
+  AiDevelopmentSuggestions &
+  AiAgendaSuggestions & {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [extra: string]: any;
   };
@@ -301,6 +302,20 @@ export interface AiObjectiveSuggestions {
 
 export interface AiDevelopmentSuggestions {
   actions?: Array<{ title: string; description?: string; actionType?: string }>;
+}
+
+/**
+ * v3.1 F1 — Sugerencias de temas para la Agenda Mágica de 1:1.
+ * Generadas por IA a partir del contexto del empleado (OKRs, feedback
+ * reciente, reconocimientos, historial de 1:1s). Rationale cita la fuente
+ * de datos para evitar que la IA "hallucine" sin base.
+ */
+export interface AiAgendaSuggestions {
+  topics?: Array<{
+    topic: string;
+    rationale: string;
+    priority: 'high' | 'med' | 'low';
+  }>;
 }
 
 // ─── AuditLog.metadata ──────────────────────────────────────────────────────

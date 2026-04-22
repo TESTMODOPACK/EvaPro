@@ -6,7 +6,7 @@
  *   Starter : EVAL_90_180, BASIC_REPORTS
  *   Growth  : all Starter + EVAL_270, OKR, FEEDBACK, CHECKINS, TEMPLATES_CUSTOM, RECOGNITION, ENGAGEMENT_SURVEYS
  *   Pro     : all Growth + EVAL_360, ADVANCED_REPORTS, PDI, NINE_BOX, CALIBRATION, POSTULANTS,
- *             ORG_DEVELOPMENT, SIGNATURES, ANALYTICS_REPORTS, AUDIT_LOG, DEI
+ *             ORG_DEVELOPMENT, SIGNATURES, ANALYTICS_REPORTS, AUDIT_LOG, DEI, MAGIC_MEETINGS
  *   Enterprise: all Pro + AI_INSIGHTS, PUBLIC_API
  */
 export const PlanFeature = {
@@ -39,6 +39,14 @@ export const PlanFeature = {
   // Compliance & Analytics
   AUDIT_LOG: 'AUDIT_LOG',
   DEI: 'DEI',
+
+  // v3.1 — Rituals & coaching
+  // MAGIC_MEETINGS: agenda pre-generada para 1:1 (F1). Usa datos existentes
+  // (OKRs, feedback, reconocimientos) + opcionalmente AI_INSIGHTS para
+  // sugerencias de temas. La feature FUNCIONA sin AI_INSIGHTS — si el tenant
+  // no lo tiene, los 4 bloques de datos se cargan igual y aiSuggestedTopics
+  // queda vacío (degradación graceful).
+  MAGIC_MEETINGS: 'MAGIC_MEETINGS',
 
   // Enterprise
   AI_INSIGHTS: 'AI_INSIGHTS',
@@ -87,6 +95,7 @@ export const PLAN_FEATURES = {
     PlanFeature.ENGAGEMENT_SURVEYS,
     PlanFeature.AUDIT_LOG,
     PlanFeature.DEI,
+    PlanFeature.MAGIC_MEETINGS,
   ],
   enterprise: [
     PlanFeature.EVAL_90_180,
@@ -109,6 +118,7 @@ export const PLAN_FEATURES = {
     PlanFeature.ENGAGEMENT_SURVEYS,
     PlanFeature.AUDIT_LOG,
     PlanFeature.DEI,
+    PlanFeature.MAGIC_MEETINGS,
     PlanFeature.AI_INSIGHTS,
     PlanFeature.PUBLIC_API,
   ],

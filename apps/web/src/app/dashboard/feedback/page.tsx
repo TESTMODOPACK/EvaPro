@@ -16,6 +16,8 @@ import { api } from '@/lib/api';
 import SearchableSelect from '@/components/SearchableSelect';
 import LoadingState from '@/components/LoadingState';
 import EmptyState from '@/components/EmptyState';
+import Link from 'next/link';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 
 type ActiveTab = 'checkins' | 'quick' | 'locations';
 type QuickSubTab = 'received' | 'given';
@@ -77,6 +79,8 @@ function CheckInsTab() {
     rejected: t('feedback.statusRejected'),
   };
 
+  const { hasFeature } = useFeatureAccess();
+  const hasMagicMeetings = hasFeature('MAGIC_MEETINGS');
   const { data: checkIns, isLoading, refetch: refetchCheckIns } = useCheckIns();
   const { data: usersPage } = useActiveUsersForPicker();
   const { data: locations } = useMeetingLocations();
@@ -551,7 +555,27 @@ function CheckInsTab() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {/* v3.1 F1 — Agenda Mágica: deep-link a la página de agenda.
+                      Visible para manager/admin en scheduled; read-only para completed. */}
+                  {hasMagicMeetings && (ci.status === 'scheduled' || ci.status === 'completed') && (
+                    ci.managerId === currentUserId || ci.employeeId === currentUserId || role === 'tenant_admin' || role === 'super_admin'
+                  ) && (
+                    <Link
+                      href={`/dashboard/feedback/${ci.id}/agenda`}
+                      className={ci.status === 'scheduled' ? 'btn-primary' : 'btn-ghost'}
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.3rem 0.65rem',
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      ✨ {ci.status === 'scheduled' ? 'Preparar agenda' : 'Ver agenda'}
+                    </Link>
+                  )}
                   {/* Manager: Accept a requested check-in */}
                   {ci.status === 'requested' && canCreateCheckIn && ci.managerId === currentUserId && (
                     <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}

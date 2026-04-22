@@ -114,9 +114,19 @@ export interface PeerAssignmentData {
 
 export interface CheckInData {
   id: string; tenantId: string; managerId: string; employeeId: string;
-  scheduledDate: string; topic: string; notes: string | null;
-  actionItems: { text: string; completed: boolean }[];
-  status: 'scheduled' | 'completed' | 'cancelled';
+  scheduledDate: string;
+  scheduledTime?: string | null;
+  locationId?: string | null;
+  location?: { id: string; name: string; type: string } | null;
+  topic: string; notes: string | null;
+  minutes?: string | null;
+  rating?: number | null;
+  actionItems: { text: string; completed: boolean; assigneeId?: string; assigneeName?: string; dueDate?: string }[];
+  agendaTopics?: { text: string; addedBy: string; addedByName?: string; addedAt?: string }[];
+  status: 'requested' | 'scheduled' | 'completed' | 'cancelled' | 'rejected';
+  rejectionReason?: string | null;
+  rejectedBy?: string | null;
+  emailSent?: boolean;
   completedAt: string | null; createdAt: string;
   manager?: UserData; employee?: UserData;
 }
@@ -742,6 +752,39 @@ export const api = {
       request<any>(`/feedback/meeting-locations/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
     deleteLocation: (token: string, id: string) =>
       request<void>(`/feedback/meeting-locations/${id}`, { method: "DELETE" }, token),
+
+    // ─── v3.1 F1 — Agenda Mágica de 1:1 ────────────────────────────────
+    /** Retorna el magicAgenda generado (o null si nunca se generó) + carried-over items. */
+    getMagicAgenda: (token: string, checkinId: string) =>
+      request<{
+        magicAgenda: {
+          pendingFromPrevious: Array<{ text: string; addedByUserId: string; addedByName?: string; previousCheckinId: string }>;
+          okrSnapshot: Array<{ objectiveId: string; title: string; progress: number; status: string; targetDate: string | null; daysToTarget: number | null }>;
+          recentFeedback: Array<{ feedbackId: string; fromUserId: string; fromName?: string; sentiment: string; messagePreview: string; createdAt: string }>;
+          recentRecognitions: Array<{ recognitionId: string; valueId: string | null; valueName?: string; messagePreview: string; createdAt: string }>;
+          aiSuggestedTopics: Array<{ id: string; topic: string; rationale: string; priority: 'high' | 'med' | 'low'; dismissed?: boolean }>;
+          generatedAt: string;
+          generatorVersion: string;
+        } | null;
+        carriedOverActionItems: Array<{ text: string; assigneeName?: string; dueDate?: string | null; previousCheckinId: string; previousCheckinDate: string }>;
+        hasAi: boolean;
+      }>(`/feedback/checkins/${checkinId}/agenda`, {}, token),
+
+    /** Genera la agenda on-demand. force=true regenera incluso si ya existe. */
+    generateMagicAgenda: (token: string, checkinId: string, force?: boolean) =>
+      request<CheckInData>(
+        `/feedback/checkins/${checkinId}/agenda/generate`,
+        { method: 'POST', body: JSON.stringify({ force: !!force }) },
+        token,
+      ),
+
+    /** Dismissea sugerencias IA (no borra, solo marca). */
+    patchMagicAgenda: (token: string, checkinId: string, dismissedSuggestionIds: string[]) =>
+      request<CheckInData>(
+        `/feedback/checkins/${checkinId}/agenda`,
+        { method: 'PATCH', body: JSON.stringify({ dismissedSuggestionIds }) },
+        token,
+      ),
   },
 
   objectives: {

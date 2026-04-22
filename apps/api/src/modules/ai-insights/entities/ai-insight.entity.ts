@@ -16,6 +16,12 @@ export enum InsightType {
   CV_ANALYSIS = 'cv_analysis',
   RECRUITMENT_RECOMMENDATION = 'recruitment_recommendation',
   CYCLE_COMPARISON = 'cycle_comparison',
+  /**
+   * v3.1 F1 — sugerencias de temas para una Agenda Mágica de 1:1.
+   * NO asociado a un ciclo (cycleId null). `scopeEntityId` apunta al
+   * checkin.id para dedup/cache.
+   */
+  AGENDA_SUGGESTIONS = 'agenda_suggestions',
 }
 
 @Entity('ai_insights')
@@ -34,8 +40,23 @@ export class AiInsight {
   @Column({ type: 'uuid', name: 'user_id', nullable: true, comment: 'null para análisis de sesgos (nivel ciclo)' })
   userId: string | null;
 
-  @Column({ type: 'uuid', name: 'cycle_id' })
-  cycleId: string;
+  /**
+   * v3.1 F1 — cycle_id ahora es NULLABLE. Insights asociados a un ciclo
+   * de evaluación (summary, bias, etc.) siguen llenándolo; insights con
+   * otro scope (agenda de 1:1, flight risk por user, etc.) usan
+   * `scopeEntityId` y dejan `cycleId = null`.
+   */
+  @Column({ type: 'uuid', name: 'cycle_id', nullable: true })
+  cycleId: string | null;
+
+  /**
+   * v3.1 F1 — ID del recurso al que refiere este insight cuando NO es un
+   * ciclo. Ejemplos de uso: checkin_id para AGENDA_SUGGESTIONS, user_id
+   * para FLIGHT_RISK, recruitment_id para CV_ANALYSIS. Indexado
+   * partialmente (solo filas con scope_entity_id IS NOT NULL).
+   */
+  @Column({ type: 'uuid', name: 'scope_entity_id', nullable: true })
+  scopeEntityId: string | null;
 
   @Column({ type: 'jsonb', default: {} })
   content: AiInsightContent;
