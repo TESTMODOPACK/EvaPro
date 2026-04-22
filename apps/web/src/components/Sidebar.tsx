@@ -348,6 +348,13 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
       title: t('nav.climaSurveys', 'Clima Organizacional'),
       items: [
         { href: '/dashboard/encuestas-clima', label: t('nav.surveys', 'Encuestas de Clima'), icon: icons.surveys },
+        // v3.1 F3 — Ánimo del equipo (solo manager/admin). El registro
+        // individual es via widget en dashboard, no tiene página propia.
+        ...(isAdminOrManager ? [{
+          href: '/dashboard/mood-equipo',
+          label: t('nav.teamMood', 'Ánimo del Equipo'),
+          icon: icons.surveys,
+        }] : []),
       ],
     },
     // ─── Selección de Personal ──────────────────────────────────

@@ -48,6 +48,11 @@ export const PlanFeature = {
   // queda vacío (degradación graceful).
   MAGIC_MEETINGS: 'MAGIC_MEETINGS',
 
+  // v3.1 F3 — Mood tracking (check-in de ánimo diario). Widget en dashboard
+  // + agregados por equipo para manager. Min 3 respuestas para mostrar
+  // agregado (privacidad). Plan mínimo: Growth.
+  MOOD_TRACKING: 'MOOD_TRACKING',
+
   // Enterprise
   AI_INSIGHTS: 'AI_INSIGHTS',
   PUBLIC_API: 'PUBLIC_API',
@@ -73,6 +78,7 @@ export const PLAN_FEATURES = {
     PlanFeature.TEMPLATES_CUSTOM,
     PlanFeature.RECOGNITION,
     PlanFeature.ENGAGEMENT_SURVEYS,
+    PlanFeature.MOOD_TRACKING,
   ],
   pro: [
     PlanFeature.EVAL_90_180,
@@ -96,6 +102,7 @@ export const PLAN_FEATURES = {
     PlanFeature.AUDIT_LOG,
     PlanFeature.DEI,
     PlanFeature.MAGIC_MEETINGS,
+    PlanFeature.MOOD_TRACKING,
   ],
   enterprise: [
     PlanFeature.EVAL_90_180,
@@ -119,6 +126,7 @@ export const PLAN_FEATURES = {
     PlanFeature.AUDIT_LOG,
     PlanFeature.DEI,
     PlanFeature.MAGIC_MEETINGS,
+    PlanFeature.MOOD_TRACKING,
     PlanFeature.AI_INSIGHTS,
     PlanFeature.PUBLIC_API,
   ],
