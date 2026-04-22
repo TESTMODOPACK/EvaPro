@@ -71,70 +71,155 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
           <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('crossAnalysis.quadrantMapNoData')}</p>
         </div>
       )}
-      {scatterData.length >= 2 && (
-        <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-          <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{t('crossAnalysis.quadrantMap')}</h4>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>{t('crossAnalysis.quadrantMapDesc')}</p>
-          <ResponsiveContainer width="100%" height={360}>
-            <ScatterChart margin={{ top: 20, right: 40, bottom: 40, left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" dataKey="x" name={t('crossAnalysis.axisPerformanceShort')} domain={[0, 10]} tick={{ fontSize: 11 }}
-                label={{ value: t('crossAnalysis.axisPerformance'), position: 'bottom', fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis type="number" dataKey="y" name={t('crossAnalysis.axisClimateShort')} domain={[0, 10]} tick={{ fontSize: 11 }}
-                label={{ value: t('crossAnalysis.axisClimate'), angle: -90, position: 'insideLeft', fontSize: 11, fill: '#94a3b8' }} />
-              {/* ZAxis range controla el tamaño de los puntos — antes 80,80
-                  (muy chicos). Los agrandé para que sean más visibles. */}
-              <ZAxis range={[180, 180]} />
-              {/* Líneas de referencia en los umbrales 7.0 — dividen el gráfico
-                  en los 4 cuadrantes (star/burnout/opportunity/critical) de
-                  forma visual. */}
-              <ReferenceLine x={7} stroke="#94a3b8" strokeDasharray="4 4" strokeWidth={1.5}
-                label={{ value: '7.0', position: 'top', fontSize: 10, fill: '#94a3b8' }} />
-              <ReferenceLine y={7} stroke="#94a3b8" strokeDasharray="4 4" strokeWidth={1.5}
-                label={{ value: '7.0', position: 'right', fontSize: 10, fill: '#94a3b8' }} />
-              <Tooltip content={({ payload }: any) => {
-                if (!payload?.[0]) return null;
-                const d = payload[0].payload;
-                const q = QUADRANT_STYLE[d.quadrant];
+      {scatterData.length >= 2 && (() => {
+        // ── Reemplazo del ScatterChart ───────────────────────────────────
+        // El ScatterChart era ilegible cuando los departamentos tienen valores
+        // similares — todos los puntos se agrupaban en una esquina, los labels
+        // se solapaban y los colores de Recharts no respetaban el índice.
+        //
+        // Nuevo diseño: una fila por departamento con dos barras horizontales
+        // (desempeño + clima), un marcador en el umbral 7.0, y badge visible
+        // del cuadrante al lado. Sin Recharts para este componente — CSS puro.
+        //
+        // Ventajas:
+        // 1. Cada dept tiene su espacio — sin overlap.
+        // 2. Valores numéricos siempre visibles (no hay que hacer hover).
+        // 3. El cuadrante aparece como badge con color + ícono — semántica
+        //    preservada sin depender de la posición en un gráfico 2D.
+        // 4. Orden por cuadrante → agrupa stars primero, critical al final.
+
+        // Orden semántico: stars → opportunity → burnout_risk → critical → no_data
+        const quadrantOrder: Record<string, number> = {
+          star: 0, opportunity: 1, burnout_risk: 2, critical: 3, no_data: 4,
+        };
+        const sortedData = [...scatterData].sort((a: any, b: any) =>
+          (quadrantOrder[a.quadrant] ?? 4) - (quadrantOrder[b.quadrant] ?? 4) ||
+          (b.x ?? 0) - (a.x ?? 0),
+        );
+
+        // Color semántico por rango de valor: verde ≥7, amber 5-7, rojo <5.
+        const colorForValue = (v: number) =>
+          v >= 7 ? '#10b981' : v >= 5 ? '#f59e0b' : '#ef4444';
+
+        return (
+          <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+            <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{t('crossAnalysis.quadrantMap')}</h4>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Comparación de desempeño y clima por departamento. El marcador vertical en cada barra muestra el umbral 7.0. Ordenados por cuadrante.
+            </p>
+
+            {/* Leyenda de umbral + escala de color */}
+            <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', marginBottom: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ display: 'inline-block', width: 12, height: 2, background: '#94a3b8', borderStyle: 'dashed' }} />
+                Umbral 7.0
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ display: 'inline-block', width: 12, height: 8, borderRadius: 2, background: '#10b981' }} />
+                ≥ 7.0 (bueno)
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ display: 'inline-block', width: 12, height: 8, borderRadius: 2, background: '#f59e0b' }} />
+                5.0 – 6.9 (medio)
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ display: 'inline-block', width: 12, height: 8, borderRadius: 2, background: '#ef4444' }} />
+                &lt; 5.0 (bajo)
+              </span>
+            </div>
+
+            {/* Filas por departamento */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {sortedData.map((d: any) => {
+                const q = QUADRANT_STYLE[d.quadrant] || QUADRANT_STYLE.no_data;
+                const perfPct = Math.max(0, Math.min(100, (d.x ?? 0) * 10));
+                const climaPct = Math.max(0, Math.min(100, (d.y ?? 0) * 10));
+                const perfColor = colorForValue(d.x ?? 0);
+                const climaColor = colorForValue(d.y ?? 0);
+
                 return (
-                  <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '0.5rem 0.75rem', fontSize: '0.82rem' }}>
-                    <strong>{d.name}</strong><br/>{t('crossAnalysis.axisPerformanceShort')}: {d.x} | {t('crossAnalysis.axisClimateShort')}: {d.y}<br/>
-                    <span style={{ color: q?.color }}>{q?.icon} {t(q?.labelKey)}</span>
+                  <div
+                    key={d.name}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(140px, 180px) 1fr minmax(140px, 180px)',
+                      gap: '1rem',
+                      alignItems: 'center',
+                      padding: '0.75rem',
+                      background: 'var(--bg-surface)',
+                      borderRadius: 'var(--radius-sm, 6px)',
+                      borderLeft: `4px solid ${q.color}`,
+                    }}
+                  >
+                    {/* Dept name */}
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                      {d.name}
+                    </div>
+
+                    {/* Bars — dos filas */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                      {/* Desempeño */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 36px', gap: '0.5rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>Desempeño</span>
+                        <div style={{ position: 'relative', height: 14, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+                          {/* Umbral 7.0 — línea vertical discontinua en 70% */}
+                          <div style={{
+                            position: 'absolute', left: '70%', top: -2, bottom: -2, width: 0,
+                            borderLeft: '2px dashed #94a3b8', zIndex: 2,
+                          }} />
+                          <div style={{
+                            height: '100%', width: `${perfPct}%`, background: perfColor,
+                            borderRadius: 3, transition: 'width 0.3s',
+                          }} />
+                        </div>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: perfColor, textAlign: 'right' }}>
+                          {(d.x ?? 0).toFixed(1)}
+                        </span>
+                      </div>
+                      {/* Clima */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 36px', gap: '0.5rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>Clima</span>
+                        <div style={{ position: 'relative', height: 14, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{
+                            position: 'absolute', left: '70%', top: -2, bottom: -2, width: 0,
+                            borderLeft: '2px dashed #94a3b8', zIndex: 2,
+                          }} />
+                          <div style={{
+                            height: '100%', width: `${climaPct}%`, background: climaColor,
+                            borderRadius: 3, transition: 'width 0.3s',
+                          }} />
+                        </div>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: climaColor, textAlign: 'right' }}>
+                          {(d.y ?? 0).toFixed(1)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Quadrant badge */}
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                      padding: '0.35rem 0.6rem',
+                      background: `${q.color}18`,
+                      borderRadius: 'var(--radius-sm, 6px)',
+                      border: `1px solid ${q.color}40`,
+                      fontSize: '0.78rem', fontWeight: 600, color: q.color,
+                      justifyContent: 'center',
+                    }}>
+                      <span style={{ fontSize: '0.95rem' }}>{q.icon}</span>
+                      <span>{t(q.labelKey)}</span>
+                    </div>
                   </div>
                 );
-              }} />
-              {/* fill en Scatter es fallback para Recharts v3 — sin él los
-                  puntos renderizan negro antes de que los Cell apliquen. */}
-              <Scatter data={scatterData} name="Departamentos" fill={DEPT_COLORS[0]}>
-                {/* Color único por departamento (índice i). Identifica cada
-                    punto visualmente sin necesidad de hover. */}
-                {scatterData.map((d: any, i: number) => <Cell key={i} fill={DEPT_COLORS[i % DEPT_COLORS.length]} />)}
-                {/* Labels con el nombre del dept sobre cada punto — así se ve
-                    la identidad sin tener que pasar el mouse. */}
-                <LabelList
-                  dataKey="name"
-                  position="top"
-                  offset={12}
-                  style={{ fontSize: 10, fontWeight: 600, fill: 'var(--text-secondary)' }}
-                />
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
-          {/* Leyenda de departamentos por color — ayuda a identificar cuando
-              hay muchos puntos cerca y los labels se solapan. */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', fontSize: '0.75rem' }}>
-            {scatterData.map((d: any, i: number) => (
-              <span key={d.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)' }}>
-                <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: DEPT_COLORS[i % DEPT_COLORS.length] }} />
-                {d.name}
-              </span>
-            ))}
+              })}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              <span>{t('crossAnalysis.perfThreshold')}: ≥ 7.0</span>
+              <span>{t('crossAnalysis.engThreshold')}: ≥ 7.0</span>
+            </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            <span>{t('crossAnalysis.perfThreshold')}: ≥ 7.0</span><span>{t('crossAnalysis.engThreshold')}: ≥ 7.0</span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Quadrant Analysis — detailed interpretation */}
       {(departments || []).length > 0 && (() => {
