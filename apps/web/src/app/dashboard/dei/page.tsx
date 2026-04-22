@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { useDemographics, useEquityAnalysis, useGapReport } from '@/hooks/useDei';
 import { useCycles } from '@/hooks/useCycles';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { api } from '@/lib/api';
 
 // ─── Group label maps ──────────────────────────────────────────
@@ -87,8 +86,6 @@ function DataCompletenessBar({ data, t }: { data: Array<{ field: string; percent
 }
 
 export default function DeiPage() {
-  // P11 audit tenant_admin — guard defensivo: backend @Roles(super_admin, tenant_admin, manager).
-  const authorized = useRequireRole(['super_admin', 'tenant_admin', 'manager']);
   const { t } = useTranslation();
   const { data: demo, isLoading: loadingDemo, isError: demoError } = useDemographics();
   const { data: cycles } = useCycles();
@@ -118,9 +115,6 @@ export default function DeiPage() {
     api.dei.getConfig(token).then(setDeiConfig).catch(() => {});
     api.dei.listCorrectiveActions(token).then(setActions).catch(() => {});
   }, [token]);
-
-  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
-  if (!authorized) return null;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>

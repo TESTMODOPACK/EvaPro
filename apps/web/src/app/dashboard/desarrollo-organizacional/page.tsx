@@ -4,7 +4,6 @@ import { PlanGate } from '@/components/PlanGate';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { api } from '@/lib/api';
 import ConfirmModal from '@/components/ConfirmModal';
 import { useDepartments } from '@/hooks/useDepartments';
@@ -68,8 +67,6 @@ function ProgressBar({ value }: { value: number }) {
 // ─── Componente principal ────────────────────────────────────────────────────
 
 function DesarrolloOrganizacionalPageContent() {
-  // P11 audit tenant_admin — guard defensivo: backend org-development.controller @Roles(tenant_admin, manager).
-  const authorized = useRequireRole(['tenant_admin', 'manager']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
@@ -390,8 +387,6 @@ function DesarrolloOrganizacionalPageContent() {
     );
   }
 
-  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
-  if (!authorized) return null;
   if (loading) return <Spinner />;
 
   return (

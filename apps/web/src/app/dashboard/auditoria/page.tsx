@@ -5,7 +5,6 @@ import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 
 /* ─── helpers ─────────────────────────────────────────────────── */
 
@@ -358,9 +357,6 @@ function AiUsageTab() {
 /* ─── Main Audit Page ──────────────────────────────────────── */
 
 function AuditoriaPageContent() {
-  // P11 audit tenant_admin — guard defensivo: backend audit.controller @Roles(super_admin, tenant_admin).
-  // Esta vista muestra el audit del tenant del usuario (cross-tenant solo via super_admin).
-  const authorized = useRequireRole(['super_admin', 'tenant_admin']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role) || '';
@@ -490,9 +486,6 @@ function AuditoriaPageContent() {
       <polyline points="6 9 12 15 18 9" />
     </svg>
   );
-
-  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
-  if (!authorized) return null;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>

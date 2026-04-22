@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Tenant } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { formatCLP } from '@/lib/format';
 import { formatRutInput, validateRut, formatRut } from '@/lib/rut';
 import TenantHealthBadge from '@/components/TenantHealthBadge';
@@ -55,11 +54,6 @@ const autoSlug = (name: string) =>
     .replace(/^-|-$/g, '');
 
 export default function TenantsPage() {
-  // P11 audit tenant_admin — guard defensivo super_admin-only.
-  // `authorized` bloquea el render del contenido antes de que los
-  // useEffect con API calls se ejecuten para usuarios no autorizados.
-  const authorized = useRequireRole(['super_admin']);
-
   const token = useAuthStore((s) => s.token);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -448,9 +442,6 @@ export default function TenantsPage() {
     marginBottom: '0.3rem',
     display: 'block',
   };
-
-  // P11 — bloquea render del contenido sensible hasta confirmar rol.
-  if (!authorized) return null;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1200px' }}>

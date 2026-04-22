@@ -6,7 +6,6 @@ import { useCurrentUser } from '@/hooks/useUsers';
 import { useMySubscription } from '@/hooks/useSubscription';
 import { formatRut, formatRutInput } from '@/lib/rut';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { api } from '@/lib/api';
 import GdprTenantTab from '@/components/GdprTenantTab';
 import PasswordPolicyForm from '@/components/PasswordPolicyForm';
@@ -42,8 +41,6 @@ function Toggle({ value, onChange, size = 'md' }: { value: boolean; onChange: ()
 }
 
 export default function AjustesPage() {
-  // P11 audit tenant_admin — guard defensivo: backend @Roles(super_admin, tenant_admin).
-  const authorized = useRequireRole(['super_admin', 'tenant_admin']);
   const { t } = useTranslation();
   const { data: user, isLoading } = useCurrentUser();
   const { data: sub } = useMySubscription();
@@ -198,9 +195,6 @@ export default function AjustesPage() {
         { id: 'privacidad', label: 'Privacidad y datos', icon: 'M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z' },
         { id: 'seguridad', label: 'Seguridad', icon: 'M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z' },
       ];
-
-  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
-  if (!authorized) return null;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '900px' }}>

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
@@ -19,11 +18,6 @@ const STATUS_LABELS: Record<string, string> = {
 type Tab = 'invoices' | 'stats' | 'config';
 
 export default function FacturacionPage() {
-  // P11 audit tenant_admin — guard defensivo super_admin-only.
-  // Esta página maneja facturación cross-tenant (Ascenda → clientes).
-  // Tenant_admin ve SUS facturas en /dashboard/mi-suscripcion.
-  const authorized = useRequireRole(['super_admin']);
-
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore((s) => s.toast);
   const [tab, setTab] = useState<Tab>('invoices');
@@ -64,8 +58,6 @@ export default function FacturacionPage() {
 
   useEffect(() => { loadData(); }, [token, filterStatus, filterTenant, filterPeriod]);
 
-  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
-  if (!authorized) return null;
   if (loading) return <PageSkeleton cards={4} tableRows={6} />;
 
   const activeSubs = (subs || []).filter((s: any) => s.status === 'active' || s.status === 'trial');
