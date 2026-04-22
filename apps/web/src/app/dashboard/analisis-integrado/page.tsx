@@ -6,7 +6,20 @@ import { useAuthStore } from '@/store/auth.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { api } from '@/lib/api';
 // P8-C: import dinámico de Recharts.
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, Cell, ZAxis } from '@/components/DynamicCharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, Cell, ZAxis, ReferenceLine, LabelList } from '@/components/DynamicCharts';
+
+/**
+ * Paleta de colores por departamento (ScatterChart Mapa de Cuadrantes).
+ * Se aplica secuencialmente a cada dept — el índice i lo identifica visualmente.
+ * Los fondos de cuadrantes siguen usando QUADRANT_STYLE.color para semántica
+ * de performance vs clima. Combinando ambos: color punto = qué departamento,
+ * zona del gráfico = qué cuadrante (star/burnout/opportunity/critical).
+ */
+const DEPT_COLORS = [
+  '#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#14b8a6', '#fb7185', '#ec4899', '#0891b2', '#f472b6', '#84cc16',
+  '#a855f7', '#06b6d4', '#d946ef', '#f97316',
+];
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
 
@@ -62,14 +75,23 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
           <h4 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{t('crossAnalysis.quadrantMap')}</h4>
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>{t('crossAnalysis.quadrantMapDesc')}</p>
-          <ResponsiveContainer width="100%" height={280}>
-            <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
+          <ResponsiveContainer width="100%" height={360}>
+            <ScatterChart margin={{ top: 20, right: 40, bottom: 40, left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" dataKey="x" name={t('crossAnalysis.axisPerformanceShort')} domain={[0, 10]} tick={{ fontSize: 10 }}
-                label={{ value: t('crossAnalysis.axisPerformance'), position: 'bottom', fontSize: 10, fill: '#94a3b8' }} />
-              <YAxis type="number" dataKey="y" name={t('crossAnalysis.axisClimateShort')} domain={[0, 10]} tick={{ fontSize: 10 }}
-                label={{ value: t('crossAnalysis.axisClimate'), angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }} />
-              <ZAxis range={[80, 80]} />
+              <XAxis type="number" dataKey="x" name={t('crossAnalysis.axisPerformanceShort')} domain={[0, 10]} tick={{ fontSize: 11 }}
+                label={{ value: t('crossAnalysis.axisPerformance'), position: 'bottom', fontSize: 11, fill: '#94a3b8' }} />
+              <YAxis type="number" dataKey="y" name={t('crossAnalysis.axisClimateShort')} domain={[0, 10]} tick={{ fontSize: 11 }}
+                label={{ value: t('crossAnalysis.axisClimate'), angle: -90, position: 'insideLeft', fontSize: 11, fill: '#94a3b8' }} />
+              {/* ZAxis range controla el tamaño de los puntos — antes 80,80
+                  (muy chicos). Los agrandé para que sean más visibles. */}
+              <ZAxis range={[180, 180]} />
+              {/* Líneas de referencia en los umbrales 7.0 — dividen el gráfico
+                  en los 4 cuadrantes (star/burnout/opportunity/critical) de
+                  forma visual. */}
+              <ReferenceLine x={7} stroke="#94a3b8" strokeDasharray="4 4" strokeWidth={1.5}
+                label={{ value: '7.0', position: 'top', fontSize: 10, fill: '#94a3b8' }} />
+              <ReferenceLine y={7} stroke="#94a3b8" strokeDasharray="4 4" strokeWidth={1.5}
+                label={{ value: '7.0', position: 'right', fontSize: 10, fill: '#94a3b8' }} />
               <Tooltip content={({ payload }: any) => {
                 if (!payload?.[0]) return null;
                 const d = payload[0].payload;
@@ -81,11 +103,33 @@ function CrossTabContent({ data, t }: { data: any; t: any }) {
                   </div>
                 );
               }} />
-              <Scatter data={scatterData} name="Departamentos">
-                {scatterData.map((d: any, i: number) => <Cell key={i} fill={QUADRANT_STYLE[d.quadrant]?.color || '#94a3b8'} />)}
+              {/* fill en Scatter es fallback para Recharts v3 — sin él los
+                  puntos renderizan negro antes de que los Cell apliquen. */}
+              <Scatter data={scatterData} name="Departamentos" fill={DEPT_COLORS[0]}>
+                {/* Color único por departamento (índice i). Identifica cada
+                    punto visualmente sin necesidad de hover. */}
+                {scatterData.map((d: any, i: number) => <Cell key={i} fill={DEPT_COLORS[i % DEPT_COLORS.length]} />)}
+                {/* Labels con el nombre del dept sobre cada punto — así se ve
+                    la identidad sin tener que pasar el mouse. */}
+                <LabelList
+                  dataKey="name"
+                  position="top"
+                  offset={12}
+                  style={{ fontSize: 10, fontWeight: 600, fill: 'var(--text-secondary)' }}
+                />
               </Scatter>
             </ScatterChart>
           </ResponsiveContainer>
+          {/* Leyenda de departamentos por color — ayuda a identificar cuando
+              hay muchos puntos cerca y los labels se solapan. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', fontSize: '0.75rem' }}>
+            {scatterData.map((d: any, i: number) => (
+              <span key={d.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)' }}>
+                <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: DEPT_COLORS[i % DEPT_COLORS.length] }} />
+                {d.name}
+              </span>
+            ))}
+          </div>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             <span>{t('crossAnalysis.perfThreshold')}: ≥ 7.0</span><span>{t('crossAnalysis.engThreshold')}: ≥ 7.0</span>
           </div>
