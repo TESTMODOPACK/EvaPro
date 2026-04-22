@@ -778,11 +778,27 @@ export const api = {
         hasAi: boolean;
       }>(`/feedback/checkins/${checkinId}/agenda`, {}, token),
 
-    /** Genera la agenda on-demand. force=true regenera incluso si ya existe. */
-    generateMagicAgenda: (token: string, checkinId: string, force?: boolean) =>
+    /** Genera la agenda on-demand.
+     *  - force=true regenera incluso si ya existe (consume IA si includeAi).
+     *  - includeAi=false salta la llamada a Anthropic (NO quema crédito).
+     *    Los 4 bloques de datos (pendientes, OKRs, feedback, reconocimientos)
+     *    se pueblan igual porque son queries SQL gratis.
+     *  - includeAi default true (mantiene comportamiento v3.0 donde IA siempre
+     *    se llamaba si el plan la tenía). */
+    generateMagicAgenda: (
+      token: string,
+      checkinId: string,
+      opts?: { force?: boolean; includeAi?: boolean },
+    ) =>
       request<CheckInData>(
         `/feedback/checkins/${checkinId}/agenda/generate`,
-        { method: 'POST', body: JSON.stringify({ force: !!force }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            force: !!opts?.force,
+            includeAi: opts?.includeAi !== false,
+          }),
+        },
         token,
       ),
 

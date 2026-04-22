@@ -195,8 +195,14 @@ function CheckInsTab() {
             </div>
             <div style={{ minWidth: '150px' }}>
               <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Fecha sugerida (opcional)</label>
-              <input className="input" type="date" style={{ width: '100%' }}
-                value={requestForm.suggestedDate} onChange={(e) => setRequestForm({ ...requestForm, suggestedDate: e.target.value })} />
+              <input
+                className="input"
+                type="date"
+                min={new Date().toISOString().slice(0, 10)}
+                style={{ width: '100%' }}
+                value={requestForm.suggestedDate}
+                onChange={(e) => setRequestForm({ ...requestForm, suggestedDate: e.target.value })}
+              />
             </div>
             <button className="btn-primary" style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem' }}
               disabled={!requestForm.topic.trim() || requestCheckIn.isPending}
@@ -246,20 +252,47 @@ function CheckInsTab() {
               }))}
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-            <div>
-              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                {'Fecha'}
-              </label>
-              <input className="input" type="date" value={form.scheduledDate} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
-                {'Hora'}
-              </label>
-              <input className="input" type="time" value={form.scheduledTime} onChange={(e) => setForm({ ...form, scheduledTime: e.target.value })} style={{ width: '100%' }} />
-            </div>
-          </div>
+          {/* v3.1 — bloquea fechas pasadas. Si el usuario elige hoy, el input
+              de hora también toma min para evitar reuniones ya vencidas.
+              El backend re-valida; esto es UX pura. */}
+          {(() => {
+            const today = new Date().toISOString().slice(0, 10);
+            const isToday = form.scheduledDate === today;
+            const nowHHmm = (() => {
+              const n = new Date();
+              return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+            })();
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                    {'Fecha'}
+                  </label>
+                  <input
+                    className="input"
+                    type="date"
+                    min={today}
+                    value={form.scheduledDate}
+                    onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                    {'Hora'}
+                  </label>
+                  <input
+                    className="input"
+                    type="time"
+                    min={isToday ? nowHHmm : undefined}
+                    value={form.scheduledTime}
+                    onChange={(e) => setForm({ ...form, scheduledTime: e.target.value })}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>

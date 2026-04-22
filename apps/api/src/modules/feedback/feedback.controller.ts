@@ -187,14 +187,19 @@ export class FeedbackController {
   generateMagicAgenda(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
-    @Body() body?: { force?: boolean },
+    @Body() body?: { force?: boolean; includeAi?: boolean },
   ) {
     return this.feedbackService.generateMagicAgenda(
       req.user.tenantId,
       id,
       req.user.userId,
       req.user.role,
-      { force: !!body?.force },
+      {
+        force: !!body?.force,
+        // Default true (conservamos comportamiento previo); solo si el
+        // frontend manda includeAi=false saltamos la IA — ahorra crédito.
+        includeAi: body?.includeAi !== false,
+      },
     );
   }
 

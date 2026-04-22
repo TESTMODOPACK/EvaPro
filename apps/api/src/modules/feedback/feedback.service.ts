@@ -70,6 +70,67 @@ export class FeedbackService {
 
   // ─── Check-ins ────────────────────────────────────────────────────────────
 
+  /**
+   * v3.1 — Valida que una combinación scheduledDate + scheduledTime no
+   * apunte al pasado. Se usa al crear, aceptar solicitudes y reprogramar.
+   *
+   * - Si `scheduledTime` viene (HH:mm), valida timestamp completo con una
+   *   tolerancia de 60 segundos (para evitar falsos negativos por el lag
+   *   entre click del usuario y llegada al servidor).
+   * - Si no viene hora, valida solo la fecha (no puede ser anterior a hoy).
+   *
+   * Lanza BadRequestException con mensaje específico en español.
+   */
+  private assertFutureScheduledDatetime(
+    scheduledDate: string | Date | undefined,
+    scheduledTime?: string | null,
+  ): void {
+    if (!scheduledDate) return; // otros validators manejan "faltante"
+
+    // Normalizar fecha a YYYY-MM-DD usando UTC para evitar que la zona
+    // horaria del server cambie el día.
+    const dateStr = typeof scheduledDate === 'string'
+      ? scheduledDate.slice(0, 10)
+      : (() => {
+          const d = scheduledDate as Date;
+          const y = d.getUTCFullYear();
+          const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(d.getUTCDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        })();
+
+    const now = new Date();
+    const todayStr = (() => {
+      const y = now.getUTCFullYear();
+      const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(now.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    })();
+
+    if (dateStr < todayStr) {
+      throw new BadRequestException(
+        'La fecha del check-in no puede ser anterior a hoy.',
+      );
+    }
+
+    // Si la fecha es estrictamente futura, no validamos hora.
+    if (dateStr > todayStr) return;
+
+    // Fecha = hoy. Si hay hora, validar que sea futura (con 60s de tolerancia).
+    if (scheduledTime) {
+      const [hh, mm] = scheduledTime.split(':').map(Number);
+      if (Number.isFinite(hh) && Number.isFinite(mm)) {
+        const scheduled = new Date(now);
+        scheduled.setHours(hh, mm, 0, 0);
+        if (scheduled.getTime() < now.getTime() - 60_000) {
+          throw new BadRequestException(
+            'La hora del check-in ya pasó. Programa una hora futura.',
+          );
+        }
+      }
+    }
+  }
+
   async createCheckIn(tenantId: string, managerId: string, role: string, dto: CreateCheckInDto): Promise<CheckIn> {
     // Managers can only create check-ins with their direct reports
     // Admins (super_admin, tenant_admin) are exempt from this restriction
@@ -87,6 +148,11 @@ export class FeedbackService {
         );
       }
     }
+
+    // v3.1 — validar que la fecha/hora sean futuras. Un 1:1 no puede
+    // programarse en el pasado. Si se provee hora, validamos fecha+hora;
+    // si no, validamos solo fecha (permitiendo programar "hoy sin hora").
+    this.assertFutureScheduledDatetime(dto.scheduledDate, dto.scheduledTime);
 
     const ci = this.checkInRepo.create({
       tenantId,
@@ -152,6 +218,16 @@ export class FeedbackService {
   async updateCheckIn(tenantId: string, id: string, dto: UpdateCheckInDto): Promise<CheckIn> {
     const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
+
+    // v3.1 — si se reprograma (cambia date y/o time), validar que no quede
+    // en el pasado. Merge con lo existente para validar con la combinación
+    // final, no solo lo que llega en el DTO.
+    if (dto.scheduledDate !== undefined || dto.scheduledTime !== undefined) {
+      const mergedDate = dto.scheduledDate ?? ci.scheduledDate;
+      const mergedTime = dto.scheduledTime !== undefined ? dto.scheduledTime : ci.scheduledTime;
+      this.assertFutureScheduledDatetime(mergedDate as any, mergedTime);
+    }
+
     if (dto.topic !== undefined) ci.topic = dto.topic;
     if (dto.notes !== undefined) ci.notes = dto.notes;
     if (dto.scheduledDate !== undefined) ci.scheduledDate = new Date(dto.scheduledDate) as any;
@@ -324,6 +400,12 @@ export class FeedbackService {
     } else if (ci.managerId !== managerId) {
       throw new ForbiddenException('Solo el encargado asignado puede aceptar esta solicitud');
     }
+
+    // v3.1 — validar fecha/hora futuras. Si el manager ajusta fecha al
+    // aceptar, usamos los valores nuevos; si no, los existentes.
+    const finalDate = data?.scheduledDate ?? ci.scheduledDate;
+    const finalTime = data?.scheduledTime ?? ci.scheduledTime;
+    this.assertFutureScheduledDatetime(finalDate as any, finalTime);
 
     // Atomic update to prevent double-accept race condition
     const updateResult = await this.checkInRepo.update(
@@ -1058,9 +1140,13 @@ export class FeedbackService {
     checkinId: string,
     userId: string,
     role: string,
-    options: { force?: boolean } = {},
+    options: { force?: boolean; includeAi?: boolean } = {},
   ): Promise<CheckIn> {
-    const { force = false } = options;
+    // v3.1 — `includeAi` (default true) controla si se quema crédito IA.
+    // Si el caller (frontend) desmarca el checkbox, pasamos false y saltamos
+    // la llamada a Anthropic aunque el plan tenga AI_INSIGHTS. Los otros
+    // 4 bloques de datos SQL se pueblan igual (son gratis).
+    const { force = false, includeAi = true } = options;
     const ci = await this.assertAccessToCheckinAgenda(tenantId, checkinId, userId, role, { requireWrite: true });
 
     // Resolver features del plan para decidir si llamamos a la IA.
@@ -1171,7 +1257,10 @@ export class FeedbackService {
     //    Degradación graceful si falla la API o si el tenant no tiene el plan.
     const hasAiPlan = tenantPlanFeatures.includes('AI_INSIGHTS');
     const aiSuggestedTopics: NonNullable<CheckIn['magicAgenda']>['aiSuggestedTopics'] = [];
-    if (hasAiPlan) {
+    // Solo llamamos a IA si el plan la soporta Y el caller lo pidió
+    // explícitamente (includeAi). Si el usuario desmarca el checkbox
+    // "Incluir sugerencias IA", ahorramos el crédito.
+    if (hasAiPlan && includeAi) {
       try {
         const insight = await this.aiInsightsService.generateAgendaSuggestions(
           tenantId,

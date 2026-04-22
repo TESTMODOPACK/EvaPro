@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PlanGate } from '@/components/PlanGate';
 import LoadingState from '@/components/LoadingState';
 import EmptyState from '@/components/EmptyState';
+import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import MagicAgendaCard from '@/components/feedback/MagicAgendaCard';
 import AiSuggestionsCard, { type AiSuggestion } from '@/components/feedback/AiSuggestionsCard';
 import CheckInCompletionModal from '@/components/feedback/CheckInCompletionModal';
@@ -50,9 +51,14 @@ function AgendaPageContent() {
   const generate = useGenerateMagicAgenda();
   const patch = usePatchMagicAgenda();
   const addTopic = useAddTopicToCheckIn();
+  const aiQuota = useAiQuota();
 
   const [completionOpen, setCompletionOpen] = useState(false);
   const [newTopicText, setNewTopicText] = useState('');
+  // v3.1 — checkbox "Incluir sugerencias IA" antes de generar. Default true
+  // si el plan tiene IA y hay créditos; false si está bloqueado (no sirve
+  // marcarlo cuando no se puede consumir).
+  const [includeAi, setIncludeAi] = useState(true);
 
   const checkin = useMemo(
     () => (checkIns || []).find((ci: any) => ci.id === checkinId),
@@ -131,16 +137,24 @@ function AgendaPageContent() {
   const hasAi = !!agendaData?.hasAi;
   const neverGenerated = !magicAgenda;
 
+  // v3.1 — `includeAi` efectivo: se respeta la preferencia del usuario
+  // SOLO si el plan tiene IA y hay créditos. Si no, forzamos false para
+  // no hacer una llamada que el backend rechazará igual.
+  const effectiveIncludeAi =
+    !!hasAi && !aiQuota.isBlocked && includeAi;
+
   const handleGenerate = (force: boolean) => {
     if (!canGenerate) {
       toast.error('Solo el manager del check-in o un admin puede generar la agenda.');
       return;
     }
     generate.mutate(
-      { checkinId, force },
+      { checkinId, force, includeAi: effectiveIncludeAi },
       {
         onSuccess: () => {
-          toast.success(force ? 'Agenda regenerada con éxito.' : 'Agenda generada con éxito.');
+          const msgBase = force ? 'Agenda regenerada con éxito.' : 'Agenda generada con éxito.';
+          const suffix = hasAi && !effectiveIncludeAi ? ' (sin sugerencias IA)' : '';
+          toast.success(msgBase + suffix);
           refetch();
         },
         onError: (err: any) => {
@@ -270,40 +284,90 @@ function AgendaPageContent() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {canGenerate && !isCompleted && !isCancelled && (
-            <>
-              {neverGenerated ? (
-                <button
-                  className="btn-primary"
-                  onClick={() => handleGenerate(false)}
-                  disabled={generate.isPending}
-                >
-                  {generate.isPending ? 'Generando…' : '✨ Generar agenda'}
-                </button>
-              ) : (
-                <button
-                  className="btn-ghost"
-                  onClick={() => handleGenerate(true)}
-                  disabled={generate.isPending}
-                  style={{ fontSize: '0.82rem' }}
-                >
-                  {generate.isPending ? 'Regenerando…' : '↻ Regenerar agenda'}
-                </button>
-              )}
-            </>
-          )}
-          {canGenerate && !isCompleted && !isCancelled && !neverGenerated && (
-            <button
-              className="btn-primary"
-              onClick={() => setCompletionOpen(true)}
-              style={{ fontSize: '0.85rem' }}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+          {/* v3.1 — Checkbox "Incluir sugerencias IA": solo para managers/admin
+              generando/regenerando, cuando el plan tiene IA. */}
+          {canGenerate && !isCompleted && !isCancelled && hasAi && (
+            <label
+              title={
+                aiQuota.isBlocked
+                  ? 'Tu tenant no tiene créditos IA disponibles este período.'
+                  : 'Consume 1 crédito IA del plan Enterprise. Desmarca si solo quieres los 4 bloques de datos.'
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontSize: '0.76rem',
+                color: aiQuota.isBlocked ? 'var(--text-muted)' : 'var(--text-secondary)',
+                cursor: aiQuota.isBlocked ? 'not-allowed' : 'pointer',
+                padding: '0.3rem 0.6rem',
+                borderRadius: 'var(--radius-sm, 6px)',
+                background: includeAi && !aiQuota.isBlocked ? 'rgba(124,58,237,0.06)' : 'transparent',
+                border: '1px solid ' + (includeAi && !aiQuota.isBlocked ? 'rgba(124,58,237,0.2)' : 'var(--border)'),
+              }}
             >
-              ▶ Iniciar 1:1
-            </button>
+              <input
+                type="checkbox"
+                checked={includeAi && !aiQuota.isBlocked}
+                disabled={aiQuota.isBlocked || generate.isPending}
+                onChange={(e) => setIncludeAi(e.target.checked)}
+                style={{ accentColor: '#7c3aed' }}
+              />
+              ✨ Incluir sugerencias IA
+              {aiQuota.isBlocked && (
+                <span style={{ fontSize: '0.68rem', color: 'var(--danger)', fontWeight: 600 }}>
+                  (sin créditos)
+                </span>
+              )}
+              {!aiQuota.isBlocked && (
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  (1 crédito)
+                </span>
+              )}
+            </label>
           )}
+
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {canGenerate && !isCompleted && !isCancelled && (
+              <>
+                {neverGenerated ? (
+                  <button
+                    className="btn-primary"
+                    onClick={() => handleGenerate(false)}
+                    disabled={generate.isPending}
+                  >
+                    {generate.isPending ? 'Generando…' : '✨ Generar agenda'}
+                  </button>
+                ) : (
+                  <button
+                    className="btn-ghost"
+                    onClick={() => handleGenerate(true)}
+                    disabled={generate.isPending}
+                    style={{ fontSize: '0.82rem' }}
+                  >
+                    {generate.isPending ? 'Regenerando…' : '↻ Regenerar agenda'}
+                  </button>
+                )}
+              </>
+            )}
+            {canGenerate && !isCompleted && !isCancelled && !neverGenerated && (
+              <button
+                className="btn-primary"
+                onClick={() => setCompletionOpen(true)}
+                style={{ fontSize: '0.85rem' }}
+              >
+                ▶ Iniciar 1:1
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* v3.1 — Barra de quota IA: visible solo si el plan tiene AI_INSIGHTS
+          y quien puede generar (manager/admin). El componente se auto-oculta
+          si el tenant no tiene AI_INSIGHTS. */}
+      {canGenerate && <AiQuotaBar />}
 
       {/* If never generated and user isn't allowed to generate, show empty state. */}
       {neverGenerated && !canGenerate && (
