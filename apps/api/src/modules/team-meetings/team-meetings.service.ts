@@ -231,9 +231,16 @@ export class TeamMeetingsService {
     role: string,
     dto: UpdateTeamMeetingDto,
   ): Promise<TeamMeeting> {
+    // IMPORTANTE — NO cargar `relations: ['participants']` acá. Si
+    // cargamos la relación OneToMany y después llamamos `meetingRepo.save(m)`,
+    // TypeORM intenta "reconciliar" los participants en memoria con la BD:
+    //   - Para los borrados vía participantRepo.delete(), trata de
+    //     desasociarlos con UPDATE SET meeting_id = NULL → explota el
+    //     NOT NULL constraint.
+    // Fix: tratar a la meeting como entity plana y manejar participants
+    // con su propio repo (consultas independientes para el diff).
     const m = await this.meetingRepo.findOne({
       where: { id: meetingId, tenantId },
-      relations: ['participants'],
     });
     if (!m) throw new NotFoundException('Reunión no encontrada');
     const isAdmin = role === 'super_admin' || role === 'tenant_admin';
@@ -257,15 +264,22 @@ export class TeamMeetingsService {
     if (dto.scheduledTime !== undefined) m.scheduledTime = dto.scheduledTime || null;
     if (dto.locationId !== undefined) m.locationId = dto.locationId || null;
 
-    // Si se cambian participantes: diff add/remove. No tocamos los que ya
-    // aceptaron/rechazaron; solo agregamos nuevos invited y eliminamos
-    // los que se excluyeron. El organizer nunca se toca.
+    // Si se cambian participantes: diff add/remove con un query fresco
+    // al participantRepo (NO usamos m.participants porque m no tiene la
+    // relación cargada — intencional, ver nota arriba). No tocamos los
+    // que ya aceptaron/rechazaron; solo agregamos nuevos invited y
+    // eliminamos los que se excluyeron. El organizer nunca se toca.
     if (dto.participantIds !== undefined) {
+      const currentParts = await this.participantRepo.find({
+        where: { meetingId: m.id },
+        select: ['id', 'userId'],
+      });
+      const currentUserIds = new Set(currentParts.map((p) => p.userId));
       const desired = new Set(dto.participantIds.filter((id) => id !== m.organizerId));
-      const current = new Set((m.participants || []).map((p) => p.userId));
-      const toAdd = Array.from(desired).filter((id) => !current.has(id));
-      const toRemove = (m.participants || [])
-        .filter((p) => p.userId !== m.organizerId && !desired.has(p.userId));
+      const toAdd = Array.from(desired).filter((id) => !currentUserIds.has(id));
+      const toRemove = currentParts.filter(
+        (p) => p.userId !== m.organizerId && !desired.has(p.userId),
+      );
 
       if (toAdd.length > 0) {
         const users = await this.userRepo.find({
