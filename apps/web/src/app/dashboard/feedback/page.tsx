@@ -1695,12 +1695,39 @@ function TeamMeetingsTab() {
   });
 
   const allUsers = (usersPage as any)?.data || [];
-  const selectableUsers = allUsers.filter((u: any) => u.id !== currentUserId && u.isActive);
+  const baseSelectable = allUsers.filter((u: any) => u.id !== currentUserId && u.isActive);
+  const { departments: tmDepts } = useDepartments();
 
-  const resetForm = () => setForm({
-    title: '', description: '', scheduledDate: '', scheduledTime: '',
-    locationId: '', participantIds: [],
+  // v3.1 — Filtros de búsqueda en el multi-select de participantes
+  // (búsqueda por nombre/cargo + filtro por departamento). Reset al
+  // cerrar el form.
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [participantDeptFilter, setParticipantDeptFilter] = useState('');
+
+  // Lista filtrada + selected para mantener a los ya elegidos visibles
+  // aunque no matcheen los filtros actuales (UX clave: el usuario puede
+  // cambiar filtros sin perder a los que ya marcó).
+  const selectableUsers = baseSelectable.filter((u: any) => {
+    if (form.participantIds.includes(u.id)) return true; // ya seleccionado → siempre visible
+    if (participantDeptFilter && u.department !== participantDeptFilter) return false;
+    if (participantSearch) {
+      const q = participantSearch.toLowerCase();
+      const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+      const pos = (u.position || '').toLowerCase();
+      const dept = (u.department || '').toLowerCase();
+      if (!name.includes(q) && !pos.includes(q) && !dept.includes(q)) return false;
+    }
+    return true;
   });
+
+  const resetForm = () => {
+    setForm({
+      title: '', description: '', scheduledDate: '', scheduledTime: '',
+      locationId: '', participantIds: [],
+    });
+    setParticipantSearch('');
+    setParticipantDeptFilter('');
+  };
 
   const handleCreate = () => {
     if (!form.title.trim() || !form.scheduledDate || form.participantIds.length === 0) return;
@@ -1821,9 +1848,48 @@ function TeamMeetingsTab() {
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
                 Participantes ({form.participantIds.length} seleccionados) *
               </label>
-              <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm,6px)', padding: '0.5rem' }}>
+
+              {/* v3.1 — Filtros de búsqueda del multi-select */}
+              <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Buscar por nombre, cargo o departamento…"
+                  value={participantSearch}
+                  onChange={(e) => setParticipantSearch(e.target.value)}
+                  style={{ flex: '1 1 240px', fontSize: '0.82rem' }}
+                />
+                <select
+                  className="input"
+                  value={participantDeptFilter}
+                  onChange={(e) => setParticipantDeptFilter(e.target.value)}
+                  style={{ flex: '0 1 200px', fontSize: '0.82rem' }}
+                >
+                  <option value="">Todos los departamentos</option>
+                  {tmDepts.map((d: string) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                {(participantSearch || participantDeptFilter) && (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => { setParticipantSearch(''); setParticipantDeptFilter(''); }}
+                    style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
+                    title="Limpiar filtros"
+                  >
+                    ✕ Limpiar
+                  </button>
+                )}
+              </div>
+
+              <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm,6px)', padding: '0.5rem' }}>
                 {selectableUsers.length === 0 ? (
-                  <div style={{ padding: '0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>No hay colaboradores activos disponibles.</div>
+                  <div style={{ padding: '0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    {baseSelectable.length === 0
+                      ? 'No hay colaboradores activos disponibles.'
+                      : 'Ningún colaborador coincide con los filtros.'}
+                  </div>
                 ) : (
                   selectableUsers.map((u: any) => {
                     const checked = form.participantIds.includes(u.id);
@@ -1851,6 +1917,9 @@ function TeamMeetingsTab() {
                 )}
               </div>
               <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.3rem 0 0' }}>
+                {(participantSearch || participantDeptFilter)
+                  ? `Mostrando ${selectableUsers.length} de ${baseSelectable.length} colaboradores — los ya seleccionados permanecen visibles aunque no coincidan con los filtros. `
+                  : ''}
                 Tú quedas incluido automáticamente como organizador.
               </p>
             </div>
