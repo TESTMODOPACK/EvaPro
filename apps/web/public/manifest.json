@@ -2,7 +2,7 @@
   "name": "EVA360 — Gestión de Desempeño",
   "short_name": "EVA360",
   "description": "Plataforma de evaluaciones de desempeño, feedback, objetivos y reconocimientos por Ascenda.",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "scope": "/",
   "id": "eva360-app",
   "display": "standalone",

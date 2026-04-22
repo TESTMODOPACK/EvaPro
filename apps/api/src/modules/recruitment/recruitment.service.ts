@@ -2,8 +2,10 @@ import {
   Injectable, NotFoundException, BadRequestException,
   ForbiddenException, Logger,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { DataSource, Repository, In, LessThan } from 'typeorm';
+import { runWithCronLock } from '../../common/utils/cron-lock';
 import { RecruitmentProcess, ProcessStatus } from './entities/recruitment-process.entity';
 import { RecruitmentCandidate, CandidateStage } from './entities/recruitment-candidate.entity';
 import { RecruitmentEvaluator } from './entities/recruitment-evaluator.entity';
@@ -34,7 +36,151 @@ export class RecruitmentService {
     @InjectRepository(Position) private readonly positionRepo: Repository<Position>,
     private readonly aiInsightsService: AiInsightsService,
     private readonly auditService: AuditService,
+    private readonly dataSource: DataSource,
   ) {}
+
+  // ─── Date & status validators (v3.1 — date flow rules) ──────────────────
+
+  /**
+   * Fecha de "hoy" en UTC (00:00) usada para comparar contra columnas
+   * `date` de Postgres. Las columnas `date` NO tienen timezone, así que
+   * comparamos solo por día. Convertimos ambos a string YYYY-MM-DD.
+   */
+  private todayYmd(): string {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(now.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  /**
+   * Normaliza un valor de fecha a string YYYY-MM-DD (o null).
+   * TypeORM retorna columnas `date` como string en algunos drivers y Date
+   * en otros — normalizamos acá.
+   */
+  private toYmd(d: Date | string | null | undefined): string | null {
+    if (!d) return null;
+    if (typeof d === 'string') {
+      // Acepta "YYYY-MM-DD" o ISO; toma solo el día.
+      return d.length >= 10 ? d.slice(0, 10) : d;
+    }
+    try {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Valida coherencia básica: startDate <= endDate. Lanza si falla.
+   * Se llama tanto en create como en update, con los valores ya
+   * mergeados (DTO sobre los existentes).
+   */
+  private assertCoherentDates(
+    startDate: Date | string | null | undefined,
+    endDate: Date | string | null | undefined,
+  ): void {
+    const s = this.toYmd(startDate);
+    const e = this.toYmd(endDate);
+    if (s && e && s > e) {
+      throw new BadRequestException(
+        'La fecha de inicio no puede ser posterior a la fecha de término.',
+      );
+    }
+  }
+
+  /**
+   * Máquina de transiciones de estado para RecruitmentProcess.
+   * - DRAFT → ACTIVE: exige startDate, endDate y endDate >= hoy.
+   * - ACTIVE → COMPLETED | CLOSED: libre.
+   * - ACTIVE → DRAFT: BLOQUEADO (no se retrocede).
+   * - COMPLETED | CLOSED → ACTIVE: permitido (reabrir). Exige endDate >= hoy
+   *   (o pedir una nueva). Marca autoClosed=false.
+   * - COMPLETED ↔ CLOSED: BLOQUEADO (reabrir primero).
+   * - Misma status → no-op (permitido, sin efectos).
+   *
+   * Nota: super_admin y tenant_admin comparten estas reglas — son reglas
+   * de negocio, no de permisos. El control de permisos se hace en el
+   * controller con @Roles.
+   */
+  private assertValidTransition(
+    from: ProcessStatus,
+    to: ProcessStatus,
+    mergedStart: Date | string | null,
+    mergedEnd: Date | string | null,
+  ): void {
+    if (from === to) return; // no-op
+
+    const today = this.todayYmd();
+
+    // DRAFT → ACTIVE
+    if (from === ProcessStatus.DRAFT && to === ProcessStatus.ACTIVE) {
+      if (!mergedStart || !mergedEnd) {
+        throw new BadRequestException(
+          'Para activar el proceso debes definir fecha de inicio y fecha de término.',
+        );
+      }
+      if ((this.toYmd(mergedEnd) ?? '') < today) {
+        throw new BadRequestException(
+          'No se puede activar un proceso cuya fecha de término ya venció.',
+        );
+      }
+      return;
+    }
+
+    // ACTIVE → COMPLETED | CLOSED
+    if (
+      from === ProcessStatus.ACTIVE &&
+      (to === ProcessStatus.COMPLETED || to === ProcessStatus.CLOSED)
+    ) {
+      return;
+    }
+
+    // Reopen: COMPLETED | CLOSED → ACTIVE
+    if (
+      (from === ProcessStatus.COMPLETED || from === ProcessStatus.CLOSED) &&
+      to === ProcessStatus.ACTIVE
+    ) {
+      if (!mergedEnd || (this.toYmd(mergedEnd) ?? '') < today) {
+        throw new BadRequestException(
+          'Para reabrir el proceso debes extender la fecha de término a hoy o después.',
+        );
+      }
+      return;
+    }
+
+    // ACTIVE → DRAFT
+    if (from === ProcessStatus.ACTIVE && to === ProcessStatus.DRAFT) {
+      throw new BadRequestException(
+        'Un proceso activo no puede volver a borrador. Si necesitas corregir, ciérralo y crea uno nuevo.',
+      );
+    }
+
+    // COMPLETED ↔ CLOSED
+    if (
+      (from === ProcessStatus.COMPLETED && to === ProcessStatus.CLOSED) ||
+      (from === ProcessStatus.CLOSED && to === ProcessStatus.COMPLETED)
+    ) {
+      throw new BadRequestException(
+        'Para cambiar entre "completado" y "cerrado" primero reabre el proceso.',
+      );
+    }
+
+    // DRAFT → COMPLETED/CLOSED (no tiene sentido)
+    if (from === ProcessStatus.DRAFT) {
+      throw new BadRequestException(
+        'Un proceso en borrador solo puede pasar a activo.',
+      );
+    }
+
+    throw new BadRequestException(
+      `Transición de estado no permitida: ${from} → ${to}.`,
+    );
+  }
 
   /** Resolve department text↔ID bidirectionally */
   private async resolveDept(tenantId: string, deptId?: string, deptName?: string): Promise<{ departmentId: string | null; department: string | null }> {
@@ -79,6 +225,10 @@ export class RecruitmentService {
     if (!dto.title?.trim() || !dto.position?.trim()) {
       throw new BadRequestException('Titulo y cargo son requeridos');
     }
+
+    // v3.1 — validar coherencia de fechas (no importa el status en create;
+    // los procesos nacen en DRAFT y la activación se valida en update).
+    this.assertCoherentDates(dto.startDate, dto.endDate);
 
     // Dual-write: resolve department and position IDs
     const rd = await this.resolveDept(tenantId, dto.departmentId, dto.department);
@@ -191,10 +341,23 @@ export class RecruitmentService {
     const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
     const effectiveTenantId = process.tenantId;
+    const previousStatus = process.status;
 
     // processType is immutable after active
     if (dto.processType && process.status !== ProcessStatus.DRAFT) {
       throw new BadRequestException('El tipo de proceso no se puede cambiar despues de activado');
+    }
+
+    // v3.1 — startDate inmutable una vez ACTIVE (evita mover un proceso en
+    // marcha a otra ventana de aplicación). endDate sí se puede extender.
+    if (
+      dto.startDate !== undefined &&
+      process.status === ProcessStatus.ACTIVE &&
+      this.toYmd(dto.startDate) !== this.toYmd(process.startDate)
+    ) {
+      throw new BadRequestException(
+        'La fecha de inicio no se puede modificar con el proceso activo.',
+      );
     }
 
     if (dto.title !== undefined) process.title = dto.title;
@@ -215,12 +378,40 @@ export class RecruitmentService {
     if (dto.scoringWeights !== undefined) process.scoringWeights = dto.scoringWeights;
     if (dto.startDate !== undefined) process.startDate = dto.startDate;
     if (dto.endDate !== undefined) process.endDate = dto.endDate;
-    if (dto.status !== undefined) process.status = dto.status;
+
+    // v3.1 — validar coherencia de fechas con los valores ya mergeados.
+    this.assertCoherentDates(process.startDate, process.endDate);
+
+    // v3.1 — máquina de estados. Si el DTO intenta cambiar el status,
+    // validamos la transición contra las fechas mergeadas (para que el
+    // frontend pueda enviar { status: 'active', endDate: '2026-06-01' }
+    // en un solo request y funcione).
+    if (dto.status !== undefined && dto.status !== previousStatus) {
+      this.assertValidTransition(
+        previousStatus,
+        dto.status as ProcessStatus,
+        process.startDate,
+        process.endDate,
+      );
+      process.status = dto.status;
+
+      // Al reabrir (COMPLETED/CLOSED → ACTIVE) limpiamos el flag autoClosed.
+      if (
+        (previousStatus === ProcessStatus.COMPLETED ||
+          previousStatus === ProcessStatus.CLOSED) &&
+        dto.status === ProcessStatus.ACTIVE
+      ) {
+        process.autoClosed = false;
+      }
+    }
 
     const saved = await this.processRepo.save(process);
 
-    // Clean up CV data when process is closed or completed (free DB space)
-    if (dto.status === 'closed' || dto.status === 'completed') {
+    // Clean up CV data when process is closed or completed (free DB space).
+    // Solo en la transición real a un estado terminal — no en updates que
+    // no cambian status.
+    const statusChanged = dto.status !== undefined && dto.status !== previousStatus;
+    if (statusChanged && (dto.status === 'closed' || dto.status === 'completed')) {
       await this.candidateRepo
         .createQueryBuilder()
         .update()
@@ -230,7 +421,87 @@ export class RecruitmentService {
       this.logger.log(`Cleaned CV data for closed process ${id}`);
     }
 
+    // Audit de eventos de cambio de estado (útil para soporte + compliance).
+    if (statusChanged) {
+      const action =
+        previousStatus === ProcessStatus.DRAFT && dto.status === ProcessStatus.ACTIVE
+          ? 'recruitment.process_activated'
+          : (previousStatus === ProcessStatus.COMPLETED || previousStatus === ProcessStatus.CLOSED) &&
+              dto.status === ProcessStatus.ACTIVE
+            ? 'recruitment.process_reopened'
+            : 'recruitment.process_status_changed';
+      await this.auditService
+        .log(effectiveTenantId, null, action, 'recruitment_process', id, {
+          from: previousStatus,
+          to: dto.status,
+        })
+        .catch(() => undefined);
+    }
+
     return saved;
+  }
+
+  /**
+   * v3.1 — Cron diario que cierra automáticamente procesos ACTIVE con
+   * endDate < hoy. Los marca como CLOSED con autoClosed=true para poder
+   * distinguirlos en UI (badge "Cerrado automáticamente") y permitir
+   * reabrir fácilmente.
+   *
+   * Corre a las 01:00 UTC (madrugada en LATAM). No dispara emails ni
+   * limpia CV data — el cierre manual existente ya se encarga de eso
+   * (si necesitamos limpiarlos acá, replicar la query de updateProcess).
+   *
+   * Idempotente por diseño: si corre dos veces el mismo día, la segunda
+   * corrida encuentra 0 filas porque todas ya están CLOSED.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_1AM)
+  async autoCloseExpiredProcesses(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.autoCloseExpiredProcesses',
+      this.dataSource,
+      this.logger,
+      async () => {
+        const today = this.todayYmd();
+        // Comparación directa contra columna date (YYYY-MM-DD string).
+        const expired = await this.processRepo.find({
+          where: {
+            status: ProcessStatus.ACTIVE,
+            endDate: LessThan(new Date(today)) as any,
+          },
+          select: ['id', 'tenantId', 'title'],
+        });
+
+        if (expired.length === 0) {
+          this.logger.log(
+            `[autoCloseExpiredProcesses] no hay procesos vencidos para cerrar.`,
+          );
+          return;
+        }
+
+        for (const p of expired) {
+          try {
+            await this.processRepo.update(
+              { id: p.id },
+              { status: ProcessStatus.CLOSED, autoClosed: true },
+            );
+            await this.auditService
+              .log(p.tenantId, null, 'recruitment.process_auto_closed', 'recruitment_process', p.id, {
+                title: p.title,
+                closedAt: new Date().toISOString(),
+              })
+              .catch(() => undefined);
+          } catch (err: any) {
+            this.logger.warn(
+              `[autoCloseExpiredProcesses] falló cerrar proceso ${p.id}: ${err?.message}`,
+            );
+          }
+        }
+
+        this.logger.log(
+          `[autoCloseExpiredProcesses] cerrados automáticamente: ${expired.length}`,
+        );
+      },
+    );
   }
 
   // ─── Candidates ───────────────────────────────────────────────────────
