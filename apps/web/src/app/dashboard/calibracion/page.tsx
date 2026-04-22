@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { useLocaleStore } from '@/store/locale.store';
 import { api } from '@/lib/api';
 import { calibrationStatusLabel as STATUS_LABEL, calibrationStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
@@ -24,8 +23,6 @@ function formatDate(d: string, loc: string) {
 }
 
 function CalibracionPageContent() {
-  // P11 audit tenant_admin — guard defensivo: backend talent.controller @Roles(super_admin, tenant_admin, manager).
-  const authorized = useRequireRole(['super_admin', 'tenant_admin', 'manager']);
   const { t } = useTranslation();
   const { locale } = useLocaleStore();
   const token = useAuthStore((s) => s.token);
@@ -86,8 +83,6 @@ function CalibracionPageContent() {
     setCreating(false);
   }
 
-  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
-  if (!authorized) return null;
   if (!token) return null;
 
   return (

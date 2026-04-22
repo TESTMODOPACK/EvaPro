@@ -236,7 +236,9 @@ function SelfVsOthersSection({ cycleId, userId }: { cycleId: string; userId: str
               );
             }}
           />
-          <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+          {/* fill en Bar es fallback para Recharts v3 — sin él el Bar
+              renderiza negro antes de que los Cell apliquen entry.fill. */}
+          <Bar dataKey="score" fill="#6366f1" radius={[4, 4, 0, 0]}>
             {chartData.map((entry, i) => (
               <Cell key={i} fill={entry.fill} />
             ))}

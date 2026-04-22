@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
@@ -18,8 +17,6 @@ const COLORS = ['#C9933A', '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#0891b2'
 const PIE_COLORS = { completed: '#10b981', inProgress: '#f59e0b', pending: '#6366f1', draft: '#94a3b8', abandoned: '#ef4444' };
 
 export default function DashboardEjecutivoPage() {
-  // P11 audit tenant_admin — guard defensivo: backend reports.controller @Roles(super_admin, tenant_admin, manager).
-  const authorized = useRequireRole(['super_admin', 'tenant_admin', 'manager']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -109,9 +106,6 @@ export default function DashboardEjecutivoPage() {
     promedio: c.average,
     fullMark: 5,
   }));
-
-  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
-  if (!authorized) return null;
 
   if (loadingSummary) {
     return (

@@ -13,7 +13,6 @@ import {
   useRestoreVersion,
 } from '@/hooks/useTemplates';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { api } from '@/lib/api';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
 
@@ -184,9 +183,6 @@ function ConditionBuilder({
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PlantillasPage() {
-  // P11 audit tenant_admin — guard defensivo: backend @Roles(super_admin, tenant_admin, manager).
-  // Evita que employees/external carguen la página y vean 403s.
-  const authorized = useRequireRole(['super_admin', 'tenant_admin', 'manager']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore();
@@ -240,10 +236,6 @@ export default function PlantillasPage() {
   const [csvData, setCsvData] = useState('');
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
-
-  // P11 audit — bloquear render si no autorizado (todos los hooks ya ejecutados).
-  // Evita que cualquier mode (list/create/edit/preview/history) renderice contenido.
-  if (!authorized) return null;
 
   // ─── Handlers ───────────────────────────────────────────────────────
 

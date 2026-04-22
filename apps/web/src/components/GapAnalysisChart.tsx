@@ -157,7 +157,9 @@ export default function GapAnalysisChart({ data, isLoading }: Props) {
                 formatter={(value) => (value === 'expected' ? 'Nivel esperado' : 'Nivel observado')}
               />
               <Bar dataKey="expected" fill="#94a3b8" barSize={14} radius={[0, 4, 4, 0]} />
-              <Bar dataKey="observed" barSize={14} radius={[0, 4, 4, 0]}>
+              {/* fill en Bar es fallback para Recharts v3 — sin él el
+                  Bar renderiza negro antes de que los Cell lo sobreescriban. */}
+              <Bar dataKey="observed" fill="#6366f1" barSize={14} radius={[0, 4, 4, 0]}>
                 {chartData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={statusColors[entry.status] || '#6366f1'} />
                 ))}

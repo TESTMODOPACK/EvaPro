@@ -457,7 +457,12 @@ export default function ReportesPage() {
                               <XAxis type="number" domain={[0, 10]} tick={{ fontSize: 11 }} />
                               <YAxis type="category" dataKey="department" tick={{ fontSize: 11 }} width={95} />
                               <Tooltip />
-                              <Bar dataKey="avgScore" name="Promedio" radius={[0, 4, 4, 0]}>
+                              {/* fill en Bar es fallback para Recharts v3 — sin
+                                  él, cuando los Cell se renderean primero,
+                                  el Bar toma su default (negro) antes de que
+                                  los Cell pinten encima. Con fill explícito
+                                  se evita el flash/render negro. */}
+                              <Bar dataKey="avgScore" name="Promedio" fill={COLORS[0]} radius={[0, 4, 4, 0]}>
                                 {visibleDepts.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                               </Bar>
                             </BarChart>

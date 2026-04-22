@@ -11,7 +11,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
-import { useRequireRole } from '@/hooks/useRequireRole';
 import { useToastStore } from '@/store/toast.store';
 
 type LeadStatus = 'new' | 'contacted' | 'qualified' | 'converted' | 'discarded';
@@ -79,10 +78,6 @@ function timeAgo(iso: string): string {
 const LEADS_PAGE_SIZE = 50;
 
 export default function LeadsPage() {
-  // P11 audit tenant_admin — guard defensivo super_admin-only.
-  // Pipeline pre-venta de Ascenda (leads capturados de forms públicos).
-  const authorized = useRequireRole(['super_admin']);
-
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore((s) => s.toast);
 
@@ -172,9 +167,6 @@ export default function LeadsPage() {
     const start = (safePage - 1) * LEADS_PAGE_SIZE;
     return filtered.slice(start, start + LEADS_PAGE_SIZE);
   }, [filtered, safePage]);
-
-  // P11 audit — bloquear render si no autorizado (useRequireRole ya disparó redirect).
-  if (!authorized) return null;
 
   return (
     <div style={{ padding: '2rem' }}>
