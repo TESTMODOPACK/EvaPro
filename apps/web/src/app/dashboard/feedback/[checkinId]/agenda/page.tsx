@@ -14,6 +14,7 @@ import {
   useCheckInAgenda,
   useGenerateMagicAgenda,
   usePatchMagicAgenda,
+  useAddTopicToCheckIn,
 } from '@/hooks/useFeedback';
 import { useAuthStore } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
@@ -48,8 +49,10 @@ function AgendaPageContent() {
   const { data: agendaData, isLoading: loadingAgenda, refetch } = useCheckInAgenda(checkinId);
   const generate = useGenerateMagicAgenda();
   const patch = usePatchMagicAgenda();
+  const addTopic = useAddTopicToCheckIn();
 
   const [completionOpen, setCompletionOpen] = useState(false);
+  const [newTopicText, setNewTopicText] = useState('');
 
   const checkin = useMemo(
     () => (checkIns || []).find((ci: any) => ci.id === checkinId),
@@ -57,10 +60,34 @@ function AgendaPageContent() {
   );
 
   const isManager = checkin?.managerId === currentUserId;
+  const isEmployee = checkin?.employeeId === currentUserId;
   const isAdmin = role === 'tenant_admin' || role === 'super_admin';
   const canGenerate = isAdmin || (role === 'manager' && isManager);
   const isCompleted = checkin?.status === 'completed';
   const isCancelled = checkin?.status === 'cancelled' || checkin?.status === 'rejected';
+  const isScheduled = checkin?.status === 'scheduled';
+  // Solo participantes (manager dueño o employee asignado) pueden proponer
+  // temas — el backend rechaza con 403 a cualquier otro, incluyendo admins.
+  // Es deliberado: el tema se atribuye a "quien lo propuso", admin no debe
+  // impostar un tema del usuario.
+  const canProposeTopic = isScheduled && (isManager || isEmployee);
+
+  const handleAddTopic = () => {
+    const text = newTopicText.trim();
+    if (!text) return;
+    addTopic.mutate(
+      { id: checkinId, text },
+      {
+        onSuccess: () => {
+          toast.success('Tema propuesto para el 1:1.');
+          setNewTopicText('');
+        },
+        onError: (err: any) => {
+          toast.error(err?.message || 'Error al proponer el tema.');
+        },
+      },
+    );
+  };
 
   const magicAgenda = agendaData?.magicAgenda;
   const carriedOver = agendaData?.carriedOverActionItems || [];
@@ -558,8 +585,10 @@ function AgendaPageContent() {
         </div>
       )}
 
-      {/* Agenda editable (temas adicionales ingresados manualmente) */}
-      {magicAgenda && !isCompleted && !isCancelled && (
+      {/* Agenda editable (temas adicionales ingresados manualmente).
+          Se muestra si el check-in está scheduled (aunque no haya magicAgenda
+          generada) o si hay temas ya registrados que merecen verse. */}
+      {(canProposeTopic || (checkin.agendaTopics && checkin.agendaTopics.length > 0)) && (
         <div
           className="card animate-fade-up"
           style={{ padding: '1.15rem 1.25rem', marginBottom: '1.5rem' }}
@@ -572,15 +601,15 @@ function AgendaPageContent() {
               margin: 0,
               fontSize: '0.76rem',
               color: 'var(--text-muted)',
-              marginBottom: '0.6rem',
+              marginBottom: '0.7rem',
             }}
           >
             {checkin.agendaTopics && checkin.agendaTopics.length > 0
               ? 'Temas que tú o el colaborador quieren conversar en este 1:1.'
-              : 'Aún nadie propuso un tema. Puedes agregarlos desde la lista de check-ins.'}
+              : 'Aún nadie propuso un tema. Agrega los tuyos abajo.'}
           </p>
-          {checkin.agendaTopics && checkin.agendaTopics.length > 0 ? (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {checkin.agendaTopics && checkin.agendaTopics.length > 0 && (
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 0.75rem' }}>
               {checkin.agendaTopics.map((topic: any, idx: number) => (
                 <li
                   key={idx}
@@ -603,7 +632,68 @@ function AgendaPageContent() {
                 </li>
               ))}
             </ul>
-          ) : null}
+          )}
+
+          {/* Input para proponer tema — solo participantes en checkin scheduled */}
+          {canProposeTopic && (
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                alignItems: 'flex-start',
+                paddingTop:
+                  checkin.agendaTopics && checkin.agendaTopics.length > 0
+                    ? '0.6rem'
+                    : 0,
+                borderTop:
+                  checkin.agendaTopics && checkin.agendaTopics.length > 0
+                    ? '1px dashed var(--border)'
+                    : 'none',
+              }}
+            >
+              <input
+                className="input"
+                type="text"
+                placeholder="Ej. Carga de trabajo del Q2, plan de capacitación en React…"
+                value={newTopicText}
+                maxLength={300}
+                onChange={(e) => setNewTopicText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !addTopic.isPending && newTopicText.trim()) {
+                    e.preventDefault();
+                    handleAddTopic();
+                  }
+                }}
+                disabled={addTopic.isPending}
+                style={{ flex: 1, fontSize: '0.85rem' }}
+              />
+              <button
+                className="btn-primary"
+                onClick={handleAddTopic}
+                disabled={addTopic.isPending || !newTopicText.trim()}
+                style={{ fontSize: '0.82rem', padding: '0.45rem 1rem', whiteSpace: 'nowrap' }}
+              >
+                {addTopic.isPending ? 'Agregando…' : '+ Proponer tema'}
+              </button>
+            </div>
+          )}
+
+          {/* Read-only hint si no es participante o el checkin no está scheduled */}
+          {!canProposeTopic &&
+            (!checkin.agendaTopics || checkin.agendaTopics.length === 0) && (
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '0.75rem',
+                  color: 'var(--text-muted)',
+                  fontStyle: 'italic',
+                }}
+              >
+                {isCompleted || isCancelled
+                  ? 'Este check-in ya no acepta nuevos temas.'
+                  : 'Solo los participantes pueden proponer temas.'}
+              </p>
+            )}
         </div>
       )}
 

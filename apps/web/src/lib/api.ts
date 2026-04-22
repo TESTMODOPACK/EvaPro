@@ -726,6 +726,14 @@ export const api = {
       request<CheckInData>(`/feedback/checkins/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
     completeCheckIn: (token: string, id: string, data?: { notes?: string; actionItems?: any[]; rating?: number; minutes?: string }) =>
       request<CheckInData>(`/feedback/checkins/${id}/complete`, { method: "POST", ...(data ? { body: JSON.stringify(data) } : {}) }, token),
+    /** Permite a cualquier participante (manager/employee) proponer un tema
+     *  para el 1:1. Solo funciona si el check-in está scheduled. */
+    addTopicToCheckIn: (token: string, id: string, text: string) =>
+      request<CheckInData>(
+        `/feedback/checkins/${id}/add-topic`,
+        { method: 'PATCH', body: JSON.stringify({ text }) },
+        token,
+      ),
     updateMinutes: (token: string, id: string, minutes: string) =>
       request<CheckInData>(`/feedback/checkins/${id}/minutes`, { method: "PATCH", body: JSON.stringify({ minutes }) }, token),
     deleteCheckIn: (token: string, id: string) =>
