@@ -9,7 +9,7 @@
  * Versión del cache bumpeada cada release de v3.x.
  */
 
-const VERSION = 'v3.0.0';
+const VERSION = 'v3.1.0';
 const STATIC_CACHE  = `eva360-static-${VERSION}`;
 const RUNTIME_CACHE = `eva360-runtime-${VERSION}`;
 const MAX_RUNTIME_ENTRIES = 60;

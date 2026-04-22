@@ -77,19 +77,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [showOnboarding, setShowOnboarding] = useState(false); // Disabled: onboarding is done by super_admin at registration
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // v3.1 PWA fix — safety net: si la hidratación de Zustand no resuelve
+  // en 4s (storage bloqueado o corrupto en la PWA standalone), forzar
+  // redirect a /login. Sin esto, la pantalla queda en spinner infinito.
+  const [hydrationTimeout, setHydrationTimeout] = useState(false);
+
   // Close mobile sidebar on navigation
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    // Wait for Zustand to rehydrate from localStorage before checking auth
-    if (!_hasHydrated) return;
+    const t = setTimeout(() => setHydrationTimeout(true), 4000);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    // Wait for Zustand to rehydrate from localStorage (o al timeout) antes
+    // de decidir — sin este guard la PWA standalone puede quedar spinner
+    // infinito si el storage no hidrata (bug conocido en algunos webviews).
+    if (!_hasHydrated && !hydrationTimeout) return;
     if (!isAuthenticated || token === 'demo-token' || !token) {
       logout();
       router.replace('/login');
     }
-  }, [_hasHydrated, isAuthenticated, token, router, logout]);
+  }, [_hasHydrated, hydrationTimeout, isAuthenticated, token, router, logout]);
 
   // ─── Silent token refresh based on user activity ─────────────────────
   const lastActivityRef = useRef(Date.now());

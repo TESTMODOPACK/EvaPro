@@ -391,11 +391,23 @@ export default function NuevoProcesoPage() {
                 </div>
                 <div>
                   <label style={labelStyle}>{t('postulantes.new.startDate')}</label>
-                  <input className="input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                  <input
+                    className="input"
+                    type="date"
+                    value={startDate}
+                    max={endDate || undefined}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>{t('postulantes.new.endDate')}</label>
-                  <input className="input" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                  <input
+                    className="input"
+                    type="date"
+                    value={endDate}
+                    min={startDate || new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
                 </div>
               </div>
               <div>

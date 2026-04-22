@@ -79,6 +79,15 @@ export class RecruitmentProcess {
   @Column({ type: 'date', name: 'end_date', nullable: true })
   endDate: Date | null;
 
+  /**
+   * v3.1 — true si el proceso fue cerrado automáticamente por el cron
+   * `autoCloseExpiredProcesses` (endDate venció estando en ACTIVE).
+   * Se resetea a false al reabrir manualmente (CLOSED/COMPLETED → ACTIVE).
+   * Útil para distinguir cierres manuales vs. automáticos en UI/reportes.
+   */
+  @Column({ type: 'boolean', name: 'auto_closed', default: false })
+  autoClosed: boolean;
+
   @Column({ type: 'jsonb', name: 'scoring_weights', default: () => "'{\"interview\": 40, \"history\": 30, \"requirements\": 20, \"cvMatch\": 10}'" })
   scoringWeights: { interview: number; history?: number; requirements?: number; cvMatch?: number };
 

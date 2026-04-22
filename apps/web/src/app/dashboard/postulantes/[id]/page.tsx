@@ -76,6 +76,284 @@ function InternalCandidateProfile({ userId, user }: { userId: string; user: any 
   );
 }
 
+// ─── ProcessStatusPanel — v3.1 máquina de estados + fechas ──────────────
+/**
+ * Reglas (deben coincidir con backend recruitment.service.ts@assertValidTransition):
+ *  - DRAFT → ACTIVE: exige startDate + endDate definidos y endDate >= hoy.
+ *  - ACTIVE → COMPLETED / CLOSED: libre.
+ *  - ACTIVE → DRAFT: bloqueado.
+ *  - COMPLETED / CLOSED → ACTIVE: permitido (reabrir). Si endDate < hoy,
+ *    el admin debe extenderla en el mismo popover antes de reabrir.
+ *  - COMPLETED ↔ CLOSED: bloqueado (reabrir primero).
+ */
+function ProcessStatusPanel({
+  process,
+  token,
+  processId,
+  onSaved,
+}: {
+  process: any;
+  token: string | null;
+  processId: string;
+  onSaved: () => void;
+}) {
+  const { t } = useTranslation();
+  const toast = useToastStore((s) => s.toast);
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [newEndDate, setNewEndDate] = useState<string>('');
+  const [saving, setSaving] = useState(false);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const status = process.status as 'draft' | 'active' | 'completed' | 'closed';
+  const startDateYmd = process.startDate ? String(process.startDate).slice(0, 10) : null;
+  const endDateYmd = process.endDate ? String(process.endDate).slice(0, 10) : null;
+
+  const missingDates = !startDateYmd || !endDateYmd;
+  const endVencida = !!(endDateYmd && endDateYmd < today);
+  const coherentes = !!(startDateYmd && endDateYmd) && startDateYmd <= endDateYmd;
+
+  // Estado no iniciado aún: ACTIVE pero startDate en el futuro.
+  const notYetStarted = status === 'active' && startDateYmd && startDateYmd > today;
+
+  const callUpdate = async (body: Record<string, unknown>, successMsg: string) => {
+    if (!token) return;
+    setSaving(true);
+    try {
+      await api.recruitment.processes.update(token, processId, body);
+      toast(successMsg, 'success');
+      onSaved();
+    } catch (e: any) {
+      toast(e?.message || 'Error al actualizar el proceso', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const activate = () => {
+    if (missingDates) {
+      toast('Define fecha de inicio y fecha de término antes de activar.', 'error');
+      return;
+    }
+    if (!coherentes) {
+      toast('La fecha de inicio no puede ser posterior a la fecha de término.', 'error');
+      return;
+    }
+    if (endVencida) {
+      toast('No se puede activar un proceso con la fecha de término vencida.', 'error');
+      return;
+    }
+    callUpdate({ status: 'active' }, 'Proceso activado');
+  };
+
+  const complete = () => callUpdate({ status: 'completed' }, 'Proceso marcado como completado');
+  const close = () => callUpdate({ status: 'closed' }, 'Proceso cerrado');
+
+  const reopen = () => {
+    // Si la fecha actual está vencida o ausente, pedir una nueva.
+    if (!endDateYmd || endDateYmd < today) {
+      setNewEndDate(today);
+      setReopenOpen(true);
+      return;
+    }
+    callUpdate({ status: 'active' }, 'Proceso reabierto');
+  };
+
+  const confirmReopen = () => {
+    if (!newEndDate || newEndDate < today) {
+      toast('La nueva fecha de término debe ser hoy o después.', 'error');
+      return;
+    }
+    callUpdate(
+      { status: 'active', endDate: newEndDate },
+      'Proceso reabierto',
+    ).then(() => setReopenOpen(false));
+  };
+
+  return (
+    <div className="card" style={{ padding: '1.5rem' }}>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+        {t('postulantes.detail.config.processStatus')}
+      </h3>
+
+      {/* Hints contextuales */}
+      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.85rem', lineHeight: 1.5 }}>
+        <div>
+          Estado actual:{' '}
+          <strong style={{ color: 'var(--text-primary)' }}>
+            {t(`postulantes.status.${status}`)}
+          </strong>
+          {process.autoClosed && status === 'closed' && (
+            <span
+              style={{
+                marginLeft: '0.5rem',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '0.1rem 0.45rem',
+                borderRadius: '999px',
+                background: 'rgba(245,158,11,0.12)',
+                color: '#d97706',
+              }}
+              title="Se cerró automáticamente porque la fecha de término venció."
+            >
+              cerrado automáticamente
+            </span>
+          )}
+          {notYetStarted && (
+            <span
+              style={{
+                marginLeft: '0.5rem',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '0.1rem 0.45rem',
+                borderRadius: '999px',
+                background: 'rgba(59,130,246,0.12)',
+                color: '#2563eb',
+              }}
+            >
+              inicia el {new Date(startDateYmd!).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
+        </div>
+        {status === 'draft' && missingDates && (
+          <div style={{ marginTop: '0.3rem', color: '#d97706' }}>
+            ⚠ Falta definir fecha de inicio y/o término para poder activar.
+          </div>
+        )}
+        {status === 'draft' && endVencida && (
+          <div style={{ marginTop: '0.3rem', color: 'var(--danger)' }}>
+            ⚠ La fecha de término ya venció. Actualízala antes de activar.
+          </div>
+        )}
+        {status === 'draft' && startDateYmd && endDateYmd && !coherentes && (
+          <div style={{ marginTop: '0.3rem', color: 'var(--danger)' }}>
+            ⚠ La fecha de inicio es posterior a la de término. Revísalas.
+          </div>
+        )}
+      </div>
+
+      {/* Acciones según estado */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {status === 'draft' && (
+          <button
+            className="btn-primary"
+            onClick={activate}
+            disabled={saving || missingDates || endVencida || !coherentes}
+            title={
+              missingDates
+                ? 'Define fecha de inicio y término'
+                : endVencida
+                  ? 'La fecha de término ya venció'
+                  : !coherentes
+                    ? 'La fecha de inicio debe ser anterior o igual a la de término'
+                    : 'Activar el proceso'
+            }
+            style={{ fontSize: '0.85rem' }}
+          >
+            {saving ? 'Guardando…' : '▶ Activar proceso'}
+          </button>
+        )}
+
+        {status === 'active' && (
+          <>
+            <button
+              className="btn-primary"
+              onClick={complete}
+              disabled={saving}
+              title="Marcar como completado (candidato contratado)"
+              style={{ fontSize: '0.85rem' }}
+            >
+              {saving ? 'Guardando…' : '✓ Completar (contratado)'}
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={close}
+              disabled={saving}
+              title="Cerrar sin contratación"
+              style={{ fontSize: '0.85rem' }}
+            >
+              ✕ Cerrar sin contratar
+            </button>
+          </>
+        )}
+
+        {(status === 'completed' || status === 'closed') && (
+          <button
+            className="btn-ghost"
+            onClick={reopen}
+            disabled={saving}
+            title="Reabrir el proceso"
+            style={{ fontSize: '0.85rem', borderColor: 'var(--accent)', color: 'var(--accent)' }}
+          >
+            ↺ Reabrir proceso
+          </button>
+        )}
+      </div>
+
+      {/* Popover para extender endDate al reabrir */}
+      {reopenOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => e.target === e.currentTarget && !saving && setReopenOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '1rem',
+          }}
+        >
+          <div
+            className="card animate-fade-up"
+            onClick={(e) => e.stopPropagation()}
+            style={{ padding: '1.5rem', maxWidth: '420px', width: '100%' }}
+          >
+            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+              Reabrir proceso
+            </h4>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              La fecha de término del proceso {endDateYmd ? `era el ${new Date(endDateYmd).toLocaleDateString('es-CL')} y ` : ''}
+              está vencida. Define una nueva fecha de término para volver a activarlo.
+            </p>
+            <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+              Nueva fecha de término
+            </label>
+            <input
+              className="input"
+              type="date"
+              value={newEndDate}
+              min={today}
+              onChange={(e) => setNewEndDate(e.target.value)}
+              style={{ width: '100%', marginBottom: '1rem' }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                className="btn-ghost"
+                onClick={() => setReopenOpen(false)}
+                disabled={saving}
+                style={{ fontSize: '0.82rem' }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn-primary"
+                onClick={confirmReopen}
+                disabled={saving || !newEndDate || newEndDate < today}
+                style={{ fontSize: '0.82rem' }}
+              >
+                {saving ? 'Guardando…' : 'Reabrir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Scoring Weights Editor (stateful component) ─────────────────────
 function ScoringWeightsEditor({ process, isInternal, token, processId, onSaved }: {
   process: any; isInternal: boolean; token: string | null; processId: string; onSaved: () => void;
@@ -1427,25 +1705,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           {/* Scoring weights configuration */}
           {isAdmin && <ScoringWeightsEditor process={process} isInternal={isInternal} token={token} processId={params.id} onSaved={fetchProcess} />}
 
-          {/* Status change (admin only) */}
+          {/* Status change (admin only) — v3.1 con máquina de estados + fechas */}
           {isAdmin && (
-            <div className="card" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('postulantes.detail.config.processStatus')}</h3>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {['draft', 'active', 'completed', 'closed'].map((s) => (
-                  <button key={s} onClick={() => { if (token) api.recruitment.processes.update(token, params.id, { status: s }).then(() => fetchProcess()); }}
-                    style={{
-                      padding: '0.4rem 0.85rem', fontSize: '0.82rem', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                      border: process.status === s ? '2px solid var(--accent)' : '1px solid var(--border)',
-                      background: process.status === s ? 'rgba(201,147,58,0.1)' : 'transparent',
-                      fontWeight: process.status === s ? 700 : 400,
-                      color: process.status === s ? 'var(--accent)' : 'var(--text-secondary)',
-                    }}>
-                    {t(`postulantes.status.${s}`)}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ProcessStatusPanel process={process} token={token} processId={params.id} onSaved={fetchProcess} />
           )}
         </div>
       )}
