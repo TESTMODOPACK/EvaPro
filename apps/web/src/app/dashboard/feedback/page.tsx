@@ -21,6 +21,7 @@ import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import {
   useTeamMeetings,
   useCreateTeamMeeting,
+  useUpdateTeamMeeting,
   useCancelTeamMeeting,
   useCompleteTeamMeeting,
   useRespondTeamMeeting,
@@ -1666,6 +1667,7 @@ function TeamMeetingsTab() {
   const { data: usersPage } = useActiveUsersForPicker();
   const { data: locations } = useMeetingLocations();
   const createMeeting = useCreateTeamMeeting();
+  const updateMeeting = useUpdateTeamMeeting();
   const cancelMeeting = useCancelTeamMeeting();
   const completeMeeting = useCompleteTeamMeeting();
   const editCompletedMeeting = useEditCompletedTeamMeeting();
@@ -1673,6 +1675,9 @@ function TeamMeetingsTab() {
   const addTopic = useAddTopicToTeamMeeting();
 
   const [showForm, setShowForm] = useState(false);
+  // v3.1 — editingId: si está seteado, el form está en modo edición y
+  // submit llama update en vez de create.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -1725,31 +1730,73 @@ function TeamMeetingsTab() {
       title: '', description: '', scheduledDate: '', scheduledTime: '',
       locationId: '', participantIds: [],
     });
+    setEditingId(null);
     setParticipantSearch('');
     setParticipantDeptFilter('');
   };
 
-  const handleCreate = () => {
+  /** v3.1 — Abre el form inline pre-cargado con datos de una reunión
+   *  existente para editar. Solo scheduled (el backend rechaza cambios
+   *  en completadas/canceladas). */
+  const openEditForm = (m: any) => {
+    const participantIds = (m.participants || [])
+      .filter((p: any) => p.userId !== m.organizerId) // organizer se incluye auto
+      .map((p: any) => p.userId);
+    setForm({
+      title: m.title || '',
+      description: m.description || '',
+      scheduledDate: m.scheduledDate ? String(m.scheduledDate).slice(0, 10) : '',
+      scheduledTime: m.scheduledTime ? String(m.scheduledTime).slice(0, 5) : '',
+      locationId: m.locationId || '',
+      participantIds,
+    });
+    setEditingId(m.id);
+    setParticipantSearch('');
+    setParticipantDeptFilter('');
+    setShowForm(true);
+    // Scroll al form para que se vea.
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+  };
+
+  const handleSubmit = () => {
     if (!form.title.trim() || !form.scheduledDate || form.participantIds.length === 0) return;
-    createMeeting.mutate(
-      {
-        title: form.title.trim(),
-        description: form.description.trim() || undefined,
-        scheduledDate: form.scheduledDate,
-        scheduledTime: form.scheduledTime || undefined,
-        locationId: form.locationId || undefined,
-        participantIds: form.participantIds,
-      },
-      {
+
+    const payload = {
+      title: form.title.trim(),
+      description: form.description.trim() || undefined,
+      scheduledDate: form.scheduledDate,
+      scheduledTime: form.scheduledTime || undefined,
+      locationId: form.locationId || undefined,
+      participantIds: form.participantIds,
+    };
+
+    if (editingId) {
+      // Modo edición: PATCH.
+      updateMeeting.mutate(
+        { id: editingId, data: payload },
+        {
+          onSuccess: () => {
+            toast('Reunión actualizada.', 'success');
+            resetForm();
+            setShowForm(false);
+          },
+          onError: (e: any) => toast(e?.message || 'Error al actualizar la reunión', 'error'),
+        },
+      );
+    } else {
+      // Modo creación: POST.
+      createMeeting.mutate(payload, {
         onSuccess: () => {
           toast('Reunión creada y participantes invitados.', 'success');
           resetForm();
           setShowForm(false);
         },
         onError: (e: any) => toast(e?.message || 'Error al crear la reunión', 'error'),
-      },
-    );
+      });
+    }
   };
+
+  const isSubmitting = createMeeting.isPending || updateMeeting.isPending;
 
   const togglePart = (uid: string) => {
     setForm((f) => ({
@@ -1788,15 +1835,36 @@ function TeamMeetingsTab() {
           </p>
         </div>
         {canCreate && (
-          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              if (showForm) {
+                // Al cancelar limpiamos editingId también.
+                resetForm();
+                setShowForm(false);
+              } else {
+                setShowForm(true);
+              }
+            }}
+          >
             {showForm ? 'Cancelar' : '+ Nueva reunión'}
           </button>
         )}
       </div>
 
-      {/* Form crear */}
+      {/* Form crear / editar — v3.1: mismo form en modo create o edit según editingId */}
       {showForm && canCreate && (
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>
+              {editingId ? '✏ Editar reunión' : 'Nueva reunión'}
+            </h3>
+            {editingId && (
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Los participantes agregados recibirán invitación; los existentes no se notifican de nuevo.
+              </span>
+            )}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
@@ -1926,14 +1994,16 @@ function TeamMeetingsTab() {
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
               <button className="btn-ghost" onClick={() => { setShowForm(false); resetForm(); }}>Cancelar</button>
               <button className="btn-primary"
-                onClick={handleCreate}
+                onClick={handleSubmit}
                 disabled={
-                  createMeeting.isPending ||
+                  isSubmitting ||
                   !form.title.trim() ||
                   !form.scheduledDate ||
                   form.participantIds.length === 0
                 }>
-                {createMeeting.isPending ? 'Creando…' : 'Crear y enviar invitaciones'}
+                {isSubmitting
+                  ? (editingId ? 'Guardando…' : 'Creando…')
+                  : (editingId ? 'Guardar cambios' : 'Crear y enviar invitaciones')}
               </button>
             </div>
           </div>
@@ -2029,6 +2099,11 @@ function TeamMeetingsTab() {
                     )}
                     {m.status === 'scheduled' && canManage && (
                       <>
+                        <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                          onClick={() => openEditForm(m)}
+                          title="Editar título, descripción, fecha, lugar o participantes">
+                          ✏ Editar
+                        </button>
                         <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
                           onClick={() => { setCompleteModal({ id: m.id, title: m.title }); setCompleteForm({ notes: '', minutes: '', rating: 0, actionItems: [{ text: '', assigneeName: '', dueDate: '' }] }); }}>
                           Completar
