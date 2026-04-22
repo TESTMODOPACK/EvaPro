@@ -65,6 +65,61 @@ export class RecognitionController {
     return this.service.addReaction(req.user.tenantId, id, req.user.userId, dto.emoji);
   }
 
+  // ─── v3.1 F7 — Comentarios en reconocimientos (Muro social) ──────────
+
+  /** Listar comentarios de un reconocimiento (orden asc). */
+  @Get(':id/comments')
+  listComments(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.service.listComments(req.user.tenantId, id);
+  }
+
+  /** Agregar comentario. Cualquier user activo del tenant puede comentar. */
+  @Post(':id/comments')
+  addComment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { text: string },
+  ) {
+    return this.service.addComment(
+      req.user.tenantId,
+      req.user.userId,
+      id,
+      dto?.text || '',
+    );
+  }
+
+  /** Soft-delete del comentario. Solo autor o admin. */
+  @Delete('comments/:commentId')
+  deleteComment(
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Request() req: any,
+  ) {
+    return this.service.deleteComment(
+      req.user.tenantId,
+      req.user.userId,
+      req.user.role,
+      commentId,
+    );
+  }
+
+  // ─── v3.1 F7 — MVP del Mes ───────────────────────────────────────────
+
+  /** MVP del mes actual (si ya fue calculado). */
+  @Get('mvp/current')
+  getCurrentMvp(@Request() req: any) {
+    return this.service.getCurrentMvp(req.user.tenantId);
+  }
+
+  /** Últimos N meses (default 12, max 60). */
+  @Get('mvp/history')
+  getMvpHistory(@Request() req: any, @Query('limit') limit?: string) {
+    const n = limit ? parseInt(limit, 10) : 12;
+    return this.service.getMvpHistory(req.user.tenantId, n);
+  }
+
   // ─── Badges — IMPORTANT: /mine BEFORE /:userId to avoid route shadowing ──
 
   @Get('badges')
