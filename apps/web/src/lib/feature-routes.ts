@@ -25,6 +25,8 @@ export const ROUTE_FEATURE_MAP: Record<string, string> = {
   // gated por FEEDBACK; este mapping aplica a la subruta /agenda (requiere
   // MAGIC_MEETINGS). PlanGate en el layout del página individual.
   '/dashboard/feedback/agenda': 'MAGIC_MEETINGS',
+  // v3.1 F3 — Mood tracking: dashboard agregado de equipo (manager+admin).
+  '/dashboard/mood-equipo': 'MOOD_TRACKING',
 };
 
 /**
@@ -51,6 +53,7 @@ export const FEATURE_MIN_PLAN: Record<string, string> = {
   AUDIT_LOG: 'Pro',
   DEI: 'Pro',
   MAGIC_MEETINGS: 'Pro',
+  MOOD_TRACKING: 'Growth',
   AI_INSIGHTS: 'Enterprise',
   PUBLIC_API: 'Enterprise',
 };
@@ -80,6 +83,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   AUDIT_LOG: 'Registro de Auditoría',
   DEI: 'Diversidad e Inclusión',
   MAGIC_MEETINGS: 'Agenda mágica de 1:1',
+  MOOD_TRACKING: 'Check-in del ánimo diario',
   AI_INSIGHTS: 'Informes IA (Anthropic)',
   PUBLIC_API: 'API pública',
 };

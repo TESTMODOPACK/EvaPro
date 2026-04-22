@@ -19,6 +19,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from '@/c
 import { useSystemChangelog } from '@/hooks/useSystemChangelog';
 import { getRoleLabel } from '@/lib/roles';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
+import MoodCheckinWidget from '@/components/MoodCheckinWidget';
 import { useRecognitionWall } from '@/hooks/useRecognition';
 import { OnboardingChecklist } from '@/components/OnboardingChecklist';
 import CommandCenter, { CommandAlert } from '@/components/CommandCenter';
@@ -569,6 +570,11 @@ function RegularDashboard() {
       {/* Next Actions widget — full width before grid */}
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.25rem' }}>
         <NextActionsWidget />
+      </div>
+
+      {/* v3.1 F3 — Mood check-in diario (auto-oculto si el plan no tiene MOOD_TRACKING). */}
+      <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.25rem' }}>
+        <MoodCheckinWidget />
       </div>
 
       {/* Mi último resultado + Reconocimientos + Team summary */}

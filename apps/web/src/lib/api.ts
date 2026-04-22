@@ -173,6 +173,18 @@ export interface TeamMeetingData {
   updatedAt: string;
 }
 
+// v3.1 F3 — Mood check-in diario
+export interface MoodCheckinData {
+  id: string;
+  tenantId: string;
+  userId: string;
+  checkinDate: string;
+  score: number; // 1-5
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface QuickFeedbackData {
   id: string; tenantId: string; fromUserId: string; toUserId: string;
   message: string; sentiment: 'positive' | 'neutral' | 'constructive';
@@ -948,6 +960,42 @@ export const api = {
         { method: 'PATCH', body: JSON.stringify(data) },
         token,
       ),
+  },
+
+  // ─── v3.1 F3 — Mood Tracking ──────────────────────────────────────────
+  moodCheckins: {
+    /** Registra o actualiza el mood del día actual (upsert). */
+    submit: (token: string, data: { score: number; note?: string }) =>
+      request<MoodCheckinData>(
+        '/mood-checkins',
+        { method: 'POST', body: JSON.stringify(data) },
+        token,
+      ),
+    /** Registro de hoy del caller (null si no registró). */
+    getToday: (token: string) =>
+      request<MoodCheckinData | null>('/mood-checkins/me/today', {}, token),
+    /** Histórico personal (default 30 días, max 180). */
+    getMyHistory: (token: string, days?: number) =>
+      request<MoodCheckinData[]>(
+        `/mood-checkins/me/history${days ? `?days=${days}` : ''}`,
+        {},
+        token,
+      ),
+    /** Agregado del equipo por día (solo manager/admin). */
+    getTeamHistory: (token: string, days?: number) =>
+      request<Array<{ date: string; avgScore: number; responseCount: number }>>(
+        `/mood-checkins/team/history${days ? `?days=${days}` : ''}`,
+        {},
+        token,
+      ),
+    /** Resumen de HOY del equipo (solo si hay >= 3 respuestas). */
+    getTeamToday: (token: string) =>
+      request<{
+        date: string;
+        avgScore: number;
+        responseCount: number;
+        distribution: Record<'1' | '2' | '3' | '4' | '5', number>;
+      } | null>('/mood-checkins/team/today', {}, token),
   },
 
   objectives: {
