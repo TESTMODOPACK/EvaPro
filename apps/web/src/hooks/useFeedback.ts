@@ -164,3 +164,54 @@ export function useDeleteLocation() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'locations'] }),
   });
 }
+
+// ─── v3.1 F1 — Agenda Mágica de 1:1 ────────────────────────────────────
+
+/**
+ * Lee el magicAgenda de un check-in (NO regenera — usa el dato persistido).
+ * Retorna null en `magicAgenda` si nunca se generó.
+ */
+export function useCheckInAgenda(checkinId: string | null | undefined) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['feedback', 'checkin', checkinId, 'agenda'],
+    queryFn: () => api.feedback.getMagicAgenda(token!, checkinId!),
+    enabled: !!token && !!checkinId,
+    // La agenda se puede ver N veces; cache 10 min es razonable porque
+    // los datos subyacentes (OKRs, feedback) cambian lento.
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+/**
+ * Genera o regenera la agenda mágica on-demand.
+ * Input: `{ checkinId, force? }`. Force=true consume crédito IA.
+ * Tras éxito, invalida la agenda del checkin y la lista de checkins.
+ */
+export function useGenerateMagicAgenda() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ checkinId, force }: { checkinId: string; force?: boolean }) =>
+      api.feedback.generateMagicAgenda(token!, checkinId, force),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['feedback', 'checkin', vars.checkinId, 'agenda'] });
+      qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] });
+    },
+  });
+}
+
+/**
+ * Dismissea sugerencias IA individuales (soft — no las borra).
+ */
+export function usePatchMagicAgenda() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ checkinId, dismissedSuggestionIds }: { checkinId: string; dismissedSuggestionIds: string[] }) =>
+      api.feedback.patchMagicAgenda(token!, checkinId, dismissedSuggestionIds),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['feedback', 'checkin', vars.checkinId, 'agenda'] });
+    },
+  });
+}

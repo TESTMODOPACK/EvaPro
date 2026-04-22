@@ -148,6 +148,81 @@ export class FeedbackController {
     );
   }
 
+  // ─── v3.1 F1 — Agenda Mágica de 1:1 ─────────────────────────────────────
+
+  /**
+   * GET /feedback/checkins/:id/agenda
+   *
+   * Retorna la agenda mágica ya generada (si existe) + los actionItems
+   * heredados del 1:1 anterior. Lecturas — rol mínimo: participante.
+   * NO regenera nada ni consume créditos de IA.
+   */
+  @Get('checkins/:id/agenda')
+  @Feature(PlanFeature.MAGIC_MEETINGS)
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getMagicAgenda(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.feedbackService.getMagicAgenda(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+    );
+  }
+
+  /**
+   * POST /feedback/checkins/:id/agenda/generate
+   *
+   * Genera la agenda mágica on-demand. Escritura — solo manager dueño
+   * o admin. Si ya existe agenda con la versión actual y NO se pasa
+   * `{ force: true }`, retorna la cacheada sin quemar crédito IA.
+   *
+   * Body (opcional): `{ force?: boolean }` — fuerza regeneración.
+   */
+  @Post('checkins/:id/agenda/generate')
+  @Feature(PlanFeature.MAGIC_MEETINGS)
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  generateMagicAgenda(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.feedbackService.generateMagicAgenda(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+      { force: !!body?.force },
+    );
+  }
+
+  /**
+   * PATCH /feedback/checkins/:id/agenda
+   *
+   * Permite dismissear sugerencias IA individuales (para que no molesten
+   * en el render pero queden trazables como "no aplicadas").
+   *
+   * Body: `{ dismissedSuggestionIds: string[] }`.
+   */
+  @Patch('checkins/:id/agenda')
+  @Feature(PlanFeature.MAGIC_MEETINGS)
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  patchMagicAgenda(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body: { dismissedSuggestionIds?: string[] },
+  ) {
+    return this.feedbackService.patchMagicAgenda(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+      body || {},
+    );
+  }
+
   @Post('checkins/:id/reject')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   rejectCheckIn(

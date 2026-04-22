@@ -21,6 +21,10 @@ export const ROUTE_FEATURE_MAP: Record<string, string> = {
   '/dashboard/firmas': 'SIGNATURES',
   '/dashboard/auditoria': 'AUDIT_LOG',
   '/dashboard/dei': 'DEI',
+  // v3.1 F1 — Agenda Mágica de 1:1. La ruta base /dashboard/feedback ya está
+  // gated por FEEDBACK; este mapping aplica a la subruta /agenda (requiere
+  // MAGIC_MEETINGS). PlanGate en el layout del página individual.
+  '/dashboard/feedback/agenda': 'MAGIC_MEETINGS',
 };
 
 /**
@@ -46,6 +50,7 @@ export const FEATURE_MIN_PLAN: Record<string, string> = {
   SIGNATURES: 'Pro',
   AUDIT_LOG: 'Pro',
   DEI: 'Pro',
+  MAGIC_MEETINGS: 'Pro',
   AI_INSIGHTS: 'Enterprise',
   PUBLIC_API: 'Enterprise',
 };
@@ -74,6 +79,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   ENGAGEMENT_SURVEYS: 'Encuestas de Clima',
   AUDIT_LOG: 'Registro de Auditoría',
   DEI: 'Diversidad e Inclusión',
+  MAGIC_MEETINGS: 'Agenda mágica de 1:1',
   AI_INSIGHTS: 'Informes IA (Anthropic)',
   PUBLIC_API: 'API pública',
 };

@@ -85,6 +85,71 @@ export class CheckIn {
     addedAt?: string;
   }[];
 
+  /**
+   * v3.1 F1 — Agenda Mágica: snapshot pre-generado que se consume al abrir
+   * la página de preparación del 1:1. Poblado on-demand vía
+   * `FeedbackService.generateMagicAgenda()`. Shape estable — cualquier
+   * cambio requiere bump de `generatorVersion` + migración de datos.
+   *
+   * `aiSuggestedTopics` queda `[]` si el tenant no tiene plan AI_INSIGHTS
+   * (degradación graceful).
+   */
+  @Column({ type: 'jsonb', name: 'magic_agenda', nullable: true })
+  magicAgenda: {
+    pendingFromPrevious: Array<{
+      text: string;
+      addedByUserId: string;
+      addedByName?: string;
+      previousCheckinId: string;
+    }>;
+    okrSnapshot: Array<{
+      objectiveId: string;
+      title: string;
+      progress: number;
+      status: string;
+      targetDate: string | null;
+      daysToTarget: number | null;
+    }>;
+    recentFeedback: Array<{
+      feedbackId: string;
+      fromUserId: string;
+      fromName?: string;
+      sentiment: string;
+      messagePreview: string;
+      createdAt: string;
+    }>;
+    recentRecognitions: Array<{
+      recognitionId: string;
+      valueId: string | null;
+      valueName?: string;
+      messagePreview: string;
+      createdAt: string;
+    }>;
+    aiSuggestedTopics: Array<{
+      id: string;
+      topic: string;
+      rationale: string;
+      priority: 'high' | 'med' | 'low';
+      dismissed?: boolean;
+    }>;
+    generatedAt: string;
+    generatorVersion: string;
+  } | null;
+
+  /**
+   * v3.1 F1 — Snapshot de actionItems del 1:1 previo entre este manager
+   * y este employee que quedaron `completed=false`. Se rellena al
+   * completar el check-in previo; se lee al generar la agenda mágica.
+   */
+  @Column({ type: 'jsonb', name: 'carried_over_action_items', default: [] })
+  carriedOverActionItems: Array<{
+    text: string;
+    assigneeName?: string;
+    dueDate?: string | null;
+    previousCheckinId: string;
+    previousCheckinDate: string;
+  }>;
+
   @Column({
     type: 'enum',
     enum: CheckInStatus,

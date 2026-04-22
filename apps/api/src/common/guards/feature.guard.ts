@@ -20,6 +20,7 @@ const FEATURE_LABELS: Record<string, string> = {
   POSTULANTS: 'Evaluación de Postulantes',
   AI_INSIGHTS: 'Análisis con Inteligencia Artificial',
   PUBLIC_API: 'API pública',
+  MAGIC_MEETINGS: 'Agenda mágica de 1:1',
 };
 
 @Injectable()

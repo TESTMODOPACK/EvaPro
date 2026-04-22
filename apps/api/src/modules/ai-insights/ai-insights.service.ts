@@ -784,6 +784,120 @@ export class AiInsightsService {
     }); // ← cierra withAiQuotaLock
   }
 
+  // ─── 3.5: Agenda Mágica de 1:1 (v3.1 F1) ────────────────────────────────
+
+  /**
+   * Genera sugerencias de temas para una reunión 1:1 basándose en datos
+   * del colaborador (OKRs, feedback reciente, reconocimientos, pendientes
+   * del 1:1 anterior).
+   *
+   * Diferencias con las otras funciones:
+   * - `cycleId` es NULL (la agenda no pertenece a un ciclo de evaluación)
+   * - `scopeEntityId` = checkinId (para dedup + cache per-checkin)
+   * - Cache lookup usa `scopeEntityId`, no `cycleId`
+   *
+   * Graceful degradation: si el tenant no tiene AI_INSIGHTS, el caller
+   * (FeedbackService.generateMagicAgenda) debe detectar el plan y skipear
+   * esta llamada. Aquí asumimos que el caller ya hizo esa validación.
+   *
+   * Max tokens: 800 (respuesta corta, 3-5 topics JSON).
+   */
+  async generateAgendaSuggestions(
+    tenantId: string,
+    checkinId: string,
+    context: {
+      employeeName: string;
+      employeePosition: string;
+      employeeDepartment: string;
+      okrs: Array<{ title: string; progress: number; status: string; daysToTarget: number | null }>;
+      recentFeedback: Array<{ sentiment: string; messagePreview: string; createdAt: string }>;
+      recentRecognitions: Array<{ valueName?: string; messagePreview: string; createdAt: string }>;
+      pendingFromPrevious: Array<{ text: string }>;
+      checkinTopic?: string;
+    },
+    generatedBy: string,
+  ): Promise<AiInsight> {
+    return this.withAiQuotaLock(tenantId, async () => {
+      await this.checkRateLimit(tenantId);
+
+      // Cache lookup — 7 días de TTL, por checkinId (scopeEntityId).
+      const cacheDate = new Date();
+      cacheDate.setDate(cacheDate.getDate() - CACHE_DAYS);
+      const cached = await this.insightRepo.findOne({
+        where: {
+          tenantId,
+          type: InsightType.AGENDA_SUGGESTIONS,
+          scopeEntityId: checkinId,
+          createdAt: MoreThan(cacheDate),
+        },
+        order: { createdAt: 'DESC' },
+      });
+      if (cached) return cached;
+
+      // Import dinámico para evitar circularidad con feedback module.
+      const { buildAgendaPrompt } = await import('./prompts/agenda.prompt');
+
+      const prompt = buildAgendaPrompt({
+        employeeName: sanitizeForPrompt(context.employeeName),
+        employeePosition: sanitizeForPrompt(context.employeePosition),
+        employeeDepartment: sanitizeForPrompt(context.employeeDepartment),
+        okrs: context.okrs.map((o) => ({
+          title: sanitizeForPrompt(o.title),
+          progress: o.progress,
+          status: o.status,
+          daysToTarget: o.daysToTarget,
+        })),
+        recentFeedback: context.recentFeedback.map((f) => ({
+          sentiment: f.sentiment,
+          messagePreview: sanitizeForPrompt(f.messagePreview),
+          createdAt: f.createdAt,
+        })),
+        recentRecognitions: context.recentRecognitions.map((r) => ({
+          valueName: r.valueName ? sanitizeForPrompt(r.valueName) : undefined,
+          messagePreview: sanitizeForPrompt(r.messagePreview),
+          createdAt: r.createdAt,
+        })),
+        pendingFromPrevious: context.pendingFromPrevious.map((p) => ({
+          text: sanitizeForPrompt(p.text),
+        })),
+        checkinTopic: context.checkinTopic ? sanitizeForPrompt(context.checkinTopic) : undefined,
+      });
+
+      // 800 tokens es suficiente para 3-5 topics con rationale cortos.
+      const { text, tokensUsed } = await this.callClaude(prompt, 800);
+      const content = this.parseJson(text);
+
+      // Validación del shape esperado — si falla, al menos retornamos array vacío
+      // para no romper el caller.
+      if (!content.topics || !Array.isArray(content.topics)) {
+        this.logger.warn(
+          `AGENDA_SUGGESTIONS returned unexpected shape — coercing to empty array. checkinId=${checkinId.slice(0, 8)}`,
+        );
+        content.topics = [];
+      }
+
+      const insight = this.insightRepo.create({
+        tenantId,
+        type: InsightType.AGENDA_SUGGESTIONS,
+        userId: null,
+        cycleId: null, // NO asociado a ciclo
+        scopeEntityId: checkinId,
+        content,
+        model: MODEL,
+        tokensUsed,
+        generatedBy,
+      });
+      const saved = await this.insightRepo.save(insight);
+      await this.trackAddonUsage(tenantId);
+
+      this.logger.log(
+        `AGENDA_SUGGESTIONS generated: tenant=${tenantId.slice(0, 8)}, checkin=${checkinId.slice(0, 8)}, topics=${content.topics.length}, tokens=${tokensUsed}`,
+      );
+
+      return saved;
+    });
+  }
+
   // ─── Flight Risk Score ──────────────────────────────────────────────────
 
   /**
