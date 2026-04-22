@@ -722,6 +722,15 @@ export const api = {
       request<CheckInData>("/feedback/checkins", { method: "POST", body: JSON.stringify(data) }, token),
     listCheckIns: (token: string) =>
       request<CheckInData[]>("/feedback/checkins", {}, token),
+    /** v3.1 — Historial de temas para autocompletar. Admin ve todos los del
+     *  tenant; manager solo los que él creó; employee retorna []. */
+    getMyTopicsHistory: (token: string) =>
+      request<Array<{
+        title: string;
+        usedCount: number;
+        lastUsedAt: string;
+        history: Array<{ employeeName: string; date: string }>;
+      }>>("/feedback/my-topics", {}, token),
     updateCheckIn: (token: string, id: string, data: any) =>
       request<CheckInData>(`/feedback/checkins/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
     completeCheckIn: (token: string, id: string, data?: { notes?: string; actionItems?: any[]; rating?: number; minutes?: string }) =>
