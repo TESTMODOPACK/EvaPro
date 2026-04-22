@@ -14,6 +14,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import EmptyState from '@/components/EmptyState';
 import { useToastStore } from '@/store/toast.store';
+import RecognitionComments from '@/components/RecognitionComments';
+import MvpOfTheMonthCard from '@/components/MvpOfTheMonthCard';
 
 const ICONS: Record<string, string> = {
   star: '\u2B50', trophy: '\uD83C\uDFC6', rocket: '\uD83D\uDE80', heart: '\u2764\uFE0F',
@@ -94,6 +96,8 @@ function RecognitionCard({ item, onReact }: { item: any; onReact: (id: string, e
             </button>
           ))}
         </div>
+        {/* v3.1 F7 — Hilo de comentarios */}
+        <RecognitionComments recognitionId={item.id} />
       </div>
     </div>
   );
@@ -439,6 +443,10 @@ function ReconocimientosPageContent() {
       {/* Wall Tab */}
       {tab === 'wall' && (
         <div className="animate-fade-up">
+          {/* v3.1 F7 — MVP del Mes destacado arriba del muro */}
+          <div style={{ marginBottom: '1rem' }}>
+            <MvpOfTheMonthCard />
+          </div>
           <NewRecognitionForm onSuccess={() => {
             refetchWall();
             if (token) api.recognition.budget(token).then(setBudget).catch(() => {});

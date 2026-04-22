@@ -1,6 +1,8 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Recognition } from './entities/recognition.entity';
+import { RecognitionComment } from './entities/recognition-comment.entity';
+import { MvpOfTheMonth } from './entities/mvp-of-the-month.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
 import { UserPoints } from './entities/user-points.entity';
@@ -17,7 +19,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Recognition, Badge, UserBadge, UserPoints, UserPointsSummary, PointsBudget, RedemptionItem, RedemptionTransaction, Challenge, ChallengeProgress, User]),
+    TypeOrmModule.forFeature([Recognition, RecognitionComment, MvpOfTheMonth, Badge, UserBadge, UserPoints, UserPointsSummary, PointsBudget, RedemptionItem, RedemptionTransaction, Challenge, ChallengeProgress, User]),
     forwardRef(() => NotificationsModule),
   ],
   controllers: [RecognitionController],

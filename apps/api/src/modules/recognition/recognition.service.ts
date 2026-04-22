@@ -1,10 +1,14 @@
-import { Injectable, Inject, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
+import { Cron } from '@nestjs/schedule';
 import { cachedFetch, invalidateCache } from '../../common/cache/cache.helper';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, DataSource, MoreThan } from 'typeorm';
+import { Between, In, IsNull, Repository, DataSource, MoreThan } from 'typeorm';
+import { runWithCronLock } from '../../common/utils/cron-lock';
 import { Recognition } from './entities/recognition.entity';
+import { RecognitionComment } from './entities/recognition-comment.entity';
+import { MvpOfTheMonth } from './entities/mvp-of-the-month.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
 import { UserPoints, PointsSource } from './entities/user-points.entity';
@@ -33,6 +37,8 @@ export class RecognitionService {
 
   constructor(
     @InjectRepository(Recognition) private readonly recogRepo: Repository<Recognition>,
+    @InjectRepository(RecognitionComment) private readonly commentRepo: Repository<RecognitionComment>,
+    @InjectRepository(MvpOfTheMonth) private readonly mvpRepo: Repository<MvpOfTheMonth>,
     @InjectRepository(Badge) private readonly badgeRepo: Repository<Badge>,
     @InjectRepository(UserBadge) private readonly userBadgeRepo: Repository<UserBadge>,
     @InjectRepository(UserPoints) private readonly pointsRepo: Repository<UserPoints>,
@@ -1419,5 +1425,266 @@ export class RecognitionService {
       doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
     }
     return Buffer.from(doc.output('arraybuffer'));
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // v3.1 F7 — Comentarios sobre reconocimientos + MVP del Mes
+  // ═════════════════════════════════════════════════════════════════════
+
+  /**
+   * Agrega un comentario a un reconocimiento. Cualquier user activo del
+   * tenant puede comentar. El recognition debe ser público (isPublic=true).
+   */
+  async addComment(
+    tenantId: string,
+    userId: string,
+    recognitionId: string,
+    text: string,
+  ): Promise<RecognitionComment> {
+    const clean = (text || '').trim();
+    if (!clean) throw new BadRequestException('El comentario no puede estar vacío.');
+    if (clean.length > 1000) {
+      throw new BadRequestException('El comentario no puede superar los 1000 caracteres.');
+    }
+
+    const r = await this.recogRepo.findOne({
+      where: { id: recognitionId, tenantId },
+      select: ['id', 'isPublic'],
+    });
+    if (!r) throw new NotFoundException('Reconocimiento no encontrado');
+    if (!r.isPublic) {
+      throw new ForbiddenException('No se puede comentar en reconocimientos privados.');
+    }
+
+    const c = this.commentRepo.create({
+      tenantId,
+      recognitionId,
+      fromUserId: userId,
+      text: clean,
+    });
+    return this.commentRepo.save(c);
+  }
+
+  /**
+   * Lista comentarios no-borrados de un reconocimiento, ordenados asc por
+   * fecha (los más viejos primero, como un hilo de chat).
+   */
+  async listComments(
+    tenantId: string,
+    recognitionId: string,
+  ): Promise<RecognitionComment[]> {
+    // Verificar que el recognition pertenece al tenant (cross-tenant guard).
+    const r = await this.recogRepo.findOne({
+      where: { id: recognitionId, tenantId },
+      select: ['id'],
+    });
+    if (!r) throw new NotFoundException('Reconocimiento no encontrado');
+
+    return this.commentRepo.find({
+      where: { recognitionId, deletedAt: IsNull() },
+      relations: ['fromUser'],
+      order: { createdAt: 'ASC' },
+      take: 200,
+    });
+  }
+
+  /**
+   * Soft-delete de un comentario. Solo el autor o admin del tenant
+   * pueden borrar.
+   */
+  async deleteComment(
+    tenantId: string,
+    userId: string,
+    role: string,
+    commentId: string,
+  ): Promise<{ deleted: true }> {
+    const c = await this.commentRepo.findOne({
+      where: { id: commentId, tenantId },
+    });
+    if (!c) throw new NotFoundException('Comentario no encontrado');
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (!isAdmin && c.fromUserId !== userId) {
+      throw new ForbiddenException('Solo el autor o un admin puede borrar el comentario.');
+    }
+    await this.commentRepo.softDelete({ id: commentId });
+    return { deleted: true };
+  }
+
+  // ─── MVP del Mes ─────────────────────────────────────────────────────
+
+  /**
+   * Formato de month: 'YYYY-MM' UTC.
+   * ofsetMonths=0 → mes actual; ofsetMonths=-1 → mes anterior.
+   */
+  private monthKey(offsetMonths: number = 0): string {
+    const d = new Date();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() + offsetMonths);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  /** Primer día del mes (00:00 UTC). */
+  private monthStart(monthKey: string): Date {
+    const [y, m] = monthKey.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, 1, 0, 0, 0, 0));
+  }
+
+  /** Primer día del mes siguiente (00:00 UTC) — exclusive end. */
+  private monthEnd(monthKey: string): Date {
+    const [y, m] = monthKey.split('-').map(Number);
+    return new Date(Date.UTC(y, m, 1, 0, 0, 0, 0));
+  }
+
+  /** MVP del mes en curso (si ya fue calculado). */
+  async getCurrentMvp(tenantId: string): Promise<MvpOfTheMonth | null> {
+    const monthKey = this.monthKey(0);
+    const mvp = await this.mvpRepo.findOne({
+      where: { tenantId, month: monthKey },
+      relations: ['user'],
+    });
+    return mvp;
+  }
+
+  /** Histórico de MVPs (últimos 12 meses por defecto). */
+  async getMvpHistory(tenantId: string, limit: number = 12): Promise<MvpOfTheMonth[]> {
+    return this.mvpRepo.find({
+      where: { tenantId },
+      relations: ['user'],
+      order: { month: 'DESC' },
+      take: Math.max(1, Math.min(limit, 60)),
+    });
+  }
+
+  /**
+   * Calcula el MVP del mes anterior para un tenant.
+   * Criterios:
+   *   1. Mayor `uniqueGivers` (reconocedores distintos).
+   *   2. Tiebreaker: mayor `totalKudos`.
+   *   3. Tiebreaker: user con fecha de ingreso más antigua.
+   *
+   * Idempotente: si ya existe MVP del mes para ese tenant, no lo sobreescribe.
+   */
+  private async calculateMvpForTenant(tenantId: string, monthKey: string): Promise<void> {
+    const existing = await this.mvpRepo.findOne({ where: { tenantId, month: monthKey } });
+    if (existing) {
+      this.logger.log(`[mvpCron] tenant=${tenantId.slice(0, 8)} month=${monthKey} ya existe, skip`);
+      return;
+    }
+
+    const start = this.monthStart(monthKey);
+    const end = this.monthEnd(monthKey);
+
+    // Cargar reconocimientos públicos del mes.
+    const recogs = await this.recogRepo.find({
+      where: {
+        tenantId,
+        isPublic: true,
+        createdAt: Between(start, end),
+      },
+      select: ['toUserId', 'fromUserId', 'valueId'],
+    });
+
+    if (recogs.length === 0) {
+      this.logger.log(`[mvpCron] tenant=${tenantId.slice(0, 8)} month=${monthKey} sin kudos, skip`);
+      return;
+    }
+
+    // Agregar por toUserId.
+    const byRecipient = new Map<string, { total: number; givers: Set<string>; values: Set<string> }>();
+    for (const r of recogs) {
+      let bucket = byRecipient.get(r.toUserId);
+      if (!bucket) {
+        bucket = { total: 0, givers: new Set(), values: new Set() };
+        byRecipient.set(r.toUserId, bucket);
+      }
+      bucket.total += 1;
+      bucket.givers.add(r.fromUserId);
+      if (r.valueId) bucket.values.add(r.valueId);
+    }
+
+    // Elegir ganador. Tiebreaker final por createdAt del user (más antiguo primero).
+    const candidates = await Promise.all(
+      Array.from(byRecipient.entries()).map(async ([userId, bucket]) => {
+        const user = await this.userRepo.findOne({
+          where: { id: userId, tenantId },
+          select: ['id', 'createdAt', 'isActive'],
+        });
+        return { userId, bucket, createdAt: user?.createdAt || new Date(), active: user?.isActive !== false };
+      }),
+    );
+
+    // Excluir users inactivos (no celebrar a un ex-colaborador).
+    const active = candidates.filter((c) => c.active);
+    if (active.length === 0) {
+      this.logger.log(`[mvpCron] tenant=${tenantId.slice(0, 8)} month=${monthKey} sin candidatos activos, skip`);
+      return;
+    }
+
+    active.sort((a, b) => {
+      if (b.bucket.givers.size !== a.bucket.givers.size) {
+        return b.bucket.givers.size - a.bucket.givers.size;
+      }
+      if (b.bucket.total !== a.bucket.total) return b.bucket.total - a.bucket.total;
+      return a.createdAt.getTime() - b.createdAt.getTime();
+    });
+
+    const winner = active[0];
+
+    const mvp = this.mvpRepo.create({
+      tenantId,
+      month: monthKey,
+      userId: winner.userId,
+      totalKudosCount: winner.bucket.total,
+      uniqueGiversCount: winner.bucket.givers.size,
+      valuesTouched: Array.from(winner.bucket.values),
+    });
+    await this.mvpRepo.save(mvp);
+
+    // Notificación in-app a TODOS los users activos del tenant.
+    await this.notifyAllUsers(
+      tenantId,
+      `🏆 MVP del mes ${monthKey}: reconocido por ${winner.bucket.givers.size} colegas con ${winner.bucket.total} kudos.`,
+    ).catch(() => undefined);
+
+    this.logger.log(
+      `[mvpCron] tenant=${tenantId.slice(0, 8)} month=${monthKey} winner=${winner.userId.slice(0, 8)} kudos=${winner.bucket.total} givers=${winner.bucket.givers.size}`,
+    );
+  }
+
+  /**
+   * Cron mensual día 1 a las 03:00 UTC: para cada tenant, calcula el
+   * MVP del mes anterior. Idempotente y multi-replica safe.
+   */
+  @Cron('0 3 1 * *')
+  async calculateMvpOfTheMonth(): Promise<void> {
+    await runWithCronLock(
+      'recognition.calculateMvpOfTheMonth',
+      this.dataSource,
+      this.logger,
+      async () => {
+        const monthKey = this.monthKey(-1); // mes anterior
+        this.logger.log(`[mvpCron] arrancando para mes ${monthKey}`);
+
+        // Todos los tenants activos (sin filtro adicional — el calc es barato).
+        const tenants = await this.dataSource
+          .getRepository('tenants')
+          .createQueryBuilder('t')
+          .select(['t.id'])
+          .getMany();
+
+        for (const t of tenants) {
+          try {
+            await this.calculateMvpForTenant((t as any).id, monthKey);
+          } catch (err: any) {
+            this.logger.warn(
+              `[mvpCron] tenant=${(t as any).id?.slice(0, 8)} falló: ${err?.message}`,
+            );
+          }
+        }
+        this.logger.log(`[mvpCron] completo para ${tenants.length} tenants`);
+      },
+    );
   }
 }

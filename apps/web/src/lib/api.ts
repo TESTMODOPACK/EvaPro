@@ -1328,6 +1328,32 @@ export const api = {
       request<any[]>(`/recognition/leaderboard-optin?period=${period}&limit=${limit}${department ? `&department=${department}` : ''}`, {}, token),
     toggleOptIn: (token: string, optIn: boolean) =>
       request<any>("/recognition/leaderboard-optin/toggle", { method: "POST", body: JSON.stringify({ optIn }) }, token),
+    // ─── v3.1 F7 — Comentarios + MVP del Mes ────────────────────────
+    listComments: (token: string, id: string) =>
+      request<Array<{
+        id: string; recognitionId: string; fromUserId: string;
+        text: string; createdAt: string;
+        fromUser?: { firstName: string; lastName: string };
+      }>>(`/recognition/${id}/comments`, {}, token),
+    addComment: (token: string, id: string, text: string) =>
+      request<any>(`/recognition/${id}/comments`, {
+        method: 'POST', body: JSON.stringify({ text }),
+      }, token),
+    deleteComment: (token: string, commentId: string) =>
+      request<{ deleted: true }>(`/recognition/comments/${commentId}`, { method: 'DELETE' }, token),
+    currentMvp: (token: string) =>
+      request<{
+        id: string; month: string; userId: string;
+        totalKudosCount: number; uniqueGiversCount: number;
+        valuesTouched: string[];
+        user?: { firstName: string; lastName: string; position?: string; department?: string };
+      } | null>('/recognition/mvp/current', {}, token),
+    mvpHistory: (token: string, limit = 12) =>
+      request<Array<{
+        id: string; month: string; userId: string;
+        totalKudosCount: number; uniqueGiversCount: number;
+        user?: { firstName: string; lastName: string };
+      }>>(`/recognition/mvp/history?limit=${limit}`, {}, token),
   },
 
   surveys: {
