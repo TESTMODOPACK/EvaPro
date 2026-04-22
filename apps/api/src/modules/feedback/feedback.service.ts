@@ -1,6 +1,8 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { DataSource, In, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { runWithCronLock } from '../../common/utils/cron-lock';
 import { CheckIn, CheckInStatus } from './entities/checkin.entity';
 import { QuickFeedback, Sentiment } from './entities/quick-feedback.entity';
 import { MeetingLocation } from './entities/meeting-location.entity';
@@ -66,6 +68,8 @@ export class FeedbackService {
     private readonly emailService: EmailService,
     private readonly pushService: PushService,
     private readonly auditService: AuditService,
+    // v3.1 — para runWithCronLock en crons de auto-close.
+    private readonly dataSource: DataSource,
   ) {}
 
   // ─── Check-ins ────────────────────────────────────────────────────────────
@@ -314,6 +318,151 @@ export class FeedbackService {
     }
     ci.minutes = minutes || null;
     return this.checkInRepo.save(ci);
+  }
+
+  /**
+   * v3.1 — Edición retroactiva de un check-in COMPLETED (típicamente uno
+   * auto-cerrado por el cron). Permite agregar notas, minuta, acuerdos y
+   * rating en un solo llamado. Solo manager del check-in o admin.
+   *
+   * No toca `status` — si ya fue completed, queda completed. `autoCompleted`
+   * tampoco se toca: se conserva como registro histórico.
+   */
+  async editCompletedCheckIn(
+    tenantId: string,
+    id: string,
+    userId: string,
+    role: string,
+    data: {
+      notes?: string;
+      minutes?: string;
+      rating?: number;
+      actionItems?: Array<{ text: string; completed?: boolean; assigneeId?: string; assigneeName?: string; dueDate?: string }>;
+    },
+  ): Promise<CheckIn> {
+    const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+    if (ci.status !== CheckInStatus.COMPLETED) {
+      throw new BadRequestException(
+        'Solo se puede editar información retroactiva de check-ins completados.',
+      );
+    }
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (!isAdmin && ci.managerId !== userId) {
+      throw new ForbiddenException(
+        'Solo el encargado del check-in o un admin puede editar la información retroactiva.',
+      );
+    }
+
+    // `notes` en la columna es nullable aunque el TS type dice `string`
+    // (discrepancia histórica de la entidad). Usamos null para consistencia
+    // con la BD y con editCompletedMeeting. El cast evita el type error.
+    if (data.notes !== undefined) ci.notes = (data.notes?.trim() || null) as unknown as string;
+    if (data.minutes !== undefined) ci.minutes = data.minutes?.trim() || null;
+    if (data.rating !== undefined) {
+      if (data.rating !== null && (data.rating < 1 || data.rating > 5)) {
+        throw new BadRequestException('Rating debe estar entre 1 y 5.');
+      }
+      ci.rating = data.rating ?? null;
+    }
+    if (data.actionItems !== undefined) {
+      ci.actionItems = (data.actionItems || [])
+        .filter((i) => (i.text || '').trim())
+        .map((i) => ({
+          text: i.text.trim(),
+          completed: i.completed === true,
+          assigneeId: i.assigneeId,
+          assigneeName: i.assigneeName?.trim() || undefined,
+          dueDate: i.dueDate,
+        }));
+    }
+
+    const saved = await this.checkInRepo.save(ci);
+    await this.auditService
+      .log(tenantId, userId, 'checkin.retroactive_edit', 'checkin', id, {
+        wasAutoCompleted: ci.autoCompleted,
+      })
+      .catch(() => undefined);
+    return saved;
+  }
+
+  /**
+   * v3.1 — Cron diario que auto-completa check-ins programados cuya fecha
+   * pasó hace más de 5 días sin que nadie los cerrara manualmente.
+   *
+   * Semántica: marca `status=COMPLETED` + `autoCompleted=true` y deja
+   * `notes` con texto "Cerrado automáticamente...". El manager puede
+   * después editar notas/minuta/acuerdos/rating vía
+   * `editCompletedCheckIn` (endpoint PATCH /checkins/:id/retroactive-info).
+   *
+   * Threshold 5 días: justo para cerrar reuniones viejas sin apurar las
+   * recientes. `scheduledDate + 5 < hoy` equivale a `scheduledDate < hoy - 5`.
+   *
+   * Corre a las 02:00 UTC (después del auto-close de recruitment que corre
+   * a las 01:00; no hay dependencia, solo evita picos de carga juntos).
+   *
+   * Idempotente: si corre 2 veces el mismo día, la segunda no encuentra
+   * filas (ya están CLOSED).
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async autoCompleteStaleCheckIns(): Promise<void> {
+    await runWithCronLock(
+      'feedback.autoCompleteStaleCheckIns',
+      this.dataSource,
+      this.logger,
+      async () => {
+        const cutoff = new Date();
+        cutoff.setUTCDate(cutoff.getUTCDate() - 5);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+        const stale = await this.checkInRepo.find({
+          where: {
+            status: CheckInStatus.SCHEDULED,
+            scheduledDate: LessThan(new Date(cutoffStr)) as any,
+          },
+          select: ['id', 'tenantId', 'managerId', 'employeeId', 'topic', 'scheduledDate'],
+        });
+
+        if (stale.length === 0) {
+          this.logger.log('[autoCompleteStaleCheckIns] 0 check-ins vencidos +5d');
+          return;
+        }
+
+        const autoNote =
+          'Cerrado automáticamente por política de cierre de Eva360: han pasado ' +
+          'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
+          'reunión. El encargado puede agregar retroactivamente notas, minuta, ' +
+          'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
+
+        for (const ci of stale) {
+          try {
+            await this.checkInRepo.update(
+              { id: ci.id },
+              {
+                status: CheckInStatus.COMPLETED,
+                autoCompleted: true,
+                completedAt: new Date(),
+                notes: autoNote,
+              },
+            );
+            await this.auditService
+              .log(ci.tenantId, null, 'checkin.auto_completed', 'checkin', ci.id, {
+                topic: ci.topic,
+                scheduledDate: ci.scheduledDate,
+              })
+              .catch(() => undefined);
+          } catch (err: any) {
+            this.logger.warn(
+              `[autoCompleteStaleCheckIns] falló cerrar ${ci.id}: ${err?.message}`,
+            );
+          }
+        }
+
+        this.logger.log(
+          `[autoCompleteStaleCheckIns] auto-cerrados: ${stale.length}`,
+        );
+      },
+    );
   }
 
   async deleteCheckIn(tenantId: string | undefined, id: string, userId: string, role: string): Promise<{ deleted: boolean }> {

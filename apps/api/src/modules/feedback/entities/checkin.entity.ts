@@ -186,6 +186,15 @@ export class CheckIn {
   @Column({ type: 'boolean', name: 'email_sent', default: false })
   emailSent: boolean;
 
+  /**
+   * v3.1 — true si el check-in fue auto-completado por el cron
+   * `autoCompleteStaleCheckIns` (>5 días desde scheduledDate sin cierre
+   * manual). Permite a la UI mostrar badge "Cerrado automáticamente" y
+   * al manager agregar info retroactiva vía PATCH /retroactive-info.
+   */
+  @Column({ type: 'boolean', name: 'auto_completed', default: false })
+  autoCompleted: boolean;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

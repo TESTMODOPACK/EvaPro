@@ -31,6 +31,7 @@ import { RecognitionModule } from './modules/recognition/recognition.module';
 import { DeiModule } from './modules/dei/dei.module';
 import { SystemModule } from './modules/system/system.module';
 import { RecruitmentModule } from './modules/recruitment/recruitment.module';
+import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
@@ -100,6 +101,7 @@ import { NoImpersonationGuard } from './common/guards/no-impersonation.guard';
     DeiModule,
     SystemModule,
     RecruitmentModule,
+    TeamMeetingsModule,
     SignaturesModule,
     SurveysModule,
     ContractsModule,

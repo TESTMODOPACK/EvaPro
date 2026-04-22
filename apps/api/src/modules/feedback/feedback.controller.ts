@@ -148,6 +148,38 @@ export class FeedbackController {
     return this.feedbackService.updateMinutes(req.user.tenantId, id, req.user.userId, body.minutes);
   }
 
+  /**
+   * v3.1 — Edición retroactiva de un check-in ya COMPLETED (típicamente
+   * auto-cerrado por el cron de +5 días). Solo manager del check-in o
+   * admin. Acepta cualquier combinación de notes/minutes/actionItems/rating.
+   */
+  @Patch('checkins/:id/retroactive-info')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  editCompletedCheckIn(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body: {
+      notes?: string;
+      minutes?: string;
+      rating?: number;
+      actionItems?: Array<{
+        text: string;
+        completed?: boolean;
+        assigneeId?: string;
+        assigneeName?: string;
+        dueDate?: string;
+      }>;
+    },
+  ) {
+    return this.feedbackService.editCompletedCheckIn(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+      body || {},
+    );
+  }
+
   @Patch('checkins/:id/add-topic')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   addTopicToCheckIn(
