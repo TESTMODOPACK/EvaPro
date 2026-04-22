@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import ConfirmModal from '@/components/ConfirmModal';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
-import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation, useMyTopicsHistory } from '@/hooks/useFeedback';
+import { useCheckIns, useCreateCheckIn, useCompleteCheckIn, useRejectCheckIn, useCancelCheckIn, useRequestCheckIn, useAcceptCheckIn, useMeetingLocations, useCreateLocation, useDeleteLocation, useMyTopicsHistory, useEditCompletedCheckIn } from '@/hooks/useFeedback';
 import { useReceivedFeedback, useGivenFeedback, useSendQuickFeedback, useFeedbackSummary } from '@/hooks/useFeedback';
 import { useActiveUsersForPicker } from '@/hooks/useUsers';
 import { useDepartments } from '@/hooks/useDepartments';
@@ -18,8 +18,17 @@ import LoadingState from '@/components/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import Link from 'next/link';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
+import {
+  useTeamMeetings,
+  useCreateTeamMeeting,
+  useCancelTeamMeeting,
+  useCompleteTeamMeeting,
+  useRespondTeamMeeting,
+  useAddTopicToTeamMeeting,
+  useEditCompletedTeamMeeting,
+} from '@/hooks/useTeamMeetings';
 
-type ActiveTab = 'checkins' | 'quick' | 'locations';
+type ActiveTab = 'checkins' | 'quick' | 'locations' | 'teamMeetings';
 type QuickSubTab = 'received' | 'given';
 type Sentiment = 'positive' | 'neutral' | 'constructive';
 
@@ -86,6 +95,7 @@ function CheckInsTab() {
   const { data: locations } = useMeetingLocations();
   const createCheckIn = useCreateCheckIn();
   const completeCheckIn = useCompleteCheckIn();
+  const editCompletedCheckIn = useEditCompletedCheckIn();
   const rejectCheckIn = useRejectCheckIn();
   const cancelCheckIn = useCancelCheckIn();
   const requestCheckIn = useRequestCheckIn();
@@ -99,6 +109,9 @@ function CheckInsTab() {
   const [rejectModal, setRejectModal] = useState<{ id: string; topic: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [completeModal, setCompleteModal] = useState<{ id: string; topic: string; employee: string } | null>(null);
+  // v3.1 — modal de edición retroactiva de check-ins completados
+  // (típicamente auto-cerrados por el cron +5d).
+  const [retroEditModal, setRetroEditModal] = useState<{ id: string; topic: string; employee: string; current: { notes: string; minutes: string; rating: number; actionItems: Array<{ text: string; assigneeName: string; dueDate: string; completed: boolean }> } } | null>(null);
   const [completeForm, setCompleteForm] = useState({ notes: '', rating: 0, minutes: '', actionItems: [{ text: '', assigneeName: '', dueDate: '' }] });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingMinutesId, setEditingMinutesId] = useState<string | null>(null);
@@ -607,6 +620,23 @@ function CheckInsTab() {
                     {ci.emailSent && (
                       <span style={{ fontSize: '0.7rem', color: 'var(--success)' }} title="Invitaci\u00f3n enviada por email">{'\u2709\uFE0F Enviado'}</span>
                     )}
+                    {ci.autoCompleted && (
+                      <span
+                        style={{
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '999px',
+                          background: 'rgba(245,158,11,0.12)',
+                          color: '#d97706',
+                          letterSpacing: '0.03em',
+                          textTransform: 'uppercase',
+                        }}
+                        title="Cerrado automáticamente por política de +5 días sin registro. Puedes editar la información desde 'Editar información'."
+                      >
+                        ⏱ cerrado automáticamente
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                     <span>{'\uD83D\uDCC5'} {formatDate(ci.scheduledDate)}{ci.scheduledTime ? ` a las ${ci.scheduledTime.slice(0, 5)}` : ''}</span>
@@ -621,16 +651,49 @@ function CheckInsTab() {
                       <strong>{'Motivo del rechazo:'}</strong> {ci.rejectionReason}
                     </div>
                   )}
-                  {/* Completed check-in details — expandable */}
-                  {ci.status === 'completed' && (ci.notes || ci.actionItems?.length > 0 || ci.rating) && (
-                    <button
-                      onClick={() => setExpandedId(expandedId === ci.id ? null : ci.id)}
-                      style={{ marginTop: '0.5rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600, padding: 0, display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                    >
-                      <span style={{ transform: expandedId === ci.id ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s', display: 'inline-block' }}>▶</span>
-                      Ver registro de la reunión
-                      {ci.rating && <span style={{ marginLeft: '0.5rem' }}>{'⭐'.repeat(ci.rating)}</span>}
-                    </button>
+                  {/* Completed check-in details — expandable.
+                      v3.1: siempre mostrar para completados (incluidos auto-cerrados
+                      sin info todavía) para dar acceso al botón "Editar información". */}
+                  {ci.status === 'completed' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                      <button
+                        onClick={() => setExpandedId(expandedId === ci.id ? null : ci.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600, padding: 0, display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      >
+                        <span style={{ transform: expandedId === ci.id ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s', display: 'inline-block' }}>▶</span>
+                        Ver registro de la reunión
+                        {ci.rating && <span style={{ marginLeft: '0.3rem' }}>{'⭐'.repeat(ci.rating)}</span>}
+                      </button>
+                      {/* Botón editar retroactivo: solo manager del ci o admin. */}
+                      {(ci.managerId === currentUserId || role === 'tenant_admin' || role === 'super_admin') && (
+                        <button
+                          onClick={() => {
+                            setRetroEditModal({
+                              id: ci.id,
+                              topic: ci.topic,
+                              employee: userName(ci.employee),
+                              current: {
+                                notes: ci.notes || '',
+                                minutes: ci.minutes || '',
+                                rating: ci.rating || 0,
+                                actionItems: (ci.actionItems || []).length > 0
+                                  ? (ci.actionItems as any[]).map((a: any) => ({
+                                      text: a.text || '',
+                                      assigneeName: a.assigneeName || '',
+                                      dueDate: a.dueDate || '',
+                                      completed: !!a.completed,
+                                    }))
+                                  : [{ text: '', assigneeName: '', dueDate: '', completed: false }],
+                              },
+                            });
+                          }}
+                          style={{ background: 'none', border: '1px solid var(--accent)', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600, padding: '0.15rem 0.55rem', borderRadius: 'var(--radius-sm,6px)' }}
+                          title={ci.autoCompleted ? 'Agrega notas, minuta, acuerdos y valoración retroactivos' : 'Edita la información registrada de esta reunión'}
+                        >
+                          📝 Editar información
+                        </button>
+                      )}
+                    </div>
                   )}
                   {ci.status === 'completed' && expandedId === ci.id && (
                     <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
@@ -814,6 +877,140 @@ function CheckInsTab() {
           <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={ciPage <= 1} onClick={() => setCiPage(p => p - 1)}>Anterior</button>
           <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Página {ciPage} de {ciTotalPages} ({sorted.length} check-ins)</span>
           <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={ciPage >= ciTotalPages} onClick={() => setCiPage(p => p + 1)}>Siguiente</button>
+        </div>
+      )}
+
+      {/* v3.1 — Modal de edición retroactiva para check-ins completados */}
+      {retroEditModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '1rem' }}>
+          <div className="card" style={{ padding: '1.5rem', maxWidth: '560px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>📝 Editar información retroactiva</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              <strong>{retroEditModal.topic}</strong> — {retroEditModal.employee}
+            </p>
+            <div style={{ padding: '0.6rem 0.8rem', background: 'rgba(245,158,11,0.08)', borderRadius: 'var(--radius-sm,6px)', border: '1px solid rgba(245,158,11,0.18)', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              ⏱ <strong>Política de cierre automático:</strong> los check-ins con más de 5 días desde la fecha programada se cierran automáticamente. Desde acá puedes agregar retroactivamente las notas, minuta, acuerdos y valoración.
+            </div>
+
+            {/* Rating */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Valoración</label>
+              <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button key={star} type="button"
+                    onClick={() => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, rating: star } } : r)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.4rem', opacity: star <= retroEditModal.current.rating ? 1 : 0.3 }}>
+                    ⭐
+                  </button>
+                ))}
+                {retroEditModal.current.rating > 0 && (
+                  <button type="button"
+                    onClick={() => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, rating: 0 } } : r)}
+                    className="btn-ghost" style={{ fontSize: '0.7rem', marginLeft: '0.5rem' }}>
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Notas</label>
+              <textarea className="input" rows={3}
+                value={retroEditModal.current.notes}
+                onChange={(e) => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, notes: e.target.value } } : r)}
+                placeholder="Qué se conversó, contexto, decisiones…"
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+
+            {/* Minutes */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Minuta</label>
+              <textarea className="input" rows={4}
+                value={retroEditModal.current.minutes}
+                onChange={(e) => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, minutes: e.target.value } } : r)}
+                placeholder="Detalle formal de la reunión…"
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+
+            {/* Action items */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Acuerdos y compromisos</label>
+              {retroEditModal.current.actionItems.map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.3rem', alignItems: 'center' }}>
+                  <input type="checkbox" checked={item.completed}
+                    onChange={(e) => setRetroEditModal((r) => {
+                      if (!r) return r;
+                      const items = [...r.current.actionItems];
+                      items[idx] = { ...items[idx], completed: e.target.checked };
+                      return { ...r, current: { ...r.current, actionItems: items } };
+                    })}
+                    style={{ accentColor: 'var(--accent)' }} />
+                  <input className="input" type="text" placeholder="Acuerdo…"
+                    value={item.text}
+                    onChange={(e) => setRetroEditModal((r) => {
+                      if (!r) return r;
+                      const items = [...r.current.actionItems];
+                      items[idx] = { ...items[idx], text: e.target.value };
+                      return { ...r, current: { ...r.current, actionItems: items } };
+                    })}
+                    style={{ flex: 2, fontSize: '0.82rem', textDecoration: item.completed ? 'line-through' : 'none', opacity: item.completed ? 0.6 : 1 }} />
+                  <input className="input" type="text" placeholder="Responsable"
+                    value={item.assigneeName}
+                    onChange={(e) => setRetroEditModal((r) => {
+                      if (!r) return r;
+                      const items = [...r.current.actionItems];
+                      items[idx] = { ...items[idx], assigneeName: e.target.value };
+                      return { ...r, current: { ...r.current, actionItems: items } };
+                    })}
+                    style={{ flex: 1, fontSize: '0.82rem' }} />
+                  <input className="input" type="date"
+                    value={item.dueDate}
+                    onChange={(e) => setRetroEditModal((r) => {
+                      if (!r) return r;
+                      const items = [...r.current.actionItems];
+                      items[idx] = { ...items[idx], dueDate: e.target.value };
+                      return { ...r, current: { ...r.current, actionItems: items } };
+                    })}
+                    style={{ width: '130px', fontSize: '0.82rem' }} />
+                  {retroEditModal.current.actionItems.length > 1 && (
+                    <button type="button"
+                      onClick={() => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, actionItems: r.current.actionItems.filter((_, i) => i !== idx) } } : r)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '1rem', padding: '0.3rem' }}>✕</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem' }}
+                onClick={() => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, actionItems: [...r.current.actionItems, { text: '', assigneeName: '', dueDate: '', completed: false }] } } : r)}>
+                + Agregar acuerdo
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+              <button className="btn-ghost" onClick={() => setRetroEditModal(null)} disabled={editCompletedCheckIn.isPending}>Cancelar</button>
+              <button className="btn-primary" disabled={editCompletedCheckIn.isPending}
+                onClick={() => {
+                  const data: any = {};
+                  data.notes = retroEditModal.current.notes.trim();
+                  data.minutes = retroEditModal.current.minutes.trim();
+                  data.rating = retroEditModal.current.rating > 0 ? retroEditModal.current.rating : null;
+                  data.actionItems = retroEditModal.current.actionItems
+                    .filter(i => i.text.trim())
+                    .map(i => ({
+                      text: i.text.trim(),
+                      completed: i.completed,
+                      assigneeName: i.assigneeName.trim() || undefined,
+                      dueDate: i.dueDate || undefined,
+                    }));
+                  editCompletedCheckIn.mutate({ id: retroEditModal.id, data }, {
+                    onSuccess: () => { setRetroEditModal(null); toast.success('Información actualizada'); },
+                    onError: (e: any) => toast.error(e?.message || 'Error al guardar'),
+                  });
+                }}>
+                {editCompletedCheckIn.isPending ? 'Guardando…' : 'Guardar información'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1436,6 +1633,7 @@ function FeedbackPageContent() {
       <div className="animate-fade-up" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         {tabBtn('checkins', t('feedback.tabCheckIns'))}
         {tabBtn('quick', t('feedback.tabQuickFeedback'))}
+        {tabBtn('teamMeetings', '👥 Reuniones de Equipo')}
         {isAdminOrManager && tabBtn('locations', t('feedback.tabLocations'))}
       </div>
 
@@ -1443,8 +1641,732 @@ function FeedbackPageContent() {
       <div className="animate-fade-up">
         {activeTab === 'checkins' && <CheckInsTab />}
         {activeTab === 'quick' && <QuickFeedbackTab />}
+        {activeTab === 'teamMeetings' && <TeamMeetingsTab />}
         {activeTab === 'locations' && isAdminOrManager && <LocationsTab />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * v3.1 Tema B — TeamMeetingsTab: tab completo para reuniones de equipo.
+ *
+ * Maneja listado + form de creación inline + detalle inline (expandible).
+ * Mantenemos todo en un solo componente para no explotar el árbol — es
+ * ~350 LoC pero cada pieza es corta.
+ */
+function TeamMeetingsTab() {
+  const { user } = useAuthStore();
+  const toast = useToastStore((s) => s.toast);
+  const currentUserId = user?.userId || '';
+  const role = user?.role || '';
+  const canCreate = role === 'tenant_admin' || role === 'super_admin' || role === 'manager';
+
+  const { data: meetings, isLoading } = useTeamMeetings();
+  const { data: usersPage } = useActiveUsersForPicker();
+  const { data: locations } = useMeetingLocations();
+  const createMeeting = useCreateTeamMeeting();
+  const cancelMeeting = useCancelTeamMeeting();
+  const completeMeeting = useCompleteTeamMeeting();
+  const editCompletedMeeting = useEditCompletedTeamMeeting();
+  const respondMeeting = useRespondTeamMeeting();
+  const addTopic = useAddTopicToTeamMeeting();
+
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    scheduledDate: '',
+    scheduledTime: '',
+    locationId: '',
+    participantIds: [] as string[],
+  });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [newTopicText, setNewTopicText] = useState('');
+  const [completeModal, setCompleteModal] = useState<{ id: string; title: string } | null>(null);
+  // v3.1 — modal edición retroactiva de reuniones completadas (ej. auto-cerradas).
+  const [retroEditModal, setRetroEditModal] = useState<{
+    id: string; title: string;
+    current: { notes: string; minutes: string; rating: number; actionItems: Array<{ text: string; assigneeName: string; dueDate: string; completed: boolean }> };
+  } | null>(null);
+  const [completeForm, setCompleteForm] = useState({
+    notes: '', minutes: '', rating: 0,
+    actionItems: [{ text: '', assigneeName: '', dueDate: '' }],
+  });
+
+  const allUsers = (usersPage as any)?.data || [];
+  const selectableUsers = allUsers.filter((u: any) => u.id !== currentUserId && u.isActive);
+
+  const resetForm = () => setForm({
+    title: '', description: '', scheduledDate: '', scheduledTime: '',
+    locationId: '', participantIds: [],
+  });
+
+  const handleCreate = () => {
+    if (!form.title.trim() || !form.scheduledDate || form.participantIds.length === 0) return;
+    createMeeting.mutate(
+      {
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        scheduledDate: form.scheduledDate,
+        scheduledTime: form.scheduledTime || undefined,
+        locationId: form.locationId || undefined,
+        participantIds: form.participantIds,
+      },
+      {
+        onSuccess: () => {
+          toast('Reunión creada y participantes invitados.', 'success');
+          resetForm();
+          setShowForm(false);
+        },
+        onError: (e: any) => toast(e?.message || 'Error al crear la reunión', 'error'),
+      },
+    );
+  };
+
+  const togglePart = (uid: string) => {
+    setForm((f) => ({
+      ...f,
+      participantIds: f.participantIds.includes(uid)
+        ? f.participantIds.filter((x) => x !== uid)
+        : [...f.participantIds, uid],
+    }));
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const nowHHmm = (() => {
+    const n = new Date();
+    return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+  })();
+
+  const statusBadge: Record<string, { bg: string; text: string; label: string }> = {
+    scheduled: { bg: 'rgba(245,158,11,0.12)', text: '#d97706', label: 'PROGRAMADA' },
+    completed: { bg: 'rgba(16,185,129,0.12)', text: '#059669', label: 'COMPLETADA' },
+    cancelled: { bg: 'rgba(239,68,68,0.12)', text: '#dc2626', label: 'CANCELADA' },
+  };
+  const pStatus: Record<string, { icon: string; color: string; label: string }> = {
+    invited: { icon: '⏳', color: 'var(--text-muted)', label: 'Pendiente' },
+    accepted: { icon: '✓', color: 'var(--success)', label: 'Aceptó' },
+    declined: { icon: '✕', color: 'var(--danger)', label: 'Rechazó' },
+    attended: { icon: '✅', color: 'var(--success)', label: 'Asistió' },
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <div>
+          <h2 style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>Reuniones de Equipo</h2>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Convoca reuniones con múltiples participantes. Cada uno puede aceptar, rechazar y proponer temas.
+          </p>
+        </div>
+        {canCreate && (
+          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancelar' : '+ Nueva reunión'}
+          </button>
+        )}
+      </div>
+
+      {/* Form crear */}
+      {showForm && canCreate && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Título *
+              </label>
+              <input className="input" type="text" placeholder="Ej. Retrospectiva del Q2"
+                value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
+                maxLength={200}
+                style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Descripción (opcional)
+              </label>
+              <textarea className="input" rows={2} placeholder="Contexto o agenda general…"
+                value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+                maxLength={2000}
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Fecha *</label>
+                <input className="input" type="date" min={today}
+                  value={form.scheduledDate} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
+                  style={{ width: '100%' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Hora</label>
+                <input className="input" type="time"
+                  min={form.scheduledDate === today ? nowHHmm : undefined}
+                  value={form.scheduledTime} onChange={(e) => setForm({ ...form, scheduledTime: e.target.value })}
+                  style={{ width: '100%' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Lugar (opcional)</label>
+                <select className="input" value={form.locationId}
+                  onChange={(e) => setForm({ ...form, locationId: e.target.value })}
+                  style={{ width: '100%' }}>
+                  <option value="">Sin lugar</option>
+                  {(locations as any[] || []).map((l: any) => (
+                    <option key={l.id} value={l.id}>
+                      {l.type === 'virtual' ? '💻' : '🏢'} {l.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
+                Participantes ({form.participantIds.length} seleccionados) *
+              </label>
+              <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm,6px)', padding: '0.5rem' }}>
+                {selectableUsers.length === 0 ? (
+                  <div style={{ padding: '0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>No hay colaboradores activos disponibles.</div>
+                ) : (
+                  selectableUsers.map((u: any) => {
+                    const checked = form.participantIds.includes(u.id);
+                    return (
+                      <label key={u.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '0.55rem',
+                          padding: '0.3rem 0.4rem', fontSize: '0.82rem', cursor: 'pointer',
+                          borderRadius: 'var(--radius-sm,4px)',
+                          background: checked ? 'rgba(201,147,58,0.08)' : 'transparent',
+                        }}>
+                        <input type="checkbox" checked={checked} onChange={() => togglePart(u.id)}
+                          style={{ accentColor: 'var(--accent)' }} />
+                        <span>
+                          <strong>{u.firstName} {u.lastName}</strong>
+                          {(u.department || u.position) && (
+                            <span style={{ color: 'var(--text-muted)', marginLeft: '0.4rem' }}>
+                              — {[u.department, u.position].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.3rem 0 0' }}>
+                Tú quedas incluido automáticamente como organizador.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button className="btn-ghost" onClick={() => { setShowForm(false); resetForm(); }}>Cancelar</button>
+              <button className="btn-primary"
+                onClick={handleCreate}
+                disabled={
+                  createMeeting.isPending ||
+                  !form.title.trim() ||
+                  !form.scheduledDate ||
+                  form.participantIds.length === 0
+                }>
+                {createMeeting.isPending ? 'Creando…' : 'Crear y enviar invitaciones'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* List */}
+      {isLoading ? (
+        <LoadingState message="Cargando reuniones de equipo…" />
+      ) : !meetings || meetings.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            icon="👥"
+            title="Sin reuniones de equipo"
+            description={canCreate
+              ? 'Programa tu primera reunión con más de un colaborador.'
+              : 'Cuando el admin o un manager te invite, aparecerá aquí.'}
+            ctaLabel={canCreate ? '+ Nueva reunión' : undefined}
+            ctaOnClick={canCreate ? () => setShowForm(true) : undefined}
+          />
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {meetings.map((m: any) => {
+            const myPart = (m.participants || []).find((p: any) => p.userId === currentUserId);
+            const isOrganizer = m.organizerId === currentUserId;
+            const isAdmin = role === 'tenant_admin' || role === 'super_admin';
+            const canManage = isOrganizer || isAdmin;
+            const st = statusBadge[m.status];
+            const accepted = (m.participants || []).filter((p: any) => p.status === 'accepted').length;
+            const declined = (m.participants || []).filter((p: any) => p.status === 'declined').length;
+            const pending = (m.participants || []).filter((p: any) => p.status === 'invited').length;
+            const isExpanded = expandedId === m.id;
+
+            return (
+              <div key={m.id} className="card" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '260px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{m.title}</span>
+                      <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '999px', background: st.bg, color: st.text, letterSpacing: '0.03em' }}>
+                        {st.label}
+                      </span>
+                      {m.autoCompleted && (
+                        <span
+                          style={{
+                            fontSize: '0.66rem', fontWeight: 700, padding: '0.15rem 0.5rem',
+                            borderRadius: '999px',
+                            background: 'rgba(245,158,11,0.12)', color: '#d97706',
+                            letterSpacing: '0.03em', textTransform: 'uppercase',
+                          }}
+                          title="Cerrada automáticamente por política de +5 días. Puedes editar la información desde 'Editar información'."
+                        >
+                          ⏱ cerrada automáticamente
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                      <span>📅 {formatDate(m.scheduledDate)}{m.scheduledTime ? ` a las ${String(m.scheduledTime).slice(0, 5)}` : ''}</span>
+                      <span>👤 Organiza: {userName(m.organizer)}</span>
+                      <span>👥 {accepted} aceptaron · {declined} rechazaron · {pending} pendientes</span>
+                      {m.location && (
+                        <span>{m.location.type === 'virtual' ? '💻' : '🏢'} {m.location.name}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {m.status === 'scheduled' && myPart && !isOrganizer && myPart.status === 'invited' && (
+                      <>
+                        <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                          disabled={respondMeeting.isPending}
+                          onClick={() =>
+                            respondMeeting.mutate({ id: m.id, status: 'accepted' }, {
+                              onSuccess: () => toast('Aceptaste la invitación.', 'success'),
+                              onError: (e: any) => toast(e?.message || 'Error', 'error'),
+                            })
+                          }>
+                          ✓ Aceptar
+                        </button>
+                        <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--danger)' }}
+                          disabled={respondMeeting.isPending}
+                          onClick={() => {
+                            const reason = prompt('Motivo del rechazo (opcional):') || undefined;
+                            respondMeeting.mutate({ id: m.id, status: 'declined', declineReason: reason }, {
+                              onSuccess: () => toast('Rechazaste la invitación.', 'info'),
+                              onError: (e: any) => toast(e?.message || 'Error', 'error'),
+                            });
+                          }}>
+                          ✕ Rechazar
+                        </button>
+                      </>
+                    )}
+                    {m.status === 'scheduled' && canManage && (
+                      <>
+                        <button className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                          onClick={() => { setCompleteModal({ id: m.id, title: m.title }); setCompleteForm({ notes: '', minutes: '', rating: 0, actionItems: [{ text: '', assigneeName: '', dueDate: '' }] }); }}>
+                          Completar
+                        </button>
+                        <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', color: 'var(--danger)' }}
+                          onClick={() => {
+                            const reason = prompt('Motivo de la cancelación (opcional):') || undefined;
+                            if (confirm(`¿Cancelar la reunión "${m.title}"?`)) {
+                              cancelMeeting.mutate({ id: m.id, reason }, {
+                                onSuccess: () => toast('Reunión cancelada.', 'info'),
+                                onError: (e: any) => toast(e?.message || 'Error', 'error'),
+                              });
+                            }
+                          }}>
+                          Cancelar
+                        </button>
+                      </>
+                    )}
+                    <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                      onClick={() => setExpandedId(isExpanded ? null : m.id)}>
+                      {isExpanded ? 'Cerrar' : 'Ver detalle'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Estado del caller dentro de la reunión */}
+                {myPart && !isOrganizer && (
+                  <div style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Tu estado: <strong style={{ color: pStatus[myPart.status]?.color }}>{pStatus[myPart.status]?.icon} {pStatus[myPart.status]?.label}</strong>
+                    {myPart.status === 'declined' && myPart.declineReason && <span> — {myPart.declineReason}</span>}
+                  </div>
+                )}
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm, 8px)', border: '1px solid rgba(99,102,241,0.12)' }}>
+                    {m.description && (
+                      <div style={{ marginBottom: '0.85rem' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Descripción</div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{m.description}</div>
+                      </div>
+                    )}
+                    {/* Participants list */}
+                    <div style={{ marginBottom: '0.85rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Participantes ({(m.participants || []).length})</div>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {(m.participants || []).map((p: any) => (
+                          <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                            <span>
+                              {p.userId === m.organizerId && <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.05rem 0.35rem', borderRadius: '999px', background: 'rgba(201,147,58,0.15)', color: 'var(--accent)', marginRight: '0.4rem' }}>ORGANIZA</span>}
+                              {p.user ? `${p.user.firstName} ${p.user.lastName}` : p.userId.slice(0, 8)}
+                            </span>
+                            <span style={{ color: pStatus[p.status]?.color || 'var(--text-muted)', fontWeight: 600 }}>
+                              {pStatus[p.status]?.icon} {pStatus[p.status]?.label}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Agenda topics */}
+                    <div style={{ marginBottom: '0.85rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
+                        Temas propuestos ({(m.agendaTopics || []).length})
+                      </div>
+                      {(m.agendaTopics || []).length === 0 ? (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '0.4rem' }}>Aún nadie propuso un tema.</div>
+                      ) : (
+                        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 0.5rem' }}>
+                          {(m.agendaTopics || []).map((topic: any, idx: number) => (
+                            <li key={idx} style={{ padding: '0.4rem 0.6rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm, 6px)', marginBottom: '0.3rem', fontSize: '0.82rem' }}>
+                              <div>{topic.text}</div>
+                              {topic.addedByName && (
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                                  — {topic.addedByName}{topic.addedAt ? ` · ${formatDate(topic.addedAt)}` : ''}
+                                </div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {m.status === 'scheduled' && (isOrganizer || (myPart && (myPart.status === 'accepted' || myPart.status === 'invited'))) && (
+                        <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
+                          <input className="input" type="text" placeholder="Propón un tema…"
+                            value={newTopicText}
+                            maxLength={300}
+                            disabled={addTopic.isPending}
+                            onChange={(e) => setNewTopicText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && newTopicText.trim() && !addTopic.isPending) {
+                                e.preventDefault();
+                                addTopic.mutate({ id: m.id, text: newTopicText.trim() }, {
+                                  onSuccess: () => { setNewTopicText(''); toast('Tema agregado', 'success'); },
+                                  onError: (e: any) => toast(e?.message || 'Error', 'error'),
+                                });
+                              }
+                            }}
+                            style={{ flex: 1, fontSize: '0.82rem' }} />
+                          <button className="btn-primary"
+                            disabled={addTopic.isPending || !newTopicText.trim()}
+                            onClick={() =>
+                              addTopic.mutate({ id: m.id, text: newTopicText.trim() }, {
+                                onSuccess: () => { setNewTopicText(''); toast('Tema agregado', 'success'); },
+                                onError: (e: any) => toast(e?.message || 'Error', 'error'),
+                              })
+                            }
+                            style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}>
+                            + Agregar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Completed details */}
+                    {m.status === 'completed' && (
+                      <>
+                        {/* Botón Editar información (organizer o admin) */}
+                        {canManage && (
+                          <div style={{ marginBottom: '0.75rem' }}>
+                            <button
+                              onClick={() => setRetroEditModal({
+                                id: m.id,
+                                title: m.title,
+                                current: {
+                                  notes: m.notes || '',
+                                  minutes: m.minutes || '',
+                                  rating: m.rating || 0,
+                                  actionItems: (m.actionItems || []).length > 0
+                                    ? (m.actionItems as any[]).map((a: any) => ({
+                                        text: a.text || '',
+                                        assigneeName: a.assigneeName || '',
+                                        dueDate: a.dueDate || '',
+                                        completed: !!a.completed,
+                                      }))
+                                    : [{ text: '', assigneeName: '', dueDate: '', completed: false }],
+                                },
+                              })}
+                              style={{ background: 'none', border: '1px solid var(--accent)', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600, padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm,6px)' }}
+                              title={m.autoCompleted ? 'Agrega notas, minuta, acuerdos y valoración retroactivos' : 'Edita la información registrada'}
+                            >
+                              📝 Editar información
+                            </button>
+                          </div>
+                        )}
+                        {m.rating && (
+                          <div style={{ marginBottom: '0.5rem', fontSize: '0.82rem' }}>
+                            <strong>Valoración:</strong> {'⭐'.repeat(m.rating)}{'☆'.repeat(5 - m.rating)}
+                          </div>
+                        )}
+                        {m.notes && (
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Notas</div>
+                            <div style={{ fontSize: '0.82rem', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{m.notes}</div>
+                          </div>
+                        )}
+                        {m.minutes && (
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Minuta</div>
+                            <div style={{ fontSize: '0.82rem', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{m.minutes}</div>
+                          </div>
+                        )}
+                        {m.actionItems && m.actionItems.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Acuerdos ({m.actionItems.length})</div>
+                            {m.actionItems.map((ai: any, i: number) => (
+                              <div key={i} style={{ fontSize: '0.82rem', padding: '0.25rem 0' }}>
+                                {ai.completed ? '✅' : '○'} {ai.text}
+                                {ai.assigneeName && <span style={{ color: 'var(--text-muted)', marginLeft: '0.4rem' }}>— {ai.assigneeName}</span>}
+                                {ai.dueDate && <span style={{ color: 'var(--warning)', marginLeft: '0.4rem', fontSize: '0.75rem' }}>vence: {ai.dueDate}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {m.status === 'cancelled' && m.cancelReason && (
+                      <div style={{ fontSize: '0.82rem', color: 'var(--danger)', padding: '0.5rem', background: 'rgba(239,68,68,0.08)', borderRadius: 'var(--radius-sm,6px)' }}>
+                        <strong>Motivo de cancelación:</strong> {m.cancelReason}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Complete modal */}
+      {completeModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ padding: '1.5rem', maxWidth: '560px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>Completar reunión</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              <strong>{completeModal.title}</strong>
+            </p>
+            <div style={{ marginBottom: '0.9rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>¿Cómo fue la reunión?</label>
+              <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button key={star} type="button"
+                    onClick={() => setCompleteForm({ ...completeForm, rating: star })}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.4rem', opacity: star <= completeForm.rating ? 1 : 0.3 }}>
+                    ⭐
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: '0.9rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Notas</label>
+              <textarea className="input" rows={3}
+                value={completeForm.notes}
+                onChange={(e) => setCompleteForm({ ...completeForm, notes: e.target.value })}
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+            <div style={{ marginBottom: '0.9rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Minuta</label>
+              <textarea className="input" rows={4}
+                value={completeForm.minutes}
+                onChange={(e) => setCompleteForm({ ...completeForm, minutes: e.target.value })}
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+            <div style={{ marginBottom: '0.9rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Acuerdos y compromisos</label>
+              {completeForm.actionItems.map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.3rem' }}>
+                  <input className="input" type="text" placeholder="Acuerdo…"
+                    value={item.text}
+                    onChange={(e) => {
+                      const items = [...completeForm.actionItems];
+                      items[idx] = { ...items[idx], text: e.target.value };
+                      setCompleteForm({ ...completeForm, actionItems: items });
+                    }}
+                    style={{ flex: 2, fontSize: '0.82rem' }} />
+                  <input className="input" type="text" placeholder="Responsable"
+                    value={item.assigneeName}
+                    onChange={(e) => {
+                      const items = [...completeForm.actionItems];
+                      items[idx] = { ...items[idx], assigneeName: e.target.value };
+                      setCompleteForm({ ...completeForm, actionItems: items });
+                    }}
+                    style={{ flex: 1, fontSize: '0.82rem' }} />
+                  <input className="input" type="date"
+                    value={item.dueDate}
+                    onChange={(e) => {
+                      const items = [...completeForm.actionItems];
+                      items[idx] = { ...items[idx], dueDate: e.target.value };
+                      setCompleteForm({ ...completeForm, actionItems: items });
+                    }}
+                    style={{ width: '130px', fontSize: '0.82rem' }} />
+                </div>
+              ))}
+              <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem' }}
+                onClick={() => setCompleteForm({ ...completeForm, actionItems: [...completeForm.actionItems, { text: '', assigneeName: '', dueDate: '' }] })}>
+                + Agregar acuerdo
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+              <button className="btn-ghost" onClick={() => setCompleteModal(null)}>Cancelar</button>
+              <button className="btn-primary"
+                disabled={completeMeeting.isPending}
+                onClick={() => {
+                  const data: any = {};
+                  if (completeForm.notes.trim()) data.notes = completeForm.notes.trim();
+                  if (completeForm.minutes.trim()) data.minutes = completeForm.minutes.trim();
+                  if (completeForm.rating > 0) data.rating = completeForm.rating;
+                  const validItems = completeForm.actionItems.filter(i => i.text.trim());
+                  if (validItems.length > 0) data.actionItems = validItems;
+                  completeMeeting.mutate({ id: completeModal.id, data }, {
+                    onSuccess: () => { setCompleteModal(null); toast('Reunión completada', 'success'); },
+                    onError: (e: any) => toast(e?.message || 'Error', 'error'),
+                  });
+                }}>
+                {completeMeeting.isPending ? 'Guardando…' : 'Completar reunión'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v3.1 — Modal edición retroactiva de reunión de equipo completada */}
+      {retroEditModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '1rem' }}>
+          <div className="card" style={{ padding: '1.5rem', maxWidth: '560px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>📝 Editar información retroactiva</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              <strong>{retroEditModal.title}</strong>
+            </p>
+            <div style={{ padding: '0.6rem 0.8rem', background: 'rgba(245,158,11,0.08)', borderRadius: 'var(--radius-sm,6px)', border: '1px solid rgba(245,158,11,0.18)', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              ⏱ <strong>Política de cierre automático:</strong> las reuniones con más de 5 días desde la fecha programada se cierran automáticamente. Desde acá puedes agregar retroactivamente las notas, minuta, acuerdos y valoración.
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Valoración</label>
+              <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button key={star} type="button"
+                    onClick={() => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, rating: star } } : r)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.4rem', opacity: star <= retroEditModal.current.rating ? 1 : 0.3 }}>
+                    ⭐
+                  </button>
+                ))}
+                {retroEditModal.current.rating > 0 && (
+                  <button type="button"
+                    onClick={() => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, rating: 0 } } : r)}
+                    className="btn-ghost" style={{ fontSize: '0.7rem', marginLeft: '0.5rem' }}>Limpiar</button>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Notas</label>
+              <textarea className="input" rows={3}
+                value={retroEditModal.current.notes}
+                onChange={(e) => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, notes: e.target.value } } : r)}
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Minuta</label>
+              <textarea className="input" rows={4}
+                value={retroEditModal.current.minutes}
+                onChange={(e) => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, minutes: e.target.value } } : r)}
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>Acuerdos y compromisos</label>
+              {retroEditModal.current.actionItems.map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.3rem', alignItems: 'center' }}>
+                  <input type="checkbox" checked={item.completed}
+                    onChange={(e) => setRetroEditModal((r) => {
+                      if (!r) return r;
+                      const items = [...r.current.actionItems];
+                      items[idx] = { ...items[idx], completed: e.target.checked };
+                      return { ...r, current: { ...r.current, actionItems: items } };
+                    })}
+                    style={{ accentColor: 'var(--accent)' }} />
+                  <input className="input" type="text" placeholder="Acuerdo…"
+                    value={item.text}
+                    onChange={(e) => setRetroEditModal((r) => {
+                      if (!r) return r;
+                      const items = [...r.current.actionItems];
+                      items[idx] = { ...items[idx], text: e.target.value };
+                      return { ...r, current: { ...r.current, actionItems: items } };
+                    })}
+                    style={{ flex: 2, fontSize: '0.82rem', textDecoration: item.completed ? 'line-through' : 'none', opacity: item.completed ? 0.6 : 1 }} />
+                  <input className="input" type="text" placeholder="Responsable"
+                    value={item.assigneeName}
+                    onChange={(e) => setRetroEditModal((r) => {
+                      if (!r) return r;
+                      const items = [...r.current.actionItems];
+                      items[idx] = { ...items[idx], assigneeName: e.target.value };
+                      return { ...r, current: { ...r.current, actionItems: items } };
+                    })}
+                    style={{ flex: 1, fontSize: '0.82rem' }} />
+                  <input className="input" type="date"
+                    value={item.dueDate}
+                    onChange={(e) => setRetroEditModal((r) => {
+                      if (!r) return r;
+                      const items = [...r.current.actionItems];
+                      items[idx] = { ...items[idx], dueDate: e.target.value };
+                      return { ...r, current: { ...r.current, actionItems: items } };
+                    })}
+                    style={{ width: '130px', fontSize: '0.82rem' }} />
+                  {retroEditModal.current.actionItems.length > 1 && (
+                    <button type="button"
+                      onClick={() => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, actionItems: r.current.actionItems.filter((_, i) => i !== idx) } } : r)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '1rem', padding: '0.3rem' }}>✕</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="btn-ghost" style={{ fontSize: '0.78rem' }}
+                onClick={() => setRetroEditModal((r) => r ? { ...r, current: { ...r.current, actionItems: [...r.current.actionItems, { text: '', assigneeName: '', dueDate: '', completed: false }] } } : r)}>
+                + Agregar acuerdo
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+              <button className="btn-ghost" onClick={() => setRetroEditModal(null)} disabled={editCompletedMeeting.isPending}>Cancelar</button>
+              <button className="btn-primary" disabled={editCompletedMeeting.isPending}
+                onClick={() => {
+                  const data: any = {};
+                  data.notes = retroEditModal.current.notes.trim();
+                  data.minutes = retroEditModal.current.minutes.trim();
+                  data.rating = retroEditModal.current.rating > 0 ? retroEditModal.current.rating : null;
+                  data.actionItems = retroEditModal.current.actionItems
+                    .filter(i => i.text.trim())
+                    .map(i => ({
+                      text: i.text.trim(),
+                      completed: i.completed,
+                      assigneeName: i.assigneeName.trim() || undefined,
+                      dueDate: i.dueDate || undefined,
+                    }));
+                  editCompletedMeeting.mutate({ id: retroEditModal.id, data }, {
+                    onSuccess: () => { setRetroEditModal(null); toast('Información actualizada', 'success'); },
+                    onError: (e: any) => toast(e?.message || 'Error al guardar', 'error'),
+                  });
+                }}>
+                {editCompletedMeeting.isPending ? 'Guardando…' : 'Guardar información'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -148,6 +148,20 @@ export function useRejectCheckIn() {
 }
 
 /**
+ * v3.1 — Edición retroactiva de un check-in ya COMPLETED (ej. auto-cerrado
+ * por el cron +5 días). Solo manager del checkin o admin.
+ */
+export function useEditCompletedCheckIn() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof api.feedback.editCompletedCheckIn>[2] }) =>
+      api.feedback.editCompletedCheckIn(token!, id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] }),
+  });
+}
+
+/**
  * v3.1 — Permite a un participante (manager o employee) proponer un
  * tema para el 1:1 scheduled. Tras éxito invalida la lista de check-ins
  * y la query de la agenda mágica de ese check-in específico.

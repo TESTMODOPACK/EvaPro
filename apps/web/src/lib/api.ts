@@ -127,8 +127,50 @@ export interface CheckInData {
   rejectionReason?: string | null;
   rejectedBy?: string | null;
   emailSent?: boolean;
+  /** v3.1 — true si fue auto-cerrado por el cron +5d. UI muestra badge. */
+  autoCompleted?: boolean;
   completedAt: string | null; createdAt: string;
   manager?: UserData; employee?: UserData;
+}
+
+// v3.1 Tema B — Reunión de equipo (N participantes).
+export interface TeamMeetingParticipantData {
+  id: string;
+  meetingId: string;
+  userId: string;
+  status: 'invited' | 'accepted' | 'declined' | 'attended';
+  declineReason?: string | null;
+  invitedAt: string;
+  respondedAt?: string | null;
+  user?: UserData;
+}
+
+export interface TeamMeetingData {
+  id: string;
+  tenantId: string;
+  organizerId: string;
+  title: string;
+  description: string | null;
+  scheduledDate: string;
+  scheduledTime?: string | null;
+  locationId?: string | null;
+  location?: { id: string; name: string; type: string } | null;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  agendaTopics?: Array<{ text: string; addedBy: string; addedByName?: string; addedAt?: string }>;
+  actionItems?: Array<{ text: string; completed: boolean; assigneeName?: string; dueDate?: string }>;
+  notes?: string | null;
+  minutes?: string | null;
+  rating?: number | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  emailSent?: boolean;
+  /** v3.1 — true si fue auto-cerrada por el cron +5d. UI muestra badge. */
+  autoCompleted?: boolean;
+  participants?: TeamMeetingParticipantData[];
+  organizer?: UserData;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface QuickFeedbackData {
@@ -743,6 +785,23 @@ export const api = {
         { method: 'PATCH', body: JSON.stringify({ text }) },
         token,
       ),
+    /** v3.1 — Edición retroactiva de check-in COMPLETED (ej. auto-cerrado
+     *  por el cron +5 días). Solo manager del checkin + admin. */
+    editCompletedCheckIn: (
+      token: string,
+      id: string,
+      data: {
+        notes?: string;
+        minutes?: string;
+        rating?: number;
+        actionItems?: Array<{ text: string; completed?: boolean; assigneeName?: string; dueDate?: string }>;
+      },
+    ) =>
+      request<CheckInData>(
+        `/feedback/checkins/${id}/retroactive-info`,
+        { method: 'PATCH', body: JSON.stringify(data) },
+        token,
+      ),
     updateMinutes: (token: string, id: string, minutes: string) =>
       request<CheckInData>(`/feedback/checkins/${id}/minutes`, { method: "PATCH", body: JSON.stringify({ minutes }) }, token),
     deleteCheckIn: (token: string, id: string) =>
@@ -816,6 +875,77 @@ export const api = {
       request<CheckInData>(
         `/feedback/checkins/${checkinId}/agenda`,
         { method: 'PATCH', body: JSON.stringify({ dismissedSuggestionIds }) },
+        token,
+      ),
+  },
+
+  // ─── v3.1 Tema B — Team Meetings (N participantes) ────────────────────
+  teamMeetings: {
+    list: (token: string) =>
+      request<TeamMeetingData[]>('/team-meetings', {}, token),
+    getById: (token: string, id: string) =>
+      request<TeamMeetingData>(`/team-meetings/${id}`, {}, token),
+    create: (token: string, data: {
+      title: string;
+      description?: string;
+      scheduledDate: string;
+      scheduledTime?: string;
+      locationId?: string;
+      participantIds: string[];
+    }) =>
+      request<TeamMeetingData>(
+        '/team-meetings',
+        { method: 'POST', body: JSON.stringify(data) },
+        token,
+      ),
+    update: (token: string, id: string, data: any) =>
+      request<TeamMeetingData>(
+        `/team-meetings/${id}`,
+        { method: 'PATCH', body: JSON.stringify(data) },
+        token,
+      ),
+    cancel: (token: string, id: string, reason?: string) =>
+      request<TeamMeetingData>(
+        `/team-meetings/${id}/cancel`,
+        { method: 'POST', body: JSON.stringify({ reason }) },
+        token,
+      ),
+    complete: (token: string, id: string, data: {
+      notes?: string;
+      minutes?: string;
+      rating?: number;
+      actionItems?: Array<{ text: string; completed?: boolean; assigneeName?: string; dueDate?: string }>;
+    }) =>
+      request<TeamMeetingData>(
+        `/team-meetings/${id}/complete`,
+        { method: 'POST', body: JSON.stringify(data) },
+        token,
+      ),
+    respond: (token: string, id: string, status: 'accepted' | 'declined', declineReason?: string) =>
+      request<any>(
+        `/team-meetings/${id}/respond`,
+        { method: 'POST', body: JSON.stringify({ status, declineReason }) },
+        token,
+      ),
+    addTopic: (token: string, id: string, text: string) =>
+      request<TeamMeetingData>(
+        `/team-meetings/${id}/topics`,
+        { method: 'PATCH', body: JSON.stringify({ text }) },
+        token,
+      ),
+    editCompleted: (
+      token: string,
+      id: string,
+      data: {
+        notes?: string;
+        minutes?: string;
+        rating?: number;
+        actionItems?: Array<{ text: string; completed?: boolean; assigneeName?: string; dueDate?: string }>;
+      },
+    ) =>
+      request<TeamMeetingData>(
+        `/team-meetings/${id}/retroactive-info`,
+        { method: 'PATCH', body: JSON.stringify(data) },
         token,
       ),
   },
