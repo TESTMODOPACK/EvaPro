@@ -210,11 +210,22 @@ export function useGenerateMagicAgenda() {
   const token = useAuthStore((s) => s.token);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ checkinId, force }: { checkinId: string; force?: boolean }) =>
-      api.feedback.generateMagicAgenda(token!, checkinId, force),
+    mutationFn: ({
+      checkinId,
+      force,
+      includeAi,
+    }: {
+      checkinId: string;
+      force?: boolean;
+      /** false para saltar la llamada IA y ahorrar crédito. Default true. */
+      includeAi?: boolean;
+    }) =>
+      api.feedback.generateMagicAgenda(token!, checkinId, { force, includeAi }),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['feedback', 'checkin', vars.checkinId, 'agenda'] });
       qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] });
+      // v3.1 — invalidar quota IA para refrescar la barra si el plan tiene IA.
+      qc.invalidateQueries({ queryKey: ['ai', 'quota'] });
     },
   });
 }
