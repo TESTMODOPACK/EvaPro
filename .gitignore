@@ -48,3 +48,59 @@ extract_docx.ps1
 arquitectura.txt
 init.bat
 create_gitignore.ps1
+
+# === Credenciales y secrets ===
+tmp_login_sa.json
+*.pem
+*.key
+
+# === Archivos temporales de Office ===
+~$*
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# === Test coverage ===
+apps/api/coverage/
+coverage/
+
+# === Email previews (dev output) ===
+email-previews/
+
+# === Documentos de analisis, manuales y estrategia (no codigo) ===
+# En la raiz
+Analisis_*.docx
+Analisis_*.doc
+Eva360_Estrategia_*.docx
+EvaPro_Diagrama_*.docx
+EvaPro_Manual_*.docx
+Plan_Implementacion_*.docx
+Plan_Migracion_*.doc
+Plan_Migracion_*.docx
+Sistema_Evaluacion_*.docx
+datos_usuarios_*.xlsx
+
+# En /docs (sin logos, que si se trackean)
+docs/EVA360_Libreto_*
+docs/EvaPro_Auditoria_*
+docs/EvaPro_Plan_Fases_*
+docs/EvaPro_QA_Checklist_*
+docs/Plantilla_Onboarding_*
+docs/contratos-legales/
+
+# === Scripts de apoyo locales (no parte del producto) ===
+scripts/fix-encoding*.js
+scripts/fix-unicode.js
+scripts/gen-cesce-users.*
+scripts/gen-strategy-doc.js
+scripts/generate-qa-checklist.js
+scripts/md-to-docx.js
+
+# === Config local de Claude Code (excepto CLAUDE.md) ===
+.claude/
+!.claude/CLAUDE.md
+
+# === Ajustes adicionales (guion medio y .doc viejos) ===
+Analisis-*.docx
+Analisis-*.doc
+Eva360_Estrategia_*.doc
