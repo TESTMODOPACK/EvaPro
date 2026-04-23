@@ -27,6 +27,8 @@ export const ROUTE_FEATURE_MAP: Record<string, string> = {
   '/dashboard/feedback/agenda': 'MAGIC_MEETINGS',
   // v3.1 F3 — Mood tracking: dashboard agregado de equipo (manager+admin).
   '/dashboard/mood-equipo': 'MOOD_TRACKING',
+  // v3.1 F6 — Leader Streaks: ranking de hábitos del líder (solo admin).
+  '/dashboard/lider-streaks': 'LEADER_STREAKS',
 };
 
 /**
@@ -54,6 +56,7 @@ export const FEATURE_MIN_PLAN: Record<string, string> = {
   DEI: 'Pro',
   MAGIC_MEETINGS: 'Pro',
   MOOD_TRACKING: 'Growth',
+  LEADER_STREAKS: 'Growth',
   AI_INSIGHTS: 'Enterprise',
   PUBLIC_API: 'Enterprise',
 };
@@ -84,6 +87,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   DEI: 'Diversidad e Inclusión',
   MAGIC_MEETINGS: 'Agenda mágica de 1:1',
   MOOD_TRACKING: 'Check-in del ánimo diario',
+  LEADER_STREAKS: 'Hábitos del líder (rachas)',
   AI_INSIGHTS: 'Informes IA (Anthropic)',
   PUBLIC_API: 'API pública',
 };

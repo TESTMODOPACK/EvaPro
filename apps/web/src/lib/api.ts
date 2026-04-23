@@ -173,6 +173,19 @@ export interface TeamMeetingData {
   updatedAt: string;
 }
 
+// v3.1 F6 — Leader streaks (hábitos del líder)
+export interface LeaderStreaksData {
+  userId: string;
+  firstName?: string;
+  lastName?: string;
+  department?: string | null;
+  position?: string | null;
+  checkinsWeekly: { current: number; best: number; period: 'weekly' | 'monthly' };
+  recognitionsMonthly: { current: number; best: number; period: 'weekly' | 'monthly' };
+  feedbackWeekly: { current: number; best: number; period: 'weekly' | 'monthly' };
+  totalScore: number;
+}
+
 // v3.1 F3 — Mood check-in diario
 export interface MoodCheckinData {
   id: string;
@@ -996,6 +1009,16 @@ export const api = {
         responseCount: number;
         distribution: Record<'1' | '2' | '3' | '4' | '5', number>;
       } | null>('/mood-checkins/team/today', {}, token),
+  },
+
+  // ─── v3.1 F6 — Leader Streaks ─────────────────────────────────────────
+  leaderStreaks: {
+    /** Mis streaks (manager/admin). */
+    me: (token: string) =>
+      request<LeaderStreaksData>('/leader-streaks/me', {}, token),
+    /** Ranking del tenant (admin only). */
+    tenant: (token: string) =>
+      request<LeaderStreaksData[]>('/leader-streaks/tenant', {}, token),
   },
 
   objectives: {

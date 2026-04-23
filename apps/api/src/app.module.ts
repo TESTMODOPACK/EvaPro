@@ -33,6 +33,7 @@ import { SystemModule } from './modules/system/system.module';
 import { RecruitmentModule } from './modules/recruitment/recruitment.module';
 import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module';
 import { MoodCheckinsModule } from './modules/mood-checkins/mood-checkins.module';
+import { LeaderStreaksModule } from './modules/leader-streaks/leader-streaks.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
@@ -104,6 +105,7 @@ import { NoImpersonationGuard } from './common/guards/no-impersonation.guard';
     RecruitmentModule,
     TeamMeetingsModule,
     MoodCheckinsModule,
+    LeaderStreaksModule,
     SignaturesModule,
     SurveysModule,
     ContractsModule,

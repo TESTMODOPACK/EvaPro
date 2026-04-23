@@ -20,6 +20,7 @@ import { useSystemChangelog } from '@/hooks/useSystemChangelog';
 import { getRoleLabel } from '@/lib/roles';
 import { NextActionsWidget } from '@/components/NextActionsWidget';
 import MoodCheckinWidget from '@/components/MoodCheckinWidget';
+import LeaderStreaksWidget from '@/components/LeaderStreaksWidget';
 import { useRecognitionWall } from '@/hooks/useRecognition';
 import { OnboardingChecklist } from '@/components/OnboardingChecklist';
 import CommandCenter, { CommandAlert } from '@/components/CommandCenter';
@@ -575,6 +576,11 @@ function RegularDashboard() {
       {/* v3.1 F3 — Mood check-in diario (auto-oculto si el plan no tiene MOOD_TRACKING). */}
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.25rem' }}>
         <MoodCheckinWidget />
+      </div>
+
+      {/* v3.1 F6 — Leader Streaks (auto-oculto si no es líder o sin LEADER_STREAKS). */}
+      <div className="animate-fade-up-delay-1" style={{ marginBottom: '1.25rem' }}>
+        <LeaderStreaksWidget />
       </div>
 
       {/* Mi último resultado + Reconocimientos + Team summary */}

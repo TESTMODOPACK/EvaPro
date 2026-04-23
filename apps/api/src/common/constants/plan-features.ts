@@ -53,6 +53,12 @@ export const PlanFeature = {
   // agregado (privacidad). Plan mínimo: Growth.
   MOOD_TRACKING: 'MOOD_TRACKING',
 
+  // v3.1 F6 — Hábitos del líder (streaks). Agregación sobre data
+  // existente (check-ins, feedback, reconocimientos). Sin tabla nueva.
+  // Gamifica al manager mostrando rachas de buenas prácticas. Plan
+  // mínimo: Growth.
+  LEADER_STREAKS: 'LEADER_STREAKS',
+
   // Enterprise
   AI_INSIGHTS: 'AI_INSIGHTS',
   PUBLIC_API: 'PUBLIC_API',
@@ -79,6 +85,7 @@ export const PLAN_FEATURES = {
     PlanFeature.RECOGNITION,
     PlanFeature.ENGAGEMENT_SURVEYS,
     PlanFeature.MOOD_TRACKING,
+    PlanFeature.LEADER_STREAKS,
   ],
   pro: [
     PlanFeature.EVAL_90_180,
@@ -103,6 +110,7 @@ export const PLAN_FEATURES = {
     PlanFeature.DEI,
     PlanFeature.MAGIC_MEETINGS,
     PlanFeature.MOOD_TRACKING,
+    PlanFeature.LEADER_STREAKS,
   ],
   enterprise: [
     PlanFeature.EVAL_90_180,
@@ -127,6 +135,7 @@ export const PLAN_FEATURES = {
     PlanFeature.DEI,
     PlanFeature.MAGIC_MEETINGS,
     PlanFeature.MOOD_TRACKING,
+    PlanFeature.LEADER_STREAKS,
     PlanFeature.AI_INSIGHTS,
     PlanFeature.PUBLIC_API,
   ],
