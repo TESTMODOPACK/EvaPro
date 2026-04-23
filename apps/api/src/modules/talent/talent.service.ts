@@ -641,6 +641,41 @@ export class TalentService {
     await this.sessionRepo.save(session);
   }
 
+  /**
+   * F-003 — Reassign moderator of an open calibration session.
+   * Admin-only. Rejects closed/completed sessions (auditoría histórica).
+   * Valida que el newModeratorId sea active y pertenezca al tenant con rol
+   * adecuado (tenant_admin o manager — los roles que pueden crear/moderar).
+   */
+  async reassignModerator(
+    sessionId: string,
+    tenantId: string,
+    newModeratorId: string,
+  ): Promise<{ ok: true; sessionId: string; moderatorId: string }> {
+    if (!newModeratorId) {
+      throw new BadRequestException('newModeratorId es requerido');
+    }
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId, tenantId } });
+    if (!session) throw new NotFoundException('Sesión no encontrada');
+    if (session.status === 'closed' || session.status === 'completed') {
+      throw new BadRequestException('No se puede reasignar moderador en sesiones cerradas');
+    }
+
+    const newMod = await this.userRepo.findOne({
+      where: { id: newModeratorId, tenantId, isActive: true },
+    });
+    if (!newMod) {
+      throw new BadRequestException('Nuevo moderador no válido (inactivo o cross-tenant)');
+    }
+    if (newMod.role !== 'tenant_admin' && newMod.role !== 'manager' && newMod.role !== 'super_admin') {
+      throw new BadRequestException('El moderador debe ser manager o tenant_admin');
+    }
+
+    session.moderatorId = newModeratorId;
+    await this.sessionRepo.save(session);
+    return { ok: true, sessionId, moderatorId: newModeratorId };
+  }
+
   // ─── P2-#20: Distribution Analysis ──────────────────────────────────────
 
   async getDistributionAnalysis(sessionId: string) {

@@ -779,9 +779,11 @@ function CheckInsTab() {
                 <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {/* v3.1 F1 — Agenda Mágica: deep-link según rol del usuario.
                       - Manager del checkin o admin del tenant → "Preparar agenda"
-                        (primary, puede editar).
-                      - Employee del checkin → "Ver agenda" (ghost, read-only).
-                      - Completed → siempre ghost "Ver agenda" para todos. */}
+                        (primary, puede editar) solo ANTES de la fecha programada.
+                      - Si la fecha/hora ya pasó → "Ver agenda" (read-only) para
+                        todos, aunque el status siga 'scheduled'.
+                      - Employee del checkin → siempre "Ver agenda".
+                      - Completed → siempre "Ver agenda". */}
                   {(() => {
                     if (!hasMagicMeetings) return null;
                     if (ci.status !== 'scheduled' && ci.status !== 'completed') return null;
@@ -792,8 +794,24 @@ function CheckInsTab() {
                       isCheckinManager || isCheckinEmployee || isTenantAdmin;
                     if (!isParticipantOrAdmin) return null;
 
+                    // Reunion vencida = fecha/hora programada ya pasó.
+                    // Mismo cálculo usado por el botón "Completar" más abajo.
+                    const parts = ci.scheduledDate?.split('-') || [];
+                    const schedDate = parts.length === 3
+                      ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+                      : new Date(ci.scheduledDate);
+                    if (ci.scheduledTime) {
+                      const [hh, mm] = ci.scheduledTime.split(':').map(Number);
+                      schedDate.setHours(hh || 0, mm || 0);
+                    } else {
+                      schedDate.setHours(23, 59);
+                    }
+                    const isPastDue = new Date() >= schedDate;
+
                     const canPrepare =
-                      ci.status === 'scheduled' && (isCheckinManager || isTenantAdmin);
+                      ci.status === 'scheduled' &&
+                      !isPastDue &&
+                      (isCheckinManager || isTenantAdmin);
                     const className = canPrepare ? 'btn-primary' : 'btn-ghost';
                     const label = canPrepare ? 'Preparar agenda' : 'Ver agenda';
 

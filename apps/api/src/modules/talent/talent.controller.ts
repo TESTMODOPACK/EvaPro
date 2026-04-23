@@ -190,6 +190,17 @@ export class TalentController {
     return this.talentService.completeSession(id, req.user.tenantId);
   }
 
+  /** F-003 — Reasignar moderador manualmente (sesión no-cerrada). */
+  @Post('calibration/:id/reassign-moderator')
+  @Roles('super_admin', 'tenant_admin')
+  reassignModerator(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { newModeratorId: string },
+    @Request() req: any,
+  ) {
+    return this.talentService.reassignModerator(id, req.user.tenantId, body?.newModeratorId);
+  }
+
   @Post('calibration/entries/:entryId/approve')
   @Roles('super_admin', 'tenant_admin')
   approveCalibrationChange(

@@ -54,4 +54,18 @@ export class DocumentSignature {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'signed_at' })
   signedAt: Date;
+
+  // F-002 — Signature rerouting al desvincular firmante. Cuando un user
+  // con firmas pendientes es desvinculado, registerDeparture marca sus
+  // firmas completadas con rerouted_to = nuevo responsable designado
+  // (reassignToManagerId) para trazabilidad de auditoría.
+  @Column({ type: 'uuid', name: 'rerouted_to', nullable: true, comment: 'F-002 — Usuario al que se re-asignó la firma tras desvinculación del firmante original' })
+  reroutedTo: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'rerouted_to' })
+  rerouter: User | null;
+
+  @Column({ type: 'timestamptz', name: 'rerouted_at', nullable: true, comment: 'F-002 — Timestamp del reroute de firma' })
+  reroutedAt: Date | null;
 }

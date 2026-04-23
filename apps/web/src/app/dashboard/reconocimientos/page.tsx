@@ -220,7 +220,42 @@ function ReconocimientosPageContent() {
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
   // Leaderboard opt-in
   const [deptFilter, setDeptFilter] = useState('');
-  const { data: wall, refetch: refetchWall } = useRecognitionWall(page);
+  // Wall filters (F7)
+  const [wallSearchInput, setWallSearchInput] = useState('');
+  const [wallSearch, setWallSearch] = useState('');
+  const [wallDateRange, setWallDateRange] = useState<'all' | '7d' | '30d' | '90d'>('all');
+  const [wallValueId, setWallValueId] = useState('');
+  const [wallDepartmentId, setWallDepartmentId] = useState('');
+  const [wallScope, setWallScope] = useState<'all' | 'received' | 'sent' | 'mine'>('all');
+  const { departmentRecords } = useDepartments();
+  const { data: wallCompetencies } = useQuery({
+    queryKey: ['competencies'],
+    queryFn: () => api.development.competencies.list(token!),
+    enabled: !!token,
+  });
+  // Debounce search (350ms)
+  useEffect(() => {
+    const h = setTimeout(() => setWallSearch(wallSearchInput.trim()), 350);
+    return () => clearTimeout(h);
+  }, [wallSearchInput]);
+  // Reset page when filters change
+  useEffect(() => { setPage(1); }, [wallSearch, wallDateRange, wallValueId, wallDepartmentId, wallScope]);
+  const wallDateFrom = (() => {
+    if (wallDateRange === 'all') return undefined;
+    const days = wallDateRange === '7d' ? 7 : wallDateRange === '30d' ? 30 : 90;
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  })();
+  const wallFilters = {
+    search: wallSearch || undefined,
+    dateFrom: wallDateFrom,
+    valueId: wallValueId || undefined,
+    departmentId: wallDepartmentId || undefined,
+    scope: wallScope,
+  };
+  const { data: wall, refetch: refetchWall } = useRecognitionWall(page, wallFilters);
   const { data: myBadges } = useMyBadges();
   const { data: myPoints } = useMyPoints();
   const { data: leaderboard } = useLeaderboard(period);
@@ -451,25 +486,148 @@ function ReconocimientosPageContent() {
             refetchWall();
             if (token) api.recognition.budget(token).then(setBudget).catch(() => {});
           }} t={t} />
+
+          {/* F7 — Barra de filtros del muro */}
+          <div className="card" style={{ marginBottom: '0.75rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <input
+                type="search"
+                className="input"
+                placeholder="Buscar por mensaje o persona..."
+                value={wallSearchInput}
+                onChange={(e) => setWallSearchInput(e.target.value)}
+                style={{ flex: '1 1 220px', minWidth: '180px', fontSize: '0.82rem' }}
+              />
+              <select
+                className="input"
+                value={wallValueId}
+                onChange={(e) => setWallValueId(e.target.value)}
+                style={{ flex: '0 1 180px', fontSize: '0.82rem' }}
+                aria-label="Filtrar por competencia"
+              >
+                <option value="">Todas las competencias</option>
+                {(Array.isArray(wallCompetencies) ? wallCompetencies : []).map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <select
+                className="input"
+                value={wallDepartmentId}
+                onChange={(e) => setWallDepartmentId(e.target.value)}
+                style={{ flex: '0 1 180px', fontSize: '0.82rem' }}
+                aria-label="Filtrar por departamento"
+              >
+                <option value="">Todos los departamentos</option>
+                {departmentRecords.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              {(wallSearch || wallValueId || wallDepartmentId || wallDateRange !== 'all' || wallScope !== 'all') && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setWallSearchInput('');
+                    setWallValueId('');
+                    setWallDepartmentId('');
+                    setWallDateRange('all');
+                    setWallScope('all');
+                  }}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginRight: '0.25rem' }}>Periodo:</span>
+              {([
+                { key: 'all', label: 'Todo' },
+                { key: '7d', label: '7 días' },
+                { key: '30d', label: '30 días' },
+                { key: '90d', label: '90 días' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setWallDateRange(opt.key)}
+                  style={{
+                    fontSize: '0.72rem', padding: '0.25rem 0.6rem', borderRadius: 12,
+                    border: '1px solid ' + (wallDateRange === opt.key ? 'var(--accent)' : 'var(--border)'),
+                    background: wallDateRange === opt.key ? 'rgba(201,147,58,0.15)' : 'transparent',
+                    color: wallDateRange === opt.key ? 'var(--accent)' : 'var(--text-muted)',
+                    fontWeight: wallDateRange === opt.key ? 600 : 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '0.75rem', marginRight: '0.25rem' }}>Alcance:</span>
+              {([
+                { key: 'all', label: 'Todos' },
+                { key: 'received', label: 'Recibidos por mí' },
+                { key: 'sent', label: 'Enviados por mí' },
+                { key: 'mine', label: 'Todos los míos' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setWallScope(opt.key)}
+                  style={{
+                    fontSize: '0.72rem', padding: '0.25rem 0.6rem', borderRadius: 12,
+                    border: '1px solid ' + (wallScope === opt.key ? 'var(--accent)' : 'var(--border)'),
+                    background: wallScope === opt.key ? 'rgba(201,147,58,0.15)' : 'transparent',
+                    color: wallScope === opt.key ? 'var(--accent)' : 'var(--text-muted)',
+                    fontWeight: wallScope === opt.key ? 600 : 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              {wall?.meta && (
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                  {wall.meta.total} resultado{wall.meta.total === 1 ? '' : 's'}
+                </span>
+              )}
+            </div>
+          </div>
+
           {wall?.data?.length === 0 ? (
             <div className="card">
-              <EmptyState
-                icon="✨"
-                title={t('reconocimientos.emptyWall')}
-                description="Los reconocimientos públicos refuerzan la cultura del equipo. Da el primero y reconoce el trabajo de alguien que lo merece."
-                ctaLabel="Enviar mi primer reconocimiento"
-                ctaOnClick={() => {
-                  const el = document.getElementById('new-recognition-form');
-                  if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    // Focus en el primer input del form para UX keyboard-friendly
-                    const firstInput = el.querySelector('select, input, textarea') as HTMLElement | null;
-                    if (firstInput) setTimeout(() => firstInput.focus(), 300);
-                  } else {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }
-                }}
-              />
+              {(wallSearch || wallValueId || wallDepartmentId || wallDateRange !== 'all' || wallScope !== 'all') ? (
+                <EmptyState
+                  icon="🔍"
+                  title="Sin resultados"
+                  description="Ningún reconocimiento coincide con los filtros seleccionados. Probá con otro rango de fechas o limpiá los filtros."
+                  ctaLabel="Limpiar filtros"
+                  ctaOnClick={() => {
+                    setWallSearchInput('');
+                    setWallValueId('');
+                    setWallDepartmentId('');
+                    setWallDateRange('all');
+                    setWallScope('all');
+                  }}
+                />
+              ) : (
+                <EmptyState
+                  icon="✨"
+                  title={t('reconocimientos.emptyWall')}
+                  description="Los reconocimientos públicos refuerzan la cultura del equipo. Da el primero y reconoce el trabajo de alguien que lo merece."
+                  ctaLabel="Enviar mi primer reconocimiento"
+                  ctaOnClick={() => {
+                    const el = document.getElementById('new-recognition-form');
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      const firstInput = el.querySelector('select, input, textarea') as HTMLElement | null;
+                      if (firstInput) setTimeout(() => firstInput.focus(), 300);
+                    } else {
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                />
+              )}
             </div>
           ) : (
             <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: '600px', overflowY: 'auto' }}>

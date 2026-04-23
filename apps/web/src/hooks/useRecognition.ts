@@ -4,11 +4,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 
-export function useRecognitionWall(page = 1) {
+export interface WallFilters {
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  valueId?: string;
+  departmentId?: string;
+  scope?: 'all' | 'received' | 'sent' | 'mine';
+}
+
+export function useRecognitionWall(page = 1, filters: WallFilters = {}) {
   const token = useAuthStore((s) => s.token);
   return useQuery({
-    queryKey: ['recognition', 'wall', page],
-    queryFn: () => api.recognition.wall(token!, page),
+    queryKey: ['recognition', 'wall', page, filters],
+    queryFn: () => api.recognition.wall(token!, page, 20, filters),
     enabled: !!token,
   });
 }

@@ -894,6 +894,44 @@ export class UsersService {
           [userId, tenantId],
         );
 
+        // 15. F-003 — Calibration moderator reassignment.
+        //     Si el desvinculado era moderador de sesiones no-cerradas, reasignar
+        //     al reassignToManagerId. Si no hay target → primer tenant_admin activo.
+        //     Sesiones cerradas NO se tocan (auditoría histórica).
+        let moderatorReassigned = 0;
+        const newModeratorId = newManagerId
+          ?? (await em.query(
+                `SELECT id FROM users
+                  WHERE tenant_id = $1 AND role = 'tenant_admin' AND is_active = true AND id <> $2
+                  ORDER BY created_at ASC
+                  LIMIT 1`,
+                [tenantId, userId],
+              ))?.[0]?.id
+          ?? null;
+        if (newModeratorId) {
+          moderatorReassigned = await safeExec(
+            `UPDATE calibration_sessions
+                SET moderator_id = $1, updated_at = NOW()
+              WHERE tenant_id = $2 AND moderator_id = $3 AND status <> 'closed'`,
+            [newModeratorId, tenantId, userId],
+          );
+        }
+
+        // 16. F-002 — Signature rerouting audit trail.
+        //     Marca las firmas válidas del desvinculado con rerouted_to
+        //     (reassignToManagerId o primer admin activo). Es un mark de
+        //     auditoría — no revoca las firmas, solo documenta quién
+        //     hereda la responsabilidad futura.
+        let signaturesRerouted = 0;
+        if (newModeratorId) {
+          signaturesRerouted = await safeExec(
+            `UPDATE document_signatures
+                SET rerouted_to = $1, rerouted_at = NOW()
+              WHERE tenant_id = $2 AND signed_by = $3 AND status = 'valid' AND rerouted_to IS NULL`,
+            [newModeratorId, tenantId, userId],
+          );
+        }
+
         return {
           saved,
           reportsAffected,
@@ -908,6 +946,9 @@ export class UsersService {
           notificationsArchived,
           candidaturesRejected,
           calibrationWithdrawn,
+          moderatorReassigned,
+          signaturesRerouted,
+          newModeratorId,
         };
       });
 
@@ -925,6 +966,9 @@ export class UsersService {
       notificationsArchived,
       candidaturesRejected,
       calibrationWithdrawn,
+      moderatorReassigned,
+      signaturesRerouted,
+      newModeratorId,
     } = cascadeResult;
 
     // ── Post-commit: Signature rerouting ─────────────────────────────
@@ -985,6 +1029,10 @@ export class UsersService {
           notificationsArchived,
           candidaturesRejected,
           calibrationWithdrawn,
+          // Etapa C (F-002 + F-003)
+          moderatorReassigned,
+          signaturesRerouted,
+          reroutedTo: newModeratorId ?? null,
         },
       })
       .catch(() => {});

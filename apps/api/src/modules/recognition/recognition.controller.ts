@@ -46,8 +46,24 @@ export class RecognitionController {
     @Request() req: any,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('valueId') valueId?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('scope') scope?: 'all' | 'received' | 'sent' | 'mine',
   ) {
-    return this.service.getWall(req.user.tenantId, page, Math.min(limit, 50));
+    return this.service.getWall(req.user.tenantId, {
+      page,
+      limit: Math.min(limit, 50),
+      search,
+      dateFrom,
+      dateTo,
+      valueId,
+      departmentId,
+      scope: scope ?? 'all',
+      currentUserId: req.user.userId,
+    });
   }
 
   @Post()

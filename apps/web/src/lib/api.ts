@@ -1304,8 +1304,30 @@ export const api = {
   },
 
   recognition: {
-    wall: (token: string, page = 1, limit = 20) =>
-      request<any>(`/recognition/wall?page=${page}&limit=${limit}`, {}, token),
+    wall: (
+      token: string,
+      page = 1,
+      limit = 20,
+      filters?: {
+        search?: string;
+        dateFrom?: string;
+        dateTo?: string;
+        valueId?: string;
+        departmentId?: string;
+        scope?: 'all' | 'received' | 'sent' | 'mine';
+      },
+    ) => {
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(limit));
+      if (filters?.search) params.set('search', filters.search);
+      if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters?.dateTo) params.set('dateTo', filters.dateTo);
+      if (filters?.valueId) params.set('valueId', filters.valueId);
+      if (filters?.departmentId) params.set('departmentId', filters.departmentId);
+      if (filters?.scope && filters.scope !== 'all') params.set('scope', filters.scope);
+      return request<any>(`/recognition/wall?${params.toString()}`, {}, token);
+    },
     create: (token: string, data: { toUserId: string; message: string; valueId?: string; points?: number }) =>
       request<any>("/recognition", { method: "POST", body: JSON.stringify(data) }, token),
     addReaction: (token: string, id: string, emoji: string) =>

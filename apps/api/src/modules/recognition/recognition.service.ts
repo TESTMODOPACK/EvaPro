@@ -88,30 +88,87 @@ export class RecognitionService {
    * managerId queda undefined y se muestra todo el tenant (decisión de
    * política: muro social es público org-wide, como el leaderboard).
    */
-  async getWall(tenantId: string, page = 1, limit = 20, managerId?: string) {
-    let teamIds: string[] | null = null;
+  async getWall(
+    tenantId: string,
+    opts: {
+      page?: number;
+      limit?: number;
+      managerId?: string;
+      search?: string;
+      dateFrom?: string | Date;
+      dateTo?: string | Date;
+      valueId?: string;
+      departmentId?: string;
+      scope?: 'all' | 'received' | 'sent' | 'mine';
+      currentUserId?: string;
+    } = {},
+  ) {
+    const page = Math.max(1, opts.page ?? 1);
+    // Cap razonable de 500 (usado por exports). El controller aplica cap
+    // más estricto de 50 para tráfico externo (API /wall).
+    const limit = Math.min(Math.max(1, opts.limit ?? 20), 500);
+    const { managerId, search, valueId, departmentId, currentUserId } = opts;
+    const scope = opts.scope ?? 'all';
+
+    const qb = this.recogRepo
+      .createQueryBuilder('r')
+      .leftJoinAndSelect('r.fromUser', 'fromUser')
+      .leftJoinAndSelect('r.toUser', 'toUser')
+      .leftJoinAndSelect('r.value', 'value')
+      .where('r.tenant_id = :tenantId', { tenantId })
+      .andWhere('r.is_public = true');
+
     if (managerId) {
       const reports = await this.userRepo.find({
         where: { tenantId, managerId },
         select: ['id'],
       });
-      teamIds = [managerId, ...reports.map((u) => u.id)];
+      const teamIds = [managerId, ...reports.map((u) => u.id)];
+      qb.andWhere('(r.from_user_id IN (:...teamIds) OR r.to_user_id IN (:...teamIds))', { teamIds });
     }
 
-    const where = teamIds
-      ? [
-          { tenantId, isPublic: true, fromUserId: In(teamIds) },
-          { tenantId, isPublic: true, toUserId: In(teamIds) },
-        ]
-      : { tenantId, isPublic: true };
+    if (currentUserId) {
+      if (scope === 'received') {
+        qb.andWhere('r.to_user_id = :meId', { meId: currentUserId });
+      } else if (scope === 'sent') {
+        qb.andWhere('r.from_user_id = :meId', { meId: currentUserId });
+      } else if (scope === 'mine') {
+        qb.andWhere('(r.from_user_id = :meId OR r.to_user_id = :meId)', { meId: currentUserId });
+      }
+    }
 
-    const [items, total] = await this.recogRepo.findAndCount({
-      where,
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-      relations: ['fromUser', 'toUser', 'value'],
-    });
+    if (search && search.trim()) {
+      const s = `%${search.trim()}%`;
+      qb.andWhere(
+        '(r.message ILIKE :s OR fromUser.first_name ILIKE :s OR fromUser.last_name ILIKE :s OR toUser.first_name ILIKE :s OR toUser.last_name ILIKE :s)',
+        { s },
+      );
+    }
+
+    if (opts.dateFrom) {
+      qb.andWhere('r.created_at >= :dateFrom', { dateFrom: opts.dateFrom });
+    }
+    if (opts.dateTo) {
+      qb.andWhere('r.created_at <= :dateTo', { dateTo: opts.dateTo });
+    }
+
+    if (valueId) {
+      qb.andWhere('r.value_id = :valueId', { valueId });
+    }
+
+    if (departmentId) {
+      qb.andWhere(
+        '(fromUser.department_id = :deptId OR toUser.department_id = :deptId)',
+        { deptId: departmentId },
+      );
+    }
+
+    const [items, total] = await qb
+      .orderBy('r.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
     return {
       data: items.map((r) => ({
         id: r.id,
@@ -1300,7 +1357,7 @@ export class RecognitionService {
   }
 
   async exportRecognitionsCsv(tenantId: string, managerId?: string): Promise<string> {
-    const wall = await this.getWall(tenantId, 1, 500, managerId);
+    const wall = await this.getWall(tenantId, { page: 1, limit: 500, managerId });
     const items = wall.data || [];
     const rows: string[] = ['De,Para,Mensaje,Valor Corporativo,Puntos,Fecha'];
     for (const r of items) {
@@ -1313,7 +1370,7 @@ export class RecognitionService {
   }
 
   async exportRecognitionsXlsx(tenantId: string, managerId?: string): Promise<Buffer> {
-    const wall = await this.getWall(tenantId, 1, 500, managerId);
+    const wall = await this.getWall(tenantId, { page: 1, limit: 500, managerId });
     const items = wall.data || [];
     // stats y leaderboard siguen siendo org-wide incluso para manager — son
     // secciones de contexto (no datos "confidenciales" por equipo). El wall
@@ -1369,7 +1426,7 @@ export class RecognitionService {
   }
 
   async exportRecognitionsPdf(tenantId: string, managerId?: string): Promise<Buffer> {
-    const wall = await this.getWall(tenantId, 1, 200, managerId);
+    const wall = await this.getWall(tenantId, { page: 1, limit: 200, managerId });
     const items = wall.data || [];
     const stats = await this.getStats(tenantId);
 

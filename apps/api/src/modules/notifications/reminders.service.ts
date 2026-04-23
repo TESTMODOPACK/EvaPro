@@ -130,8 +130,9 @@ export class RemindersService {
           relations: ['evaluator'],
         });
 
+        // F-004 — evitar enviar recordatorios a evaluadores desvinculados
         const notifications = pendingAssignments
-          .filter((a) => a.evaluator)
+          .filter((a) => a.evaluator && a.evaluator.isActive)
           .map((a) => ({
             tenantId: a.tenantId,
             userId: a.evaluatorId,
@@ -173,7 +174,8 @@ export class RemindersService {
           if (shouldEmail) {
             const evaluatorMap = new Map<string, { email: string; firstName: string; count: number }>();
             for (const a of pendingAssignments) {
-              if (!a.evaluator?.email) continue;
+              // F-004 — no mandar email a evaluadores desvinculados
+              if (!a.evaluator?.email || !a.evaluator.isActive) continue;
               const existing = evaluatorMap.get(a.evaluatorId);
               if (existing) { existing.count++; }
               else { evaluatorMap.set(a.evaluatorId, { email: a.evaluator.email, firstName: a.evaluator.firstName, count: 1 }); }
@@ -252,6 +254,8 @@ export class RemindersService {
         .where('o.status = :status', { status: ObjectiveStatus.ACTIVE })
         .andWhere('o.progress < :threshold', { threshold: 40 })
         .andWhere('o.target_date IS NOT NULL')
+        // F-004 — excluir usuarios desvinculados
+        .andWhere('u.is_active = true')
         .getMany();
 
       const notifications: Array<{
@@ -318,10 +322,13 @@ export class RemindersService {
       const overdueActions = await this.actionRepo
         .createQueryBuilder('a')
         .leftJoinAndSelect('a.plan', 'p')
+        .leftJoin('p.user', 'u')
         .where('a.status != :completed', { completed: 'completada' })
         .andWhere('a.due_date IS NOT NULL')
         .andWhere('a.due_date < :today', { today: today.toISOString().split('T')[0] })
         .andWhere('p.status = :active', { active: 'activo' })
+        // F-004 — excluir usuarios desvinculados (dueño del plan)
+        .andWhere('u.is_active = true')
         .getMany();
 
       const notifications = overdueActions
@@ -405,31 +412,41 @@ export class RemindersService {
           weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
         });
 
+        // F-004 — no mandar recordatorio a participantes desvinculados.
+        // Si ambos están inactivos el checkin debería haberse cancelado
+        // vía cascade; este filtro es defensa en profundidad.
+        const mgrActive = ci.manager?.isActive ?? false;
+        const empActive = ci.employee?.isActive ?? false;
+
         // Notify manager
         const empName = ci.employee
           ? `${ci.employee.firstName} ${ci.employee.lastName}`
           : 'un colaborador';
-        notifications.push({
-          tenantId: ci.tenantId,
-          userId: ci.managerId,
-          type: NotificationType.CHECKIN_SCHEDULED,
-          title: 'Check-in programado para pronto',
-          message: `Tienes un check-in con ${empName} programado para ${scheduledStr}.`,
-          metadata: { checkinId: ci.id, scheduledDate: ci.scheduledDate },
-        });
+        if (mgrActive) {
+          notifications.push({
+            tenantId: ci.tenantId,
+            userId: ci.managerId,
+            type: NotificationType.CHECKIN_SCHEDULED,
+            title: 'Check-in programado para pronto',
+            message: `Tienes un check-in con ${empName} programado para ${scheduledStr}.`,
+            metadata: { checkinId: ci.id, scheduledDate: ci.scheduledDate },
+          });
+        }
 
         // Notify employee
         const mgrName = ci.manager
           ? `${ci.manager.firstName} ${ci.manager.lastName}`
           : 'tu jefatura';
-        notifications.push({
-          tenantId: ci.tenantId,
-          userId: ci.employeeId,
-          type: NotificationType.CHECKIN_SCHEDULED,
-          title: 'Check-in programado para pronto',
-          message: `Tienes un check-in con ${mgrName} programado para ${scheduledStr}.`,
-          metadata: { checkinId: ci.id, scheduledDate: ci.scheduledDate },
-        });
+        if (empActive) {
+          notifications.push({
+            tenantId: ci.tenantId,
+            userId: ci.employeeId,
+            type: NotificationType.CHECKIN_SCHEDULED,
+            title: 'Check-in programado para pronto',
+            message: `Tienes un check-in con ${mgrName} programado para ${scheduledStr}.`,
+            metadata: { checkinId: ci.id, scheduledDate: ci.scheduledDate },
+          });
+        }
       }
 
       if (notifications.length > 0) {
@@ -1231,10 +1248,19 @@ export class RemindersService {
           const participantIds = [...new Set([
             ...assignments.map((a) => a.evaluatorId),
             ...assignments.map((a) => a.evaluateeId),
-          ])];
+          ])].filter((id) => id != null);
+
+          // F-004 — filtrar participantes desvinculados antes de notificar
+          const activeParticipants = participantIds.length === 0
+            ? []
+            : await this.userRepo.find({
+                where: { id: In(participantIds as string[]), isActive: true },
+                select: ['id'],
+              });
+          const activeIds = new Set(activeParticipants.map((u) => u.id));
 
           const notifications = participantIds
-            .filter((id) => id != null)
+            .filter((id) => activeIds.has(id))
             .map((userId) => ({
               tenantId: cycle.tenantId,
               userId,
