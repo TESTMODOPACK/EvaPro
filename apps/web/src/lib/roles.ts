@@ -70,6 +70,10 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/dei':          ['tenant_admin'],
   '/dashboard/onboarding':   ['tenant_admin', 'manager', 'employee'],
   '/dashboard/encuestas-clima': ['tenant_admin', 'manager', 'employee'],
+  // v3.1 F3 — dashboard de ánimo del equipo (Mood Tracking)
+  '/dashboard/mood-equipo':  ['tenant_admin', 'manager'],
+  // v3.1 F6 — ranking de Hábitos del Líder (Leader Streaks)
+  '/dashboard/lider-streaks': ['tenant_admin'],
   '/dashboard/ejecutivo':    ['tenant_admin'],
   '/dashboard/solicitudes':  ['super_admin', 'tenant_admin'],
   '/dashboard/auditoria':    ['super_admin', 'tenant_admin'],
