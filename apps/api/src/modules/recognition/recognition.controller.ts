@@ -7,7 +7,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RecognitionService } from './recognition.service';
-import { CreateRecognitionDto, CreateBadgeDto, AwardBadgeDto, AddReactionDto } from './dto/recognition.dto';
+import { CreateRecognitionDto, CreateBadgeDto, AwardBadgeDto, AddReactionDto, AddCommentDto } from './dto/recognition.dto';
 import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
 @Controller('recognition')
@@ -81,13 +81,13 @@ export class RecognitionController {
   addComment(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
-    @Body() dto: { text: string },
+    @Body() dto: AddCommentDto,
   ) {
     return this.service.addComment(
       req.user.tenantId,
       req.user.userId,
       id,
-      dto?.text || '',
+      dto.text,
     );
   }
 

@@ -63,3 +63,11 @@ export class AddReactionDto {
   @MaxLength(10)
   emoji: string;
 }
+
+/** v3.1 F7 — Comentario sobre un reconocimiento (muro social). */
+export class AddCommentDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1000)
+  text: string;
+}

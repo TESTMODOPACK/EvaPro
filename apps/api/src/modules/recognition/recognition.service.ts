@@ -9,6 +9,7 @@ import { runWithCronLock } from '../../common/utils/cron-lock';
 import { Recognition } from './entities/recognition.entity';
 import { RecognitionComment } from './entities/recognition-comment.entity';
 import { MvpOfTheMonth } from './entities/mvp-of-the-month.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
 import { UserPoints, PointsSource } from './entities/user-points.entity';
@@ -1605,18 +1606,33 @@ export class RecognitionService {
     }
 
     // Elegir ganador. Tiebreaker final por createdAt del user (más antiguo primero).
-    const candidates = await Promise.all(
-      Array.from(byRecipient.entries()).map(async ([userId, bucket]) => {
-        const user = await this.userRepo.findOne({
-          where: { id: userId, tenantId },
-          select: ['id', 'createdAt', 'isActive'],
-        });
-        return { userId, bucket, createdAt: user?.createdAt || new Date(), active: user?.isActive !== false };
-      }),
-    );
+    //
+    // Bug fix (F3+F7 review): antes hacía N+1 queries (una findOne por
+    // candidato) y si `user` era null caía en `new Date()` — rompiendo la
+    // idempotencia del cron porque el tiebreaker volvía no-determinístico.
+    // Ahora: un solo `In()` query y filtro users orfanos silenciosamente
+    // (con warning en logs) en vez de asignarles un createdAt sintético.
+    const candidateUserIds = Array.from(byRecipient.keys());
+    const users = await this.userRepo.find({
+      where: { id: In(candidateUserIds), tenantId },
+      select: ['id', 'createdAt', 'isActive'],
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
 
-    // Excluir users inactivos (no celebrar a un ex-colaborador).
-    const active = candidates.filter((c) => c.active);
+    const active = Array.from(byRecipient.entries())
+      .map(([userId, bucket]) => {
+        const user = userMap.get(userId);
+        if (!user) {
+          // Orphan cross-tenant o fila borrada — excluir y loguear.
+          this.logger.warn(
+            `[mvpCron] tenant=${tenantId.slice(0, 8)} month=${monthKey} user orphan ${userId.slice(0, 8)}, excluido`,
+          );
+          return null;
+        }
+        return { userId, bucket, createdAt: user.createdAt, active: user.isActive };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null && c.active);
+
     if (active.length === 0) {
       this.logger.log(`[mvpCron] tenant=${tenantId.slice(0, 8)} month=${monthKey} sin candidatos activos, skip`);
       return;
@@ -1667,19 +1683,22 @@ export class RecognitionService {
         const monthKey = this.monthKey(-1); // mes anterior
         this.logger.log(`[mvpCron] arrancando para mes ${monthKey}`);
 
-        // Todos los tenants activos (sin filtro adicional — el calc es barato).
+        // Todos los tenants (el calc es barato — iteramos todos, idempotente).
+        // Bug fix (F3+F7 review): antes usaba getRepository('tenants') con
+        // string — frágil ante refactors y sin type safety. Ahora usa la
+        // entity Tenant directamente.
         const tenants = await this.dataSource
-          .getRepository('tenants')
+          .getRepository(Tenant)
           .createQueryBuilder('t')
           .select(['t.id'])
           .getMany();
 
         for (const t of tenants) {
           try {
-            await this.calculateMvpForTenant((t as any).id, monthKey);
+            await this.calculateMvpForTenant(t.id, monthKey);
           } catch (err: any) {
             this.logger.warn(
-              `[mvpCron] tenant=${(t as any).id?.slice(0, 8)} falló: ${err?.message}`,
+              `[mvpCron] tenant=${t.id?.slice(0, 8)} falló: ${err?.message}`,
             );
           }
         }
