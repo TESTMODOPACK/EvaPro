@@ -110,11 +110,15 @@ export class RecognitionService {
     const { managerId, search, valueId, departmentId, currentUserId } = opts;
     const scope = opts.scope ?? 'all';
 
+    // NOTA sobre aliases: usamos 'fu' / 'tu' / 'comp' en vez de
+    // 'fromUser' / 'toUser' / 'value'. 'value' es palabra reservada SQL
+    // y además choca con la propiedad `r.value` → reproducía TypeORM
+    // error "Cannot read properties of undefined (reading 'databaseName')".
     const qb = this.recogRepo
       .createQueryBuilder('r')
-      .leftJoinAndSelect('r.fromUser', 'fromUser')
-      .leftJoinAndSelect('r.toUser', 'toUser')
-      .leftJoinAndSelect('r.value', 'value')
+      .leftJoinAndSelect('r.fromUser', 'fu')
+      .leftJoinAndSelect('r.toUser', 'tu')
+      .leftJoinAndSelect('r.value', 'comp')
       .where('r.tenant_id = :tenantId', { tenantId })
       .andWhere('r.is_public = true');
 
