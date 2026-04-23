@@ -224,22 +224,16 @@ function ReconocimientosPageContent() {
   const [wallSearchInput, setWallSearchInput] = useState('');
   const [wallSearch, setWallSearch] = useState('');
   const [wallDateRange, setWallDateRange] = useState<'all' | '7d' | '30d' | '90d'>('all');
-  const [wallValueId, setWallValueId] = useState('');
   const [wallDepartmentId, setWallDepartmentId] = useState('');
   const [wallScope, setWallScope] = useState<'all' | 'received' | 'sent' | 'mine'>('all');
   const { departmentRecords } = useDepartments();
-  const { data: wallCompetencies } = useQuery({
-    queryKey: ['competencies'],
-    queryFn: () => api.development.competencies.list(token!),
-    enabled: !!token,
-  });
   // Debounce search (350ms)
   useEffect(() => {
     const h = setTimeout(() => setWallSearch(wallSearchInput.trim()), 350);
     return () => clearTimeout(h);
   }, [wallSearchInput]);
   // Reset page when filters change
-  useEffect(() => { setPage(1); }, [wallSearch, wallDateRange, wallValueId, wallDepartmentId, wallScope]);
+  useEffect(() => { setPage(1); }, [wallSearch, wallDateRange, wallDepartmentId, wallScope]);
   const wallDateFrom = (() => {
     if (wallDateRange === 'all') return undefined;
     const days = wallDateRange === '7d' ? 7 : wallDateRange === '30d' ? 30 : 90;
@@ -251,7 +245,6 @@ function ReconocimientosPageContent() {
   const wallFilters = {
     search: wallSearch || undefined,
     dateFrom: wallDateFrom,
-    valueId: wallValueId || undefined,
     departmentId: wallDepartmentId || undefined,
     scope: wallScope,
   };
@@ -500,18 +493,6 @@ function ReconocimientosPageContent() {
               />
               <select
                 className="input"
-                value={wallValueId}
-                onChange={(e) => setWallValueId(e.target.value)}
-                style={{ flex: '0 1 180px', fontSize: '0.82rem' }}
-                aria-label="Filtrar por competencia"
-              >
-                <option value="">Todas las competencias</option>
-                {(Array.isArray(wallCompetencies) ? wallCompetencies : []).map((c: any) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <select
-                className="input"
                 value={wallDepartmentId}
                 onChange={(e) => setWallDepartmentId(e.target.value)}
                 style={{ flex: '0 1 180px', fontSize: '0.82rem' }}
@@ -522,13 +503,12 @@ function ReconocimientosPageContent() {
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>
-              {(wallSearch || wallValueId || wallDepartmentId || wallDateRange !== 'all' || wallScope !== 'all') && (
+              {(wallSearch || wallDepartmentId || wallDateRange !== 'all' || wallScope !== 'all') && (
                 <button
                   type="button"
                   className="btn-ghost"
                   onClick={() => {
                     setWallSearchInput('');
-                    setWallValueId('');
                     setWallDepartmentId('');
                     setWallDateRange('all');
                     setWallScope('all');
@@ -596,7 +576,7 @@ function ReconocimientosPageContent() {
 
           {wall?.data?.length === 0 ? (
             <div className="card">
-              {(wallSearch || wallValueId || wallDepartmentId || wallDateRange !== 'all' || wallScope !== 'all') ? (
+              {(wallSearch || wallDepartmentId || wallDateRange !== 'all' || wallScope !== 'all') ? (
                 <EmptyState
                   icon="🔍"
                   title="Sin resultados"
@@ -604,7 +584,6 @@ function ReconocimientosPageContent() {
                   ctaLabel="Limpiar filtros"
                   ctaOnClick={() => {
                     setWallSearchInput('');
-                    setWallValueId('');
                     setWallDepartmentId('');
                     setWallDateRange('all');
                     setWallScope('all');
