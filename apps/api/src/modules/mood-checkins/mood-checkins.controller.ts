@@ -44,7 +44,7 @@ export class MoodCheckinsController {
    * Respeta MIN_TEAM_RESPONSES=3 (privacidad).
    */
   @Get('team/history')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('tenant_admin', 'manager')
   getTeamHistory(@Request() req: any, @Query('days') days?: string) {
     const n = days ? parseInt(days, 10) : 14;
     return this.service.getTeamAggregate(
@@ -57,7 +57,7 @@ export class MoodCheckinsController {
 
   /** Resumen del día actual para el dashboard manager/admin. */
   @Get('team/today')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('tenant_admin', 'manager')
   getTeamToday(@Request() req: any) {
     return this.service.getTeamTodaySummary(
       req.user.tenantId,

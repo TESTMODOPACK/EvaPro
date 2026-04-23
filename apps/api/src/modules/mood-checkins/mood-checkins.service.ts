@@ -141,7 +141,9 @@ export class MoodCheckinsService {
     if (role === 'employee') {
       throw new ForbiddenException('Los colaboradores no ven agregados de equipo.');
     }
-    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    // v3.1 — solo tenant_admin ve el tenant completo; manager ve directos.
+    // super_admin NO es rol funcional del cliente, NO se incluye.
+    const isAdmin = role === 'tenant_admin';
 
     // Determinar el conjunto de userIds del "equipo"
     let teamUserIds: string[];
@@ -218,7 +220,8 @@ export class MoodCheckinsService {
     if (role === 'employee') {
       throw new ForbiddenException('Los colaboradores no ven agregados de equipo.');
     }
-    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    // v3.1 — solo tenant_admin ve tenant completo; manager ve directos.
+    const isAdmin = role === 'tenant_admin';
 
     let teamUserIds: string[];
     if (isAdmin) {

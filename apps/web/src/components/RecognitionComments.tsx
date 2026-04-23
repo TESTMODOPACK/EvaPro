@@ -42,7 +42,8 @@ export default function RecognitionComments({
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const role = user?.role || '';
-  const isAdmin = role === 'tenant_admin' || role === 'super_admin';
+  // Solo tenant_admin modera; super_admin es rol interno de Eva360.
+  const isAdmin = role === 'tenant_admin';
   const currentUserId = user?.userId || '';
   const toast = useToastStore((s) => s.toast);
   const qc = useQueryClient();

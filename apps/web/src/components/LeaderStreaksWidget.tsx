@@ -80,7 +80,9 @@ export default function LeaderStreaksWidget() {
   const { user } = useAuthStore();
   const role = user?.role || '';
   const hasAccess = isSuperAdmin || hasFeature('LEADER_STREAKS');
-  const isLeader = role === 'super_admin' || role === 'tenant_admin' || role === 'manager';
+  // Solo manager — el admin no es "líder" operativo, supervisa el
+  // ranking pero no compite en él.
+  const isLeader = role === 'manager';
 
   const enabled = hasAccess && isLeader;
   const { data, isLoading, isError } = useMyLeaderStreaks({ enabled });

@@ -20,16 +20,17 @@ import { LeaderStreaksService } from './leader-streaks.service';
 export class LeaderStreaksController {
   constructor(private readonly service: LeaderStreaksService) {}
 
-  /** Streaks del usuario autenticado (manager/admin). */
+  /** Streaks del manager autenticado. El admin no es "líder" operativo,
+   *  accede al ranking para ver a sus managers pero no tiene streaks propios. */
   @Get('me')
-  @Roles('super_admin', 'tenant_admin', 'manager')
+  @Roles('manager')
   getMyStreaks(@Request() req: any) {
     return this.service.computeStreaksForUser(req.user.tenantId, req.user.userId);
   }
 
-  /** Ranking de todos los líderes (manager+tenant_admin) del tenant. */
+  /** Ranking de managers del tenant — solo tenant_admin. */
   @Get('tenant')
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('tenant_admin')
   getTenantLeaderboard(@Request() req: any) {
     return this.service.computeTenantLeaderboard(req.user.tenantId, req.user.role);
   }

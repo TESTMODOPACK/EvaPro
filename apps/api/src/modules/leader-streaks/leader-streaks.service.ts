@@ -243,17 +243,16 @@ export class LeaderStreaksService {
     tenantId: string,
     role: string,
   ): Promise<LeaderStreaks[]> {
-    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
-    if (!isAdmin) {
-      throw new ForbiddenException('Solo admins pueden ver el ranking del tenant.');
+    // Solo tenant_admin. super_admin es rol interno de Eva360, no
+    // funcional del cliente.
+    if (role !== 'tenant_admin') {
+      throw new ForbiddenException('Solo el administrador del tenant puede ver el ranking.');
     }
 
-    // Users del tenant con rol manager o tenant_admin (candidatos a líderes).
+    // Managers del tenant (NO incluye tenant_admin — el admin ve el
+    // ranking pero no aparece en él, no es líder operativo).
     const leaders = await this.userRepo.find({
-      where: [
-        { tenantId, role: 'manager', isActive: true },
-        { tenantId, role: 'tenant_admin', isActive: true },
-      ],
+      where: { tenantId, role: 'manager', isActive: true },
       select: ['id', 'firstName', 'lastName', 'department', 'position'],
       take: 100,
     });

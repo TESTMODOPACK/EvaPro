@@ -1503,9 +1503,12 @@ export class RecognitionService {
       where: { id: commentId, tenantId },
     });
     if (!c) throw new NotFoundException('Comentario no encontrado');
-    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    // Solo tenant_admin moderador o el autor pueden borrar. super_admin
+    // es rol interno de Eva360 — si necesita intervenir lo hace vía
+    // impersonación como tenant_admin.
+    const isAdmin = role === 'tenant_admin';
     if (!isAdmin && c.fromUserId !== userId) {
-      throw new ForbiddenException('Solo el autor o un admin puede borrar el comentario.');
+      throw new ForbiddenException('Solo el autor o el administrador del tenant puede borrar el comentario.');
     }
     await this.commentRepo.softDelete({ id: commentId });
     return { deleted: true };

@@ -355,11 +355,10 @@ export default function Sidebar({ currentPath, isOpen, onToggle }: { currentPath
           label: t('nav.teamMood', 'Ánimo del Equipo'),
           icon: icons.surveys,
         }] : []),
-        // v3.1 F6 — Hábitos del líder (admin + super_admin). Widget
-        // personal ya aparece en /dashboard para managers también.
-        // Usamos check inline (no var `isAdmin` porque esa excluye
-        // super_admin y se usa para otras cosas).
-        ...((user?.role === 'tenant_admin' || user?.role === 'super_admin') ? [{
+        // v3.1 F6 — Hábitos del líder. Solo tenant_admin accede al
+        // ranking. Widget personal de manager vive en /dashboard.
+        // super_admin es rol interno de Eva360, no del cliente.
+        ...(isAdmin ? [{
           href: '/dashboard/lider-streaks',
           label: t('nav.leaderStreaks', 'Hábitos del Líder'),
           icon: icons.surveys,
