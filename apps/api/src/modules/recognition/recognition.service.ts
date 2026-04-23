@@ -110,15 +110,20 @@ export class RecognitionService {
     const { managerId, search, valueId, departmentId, currentUserId } = opts;
     const scope = opts.scope ?? 'all';
 
-    // NOTA sobre aliases: usamos 'fu' / 'tu' / 'comp' en vez de
-    // 'fromUser' / 'toUser' / 'value'. 'value' es palabra reservada SQL
-    // y además choca con la propiedad `r.value` → reproducía TypeORM
-    // error "Cannot read properties of undefined (reading 'databaseName')".
-    const qb = this.recogRepo
+    // Dos fases para esquivar el bug de TypeORM `skip/take` + `leftJoinAndSelect`
+    // (que intenta generar una subquery DISTINCT y falla con
+    // "Cannot read properties of undefined (reading 'databaseName')").
+    //
+    // Fase 1: armar QueryBuilder con filtros y JOINs planos (sin -AndSelect).
+    //         Paginar con offset/limit. Recognition tiene solo relations
+    //         ManyToOne → no hay duplicación de filas por JOIN.
+    // Fase 2: cargar las entidades completas con `relations: [...]` usando
+    //         `In(ids)`, que dispara las queries separadas habituales y
+    //         popula las relaciones sin dramas de metadata.
+    const idQb = this.recogRepo
       .createQueryBuilder('r')
-      .leftJoinAndSelect('r.fromUser', 'fu')
-      .leftJoinAndSelect('r.toUser', 'tu')
-      .leftJoinAndSelect('r.value', 'comp')
+      .leftJoin('r.fromUser', 'fu')
+      .leftJoin('r.toUser', 'tu')
       .where('r.tenant_id = :tenantId', { tenantId })
       .andWhere('r.is_public = true');
 
@@ -128,50 +133,76 @@ export class RecognitionService {
         select: ['id'],
       });
       const teamIds = [managerId, ...reports.map((u) => u.id)];
-      qb.andWhere('(r.from_user_id IN (:...teamIds) OR r.to_user_id IN (:...teamIds))', { teamIds });
+      idQb.andWhere('(r.from_user_id IN (:...teamIds) OR r.to_user_id IN (:...teamIds))', { teamIds });
     }
 
     if (currentUserId) {
       if (scope === 'received') {
-        qb.andWhere('r.to_user_id = :meId', { meId: currentUserId });
+        idQb.andWhere('r.to_user_id = :meId', { meId: currentUserId });
       } else if (scope === 'sent') {
-        qb.andWhere('r.from_user_id = :meId', { meId: currentUserId });
+        idQb.andWhere('r.from_user_id = :meId', { meId: currentUserId });
       } else if (scope === 'mine') {
-        qb.andWhere('(r.from_user_id = :meId OR r.to_user_id = :meId)', { meId: currentUserId });
+        idQb.andWhere('(r.from_user_id = :meId OR r.to_user_id = :meId)', { meId: currentUserId });
       }
     }
 
     if (search && search.trim()) {
       const s = `%${search.trim()}%`;
-      qb.andWhere(
-        '(r.message ILIKE :s OR fromUser.first_name ILIKE :s OR fromUser.last_name ILIKE :s OR toUser.first_name ILIKE :s OR toUser.last_name ILIKE :s)',
+      idQb.andWhere(
+        '(r.message ILIKE :s OR fu.first_name ILIKE :s OR fu.last_name ILIKE :s OR tu.first_name ILIKE :s OR tu.last_name ILIKE :s)',
         { s },
       );
     }
 
     if (opts.dateFrom) {
-      qb.andWhere('r.created_at >= :dateFrom', { dateFrom: opts.dateFrom });
+      idQb.andWhere('r.created_at >= :dateFrom', { dateFrom: opts.dateFrom });
     }
     if (opts.dateTo) {
-      qb.andWhere('r.created_at <= :dateTo', { dateTo: opts.dateTo });
+      idQb.andWhere('r.created_at <= :dateTo', { dateTo: opts.dateTo });
     }
 
     if (valueId) {
-      qb.andWhere('r.value_id = :valueId', { valueId });
+      idQb.andWhere('r.value_id = :valueId', { valueId });
     }
 
     if (departmentId) {
-      qb.andWhere(
-        '(fromUser.department_id = :deptId OR toUser.department_id = :deptId)',
+      idQb.andWhere(
+        '(fu.department_id = :deptId OR tu.department_id = :deptId)',
         { deptId: departmentId },
       );
     }
 
-    const [items, total] = await qb
+    // Count total (sin offset/limit) y ids paginados en paralelo.
+    const total = await idQb.getCount();
+    if (total === 0) {
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    }
+
+    const idRows = await idQb
+      .clone()
+      .select('r.id', 'id')
+      .addSelect('r.created_at', 'created_at')
       .orderBy('r.created_at', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getManyAndCount();
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawMany<{ id: string; created_at: Date }>();
+
+    const ids = idRows.map((row) => row.id);
+    if (ids.length === 0) {
+      return { data: [], meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    }
+
+    // Fase 2: cargar entidades completas con relations.
+    const records = await this.recogRepo.find({
+      where: { id: In(ids) },
+      relations: ['fromUser', 'toUser', 'value'],
+    });
+
+    // Preservar el orden por createdAt DESC (find() con In() no garantiza orden).
+    const recordsById = new Map(records.map((r) => [r.id, r]));
+    const items = ids
+      .map((id) => recordsById.get(id))
+      .filter((r): r is Recognition => r !== undefined);
 
     return {
       data: items.map((r) => ({
