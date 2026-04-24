@@ -76,6 +76,16 @@ const logger = new Logger('DatabaseModule');
             connectionTimeoutMillis: 5000,
             // Time a connection can sit idle before being closed (ms)
             idleTimeoutMillis: 30000,
+            // Server-side: cancela queries que excedan 10s. Protege contra
+            // queries runaway (bad plan, missing index, deadlock) que
+            // bloquean el pool. Complementa maxQueryExecutionTime, que solo
+            // emite warning pero no cancela la query.
+            statement_timeout: 10000,
+            // Server-side: mata sesiones en IDLE IN TRANSACTION >60s.
+            // Previene connection leaks por transacciones huerfanas (un
+            // bug en un callback que olvida commit/rollback retendria la
+            // conexion indefinidamente sin esto).
+            idle_in_transaction_session_timeout: 60000,
             // Allow the pool to exit cleanly when Node shuts down
             // (complementa enableShutdownHooks de main.ts)
             allowExitOnIdle: true,
