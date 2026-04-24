@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull, FindOptionsWhere } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { PasswordHistory } from './entities/password-history.entity';
 import { User } from '../users/entities/user.entity';
@@ -48,6 +48,23 @@ export class PasswordPolicyService {
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
   ) {}
+
+  /**
+   * Criterio TypeORM para seleccionar un user scoped a su tenant. Se usa
+   * en todos los `userRepo.update/findOne` del servicio para garantizar
+   * que un userId de otro tenant no pueda actualizar/leer la fila.
+   *
+   * - tenantId !== null: matchea (id AND tenant_id = tenantId)
+   * - tenantId === null: matchea (id AND tenant_id IS NULL) — caso super_admin
+   */
+  private scopedUserCriteria(
+    userId: string,
+    tenantId: string | null,
+  ): FindOptionsWhere<User> {
+    return tenantId
+      ? { id: userId, tenantId }
+      : { id: userId, tenantId: IsNull() };
+  }
 
   // ─── Policy resolution ────────────────────────────────────────────────
 
@@ -144,8 +161,17 @@ export class PasswordPolicyService {
    * Persist the new password hash in history, prune to hard cap 24, and
    * stamp `user.passwordChangedAt`. Called AFTER the new password has been
    * written to `user.passwordHash` by the caller.
+   *
+   * `tenantId` scopea el update del user para que un userId de otro
+   * tenant no pueda sobrescribirse por error. password_history se purga
+   * por user_id solo (la tabla no tiene tenant_id; el FK al user ya la
+   * ata implicitamente al tenant correspondiente).
    */
-  async recordChange(userId: string, newHash: string): Promise<void> {
+  async recordChange(
+    userId: string,
+    tenantId: string | null,
+    newHash: string,
+  ): Promise<void> {
     await this.historyRepo.save(this.historyRepo.create({ userId, passwordHash: newHash }));
 
     // Trim to hard cap so we never keep more than 24 rows per user.
@@ -167,7 +193,9 @@ export class PasswordPolicyService {
       this.logger.warn(`password_history prune failed for user ${userId}: ${err?.message || err}`);
     }
 
-    await this.userRepo.update(userId, { passwordChangedAt: new Date() });
+    await this.userRepo.update(this.scopedUserCriteria(userId, tenantId), {
+      passwordChangedAt: new Date(),
+    });
   }
 
   // ─── Expiry ───────────────────────────────────────────────────────────
@@ -187,11 +215,19 @@ export class PasswordPolicyService {
    * Record a failed login attempt. If `lockoutThreshold > 0` and the user
    * reaches it, sets `locked_until = now + lockoutDurationMinutes`. Idempotent
    * — a user already locked stays locked until the window passes.
+   *
+   * `tenantId` scopea tanto el findOne como el update para garantizar
+   * aislamiento multi-tenant (un userId cruzado de otro tenant => no-op).
    */
-  async recordFailedAttempt(userId: string, policy: Required<PasswordPolicy>): Promise<void> {
+  async recordFailedAttempt(
+    userId: string,
+    tenantId: string | null,
+    policy: Required<PasswordPolicy>,
+  ): Promise<void> {
     if (policy.lockoutThreshold <= 0) return;
+    const criteria = this.scopedUserCriteria(userId, tenantId);
     const user = await this.userRepo.findOne({
-      where: { id: userId },
+      where: criteria,
       select: ['id', 'failedLoginAttempts', 'lockedUntil'],
     });
     if (!user) return;
@@ -206,12 +242,18 @@ export class PasswordPolicyService {
     if (attempts >= policy.lockoutThreshold) {
       update.lockedUntil = new Date(now.getTime() + policy.lockoutDurationMinutes * 60 * 1000);
     }
-    await this.userRepo.update(userId, update as any);
+    await this.userRepo.update(criteria, update as any);
   }
 
   /** Reset counters on successful authentication. Called from `validateUser`. */
-  async clearFailedAttempts(userId: string): Promise<void> {
-    await this.userRepo.update(userId, { failedLoginAttempts: 0, lockedUntil: null });
+  async clearFailedAttempts(
+    userId: string,
+    tenantId: string | null,
+  ): Promise<void> {
+    await this.userRepo.update(this.scopedUserCriteria(userId, tenantId), {
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
   }
 
   /** Returns the remaining lockout minutes (>=1) if the user is currently
