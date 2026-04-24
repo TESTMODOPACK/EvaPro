@@ -51,7 +51,7 @@ export class AuthService {
     if (!validPassword) {
       // Record against the actual user id so a brute-force doesn't hit a
       // moving target when the attacker varies the email case/spelling.
-      await this.passwordPolicy.recordFailedAttempt(user.id, policy).catch(() => undefined);
+      await this.passwordPolicy.recordFailedAttempt(user.id, user.tenantId ?? null, policy).catch(() => undefined);
       return null;
     }
 
@@ -64,7 +64,7 @@ export class AuthService {
     }
 
     // Password correct + user/tenant active — reset lockout counters.
-    await this.passwordPolicy.clearFailedAttempts(user.id).catch(() => undefined);
+    await this.passwordPolicy.clearFailedAttempts(user.id, user.tenantId ?? null).catch(() => undefined);
 
     // Surface expiry status so the caller can force a password change
     // without issuing a full session token.
@@ -269,7 +269,11 @@ export class AuthService {
 
     // Persist in history + stamp passwordChangedAt — done after save so a
     // transaction rollback on save() prevents an orphan history row.
-    await this.passwordPolicy.recordChange(user.id, newHash);
+    await this.passwordPolicy.recordChange(
+      user.id,
+      user.tenantId ?? null,
+      newHash,
+    );
 
     await this.auditService.log(
       user.role === 'super_admin' ? null : (user.tenantId || null),
@@ -320,7 +324,11 @@ export class AuthService {
     user.lockedUntil = null;
     await this.userRepo.save(user);
 
-    await this.passwordPolicy.recordChange(user.id, newHash);
+    await this.passwordPolicy.recordChange(
+      user.id,
+      user.tenantId ?? null,
+      newHash,
+    );
 
     await this.auditService.log(
       user.role === 'super_admin' ? null : (user.tenantId || null),
