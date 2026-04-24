@@ -73,7 +73,12 @@ CREATE INDEX IF NOT EXISTS idx_org_dev_actions_tenant
 -- Usado por: muro social (F7) en queries admin tipo "todos los
 -- comentarios del tenant". Indices existentes cubren (recognition_id) y
 -- (from_user_id) para vistas individuales, pero no agregaciones tenant.
-CREATE INDEX IF NOT EXISTS idx_rc_tenant
+--
+-- NOTA: nombre completo de la tabla en el indice (no `idx_rc_tenant`)
+-- porque los indices en Postgres son unicos por schema, no por tabla.
+-- `idx_rc_tenant` colisionaba con un indice pre-existente en
+-- `recruitment_candidates` (ver 2026-04-24-fix-rc-tenant-collision.sql).
+CREATE INDEX IF NOT EXISTS idx_recognition_comments_tenant
   ON recognition_comments (tenant_id);
 
 -- ─── Resumen ────────────────────────────────────────────────────────────
