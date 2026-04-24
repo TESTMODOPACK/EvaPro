@@ -27,7 +27,7 @@ export class InvoicesController {
   @Roles('super_admin')
   list(
     @Query('status') status?: string,
-    @Query('tenantId') tenantId?: string,
+    @Query('tenantId', new ParseUUIDPipe({ optional: true })) tenantId?: string,
     @Query('period') period?: string,
   ) {
     return this.invoicesService.getAllInvoices({ status, tenantId, periodMonth: period });

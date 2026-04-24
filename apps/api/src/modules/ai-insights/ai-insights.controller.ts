@@ -198,7 +198,8 @@ export class AiInsightsController {
     @Request() req: any,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
-    @Query('tenantId') filterTenantId?: string,
+    @Query('tenantId', new ParseUUIDPipe({ optional: true }))
+    filterTenantId?: string,
   ) {
     // super_admin can filter by tenant or see all; tenant_admin sees only their own
     let tenantId = req.user.tenantId;

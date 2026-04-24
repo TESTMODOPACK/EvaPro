@@ -31,7 +31,11 @@ export class ContractsController {
 
   @Get()
   @Roles('super_admin', 'tenant_admin')
-  list(@Request() req: any, @Query('tenantId') filterTenantId?: string) {
+  list(
+    @Request() req: any,
+    @Query('tenantId', new ParseUUIDPipe({ optional: true }))
+    filterTenantId?: string,
+  ) {
     if (req.user.role === 'super_admin') {
       // SA can filter by org or see all
       return filterTenantId

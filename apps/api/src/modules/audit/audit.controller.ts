@@ -5,6 +5,7 @@ import {
   Res,
   UseGuards,
   ParseIntPipe,
+  ParseUUIDPipe,
   DefaultValuePipe,
   Request,
 } from '@nestjs/common';
@@ -26,7 +27,7 @@ export class AuditController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('action') action?: string,
-    @Query('tenantId') tenantId?: string,
+    @Query('tenantId', new ParseUUIDPipe({ optional: true })) tenantId?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
     @Query('entityType') entityType?: string,
