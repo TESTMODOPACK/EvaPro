@@ -30,6 +30,33 @@ async function bootstrap() {
 
   const logger = new Logger('Bootstrap');
 
+  // ─── Validación temprana de JWT_SECRET ─────────────────────────────
+  // En prod: debe estar definido, tener ≥32 caracteres y no ser un default
+  // conocido. Sin esto, un deploy con secret débil firma tokens trivialmente
+  // falsificables (JwtModule lo consume via `?? ''` fallback en auth.module).
+  // En dev/test: warn pero continuar — no bloquea el flujo local.
+  const jwtSecret = process.env.JWT_SECRET ?? '';
+  const knownWeakSecrets = new Set([
+    'CAMBIAR_POR_SECRETO_JWT_SEGURO',
+    'super-secret-jwt-key-for-dev-only',
+    'changeme',
+    'secret',
+    'jwt-secret',
+    'your-secret-here',
+  ]);
+  const jwtSecretWeak =
+    jwtSecret.length < 32 || knownWeakSecrets.has(jwtSecret);
+  if (process.env.NODE_ENV === 'production' && jwtSecretWeak) {
+    throw new Error(
+      'JWT_SECRET is weak or missing in production. Required: at least 32 characters and not a known default. Generate one with: openssl rand -base64 32',
+    );
+  }
+  if (process.env.NODE_ENV !== 'production' && jwtSecretWeak) {
+    logger.warn(
+      'JWT_SECRET is weak (< 32 chars or known default). OK for dev; must be rotated in production.',
+    );
+  }
+
   // ─── Trust proxy (X-Forwarded-For validation) ────────────────────────
   // El API corre detrás de nginx dentro de la misma red de Docker. nginx
   // setea X-Forwarded-For con la IP real del cliente. Sin esto, Express
