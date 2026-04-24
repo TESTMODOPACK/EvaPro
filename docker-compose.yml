@@ -96,6 +96,12 @@ services:
       # ─── Metricas Prometheus ────────────────────────────────────
       METRICS_USER: ${METRICS_USER:-}
       METRICS_PASSWORD: ${METRICS_PASSWORD:-}
+      # ─── Web Push Notifications (VAPID) ──────────────────────────
+      # Si cualquiera queda vacia, PushService arranca deshabilitado
+      # (warn en logs). Generar con: npx web-push generate-vapid-keys
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     ports:
       - "127.0.0.1:3000:3000"
     # /health/live es liveness puro — no toca DB, no pesa el event loop.
