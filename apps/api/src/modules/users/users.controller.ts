@@ -64,7 +64,8 @@ export class UsersController {
     @Query('role') role?: string,
     @Query('position') position?: string,
     @Query('status') status?: string,
-    @Query('tenantId') filterTenantId?: string,
+    @Query('tenantId', new ParseUUIDPipe({ optional: true }))
+    filterTenantId?: string,
   ) {
     const filters = (search || department || departmentId || role || position || status)
       ? { search, department, departmentId, role, position, status }
@@ -167,7 +168,8 @@ export class UsersController {
   bulkImport(
     @Request() req: any,
     @Body() body: { csv: string; tenantId?: string },
-    @Query('tenantId') qTenantId?: string,
+    @Query('tenantId', new ParseUUIDPipe({ optional: true }))
+    qTenantId?: string,
   ) {
     const tenantId = resolveOperatingTenantId(req.user, body?.tenantId ?? qTenantId);
     return this.usersService.bulkImport(tenantId, body?.csv, req.user.userId);
@@ -224,7 +226,8 @@ export class UsersController {
   normalizeDepartments(
     @Request() req: any,
     @Query('apply') apply?: string,
-    @Query('tenantId') qTenantId?: string,
+    @Query('tenantId', new ParseUUIDPipe({ optional: true }))
+    qTenantId?: string,
   ) {
     const tenantId = resolveOperatingTenantId(req.user, qTenantId);
     return this.usersService.normalizeDepartments(tenantId, apply === 'true');

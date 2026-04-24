@@ -6,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -64,7 +65,7 @@ export class SsoController {
   // ─── Public: start the OIDC flow ──────────────────────────────────────
 
   @Get('login')
-  async login(@Query('tenantId') tenantId: string, @Res({ passthrough: false }) res: any) {
+  async login(@Query('tenantId', new ParseUUIDPipe()) tenantId: string, @Res({ passthrough: false }) res: any) {
     if (!tenantId) throw new BadRequestException('tenantId requerido');
     const { authorizeUrl, stateCookie } = await this.svc.startLogin(tenantId);
     // HttpOnly + SameSite=Lax so the cookie survives the IdP redirect back

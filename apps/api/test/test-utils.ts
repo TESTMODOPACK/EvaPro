@@ -171,6 +171,30 @@ export function createMockSubscriptionsService() {
   };
 }
 
+export function createMockPasswordPolicyService() {
+  return {
+    resolvePolicy: jest.fn().mockResolvedValue({
+      minLength: 8,
+      requireUppercase: true,
+      requireLowercase: true,
+      requireNumber: true,
+      requireSymbol: false,
+      expiryDays: null,
+      historyCount: 0,
+      lockoutThreshold: 5,
+      lockoutDurationMinutes: 15,
+    }),
+    validate: jest.fn().mockReturnValue(null),
+    matchesHistory: jest.fn().mockResolvedValue(false),
+    recordChange: jest.fn().mockResolvedValue(undefined),
+    isExpired: jest.fn().mockReturnValue(false),
+    recordFailedAttempt: jest.fn().mockResolvedValue(undefined),
+    clearFailedAttempts: jest.fn().mockResolvedValue(undefined),
+    minutesUntilUnlocked: jest.fn().mockReturnValue(null),
+    bcryptRounds: 12,
+  };
+}
+
 // ─── Entity Factories ────────────────────────────────────────────────
 
 /** Genera un UUID v4 fake determinístico basado en un seed. */
