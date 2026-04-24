@@ -21,10 +21,12 @@ import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
+import { PasswordPolicyService } from './password-policy.service';
 import {
   createMockRepository,
   createMockAuditService,
   createMockEmailService,
+  createMockPasswordPolicyService,
   createMockUser,
   createMockTenant,
   fakeUuid,
@@ -38,6 +40,7 @@ describe('AuthService', () => {
   let tenantRepo: any;
   let auditService: any;
   let emailService: any;
+  let passwordPolicy: ReturnType<typeof createMockPasswordPolicyService>;
 
   beforeEach(async () => {
     usersService = {
@@ -51,6 +54,7 @@ describe('AuthService', () => {
     tenantRepo = createMockRepository<Tenant>();
     auditService = createMockAuditService();
     emailService = createMockEmailService();
+    passwordPolicy = createMockPasswordPolicyService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,6 +66,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(Tenant), useValue: tenantRepo },
         { provide: AuditService, useValue: auditService },
         { provide: EmailService, useValue: emailService },
+        { provide: PasswordPolicyService, useValue: passwordPolicy },
       ],
     }).compile();
 
