@@ -16,8 +16,8 @@ export const DEFAULT_PASSWORD_POLICY: Required<PasswordPolicy> = {
   requireLowercase: true,
   requireNumber: true,
   requireSymbol: false,
-  expiryDays: null,          // opt-in per tenant
-  historyCount: 0,           // opt-in per tenant
+  expiryDays: null, // opt-in per tenant
+  historyCount: 0, // opt-in per tenant
   lockoutThreshold: 5,
   lockoutDurationMinutes: 15,
 };
@@ -68,7 +68,9 @@ export class PasswordPolicyService {
 
   // ─── Policy resolution ────────────────────────────────────────────────
 
-  async resolvePolicy(tenantId: string | null): Promise<Required<PasswordPolicy>> {
+  async resolvePolicy(
+    tenantId: string | null,
+  ): Promise<Required<PasswordPolicy>> {
     if (!tenantId) return DEFAULT_PASSWORD_POLICY;
     try {
       const tenant = await this.tenantRepo.findOne({
@@ -82,26 +84,68 @@ export class PasswordPolicyService {
     }
   }
 
-  private mergeAndClamp(raw: Partial<PasswordPolicy>): Required<PasswordPolicy> {
-    const clamp = (v: number | undefined | null, { min, max }: { min: number; max: number }, fallback: number): number => {
-      if (v === undefined || v === null || typeof v !== 'number' || !isFinite(v)) return fallback;
+  private mergeAndClamp(
+    raw: Partial<PasswordPolicy>,
+  ): Required<PasswordPolicy> {
+    const clamp = (
+      v: number | undefined | null,
+      { min, max }: { min: number; max: number },
+      fallback: number,
+    ): number => {
+      if (
+        v === undefined ||
+        v === null ||
+        typeof v !== 'number' ||
+        !isFinite(v)
+      )
+        return fallback;
       return Math.min(Math.max(v, min), max);
     };
     return {
-      minLength: clamp(raw.minLength, LIMITS.minLength, DEFAULT_PASSWORD_POLICY.minLength),
-      requireUppercase: typeof raw.requireUppercase === 'boolean' ? raw.requireUppercase : DEFAULT_PASSWORD_POLICY.requireUppercase,
-      requireLowercase: typeof raw.requireLowercase === 'boolean' ? raw.requireLowercase : DEFAULT_PASSWORD_POLICY.requireLowercase,
-      requireNumber: typeof raw.requireNumber === 'boolean' ? raw.requireNumber : DEFAULT_PASSWORD_POLICY.requireNumber,
-      requireSymbol: typeof raw.requireSymbol === 'boolean' ? raw.requireSymbol : DEFAULT_PASSWORD_POLICY.requireSymbol,
+      minLength: clamp(
+        raw.minLength,
+        LIMITS.minLength,
+        DEFAULT_PASSWORD_POLICY.minLength,
+      ),
+      requireUppercase:
+        typeof raw.requireUppercase === 'boolean'
+          ? raw.requireUppercase
+          : DEFAULT_PASSWORD_POLICY.requireUppercase,
+      requireLowercase:
+        typeof raw.requireLowercase === 'boolean'
+          ? raw.requireLowercase
+          : DEFAULT_PASSWORD_POLICY.requireLowercase,
+      requireNumber:
+        typeof raw.requireNumber === 'boolean'
+          ? raw.requireNumber
+          : DEFAULT_PASSWORD_POLICY.requireNumber,
+      requireSymbol:
+        typeof raw.requireSymbol === 'boolean'
+          ? raw.requireSymbol
+          : DEFAULT_PASSWORD_POLICY.requireSymbol,
       // expiryDays allows `null` to mean "never". We map 0→null for
       // consistency (0 days would be a useless policy anyway).
       expiryDays:
-        raw.expiryDays === null || raw.expiryDays === undefined || raw.expiryDays === 0
+        raw.expiryDays === null ||
+        raw.expiryDays === undefined ||
+        raw.expiryDays === 0
           ? null
           : clamp(raw.expiryDays, LIMITS.expiryDays, 0) || null,
-      historyCount: clamp(raw.historyCount, LIMITS.historyCount, DEFAULT_PASSWORD_POLICY.historyCount),
-      lockoutThreshold: clamp(raw.lockoutThreshold, LIMITS.lockoutThreshold, DEFAULT_PASSWORD_POLICY.lockoutThreshold),
-      lockoutDurationMinutes: clamp(raw.lockoutDurationMinutes, LIMITS.lockoutDurationMinutes, DEFAULT_PASSWORD_POLICY.lockoutDurationMinutes),
+      historyCount: clamp(
+        raw.historyCount,
+        LIMITS.historyCount,
+        DEFAULT_PASSWORD_POLICY.historyCount,
+      ),
+      lockoutThreshold: clamp(
+        raw.lockoutThreshold,
+        LIMITS.lockoutThreshold,
+        DEFAULT_PASSWORD_POLICY.lockoutThreshold,
+      ),
+      lockoutDurationMinutes: clamp(
+        raw.lockoutDurationMinutes,
+        LIMITS.lockoutDurationMinutes,
+        DEFAULT_PASSWORD_POLICY.lockoutDurationMinutes,
+      ),
     };
   }
 
@@ -138,7 +182,11 @@ export class PasswordPolicyService {
    * `historyCount` stored hashes. Bcrypt.compare is expensive (~100ms each);
    * `historyCount` is hard-capped to 24 in `mergeAndClamp` to bound the cost.
    */
-  async matchesHistory(userId: string, newPassword: string, historyCount: number): Promise<boolean> {
+  async matchesHistory(
+    userId: string,
+    newPassword: string,
+    historyCount: number,
+  ): Promise<boolean> {
     if (historyCount <= 0) return false;
     const rows = await this.historyRepo.find({
       where: { userId },
@@ -172,7 +220,9 @@ export class PasswordPolicyService {
     tenantId: string | null,
     newHash: string,
   ): Promise<void> {
-    await this.historyRepo.save(this.historyRepo.create({ userId, passwordHash: newHash }));
+    await this.historyRepo.save(
+      this.historyRepo.create({ userId, passwordHash: newHash }),
+    );
 
     // Trim to hard cap so we never keep more than 24 rows per user.
     // Using a raw query — faster than fetching everything into memory.
@@ -188,9 +238,10 @@ export class PasswordPolicyService {
            )`,
         [userId],
       );
-    } catch (err: any) {
+    } catch (err) {
       // Non-fatal — history just grows a bit larger.
-      this.logger.warn(`password_history prune failed for user ${userId}: ${err?.message || err}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`password_history prune failed for user ${userId}: ${msg}`);
     }
 
     await this.userRepo.update(this.scopedUserCriteria(userId, tenantId), {
@@ -200,12 +251,17 @@ export class PasswordPolicyService {
 
   // ─── Expiry ───────────────────────────────────────────────────────────
 
-  isExpired(user: Pick<User, 'passwordChangedAt'>, policy: Required<PasswordPolicy>): boolean {
+  isExpired(
+    user: Pick<User, 'passwordChangedAt'>,
+    policy: Required<PasswordPolicy>,
+  ): boolean {
     if (!policy.expiryDays || policy.expiryDays <= 0) return false;
     // Users with no change timestamp (pre-feature) are NOT treated as expired.
     // They become subject to expiry the next time they change their password.
     if (!user.passwordChangedAt) return false;
-    const expiresAt = new Date(user.passwordChangedAt).getTime() + policy.expiryDays * 24 * 60 * 60 * 1000;
+    const expiresAt =
+      new Date(user.passwordChangedAt).getTime() +
+      policy.expiryDays * 24 * 60 * 60 * 1000;
     return Date.now() > expiresAt;
   }
 
@@ -235,14 +291,19 @@ export class PasswordPolicyService {
     // If an existing lockout window is still active, just increment — the
     // threshold was already reached and UX messaging already covered.
     const attempts = (user.failedLoginAttempts ?? 0) + 1;
-    // Typed as `any` because TypeORM's QueryDeepPartialEntity chokes on the
-    // User entity's nested Tenant relation type — we're only updating scalar
-    // columns so the extra strictness isn't buying us anything here.
-    const update: Record<string, unknown> = { failedLoginAttempts: attempts };
+    // Tipado como Partial<Pick<User, ...>> para evitar el `as any` que
+    // historicamente se usaba aca: QueryDeepPartialEntity<User> se quejaba
+    // por la relacion anidada Tenant. Picking solo las columnas escalares
+    // que vamos a mutar sortea ese problema sin perder type-safety.
+    const update: Partial<Pick<User, 'failedLoginAttempts' | 'lockedUntil'>> = {
+      failedLoginAttempts: attempts,
+    };
     if (attempts >= policy.lockoutThreshold) {
-      update.lockedUntil = new Date(now.getTime() + policy.lockoutDurationMinutes * 60 * 1000);
+      update.lockedUntil = new Date(
+        now.getTime() + policy.lockoutDurationMinutes * 60 * 1000,
+      );
     }
-    await this.userRepo.update(criteria, update as any);
+    await this.userRepo.update(criteria, update);
   }
 
   /** Reset counters on successful authentication. Called from `validateUser`. */

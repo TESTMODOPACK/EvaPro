@@ -1,10 +1,18 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, FindOptionsWhere } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
-import { generateTotpSecret, generateTotpUri, verifyTotp } from '../../common/utils/totp';
+import {
+  generateTotpSecret,
+  generateTotpUri,
+  verifyTotp,
+} from '../../common/utils/totp';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
@@ -27,7 +35,11 @@ export class AuthService {
     private readonly passwordPolicy: PasswordPolicyService,
   ) {}
 
-  async validateUser(email: string, pass: string, tenantId?: string): Promise<any> {
+  async validateUser(
+    email: string,
+    pass: string,
+    tenantId?: string,
+  ): Promise<any> {
     const user = await this.usersService.findByEmail(email, tenantId);
     if (!user || !user.passwordHash) {
       // Don't reveal which half failed. Also don't increment lockout — we
@@ -38,7 +50,9 @@ export class AuthService {
 
     // Lockout short-circuit. Resolve the tenant's policy once per login
     // rather than on every failed bcrypt — the read is cached upstream.
-    const policy = await this.passwordPolicy.resolvePolicy(user.tenantId ?? null);
+    const policy = await this.passwordPolicy.resolvePolicy(
+      user.tenantId ?? null,
+    );
     const minsLeft = this.passwordPolicy.minutesUntilUnlocked(user);
     if (minsLeft !== null) {
       // Still locked — don't even bother comparing the password.
@@ -51,7 +65,9 @@ export class AuthService {
     if (!validPassword) {
       // Record against the actual user id so a brute-force doesn't hit a
       // moving target when the attacker varies the email case/spelling.
-      await this.passwordPolicy.recordFailedAttempt(user.id, user.tenantId ?? null, policy).catch(() => undefined);
+      await this.passwordPolicy
+        .recordFailedAttempt(user.id, user.tenantId ?? null, policy)
+        .catch(() => undefined);
       return null;
     }
 
@@ -64,13 +80,15 @@ export class AuthService {
     }
 
     // Password correct + user/tenant active — reset lockout counters.
-    await this.passwordPolicy.clearFailedAttempts(user.id, user.tenantId ?? null).catch(() => undefined);
+    await this.passwordPolicy
+      .clearFailedAttempts(user.id, user.tenantId ?? null)
+      .catch(() => undefined);
 
     // Surface expiry status so the caller can force a password change
     // without issuing a full session token.
     const expired = this.passwordPolicy.isExpired(user, policy);
 
-    const { passwordHash, ...result } = user;
+    const { passwordHash: _passwordHash, ...result } = user;
     return { ...result, passwordExpired: expired };
   }
 
@@ -90,7 +108,7 @@ export class AuthService {
     // Log successful login — super_admin logs are system-level (tenantId=null)
     // to prevent them from leaking into tenant_admin audit views.
     await this.auditService.log(
-      user.role === 'super_admin' ? null : (user.tenantId || null),
+      user.role === 'super_admin' ? null : user.tenantId || null,
       user.id,
       'login',
       'User',
@@ -123,7 +141,10 @@ export class AuthService {
 
   // ─── Token Refresh ──────────────────────────────────────────────────
 
-  async refreshToken(userId: string, tenantId: string | null): Promise<{ access_token: string }> {
+  async refreshToken(
+    userId: string,
+    tenantId: string | null,
+  ): Promise<{ access_token: string }> {
     // Scope the lookup to the tenant claimed in the token. If the user no
     // longer belongs to that tenant (moved, deleted, claim tampered), we
     // return 401 — preventing cross-tenant refresh attacks.
@@ -174,7 +195,10 @@ export class AuthService {
    * WITHOUT leaking whether the email exists). Returns null on any failure —
    * the caller falls back to the default policy.
    */
-  async resolveTenantIdForEmail(email: string, tenantSlug?: string): Promise<string | null> {
+  async resolveTenantIdForEmail(
+    email: string,
+    tenantSlug?: string,
+  ): Promise<string | null> {
     try {
       const user = await this.usersService.findByEmail(email, tenantSlug);
       return user?.tenantId ?? null;
@@ -185,7 +209,10 @@ export class AuthService {
 
   // ─── Password Reset ──────────────────────────────────────────────────
 
-  async requestPasswordReset(email: string, tenantSlug?: string): Promise<void> {
+  async requestPasswordReset(
+    email: string,
+    tenantSlug?: string,
+  ): Promise<void> {
     const user = await this.usersService.findByEmail(email, tenantSlug);
     if (!user) {
       // Don't reveal if user exists — silently succeed
@@ -214,16 +241,27 @@ export class AuthService {
   }
 
   /** Log failed login attempt to audit log */
-  async logFailedLogin(email: string, ipAddress: string, tenantSlug?: string): Promise<void> {
+  async logFailedLogin(
+    email: string,
+    ipAddress: string,
+    tenantSlug?: string,
+  ): Promise<void> {
     try {
       const user = await this.usersService.findByEmail(email, tenantSlug);
       await this.auditService.log(
-        user?.role === 'super_admin' ? null : (user?.tenantId || null),
+        user?.role === 'super_admin' ? null : user?.tenantId || null,
         user?.id || null,
         'login.failed',
         'User',
         user?.id || undefined,
-        { email, reason: user ? (user.isActive ? 'invalid_password' : 'inactive_user') : 'user_not_found' },
+        {
+          email,
+          reason: user
+            ? user.isActive
+              ? 'invalid_password'
+              : 'inactive_user'
+            : 'user_not_found',
+        },
         ipAddress,
       );
     } catch {
@@ -232,32 +270,53 @@ export class AuthService {
   }
 
   /** Change password on first login (mustChangePassword flow) */
-  async changePasswordFirstLogin(email: string, currentPassword: string, newPassword: string, tenantSlug?: string): Promise<void> {
+  async changePasswordFirstLogin(
+    email: string,
+    currentPassword: string,
+    newPassword: string,
+    tenantSlug?: string,
+  ): Promise<void> {
     const user = await this.usersService.findByEmail(email, tenantSlug);
     if (!user || !user.passwordHash) {
       throw new BadRequestException('Credenciales inválidas');
     }
-    const validPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+    const validPassword = await bcrypt.compare(
+      currentPassword,
+      user.passwordHash,
+    );
     if (!validPassword) {
       throw new BadRequestException('La contraseña actual es incorrecta');
     }
     if (currentPassword === newPassword) {
-      throw new BadRequestException('La nueva contraseña debe ser diferente a la actual');
+      throw new BadRequestException(
+        'La nueva contraseña debe ser diferente a la actual',
+      );
     }
 
     // Tenant-scoped policy validation (replaces the hardcoded regex).
-    const policy = await this.passwordPolicy.resolvePolicy(user.tenantId ?? null);
+    const policy = await this.passwordPolicy.resolvePolicy(
+      user.tenantId ?? null,
+    );
     const err = this.passwordPolicy.validate(newPassword, policy);
     if (err) throw new BadRequestException(err);
 
     // Reject reuse of any of the last N passwords (if history enforcement is on).
-    if (await this.passwordPolicy.matchesHistory(user.id, newPassword, policy.historyCount)) {
+    if (
+      await this.passwordPolicy.matchesHistory(
+        user.id,
+        newPassword,
+        policy.historyCount,
+      )
+    ) {
       throw new BadRequestException(
         `La nueva contraseña no puede ser igual a las últimas ${policy.historyCount} ya usadas.`,
       );
     }
 
-    const newHash = await bcrypt.hash(newPassword, this.passwordPolicy.bcryptRounds);
+    const newHash = await bcrypt.hash(
+      newPassword,
+      this.passwordPolicy.bcryptRounds,
+    );
     user.passwordHash = newHash;
     user.mustChangePassword = false;
     user.resetCode = null;
@@ -275,16 +334,23 @@ export class AuthService {
       newHash,
     );
 
-    await this.auditService.log(
-      user.role === 'super_admin' ? null : (user.tenantId || null),
-      user.id,
-      'password.changed_first_login',
-      'User',
-      user.id,
-    ).catch(() => {});
+    await this.auditService
+      .log(
+        user.role === 'super_admin' ? null : user.tenantId || null,
+        user.id,
+        'password.changed_first_login',
+        'User',
+        user.id,
+      )
+      .catch(() => {});
   }
 
-  async resetPassword(email: string, code: string, newPassword: string, tenantSlug?: string): Promise<void> {
+  async resetPassword(
+    email: string,
+    code: string,
+    newPassword: string,
+    tenantSlug?: string,
+  ): Promise<void> {
     const user = await this.usersService.findByEmail(email, tenantSlug);
     if (!user) {
       throw new BadRequestException('Código inválido o expirado');
@@ -300,17 +366,28 @@ export class AuthService {
     }
 
     // Validate against the tenant's policy (replaces the controller's regex).
-    const policy = await this.passwordPolicy.resolvePolicy(user.tenantId ?? null);
+    const policy = await this.passwordPolicy.resolvePolicy(
+      user.tenantId ?? null,
+    );
     const err = this.passwordPolicy.validate(newPassword, policy);
     if (err) throw new BadRequestException(err);
 
-    if (await this.passwordPolicy.matchesHistory(user.id, newPassword, policy.historyCount)) {
+    if (
+      await this.passwordPolicy.matchesHistory(
+        user.id,
+        newPassword,
+        policy.historyCount,
+      )
+    ) {
       throw new BadRequestException(
         `La nueva contraseña no puede ser igual a las últimas ${policy.historyCount} ya usadas.`,
       );
     }
 
-    const newHash = await bcrypt.hash(newPassword, this.passwordPolicy.bcryptRounds);
+    const newHash = await bcrypt.hash(
+      newPassword,
+      this.passwordPolicy.bcryptRounds,
+    );
     user.passwordHash = newHash;
     user.resetCode = null;
     user.resetCodeExpires = null;
@@ -330,13 +407,15 @@ export class AuthService {
       newHash,
     );
 
-    await this.auditService.log(
-      user.role === 'super_admin' ? null : (user.tenantId || null),
-      user.id,
-      'password.reset',
-      'User',
-      user.id,
-    ).catch(() => {});
+    await this.auditService
+      .log(
+        user.role === 'super_admin' ? null : user.tenantId || null,
+        user.id,
+        'password.reset',
+        'User',
+        user.id,
+      )
+      .catch(() => {});
   }
 
   // ─── 2FA / MFA ─────────────────────────────────────────────────────
@@ -345,16 +424,26 @@ export class AuthService {
    * Build the tenant-scoped WHERE clause for user lookups used by 2FA methods.
    * super_admin users may not have a tenantId, so we match on NULL in that case.
    */
-  private tenantScopedUserWhere(userId: string, tenantId: string | null): any {
-    if (tenantId) return { id: userId, tenantId };
-    return { id: userId, tenantId: IsNull() };
+  private tenantScopedUserWhere(
+    userId: string,
+    tenantId: string | null,
+  ): FindOptionsWhere<User> {
+    return tenantId
+      ? { id: userId, tenantId }
+      : { id: userId, tenantId: IsNull() };
   }
 
   /** Step 1: Generate secret and return URI for QR code */
-  async setup2FA(userId: string, tenantId: string | null): Promise<{ secret: string; uri: string }> {
-    const user = await this.userRepo.findOne({ where: this.tenantScopedUserWhere(userId, tenantId) });
+  async setup2FA(
+    userId: string,
+    tenantId: string | null,
+  ): Promise<{ secret: string; uri: string }> {
+    const user = await this.userRepo.findOne({
+      where: this.tenantScopedUserWhere(userId, tenantId),
+    });
     if (!user) throw new BadRequestException('Usuario no encontrado');
-    if (user.twoFactorEnabled) throw new BadRequestException('2FA ya está activado');
+    if (user.twoFactorEnabled)
+      throw new BadRequestException('2FA ya está activado');
 
     const secret = generateTotpSecret();
     user.twoFactorSecret = secret;
@@ -365,48 +454,72 @@ export class AuthService {
   }
 
   /** Step 2: Verify code and enable 2FA */
-  async enable2FA(userId: string, tenantId: string | null, code: string): Promise<{ enabled: boolean }> {
-    const user = await this.userRepo.findOne({ where: this.tenantScopedUserWhere(userId, tenantId) });
-    if (!user || !user.twoFactorSecret) throw new BadRequestException('Primero debes configurar 2FA');
-    if (user.twoFactorEnabled) throw new BadRequestException('2FA ya está activado');
+  async enable2FA(
+    userId: string,
+    tenantId: string | null,
+    code: string,
+  ): Promise<{ enabled: boolean }> {
+    const user = await this.userRepo.findOne({
+      where: this.tenantScopedUserWhere(userId, tenantId),
+    });
+    if (!user || !user.twoFactorSecret)
+      throw new BadRequestException('Primero debes configurar 2FA');
+    if (user.twoFactorEnabled)
+      throw new BadRequestException('2FA ya está activado');
 
     if (!verifyTotp(user.twoFactorSecret, code)) {
-      throw new BadRequestException('Código inválido. Verifica que tu app autenticadora esté sincronizada.');
+      throw new BadRequestException(
+        'Código inválido. Verifica que tu app autenticadora esté sincronizada.',
+      );
     }
 
     user.twoFactorEnabled = true;
     await this.userRepo.save(user);
-    await this.auditService.log(
-      user.role === 'super_admin' ? null : (user.tenantId || null),
-      userId,
-      '2fa.enabled',
-      'User',
-      userId,
-    ).catch(() => {});
+    await this.auditService
+      .log(
+        user.role === 'super_admin' ? null : user.tenantId || null,
+        userId,
+        '2fa.enabled',
+        'User',
+        userId,
+      )
+      .catch(() => {});
     return { enabled: true };
   }
 
   /** Disable 2FA */
-  async disable2FA(userId: string, tenantId: string | null, password: string): Promise<{ disabled: boolean }> {
-    const user = await this.userRepo.findOne({ where: this.tenantScopedUserWhere(userId, tenantId) });
+  async disable2FA(
+    userId: string,
+    tenantId: string | null,
+    password: string,
+  ): Promise<{ disabled: boolean }> {
+    const user = await this.userRepo.findOne({
+      where: this.tenantScopedUserWhere(userId, tenantId),
+    });
     if (!user) throw new BadRequestException('Usuario no encontrado');
-    if (!user.twoFactorEnabled) throw new BadRequestException('2FA no está activado');
+    if (!user.twoFactorEnabled)
+      throw new BadRequestException('2FA no está activado');
 
     // Require password to disable (security)
-    if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+    if (
+      !user.passwordHash ||
+      !(await bcrypt.compare(password, user.passwordHash))
+    ) {
       throw new BadRequestException('Contraseña incorrecta');
     }
 
     user.twoFactorEnabled = false;
     user.twoFactorSecret = null;
     await this.userRepo.save(user);
-    await this.auditService.log(
-      user.role === 'super_admin' ? null : (user.tenantId || null),
-      userId,
-      '2fa.disabled',
-      'User',
-      userId,
-    ).catch(() => {});
+    await this.auditService
+      .log(
+        user.role === 'super_admin' ? null : user.tenantId || null,
+        userId,
+        '2fa.disabled',
+        'User',
+        userId,
+      )
+      .catch(() => {});
     return { disabled: true };
   }
 
@@ -433,11 +546,18 @@ export class AuthService {
    *      undefined, string vacío, formato raro) retorna false sin
    *      leakear info sobre por qué falló.
    */
-  verify2FACode(user: { twoFactorEnabled?: boolean; twoFactorSecret?: string | null } | null, code: string): boolean {
+  verify2FACode(
+    user: {
+      twoFactorEnabled?: boolean;
+      twoFactorSecret?: string | null;
+    } | null,
+    code: string,
+  ): boolean {
     if (!user) return false;
     if (user.twoFactorEnabled !== true) return false;
     if (!user.twoFactorSecret) return false;
-    if (!code || typeof code !== 'string' || !/^\d{6}$/.test(code)) return false;
+    if (!code || typeof code !== 'string' || !/^\d{6}$/.test(code))
+      return false;
     return verifyTotp(user.twoFactorSecret, code);
   }
 }
