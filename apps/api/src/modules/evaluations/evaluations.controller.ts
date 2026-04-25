@@ -1,17 +1,19 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
+  BadRequestException,
   Body,
-  Param,
-  UseGuards,
-  Request,
-  ParseUUIDPipe,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
   HttpCode,
   HttpStatus,
-  ForbiddenException,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { EvaluationsService } from './evaluations.service';
@@ -246,20 +248,99 @@ export class EvaluationsController {
   }
 
   // ─── User's own evaluations — open to all roles (service scopes by userId) ─
+  //
+  // Query params opcionales (back-compat: si no se pasan, devuelve array crudo
+  // como antes; si se pasa `?page` o `?limit`, devuelve `{ items, total }`):
+  //   - search:  filtro por nombre/apellido del evaluado (ILIKE)
+  //   - cycleId: limitar a un ciclo
+  //   - page:    1-indexed (default 1)
+  //   - limit:   items por página (1..100)
   @Get('evaluations/pending')
-  findPending(@Request() req: any) {
-    return this.evaluationsService.findPendingForUser(req.user.userId, req.user.tenantId);
+  async findPending(
+    @Request() req: any,
+    @Query('search') search?: string,
+    @Query('cycleId', new ParseUUIDPipe({ optional: true }))
+    cycleId?: string,
+    @Query('page') pageParam?: string,
+    @Query('limit') limitParam?: string,
+  ) {
+    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const result = await this.evaluationsService.findPendingForUser(
+      req.user.userId,
+      req.user.tenantId,
+      opts,
+    );
+    // Back-compat: array crudo si no se pidió paginación
+    return pageParam === undefined && limitParam === undefined
+      ? result.items
+      : result;
   }
 
   @Get('evaluations/completed')
-  findCompleted(@Request() req: any) {
-    return this.evaluationsService.findCompletedForUser(req.user.userId, req.user.tenantId);
+  async findCompleted(
+    @Request() req: any,
+    @Query('search') search?: string,
+    @Query('cycleId', new ParseUUIDPipe({ optional: true }))
+    cycleId?: string,
+    @Query('page') pageParam?: string,
+    @Query('limit') limitParam?: string,
+  ) {
+    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const result = await this.evaluationsService.findCompletedForUser(
+      req.user.userId,
+      req.user.tenantId,
+      opts,
+    );
+    return pageParam === undefined && limitParam === undefined
+      ? result.items
+      : result;
   }
 
-  /** Evaluations where the current user was EVALUATED (by others) */
+  private parseEvalListOpts(
+    search: string | undefined,
+    cycleId: string | undefined,
+    pageParam: string | undefined,
+    limitParam: string | undefined,
+  ) {
+    const page =
+      pageParam !== undefined ? parseInt(pageParam, 10) : undefined;
+    const limit =
+      limitParam !== undefined ? parseInt(limitParam, 10) : undefined;
+    if (page !== undefined && (Number.isNaN(page) || page < 1)) {
+      throw new BadRequestException('page debe ser un entero positivo');
+    }
+    if (
+      limit !== undefined &&
+      (Number.isNaN(limit) || limit < 1 || limit > 100)
+    ) {
+      throw new BadRequestException('limit debe estar entre 1 y 100');
+    }
+    return { search, cycleId, page, limit };
+  }
+
+  /** Evaluations where the current user was EVALUATED (by others).
+   *  Acepta los mismos query params opcionales que /evaluations/completed
+   *  (search, cycleId, page, limit). Search aquí filtra por nombre del
+   *  evaluador (no del evaluado, que es el caller).
+   */
   @Get('evaluations/received')
-  findEvaluationsReceived(@Request() req: any) {
-    return this.evaluationsService.findEvaluationsOfUser(req.user.userId, req.user.tenantId);
+  async findEvaluationsReceived(
+    @Request() req: any,
+    @Query('search') search?: string,
+    @Query('cycleId', new ParseUUIDPipe({ optional: true }))
+    cycleId?: string,
+    @Query('page') pageParam?: string,
+    @Query('limit') limitParam?: string,
+  ) {
+    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const result = await this.evaluationsService.findEvaluationsOfUser(
+      req.user.userId,
+      req.user.tenantId,
+      opts,
+    );
+    return pageParam === undefined && limitParam === undefined
+      ? result.items
+      : result;
   }
 
   /** Evaluations where an arbitrary userId was EVALUATED.
@@ -276,6 +357,11 @@ export class EvaluationsController {
   async findEvaluationsByUser(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
+    @Query('search') search?: string,
+    @Query('cycleId', new ParseUUIDPipe({ optional: true }))
+    cycleId?: string,
+    @Query('page') pageParam?: string,
+    @Query('limit') limitParam?: string,
   ) {
     await this.evaluationsService.assertCanViewUserEvaluations(
       userId,
@@ -283,7 +369,15 @@ export class EvaluationsController {
       req.user.tenantId,
       req.user.role,
     );
-    return this.evaluationsService.findEvaluationsOfUser(userId, req.user.tenantId);
+    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const result = await this.evaluationsService.findEvaluationsOfUser(
+      userId,
+      req.user.tenantId,
+      opts,
+    );
+    return pageParam === undefined && limitParam === undefined
+      ? result.items
+      : result;
   }
 
   @Get('evaluations/:assignmentId')
