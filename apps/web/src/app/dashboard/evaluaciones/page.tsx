@@ -1,11 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useCycles } from '@/hooks/useCycles';
-import { usePendingEvaluations, useMyCompletedEvaluations } from '@/hooks/useEvaluations';
+import {
+  usePendingEvaluations,
+  useMyCompletedEvaluations,
+  usePendingEvaluationsPaged,
+  useMyCompletedEvaluationsPaged,
+} from '@/hooks/useEvaluations';
 import { useAuthStore } from '@/store/auth.store';
 import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
 import Link from 'next/link';
@@ -21,6 +26,18 @@ import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import ConfirmModal from '@/components/ConfirmModal';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
+
+/** Hook util: debounce de un valor con delay configurable (ms). Usado
+ *  para evitar disparar requests al backend en cada tecla del input de
+ *  búsqueda. */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 // ─── Urgency helpers ────────────────────────────────────────────────
 
@@ -97,63 +114,74 @@ function Spinner() {
 
 function EmployeeEvaluationsView() {
   const { t } = useTranslation();
-  const { data: pendingEvals, isLoading: loadingPending } = usePendingEvaluations();
-  const { data: completedEvals, isLoading: loadingCompleted } = useMyCompletedEvaluations();
   const userId = useAuthStore((s) => s.user?.userId);
 
-  const pending = pendingEvals || [];
-  const allCompleted = completedEvals || [];
-
-  // Filters + pagination for completed
+  // ── Filters + pagination state ──────────────────────────────────────
+  // El cycleFilter ahora guarda cycleId (UUID) — lo lee el backend; antes
+  // guardaba cycle.name y filtraba cliente-side.
   const [compSearch, setCompSearch] = useState('');
   const [compCycleFilter, setCompCycleFilter] = useState('');
   const [compPage, setCompPage] = useState(1);
   const compPageSize = 10;
 
-  // Viewer modal — al clickear una fila se abre con el detalle de respuestas
-  const [viewerAssignmentId, setViewerAssignmentId] = useState<string | null>(null);
-
-  // ── Pending filters + pagination ────────────────────────────────────
   const [pendCycleFilter, setPendCycleFilter] = useState('');
   const [pendSearch, setPendSearch] = useState('');
   const [pendPage, setPendPage] = useState(1);
   const pendPageSize = 10;
+
+  // Viewer modal — al clickear una fila se abre con el detalle de respuestas
+  const [viewerAssignmentId, setViewerAssignmentId] = useState<string | null>(null);
   const [showScale, setShowScale] = useState(false);
 
-  const pendCycles = Array.from(new Set(pending.map((e: any) => e.cycle?.name).filter(Boolean)));
+  // ── Server-side queries (paged + searched) ──────────────────────────
+  // El search se debouncea 300ms para no hacer 1 request por tecla.
+  const debPendSearch = useDebouncedValue(pendSearch, 300);
+  const debCompSearch = useDebouncedValue(compSearch, 300);
 
-  const filteredPending = pending.filter((ev: any) => {
-    if (pendCycleFilter && ev.cycle?.name !== pendCycleFilter) return false;
-    if (pendSearch) {
-      const q = pendSearch.toLowerCase();
-      const name = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}`.toLowerCase() : '';
-      if (!name.includes(q)) return false;
-    }
-    return true;
-  }).sort((a: any, b: any) => {
-    // Sort by due date ascending (most urgent first)
+  const { data: pendingResp, isLoading: loadingPending } = usePendingEvaluationsPaged({
+    search: debPendSearch || undefined,
+    cycleId: pendCycleFilter || undefined,
+    page: pendPage,
+    limit: pendPageSize,
+  });
+  const { data: completedResp, isLoading: loadingCompleted } = useMyCompletedEvaluationsPaged({
+    search: debCompSearch || undefined,
+    cycleId: compCycleFilter || undefined,
+    page: compPage,
+    limit: compPageSize,
+  });
+
+  const pending = pendingResp?.data || [];
+  const pendingTotal = pendingResp?.total || 0;
+  const allCompleted = completedResp?.data || [];
+  const completedTotal = completedResp?.total || 0;
+
+  // Sort pending por urgencia (cliente-side, sobre los items de la página)
+  const paginatedPending = [...pending].sort((a: any, b: any) => {
     const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
     const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
     return aDate - bDate;
   });
+  const completed = allCompleted;
 
-  const pendTotalPages = Math.ceil(filteredPending.length / pendPageSize);
-  const paginatedPending = filteredPending.slice((pendPage - 1) * pendPageSize, pendPage * pendPageSize);
+  const pendTotalPages = Math.max(1, Math.ceil(pendingTotal / pendPageSize));
+  const compTotalPages = Math.max(1, Math.ceil(completedTotal / compPageSize));
 
-  const compCycles = Array.from(new Set(allCompleted.map((e: any) => e.cycle?.name).filter(Boolean)));
-
-  const filteredCompleted = allCompleted.filter((ev: any) => {
-    if (compCycleFilter && ev.cycle?.name !== compCycleFilter) return false;
-    if (compSearch) {
-      const q = compSearch.toLowerCase();
-      const name = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}`.toLowerCase() : '';
-      if (!name.includes(q) && !(ev.cycle?.name || '').toLowerCase().includes(q)) return false;
-    }
-    return true;
+  // Cycle dropdowns — derivamos {id, name} de los items de la página
+  // actual. NOTA: degradación temporal — solo muestra ciclos visibles en
+  // la página, no todos los del usuario. B3 lo arregla con endpoint
+  // dedicado de "ciclos del usuario".
+  const pendCyclesMap = new Map<string, string>();
+  pending.forEach((e: any) => {
+    if (e.cycle?.id && e.cycle?.name) pendCyclesMap.set(e.cycle.id, e.cycle.name);
   });
+  const pendCycles: [string, string][] = Array.from(pendCyclesMap.entries());
 
-  const compTotalPages = Math.ceil(filteredCompleted.length / compPageSize);
-  const completed = filteredCompleted.slice((compPage - 1) * compPageSize, compPage * compPageSize);
+  const compCyclesMap = new Map<string, string>();
+  allCompleted.forEach((e: any) => {
+    if (e.cycle?.id && e.cycle?.name) compCyclesMap.set(e.cycle.id, e.cycle.name);
+  });
+  const compCycles: [string, string][] = Array.from(compCyclesMap.entries());
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -224,17 +252,17 @@ function EmployeeEvaluationsView() {
             <>
               <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.pending')}</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pendingTotal > 0 ? 'var(--warning)' : 'var(--success)' }}>{pendingTotal}</div>
                 {pendByCycle.length > 0 && <CycleBreakdown entries={pendByCycle} color="var(--warning)" id="pend" />}
               </div>
               <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.completed')}</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{allCompleted.length}</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{completedTotal}</div>
                 {compByCycle.length > 0 && <CycleBreakdown entries={compByCycle} color="#10b981" id="comp" />}
               </div>
               <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Total</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{pending.length + allCompleted.length}</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{pendingTotal + completedTotal}</div>
                 {totalEntries.length > 0 && <CycleBreakdown entries={totalEntries} color="#6366f1" id="total" />}
               </div>
             </>
@@ -259,10 +287,10 @@ function EmployeeEvaluationsView() {
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--warning)', display: 'inline-block' }} />
-          {t('evaluaciones.pendingEvals')} ({filteredPending.length})
+          {t('evaluaciones.pendingEvals')} ({pendingTotal})
         </h2>
 
-        {loadingPending ? <Spinner /> : pending.length === 0 ? (
+        {loadingPending ? <Spinner /> : pendingTotal === 0 ? (
           <div className="card">
             <EmptyState
               icon="✅"
@@ -273,12 +301,12 @@ function EmployeeEvaluationsView() {
         ) : (
           <>
           {/* Filtros pendientes */}
-          {pending.length > 5 && (
+          {pendingTotal > 5 && (
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
               {pendCycles.length > 1 && (
                 <select className="input" value={pendCycleFilter} onChange={(e) => { setPendCycleFilter(e.target.value); setPendPage(1); }} style={{ fontSize: '0.82rem', maxWidth: '250px' }}>
                   <option value="">Todos los ciclos</option>
-                  {pendCycles.map(c => <option key={c} value={c}>{c}</option>)}
+                  {pendCycles.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                 </select>
               )}
               <input
@@ -294,7 +322,7 @@ function EmployeeEvaluationsView() {
                 </button>
               )}
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                {filteredPending.length} de {pending.length}
+                {pending.length} de {pendingTotal}
               </span>
             </div>
           )}
@@ -384,17 +412,17 @@ function EmployeeEvaluationsView() {
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)', display: 'inline-block' }} />
           {t('evaluaciones.completedEvals')}
-          {allCompleted.length > 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>({filteredCompleted.length})</span>}
+          {completedTotal > 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>({completedTotal})</span>}
         </h2>
 
         {/* Filters — same layout as pending section */}
-        {allCompleted.length > 0 && (
+        {completedTotal > 0 && (
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
             {compCycles.length > 1 && (
               <select className="input" value={compCycleFilter} onChange={(e) => { setCompCycleFilter(e.target.value); setCompPage(1); }}
                 style={{ fontSize: '0.82rem', maxWidth: '250px' }}>
                 <option value="">Todos los ciclos</option>
-                {compCycles.map((c: any) => <option key={c} value={c}>{c}</option>)}
+                {compCycles.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
               </select>
             )}
             <input className="input" type="text" placeholder="Buscar colaborador..."
@@ -407,19 +435,19 @@ function EmployeeEvaluationsView() {
               </button>
             )}
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-              {filteredCompleted.length} de {allCompleted.length}
+              {allCompleted.length} de {completedTotal}
             </span>
           </div>
         )}
 
-        {loadingCompleted ? <Spinner /> : filteredCompleted.length === 0 ? (
+        {loadingCompleted ? <Spinner /> : allCompleted.length === 0 ? (
           <div className="card">
             <EmptyState
-              icon={allCompleted.length === 0 ? '📝' : '🔍'}
-              title={allCompleted.length === 0 ? t('evaluaciones.noCompletedYet') : 'Sin resultados con estos filtros'}
-              description={allCompleted.length === 0
-                ? 'A medida que completes evaluaciones, verás aquí el historial con puntuaciones y detalles.'
-                : 'Prueba limpiando los filtros o busca por otro ciclo.'}
+              icon={(compSearch || compCycleFilter) ? '🔍' : '📝'}
+              title={(compSearch || compCycleFilter) ? 'Sin resultados con estos filtros' : t('evaluaciones.noCompletedYet')}
+              description={(compSearch || compCycleFilter)
+                ? 'Prueba limpiando los filtros o busca por otro ciclo.'
+                : 'A medida que completes evaluaciones, verás aquí el historial con puntuaciones y detalles.'}
             />
           </div>
         ) : (
@@ -474,7 +502,7 @@ function EmployeeEvaluationsView() {
             {compTotalPages > 1 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', padding: '0.5rem 0' }}>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Mostrando {(compPage - 1) * compPageSize + 1}-{Math.min(compPage * compPageSize, filteredCompleted.length)} de {filteredCompleted.length}
+                  Mostrando {(compPage - 1) * compPageSize + 1}-{Math.min(compPage * compPageSize, completedTotal)} de {completedTotal}
                 </span>
                 <div style={{ display: 'flex', gap: '0.35rem' }}>
                   <button className="btn-ghost" disabled={compPage <= 1} onClick={() => setCompPage(p => p - 1)}

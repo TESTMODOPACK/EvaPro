@@ -1,7 +1,7 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { api, type EvalListParams } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 
 export function usePendingEvaluations() {
@@ -19,6 +19,35 @@ export function useMyCompletedEvaluations() {
     queryKey: ['evaluations', 'completed'],
     queryFn: () => api.evaluations.completed(token!),
     enabled: !!token,
+  });
+}
+
+/**
+ * Variantes paginadas — devuelven PaginatedResponse<T> ({ data, total, page,
+ * limit }). Usar en pantallas que tienen muchas filas y necesitan search +
+ * paginación server-side. Para counts/badges en widgets sigue usándose el
+ * hook legacy (que carga todo y .length).
+ *
+ * `keepPreviousData` evita el flicker al cambiar de página: mientras la
+ * nueva query carga, sigue mostrando la página previa.
+ */
+export function usePendingEvaluationsPaged(opts: EvalListParams) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['evaluations', 'pending', 'paged', opts],
+    queryFn: () => api.evaluations.pendingPaged(token!, opts),
+    enabled: !!token,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useMyCompletedEvaluationsPaged(opts: EvalListParams) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['evaluations', 'completed', 'paged', opts],
+    queryFn: () => api.evaluations.completedPaged(token!, opts),
+    enabled: !!token,
+    placeholderData: keepPreviousData,
   });
 }
 
