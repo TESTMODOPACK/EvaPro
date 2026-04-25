@@ -17,6 +17,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { NoImpersonation } from '../../../common/decorators/no-impersonation.decorator';
+import { Public } from '../../../common/decorators/public.decorator';
 import { SsoService } from './sso.service';
 import { SsoConfigDto, SsoDiscoverDto } from './dto/sso-config.dto';
 
@@ -57,6 +58,7 @@ export class SsoController {
   // ─── Public: discover SSO for an email ────────────────────────────────
 
   @Post('discover')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async discover(@Body() dto: SsoDiscoverDto) {
     return this.svc.discoverByEmail(dto.email, dto.tenantSlug);
@@ -65,6 +67,7 @@ export class SsoController {
   // ─── Public: start the OIDC flow ──────────────────────────────────────
 
   @Get('login')
+  @Public()
   async login(@Query('tenantId', new ParseUUIDPipe()) tenantId: string, @Res({ passthrough: false }) res: any) {
     if (!tenantId) throw new BadRequestException('tenantId requerido');
     const { authorizeUrl, stateCookie } = await this.svc.startLogin(tenantId);
@@ -83,6 +86,7 @@ export class SsoController {
   // ─── Public: callback ─────────────────────────────────────────────────
 
   @Get('callback')
+  @Public()
   async callback(@Req() req: any, @Res({ passthrough: false }) res: any) {
     const cookie = req.cookies?.[STATE_COOKIE];
     const { access_token } = await this.svc.handleCallback(cookie, req.query as any);

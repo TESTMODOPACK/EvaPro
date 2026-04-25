@@ -12,10 +12,16 @@ import {
 import { PaymentsService } from './payments.service';
 import { StripeProvider } from './providers/stripe-provider';
 import { MercadoPagoProvider } from './providers/mercadopago-provider';
+import { Public } from '../../common/decorators/public.decorator';
 
 /**
  * Public, unauthenticated endpoints that receive webhook callbacks from
- * Stripe and MercadoPago. Both endpoints:
+ * Stripe and MercadoPago. Marcado @Public a nivel clase para bypassar el
+ * JwtAuthGuard global — los providers no envian bearer token. La auth real
+ * vive en la verificacion de firma HMAC del provider (handleStripe /
+ * handleMercadoPago).
+ *
+ * Both endpoints:
  *  - Expect the request body as raw bytes (configured via express.raw in
  *    main.ts; otherwise Stripe's signature check fails).
  *  - Verify the provider-specific signature.
@@ -26,6 +32,7 @@ import { MercadoPagoProvider } from './providers/mercadopago-provider';
  *    only when the signature is invalid (malicious / misconfigured).
  */
 @Controller('webhooks')
+@Public()
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
 

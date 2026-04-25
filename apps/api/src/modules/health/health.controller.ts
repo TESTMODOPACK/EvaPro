@@ -1,18 +1,17 @@
 import { Controller, Get, HttpCode, HttpStatus, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { DataSource } from 'typeorm';
+import { Public } from '../../common/decorators/public.decorator';
 
 /**
  * Health check endpoint — sirve como liveness/readiness probe para Nginx,
- * Render, Kubernetes o cualquier orquestador. Sin autenticacion (es publico
- * porque el probe no envia token). Responde 200 si la app y la DB estan OK,
- * 503 si algun componente crítico esta caido.
- *
- * No esta bajo `@UseGuards(AuthGuard('jwt'))` a proposito — los probes no
- * envian bearer token y un 401 haria que el orquestador marque la app como
- * unhealthy aunque este viva.
+ * Render, Kubernetes o cualquier orquestador. Marcado @Public a nivel clase
+ * para bypassar el JwtAuthGuard global — los probes no envian bearer token
+ * y un 401 haria que el orquestador marque la app como unhealthy aunque
+ * este viva.
  */
 @Controller('health')
+@Public()
 export class HealthController {
   constructor(private readonly dataSource: DataSource) {}
 

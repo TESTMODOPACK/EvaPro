@@ -11,6 +11,7 @@ import {
 import { LeadsService } from './leads.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { getClientIp } from '../../common/utils/get-client-ip';
+import { Public } from '../../common/decorators/public.decorator';
 
 // ─── Rate limiting (in-memory, mismo patrón que unsubscribe.controller.ts) ──
 //
@@ -80,6 +81,7 @@ setInterval(() => {
  * para no facilitar enumeration.
  */
 @Controller('public/leads')
+@Public()
 export class LeadsPublicController {
   constructor(private readonly leadsService: LeadsService) {}
 
