@@ -29,6 +29,25 @@ import { PlanFeature } from '../../common/constants/plan-features';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
 
+/**
+ * Opciones para listar evaluaciones del bandeja del usuario. Todas
+ * opcionales — si ninguna se pasa, devuelve la lista entera (para
+ * back-compat con el frontend pre-paginación).
+ */
+export interface EvaluationListOpts {
+  search?: string;
+  cycleId?: string;
+  /** 1-indexed page number. Solo aplica si limit > 0. */
+  page?: number;
+  /** Items per page. Si undefined, no se pagina y devuelve todo. */
+  limit?: number;
+}
+
+export interface PaginatedEvaluations<T> {
+  items: T[];
+  total: number;
+}
+
 @Injectable()
 export class EvaluationsService {
   private readonly logger = new Logger(EvaluationsService.name);
@@ -1172,34 +1191,91 @@ export class EvaluationsService {
     });
   }
 
-  async findPendingForUser(userId: string, tenantId: string): Promise<EvaluationAssignment[]> {
-    return this.assignmentRepo.find({
-      where: [
-        { evaluatorId: userId, tenantId, status: AssignmentStatus.PENDING },
-        { evaluatorId: userId, tenantId, status: AssignmentStatus.IN_PROGRESS },
-      ],
-      relations: ['evaluatee', 'cycle'],
-      order: { createdAt: 'ASC' },
-    });
+  async findPendingForUser(
+    userId: string,
+    tenantId: string,
+    opts: EvaluationListOpts = {},
+  ): Promise<PaginatedEvaluations<EvaluationAssignment>> {
+    const qb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.evaluatee', 'evaluatee')
+      .leftJoinAndSelect('a.cycle', 'cycle')
+      .where('a.evaluator_id = :userId', { userId })
+      .andWhere('a.tenant_id = :tenantId', { tenantId })
+      .andWhere('a.status IN (:...statuses)', {
+        statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
+      })
+      .orderBy('a.created_at', 'ASC');
+
+    if (opts.cycleId) {
+      qb.andWhere('a.cycle_id = :cycleId', { cycleId: opts.cycleId });
+    }
+    if (opts.search) {
+      qb.andWhere(
+        '(LOWER(evaluatee.first_name) LIKE :search OR LOWER(evaluatee.last_name) LIKE :search)',
+        { search: `%${opts.search.toLowerCase()}%` },
+      );
+    }
+
+    const total = await qb.getCount();
+
+    if (opts.limit && opts.limit > 0) {
+      const page = Math.max(1, opts.page ?? 1);
+      qb.skip((page - 1) * opts.limit).take(opts.limit);
+    }
+
+    const items = await qb.getMany();
+    return { items, total };
   }
 
-  async findCompletedForUser(userId: string, tenantId: string): Promise<any[]> {
-    const assignments = await this.assignmentRepo.find({
-      where: { evaluatorId: userId, tenantId, status: AssignmentStatus.COMPLETED },
-      relations: ['evaluatee', 'evaluator', 'cycle'],
-      order: { completedAt: 'DESC' },
-    });
+  async findCompletedForUser(
+    userId: string,
+    tenantId: string,
+    opts: EvaluationListOpts = {},
+  ): Promise<PaginatedEvaluations<any>> {
+    // El JOIN a responses reemplaza el N+1 que tenía el código previo
+    // (un findOne por cada assignment). Como response.assignment_id es
+    // unique, leftJoinAndMapOne no multiplica filas.
+    const qb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.evaluatee', 'evaluatee')
+      .leftJoinAndSelect('a.evaluator', 'evaluator')
+      .leftJoinAndSelect('a.cycle', 'cycle')
+      .leftJoinAndMapOne(
+        'a.response',
+        EvaluationResponse,
+        'response',
+        'response.assignment_id = a.id',
+      )
+      .where('a.evaluator_id = :userId', { userId })
+      .andWhere('a.tenant_id = :tenantId', { tenantId })
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
+      .orderBy('a.completed_at', 'DESC');
 
-    // Load responses for each assignment to get overallScore
-    const results = [];
-    for (const a of assignments) {
-      const response = await this.responseRepo.findOne({
-        where: { assignmentId: a.id },
-        select: ['id', 'overallScore', 'submittedAt'],
-      });
-      results.push({ ...a, response: response || null });
+    if (opts.cycleId) {
+      qb.andWhere('a.cycle_id = :cycleId', { cycleId: opts.cycleId });
     }
-    return results;
+    if (opts.search) {
+      qb.andWhere(
+        '(LOWER(evaluatee.first_name) LIKE :search OR LOWER(evaluatee.last_name) LIKE :search)',
+        { search: `%${opts.search.toLowerCase()}%` },
+      );
+    }
+
+    const total = await qb.getCount();
+
+    if (opts.limit && opts.limit > 0) {
+      const page = Math.max(1, opts.page ?? 1);
+      qb.skip((page - 1) * opts.limit).take(opts.limit);
+    }
+
+    const items = (await qb.getMany()) as any[];
+    // Normalizar a `null` cuando no hay response — el frontend asume null,
+    // no undefined.
+    items.forEach((a) => {
+      if (a.response === undefined) a.response = null;
+    });
+    return { items, total };
   }
 
   /**
@@ -1234,22 +1310,55 @@ export class EvaluationsService {
     throw new ForbiddenException('No tienes permiso para ver las evaluaciones de este usuario');
   }
 
-  /** Get evaluations where the user is the EVALUATEE (someone evaluated me) */
-  async findEvaluationsOfUser(userId: string, tenantId: string): Promise<any[]> {
-    const assignments = await this.assignmentRepo.find({
-      where: { evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
-      relations: ['evaluatee', 'evaluator', 'cycle'],
-      order: { completedAt: 'DESC' },
-    });
-    const results = [];
-    for (const a of assignments) {
-      const response = await this.responseRepo.findOne({
-        where: { assignmentId: a.id },
-        select: ['id', 'overallScore', 'submittedAt'],
-      });
-      results.push({ ...a, response: response || null });
+  /** Get evaluations where the user is the EVALUATEE (someone evaluated me).
+   *  Mismo refactor que findCompletedForUser: queryBuilder + JOIN single-shot
+   *  para responses (reemplaza el N+1 previo) + paginación + search por
+   *  nombre del evaluador. El search aquí es por evaluator (no evaluatee)
+   *  porque la fila objetivo es "evaluación de userId hecha por X".
+   */
+  async findEvaluationsOfUser(
+    userId: string,
+    tenantId: string,
+    opts: EvaluationListOpts = {},
+  ): Promise<PaginatedEvaluations<any>> {
+    const qb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.evaluatee', 'evaluatee')
+      .leftJoinAndSelect('a.evaluator', 'evaluator')
+      .leftJoinAndSelect('a.cycle', 'cycle')
+      .leftJoinAndMapOne(
+        'a.response',
+        EvaluationResponse,
+        'response',
+        'response.assignment_id = a.id',
+      )
+      .where('a.evaluatee_id = :userId', { userId })
+      .andWhere('a.tenant_id = :tenantId', { tenantId })
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
+      .orderBy('a.completed_at', 'DESC');
+
+    if (opts.cycleId) {
+      qb.andWhere('a.cycle_id = :cycleId', { cycleId: opts.cycleId });
     }
-    return results;
+    if (opts.search) {
+      qb.andWhere(
+        '(LOWER(evaluator.first_name) LIKE :search OR LOWER(evaluator.last_name) LIKE :search)',
+        { search: `%${opts.search.toLowerCase()}%` },
+      );
+    }
+
+    const total = await qb.getCount();
+
+    if (opts.limit && opts.limit > 0) {
+      const page = Math.max(1, opts.page ?? 1);
+      qb.skip((page - 1) * opts.limit).take(opts.limit);
+    }
+
+    const items = (await qb.getMany()) as any[];
+    items.forEach((a) => {
+      if (a.response === undefined) a.response = null;
+    });
+    return { items, total };
   }
 
   async getAssignmentDetail(assignmentId: string, tenantId: string) {
