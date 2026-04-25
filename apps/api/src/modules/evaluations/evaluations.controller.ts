@@ -66,7 +66,7 @@ export class EvaluationsController {
     @Request() req: any,
     @Body() dto: UpdateCycleDto,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     return this.evaluationsService.updateCycle(id, tenantId, dto, req.user.userId);
   }
 
@@ -76,7 +76,7 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     return this.evaluationsService.getCycleHistory(id, tenantId);
   }
 
@@ -87,7 +87,7 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     return this.evaluationsService.deleteCycle(id, tenantId);
   }
 
@@ -97,7 +97,7 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     return this.evaluationsService.launchCycle(id, tenantId, req.user.userId);
   }
 
@@ -107,7 +107,7 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     return this.evaluationsService.closeCycle(id, tenantId, req.user.userId);
   }
 
@@ -117,7 +117,7 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     return this.evaluationsService.pauseCycle(id, tenantId, req.user.userId);
   }
 
@@ -127,7 +127,7 @@ export class EvaluationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
     return this.evaluationsService.resumeCycle(id, tenantId, req.user.userId);
   }
 

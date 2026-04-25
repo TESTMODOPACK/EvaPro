@@ -84,7 +84,7 @@ export class EvaluationsService {
    *        Todas las operaciones internas deben usar `cycle.tenantId` como
    *        authoritative — nunca el parámetro tenantId crudo.
    */
-  async findCycleById(id: string, tenantId: string | undefined): Promise<EvaluationCycle> {
+  async findCycleById(id: string, tenantId: string | null): Promise<EvaluationCycle> {
     const where = tenantId ? { id, tenantId } : { id };
     const cycle = await this.cycleRepo.findOne({ where });
     if (!cycle) throw new NotFoundException('Ciclo de evaluación no encontrado');
@@ -339,7 +339,7 @@ export class EvaluationsService {
     }
   }
 
-  async updateCycle(id: string, tenantId: string | undefined, dto: UpdateCycleDto, userId?: string): Promise<EvaluationCycle> {
+  async updateCycle(id: string, tenantId: string | null, dto: UpdateCycleDto, userId?: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     const effectiveStart = dto.startDate ? new Date(dto.startDate) : cycle.startDate;
     const effectiveEnd = dto.endDate ? new Date(dto.endDate) : cycle.endDate;
@@ -382,7 +382,7 @@ export class EvaluationsService {
     return saved;
   }
 
-  async getCycleHistory(id: string, tenantId: string | undefined): Promise<any[]> {
+  async getCycleHistory(id: string, tenantId: string | null): Promise<any[]> {
     // Resolver el tenantId authoritative desde la entidad (soporta super_admin cross-tenant)
     const cycle = await this.findCycleById(id, tenantId);
     const logs = await this.auditLogRepo.find({
@@ -403,7 +403,7 @@ export class EvaluationsService {
     }));
   }
 
-  async deleteCycle(id: string, tenantId: string | undefined): Promise<void> {
+  async deleteCycle(id: string, tenantId: string | null): Promise<void> {
     const cycle = await this.findCycleById(id, tenantId);
     if (cycle.status === CycleStatus.ACTIVE || cycle.status === CycleStatus.PAUSED) {
       throw new BadRequestException('No se puede eliminar un ciclo activo o pausado. Ciérralo primero.');
@@ -857,7 +857,7 @@ export class EvaluationsService {
 
   // ─── Cycle Launch ─────────────────────────────────────────────────────────
 
-  async launchCycle(id: string, tenantId: string | undefined, userId: string) {
+  async launchCycle(id: string, tenantId: string | null, userId: string) {
     const cycle = await this.findCycleById(id, tenantId);
     // Authoritative tenantId desde la entidad (soporta super_admin cross-tenant).
     const effectiveTenantId = cycle.tenantId;
@@ -1042,7 +1042,7 @@ export class EvaluationsService {
     }
   }
 
-  async closeCycle(id: string, tenantId: string | undefined, userId: string): Promise<EvaluationCycle> {
+  async closeCycle(id: string, tenantId: string | null, userId: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     // Authoritative tenantId desde la entidad (soporta super_admin cross-tenant).
     const effectiveTenantId = cycle.tenantId;
@@ -1100,7 +1100,7 @@ export class EvaluationsService {
     return saved;
   }
 
-  async pauseCycle(id: string, tenantId: string | undefined, userId: string): Promise<EvaluationCycle> {
+  async pauseCycle(id: string, tenantId: string | null, userId: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     if (cycle.status !== CycleStatus.ACTIVE) {
       throw new BadRequestException('Solo se puede pausar un ciclo activo');
@@ -1117,7 +1117,7 @@ export class EvaluationsService {
     return saved;
   }
 
-  async resumeCycle(id: string, tenantId: string | undefined, userId: string): Promise<EvaluationCycle> {
+  async resumeCycle(id: string, tenantId: string | null, userId: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     if (cycle.status !== CycleStatus.PAUSED) {
       throw new BadRequestException('Solo se puede reanudar un ciclo pausado');
