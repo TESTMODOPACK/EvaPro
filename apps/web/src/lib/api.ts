@@ -49,6 +49,27 @@ export interface PaginatedResponse<T> {
   data: T[]; total: number; page: number; limit: number;
 }
 
+/** Parámetros opcionales para listas paginadas + searchables del módulo
+ *  de evaluaciones (bandeja del usuario). El backend trata `undefined`
+ *  como "no aplicar ese filtro". */
+export interface EvalListParams {
+  search?: string;
+  cycleId?: string;
+  page?: number;
+  limit?: number;
+}
+
+/** Construye `?key=value&...` ignorando entries undefined/null/'' */
+function buildEvalQuery(opts: EvalListParams): string {
+  const p = new URLSearchParams();
+  if (opts.search) p.set('search', opts.search);
+  if (opts.cycleId) p.set('cycleId', opts.cycleId);
+  if (opts.page !== undefined) p.set('page', String(opts.page));
+  if (opts.limit !== undefined) p.set('limit', String(opts.limit));
+  const qs = p.toString();
+  return qs ? `?${qs}` : '';
+}
+
 export interface CycleData {
   id: string; tenantId: string; name: string; type: string; status: string;
   period: string;
@@ -695,6 +716,49 @@ export const api = {
       request<AssignmentData[]>("/evaluations/completed", {}, token),
     received: (token: string) =>
       request<any[]>("/evaluations/received", {}, token),
+    /** Variantes paginadas — pasan ?search/?cycleId/?page/?limit y devuelven
+     *  PaginatedResponse<T> ({ data, total, page, limit }). El backend
+     *  responde `{ items, total }`; aca se mapea a la convencion frontend
+     *  para consistencia con users.list y futuras paginaciones. */
+    pendingPaged: (token: string, opts: EvalListParams) =>
+      request<{ items: AssignmentData[]; total: number }>(
+        `/evaluations/pending${buildEvalQuery(opts)}`,
+        {},
+        token,
+      ).then(
+        (r): PaginatedResponse<AssignmentData> => ({
+          data: r.items,
+          total: r.total,
+          page: opts.page ?? 1,
+          limit: opts.limit ?? 0,
+        }),
+      ),
+    completedPaged: (token: string, opts: EvalListParams) =>
+      request<{ items: AssignmentData[]; total: number }>(
+        `/evaluations/completed${buildEvalQuery(opts)}`,
+        {},
+        token,
+      ).then(
+        (r): PaginatedResponse<AssignmentData> => ({
+          data: r.items,
+          total: r.total,
+          page: opts.page ?? 1,
+          limit: opts.limit ?? 0,
+        }),
+      ),
+    receivedPaged: (token: string, opts: EvalListParams) =>
+      request<{ items: AssignmentData[]; total: number }>(
+        `/evaluations/received${buildEvalQuery(opts)}`,
+        {},
+        token,
+      ).then(
+        (r): PaginatedResponse<AssignmentData> => ({
+          data: r.items,
+          total: r.total,
+          page: opts.page ?? 1,
+          limit: opts.limit ?? 0,
+        }),
+      ),
     /** Lista evaluaciones RECIBIDAS por un user arbitrario — requiere
      *  permisos admin/manager (o ser el propio user). Útil para la ficha de
      *  colaborador donde el manager ve la retroalimentación de su equipo. */
