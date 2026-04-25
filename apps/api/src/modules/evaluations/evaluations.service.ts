@@ -1310,6 +1310,74 @@ export class EvaluationsService {
     throw new ForbiddenException('No tienes permiso para ver las evaluaciones de este usuario');
   }
 
+  /**
+   * Evaluaciones recibidas por el equipo (managers) o por todo el tenant
+   * (admins). Defensivo: el controller decide el scope vía `managerId`:
+   *
+   *   - managerId = '<uuid>'  → filtra por evaluatee.manager_id = managerId
+   *                              (manager ve solo a sus directos)
+   *   - managerId = null      → no filtro de manager (admin ve todo el tenant)
+   *
+   * El service NO conoce roles — la decisión vive en el controller para
+   * mantener el principio "service expone primitivas, controller compone
+   * autorización". Si alguien llama esto con managerId=null sin ser admin,
+   * la responsabilidad es del controller (que lleva @Roles).
+   */
+  async findReceivedByTeam(args: {
+    managerId: string | null;
+    tenantId: string;
+    opts?: EvaluationListOpts;
+  }): Promise<PaginatedEvaluations<any>> {
+    const opts = args.opts ?? {};
+    const qb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.evaluatee', 'evaluatee')
+      .leftJoinAndSelect('a.evaluator', 'evaluator')
+      .leftJoinAndSelect('a.cycle', 'cycle')
+      .leftJoinAndMapOne(
+        'a.response',
+        EvaluationResponse,
+        'response',
+        'response.assignment_id = a.id',
+      )
+      .where('a.tenant_id = :tenantId', { tenantId: args.tenantId })
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
+      .orderBy('a.completed_at', 'DESC');
+
+    if (args.managerId) {
+      // INNER JOIN implícito a través de evaluatee — solo trae assignments
+      // de users cuyo manager_id matchee. Los assignments de users sin
+      // manager (huérfanos) NO aparecen para un manager (correcto), pero
+      // sí para admin (managerId=null no añade el filtro).
+      qb.andWhere('evaluatee.manager_id = :managerId', {
+        managerId: args.managerId,
+      });
+    }
+
+    if (opts.cycleId) {
+      qb.andWhere('a.cycle_id = :cycleId', { cycleId: opts.cycleId });
+    }
+    if (opts.search) {
+      qb.andWhere(
+        '(LOWER(evaluatee.first_name) LIKE :search OR LOWER(evaluatee.last_name) LIKE :search)',
+        { search: `%${opts.search.toLowerCase()}%` },
+      );
+    }
+
+    const total = await qb.getCount();
+
+    if (opts.limit && opts.limit > 0) {
+      const page = Math.max(1, opts.page ?? 1);
+      qb.skip((page - 1) * opts.limit).take(opts.limit);
+    }
+
+    const items = (await qb.getMany()) as any[];
+    items.forEach((a) => {
+      if (a.response === undefined) a.response = null;
+    });
+    return { items, total };
+  }
+
   /** Get evaluations where the user is the EVALUATEE (someone evaluated me).
    *  Mismo refactor que findCompletedForUser: queryBuilder + JOIN single-shot
    *  para responses (reemplaza el N+1 previo) + paginación + search por

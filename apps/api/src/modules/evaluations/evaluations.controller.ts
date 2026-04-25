@@ -318,6 +318,45 @@ export class EvaluationsController {
     return { search, cycleId, page, limit };
   }
 
+  /**
+   * Evaluaciones RECIBIDAS por el equipo del usuario actual.
+   *
+   * Reglas de scope (definidas por @Roles + lógica del controller):
+   *   · manager      → assignments cuyo evaluatee tenga manager_id = req.user.id
+   *                     (solo sus directos)
+   *   · tenant_admin → todas las assignments del tenant (sin filtro de manager)
+   *   · super_admin  → idem tenant_admin para el tenant del JWT
+   *   · employee/external → bloqueado por @Roles guard (no ven team data)
+   *
+   * Acepta los mismos query params opcionales que /evaluations/completed
+   * (search, cycleId, page, limit). Backward-compat: array crudo si no se
+   * pasa page/limit, sino { items, total }.
+   */
+  @Get('evaluations/team-received')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  async findTeamReceived(
+    @Request() req: any,
+    @Query('search') search?: string,
+    @Query('cycleId', new ParseUUIDPipe({ optional: true }))
+    cycleId?: string,
+    @Query('page') pageParam?: string,
+    @Query('limit') limitParam?: string,
+  ) {
+    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    // Solo el manager scopea a sus directos. tenant_admin/super_admin ven
+    // todo el tenant.
+    const managerId =
+      req.user.role === 'manager' ? (req.user.userId as string) : null;
+    const result = await this.evaluationsService.findReceivedByTeam({
+      managerId,
+      tenantId: req.user.tenantId,
+      opts,
+    });
+    return pageParam === undefined && limitParam === undefined
+      ? result.items
+      : result;
+  }
+
   /** Evaluations where the current user was EVALUATED (by others).
    *  Acepta los mismos query params opcionales que /evaluations/completed
    *  (search, cycleId, page, limit). Search aquí filtra por nombre del
