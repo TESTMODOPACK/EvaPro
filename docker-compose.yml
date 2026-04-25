@@ -78,6 +78,9 @@ services:
       DB_SYNC: "true"
       DB_SSL: "false"
       JWT_SECRET: ${JWT_SECRET:?Debe definir JWT_SECRET en .env}
+      # SSO_STATE_SECRET firma las state cookies del flujo OIDC. main.ts
+      # exige que este definido y sea distinto de JWT_SECRET en prod.
+      SSO_STATE_SECRET: ${SSO_STATE_SECRET:?Debe definir SSO_STATE_SECRET en .env (distinto de JWT_SECRET)}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-Eva360 <onboarding@resend.dev>}
