@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { SsoService } from './sso/sso.service';
 import { NoImpersonation } from '../../common/decorators/no-impersonation.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
@@ -193,6 +194,7 @@ export class AuthController {
    * exists — if the email is unknown we still return the default policy.
    */
   @Get('password-policy/public')
+  @Public()
   async passwordPolicyPublic(@Req() req: any) {
     const email = typeof req.query?.email === 'string' ? req.query.email : '';
     const tenantSlug = typeof req.query?.tenantSlug === 'string' ? req.query.tenantSlug : undefined;
@@ -203,6 +205,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto, @Req() req: any) {
     const clientIp = getClientIp(req);
@@ -272,6 +275,11 @@ export class AuthController {
   }
 
   @Post('refresh')
+  // @Public bypassa el JwtAuthGuard global; el method-level
+  // AuthGuard('jwt-refresh') es el que hace la validacion real (acepta
+  // tokens expirados dentro del grace period — algo que el guard global
+  // 'jwt' rechazaria).
+  @Public()
   @UseGuards(AuthGuard('jwt-refresh'))
   @HttpCode(HttpStatus.OK)
   async refresh(@Request() req: any) {
@@ -279,6 +287,7 @@ export class AuthController {
   }
 
   @Post('request-reset')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async requestReset(@Body() dto: RequestResetDto, @Req() req: any) {
     const clientIp = getClientIp(req);
@@ -292,6 +301,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: any) {
     const clientIp = getClientIp(req);
@@ -312,6 +322,7 @@ export class AuthController {
   }
 
   @Post('change-password')
+  @Public()
   @NoImpersonation()
   @HttpCode(HttpStatus.OK)
   async changePassword(@Body() dto: { email: string; currentPassword: string; newPassword: string; tenantSlug?: string }) {

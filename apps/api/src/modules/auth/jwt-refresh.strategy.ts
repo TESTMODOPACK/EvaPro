@@ -22,9 +22,13 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
     if (!payload.sub) {
       throw new UnauthorizedException('Token inválido');
     }
-    // Reject tokens older than 24 hours (even for refresh)
+    // Reject tokens older than 15 minutes (F2 Paso 9: bajado de 24h a 15min
+    // para acotar la ventana post-robo. UX trade-off: usuarios inactivos
+    // >15min necesitan re-loguear, en vez de refresh silencioso. La rotacion
+    // real de refresh tokens (con tabla en DB + revocation) queda para un
+    // paso futuro — esto solo acota el grace period.).
     const iat = (payload as any).iat;
-    if (iat && Date.now() / 1000 - iat > 24 * 60 * 60) {
+    if (iat && Date.now() / 1000 - iat > 15 * 60) {
       throw new UnauthorizedException('Token demasiado antiguo para refrescar');
     }
     return {

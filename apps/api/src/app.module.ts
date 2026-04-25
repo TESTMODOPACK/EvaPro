@@ -47,6 +47,7 @@ import { TenantContextInterceptor } from './common/interceptors/tenant-context.i
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { SystemErrorAuditInterceptor } from './common/interceptors/system-error-audit.interceptor';
 import { NoImpersonationGuard } from './common/guards/no-impersonation.guard';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -147,6 +148,15 @@ import { NoImpersonationGuard } from './common/guards/no-impersonation.guard';
     {
       provide: APP_INTERCEPTOR,
       useClass: SystemErrorAuditInterceptor,
+    },
+    // JwtAuthGuard global — secure-by-default postura desde F2 Paso 8.
+    // Todo endpoint exige JWT salvo que esté marcado con @Public() (ver
+    // common/decorators/public.decorator.ts). Se registra ANTES del
+    // NoImpersonationGuard porque setea req.user, del cual el siguiente
+    // guard depende para chequear el claim `impersonatedBy`.
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
     },
     // NoImpersonationGuard — global guard that enforces the @NoImpersonation()
     // metadata on security-sensitive handlers. It's a no-op for endpoints

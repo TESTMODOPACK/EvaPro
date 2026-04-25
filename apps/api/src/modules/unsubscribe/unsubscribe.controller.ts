@@ -11,6 +11,7 @@ import {
 import { UnsubscribeService } from './unsubscribe.service';
 import { ValidateTokenDto } from './dto/validate-token.dto';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
+import { Public } from '../../common/decorators/public.decorator';
 
 // ─── Rate limiting (in-memory, mismo patrón que auth.controller.ts) ──────
 //
@@ -74,6 +75,7 @@ import { getClientIp } from '../../common/utils/get-client-ip';
  * it obvious that these bypass JWT.
  */
 @Controller('public/unsubscribe')
+@Public()
 export class UnsubscribeController {
   constructor(private readonly svc: UnsubscribeService) {}
 
