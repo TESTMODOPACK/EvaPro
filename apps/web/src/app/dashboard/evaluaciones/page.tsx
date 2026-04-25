@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
@@ -129,6 +129,24 @@ function EmployeeEvaluationsView() {
   const [pendPage, setPendPage] = useState(1);
   const pendPageSize = 10;
 
+  // ── B3: Filtros adicionales cliente-side sobre la pagina actual ─────
+  // Estas tres operan sobre los items ya cargados (max compPageSize = 10),
+  // no sobre el total. Es una mejora UX limitada — para filtrar todo el
+  // dataset hay que hacer otra request (cycleId/search ya lo hacen).
+  type CompSort = 'date_desc' | 'date_asc' | 'score_desc' | 'score_asc';
+  const [compTypeFilter, setCompTypeFilter] = useState<string>('');
+  const [compSort, setCompSort] = useState<CompSort>('date_desc');
+  const [compGroupBy, setCompGroupBy] = useState<boolean>(false);
+  const [expandedEvaluatees, setExpandedEvaluatees] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) => {
+    setExpandedEvaluatees((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   // Viewer modal — al clickear una fila se abre con el detalle de respuestas
   const [viewerAssignmentId, setViewerAssignmentId] = useState<string | null>(null);
   const [showScale, setShowScale] = useState(false);
@@ -162,7 +180,58 @@ function EmployeeEvaluationsView() {
     const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
     return aDate - bDate;
   });
-  const completed = allCompleted;
+
+  // ── B3: Filter por tipo + sort cliente-side sobre la página actual ──
+  const completed = (() => {
+    let list = compTypeFilter
+      ? allCompleted.filter((ev: any) => ev.relationType === compTypeFilter)
+      : allCompleted;
+    list = [...list].sort((a: any, b: any) => {
+      if (compSort === 'date_desc') {
+        return (
+          new Date(b.completedAt || 0).getTime() -
+          new Date(a.completedAt || 0).getTime()
+        );
+      }
+      if (compSort === 'date_asc') {
+        return (
+          new Date(a.completedAt || 0).getTime() -
+          new Date(b.completedAt || 0).getTime()
+        );
+      }
+      if (compSort === 'score_desc') {
+        return (b.response?.overallScore ?? -1) - (a.response?.overallScore ?? -1);
+      }
+      if (compSort === 'score_asc') {
+        return (a.response?.overallScore ?? Infinity) - (b.response?.overallScore ?? Infinity);
+      }
+      return 0;
+    });
+    return list;
+  })();
+
+  // ── B3: Grouped por evaluatee ──
+  // Cuando compGroupBy está activo, agrupa los items de `completed` por
+  // evaluatee.id. Cada entrada del array resultante representa una "fila
+  // padre" expandible.
+  const completedGrouped: Array<{ evaluateeId: string; evaluatee: any; items: any[] }> =
+    compGroupBy
+      ? Array.from(
+          completed
+            .reduce((map: Map<string, any[]>, ev: any) => {
+              const id = ev.evaluateeId || 'unknown';
+              const arr = map.get(id) ?? [];
+              arr.push(ev);
+              map.set(id, arr);
+              return map;
+            }, new Map())
+            .entries(),
+        ).map(([id, items]) => ({
+          evaluateeId: id,
+          evaluatee: items[0]?.evaluatee,
+          items,
+        }))
+      : [];
 
   const pendTotalPages = Math.max(1, Math.ceil(pendingTotal / pendPageSize));
   const compTotalPages = Math.max(1, Math.ceil(completedTotal / compPageSize));
@@ -415,6 +484,41 @@ function EmployeeEvaluationsView() {
           {completedTotal > 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>({completedTotal})</span>}
         </h2>
 
+        {/* B3: Filter chips por tipo de relacion (cliente-side sobre pagina) */}
+        {completedTotal > 0 && (
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginRight: '0.2rem' }}>Tipo:</span>
+            {[
+              { value: '', label: 'Todas' },
+              { value: 'manager', label: 'Jefe' },
+              { value: 'peer', label: 'Par' },
+              { value: 'self', label: 'Auto' },
+              { value: 'direct_report', label: 'Reporte' },
+              { value: 'external', label: 'Externo' },
+            ].map((chip) => {
+              const active = compTypeFilter === chip.value;
+              return (
+                <button
+                  key={chip.value || 'all'}
+                  onClick={() => setCompTypeFilter(chip.value)}
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '0.18rem 0.65rem',
+                    borderRadius: '999px',
+                    border: '1px solid var(--border)',
+                    background: active ? 'var(--accent)' : 'transparent',
+                    color: active ? 'white' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontWeight: active ? 600 : 400,
+                  }}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Filters — same layout as pending section */}
         {completedTotal > 0 && (
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
@@ -429,8 +533,38 @@ function EmployeeEvaluationsView() {
               value={compSearch}
               onChange={(e) => { setCompSearch(e.target.value); setCompPage(1); }}
               style={{ fontSize: '0.82rem', maxWidth: '220px' }} />
-            {(compCycleFilter || compSearch) && (
-              <button className="btn-ghost" onClick={() => { setCompCycleFilter(''); setCompSearch(''); setCompPage(1); }} style={{ fontSize: '0.78rem' }}>
+            {/* B3: Sort dropdown */}
+            <select
+              className="input"
+              value={compSort}
+              onChange={(e) => setCompSort(e.target.value as CompSort)}
+              style={{ fontSize: '0.82rem', maxWidth: '170px' }}
+              aria-label="Ordenar"
+            >
+              <option value="date_desc">Fecha ↓ (recientes)</option>
+              <option value="date_asc">Fecha ↑ (antiguas)</option>
+              <option value="score_desc">Puntaje ↓ (mayor)</option>
+              <option value="score_asc">Puntaje ↑ (menor)</option>
+            </select>
+            {/* B3: Group toggle */}
+            <button
+              onClick={() => setCompGroupBy(!compGroupBy)}
+              aria-pressed={compGroupBy}
+              style={{
+                fontSize: '0.78rem',
+                padding: '0.35rem 0.7rem',
+                borderRadius: 'var(--radius-sm, 6px)',
+                border: '1px solid var(--border)',
+                background: compGroupBy ? 'var(--accent)' : 'transparent',
+                color: compGroupBy ? 'white' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              📑 {compGroupBy ? 'Desagrupar' : 'Agrupar'}
+            </button>
+            {(compCycleFilter || compSearch || compTypeFilter) && (
+              <button className="btn-ghost" onClick={() => { setCompCycleFilter(''); setCompSearch(''); setCompTypeFilter(''); setCompPage(1); }} style={{ fontSize: '0.78rem' }}>
                 ✕ Limpiar
               </button>
             )}
@@ -464,7 +598,98 @@ function EmployeeEvaluationsView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {completed.map((ev: any) => (
+                  {compGroupBy ? (
+                    /* B3: Grouped rendering — fila padre por evaluatee con
+                       summary, expandible para mostrar las individuales. */
+                    completedGrouped.map((group) => {
+                      const isOpen = expandedEvaluatees.has(group.evaluateeId);
+                      const scores = group.items
+                        .map((i: any) => i.response?.overallScore)
+                        .filter((s: any) => typeof s === 'number');
+                      const avg = scores.length
+                        ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length
+                        : null;
+                      const latest = group.items
+                        .map((i: any) => i.completedAt)
+                        .filter(Boolean)
+                        .sort()
+                        .reverse()[0];
+                      const distinctCycles = new Set(group.items.map((i: any) => i.cycle?.id || i.cycle?.name)).size;
+                      return (
+                        <Fragment key={group.evaluateeId}>
+                          <tr
+                            onClick={() => toggleExpanded(group.evaluateeId)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                toggleExpanded(group.evaluateeId);
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isOpen}
+                            aria-label={`${isOpen ? 'Colapsar' : 'Expandir'} evaluaciones de ${group.evaluatee ? `${group.evaluatee.firstName} ${group.evaluatee.lastName}` : 'evaluado'}`}
+                            style={{ cursor: 'pointer', background: 'var(--bg-subtle, rgba(0,0,0,0.025))' }}
+                          >
+                            <td style={{ fontWeight: 700, fontSize: '0.88rem' }}>
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  display: 'inline-block',
+                                  width: '14px',
+                                  marginRight: '0.4rem',
+                                  fontSize: '0.65rem',
+                                  transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                                  transition: 'transform 0.15s',
+                                }}
+                              >▶</span>
+                              {group.evaluatee ? `${group.evaluatee.firstName} ${group.evaluatee.lastName}` : '--'}
+                              <span className="badge badge-accent" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>
+                                {group.items.length}
+                              </span>
+                              {group.evaluateeId === userId && <span className="badge badge-accent" style={{ marginLeft: '0.4rem', fontSize: '0.6rem' }}>{t('evaluaciones.you')}</span>}
+                            </td>
+                            <td colSpan={2} style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              {distinctCycles} {distinctCycles === 1 ? 'ciclo' : 'ciclos'}
+                            </td>
+                            <td>
+                              {avg !== null ? <ScoreBadge score={avg} size="sm" /> : <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>--</span>}
+                            </td>
+                            <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              {latest ? `Último: ${new Date(latest).toLocaleDateString('es-ES')}` : '--'}
+                            </td>
+                          </tr>
+                          {isOpen && group.items.map((ev: any) => (
+                            <tr
+                              key={ev.id}
+                              onClick={(e) => { e.stopPropagation(); setViewerAssignmentId(ev.id); }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setViewerAssignmentId(ev.id);
+                                }
+                              }}
+                              tabIndex={0}
+                              role="button"
+                              aria-label={`Ver detalle de evaluación del ${relationLabels[ev.relationType] || ev.relationType} en ciclo ${ev.cycle?.name || ''}`}
+                              style={{ cursor: 'pointer' }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover, rgba(0,0,0,0.03))'; }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                            >
+                              <td style={{ paddingLeft: '2.5rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>↳</td>
+                              <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{relationLabels[ev.relationType] || ev.relationType}</td>
+                              <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{ev.cycle?.name || '--'}</td>
+                              <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
+                              <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                                {ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-ES') : '--'}
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      );
+                    })
+                  ) : completed.map((ev: any) => (
                     <tr
                       key={ev.id}
                       onClick={() => setViewerAssignmentId(ev.id)}
