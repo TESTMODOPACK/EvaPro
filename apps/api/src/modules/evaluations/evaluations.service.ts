@@ -1200,19 +1200,19 @@ export class EvaluationsService {
       .createQueryBuilder('a')
       .leftJoinAndSelect('a.evaluatee', 'evaluatee')
       .leftJoinAndSelect('a.cycle', 'cycle')
-      .where('a.evaluator_id = :userId', { userId })
-      .andWhere('a.tenant_id = :tenantId', { tenantId })
+      .where('a.evaluatorId = :userId', { userId })
+      .andWhere('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status IN (:...statuses)', {
         statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
       })
-      .orderBy('a.created_at', 'ASC');
+      .orderBy('a.createdAt', 'ASC');
 
     if (opts.cycleId) {
-      qb.andWhere('a.cycle_id = :cycleId', { cycleId: opts.cycleId });
+      qb.andWhere('a.cycleId = :cycleId', { cycleId: opts.cycleId });
     }
     if (opts.search) {
       qb.andWhere(
-        '(LOWER(evaluatee.first_name) LIKE :search OR LOWER(evaluatee.last_name) LIKE :search)',
+        '(LOWER(evaluatee.firstName) LIKE :search OR LOWER(evaluatee.lastName) LIKE :search)',
         { search: `%${opts.search.toLowerCase()}%` },
       );
     }
@@ -1234,7 +1234,7 @@ export class EvaluationsService {
     opts: EvaluationListOpts = {},
   ): Promise<PaginatedEvaluations<any>> {
     // El JOIN a responses reemplaza el N+1 que tenía el código previo
-    // (un findOne por cada assignment). Como response.assignment_id es
+    // (un findOne por cada assignment). Como response.assignmentId es
     // unique, leftJoinAndMapOne no multiplica filas.
     const qb = this.assignmentRepo
       .createQueryBuilder('a')
@@ -1245,19 +1245,19 @@ export class EvaluationsService {
         'a.response',
         EvaluationResponse,
         'response',
-        'response.assignment_id = a.id',
+        'response.assignmentId = a.id',
       )
-      .where('a.evaluator_id = :userId', { userId })
-      .andWhere('a.tenant_id = :tenantId', { tenantId })
+      .where('a.evaluatorId = :userId', { userId })
+      .andWhere('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
-      .orderBy('a.completed_at', 'DESC');
+      .orderBy('a.completedAt', 'DESC');
 
     if (opts.cycleId) {
-      qb.andWhere('a.cycle_id = :cycleId', { cycleId: opts.cycleId });
+      qb.andWhere('a.cycleId = :cycleId', { cycleId: opts.cycleId });
     }
     if (opts.search) {
       qb.andWhere(
-        '(LOWER(evaluatee.first_name) LIKE :search OR LOWER(evaluatee.last_name) LIKE :search)',
+        '(LOWER(evaluatee.firstName) LIKE :search OR LOWER(evaluatee.lastName) LIKE :search)',
         { search: `%${opts.search.toLowerCase()}%` },
       );
     }
@@ -1338,28 +1338,28 @@ export class EvaluationsService {
         'a.response',
         EvaluationResponse,
         'response',
-        'response.assignment_id = a.id',
+        'response.assignmentId = a.id',
       )
-      .where('a.tenant_id = :tenantId', { tenantId: args.tenantId })
+      .where('a.tenantId = :tenantId', { tenantId: args.tenantId })
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
-      .orderBy('a.completed_at', 'DESC');
+      .orderBy('a.completedAt', 'DESC');
 
     if (args.managerId) {
       // INNER JOIN implícito a través de evaluatee — solo trae assignments
-      // de users cuyo manager_id matchee. Los assignments de users sin
+      // de users cuyo managerId matchee. Los assignments de users sin
       // manager (huérfanos) NO aparecen para un manager (correcto), pero
       // sí para admin (managerId=null no añade el filtro).
-      qb.andWhere('evaluatee.manager_id = :managerId', {
+      qb.andWhere('evaluatee.managerId = :managerId', {
         managerId: args.managerId,
       });
     }
 
     if (opts.cycleId) {
-      qb.andWhere('a.cycle_id = :cycleId', { cycleId: opts.cycleId });
+      qb.andWhere('a.cycleId = :cycleId', { cycleId: opts.cycleId });
     }
     if (opts.search) {
       qb.andWhere(
-        '(LOWER(evaluatee.first_name) LIKE :search OR LOWER(evaluatee.last_name) LIKE :search)',
+        '(LOWER(evaluatee.firstName) LIKE :search OR LOWER(evaluatee.lastName) LIKE :search)',
         { search: `%${opts.search.toLowerCase()}%` },
       );
     }
@@ -1398,19 +1398,19 @@ export class EvaluationsService {
         'a.response',
         EvaluationResponse,
         'response',
-        'response.assignment_id = a.id',
+        'response.assignmentId = a.id',
       )
-      .where('a.evaluatee_id = :userId', { userId })
-      .andWhere('a.tenant_id = :tenantId', { tenantId })
+      .where('a.evaluateeId = :userId', { userId })
+      .andWhere('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
-      .orderBy('a.completed_at', 'DESC');
+      .orderBy('a.completedAt', 'DESC');
 
     if (opts.cycleId) {
-      qb.andWhere('a.cycle_id = :cycleId', { cycleId: opts.cycleId });
+      qb.andWhere('a.cycleId = :cycleId', { cycleId: opts.cycleId });
     }
     if (opts.search) {
       qb.andWhere(
-        '(LOWER(evaluator.first_name) LIKE :search OR LOWER(evaluator.last_name) LIKE :search)',
+        '(LOWER(evaluator.firstName) LIKE :search OR LOWER(evaluator.lastName) LIKE :search)',
         { search: `%${opts.search.toLowerCase()}%` },
       );
     }
