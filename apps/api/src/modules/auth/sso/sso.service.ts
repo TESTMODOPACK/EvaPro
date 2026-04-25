@@ -21,7 +21,11 @@ import { SsoConfigDto } from './dto/sso-config.dto';
 /**
  * Short-lived HMAC-signed cookie that carries (state, nonce, tenantId,
  * codeVerifier) through the OIDC redirect flow. We use an HMAC rather
- * than a DB row so the backend stays stateless. JWT_SECRET is reused.
+ * than a DB row so the backend stays stateless.
+ *
+ * Secret: SSO_STATE_SECRET (env). Aislado de JWT_SECRET para que un
+ * compromiso de uno no implique el otro. En dev cae al JWT_SECRET como
+ * fallback de conveniencia; en prod main.ts hace fail-fast si falta.
  */
 const STATE_TTL_SECONDS = 10 * 60; // 10 min
 
@@ -41,7 +45,11 @@ export class SsoService {
   private readonly logger = new Logger(SsoService.name);
   private readonly appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
   private readonly apiUrl = process.env.API_URL || '';
-  private readonly jwtSecret = process.env.JWT_SECRET || '';
+  // SSO_STATE_SECRET firma las state cookies del flujo OIDC. Aislado de
+  // JWT_SECRET por defensa-en-profundidad. Fallback a JWT_SECRET solo en
+  // dev (main.ts garantiza que esté seteado en prod).
+  private readonly stateSecret =
+    process.env.SSO_STATE_SECRET || process.env.JWT_SECRET || '';
 
   constructor(
     @InjectRepository(OidcConfiguration)
@@ -57,7 +65,7 @@ export class SsoService {
   // ─── Feature availability ─────────────────────────────────────────────
 
   get isAvailable(): boolean {
-    return isSecretCryptoAvailable() && !!this.apiUrl && !!this.jwtSecret;
+    return isSecretCryptoAvailable() && !!this.apiUrl && !!this.stateSecret;
   }
 
   private ensureAvailable() {
@@ -449,7 +457,7 @@ export class SsoService {
 
   private signStateCookie(payload: Record<string, unknown>): string {
     const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-    const sig = createHmac('sha256', this.jwtSecret).update(body).digest('base64url');
+    const sig = createHmac('sha256', this.stateSecret).update(body).digest('base64url');
     return `${body}.${sig}`;
   }
 
@@ -462,7 +470,7 @@ export class SsoService {
   } | null {
     if (!raw || typeof raw !== 'string' || !raw.includes('.')) return null;
     const [body, sig] = raw.split('.');
-    const expected = createHmac('sha256', this.jwtSecret).update(body).digest('base64url');
+    const expected = createHmac('sha256', this.stateSecret).update(body).digest('base64url');
     if (sig !== expected) return null;
     let parsed: any;
     try {

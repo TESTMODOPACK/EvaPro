@@ -30,30 +30,46 @@ async function bootstrap() {
 
   const logger = new Logger('Bootstrap');
 
-  // ─── Validación temprana de JWT_SECRET ─────────────────────────────
-  // En prod: debe estar definido, tener ≥32 caracteres y no ser un default
-  // conocido. Sin esto, un deploy con secret débil firma tokens trivialmente
-  // falsificables (JwtModule lo consume via `?? ''` fallback en auth.module).
-  // En dev/test: warn pero continuar — no bloquea el flujo local.
-  const jwtSecret = process.env.JWT_SECRET ?? '';
+  // ─── Validación temprana de secrets críticos ───────────────────────
+  // En prod: ambos JWT_SECRET y SSO_STATE_SECRET deben estar definidos,
+  // tener ≥32 caracteres, no ser un default conocido, y SSO_STATE_SECRET
+  // debe ser distinto de JWT_SECRET (defensa-en-profundidad: compromiso
+  // de uno no implica el otro).
+  // En dev/test: warn sobre JWT_SECRET pero continuar; SSO_STATE_SECRET
+  // es opcional (sso.service.ts cae al JWT_SECRET como fallback).
   const knownWeakSecrets = new Set([
     'CAMBIAR_POR_SECRETO_JWT_SEGURO',
+    'CAMBIAR_POR_SECRETO_SSO_SEGURO',
     'super-secret-jwt-key-for-dev-only',
     'changeme',
     'secret',
     'jwt-secret',
     'your-secret-here',
   ]);
-  const jwtSecretWeak =
-    jwtSecret.length < 32 || knownWeakSecrets.has(jwtSecret);
-  if (process.env.NODE_ENV === 'production' && jwtSecretWeak) {
+  const isSecretWeak = (val: string) =>
+    val.length < 32 || knownWeakSecrets.has(val);
+
+  const jwtSecret = process.env.JWT_SECRET ?? '';
+  if (process.env.NODE_ENV === 'production' && isSecretWeak(jwtSecret)) {
     throw new Error(
       'JWT_SECRET is weak or missing in production. Required: at least 32 characters and not a known default. Generate one with: openssl rand -base64 32',
     );
   }
-  if (process.env.NODE_ENV !== 'production' && jwtSecretWeak) {
+  if (process.env.NODE_ENV !== 'production' && isSecretWeak(jwtSecret)) {
     logger.warn(
       'JWT_SECRET is weak (< 32 chars or known default). OK for dev; must be rotated in production.',
+    );
+  }
+
+  const ssoStateSecret = process.env.SSO_STATE_SECRET ?? '';
+  if (process.env.NODE_ENV === 'production' && isSecretWeak(ssoStateSecret)) {
+    throw new Error(
+      'SSO_STATE_SECRET is weak or missing in production. Required: at least 32 characters and not a known default. Must be different from JWT_SECRET. Generate one with: openssl rand -base64 32',
+    );
+  }
+  if (process.env.NODE_ENV === 'production' && ssoStateSecret === jwtSecret) {
+    throw new Error(
+      'SSO_STATE_SECRET equals JWT_SECRET in production. They must be different — the whole point is isolation. Generate a fresh one with: openssl rand -base64 32',
     );
   }
 
