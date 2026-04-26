@@ -1859,10 +1859,20 @@ export class EvaluationsService {
       this.cycleRepo.count({ where: { tenantId, status: CycleStatus.ACTIVE } }),
     ]);
 
-    // Total assignments — scoped to team for managers
+    // Estados que cuentan como "activos" (no canceladas). Las assignments
+    // CANCELLED se excluyen del total para que "Evaluaciones activas" no
+    // se infle con assignments anuladas por desvinculación o decisión admin.
+    const ACTIVE_STATUSES = [
+      AssignmentStatus.PENDING,
+      AssignmentStatus.IN_PROGRESS,
+      AssignmentStatus.COMPLETED,
+    ];
+
+    // Total assignments — scoped to team for managers, excluyendo canceladas
     const totalQb = this.assignmentRepo
       .createQueryBuilder('a')
-      .where('a.tenantId = :tenantId', { tenantId });
+      .where('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.status IN (:...activeStatuses)', { activeStatuses: ACTIVE_STATUSES });
     if (teamUserIds) totalQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
     const totalAssignments = await totalQb.getCount();
 
@@ -1873,6 +1883,19 @@ export class EvaluationsService {
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
     if (teamUserIds) completedQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
     const completedAssignments = await completedQb.getCount();
+
+    // Personas únicas con al menos 1 evaluación completada (NO el conteo
+    // de assignments). Antes la card "Empleados evaluados" mostraba
+    // completedAssignments, lo cual sobreinflaba el número (Pedro con
+    // 6 evals contaba 6 veces). Aquí calculamos COUNT(DISTINCT evaluatee).
+    const distinctQb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .select('COUNT(DISTINCT a.evaluatee_id)', 'cnt')
+      .where('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
+    if (teamUserIds) distinctQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
+    const distinctRow = await distinctQb.getRawOne<{ cnt: string }>();
+    const evaluatedPeopleCount = parseInt(distinctRow?.cnt ?? '0', 10);
 
     // Average score — scoped (tenant guard also on the JOIN)
     const avgQb = this.responseRepo
@@ -1889,6 +1912,7 @@ export class EvaluationsService {
       totalAssignments,
       completedAssignments,
       pendingAssignments: totalAssignments - completedAssignments,
+      evaluatedPeopleCount,
       completionRate: totalAssignments > 0
         ? Math.round((completedAssignments / totalAssignments) * 100)
         : 0,
