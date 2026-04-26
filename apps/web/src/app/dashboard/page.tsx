@@ -291,11 +291,20 @@ function RegularDashboard() {
   const activeCycle = cycles?.find((c: any) => c.status === 'active');
   const atRiskCount = atRiskObjectives?.length || 0;
 
+  // Cada KPI declara su propio `sub` (subt\u00edtulo) \u2014 antes hab\u00eda un unico
+  // completionRate aplicado a las 4 cards (mostraba "56% completado"
+  // debajo de "Pendientes" o "Promedio", lo que no tenia sentido). Ahora
+  // cada card muestra contexto pertinente solo cuando aplica.
   const kpis = [
     {
       label: t('dashboard.activeEvals'),
       value: stats ? String(stats.totalAssignments) : '\u2013',
       color: '#6366f1',
+      // Solo aqui aplica el % completado (es proporcion sobre el total).
+      sub:
+        stats && stats.completionRate != null
+          ? `${stats.completionRate}% ${t('dashboard.completed')}`
+          : null,
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -305,9 +314,16 @@ function RegularDashboard() {
       ),
     },
     {
+      // Antes mostraba completedAssignments (cantidad de evals completas),
+      // pero el label dice "Empleados evaluados" \u2014 mismatch que inflaba el
+      // numero. Ahora usa evaluatedPeopleCount (DISTINCT evaluatee_id).
       label: t('dashboard.evaluatedEmployees'),
-      value: stats ? String(stats.completedAssignments) : '\u2013',
+      value: stats ? String(stats.evaluatedPeopleCount ?? 0) : '\u2013',
       color: '#10b981',
+      sub:
+        stats?.scope === 'team' && stats.teamSize != null
+          ? `de ${stats.teamSize} colaborador${stats.teamSize !== 1 ? 'es' : ''}`
+          : null,
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -321,6 +337,8 @@ function RegularDashboard() {
       label: t('dashboard.averageScore'),
       value: stats?.averageScore ? Number(stats.averageScore).toFixed(1) : '\u2013',
       color: '#f59e0b',
+      // Sin sub \u2014 la escala 0-10 ya esta implicita en el contexto.
+      sub: null,
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -331,6 +349,7 @@ function RegularDashboard() {
       label: t('dashboard.pendingToComplete'),
       value: stats ? String(stats.pendingAssignments) : '\u2013',
       color: '#ef4444',
+      sub: null,
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10" />
@@ -471,51 +490,82 @@ function RegularDashboard() {
       {loadingStats ? (
         <Spinner />
       ) : (
-        <div
-          className="animate-fade-up-delay-1"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '1rem',
-            marginBottom: '2rem',
-          }}
-        >
-          {kpis.map((kpi, i) => (
+        <>
+          {/* Titulo con scope explicito — evita la confusion entre las
+              metricas del dashboard (alcance equipo/org) y las de la
+              bandeja personal (alcance evaluador). */}
+          {stats?.scope && (
             <div
-              key={i}
-              className="card"
-              style={{ padding: '1.4rem', position: 'relative', overflow: 'hidden' }}
+              className="animate-fade-up-delay-1"
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                marginBottom: '0.5rem',
+              }}
             >
-              <div style={{
-                position: 'absolute', top: '-20px', right: '-20px',
-                width: '80px', height: '80px', borderRadius: '50%',
-                background: `${kpi.color}18`,
-              }} />
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: '42px', height: '42px', borderRadius: '0.625rem',
-                background: `${kpi.color}20`, color: kpi.color, marginBottom: '1rem',
-              }}>
-                {kpi.icon}
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.3rem' }}>
-                {kpi.value}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                {kpi.label}
-              </div>
-              {stats && (
-                <div style={{
-                  fontSize: '0.75rem', fontWeight: 600,
-                  color: 'var(--text-muted)',
-                  display: 'flex', alignItems: 'center', gap: '0.25rem',
-                }}>
-                  {stats.completionRate != null ? `${stats.completionRate}% ${t('dashboard.completed')}` : ''}
-                </div>
+              {stats.scope === 'team' && (
+                <>
+                  Metricas de tu equipo
+                  {stats.teamSize != null && (
+                    <span style={{ fontWeight: 500, textTransform: 'none', marginLeft: '0.4rem', color: 'var(--text-secondary)' }}>
+                      · {stats.teamSize} colaborador{stats.teamSize !== 1 ? 'es' : ''} a tu cargo
+                    </span>
+                  )}
+                </>
               )}
+              {stats.scope === 'organization' && 'Metricas de la organizacion'}
+              {stats.scope === 'personal' && 'Tus metricas personales'}
             </div>
-          ))}
-        </div>
+          )}
+          <div
+            className="animate-fade-up-delay-1"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '1rem',
+              marginBottom: '2rem',
+            }}
+          >
+            {kpis.map((kpi, i) => (
+              <div
+                key={i}
+                className="card"
+                style={{ padding: '1.4rem', position: 'relative', overflow: 'hidden' }}
+              >
+                <div style={{
+                  position: 'absolute', top: '-20px', right: '-20px',
+                  width: '80px', height: '80px', borderRadius: '50%',
+                  background: `${kpi.color}18`,
+                }} />
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: '42px', height: '42px', borderRadius: '0.625rem',
+                  background: `${kpi.color}20`, color: kpi.color, marginBottom: '1rem',
+                }}>
+                  {kpi.icon}
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.3rem' }}>
+                  {kpi.value}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: kpi.sub ? '0.5rem' : 0 }}>
+                  {kpi.label}
+                </div>
+                {kpi.sub && (
+                  <div style={{
+                    fontSize: '0.75rem', fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    display: 'flex', alignItems: 'center', gap: '0.25rem',
+                  }}>
+                    {kpi.sub}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* System changelog — compact strip */}

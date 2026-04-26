@@ -119,6 +119,10 @@ export interface DashboardStats {
   totalCycles: number; activeCycles: number;
   totalAssignments: number; completedAssignments: number;
   pendingAssignments: number; completionRate: number;
+  /** Personas únicas con al menos una evaluación completada (DISTINCT
+   *  evaluatee). Distinto a completedAssignments — Pedro con 6 evals
+   *  cuenta 1 aquí, pero 6 en completedAssignments. */
+  evaluatedPeopleCount: number;
   averageScore: string | null;
   scope?: 'team' | 'organization' | 'personal';
   teamSize?: number | null;
