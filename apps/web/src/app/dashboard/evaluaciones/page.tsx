@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
@@ -10,6 +10,7 @@ import {
   useMyCompletedEvaluations,
   usePendingEvaluationsPaged,
   useMyCompletedEvaluationsPaged,
+  useEvaluationStats,
 } from '@/hooks/useEvaluations';
 import { useAuthStore } from '@/store/auth.store';
 import { ScoreBadge, ScaleLegend } from '@/components/ScoreBadge';
@@ -110,6 +111,34 @@ function Spinner() {
   );
 }
 
+/** Subtitulo expandible con count de ciclos + breakdown {nombre: count}.
+ *  Usado en los KPI cards de la bandeja. Recibe directamente el shape
+ *  de stats.{pending|completed|total}.byCycle. */
+function CycleBreakdown({ entries, color }: { entries: { id: string; name: string; count: number }[]; color: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: '0.4rem' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0.15rem 0' }}
+      >
+        <span style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', display: 'inline-block', fontSize: '0.6rem' }}>▶</span>
+        {entries.length} ciclo{entries.length !== 1 ? 's' : ''}
+      </button>
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0.25rem' }}>
+          {entries.map((c) => (
+            <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', gap: '0.5rem' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={c.name}>{c.name || 'Sin ciclo'}</span>
+              <span style={{ fontWeight: 700, color, flexShrink: 0 }}>{c.count}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Employee view: only their assignments ──────────────────────────────────
 
 function EmployeeEvaluationsView() {
@@ -117,10 +146,15 @@ function EmployeeEvaluationsView() {
   const userId = useAuthStore((s) => s.user?.userId);
 
   // ── Filters + pagination state ──────────────────────────────────────
-  // El cycleFilter ahora guarda cycleId (UUID) — lo lee el backend; antes
-  // guardaba cycle.name y filtraba cliente-side.
+  // TODO server-side: search/cycleId/relationType/sortBy/sortDir/page/limit
+  // se mandan al backend que filtra+ordena+pagina. Cliente-side ya no
+  // hay filter/sort/group — eso causaba inconsistencias entre cuentas y
+  // listado en B3.
+  type CompSort = 'date_desc' | 'date_asc' | 'score_desc' | 'score_asc';
   const [compSearch, setCompSearch] = useState('');
   const [compCycleFilter, setCompCycleFilter] = useState('');
+  const [compTypeFilter, setCompTypeFilter] = useState<string>('');
+  const [compSort, setCompSort] = useState<CompSort>('date_desc');
   const [compPage, setCompPage] = useState(1);
   const compPageSize = 10;
 
@@ -129,32 +163,32 @@ function EmployeeEvaluationsView() {
   const [pendPage, setPendPage] = useState(1);
   const pendPageSize = 10;
 
-  // ── B3: Filtros adicionales cliente-side sobre la pagina actual ─────
-  // Estas tres operan sobre los items ya cargados (max compPageSize = 10),
-  // no sobre el total. Es una mejora UX limitada — para filtrar todo el
-  // dataset hay que hacer otra request (cycleId/search ya lo hacen).
-  type CompSort = 'date_desc' | 'date_asc' | 'score_desc' | 'score_asc';
-  const [compTypeFilter, setCompTypeFilter] = useState<string>('');
-  const [compSort, setCompSort] = useState<CompSort>('date_desc');
-  const [compGroupBy, setCompGroupBy] = useState<boolean>(false);
-  const [expandedEvaluatees, setExpandedEvaluatees] = useState<Set<string>>(new Set());
-  const toggleExpanded = (id: string) => {
-    setExpandedEvaluatees((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   // Viewer modal — al clickear una fila se abre con el detalle de respuestas
   const [viewerAssignmentId, setViewerAssignmentId] = useState<string | null>(null);
   const [showScale, setShowScale] = useState(false);
 
-  // ── Server-side queries (paged + searched) ──────────────────────────
-  // El search se debouncea 300ms para no hacer 1 request por tecla.
+  // ── Stats — source-of-truth para KPI cards y cycle dropdowns ─────────
+  // Cuentas REALES (todo el dataset) + breakdown por ciclo. Reemplaza la
+  // lógica cliente-side que solo veía la página actual.
+  const { data: stats } = useEvaluationStats();
+  const pendingStatsCount = stats?.pending.count ?? 0;
+  const completedStatsCount = stats?.completed.count ?? 0;
+  const totalStatsCount = stats?.total.count ?? 0;
+  const pendCycles = stats?.pending.byCycle ?? [];
+  const compCycles = stats?.completed.byCycle ?? [];
+  const totalCycles = stats?.total.byCycle ?? [];
+
+  // ── Server-side queries (paged + searched + filtered + sorted) ──────
   const debPendSearch = useDebouncedValue(pendSearch, 300);
   const debCompSearch = useDebouncedValue(compSearch, 300);
+
+  // Map combined CompSort UI value → backend params
+  const compSortBy: 'date' | 'score' = compSort.startsWith('score')
+    ? 'score'
+    : 'date';
+  const compSortDir: 'asc' | 'desc' = compSort.endsWith('asc')
+    ? 'asc'
+    : 'desc';
 
   const { data: pendingResp, isLoading: loadingPending } = usePendingEvaluationsPaged({
     search: debPendSearch || undefined,
@@ -165,6 +199,9 @@ function EmployeeEvaluationsView() {
   const { data: completedResp, isLoading: loadingCompleted } = useMyCompletedEvaluationsPaged({
     search: debCompSearch || undefined,
     cycleId: compCycleFilter || undefined,
+    relationType: compTypeFilter || undefined,
+    sortBy: compSortBy,
+    sortDir: compSortDir,
     page: compPage,
     limit: compPageSize,
   });
@@ -173,84 +210,18 @@ function EmployeeEvaluationsView() {
   const pendingTotal = pendingResp?.total || 0;
   const allCompleted = completedResp?.data || [];
   const completedTotal = completedResp?.total || 0;
+  const completed = allCompleted; // alias — el backend ya filtró/ordenó
 
-  // Sort pending por urgencia (cliente-side, sobre los items de la página)
+  // Sort pending por urgencia (vence primero) sobre la pagina actual.
+  // Es ordenamiento visual sobre 10 items, no afecta el total/cuenta.
   const paginatedPending = [...pending].sort((a: any, b: any) => {
     const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
     const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
     return aDate - bDate;
   });
 
-  // ── B3: Filter por tipo + sort cliente-side sobre la página actual ──
-  const completed = (() => {
-    let list = compTypeFilter
-      ? allCompleted.filter((ev: any) => ev.relationType === compTypeFilter)
-      : allCompleted;
-    list = [...list].sort((a: any, b: any) => {
-      if (compSort === 'date_desc') {
-        return (
-          new Date(b.completedAt || 0).getTime() -
-          new Date(a.completedAt || 0).getTime()
-        );
-      }
-      if (compSort === 'date_asc') {
-        return (
-          new Date(a.completedAt || 0).getTime() -
-          new Date(b.completedAt || 0).getTime()
-        );
-      }
-      if (compSort === 'score_desc') {
-        return (b.response?.overallScore ?? -1) - (a.response?.overallScore ?? -1);
-      }
-      if (compSort === 'score_asc') {
-        return (a.response?.overallScore ?? Infinity) - (b.response?.overallScore ?? Infinity);
-      }
-      return 0;
-    });
-    return list;
-  })();
-
-  // ── B3: Grouped por evaluatee ──
-  // Cuando compGroupBy está activo, agrupa los items de `completed` por
-  // evaluatee.id. Cada entrada del array resultante representa una "fila
-  // padre" expandible.
-  const completedGrouped: Array<{ evaluateeId: string; evaluatee: any; items: any[] }> =
-    compGroupBy
-      ? Array.from(
-          completed
-            .reduce((map: Map<string, any[]>, ev: any) => {
-              const id = ev.evaluateeId || 'unknown';
-              const arr = map.get(id) ?? [];
-              arr.push(ev);
-              map.set(id, arr);
-              return map;
-            }, new Map())
-            .entries(),
-        ).map(([id, items]) => ({
-          evaluateeId: id,
-          evaluatee: items[0]?.evaluatee,
-          items,
-        }))
-      : [];
-
   const pendTotalPages = Math.max(1, Math.ceil(pendingTotal / pendPageSize));
   const compTotalPages = Math.max(1, Math.ceil(completedTotal / compPageSize));
-
-  // Cycle dropdowns — derivamos {id, name} de los items de la página
-  // actual. NOTA: degradación temporal — solo muestra ciclos visibles en
-  // la página, no todos los del usuario. B3 lo arregla con endpoint
-  // dedicado de "ciclos del usuario".
-  const pendCyclesMap = new Map<string, string>();
-  pending.forEach((e: any) => {
-    if (e.cycle?.id && e.cycle?.name) pendCyclesMap.set(e.cycle.id, e.cycle.name);
-  });
-  const pendCycles: [string, string][] = Array.from(pendCyclesMap.entries());
-
-  const compCyclesMap = new Map<string, string>();
-  allCompleted.forEach((e: any) => {
-    if (e.cycle?.id && e.cycle?.name) compCyclesMap.set(e.cycle.id, e.cycle.name);
-  });
-  const compCycles: [string, string][] = Array.from(compCyclesMap.entries());
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -270,73 +241,24 @@ function EmployeeEvaluationsView() {
         description="Aquí verás las evaluaciones que te han asignado como evaluador. Haz click en 'Responder' para completar cada una. Las más urgentes aparecen primero. Puedes filtrar por ciclo o buscar por nombre."
       />
 
-      {/* Summary cards */}
+      {/* Summary cards — usan stats reales (no page-local). Source:
+          GET /evaluations/stats. */}
       <div className="animate-fade-up-delay-1" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-        {(() => {
-          // Agrupar por ciclo para los 3 cards
-          const groupByCycle = (list: any[]) => {
-            const byCycle: Record<string, number> = {};
-            list.forEach((ev: any) => {
-              const name = ev.cycle?.name || 'Sin ciclo';
-              byCycle[name] = (byCycle[name] || 0) + 1;
-            });
-            return Object.entries(byCycle).sort((a, b) => b[1] - a[1]);
-          };
-          const pendByCycle = groupByCycle(pending);
-          const compByCycle = groupByCycle(allCompleted);
-          // Total = merge ambos
-          const totalByCycle: Record<string, number> = {};
-          [...pending, ...allCompleted].forEach((ev: any) => {
-            const name = ev.cycle?.name || 'Sin ciclo';
-            totalByCycle[name] = (totalByCycle[name] || 0) + 1;
-          });
-          const totalEntries = Object.entries(totalByCycle).sort((a, b) => b[1] - a[1]);
-
-          const CycleBreakdown = ({ entries, color, id }: { entries: [string, number][]; color: string; id: string }) => {
-            const [open, setOpen] = useState(false);
-            return (
-              <div style={{ marginTop: '0.4rem' }}>
-                <button
-                  onClick={() => setOpen(!open)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0.15rem 0' }}
-                >
-                  <span style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', display: 'inline-block', fontSize: '0.6rem' }}>▶</span>
-                  {entries.length} ciclo{entries.length !== 1 ? 's' : ''}
-                </button>
-                {open && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0.25rem' }}>
-                    {entries.map(([cycle, count]) => (
-                      <div key={cycle} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', gap: '0.5rem' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={cycle}>{cycle}</span>
-                        <span style={{ fontWeight: 700, color, flexShrink: 0 }}>{count}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          };
-
-          return (
-            <>
-              <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.pending')}</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pendingTotal > 0 ? 'var(--warning)' : 'var(--success)' }}>{pendingTotal}</div>
-                {pendByCycle.length > 0 && <CycleBreakdown entries={pendByCycle} color="var(--warning)" id="pend" />}
-              </div>
-              <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.completed')}</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{completedTotal}</div>
-                {compByCycle.length > 0 && <CycleBreakdown entries={compByCycle} color="#10b981" id="comp" />}
-              </div>
-              <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Total</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{pendingTotal + completedTotal}</div>
-                {totalEntries.length > 0 && <CycleBreakdown entries={totalEntries} color="#6366f1" id="total" />}
-              </div>
-            </>
-          );
-        })()}
+        <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.pending')}</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: pendingStatsCount > 0 ? 'var(--warning)' : 'var(--success)' }}>{pendingStatsCount}</div>
+          {pendCycles.length > 0 && <CycleBreakdown entries={pendCycles} color="var(--warning)" />}
+        </div>
+        <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>{t('evaluaciones.completed')}</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>{completedStatsCount}</div>
+          {compCycles.length > 0 && <CycleBreakdown entries={compCycles} color="#10b981" />}
+        </div>
+        <div className="card" style={{ padding: '1.25rem', flex: 1, minWidth: '220px' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.4rem' }}>Total</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>{totalStatsCount}</div>
+          {totalCycles.length > 0 && <CycleBreakdown entries={totalCycles} color="#6366f1" />}
+        </div>
       </div>
 
       {/* Scale legend — colapsable como guia */}
@@ -356,10 +278,10 @@ function EmployeeEvaluationsView() {
       <div className="animate-fade-up-delay-1" style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--warning)', display: 'inline-block' }} />
-          {t('evaluaciones.pendingEvals')} ({pendingTotal})
+          {t('evaluaciones.pendingEvals')} ({pendingStatsCount})
         </h2>
 
-        {loadingPending ? <Spinner /> : pendingTotal === 0 ? (
+        {loadingPending ? <Spinner /> : pendingStatsCount === 0 ? (
           <div className="card">
             <EmptyState
               icon="✅"
@@ -369,13 +291,14 @@ function EmployeeEvaluationsView() {
           </div>
         ) : (
           <>
-          {/* Filtros pendientes */}
-          {pendingTotal > 5 && (
+          {/* Filtros pendientes — visible si hay >5 evaluaciones reales
+              (pendingStatsCount), no se oculta cuando se filtra a <=5. */}
+          {pendingStatsCount > 5 && (
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
               {pendCycles.length > 1 && (
                 <select className="input" value={pendCycleFilter} onChange={(e) => { setPendCycleFilter(e.target.value); setPendPage(1); }} style={{ fontSize: '0.82rem', maxWidth: '250px' }}>
                   <option value="">Todos los ciclos</option>
-                  {pendCycles.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                  {pendCycles.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               )}
               <input
@@ -395,6 +318,15 @@ function EmployeeEvaluationsView() {
               </span>
             </div>
           )}
+          {pending.length === 0 ? (
+            <div className="card">
+              <EmptyState
+                icon="🔍"
+                title="Sin resultados con estos filtros"
+                description="Probá limpiando el ciclo o la búsqueda."
+              />
+            </div>
+          ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {paginatedPending.map((ev: any) => (
               <div key={ev.id} className="card" style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
@@ -464,6 +396,7 @@ function EmployeeEvaluationsView() {
               </div>
             ))}
           </div>
+          )}
           {/* Pagination */}
           {pendTotalPages > 1 && (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
@@ -481,11 +414,11 @@ function EmployeeEvaluationsView() {
         <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)', display: 'inline-block' }} />
           {t('evaluaciones.completedEvals')}
-          {completedTotal > 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>({completedTotal})</span>}
+          {completedStatsCount > 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>({completedStatsCount})</span>}
         </h2>
 
-        {/* B3: Filter chips por tipo de relacion (cliente-side sobre pagina) */}
-        {completedTotal > 0 && (
+        {/* Filter chips por tipo de relacion — server-side */}
+        {completedStatsCount > 0 && (
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginRight: '0.2rem' }}>Tipo:</span>
             {[
@@ -500,7 +433,7 @@ function EmployeeEvaluationsView() {
               return (
                 <button
                   key={chip.value || 'all'}
-                  onClick={() => setCompTypeFilter(chip.value)}
+                  onClick={() => { setCompTypeFilter(chip.value); setCompPage(1); }}
                   style={{
                     fontSize: '0.72rem',
                     padding: '0.18rem 0.65rem',
@@ -519,14 +452,15 @@ function EmployeeEvaluationsView() {
           </div>
         )}
 
-        {/* Filters — same layout as pending section */}
-        {completedTotal > 0 && (
+        {/* Filters — server-side. Visible si hay >0 evaluaciones reales,
+            no se oculta cuando filtras a 0. */}
+        {completedStatsCount > 0 && (
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
             {compCycles.length > 1 && (
               <select className="input" value={compCycleFilter} onChange={(e) => { setCompCycleFilter(e.target.value); setCompPage(1); }}
                 style={{ fontSize: '0.82rem', maxWidth: '250px' }}>
                 <option value="">Todos los ciclos</option>
-                {compCycles.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                {compCycles.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             )}
             <input className="input" type="text" placeholder="Buscar colaborador..."
@@ -537,7 +471,7 @@ function EmployeeEvaluationsView() {
             <select
               className="input"
               value={compSort}
-              onChange={(e) => setCompSort(e.target.value as CompSort)}
+              onChange={(e) => { setCompSort(e.target.value as CompSort); setCompPage(1); }}
               style={{ fontSize: '0.82rem', maxWidth: '170px' }}
               aria-label="Ordenar"
             >
@@ -546,23 +480,6 @@ function EmployeeEvaluationsView() {
               <option value="score_desc">Puntaje ↓ (mayor)</option>
               <option value="score_asc">Puntaje ↑ (menor)</option>
             </select>
-            {/* B3: Group toggle */}
-            <button
-              onClick={() => setCompGroupBy(!compGroupBy)}
-              aria-pressed={compGroupBy}
-              style={{
-                fontSize: '0.78rem',
-                padding: '0.35rem 0.7rem',
-                borderRadius: 'var(--radius-sm, 6px)',
-                border: '1px solid var(--border)',
-                background: compGroupBy ? 'var(--accent)' : 'transparent',
-                color: compGroupBy ? 'white' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              📑 {compGroupBy ? 'Desagrupar' : 'Agrupar'}
-            </button>
             {(compCycleFilter || compSearch || compTypeFilter) && (
               <button className="btn-ghost" onClick={() => { setCompCycleFilter(''); setCompSearch(''); setCompTypeFilter(''); setCompPage(1); }} style={{ fontSize: '0.78rem' }}>
                 ✕ Limpiar
@@ -577,9 +494,9 @@ function EmployeeEvaluationsView() {
         {loadingCompleted ? <Spinner /> : allCompleted.length === 0 ? (
           <div className="card">
             <EmptyState
-              icon={(compSearch || compCycleFilter) ? '🔍' : '📝'}
-              title={(compSearch || compCycleFilter) ? 'Sin resultados con estos filtros' : t('evaluaciones.noCompletedYet')}
-              description={(compSearch || compCycleFilter)
+              icon={(compSearch || compCycleFilter || compTypeFilter) ? '🔍' : '📝'}
+              title={(compSearch || compCycleFilter || compTypeFilter) ? 'Sin resultados con estos filtros' : t('evaluaciones.noCompletedYet')}
+              description={(compSearch || compCycleFilter || compTypeFilter)
                 ? 'Prueba limpiando los filtros o busca por otro ciclo.'
                 : 'A medida que completes evaluaciones, verás aquí el historial con puntuaciones y detalles.'}
             />
@@ -598,98 +515,7 @@ function EmployeeEvaluationsView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {compGroupBy ? (
-                    /* B3: Grouped rendering — fila padre por evaluatee con
-                       summary, expandible para mostrar las individuales. */
-                    completedGrouped.map((group) => {
-                      const isOpen = expandedEvaluatees.has(group.evaluateeId);
-                      const scores = group.items
-                        .map((i: any) => i.response?.overallScore)
-                        .filter((s: any) => typeof s === 'number');
-                      const avg = scores.length
-                        ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length
-                        : null;
-                      const latest = group.items
-                        .map((i: any) => i.completedAt)
-                        .filter(Boolean)
-                        .sort()
-                        .reverse()[0];
-                      const distinctCycles = new Set(group.items.map((i: any) => i.cycle?.id || i.cycle?.name)).size;
-                      return (
-                        <Fragment key={group.evaluateeId}>
-                          <tr
-                            onClick={() => toggleExpanded(group.evaluateeId)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                toggleExpanded(group.evaluateeId);
-                              }
-                            }}
-                            tabIndex={0}
-                            role="button"
-                            aria-expanded={isOpen}
-                            aria-label={`${isOpen ? 'Colapsar' : 'Expandir'} evaluaciones de ${group.evaluatee ? `${group.evaluatee.firstName} ${group.evaluatee.lastName}` : 'evaluado'}`}
-                            style={{ cursor: 'pointer', background: 'var(--bg-subtle, rgba(0,0,0,0.025))' }}
-                          >
-                            <td style={{ fontWeight: 700, fontSize: '0.88rem' }}>
-                              <span
-                                aria-hidden="true"
-                                style={{
-                                  display: 'inline-block',
-                                  width: '14px',
-                                  marginRight: '0.4rem',
-                                  fontSize: '0.65rem',
-                                  transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                                  transition: 'transform 0.15s',
-                                }}
-                              >▶</span>
-                              {group.evaluatee ? `${group.evaluatee.firstName} ${group.evaluatee.lastName}` : '--'}
-                              <span className="badge badge-accent" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>
-                                {group.items.length}
-                              </span>
-                              {group.evaluateeId === userId && <span className="badge badge-accent" style={{ marginLeft: '0.4rem', fontSize: '0.6rem' }}>{t('evaluaciones.you')}</span>}
-                            </td>
-                            <td colSpan={2} style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                              {distinctCycles} {distinctCycles === 1 ? 'ciclo' : 'ciclos'}
-                            </td>
-                            <td>
-                              {avg !== null ? <ScoreBadge score={avg} size="sm" /> : <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>--</span>}
-                            </td>
-                            <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                              {latest ? `Último: ${new Date(latest).toLocaleDateString('es-ES')}` : '--'}
-                            </td>
-                          </tr>
-                          {isOpen && group.items.map((ev: any) => (
-                            <tr
-                              key={ev.id}
-                              onClick={(e) => { e.stopPropagation(); setViewerAssignmentId(ev.id); }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setViewerAssignmentId(ev.id);
-                                }
-                              }}
-                              tabIndex={0}
-                              role="button"
-                              aria-label={`Ver detalle de evaluación del ${relationLabels[ev.relationType] || ev.relationType} en ciclo ${ev.cycle?.name || ''}`}
-                              style={{ cursor: 'pointer' }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover, rgba(0,0,0,0.03))'; }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                            >
-                              <td style={{ paddingLeft: '2.5rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>↳</td>
-                              <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{relationLabels[ev.relationType] || ev.relationType}</td>
-                              <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{ev.cycle?.name || '--'}</td>
-                              <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
-                              <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                                {ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-ES') : '--'}
-                              </td>
-                            </tr>
-                          ))}
-                        </Fragment>
-                      );
-                    })
-                  ) : completed.map((ev: any) => (
+                  {completed.map((ev: any) => (
                     <tr
                       key={ev.id}
                       onClick={() => setViewerAssignmentId(ev.id)}

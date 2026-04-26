@@ -51,6 +51,21 @@ export function useMyCompletedEvaluationsPaged(opts: EvalListParams) {
   });
 }
 
+/**
+ * KPI stats agregados de la bandeja del usuario. Devuelve conteos REALES
+ * (sobre todo el dataset, no la página actual) + breakdown por ciclo.
+ * Usar para los 3 KPI cards y las opciones de los dropdowns de ciclo.
+ */
+export function useEvaluationStats() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['evaluations', 'stats'],
+    queryFn: () => api.evaluations.stats(token!),
+    enabled: !!token,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useEvaluationDetail(assignmentId: string) {
   const token = useAuthStore((s) => s.token);
   return useQuery({
