@@ -1841,17 +1841,44 @@ export class EvaluationsService {
     const isManager = role === 'manager';
     const isEmployee = role === 'employee';
 
-    // Manager: only see stats for their direct reports
-    // Employee: only see their own stats
-    let teamUserIds: string[] | null = null;
+    // ─── Definicion de scope ────────────────────────────────────────────
+    // Tres modos:
+    //
+    // 1) Manager: filtra por evaluator_id = userId. Las cards muestran las
+    //    evaluaciones que el manager es responsable de hacer (su trabajo
+    //    como evaluador). MISMO conjunto que la bandeja
+    //    /dashboard/evaluaciones — garantiza consistencia numerica para
+    //    no confundir al usuario.
+    //    (Antes el manager tenia scope evaluatee-IN-team, generando
+    //    inconsistencia: dashboard 326 vs bandeja 201, dashboard 145
+    //    pendientes vs bandeja 56. La vista "estado del equipo evaluado"
+    //    sigue disponible en /dashboard/mi-desempeno > Mi Equipo.)
+    //
+    // 2) Employee: filtra por evaluatee_id = userId — evaluaciones que
+    //    se han hecho/se haran SOBRE el employee. Esto es DIFERENTE de
+    //    la bandeja (que muestra lo que el employee tiene que hacer
+    //    como evaluador, ej. su autoevaluacion). Mantenemos esta
+    //    diferencia porque para un employee es util ver "cuantas evals
+    //    me han hecho a mi" en el dashboard como contexto.
+    //
+    // 3) Admin (super_admin / tenant_admin): sin filtro — alcance
+    //    org-wide.
+    let evaluateeFilter: string[] | null = null;
+    let evaluatorId: string | null = null;
+
     if (isEmployee && userId) {
-      teamUserIds = [userId]; // Only own data
+      evaluateeFilter = [userId];
     } else if (isManager && userId) {
-      const directReports = await this.userRepo.find({
+      evaluatorId = userId;
+    }
+
+    // teamSize: solo para managers — informativo (cuantos directos tiene),
+    // NO se usa como filtro. Se muestra en el subtitulo "como manager de N".
+    let teamSize: number | null = null;
+    if (isManager && userId) {
+      teamSize = await this.userRepo.count({
         where: { tenantId, managerId: userId, isActive: true },
-        select: ['id'],
       });
-      teamUserIds = [userId, ...directReports.map(u => u.id)];
     }
 
     const [totalCycles, activeCycles] = await Promise.all([
@@ -1861,19 +1888,30 @@ export class EvaluationsService {
 
     // Estados que cuentan como "activos" (no canceladas). Las assignments
     // CANCELLED se excluyen del total para que "Evaluaciones activas" no
-    // se infle con assignments anuladas por desvinculación o decisión admin.
+    // se infle con assignments anuladas por desvinculacion o decision admin.
     const ACTIVE_STATUSES = [
       AssignmentStatus.PENDING,
       AssignmentStatus.IN_PROGRESS,
       AssignmentStatus.COMPLETED,
     ];
 
-    // Total assignments — scoped to team for managers, excluyendo canceladas
+    // Helper: aplica scope (manager → evaluator, employee → evaluatee)
+    // a cualquier QueryBuilder de assignments con alias 'a'.
+    const applyScope = <T extends { andWhere: (...args: any[]) => T }>(qb: T): T => {
+      if (evaluatorId) {
+        qb.andWhere('a.evaluator_id = :evaluatorId', { evaluatorId });
+      } else if (evaluateeFilter) {
+        qb.andWhere('a.evaluatee_id IN (:...evaluateeFilter)', { evaluateeFilter });
+      }
+      return qb;
+    };
+
+    // Total assignments — scoped, excluyendo canceladas
     const totalQb = this.assignmentRepo
       .createQueryBuilder('a')
       .where('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status IN (:...activeStatuses)', { activeStatuses: ACTIVE_STATUSES });
-    if (teamUserIds) totalQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
+    applyScope(totalQb);
     const totalAssignments = await totalQb.getCount();
 
     // Completed assignments — scoped
@@ -1881,36 +1919,37 @@ export class EvaluationsService {
       .createQueryBuilder('a')
       .where('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
-    if (teamUserIds) completedQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
+    applyScope(completedQb);
     const completedAssignments = await completedQb.getCount();
 
-    // Personas únicas con al menos 1 evaluación completada (NO el conteo
-    // de assignments). Antes la card "Empleados evaluados" mostraba
-    // completedAssignments, lo cual sobreinflaba el número (Pedro con
-    // 6 evals contaba 6 veces).
+    // Personas distintas que el usuario ha evaluado (evaluatees unicos
+    // con al menos 1 eval completada hecha por el caller). Antes la card
+    // "Empleados evaluados" mostraba completedAssignments, lo cual
+    // inflaba (Pedro con 6 evals contaba 6 veces). Ahora cuenta personas.
     //
-    // Implementación: SELECT DISTINCT + .length en vez de COUNT(DISTINCT)
-    // + getRawOne. La razón es que getRawOne con alias 'cnt' devolvía la
-    // clave en otra forma (driver pg / TypeORM no preserva case
-    // consistentemente) y siempre retornaba 0 en runtime aunque el SQL
-    // crudo era correcto. getRawMany con DISTINCT es robusto al aliasing
-    // y para teams típicos (<100 directos) tiene costo despreciable.
+    // Implementacion: SELECT DISTINCT + .length en vez de COUNT(DISTINCT)
+    // + getRawOne — el alias 'cnt' no se preservaba consistentemente en
+    // la clave del objeto retornado por getRawOne (driver pg / TypeORM)
+    // y siempre devolvia 0. getRawMany con DISTINCT es robusto al
+    // aliasing y para volumenes tipicos (<200) tiene costo despreciable.
     const distinctQb = this.assignmentRepo
       .createQueryBuilder('a')
       .select('DISTINCT a.evaluatee_id', 'evaluateeId')
       .where('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
-    if (teamUserIds) distinctQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
+    applyScope(distinctQb);
     const distinctRows = await distinctQb.getRawMany();
     const evaluatedPeopleCount = distinctRows.length;
 
-    // Average score — scoped (tenant guard also on the JOIN)
+    // Average score — scoped (tenant guard tambien en el JOIN)
+    // Para manager: promedio de scores que el manager ha asignado.
+    // Para employee: promedio de scores que ha recibido en sus evals.
     const avgQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .where('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.overall_score IS NOT NULL');
-    if (teamUserIds) avgQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
+    applyScope(avgQb);
     const avgScoreResult = await avgQb.select('AVG(r.overall_score)', 'avg').getRawOne();
 
     return {
@@ -1927,7 +1966,7 @@ export class EvaluationsService {
         ? parseFloat(avgScoreResult.avg).toFixed(1)
         : null,
       scope: isEmployee ? 'personal' : isManager ? 'team' : 'organization',
-      teamSize: isManager && teamUserIds ? teamUserIds.length - 1 : null,
+      teamSize,
     };
   }
 
