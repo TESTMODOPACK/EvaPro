@@ -1887,15 +1887,22 @@ export class EvaluationsService {
     // Personas únicas con al menos 1 evaluación completada (NO el conteo
     // de assignments). Antes la card "Empleados evaluados" mostraba
     // completedAssignments, lo cual sobreinflaba el número (Pedro con
-    // 6 evals contaba 6 veces). Aquí calculamos COUNT(DISTINCT evaluatee).
+    // 6 evals contaba 6 veces).
+    //
+    // Implementación: SELECT DISTINCT + .length en vez de COUNT(DISTINCT)
+    // + getRawOne. La razón es que getRawOne con alias 'cnt' devolvía la
+    // clave en otra forma (driver pg / TypeORM no preserva case
+    // consistentemente) y siempre retornaba 0 en runtime aunque el SQL
+    // crudo era correcto. getRawMany con DISTINCT es robusto al aliasing
+    // y para teams típicos (<100 directos) tiene costo despreciable.
     const distinctQb = this.assignmentRepo
       .createQueryBuilder('a')
-      .select('COUNT(DISTINCT a.evaluatee_id)', 'cnt')
+      .select('DISTINCT a.evaluatee_id', 'evaluateeId')
       .where('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
     if (teamUserIds) distinctQb.andWhere('a.evaluatee_id IN (:...ids)', { ids: teamUserIds });
-    const distinctRow = await distinctQb.getRawOne<{ cnt: string }>();
-    const evaluatedPeopleCount = parseInt(distinctRow?.cnt ?? '0', 10);
+    const distinctRows = await distinctQb.getRawMany();
+    const evaluatedPeopleCount = distinctRows.length;
 
     // Average score — scoped (tenant guard also on the JOIN)
     const avgQb = this.responseRepo
