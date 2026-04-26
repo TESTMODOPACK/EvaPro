@@ -780,6 +780,27 @@ export const api = {
           limit: opts.limit ?? 0,
         }),
       ),
+    /** Evaluaciones RECIBIDAS por miembros del equipo del manager —
+     *  incluye autoevaluaciones, peer, manager, direct_report y
+     *  external. A diferencia de completed/Paged (que es Carlos como
+     *  evaluador), este endpoint muestra TODO lo que el equipo
+     *  recibe de cualquier evaluador. Roles: super_admin/tenant_admin
+     *  (ven todo el tenant) y manager (solo sus directos). */
+    teamReceived: (token: string) =>
+      request<AssignmentData[]>('/evaluations/team-received', {}, token),
+    teamReceivedPaged: (token: string, opts: EvalListParams) =>
+      request<{ items: AssignmentData[]; total: number }>(
+        `/evaluations/team-received${buildEvalQuery(opts)}`,
+        {},
+        token,
+      ).then(
+        (r): PaginatedResponse<AssignmentData> => ({
+          data: r.items,
+          total: r.total,
+          page: opts.page ?? 1,
+          limit: opts.limit ?? 0,
+        }),
+      ),
     /** Stats agregados — KPI cards source-of-truth (cuentas reales, no
      *  page-local). */
     stats: (token: string) =>

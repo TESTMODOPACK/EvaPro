@@ -143,6 +143,10 @@ export default function MiDesempenoPage() {
   const [pendingSurveys, setPendingSurveys] = useState<any[]>([]);
   const [teamObjectives, setTeamObjectives] = useState<any>(null);
   const [teamMemberIds, setTeamMemberIds] = useState<Set<string>>(new Set());
+  // Evaluaciones que el equipo del manager RECIBIÓ (incluye self, peer,
+  // manager, direct_report, external). Backend anonimiza el evaluador
+  // en peer/direct_report cuando el caller es manager.
+  const [teamReceived, setTeamReceived] = useState<any[]>([]);
   const [history, setHistory] = useState<any>(null);
   const [signatureMap, setSignatureMap] = useState<Record<string, any[]>>({});
 
@@ -194,7 +198,12 @@ export default function MiDesempenoPage() {
       api.recognition.myRedemptions(token).catch(() => []),
       ...(hasTeam ? [api.objectives.teamSummary(token).catch(() => null)] : []),
       ...(hasTeam ? [api.users.list(token, 1, 500).catch(() => ({ data: [] }))] : []),
-    ]).then(([hist, comp, recv, pend, fbRecv, fbGiven, plans, objs, pts, badges, wall, redemptions, teamObj, usersRes]) => {
+      // Manager/admin: evaluaciones que recibió el equipo (self, peer,
+      // manager, direct_report, external). Endpoint distinto a 'completed'
+      // que es solo lo que el caller hizo. El backend anonimiza
+      // evaluator en peer/direct_report cuando el caller es manager.
+      ...(hasTeam ? [api.evaluations.teamReceived(token).catch(() => [])] : []),
+    ]).then(([hist, comp, recv, pend, fbRecv, fbGiven, plans, objs, pts, badges, wall, redemptions, teamObj, usersRes, teamRecv]) => {
       setHistory(hist);
       setCompleted(Array.isArray(comp) ? comp : []);
       setReceived(Array.isArray(recv) ? recv : []);
@@ -214,6 +223,9 @@ export default function MiDesempenoPage() {
         const allU = Array.isArray(usersRes) ? usersRes : usersRes?.data || [];
         const directReports = allU.filter((u: any) => u.managerId === user.userId && u.isActive);
         setTeamMemberIds(new Set(directReports.map((u: any) => u.id)));
+      }
+      if (hasTeam) {
+        setTeamReceived(Array.isArray(teamRecv) ? teamRecv : []);
       }
     }).finally(() => setLoading(false));
     // Load pending climate surveys separately (no need to block main load)
@@ -281,26 +293,15 @@ export default function MiDesempenoPage() {
   // Pending = evaluations I need to complete (as evaluator) — ALL go to personal tab
   const myPendingEvals = pending;
 
-  // Team evaluations — strictly filter by direct reports only
-  const teamCompletedEvals = completed.filter((e: any) =>
-    e.evaluateeId !== myUserId &&
-    e.evaluatee?.role !== 'tenant_admin' &&
-    teamMemberIds.has(e.evaluateeId)
-  );
-  // Buckets para reconciliar el total que muestra la bandeja (KPI "Completadas").
-  // Invariante: completed.length = team + other + self + admin.
-  // Esto evita que el manager vea 71 aquí y 145 en la bandeja sin explicación
-  // de los 74 faltantes.
-  const otherCompletedEvals = completed.filter((e: any) =>
-    e.evaluateeId !== myUserId &&
-    e.evaluatee?.role !== 'tenant_admin' &&
-    !teamMemberIds.has(e.evaluateeId)
-  );
-  const selfCompletedEvals = completed.filter((e: any) => e.evaluateeId === myUserId);
-  const adminCompletedEvals = completed.filter((e: any) =>
-    e.evaluateeId !== myUserId && e.evaluatee?.role === 'tenant_admin'
-  );
-  const personalCompletedCount = selfCompletedEvals.length + adminCompletedEvals.length;
+  // El header KPI "Eval. completadas" y el tab Evaluaciones consumen
+  // teamReceived (evaluaciones que el equipo recibe — incluye self,
+  // peer, manager, direct_report, external). Coincide en numero con
+  // el dashboard /dashboard cuando el caller es manager.
+  // Las anteriores variables teamCompletedEvals / otherCompletedEvals
+  // / etc. se eliminaron porque mostraban Carlos como evaluador
+  // (scope distinto), lo cual generaba inconsistencia entre dashboard
+  // y mi-desempeno. La info "Carlos como evaluador" sigue accesible
+  // en la bandeja /dashboard/evaluaciones.
 
   // My objectives vs team objectives (backend already filters by manager for managers)
   const myObjectives = objectives.filter((o: any) => o.userId === myUserId);
@@ -425,8 +426,27 @@ export default function MiDesempenoPage() {
             <KPI label="Miembros" value={teamMemberCount} />
             <KPI
               label="Eval. completadas"
-              value={completed.length}
-              sub={`${teamCompletedEvals.length} equipo · ${otherCompletedEvals.length} otros · ${personalCompletedCount} personales`}
+              value={teamReceived.length}
+              sub={(() => {
+                // Breakdown por tipo de relacion (consistente con el footer
+                // del tab Evaluaciones). Muestra solo los tipos > 0.
+                const byType: Record<string, number> = {};
+                for (const ev of teamReceived) {
+                  const t = ev.relationType || 'other';
+                  byType[t] = (byType[t] || 0) + 1;
+                }
+                const labels: Record<string, string> = {
+                  self: 'autoeval',
+                  manager: 'jefe',
+                  peer: 'pares',
+                  direct_report: 'subord.',
+                  external: 'externas',
+                };
+                return Object.entries(byType)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([type, count]) => `${count} ${labels[type] || type}`)
+                  .join(' · ') || undefined;
+              })()}
             />
             <KPI label="Objetivos equipo" value={`${teamActiveObj} act.`} />
             <KPI label="PDI equipo" value={`${teamActivePdi} act.`} />
@@ -964,7 +984,7 @@ export default function MiDesempenoPage() {
           {/* Sub-tabs */}
           <div className="animate-fade-up" style={{ display: 'flex', gap: '0.15rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
             {[
-              { id: 'evaluaciones' as const, label: `Evaluaciones (${teamCompletedEvals.length + otherCompletedEvals.length})` },
+              { id: 'evaluaciones' as const, label: `Evaluaciones (${teamReceived.length})` },
               { id: 'objetivos' as const, label: `Objetivos` },
               { id: 'pdi' as const, label: `Planes de Desarrollo (${teamDevPlans.length})` },
             ].map(tab => (
@@ -994,7 +1014,11 @@ export default function MiDesempenoPage() {
             );
           })()}
 
-          {/* ─── Team Evaluaciones ─── */}
+          {/* ─── Team Evaluaciones ─── Vista 360 RECIBIDA por el equipo
+              (no lo que el manager hizo). Agrupa por evaluatee y muestra
+              quién lo evaluó (con anonimato en peer/direct_report — eso
+              lo hace el backend antes de enviar para que la identidad
+              nunca llegue al frontend). */}
           {teamTab === 'evaluaciones' && (
             <div className="animate-fade-up">
               <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1003,117 +1027,142 @@ export default function MiDesempenoPage() {
                   {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                  {(() => {
-                    const inCycle = (ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter;
-                    return teamCompletedEvals.filter(inCycle).length + otherCompletedEvals.filter(inCycle).length;
-                  })()} evaluaciones
+                  {teamReceived.filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter).length} evaluaciones recibidas por el equipo
                 </span>
               </div>
 
-              {/* Team evals — split into Direct Reports + Other Departments */}
+              {/* Lista agrupada por miembro del equipo. El backend ya
+                  filtró por managerId (solo directos del caller cuando
+                  es manager) y anonimizó evaluador en peer/direct_report. */}
               {(() => {
-                const allFiltered = completed.filter((ev: any) => ev.evaluateeId !== myUserId && ev.evaluatee?.role !== 'tenant_admin')
-                  .filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter);
-                const directEvals = allFiltered.filter((ev: any) => teamMemberIds.has(ev.evaluateeId));
-                const otherEvals = allFiltered.filter((ev: any) => !teamMemberIds.has(ev.evaluateeId));
+                const filtered = teamReceived.filter((ev: any) =>
+                  !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter
+                );
 
-                const renderGroup = (evals: any[], prefix: string) => {
-                  const byPerson: Record<string, { name: string; dept: string; items: any[] }> = {};
-                  for (const ev of evals) {
-                    const eid = ev.evaluateeId || 'unknown';
-                    const ename = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--';
-                    const dept = ev.evaluatee?.department || '';
-                    if (!byPerson[eid]) byPerson[eid] = { name: ename, dept, items: [] };
-                    byPerson[eid].items.push(ev);
-                  }
-                  return Object.entries(byPerson).map(([eid, { name, dept, items }]) => (
-                    <div key={eid} className="card" style={{ padding: '0.75rem 1rem' }}>
-                      <button onClick={() => setExpandedTeamMember(expandedTeamMember === `${prefix}-${eid}` ? null : `${prefix}-${eid}`)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
-                        <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedTeamMember === `${prefix}-${eid}` ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                        <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{name}</span>
-                        {dept && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>· {dept}</span>}
-                        <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{items.length} eval.</span>
-                      </button>
-                      {expandedTeamMember === `${prefix}-${eid}` && (
-                        <div style={{ marginTop: '0.5rem' }}>
-                          <div className="table-wrapper">
-                            <table>
-                              <thead><tr>
-                                <th style={{ textAlign: 'left' }}>Evaluador</th>
-                                <th>Tipo</th><th>Ciclo</th><th>Puntaje</th><th>Fecha</th>
-                              </tr></thead>
-                              <tbody>
-                                {items.map((ev: any, j: number) => (
-                                  <tr key={j}>
-                                    <td style={{ fontSize: '0.82rem' }}>{ev.evaluator ? `${ev.evaluator.firstName} ${ev.evaluator.lastName}` : '--'}</td>
-                                    <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
-                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
-                                    <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
-                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
+                if (filtered.length === 0) {
+                  return (
+                    <div className="card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      Sin evaluaciones recibidas por tu equipo {teamEvalCycleFilter ? 'en el ciclo seleccionado' : 'aún'}.
                     </div>
-                  ));
+                  );
+                }
+
+                // Conteo por relationType para el footer
+                const byType: Record<string, number> = {};
+                for (const ev of filtered) {
+                  const t = ev.relationType || 'other';
+                  byType[t] = (byType[t] || 0) + 1;
+                }
+
+                // Agrupar por evaluatee (miembro del equipo)
+                const byPerson: Record<string, { name: string; dept: string; items: any[] }> = {};
+                for (const ev of filtered) {
+                  const eid = ev.evaluateeId || 'unknown';
+                  const ename = ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--';
+                  const dept = ev.evaluatee?.department || '';
+                  if (!byPerson[eid]) byPerson[eid] = { name: ename, dept, items: [] };
+                  byPerson[eid].items.push(ev);
+                }
+
+                // Helper: render del evaluador respetando anonimato.
+                // Backend null-ifica evaluator/evaluatorId en peer y
+                // direct_report cuando el caller es manager — aquí
+                // mostramos "Anónimo" en ese caso para preservar la
+                // psychological safety del feedback.
+                const renderEvaluator = (ev: any): string => {
+                  const isAnonymized = !ev.evaluator && (ev.relationType === 'peer' || ev.relationType === 'direct_report');
+                  if (isAnonymized) return 'Anónimo';
+                  if (ev.relationType === 'self') return 'Autoevaluación';
+                  if (ev.evaluator) return `${ev.evaluator.firstName || ''} ${ev.evaluator.lastName || ''}`.trim() || '--';
+                  return '--';
                 };
 
                 return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {/* Section 1: Mi Equipo Directo */}
-                  <div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-                      Mi Equipo Directo ({directEvals.length} evaluaciones)
-                    </div>
-                    {directEvals.length === 0 ? (
-                      <div className="card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin evaluaciones de tu equipo directo.</div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>{renderGroup(directEvals, 'direct')}</div>
-                    )}
-                  </div>
-
-                  {/* Section 2: Otras evaluaciones de otros departamentos */}
-                  {otherEvals.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-                        Otras evaluaciones realizadas ({otherEvals.length})
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                        Evaluaciones recibidas por tu equipo ({filtered.length})
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>{renderGroup(otherEvals, 'other')}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {Object.entries(byPerson).map(([eid, { name, dept, items }]) => (
+                          <div key={eid} className="card" style={{ padding: '0.75rem 1rem' }}>
+                            <button
+                              onClick={() => setExpandedTeamMember(expandedTeamMember === `recv-${eid}` ? null : `recv-${eid}`)}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+                            >
+                              <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedTeamMember === `recv-${eid}` ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                              <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{name}</span>
+                              {dept && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>· {dept}</span>}
+                              <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{items.length} eval. recibidas</span>
+                            </button>
+                            {expandedTeamMember === `recv-${eid}` && (
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <div className="table-wrapper">
+                                  <table>
+                                    <thead>
+                                      <tr>
+                                        <th style={{ textAlign: 'left' }}>Evaluador</th>
+                                        <th>Tipo</th>
+                                        <th>Ciclo</th>
+                                        <th>Puntaje</th>
+                                        <th>Fecha</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {items.map((ev: any, j: number) => {
+                                        const evaluatorLabel = renderEvaluator(ev);
+                                        const isAnon = evaluatorLabel === 'Anónimo';
+                                        return (
+                                          <tr key={j}>
+                                            <td style={{ fontSize: '0.82rem', fontStyle: isAnon ? 'italic' : 'normal', color: isAnon ? 'var(--text-muted)' : 'inherit' }}>
+                                              {isAnon && '🔒 '}{evaluatorLabel}
+                                            </td>
+                                            <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
+                                            <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('es-CL') : '--'}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  )}
 
-                  {/* Footer de reconciliación — explica la diferencia entre lo
-                      mostrado aquí y el KPI de la bandeja. Se calcula con el
-                      mismo filtro de ciclo que las secciones de arriba. */}
-                  {(() => {
-                    const inCycle = (ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter;
-                    const selfInCycle = selfCompletedEvals.filter(inCycle).length;
-                    const adminInCycle = adminCompletedEvals.filter(inCycle).length;
-                    const grandTotal = directEvals.length + otherEvals.length + selfInCycle + adminInCycle;
-                    if (grandTotal === 0) return null;
-                    const parts: string[] = [
-                      `${directEvals.length} a equipo directo`,
-                      `${otherEvals.length} a otros departamentos`,
-                    ];
-                    if (selfInCycle > 0) parts.push(`${selfInCycle} autoevaluación${selfInCycle !== 1 ? 'es' : ''}`);
-                    if (adminInCycle > 0) parts.push(`${adminInCycle} a administrador${adminInCycle !== 1 ? 'es' : ''}`);
-                    return (
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '0.65rem 0.25rem 0', borderTop: '1px solid var(--border)', marginTop: '0.25rem' }}>
-                        <strong style={{ color: 'var(--text-secondary)' }}>Total realizadas: {grandTotal}</strong>
-                        {' · '}{parts.join(' · ')}
-                        {(selfInCycle > 0 || adminInCycle > 0) && (
-                          <span style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.72rem' }}>
-                            Las autoevaluaciones y evaluaciones a administradores no se listan aquí porque no son del equipo directo, pero se cuentan en el KPI de la bandeja.
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
+                    {/* Footer: desglose por tipo de relación. Útil para que
+                        el manager entienda qué tipo de feedback está
+                        recibiendo su equipo (mucho self vs poco peer
+                        sugiere ciclo a medio camino, etc.). */}
+                    {(() => {
+                      const labels: Record<string, string> = {
+                        self: 'autoevaluacion',
+                        manager: 'del jefe',
+                        peer: 'de pares',
+                        direct_report: 'de subordinados',
+                        external: 'externas',
+                      };
+                      const parts = Object.entries(byType)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([type, count]) => `${count} ${labels[type] || type}`);
+                      const hasAnonymized = (byType['peer'] || 0) + (byType['direct_report'] || 0) > 0;
+                      return (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '0.65rem 0.25rem 0', borderTop: '1px solid var(--border)', marginTop: '0.25rem' }}>
+                          <strong style={{ color: 'var(--text-secondary)' }}>Total: {filtered.length}</strong>
+                          {' · '}{parts.join(' · ')}
+                          {hasAnonymized && (
+                            <span style={{ display: 'block', marginTop: '0.3rem', fontSize: '0.72rem' }}>
+                              🔒 El nombre del evaluador en evaluaciones de pares y subordinados se mantiene anónimo para preservar la confianza del feedback. RRHH (admin) sí ve el detalle completo.
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 );
               })()}
             </div>
