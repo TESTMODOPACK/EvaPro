@@ -1417,6 +1417,31 @@ export class EvaluationsService {
     items.forEach((a) => {
       if (a.response === undefined) a.response = null;
     });
+
+    // ─── Anonimización de peer / direct_report (managers only) ─────────
+    // Regla: cuando el caller es un manager, las evaluaciones de tipo
+    // peer y direct_report deben ocultar la identidad del evaluador.
+    // Esto preserva la psychological safety del feedback peer/upward —
+    // si los compañeros saben que su nombre llegará al jefe, dejan de
+    // ser honestos. tenant_admin y super_admin (HR) sí ven todo, porque
+    // necesitan poder auditar y resolver conflictos.
+    //
+    // Self y manager: el evaluador es trivialmente conocido (el propio
+    // evaluatee, o el jefe que lo hizo) — no se anonimiza.
+    // External: por default visible; el ciclo puede tener flag para
+    // anonimizar pero hoy no se implementa.
+    if (args.managerId) {
+      items.forEach((a) => {
+        if (
+          a.relationType === RelationType.PEER ||
+          a.relationType === RelationType.DIRECT_REPORT
+        ) {
+          a.evaluator = null;
+          a.evaluatorId = null;
+        }
+      });
+    }
+
     return { items, total };
   }
 
@@ -1844,41 +1869,40 @@ export class EvaluationsService {
     // ─── Definicion de scope ────────────────────────────────────────────
     // Tres modos:
     //
-    // 1) Manager: filtra por evaluator_id = userId. Las cards muestran las
-    //    evaluaciones que el manager es responsable de hacer (su trabajo
-    //    como evaluador). MISMO conjunto que la bandeja
-    //    /dashboard/evaluaciones — garantiza consistencia numerica para
-    //    no confundir al usuario.
-    //    (Antes el manager tenia scope evaluatee-IN-team, generando
-    //    inconsistencia: dashboard 326 vs bandeja 201, dashboard 145
-    //    pendientes vs bandeja 56. La vista "estado del equipo evaluado"
-    //    sigue disponible en /dashboard/mi-desempeno > Mi Equipo.)
+    // 1) Manager: filtra por evaluatee_id IN [direct reports]. Las cards
+    //    muestran el ESTADO DE EVALUACION DEL EQUIPO — cuantas evals
+    //    estan en proceso, completadas, etc. para sus colaboradores. Es
+    //    la misma scope que el endpoint /evaluations/team-received que
+    //    usa /dashboard/mi-desempeno > Mi Equipo. Asi ambas paginas son
+    //    numericamente consistentes — el dashboard es el resumen agregado
+    //    y mi-desempeno equipo es el detalle. (No incluye a Carlos
+    //    mismo: para ver tu propio trabajo como evaluador esta la
+    //    bandeja /dashboard/evaluaciones, que es scope distinto y
+    //    claramente labeled).
     //
     // 2) Employee: filtra por evaluatee_id = userId — evaluaciones que
-    //    se han hecho/se haran SOBRE el employee. Esto es DIFERENTE de
-    //    la bandeja (que muestra lo que el employee tiene que hacer
-    //    como evaluador, ej. su autoevaluacion). Mantenemos esta
-    //    diferencia porque para un employee es util ver "cuantas evals
-    //    me han hecho a mi" en el dashboard como contexto.
+    //    se han hecho/se haran SOBRE el employee. Diferente de la
+    //    bandeja (que muestra el trabajo del employee como evaluador).
     //
     // 3) Admin (super_admin / tenant_admin): sin filtro — alcance
     //    org-wide.
     let evaluateeFilter: string[] | null = null;
-    let evaluatorId: string | null = null;
 
     if (isEmployee && userId) {
       evaluateeFilter = [userId];
     } else if (isManager && userId) {
-      evaluatorId = userId;
+      // Solo directos del manager — match team-received endpoint scope
+      const directReports = await this.userRepo.find({
+        where: { tenantId, managerId: userId, isActive: true },
+        select: ['id'],
+      });
+      evaluateeFilter = directReports.map((u) => u.id);
     }
 
-    // teamSize: solo para managers — informativo (cuantos directos tiene),
-    // NO se usa como filtro. Se muestra en el subtitulo "como manager de N".
+    // teamSize: solo para managers — informativo (cuantos directos tiene)
     let teamSize: number | null = null;
-    if (isManager && userId) {
-      teamSize = await this.userRepo.count({
-        where: { tenantId, managerId: userId, isActive: true },
-      });
+    if (isManager && evaluateeFilter) {
+      teamSize = evaluateeFilter.length;
     }
 
     const [totalCycles, activeCycles] = await Promise.all([
@@ -1895,13 +1919,18 @@ export class EvaluationsService {
       AssignmentStatus.COMPLETED,
     ];
 
-    // Helper: aplica scope (manager → evaluator, employee → evaluatee)
-    // a cualquier QueryBuilder de assignments con alias 'a'.
+    // Helper: aplica scope (siempre evaluatee filter — manager filtra a
+    // sus directos, employee a si mismo, admin sin filtro) a cualquier
+    // QueryBuilder de assignments con alias 'a'. Si evaluateeFilter es
+    // un array vacio (manager sin directos), explicitamente devuelve 0
+    // matches con `1=0`.
     const applyScope = <T extends { andWhere: (...args: any[]) => T }>(qb: T): T => {
-      if (evaluatorId) {
-        qb.andWhere('a.evaluator_id = :evaluatorId', { evaluatorId });
-      } else if (evaluateeFilter) {
-        qb.andWhere('a.evaluatee_id IN (:...evaluateeFilter)', { evaluateeFilter });
+      if (evaluateeFilter) {
+        if (evaluateeFilter.length === 0) {
+          qb.andWhere('1 = 0'); // sin equipo → sin resultados
+        } else {
+          qb.andWhere('a.evaluatee_id IN (:...evaluateeFilter)', { evaluateeFilter });
+        }
       }
       return qb;
     };
@@ -1942,8 +1971,9 @@ export class EvaluationsService {
     const evaluatedPeopleCount = distinctRows.length;
 
     // Average score — scoped (tenant guard tambien en el JOIN)
-    // Para manager: promedio de scores que el manager ha asignado.
+    // Para manager: promedio de scores que el equipo ha recibido.
     // Para employee: promedio de scores que ha recibido en sus evals.
+    // Para admin: promedio de toda la organizacion.
     const avgQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')

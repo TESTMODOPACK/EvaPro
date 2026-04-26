@@ -52,6 +52,24 @@ export function useMyCompletedEvaluationsPaged(opts: EvalListParams) {
 }
 
 /**
+ * Evaluaciones RECIBIDAS por miembros del equipo del manager (incluye
+ * autoevaluaciones, peer, manager, direct_report y external). El backend
+ * anonimiza el evaluador en relationType peer/direct_report cuando el
+ * caller es manager (no para tenant_admin/super_admin).
+ *
+ * Usado en /dashboard/mi-desempeno > Mi Equipo > Evaluaciones para que
+ * el manager vea TODO lo que su equipo recibe (no solo lo que él hizo).
+ */
+export function useTeamReceivedEvaluations() {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['evaluations', 'team-received'],
+    queryFn: () => api.evaluations.teamReceived(token!),
+    enabled: !!token,
+  });
+}
+
+/**
  * KPI stats agregados de la bandeja del usuario. Devuelve conteos REALES
  * (sobre todo el dataset, no la página actual) + breakdown por ciclo.
  * Usar para los 3 KPI cards y las opciones de los dropdowns de ciclo.

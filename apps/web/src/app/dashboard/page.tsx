@@ -314,16 +314,17 @@ function RegularDashboard() {
       ),
     },
     {
-      // Antes mostraba completedAssignments (cantidad de evals completas),
-      // pero el label dice "Empleados evaluados" \u2014 mismatch que inflaba el
-      // numero. Ahora usa evaluatedPeopleCount (DISTINCT evaluatee_id),
-      // que cuenta personas distintas que el usuario ha evaluado (puede
-      // incluir colaboradores fuera del equipo via peer / 360, asi que
-      // no se compara contra teamSize).
+      // Cuenta DISTINCT(evaluatee_id) WHERE status=completed dentro del
+      // scope. Para manager: cuantos de sus N directos tienen al menos
+      // una eval completada (max = teamSize). Para admin: cuantas
+      // personas distintas hay evaluadas en toda la org.
       label: t('dashboard.evaluatedEmployees'),
       value: stats ? String(stats.evaluatedPeopleCount ?? 0) : '\u2013',
       color: '#10b981',
-      sub: stats ? 'personas distintas evaluadas' : null,
+      sub:
+        stats?.scope === 'team' && stats.teamSize != null
+          ? `de ${stats.teamSize} colaborador${stats.teamSize !== 1 ? 'es' : ''}`
+          : null,
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -491,12 +492,13 @@ function RegularDashboard() {
         <Spinner />
       ) : (
         <>
-          {/* Titulo con scope explicito — todas las cards muestran datos
-              del usuario como EVALUADOR (manager + employee), o de toda
-              la organizacion (admin). Estos numeros DEBEN coincidir con
-              los que muestra la bandeja /dashboard/evaluaciones para el
-              mismo usuario. La vista "estado del equipo evaluado" para
-              el manager vive en /dashboard/mi-desempeno > Mi Equipo. */}
+          {/* Titulo con scope explicito.
+              Manager: muestra ESTADO DEL EQUIPO (assignments donde sus
+              directos son evaluatees). Mismo scope que el endpoint
+              team-received que usa /dashboard/mi-desempeno > Mi Equipo,
+              asi ambas paginas son numericamente consistentes. La vista
+              "tu trabajo como evaluador" vive en la bandeja
+              /dashboard/evaluaciones (scope distinto, claramente labeled). */}
           {stats?.scope && (
             <div
               className="animate-fade-up-delay-1"
@@ -511,16 +513,16 @@ function RegularDashboard() {
             >
               {stats.scope === 'team' && (
                 <>
-                  Tus evaluaciones
+                  Metricas de tu equipo
                   {stats.teamSize != null && (
                     <span style={{ fontWeight: 500, textTransform: 'none', marginLeft: '0.4rem', color: 'var(--text-secondary)' }}>
-                      · como manager de {stats.teamSize} colaborador{stats.teamSize !== 1 ? 'es' : ''}
+                      · {stats.teamSize} colaborador{stats.teamSize !== 1 ? 'es' : ''} a tu cargo
                     </span>
                   )}
                 </>
               )}
               {stats.scope === 'organization' && 'Metricas de la organizacion'}
-              {stats.scope === 'personal' && 'Tus evaluaciones'}
+              {stats.scope === 'personal' && 'Tus metricas personales'}
             </div>
           )}
           <div
