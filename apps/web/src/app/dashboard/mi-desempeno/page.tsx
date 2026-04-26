@@ -152,7 +152,10 @@ export default function MiDesempenoPage() {
   const [teamTab, setTeamTab] = useState<'evaluaciones' | 'objetivos' | 'pdi'>('evaluaciones');
 
   // Filters
-  const [evalStatusFilter, setEvalStatusFilter] = useState('');
+  // NOTA: el filtro de estado (pendientes/completadas) se eliminó cuando
+  // la lista de pendientes se movió a la bandeja /dashboard/evaluaciones.
+  // La pestaña Personal "Evaluaciones" ahora solo muestra: call-out a
+  // bandeja + evolución + lista de recibidas + radar (todos usan cycle).
   const [evalCycleFilter, setEvalCycleFilter] = useState('');
   const [objStatusFilter, setObjStatusFilter] = useState('');
   const [objTypeFilter, setObjTypeFilter] = useState('');
@@ -284,6 +287,20 @@ export default function MiDesempenoPage() {
     e.evaluatee?.role !== 'tenant_admin' &&
     teamMemberIds.has(e.evaluateeId)
   );
+  // Buckets para reconciliar el total que muestra la bandeja (KPI "Completadas").
+  // Invariante: completed.length = team + other + self + admin.
+  // Esto evita que el manager vea 71 aquí y 145 en la bandeja sin explicación
+  // de los 74 faltantes.
+  const otherCompletedEvals = completed.filter((e: any) =>
+    e.evaluateeId !== myUserId &&
+    e.evaluatee?.role !== 'tenant_admin' &&
+    !teamMemberIds.has(e.evaluateeId)
+  );
+  const selfCompletedEvals = completed.filter((e: any) => e.evaluateeId === myUserId);
+  const adminCompletedEvals = completed.filter((e: any) =>
+    e.evaluateeId !== myUserId && e.evaluatee?.role === 'tenant_admin'
+  );
+  const personalCompletedCount = selfCompletedEvals.length + adminCompletedEvals.length;
 
   // My objectives vs team objectives (backend already filters by manager for managers)
   const myObjectives = objectives.filter((o: any) => o.userId === myUserId);
@@ -406,7 +423,11 @@ export default function MiDesempenoPage() {
           <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>Mi Equipo</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
             <KPI label="Miembros" value={teamMemberCount} />
-            <KPI label="Eval. completadas" value={teamCompletedEvals.length} />
+            <KPI
+              label="Eval. completadas"
+              value={completed.length}
+              sub={`${teamCompletedEvals.length} equipo · ${otherCompletedEvals.length} otros · ${personalCompletedCount} personales`}
+            />
             <KPI label="Objetivos equipo" value={`${teamActiveObj} act.`} />
             <KPI label="PDI equipo" value={`${teamActivePdi} act.`} />
           </div>
@@ -452,6 +473,41 @@ export default function MiDesempenoPage() {
           {/* ─── Mis Evaluaciones ─── */}
           {personalTab === 'evaluaciones' && (
             <div className="animate-fade-up">
+              {/* ── Call-out a la bandeja (cuando hay pendientes) ─────────
+                  La lista detallada de pendientes vive ahora solo en
+                  /dashboard/evaluaciones para evitar duplicación. Esta
+                  tarjeta da visibilidad inmediata + acceso directo. */}
+              {myPendingEvals.length > 0 && (
+                <div
+                  className="card animate-fade-up"
+                  style={{
+                    padding: '0.85rem 1rem',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    flexWrap: 'wrap',
+                    borderLeft: '4px solid var(--warning)',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--warning)' }}>
+                      {'📋'} Tienes {myPendingEvals.length} evaluación{myPendingEvals.length !== 1 ? 'es' : ''} pendiente{myPendingEvals.length !== 1 ? 's' : ''} por responder
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem', lineHeight: 1.4 }}>
+                      Respóndelas desde la bandeja para acceder a búsqueda, urgencia, filtros por tipo de relación y orden.
+                    </div>
+                  </div>
+                  <a
+                    href="/dashboard/evaluaciones"
+                    className="btn-primary"
+                    style={{ fontSize: '0.78rem', padding: '0.45rem 0.95rem', textDecoration: 'none', whiteSpace: 'nowrap', fontWeight: 600 }}
+                  >
+                    Ir a la bandeja →
+                  </a>
+                </div>
+              )}
+
               {/* ── Evolución por Ciclo (ARRIBA de los filtros) ───────────
                   Vista histórica, no se afecta por los filtros de abajo.
                   Muestra los últimos 4 ciclos cerrados con tu promedio. */}
@@ -514,69 +570,26 @@ export default function MiDesempenoPage() {
                 </div>
               )}
 
-              {/* Filters */}
+              {/* Filters — solo ciclo (filtra recibidas + alimenta radar) */}
               <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <select style={selectStyle} value={evalStatusFilter} onChange={(e) => setEvalStatusFilter(e.target.value)}>
-                  <option value="">Todos los estados</option>
-                  <option value="pending">Pendientes</option>
-                  <option value="completed">Completadas</option>
-                </select>
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Ciclo:</span>
                 <select style={selectStyle} value={evalCycleFilter} onChange={(e) => setEvalCycleFilter(e.target.value)}>
                   <option value="">Todos los ciclos</option>
                   {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
 
-              {/* Pending — collapsible */}
-              {(() => {
-                const pendingFiltered = myPendingEvals.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter);
-                return pendingFiltered.length > 0 && evalStatusFilter !== 'completed' && (
-                <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderLeft: '4px solid var(--warning)' }}>
-                  <button onClick={() => setExpandedPlan(expandedPlan === 'pending-evals' ? null : 'pending-evals')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem 0', textAlign: 'left' }}>
-                    <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: expandedPlan === 'pending-evals' ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--warning)' }}>Evaluaciones Pendientes ({pendingFiltered.length})</span>
-                  </button>
-                  {expandedPlan === 'pending-evals' && (() => {
-                    const byCycle: Record<string, { name: string; items: any[] }> = {};
-                    for (const ev of pendingFiltered) {
-                      const cid = ev.cycleId || 'sin-ciclo';
-                      const cname = ev.cycle?.name || 'Sin ciclo';
-                      if (!byCycle[cid]) byCycle[cid] = { name: cname, items: [] };
-                      byCycle[cid].items.push(ev);
-                    }
-                    return (
-                    <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {Object.entries(byCycle).map(([cid, { name, items }]) => (
-                        <div key={cid}>
-                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem', padding: '0.2rem 0.5rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
-                            {name} ({items.length})
-                          </div>
-                          {items.map((ev: any, j: number) => (
-                            <a key={j} href={`/dashboard/evaluaciones/${ev.cycleId}/responder/${ev.id}`}
-                              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem 0.4rem 1rem', borderBottom: '1px solid var(--border)', fontSize: '0.82rem', textDecoration: 'none', color: 'inherit', borderRadius: '4px', transition: 'background 0.15s', cursor: 'pointer' }}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-surface)')}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-                              <div>
-                                <span style={{ fontWeight: 600 }}>{ev.evaluatee ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}` : '--'}</span>
-                                <span className="badge badge-accent" style={{ fontSize: '0.65rem', marginLeft: '0.4rem' }}>{relLabel[ev.relationType] || ev.relationType}</span>
-                              </div>
-                              <span className="btn-primary" style={{ fontSize: '0.7rem', padding: '0.2rem 0.6rem' }}>Responder</span>
-                            </a>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                    );
-                  })()}
-                </div>
-              );
-              })()}
+              {/* La lista detallada de Evaluaciones Pendientes se eliminó
+                  de aquí — vive en /dashboard/evaluaciones (bandeja). El
+                  call-out arriba lleva al usuario allá. */}
 
-              {/* Completed — evaluations where I was evaluated */}
+              {/* Recibidas — evaluaciones en las que YO fui evaluado/a.
+                  Esta vista NO está duplicada en la bandeja: es la única
+                  forma del usuario de leer qué le escribieron sus
+                  evaluadores (abre EvaluationResponseViewer). */}
               {(() => {
                 const receivedFiltered = myEvaluationsReceived.filter((ev: any) => !evalCycleFilter || ev.cycleId === evalCycleFilter);
-                return receivedFiltered.length > 0 && evalStatusFilter !== 'pending' && (
+                return receivedFiltered.length > 0 && (
                 <div className="card" style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderLeft: '4px solid var(--success)' }}>
                   <button onClick={() => setExpandedPlan(expandedPlan === 'received-evals' ? null : 'received-evals')}
                     style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem 0', textAlign: 'left' }}>
@@ -951,7 +964,7 @@ export default function MiDesempenoPage() {
           {/* Sub-tabs */}
           <div className="animate-fade-up" style={{ display: 'flex', gap: '0.15rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
             {[
-              { id: 'evaluaciones' as const, label: `Evaluaciones (${teamCompletedEvals.length})` },
+              { id: 'evaluaciones' as const, label: `Evaluaciones (${teamCompletedEvals.length + otherCompletedEvals.length})` },
               { id: 'objetivos' as const, label: `Objetivos` },
               { id: 'pdi' as const, label: `Planes de Desarrollo (${teamDevPlans.length})` },
             ].map(tab => (
@@ -989,7 +1002,12 @@ export default function MiDesempenoPage() {
                   <option value="">Todos los ciclos</option>
                   {closedCycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{teamCompletedEvals.filter((ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter).length} evaluaciones</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                  {(() => {
+                    const inCycle = (ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter;
+                    return teamCompletedEvals.filter(inCycle).length + otherCompletedEvals.filter(inCycle).length;
+                  })()} evaluaciones
+                </span>
               </div>
 
               {/* Team evals — split into Direct Reports + Other Departments */}
@@ -1067,6 +1085,34 @@ export default function MiDesempenoPage() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>{renderGroup(otherEvals, 'other')}</div>
                     </div>
                   )}
+
+                  {/* Footer de reconciliación — explica la diferencia entre lo
+                      mostrado aquí y el KPI de la bandeja. Se calcula con el
+                      mismo filtro de ciclo que las secciones de arriba. */}
+                  {(() => {
+                    const inCycle = (ev: any) => !teamEvalCycleFilter || ev.cycleId === teamEvalCycleFilter;
+                    const selfInCycle = selfCompletedEvals.filter(inCycle).length;
+                    const adminInCycle = adminCompletedEvals.filter(inCycle).length;
+                    const grandTotal = directEvals.length + otherEvals.length + selfInCycle + adminInCycle;
+                    if (grandTotal === 0) return null;
+                    const parts: string[] = [
+                      `${directEvals.length} a equipo directo`,
+                      `${otherEvals.length} a otros departamentos`,
+                    ];
+                    if (selfInCycle > 0) parts.push(`${selfInCycle} autoevaluación${selfInCycle !== 1 ? 'es' : ''}`);
+                    if (adminInCycle > 0) parts.push(`${adminInCycle} a administrador${adminInCycle !== 1 ? 'es' : ''}`);
+                    return (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '0.65rem 0.25rem 0', borderTop: '1px solid var(--border)', marginTop: '0.25rem' }}>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Total realizadas: {grandTotal}</strong>
+                        {' · '}{parts.join(' · ')}
+                        {(selfInCycle > 0 || adminInCycle > 0) && (
+                          <span style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.72rem' }}>
+                            Las autoevaluaciones y evaluaciones a administradores no se listan aquí porque no son del equipo directo, pero se cuentan en el KPI de la bandeja.
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 );
               })()}
