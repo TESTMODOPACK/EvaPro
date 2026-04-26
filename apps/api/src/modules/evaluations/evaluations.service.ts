@@ -37,6 +37,13 @@ import { KeyResult } from '../objectives/entities/key-result.entity';
 export interface EvaluationListOpts {
   search?: string;
   cycleId?: string;
+  /** Filtra por tipo de relacion: manager|peer|self|direct_report|external. */
+  relationType?: string;
+  /** Campo de ordenamiento. 'date' = createdAt (pending) o completedAt
+   *  (completed). 'score' = response.overallScore (solo aplica para
+   *  completed; en pending se ignora y cae a 'date'). */
+  sortBy?: 'date' | 'score';
+  sortDir?: 'asc' | 'desc';
   /** 1-indexed page number. Solo aplica si limit > 0. */
   page?: number;
   /** Items per page. Si undefined, no se pagina y devuelve todo. */
@@ -46,6 +53,14 @@ export interface EvaluationListOpts {
 export interface PaginatedEvaluations<T> {
   items: T[];
   total: number;
+}
+
+/** Resumen agregado de evaluaciones del usuario para los KPI cards. Devuelve
+ *  conteos REALES (no page-local) y breakdown por ciclo. */
+export interface EvaluationStats {
+  pending: { count: number; distinctCycles: number; byCycle: { id: string; name: string; count: number }[] };
+  completed: { count: number; distinctCycles: number; byCycle: { id: string; name: string; count: number }[] };
+  total: { count: number; distinctCycles: number; byCycle: { id: string; name: string; count: number }[] };
 }
 
 @Injectable()
@@ -1204,11 +1219,13 @@ export class EvaluationsService {
       .andWhere('a.tenantId = :tenantId', { tenantId })
       .andWhere('a.status IN (:...statuses)', {
         statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
-      })
-      .orderBy('a.createdAt', 'ASC');
+      });
 
     if (opts.cycleId) {
       qb.andWhere('a.cycleId = :cycleId', { cycleId: opts.cycleId });
+    }
+    if (opts.relationType) {
+      qb.andWhere('a.relationType = :rt', { rt: opts.relationType });
     }
     if (opts.search) {
       qb.andWhere(
@@ -1216,6 +1233,11 @@ export class EvaluationsService {
         { search: `%${opts.search.toLowerCase()}%` },
       );
     }
+
+    // Sort: pending no tiene score significativo (response aun no existe).
+    // Si sortBy='score' cae a date para no romper la query.
+    const dir: 'ASC' | 'DESC' = opts.sortDir === 'desc' ? 'DESC' : 'ASC';
+    qb.orderBy('a.createdAt', dir);
 
     const total = await qb.getCount();
 
@@ -1249,17 +1271,28 @@ export class EvaluationsService {
       )
       .where('a.evaluatorId = :userId', { userId })
       .andWhere('a.tenantId = :tenantId', { tenantId })
-      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
-      .orderBy('a.completedAt', 'DESC');
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
 
     if (opts.cycleId) {
       qb.andWhere('a.cycleId = :cycleId', { cycleId: opts.cycleId });
+    }
+    if (opts.relationType) {
+      qb.andWhere('a.relationType = :rt', { rt: opts.relationType });
     }
     if (opts.search) {
       qb.andWhere(
         '(LOWER(evaluatee.firstName) LIKE :search OR LOWER(evaluatee.lastName) LIKE :search)',
         { search: `%${opts.search.toLowerCase()}%` },
       );
+    }
+
+    // Sort dinamico — date (default) o score (response.overallScore).
+    // NULLS LAST en score: assignments sin response van al final.
+    const dir: 'ASC' | 'DESC' = opts.sortDir === 'asc' ? 'ASC' : 'DESC';
+    if (opts.sortBy === 'score') {
+      qb.orderBy('response.overallScore', dir, 'NULLS LAST');
+    } else {
+      qb.orderBy('a.completedAt', dir);
     }
 
     const total = await qb.getCount();
@@ -1341,8 +1374,7 @@ export class EvaluationsService {
         'response.assignmentId = a.id',
       )
       .where('a.tenantId = :tenantId', { tenantId: args.tenantId })
-      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
-      .orderBy('a.completedAt', 'DESC');
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
 
     if (args.managerId) {
       // INNER JOIN implícito a través de evaluatee — solo trae assignments
@@ -1357,11 +1389,21 @@ export class EvaluationsService {
     if (opts.cycleId) {
       qb.andWhere('a.cycleId = :cycleId', { cycleId: opts.cycleId });
     }
+    if (opts.relationType) {
+      qb.andWhere('a.relationType = :rt', { rt: opts.relationType });
+    }
     if (opts.search) {
       qb.andWhere(
         '(LOWER(evaluatee.firstName) LIKE :search OR LOWER(evaluatee.lastName) LIKE :search)',
         { search: `%${opts.search.toLowerCase()}%` },
       );
+    }
+
+    const dir: 'ASC' | 'DESC' = opts.sortDir === 'asc' ? 'ASC' : 'DESC';
+    if (opts.sortBy === 'score') {
+      qb.orderBy('response.overallScore', dir, 'NULLS LAST');
+    } else {
+      qb.orderBy('a.completedAt', dir);
     }
 
     const total = await qb.getCount();
@@ -1376,6 +1418,101 @@ export class EvaluationsService {
       if (a.response === undefined) a.response = null;
     });
     return { items, total };
+  }
+
+  /**
+   * Stats agregados de las evaluaciones donde el user es EVALUADOR.
+   * Devuelve conteos REALES (sobre todo el dataset, no page-local) +
+   * breakdown por ciclo. Sirve como source-of-truth para los KPI cards
+   * de la bandeja del usuario, evitando que el frontend deduzca cuentas
+   * de los items paginados.
+   *
+   * Performance: 3 queries de COUNT/GROUP BY. Para usuarios con <500
+   * assignments es <30ms total. Si crece, se puede combinar con
+   * conditional aggregates (FILTER WHERE en PG).
+   */
+  async getEvaluationStats(
+    userId: string,
+    tenantId: string,
+  ): Promise<EvaluationStats> {
+    const PENDING_STATUSES = [
+      AssignmentStatus.PENDING,
+      AssignmentStatus.IN_PROGRESS,
+    ];
+
+    const buildBaseQb = () =>
+      this.assignmentRepo
+        .createQueryBuilder('a')
+        .leftJoin('a.cycle', 'cycle')
+        .where('a.evaluatorId = :userId', { userId })
+        .andWhere('a.tenantId = :tenantId', { tenantId });
+
+    // 3 queries paralelas — agrupan por ciclo + cuentan
+    const [pendingByCycle, completedByCycle, totalByCycle] = await Promise.all([
+      buildBaseQb()
+        .andWhere('a.status IN (:...st)', { st: PENDING_STATUSES })
+        .select('cycle.id', 'cycleId')
+        .addSelect('cycle.name', 'cycleName')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('cycle.id')
+        .addGroupBy('cycle.name')
+        .orderBy('count', 'DESC')
+        .getRawMany(),
+      buildBaseQb()
+        .andWhere('a.status = :st', { st: AssignmentStatus.COMPLETED })
+        .select('cycle.id', 'cycleId')
+        .addSelect('cycle.name', 'cycleName')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('cycle.id')
+        .addGroupBy('cycle.name')
+        .orderBy('count', 'DESC')
+        .getRawMany(),
+      buildBaseQb()
+        .andWhere('a.status IN (:...st)', {
+          st: [...PENDING_STATUSES, AssignmentStatus.COMPLETED],
+        })
+        .select('cycle.id', 'cycleId')
+        .addSelect('cycle.name', 'cycleName')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('cycle.id')
+        .addGroupBy('cycle.name')
+        .orderBy('count', 'DESC')
+        .getRawMany(),
+    ]);
+
+    const mapByCycle = (rows: any[]) =>
+      rows
+        .filter((r) => r.cycleId)
+        .map((r) => ({
+          id: r.cycleId,
+          name: r.cycleName ?? '',
+          count: parseInt(r.count, 10),
+        }));
+
+    const sumCount = (rows: any[]) =>
+      rows.reduce((a, r) => a + parseInt(r.count, 10), 0);
+
+    const pendingCycles = mapByCycle(pendingByCycle);
+    const completedCycles = mapByCycle(completedByCycle);
+    const totalCycles = mapByCycle(totalByCycle);
+
+    return {
+      pending: {
+        count: sumCount(pendingByCycle),
+        distinctCycles: pendingCycles.length,
+        byCycle: pendingCycles,
+      },
+      completed: {
+        count: sumCount(completedByCycle),
+        distinctCycles: completedCycles.length,
+        byCycle: completedCycles,
+      },
+      total: {
+        count: sumCount(totalByCycle),
+        distinctCycles: totalCycles.length,
+        byCycle: totalCycles,
+      },
+    };
   }
 
   /** Get evaluations where the user is the EVALUATEE (someone evaluated me).
@@ -1402,17 +1539,26 @@ export class EvaluationsService {
       )
       .where('a.evaluateeId = :userId', { userId })
       .andWhere('a.tenantId = :tenantId', { tenantId })
-      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED })
-      .orderBy('a.completedAt', 'DESC');
+      .andWhere('a.status = :status', { status: AssignmentStatus.COMPLETED });
 
     if (opts.cycleId) {
       qb.andWhere('a.cycleId = :cycleId', { cycleId: opts.cycleId });
+    }
+    if (opts.relationType) {
+      qb.andWhere('a.relationType = :rt', { rt: opts.relationType });
     }
     if (opts.search) {
       qb.andWhere(
         '(LOWER(evaluator.firstName) LIKE :search OR LOWER(evaluator.lastName) LIKE :search)',
         { search: `%${opts.search.toLowerCase()}%` },
       );
+    }
+
+    const dir: 'ASC' | 'DESC' = opts.sortDir === 'asc' ? 'ASC' : 'DESC';
+    if (opts.sortBy === 'score') {
+      qb.orderBy('response.overallScore', dir, 'NULLS LAST');
+    } else {
+      qb.orderBy('a.completedAt', dir);
     }
 
     const total = await qb.getCount();

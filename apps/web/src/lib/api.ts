@@ -55,8 +55,22 @@ export interface PaginatedResponse<T> {
 export interface EvalListParams {
   search?: string;
   cycleId?: string;
+  /** Filtra por relationType (manager|peer|self|direct_report|external) */
+  relationType?: string;
+  /** Campo de ordenamiento. 'date' es el default. 'score' solo en
+   *  endpoints que tienen response (completed, received, team-received). */
+  sortBy?: 'date' | 'score';
+  sortDir?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+}
+
+/** Stats agregados de evaluaciones del usuario. Usado para los KPI cards
+ *  de la bandeja — cuentas REALES, no page-local. */
+export interface EvalStatsResponse {
+  pending: { count: number; distinctCycles: number; byCycle: { id: string; name: string; count: number }[] };
+  completed: { count: number; distinctCycles: number; byCycle: { id: string; name: string; count: number }[] };
+  total: { count: number; distinctCycles: number; byCycle: { id: string; name: string; count: number }[] };
 }
 
 /** Construye `?key=value&...` ignorando entries undefined/null/'' */
@@ -64,6 +78,9 @@ function buildEvalQuery(opts: EvalListParams): string {
   const p = new URLSearchParams();
   if (opts.search) p.set('search', opts.search);
   if (opts.cycleId) p.set('cycleId', opts.cycleId);
+  if (opts.relationType) p.set('relationType', opts.relationType);
+  if (opts.sortBy) p.set('sortBy', opts.sortBy);
+  if (opts.sortDir) p.set('sortDir', opts.sortDir);
   if (opts.page !== undefined) p.set('page', String(opts.page));
   if (opts.limit !== undefined) p.set('limit', String(opts.limit));
   const qs = p.toString();
@@ -759,6 +776,10 @@ export const api = {
           limit: opts.limit ?? 0,
         }),
       ),
+    /** Stats agregados — KPI cards source-of-truth (cuentas reales, no
+     *  page-local). */
+    stats: (token: string) =>
+      request<EvalStatsResponse>('/evaluations/stats', {}, token),
     /** Lista evaluaciones RECIBIDAS por un user arbitrario — requiere
      *  permisos admin/manager (o ser el propio user). Útil para la ficha de
      *  colaborador donde el manager ve la retroalimentación de su equipo. */

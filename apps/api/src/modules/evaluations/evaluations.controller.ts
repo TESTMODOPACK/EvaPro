@@ -251,10 +251,13 @@ export class EvaluationsController {
   //
   // Query params opcionales (back-compat: si no se pasan, devuelve array crudo
   // como antes; si se pasa `?page` o `?limit`, devuelve `{ items, total }`):
-  //   - search:  filtro por nombre/apellido del evaluado (ILIKE)
-  //   - cycleId: limitar a un ciclo
-  //   - page:    1-indexed (default 1)
-  //   - limit:   items por página (1..100)
+  //   - search:       filtro por nombre/apellido del evaluado (ILIKE)
+  //   - cycleId:      limitar a un ciclo
+  //   - relationType: manager|peer|self|direct_report|external
+  //   - sortBy:       date|score (score solo aplica a /completed y /received)
+  //   - sortDir:      asc|desc
+  //   - page:         1-indexed (default 1)
+  //   - limit:        items por página (1..100)
   @Get('evaluations/pending')
   async findPending(
     @Request() req: any,
@@ -263,8 +266,19 @@ export class EvaluationsController {
     cycleId?: string,
     @Query('page') pageParam?: string,
     @Query('limit') limitParam?: string,
+    @Query('relationType') relationType?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
-    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const opts = this.parseEvalListOpts(
+      search,
+      cycleId,
+      pageParam,
+      limitParam,
+      relationType,
+      sortBy,
+      sortDir,
+    );
     const result = await this.evaluationsService.findPendingForUser(
       req.user.userId,
       req.user.tenantId,
@@ -284,8 +298,19 @@ export class EvaluationsController {
     cycleId?: string,
     @Query('page') pageParam?: string,
     @Query('limit') limitParam?: string,
+    @Query('relationType') relationType?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
-    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const opts = this.parseEvalListOpts(
+      search,
+      cycleId,
+      pageParam,
+      limitParam,
+      relationType,
+      sortBy,
+      sortDir,
+    );
     const result = await this.evaluationsService.findCompletedForUser(
       req.user.userId,
       req.user.tenantId,
@@ -296,11 +321,24 @@ export class EvaluationsController {
       : result;
   }
 
+  /** GET /evaluations/stats — KPI counts y breakdown por ciclo (REALES,
+   *  no page-local). Source-of-truth para los KPI cards de la bandeja. */
+  @Get('evaluations/stats')
+  async getEvaluationStats(@Request() req: any) {
+    return this.evaluationsService.getEvaluationStats(
+      req.user.userId,
+      req.user.tenantId,
+    );
+  }
+
   private parseEvalListOpts(
     search: string | undefined,
     cycleId: string | undefined,
     pageParam: string | undefined,
     limitParam: string | undefined,
+    relationType?: string,
+    sortBy?: string,
+    sortDir?: string,
   ) {
     const page =
       pageParam !== undefined ? parseInt(pageParam, 10) : undefined;
@@ -315,7 +353,40 @@ export class EvaluationsController {
     ) {
       throw new BadRequestException('limit debe estar entre 1 y 100');
     }
-    return { search, cycleId, page, limit };
+    // Whitelist de relationType (debe coincidir con enum RelationType del entity)
+    const VALID_RELATION = new Set([
+      'manager',
+      'peer',
+      'self',
+      'direct_report',
+      'external',
+    ]);
+    if (relationType && !VALID_RELATION.has(relationType)) {
+      throw new BadRequestException(
+        `relationType inválido. Valores permitidos: ${Array.from(VALID_RELATION).join(', ')}`,
+      );
+    }
+    const VALID_SORT_BY = new Set(['date', 'score']);
+    const VALID_SORT_DIR = new Set(['asc', 'desc']);
+    if (sortBy && !VALID_SORT_BY.has(sortBy)) {
+      throw new BadRequestException(
+        "sortBy invalido. Valores permitidos: 'date' | 'score'",
+      );
+    }
+    if (sortDir && !VALID_SORT_DIR.has(sortDir)) {
+      throw new BadRequestException(
+        "sortDir invalido. Valores permitidos: 'asc' | 'desc'",
+      );
+    }
+    return {
+      search,
+      cycleId,
+      page,
+      limit,
+      relationType,
+      sortBy: sortBy as 'date' | 'score' | undefined,
+      sortDir: sortDir as 'asc' | 'desc' | undefined,
+    };
   }
 
   /**
@@ -341,8 +412,19 @@ export class EvaluationsController {
     cycleId?: string,
     @Query('page') pageParam?: string,
     @Query('limit') limitParam?: string,
+    @Query('relationType') relationType?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
-    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const opts = this.parseEvalListOpts(
+      search,
+      cycleId,
+      pageParam,
+      limitParam,
+      relationType,
+      sortBy,
+      sortDir,
+    );
     // Solo el manager scopea a sus directos. tenant_admin/super_admin ven
     // todo el tenant.
     const managerId =
@@ -370,8 +452,19 @@ export class EvaluationsController {
     cycleId?: string,
     @Query('page') pageParam?: string,
     @Query('limit') limitParam?: string,
+    @Query('relationType') relationType?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
-    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const opts = this.parseEvalListOpts(
+      search,
+      cycleId,
+      pageParam,
+      limitParam,
+      relationType,
+      sortBy,
+      sortDir,
+    );
     const result = await this.evaluationsService.findEvaluationsOfUser(
       req.user.userId,
       req.user.tenantId,
@@ -401,6 +494,9 @@ export class EvaluationsController {
     cycleId?: string,
     @Query('page') pageParam?: string,
     @Query('limit') limitParam?: string,
+    @Query('relationType') relationType?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     await this.evaluationsService.assertCanViewUserEvaluations(
       userId,
@@ -408,7 +504,15 @@ export class EvaluationsController {
       req.user.tenantId,
       req.user.role,
     );
-    const opts = this.parseEvalListOpts(search, cycleId, pageParam, limitParam);
+    const opts = this.parseEvalListOpts(
+      search,
+      cycleId,
+      pageParam,
+      limitParam,
+      relationType,
+      sortBy,
+      sortDir,
+    );
     const result = await this.evaluationsService.findEvaluationsOfUser(
       userId,
       req.user.tenantId,
