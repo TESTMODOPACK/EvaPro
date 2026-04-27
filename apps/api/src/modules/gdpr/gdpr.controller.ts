@@ -46,9 +46,19 @@ export class GdprController {
    *
    * Step 1 of the 2-step deletion. Emits a 6-digit code via email; the user
    * must then POST /gdpr/delete-my-account/confirm within 30 minutes.
+   *
+   * Restringido a super_admin y external (Opción B):
+   * Empleados de tenants (employee/manager/tenant_admin) NO pueden auto-
+   * eliminarse — el employer es el cliente B2B y necesita procesar
+   * offboarding via su tenant_admin / RRHH. Esto cumple GDPR/Ley 19.628
+   * (el derecho sigue existiendo) pero canaliza el ejercicio por el flujo
+   * apropiado (RRHH solicita por email al DPO; el tenant_admin gatilla).
+   * Externos (consultores, evaluadores invitados sin contrato laboral) y
+   * super_admin (sin tenantId) sí pueden auto-eliminarse directamente.
    */
   @Post('delete-my-account')
   @NoImpersonation()
+  @Roles('super_admin', 'external')
   @HttpCode(HttpStatus.OK)
   async requestDelete(@Req() req: any) {
     const userId = req.user.userId || req.user.id;
@@ -63,9 +73,12 @@ export class GdprController {
    * anonymization cascade, bumps tokenVersion so the current JWT is invalid,
    * and sends a final confirmation email. The client should call auth logout
    * right after receiving 200.
+   *
+   * Mismo @Roles que /delete-my-account — defense-in-depth.
    */
   @Post('delete-my-account/confirm')
   @NoImpersonation()
+  @Roles('super_admin', 'external')
   @HttpCode(HttpStatus.OK)
   async confirmDelete(@Req() req: any, @Body() dto: DeleteConfirmDto) {
     const userId = req.user.userId || req.user.id;

@@ -32,11 +32,20 @@ export default function GdprPrivacyCard() {
   const router = useRouter();
   const toast = useToastStore((s) => s.toast);
   const logout = useAuthStore((s) => s.logout);
+  const currentUser = useAuthStore((s) => s.user);
 
   const { data: myRequests } = useGdprMyRequests();
   const requestExport = useRequestGdprExport();
   const requestDelete = useRequestAccountDeletion();
   const confirmDelete = useConfirmAccountDeletion();
+
+  // Self-delete restringido a super_admin y external (Opción B):
+  // los empleados de tenants (employee/manager/tenant_admin) deben
+  // canalizar la solicitud por su admin de RRHH (compliance B2B +
+  // GDPR/Ley 19.628). El backend tambien rechaza con 403 — esto es
+  // defense-in-depth UX para no mostrar un boton que falle.
+  const canSelfDelete =
+    currentUser?.role === 'super_admin' || currentUser?.role === 'external';
 
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [deleteStep, setDeleteStep] = useState<DeleteStep>("idle");
@@ -202,55 +211,96 @@ export default function GdprPrivacyCard() {
       </div>
 
       {/* ─── Eliminar mi cuenta ─────────────────────────────────────────── */}
-      <div
-        style={{
-          padding: "1rem 1.1rem",
-          border: "1px solid rgba(239,68,68,0.25)",
-          borderRadius: "var(--radius-sm)",
-          background: "rgba(239,68,68,0.04)",
-        }}
-      >
+      {canSelfDelete ? (
         <div
           style={{
-            fontSize: "0.9rem",
-            fontWeight: 600,
-            marginBottom: 4,
-            color: "var(--danger)",
-          }}
-        >
-          🗑 Eliminar mi cuenta permanentemente
-        </div>
-        <p
-          style={{
-            fontSize: "0.8rem",
-            color: "var(--text-secondary)",
-            lineHeight: 1.5,
-            marginBottom: "0.75rem",
-          }}
-        >
-          Tu cuenta será desactivada y tus datos personales anonimizados. Las
-          evaluaciones históricas, firmas y auditoría se conservan por
-          obligación legal sin datos identificables asociados. Esta acción es
-          irreversible.
-        </p>
-        <button
-          type="button"
-          onClick={() => setDeleteStep("confirm")}
-          disabled={requestDelete.isPending || confirmDelete.isPending}
-          style={{
-            padding: "0.5rem 1rem",
+            padding: "1rem 1.1rem",
+            border: "1px solid rgba(239,68,68,0.25)",
             borderRadius: "var(--radius-sm)",
-            border: "1px solid var(--danger)",
-            background: "transparent",
-            color: "var(--danger)",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            cursor: "pointer",
+            background: "rgba(239,68,68,0.04)",
           }}
         >
-          Eliminar mi cuenta
-        </button>
-      </div>
+          <div
+            style={{
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              marginBottom: 4,
+              color: "var(--danger)",
+            }}
+          >
+            🗑 Eliminar mi cuenta permanentemente
+          </div>
+          <p
+            style={{
+              fontSize: "0.8rem",
+              color: "var(--text-secondary)",
+              lineHeight: 1.5,
+              marginBottom: "0.75rem",
+            }}
+          >
+            Tu cuenta será desactivada y tus datos personales anonimizados. Las
+            evaluaciones históricas, firmas y auditoría se conservan por
+            obligación legal sin datos identificables asociados. Esta acción es
+            irreversible.
+          </p>
+          <button
+            type="button"
+            onClick={() => setDeleteStep("confirm")}
+            disabled={requestDelete.isPending || confirmDelete.isPending}
+            style={{
+              padding: "0.5rem 1rem",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--danger)",
+              background: "transparent",
+              color: "var(--danger)",
+              fontSize: "0.82rem",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Eliminar mi cuenta
+          </button>
+        </div>
+      ) : (
+        // Empleados con tenantId (employee/manager/tenant_admin) deben
+        // canalizar la solicitud por su admin de RRHH. Cumplimos GDPR /
+        // Ley 19.628 (el derecho sigue existiendo) pero respetamos el
+        // proceso B2B de offboarding.
+        <div
+          style={{
+            padding: "1rem 1.1rem",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-sm)",
+            background: "var(--bg-surface)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              marginBottom: 4,
+              color: "var(--text-primary)",
+            }}
+          >
+            🗑 Eliminar mis datos personales
+          </div>
+          <p
+            style={{
+              fontSize: "0.8rem",
+              color: "var(--text-secondary)",
+              lineHeight: 1.5,
+              margin: 0,
+            }}
+          >
+            Para ejercer tu derecho a la eliminación de datos personales
+            (GDPR / Ley 19.628), contacta a tu <strong>administrador de
+            RRHH</strong> de la empresa. Tu solicitud será procesada en hasta
+            30 días hábiles. Las evaluaciones históricas, firmas y auditoría
+            se conservan por obligación legal sin datos identificables
+            asociados.
+          </p>
+        </div>
+      )}
 
       {/* ─── Modals ─────────────────────────────────────────────────────── */}
       {showExportConfirm && (
