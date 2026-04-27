@@ -11,9 +11,21 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import * as Sentry from '@sentry/nestjs';
+import { initializeTransactionalContext } from 'typeorm-transactional';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  // F4 Fase A2 — Inicializar el contexto transaccional ANTES de
+  // crear la app. typeorm-transactional usa AsyncLocalStorage para
+  // propagar la transaccion activa a todas las queries de TypeORM
+  // dentro del request, sin tener que refactorizar cada service. Esto
+  // habilita que el TenantContextInterceptor envuelva cada request en
+  // una tx donde SET LOCAL app.current_tenant_id se propaga
+  // correctamente — pre-requisito de RLS (Fase B). Llamar despues de
+  // NestFactory.create rompe porque el patching de DataSource debe
+  // ocurrir antes de que TypeORM inicialice la conexion.
+  initializeTransactionalContext();
+
   // `bufferLogs: true` hace que NestJS acumule los logs de arranque hasta
   // que el LoggerModule (pino) este listo, despues los flushea con el
   // formato correcto. Sin esto los primeros logs salen con el formato

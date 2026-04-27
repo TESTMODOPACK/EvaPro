@@ -1,6 +1,8 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { addTransactionalDataSource } from 'typeorm-transactional';
 
 const logger = new Logger('DatabaseModule');
 
@@ -104,6 +106,21 @@ const logger = new Logger('DatabaseModule');
           logging: !isProduction ? ['query'] : false,
           maxQueryExecutionTime: isProduction ? 3000 : 1000,
         };
+      },
+      // F4 Fase A2 — Registrar el DataSource con typeorm-transactional
+      // para habilitar la propagacion de transactions via AsyncLocalStorage.
+      // Esto permite que TenantContextInterceptor envuelva cada request en
+      // runInTransaction y todas las queries de los services (via repos
+      // tipicas con @InjectRepository) participen automaticamente en la
+      // misma tx — viendo el SET LOCAL app.current_tenant_id que el
+      // interceptor setea. Pre-requisito de RLS en Fase B.
+      dataSourceFactory: async (options) => {
+        if (!options) {
+          throw new Error('TypeORM options are required');
+        }
+        const dataSource = new DataSource(options);
+        await dataSource.initialize();
+        return addTransactionalDataSource(dataSource);
       },
     }),
   ],
