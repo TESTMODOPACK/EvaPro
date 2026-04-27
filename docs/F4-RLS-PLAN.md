@@ -181,11 +181,36 @@ CREATE POLICY tenant_isolation ON evaluation_responses
 
 ---
 
-### Fase C — Roll out a 65 tablas restantes (riesgo medio)
+### Fase C — Roll out a 66 tablas restantes (riesgo medio)
+
+**Estado**: ✅ Artefactos preparados. Pendiente aplicar en prod (después de Fase B + 24-48h).
 
 **Esfuerzo**: 4-6h.
 
-Una migration SQL grande que aplica el mismo patrón de Fase B a las 65 tablas restantes. Misma policy, mismo bypass para super_admin.
+Una migration SQL que aplica el mismo patrón de Fase B a las 66 tablas restantes. Estrategia **dinámica**: itera sobre `information_schema` y aplica el patrón a cualquier tabla con `tenant_id` que aún no lo tenga. Esto cubre tablas nuevas que se agreguen en el futuro automáticamente al re-ejecutar.
+
+**Entregables Fase C**:
+- `apps/api/src/database/sql/2026-04-27-F4C-rls-all-tenant-tables.sql` (DO block que itera + idempotente)
+- `apps/api/src/database/sql/2026-04-27-F4C-rollback-rls-all-tenant-tables.sql` (deshabilita RLS en todas las tablas tenant-scoped, ~2-5s)
+- `apps/api/src/database/sql/2026-04-27-F4C-validate-rls-all.sql` (coverage check + smoke tests en 3 tablas representativas: users, evaluation_assignments, notifications)
+- `docs/F4-RLS-FASE-C-RUNBOOK.md` (runbook con opciones de rollback parcial vs total)
+
+**Validación cubierta**:
+1. ✅ Coverage: TODAS las tablas tenant-scoped tienen RLS + FORCE + policy
+2. ✅ SIN GUC seteado → 0 filas en sample (users, evaluation_assignments, notifications)
+3. ✅ Modo system → ve filas de todas las tablas
+4. ✅ Aislamiento per-tenant en sample (users)
+5. ✅ Cross-tenant UPDATE bloqueado en sample (notifications)
+
+**Smoke tests funcionales** (manuales, post-deploy):
+- Login multi-tenant: ver SOLO data del tenant logueado, sin leak cross-tenant
+- Login super_admin: queries cross-tenant siguen funcionando
+- Crear/editar entidades en cualquier módulo: persiste correctamente
+- Crons (esperar 1 ciclo): logs muestran `[Cron] processing N active tenants` y completan OK
+
+**Plan de rollback**:
+- Opción A: rollback solo Fase C (re-aplicar Fase B después)
+- Opción B: rollback total (deshabilita RLS en TODAS las tablas, incluyendo evaluation_responses)
 
 Validación post-deploy: smoke test recorriendo todas las features de la app, verificando que no haya 0-rows donde antes había datos.
 
@@ -209,7 +234,7 @@ Validación post-deploy: smoke test recorriendo todas las features de la app, ve
 | A3.1 — Helper + cron piloto | 2h | 🟢 Cero | ✅ Mergeado (`dc9406e`) |
 | A3.2 + A3.3 — 28 crons refactor | 4-5h | 🟠 Medio-alto | ✅ Mergeado (`c9eec84`) |
 | B — RLS en tabla pivot | 3-4h | 🔴 Alto (primer cutover) | 📦 Artefactos listos, pendiente aplicar |
-| C — Roll out 65 tablas | 4-6h | 🟠 Medio (Fase B ya validó patrón) | ⏳ Pendiente |
+| C — Roll out 66 tablas | 4-6h | 🟠 Medio (Fase B ya validó patrón) | 📦 Artefactos listos, pendiente aplicar |
 | D — Cleanup | 2-3h | 🟢 Bajo | ⏳ Pendiente |
 | **Total** | **3-5 días** | | |
 
