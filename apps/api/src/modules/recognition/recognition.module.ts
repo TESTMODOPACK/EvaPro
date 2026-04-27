@@ -16,11 +16,13 @@ import { User } from '../users/entities/user.entity';
 import { RecognitionService } from './recognition.service';
 import { RecognitionController } from './recognition.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RlsModule } from '../../common/rls/rls.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Recognition, RecognitionComment, MvpOfTheMonth, Badge, UserBadge, UserPoints, UserPointsSummary, PointsBudget, RedemptionItem, RedemptionTransaction, Challenge, ChallengeProgress, User]),
     forwardRef(() => NotificationsModule),
+    RlsModule,
   ],
   controllers: [RecognitionController],
   providers: [RecognitionService],
