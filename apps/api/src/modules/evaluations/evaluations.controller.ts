@@ -469,6 +469,7 @@ export class EvaluationsController {
       req.user.userId,
       req.user.tenantId,
       opts,
+      req.user.role,
     );
     return pageParam === undefined && limitParam === undefined
       ? result.items
@@ -517,6 +518,7 @@ export class EvaluationsController {
       userId,
       req.user.tenantId,
       opts,
+      req.user.role,
     );
     return pageParam === undefined && limitParam === undefined
       ? result.items
@@ -528,7 +530,12 @@ export class EvaluationsController {
     @Param('assignmentId', ParseUUIDPipe) assignmentId: string,
     @Request() req: any,
   ) {
-    return this.evaluationsService.getAssignmentDetail(assignmentId, req.user.tenantId);
+    return this.evaluationsService.getAssignmentDetail(
+      assignmentId,
+      req.user.tenantId,
+      req.user.role,
+      req.user.userId,
+    );
   }
 
   // ─── Responses — open to all roles (service validates evaluatorId === userId) ─

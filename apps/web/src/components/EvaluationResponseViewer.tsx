@@ -190,7 +190,16 @@ function ViewerBody({
     ? safeParse(template.sections)
     : [];
 
-  const evaluatorName = evaluator
+  // Anonimato peer/direct_report — el backend nulea evaluator/evaluatorId
+  // en estos tipos para empleado/manager (no para admin) y cuando el caller
+  // no es el propio evaluador. Render: "🔒 Anónimo".
+  const isAnonymizedEvaluator =
+    !evaluator &&
+    (assignment?.relationType === 'peer' ||
+      assignment?.relationType === 'direct_report');
+  const evaluatorName = isAnonymizedEvaluator
+    ? '🔒 Anónimo'
+    : evaluator
     ? `${evaluator.firstName || ''} ${evaluator.lastName || ''}`.trim() || evaluator.email
     : assignment?.relationType === 'self'
     ? 'Autoevaluación'
