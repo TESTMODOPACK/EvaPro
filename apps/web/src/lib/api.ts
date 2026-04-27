@@ -296,16 +296,26 @@ export interface AnalyticsData {
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  token?: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _token?: string,
 ): Promise<T> {
+  // F3 Fase 2 — Auth basada en cookie httpOnly. El navegador adjunta
+  // automaticamente la cookie 'access_token' cuando se envia
+  // credentials: 'include'. Ya no mandamos Authorization: Bearer en
+  // headers — el JWT no esta en JavaScript, vive solo en la cookie
+  // (no readable por XSS). El parametro `_token` se mantiene en la
+  // firma para que los callers existentes no rompan; se ignora.
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const url = `${BASE_URL}${path}`;
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
 
   if (!res.ok) {
     // If 401 Unauthorized, clear stale/demo auth and redirect to login
@@ -350,6 +360,16 @@ export const api = {
       request<{ enabled: boolean }>("/auth/2fa/enable", { method: "POST", body: JSON.stringify({ code }) }, token),
     disable2FA: (token: string, password: string) =>
       request<{ disabled: boolean }>("/auth/2fa/disable", { method: "POST", body: JSON.stringify({ password }) }, token),
+    /** F3 Fase 2 — Logout server-side: limpia la cookie httpOnly del
+     *  access_token. El frontend ademas limpia su propio estado
+     *  (Zustand, react-query, sentry) en el handler logout() del store. */
+    logout: () =>
+      request<{ ok: true }>("/auth/logout", { method: "POST" }),
+    /** F3 Fase 2 — Refresh con cookies. El backend setea una nueva
+     *  cookie con el JWT renovado y devuelve { access_token } en el body
+     *  para que el frontend pueda decodificar el nuevo `exp`. */
+    refresh: () =>
+      request<{ access_token: string }>("/auth/refresh", { method: "POST" }),
   },
 
   tenants: {

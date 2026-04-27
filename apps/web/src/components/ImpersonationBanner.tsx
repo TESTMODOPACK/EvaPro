@@ -14,7 +14,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { useAuthStore, decodeJwtPayload } from '@/store/auth.store';
+import { useAuthStore, decodeJwtPayload, decodeJwtExpMs } from '@/store/auth.store';
 
 function formatCountdown(expiresAt: string | undefined): string {
   if (!expiresAt) return '';
@@ -52,8 +52,11 @@ export default function ImpersonationBanner() {
     try {
       const res = await api.impersonation.end(token);
       const nextUser = decodeJwtPayload(res.access_token);
-      if (nextUser) {
-        setAuth(res.access_token, nextUser);
+      const nextExp = decodeJwtExpMs(res.access_token);
+      if (nextUser && nextExp) {
+        // F3 Fase 2: cookie httpOnly (TODO: backend debe setear cookie en
+        // /support/impersonate/end — Fase 2.5).
+        setAuth(nextUser, nextExp);
         router.replace('/dashboard');
       } else {
         // Decoded null — the server returned an invalid token somehow;

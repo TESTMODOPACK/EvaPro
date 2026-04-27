@@ -34,7 +34,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { useAuthStore, decodeJwtPayload } from '@/store/auth.store';
+import { useAuthStore, decodeJwtPayload, decodeJwtExpMs } from '@/store/auth.store';
 import { useToastStore } from '@/store/toast.store';
 import useFocusTrap from '@/hooks/useFocusTrap';
 
@@ -64,8 +64,12 @@ export default function ImpersonateTenantButton({ tenantId, tenantName, disabled
     try {
       const res = await api.impersonation.start(token, { tenantId, reason: trimmed });
       const nextUser = decodeJwtPayload(res.access_token);
-      if (!nextUser) throw new Error('Token inválido del servidor');
-      setAuth(res.access_token, nextUser);
+      const nextExp = decodeJwtExpMs(res.access_token);
+      if (!nextUser || !nextExp) throw new Error('Token inválido del servidor');
+      // F3 Fase 2: el access_token solo se decodifica para extraer user/exp.
+      // La auth real va por cookie (TODO: el endpoint de impersonacion debe
+      // setear la cookie tambien — Fase 2.5 / pendiente).
+      setAuth(nextUser, nextExp);
       setOpen(false);
       setReason('');
       router.replace('/dashboard');

@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { useAuthStore } from '@/store/auth.store';
+import { useAuthStore, decodeJwtExpMs } from '@/store/auth.store';
+import { api } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import Toast from '@/components/Toast';
@@ -72,7 +73,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { t } = useTranslation();
   const router   = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, token, user, logout, _hasHydrated } = useAuthStore();
+  const { isAuthenticated, user, tokenExpiresAt, logout, _hasHydrated } = useAuthStore();
   const { data: sub, isLoading: subLoading, isError: subError } = useMySubscription();
   const [showOnboarding, setShowOnboarding] = useState(false); // Disabled: onboarding is done by super_admin at registration
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -97,11 +98,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // de decidir — sin este guard la PWA standalone puede quedar spinner
     // infinito si el storage no hidrata (bug conocido en algunos webviews).
     if (!_hasHydrated && !hydrationTimeout) return;
-    if (!isAuthenticated || token === 'demo-token' || !token) {
-      logout();
+    // F3 Fase 2: Auth basada en cookie httpOnly. Comprobamos isAuthenticated
+    // + presencia de user (cargado al login). El JWT crudo ya no esta en JS,
+    // la cookie hace el trabajo en cada request. Si el usuario no esta
+    // autenticado o no hay user en el store, redirect a login.
+    if (!isAuthenticated || !user) {
+      void logout();
       router.replace('/login');
     }
-  }, [_hasHydrated, hydrationTimeout, isAuthenticated, token, router, logout]);
+  }, [_hasHydrated, hydrationTimeout, isAuthenticated, user, router, logout]);
 
   // ─── Silent token refresh based on user activity ─────────────────────
   const lastActivityRef = useRef(Date.now());
@@ -124,17 +129,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [updateActivity]);
 
   // Periodic check: refresh token if about to expire and user is active
+  // F3 Fase 2: refresh ahora va por cookie. La llamada a /auth/refresh
+  // usa el wrapper api.auth.refresh (que envia credentials: 'include')
+  // — el servidor lee la cookie del access_token (con grace period de
+  // 15min post-expiracion permitido por jwt-refresh.strategy.ts), genera
+  // un JWT nuevo y setea la cookie nueva. El body devuelve el nuevo
+  // access_token que decodificamos UNICAMENTE para extraer el `exp`.
   useEffect(() => {
-    if (!token || !isAuthenticated) return;
-    const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
-
-    // Decode token expiration
-    const getTokenExp = (): number => {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        return (payload.exp || 0) * 1000; // Convert to ms
-      } catch { return Date.now() + 30 * 60 * 1000; } // Fallback 30min
-    };
+    if (!isAuthenticated || !user) return;
 
     const interval = setInterval(async () => {
       const idleTime = Date.now() - lastActivityRef.current;
@@ -142,30 +144,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       // Inactive too long → logout
       if (idleTime > INACTIVITY_LIMIT) {
         clearInterval(interval);
-        logout();
+        void logout();
         router.replace('/login');
         return;
       }
 
       // Token about to expire and user is active → refresh
-      const expMs = getTokenExp();
+      const expMs = tokenExpiresAt ?? Date.now() + 30 * 60 * 1000; // fallback 30min
       const timeLeft = expMs - Date.now();
 
       if (timeLeft < REFRESH_MARGIN && !refreshingRef.current) {
         refreshingRef.current = true;
         try {
-          const res = await fetch(`${API}/auth/refresh`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.access_token && user) {
-              useAuthStore.getState().setAuth(data.access_token, user);
-            }
+          const data = await api.auth.refresh();
+          // Decode the new token to update tokenExpiresAt — el JWT en si
+          // no se guarda en JS, solo extraemos el exp para programar el
+          // proximo refresh.
+          if (data?.access_token) {
+            const newExp = decodeJwtExpMs(data.access_token);
+            if (newExp) useAuthStore.getState().setTokenExpiresAt(newExp);
           }
         } catch {
-          // Network error — skip this refresh cycle
+          // Network error or 401 — skip this cycle. Si el refresh falla
+          // (cookie expirada / fuera del grace period), el siguiente
+          // request con cookie expirada disparara el flujo de 401 →
+          // logout en api.ts > request().
         } finally {
           refreshingRef.current = false;
         }
@@ -173,7 +176,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }, CHECK_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [token, isAuthenticated, user, logout, router]);
+  }, [isAuthenticated, user, tokenExpiresAt, logout, router]);
 
   // Onboarding banner disabled — configuration is now handled in Ajustes (Settings)
   // The onboarding page still exists for manual access if needed.
@@ -188,7 +191,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return 'suspended';
   })();
 
-  if (!isAuthenticated || token === 'demo-token' || !token) {
+  if (!isAuthenticated || !user) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span className="spinner" />

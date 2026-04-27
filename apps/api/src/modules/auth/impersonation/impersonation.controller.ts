@@ -6,13 +6,17 @@ import {
   HttpStatus,
   Post,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import type { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { ImpersonationService } from './impersonation.service';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
+import { setAccessTokenCookie } from '../cookie.helper';
 
 class StartImpersonationDto {
   @IsUUID()
@@ -39,32 +43,48 @@ import { getClientIp } from '../../../common/utils/get-client-ip';
  */
 @Controller('support')
 export class ImpersonationController {
-  constructor(private readonly svc: ImpersonationService) {}
+  constructor(
+    private readonly svc: ImpersonationService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  private get isProd(): boolean {
+    return this.configService.get<string>('NODE_ENV') === 'production';
+  }
 
   @Post('impersonate')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin')
   @HttpCode(HttpStatus.OK)
-  async start(@Req() req: any, @Body() dto: StartImpersonationDto) {
+  async start(
+    @Req() req: any,
+    @Body() dto: StartImpersonationDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     // Safety: even RolesGuard should have caught this, but belt + suspenders.
     // Don't allow an impersonation token to start ANOTHER impersonation —
     // the `impersonatedBy` claim would have to nest, which we don't support.
     if (req.user?.impersonatedBy) {
       throw new ForbiddenException('No se puede iniciar una impersonación desde otra impersonación.');
     }
-    return this.svc.start(
+    const result = await this.svc.start(
       req.user.userId,
       dto.tenantId,
       dto.reason,
       dto.targetUserId,
       getClientIp(req),
     );
+    // F3 Fase 2 — Reemplaza la cookie del super_admin con la cookie de
+    // impersonacion. La cookie original se sobrescribe; al terminar
+    // (`/support/impersonate/end`) se restaura la del super_admin.
+    setAccessTokenCookie(res, result.access_token, this.isProd);
+    return result;
   }
 
   @Post('impersonate/end')
   @UseGuards(AuthGuard('jwt'))
   @HttpCode(HttpStatus.OK)
-  async end(@Req() req: any) {
+  async end(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     // Only callable by an impersonation token — if there's no
     // `impersonatedBy` claim, there's nothing to end.
     if (!req.user?.impersonatedBy) {
@@ -85,12 +105,15 @@ export class ImpersonationController {
     } catch {
       // Don't fail the end call because we can't decode — just skip timing.
     }
-    return this.svc.end(
+    const result = await this.svc.end(
       req.user.impersonatedBy,
       req.user.userId,
       req.user.tenantId ?? null,
       startedAtMs,
       getClientIp(req),
     );
+    // F3 Fase 2 — Restaura la cookie del super_admin (el JWT original).
+    setAccessTokenCookie(res, result.access_token, this.isProd);
+    return result;
   }
 }

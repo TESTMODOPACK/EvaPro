@@ -4,7 +4,7 @@ import { useState, FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
-import { useAuthStore, decodeJwtPayload } from "@/store/auth.store";
+import { useAuthStore, decodeJwtPayload, decodeJwtExpMs } from "@/store/auth.store";
 import { formatRutInput, validateRut, normalizeRut } from "@/lib/rut";
 import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
 import PasswordInput from "@/components/PasswordInput";
@@ -88,14 +88,18 @@ export default function LoginPage() {
 
   // SSO callback: the IdP redirects to /login?sso_token=xxx. If present,
   // finish the session client-side and navigate to the dashboard.
+  // F3 Fase 2: el SSO callback en backend YA seteo la cookie httpOnly
+  // antes del redirect. El token en la URL se usa SOLO para extraer
+  // user info (decodeJwtPayload) — no se guarda en localStorage.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const token = params.get('sso_token');
     if (!token) return;
     const user = decodeJwtPayload(token);
-    if (user) {
-      setAuth(token, user);
+    const expMs = decodeJwtExpMs(token);
+    if (user && expMs) {
+      setAuth(user, expMs);
       router.replace('/dashboard');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,17 +107,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      const stored = localStorage.getItem("evapro-auth");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (parsed?.state?.token && parsed.state.token !== "demo-token") {
-            router.replace("/dashboard");
-            return;
-          }
-        } catch { /* ignore */ }
-      }
-      useAuthStore.getState().logout();
+      router.replace('/dashboard');
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -145,7 +139,11 @@ export default function LoginPage() {
         return;
       }
 
+      // F3 Fase 2: la cookie httpOnly ya esta seteada por el backend.
+      // El access_token del body se usa SOLO para extraer user info y
+      // exp — NO se persiste en JS.
       const user = decodeJwtPayload(access_token);
+      const expMs = decodeJwtExpMs(access_token);
       if (!user) {
         // mustChangePassword path: no token issued, we still want the modal.
         if (mustChangePassword) {
@@ -167,7 +165,10 @@ export default function LoginPage() {
         return;
       }
 
-      setAuth(access_token, user);
+      if (!expMs) {
+        throw new Error("Token sin claim exp");
+      }
+      setAuth(user, expMs);
       router.replace("/dashboard");
     } catch (err: any) {
       if (err?.message?.includes("fetch") || err?.message?.includes("network")) {
@@ -584,7 +585,8 @@ export default function LoginPage() {
                         const result = await api.auth.login(email.trim(), newPwd, tenantIdentifier);
                         const { access_token } = result as any;
                         const user = decodeJwtPayload(access_token);
-                        if (user) { setAuth(access_token, user); router.replace("/dashboard"); }
+                        const expMs = decodeJwtExpMs(access_token);
+                        if (user && expMs) { setAuth(user, expMs); router.replace("/dashboard"); }
                       } catch { setChangePwdMsg('Contraseña cambiada. Por favor inicia sesión nuevamente.'); setShowForceChange(false); }
                     }, 1500);
                   } catch (err: any) {
