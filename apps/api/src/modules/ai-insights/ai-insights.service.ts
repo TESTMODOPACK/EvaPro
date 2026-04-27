@@ -4,6 +4,7 @@ import { DataSource, Repository, MoreThan, MoreThanOrEqual, IsNull, In } from 't
 import { createHash } from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { AiInsight, InsightType } from './entities/ai-insight.entity';
+import { AiCallLog } from './entities/ai-call-log.entity';
 import { ReportsService } from '../reports/reports.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
@@ -41,6 +42,8 @@ export class AiInsightsService {
   constructor(
     @InjectRepository(AiInsight)
     private readonly insightRepo: Repository<AiInsight>,
+    @InjectRepository(AiCallLog)
+    private readonly callLogRepo: Repository<AiCallLog>,
     @InjectRepository(EvaluationResponse)
     private readonly responseRepo: Repository<EvaluationResponse>,
     @InjectRepository(EvaluationAssignment)
@@ -383,8 +386,12 @@ export class AiInsightsService {
       const { planLimit, periodStart } = await this.getSubscriptionAiInfo(tenantId);
       if (planLimit <= 0) return;
 
-      // Count insights in current period
-      const periodUsed = await this.insightRepo.count({
+      // Count CALLS in current period (lee de ai_call_logs, source-of-truth
+      // del uso real). Antes leia de ai_insights, pero esa tabla solo se
+      // persistia con parse exitoso → undercounting cuando Claude devolvia
+      // JSON malformado. Ahora cada llamada al API queda registrada en
+      // ai_call_logs aunque parseJson falle.
+      const periodUsed = await this.callLogRepo.count({
         where: { tenantId, createdAt: MoreThan(periodStart) },
       });
 
@@ -426,7 +433,10 @@ export class AiInsightsService {
     // Kept as stub to avoid breaking callers; will be cleaned up later.
   }
 
-  private async callClaude(prompt: string, maxTokens = 2000): Promise<{ text: string; tokensUsed: number }> {
+  private async callClaude(
+    prompt: string,
+    maxTokens = 2000,
+  ): Promise<{ text: string; tokensUsed: number; inputTokens: number; outputTokens: number }> {
     const client = this.ensureClient();
 
     try {
@@ -438,9 +448,11 @@ export class AiInsightsService {
 
       const textBlock = response.content.find((b) => b.type === 'text');
       const text = textBlock ? textBlock.text : '';
-      const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0);
+      const inputTokens = response.usage?.input_tokens || 0;
+      const outputTokens = response.usage?.output_tokens || 0;
+      const tokensUsed = inputTokens + outputTokens;
 
-      return { text, tokensUsed };
+      return { text, tokensUsed, inputTokens, outputTokens };
     } catch (error: any) {
       this.logger.error(`Anthropic API error: ${error.message}`, error.stack);
 
@@ -455,6 +467,107 @@ export class AiInsightsService {
       }
       throw new BadRequestException(`Error al comunicarse con la IA: ${error.message || 'Error desconocido'}`);
     }
+  }
+
+  /**
+   * Helper centralizado para los 8 paths que llaman a Claude y persisten
+   * un insight. Encapsula el patron:
+   *
+   *   1. callClaude(prompt) → consume tokens en Anthropic
+   *   2. parseJson(text) → puede LANZAR si Claude devolvio JSON malformado
+   *   3. save AiInsight (solo si parse OK)
+   *   4. **SIEMPRE** persistir AiCallLog (audit trail independiente del parse)
+   *
+   * Si parseJson falla:
+   *   - El insight NO se persiste (content invalido)
+   *   - El call_log SI se persiste con `parseSuccess=false` y `errorMessage`
+   *   - Se lanza BadRequestException para que el caller falle visiblemente
+   *
+   * Esto asegura que TODOS los tokens consumidos quedan trackeados en
+   * `ai_call_logs` aunque el parse haya fallado — fix del bug donde
+   * `getAiUsageLog` mostraba 0 ejecuciones a pesar de N+ usos en el
+   * dashboard de Anthropic.
+   *
+   * @param opts.tenantId — tenant que dispara la generacion
+   * @param opts.type — InsightType.SUMMARY, BIAS, etc.
+   * @param opts.generatedBy — userId que disparo
+   * @param opts.prompt — prompt completo a enviar a Claude
+   * @param opts.maxTokens — limite de output (default 2000)
+   * @param opts.buildInsightFields — funcion que retorna los campos
+   *   especificos del insight (userId, cycleId, scopeEntityId, etc.)
+   *   en base al `content` parseado. Solo se llama si parse OK.
+   */
+  private async callClaudeAndPersistInsight(opts: {
+    tenantId: string;
+    type: InsightType;
+    generatedBy: string;
+    prompt: string;
+    maxTokens?: number;
+    /** Transforma el JSON parseado al `content` que se persiste. Default: identidad. */
+    buildContent?: (parsed: any) => any;
+    /** Campos extra del AiInsight (userId, cycleId, scopeEntityId). */
+    buildInsightFields: (content: any) => Partial<AiInsight>;
+  }): Promise<AiInsight> {
+    const { text, tokensUsed, inputTokens, outputTokens } = await this.callClaude(
+      opts.prompt,
+      opts.maxTokens,
+    );
+
+    let parseSuccess = true;
+    let parseError: string | null = null;
+    let parsed: any = null;
+    let finalContent: any = null;
+    try {
+      parsed = this.parseJson(text);
+      finalContent = opts.buildContent ? opts.buildContent(parsed) : parsed;
+    } catch (err: any) {
+      parseSuccess = false;
+      parseError = (err?.message ?? String(err)).slice(0, 1000);
+    }
+
+    let savedInsight: AiInsight | null = null;
+    if (parseSuccess && finalContent) {
+      const extraFields = opts.buildInsightFields(finalContent);
+      const insight = this.insightRepo.create({
+        ...extraFields,
+        tenantId: opts.tenantId,
+        type: opts.type,
+        content: finalContent,
+        model: MODEL,
+        tokensUsed,
+        generatedBy: opts.generatedBy,
+      });
+      savedInsight = await this.insightRepo.save(insight);
+    }
+
+    // Persistir audit trail SIEMPRE (parseSuccess true o false).
+    try {
+      await this.callLogRepo.save(
+        this.callLogRepo.create({
+          tenantId: opts.tenantId,
+          type: opts.type,
+          generatedBy: opts.generatedBy,
+          tokensUsed,
+          inputTokens,
+          outputTokens,
+          model: MODEL,
+          parseSuccess,
+          errorMessage: parseError,
+          insightId: savedInsight?.id ?? null,
+        }),
+      );
+    } catch (logErr: any) {
+      // No critico — log pero no rompemos el flow. El insight se persistio (si
+      // parse OK) o el caller va a recibir el error de parse.
+      this.logger.warn(`Failed to persist ai_call_log: ${logErr?.message ?? logErr}`);
+    }
+
+    if (!parseSuccess) {
+      throw new BadRequestException(
+        'La IA no pudo generar un informe estructurado. Intente nuevamente.',
+      );
+    }
+    return savedInsight!;
   }
 
   private parseJson(text: string): any {
@@ -562,19 +675,20 @@ export class AiInsightsService {
       textResponses: textResponses.map((t) => sanitizeForPrompt(t)),
     });
 
-    const { text, tokensUsed } = await this.callClaude(prompt);
-    const content = this.parseJson(text);
-
-    // Validate response structure
-    if (!content.executiveSummary && !content.resumenEjecutivo && !content.fortalezas && !content.strengths) {
-      this.logger.warn('AI returned unexpected summary structure, saving as-is');
-    }
-
-    const insight = this.insightRepo.create({
-      tenantId, type: InsightType.SUMMARY, userId, cycleId,
-      content, model: MODEL, tokensUsed, generatedBy,
+    const saved = await this.callClaudeAndPersistInsight({
+      tenantId,
+      type: InsightType.SUMMARY,
+      generatedBy,
+      prompt,
+      buildInsightFields: (content) => {
+        // Validate response structure (warn-only, no throw)
+        if (!content.executiveSummary && !content.resumenEjecutivo && !content.fortalezas && !content.strengths) {
+          this.logger.warn('AI returned unexpected summary structure, saving as-is');
+        }
+        return { userId, cycleId };
+      },
     });
-    const saved = await this.insightRepo.save(insight);
+
     await this.trackAddonUsage(tenantId);
 
     try {
@@ -667,14 +781,14 @@ export class AiInsightsService {
       scoreDistribution: analytics.scoreDistribution || [],
     });
 
-    const { text, tokensUsed } = await this.callClaude(prompt);
-    const content = this.parseJson(text);
-
-    const insight = this.insightRepo.create({
-      tenantId, type: InsightType.BIAS, userId: null, cycleId,
-      content, model: MODEL, tokensUsed, generatedBy,
+    const saved = await this.callClaudeAndPersistInsight({
+      tenantId,
+      type: InsightType.BIAS,
+      generatedBy,
+      prompt,
+      buildInsightFields: () => ({ userId: null, cycleId }),
     });
-    const saved = await this.insightRepo.save(insight);
+
     await this.trackAddonUsage(tenantId);
 
     try {
@@ -759,14 +873,14 @@ export class AiInsightsService {
       recentFeedback: feedback.map((f) => ({ sentiment: f.sentiment, message: f.message })),
     });
 
-    const { text, tokensUsed } = await this.callClaude(prompt);
-    const content = this.parseJson(text);
-
-    const insight = this.insightRepo.create({
-      tenantId, type: InsightType.SUGGESTIONS, userId, cycleId,
-      content, model: MODEL, tokensUsed, generatedBy,
+    const saved = await this.callClaudeAndPersistInsight({
+      tenantId,
+      type: InsightType.SUGGESTIONS,
+      generatedBy,
+      prompt,
+      buildInsightFields: () => ({ userId, cycleId }),
     });
-    const saved = await this.insightRepo.save(insight);
+
     await this.trackAddonUsage(tenantId);
 
     try {
@@ -864,34 +978,33 @@ export class AiInsightsService {
       });
 
       // 800 tokens es suficiente para 3-5 topics con rationale cortos.
-      const { text, tokensUsed } = await this.callClaude(prompt, 800);
-      const content = this.parseJson(text);
-
-      // Validación del shape esperado — si falla, al menos retornamos array vacío
-      // para no romper el caller.
-      if (!content.topics || !Array.isArray(content.topics)) {
-        this.logger.warn(
-          `AGENDA_SUGGESTIONS returned unexpected shape — coercing to empty array. checkinId=${checkinId.slice(0, 8)}`,
-        );
-        content.topics = [];
-      }
-
-      const insight = this.insightRepo.create({
+      const saved = await this.callClaudeAndPersistInsight({
         tenantId,
         type: InsightType.AGENDA_SUGGESTIONS,
-        userId: null,
-        cycleId: null, // NO asociado a ciclo
-        scopeEntityId: checkinId,
-        content,
-        model: MODEL,
-        tokensUsed,
         generatedBy,
+        prompt,
+        maxTokens: 800,
+        buildInsightFields: (content) => {
+          // Validación del shape esperado — si falla, al menos retornamos array vacío
+          // para no romper el caller.
+          if (!content.topics || !Array.isArray(content.topics)) {
+            this.logger.warn(
+              `AGENDA_SUGGESTIONS returned unexpected shape — coercing to empty array. checkinId=${checkinId.slice(0, 8)}`,
+            );
+            content.topics = [];
+          }
+          return {
+            userId: null,
+            cycleId: null, // NO asociado a ciclo
+            scopeEntityId: checkinId,
+          };
+        },
       });
-      const saved = await this.insightRepo.save(insight);
+
       await this.trackAddonUsage(tenantId);
 
       this.logger.log(
-        `AGENDA_SUGGESTIONS generated: tenant=${tenantId.slice(0, 8)}, checkin=${checkinId.slice(0, 8)}, topics=${content.topics.length}, tokens=${tokensUsed}`,
+        `AGENDA_SUGGESTIONS generated: tenant=${tenantId.slice(0, 8)}, checkin=${checkinId.slice(0, 8)}, tokens=${saved.tokensUsed}`,
       );
 
       return saved;
@@ -1430,42 +1543,56 @@ export class AiInsightsService {
     };
   }
 
-  /** Full AI usage log for audit tab — all generations with user info */
+  /**
+   * Audit trail completo de llamadas al API de Anthropic. Lee de
+   * `ai_call_logs` (no de `ai_insights`) — esto garantiza que las
+   * llamadas que fallaron en `parseJson` tambien quedan visibles
+   * (son las que aparecen con `parseSuccess=false`).
+   *
+   * Retorna el mismo shape JSON que la version anterior (data/total/
+   * totalTokens) para que el frontend no necesite cambios. Los campos
+   * adicionales (`parseSuccess`, `errorMessage`, `inputTokens`,
+   * `outputTokens`) van como extras.
+   */
   async getAiUsageLog(tenantId: string, page = 1, limit = 25): Promise<{ data: any[]; total: number; totalTokens: number }> {
     const typeLabels: Record<string, string> = {
       summary: 'Resumen de desempeño', bias: 'Detección de sesgo',
       suggestions: 'Sugerencias de desarrollo', survey_analysis: 'Análisis de encuesta',
       cv_analysis: 'Análisis de CV', recruitment_recommendation: 'Recomendación de selección',
       cycle_comparison: 'Comparativa de ciclos (IA)',
+      agenda_suggestions: 'Sugerencias de agenda 1:1',
+      flight_risk: 'Riesgo de fuga',
     };
 
     const where = tenantId ? { tenantId } : {};
-    const [records, total] = await this.insightRepo.findAndCount({
+    const [records, total] = await this.callLogRepo.findAndCount({
       where,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     });
 
-    // Enrich with user names
-    const userIds = [...new Set(records.map(r => r.generatedBy).filter(Boolean))];
+    // Enrich with user names (igual que antes)
+    const userIds = [...new Set(records.map((r) => r.generatedBy).filter(Boolean))];
     const userMap = new Map<string, any>();
     if (userIds.length > 0) {
       const users = await this.userRepo.find({
-        where: userIds.map(id => ({ id })),
+        where: userIds.map((id) => ({ id })),
         select: ['id', 'email', 'firstName', 'lastName'],
       });
       for (const u of users) userMap.set(u.id, u);
     }
 
-    // Total tokens
-    const qb = this.insightRepo.createQueryBuilder('i')
-      .select('COALESCE(SUM(i.tokensUsed), 0)', 'total');
-    if (tenantId) qb.where('i.tenantId = :tenantId', { tenantId });
+    // Total tokens consumidos (suma sobre TODAS las llamadas, incluso las
+    // que fallaron en parse — es lo que cobra Anthropic).
+    const qb = this.callLogRepo
+      .createQueryBuilder('c')
+      .select('COALESCE(SUM(c.tokensUsed), 0)', 'total');
+    if (tenantId) qb.where('c.tenantId = :tenantId', { tenantId });
     const tokensResult = await qb.getRawOne();
 
     return {
-      data: records.map(r => {
+      data: records.map((r) => {
         const u = r.generatedBy ? userMap.get(r.generatedBy) : null;
         return {
           id: r.id,
@@ -1473,6 +1600,12 @@ export class AiInsightsService {
           typeLabel: typeLabels[r.type] || r.type,
           createdAt: r.createdAt,
           tokensUsed: r.tokensUsed || 0,
+          inputTokens: r.inputTokens || 0,
+          outputTokens: r.outputTokens || 0,
+          model: r.model,
+          parseSuccess: r.parseSuccess,
+          errorMessage: r.errorMessage,
+          insightId: r.insightId,
           generatedBy: r.generatedBy,
           userName: u ? `${u.firstName} ${u.lastName}` : null,
           userEmail: u?.email || null,
@@ -1589,26 +1722,26 @@ Responde en formato JSON con esta estructura exacta:
 
 Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
 
-    const { text, tokensUsed } = await this.callClaude(prompt, 3000);
-    const analysis = this.parseJson(text);
-
-    // Save as insight for quota tracking
-    const insight = this.insightRepo.create({
+    const saved = await this.callClaudeAndPersistInsight({
       tenantId,
       type: InsightType.CYCLE_COMPARISON,
-      cycleId: cycleIds[0], // Primary cycle
       generatedBy,
-      content: { analysis, cyclesCompared: cycles.map(c => c.name) },
-      tokensUsed,
+      prompt,
+      maxTokens: 3000,
+      buildContent: (parsed) => ({
+        analysis: parsed,
+        cyclesCompared: cycles.map((c) => c.name),
+      }),
+      buildInsightFields: () => ({ cycleId: cycleIds[0] }),
     });
-    await this.insightRepo.save(insight);
+
     await this.trackAddonUsage(tenantId);
 
     return {
-      analysis,
+      analysis: (saved.content as any).analysis,
       cyclesCompared: cycles,
-      generatedAt: new Date().toISOString(),
-      tokensUsed,
+      generatedAt: saved.createdAt.toISOString(),
+      tokensUsed: saved.tokensUsed,
     };
     }); // ← cierra withAiQuotaLock
   }
@@ -1757,22 +1890,18 @@ Sé específico con los números. Responde solo el JSON, sin texto adicional.`;
     }
 
     const prompt = buildSurveyAnalysisPrompt(surveyData);
-    const { text, tokensUsed } = await this.callClaude(prompt, 4000);
-    this.logger.log('Survey AI response length: ' + text.length + ' chars, tokens: ' + tokensUsed);
-    const content = this.parseJson(text);
-
-    const insight = this.insightRepo.create({
+    const saved = await this.callClaudeAndPersistInsight({
       tenantId,
       type: InsightType.SURVEY_ANALYSIS,
-      userId: null,
-      cycleId: surveyId, // Reuse cycleId to store surveyId
-      content,
-      model: MODEL,
-      tokensUsed,
       generatedBy,
+      prompt,
+      maxTokens: 4000,
+      buildInsightFields: () => ({
+        userId: null,
+        cycleId: surveyId, // Reuse cycleId to store surveyId
+      }),
     });
-
-    const saved = await this.insightRepo.save(insight);
+    this.logger.log(`Survey AI insight saved: tokens=${saved.tokensUsed}`);
     await this.trackAddonUsage(tenantId);
     return saved;
     }); // ← cierra withAiQuotaLock
@@ -1894,18 +2023,23 @@ Genera un informe en formato JSON con esta estructura exacta:
 IMPORTANTE: El matchPercentage debe reflejar el cruce REAL entre requisitos del cargo y perfil del candidato.
 Responde SOLO con el JSON, sin texto adicional ni markdown.`;
 
-    const { text, tokensUsed } = await this.callClaude(prompt, 3000);
-    this.logger.log('CV AI response length: ' + text.length + ' chars');
+    const aiCall = await this.callClaude(prompt, 3000);
+    this.logger.log('CV AI response length: ' + aiCall.text.length + ' chars');
 
     let content: any;
+    let parseSuccess = true;
+    let parseError: string | null = null;
     try {
-      content = this.parseJson(text);
-    } catch (_e) {
-      // If parse fails completely, store structured fallback
-      content = { resumenEjecutivo: text.slice(0, 500), matchPercentage: 0, error: true };
+      content = this.parseJson(aiCall.text);
+    } catch (e: any) {
+      parseSuccess = false;
+      parseError = (e?.message ?? String(e)).slice(0, 1000);
+      // If parse fails completely, store structured fallback (este endpoint
+      // NO falla el call — degradacion graceful para UX de recruitment).
+      content = { resumenEjecutivo: aiCall.text.slice(0, 500), matchPercentage: 0, error: true };
     }
 
-    this.logger.log(`Creating CV_ANALYSIS insight: tenant=${tenantId.slice(0,8)}, candidate=${candidateId.slice(0,8)}, tokens=${tokensUsed}`);
+    this.logger.log(`Creating CV_ANALYSIS insight: tenant=${tenantId.slice(0,8)}, candidate=${candidateId.slice(0,8)}, tokens=${aiCall.tokensUsed}`);
     const insight = this.insightRepo.create({
       tenantId,
       type: InsightType.CV_ANALYSIS,
@@ -1913,13 +2047,34 @@ Responde SOLO con el JSON, sin texto adicional ni markdown.`;
       userId: null,
       content,
       model: MODEL,
-      tokensUsed,
+      tokensUsed: aiCall.tokensUsed,
       generatedBy,
     });
-    await this.insightRepo.save(insight);
+    const savedInsight = await this.insightRepo.save(insight);
+
+    // Audit trail SIEMPRE (parse OK o fallback con error).
+    try {
+      await this.callLogRepo.save(
+        this.callLogRepo.create({
+          tenantId,
+          type: InsightType.CV_ANALYSIS,
+          generatedBy,
+          tokensUsed: aiCall.tokensUsed,
+          inputTokens: aiCall.inputTokens,
+          outputTokens: aiCall.outputTokens,
+          model: MODEL,
+          parseSuccess,
+          errorMessage: parseError,
+          insightId: savedInsight.id,
+        }),
+      );
+    } catch (logErr: any) {
+      this.logger.warn(`Failed to persist ai_call_log: ${logErr?.message ?? logErr}`);
+    }
+
     await this.trackAddonUsage(tenantId);
 
-    return { content, tokensUsed };
+    return { content, tokensUsed: aiCall.tokensUsed };
     }); // ← cierra withAiQuotaLock (analyzeCvForRecruitment)
   }
 
@@ -1960,13 +2115,18 @@ Genera un JSON con:
 
 Responde SOLO con el JSON.`;
 
-    const { text, tokensUsed } = await this.callClaude(prompt, 3000);
+    const aiCall = await this.callClaude(prompt, 3000);
 
     let content: any;
+    let parseSuccess = true;
+    let parseError: string | null = null;
     try {
-      content = this.parseJson(text);
-    } catch (_e) {
-      content = { recomendacion: text.slice(0, 500) };
+      content = this.parseJson(aiCall.text);
+    } catch (e: any) {
+      parseSuccess = false;
+      parseError = (e?.message ?? String(e)).slice(0, 1000);
+      // Fallback: graceful degradation (este endpoint no falla, retorna texto raw).
+      content = { recomendacion: aiCall.text.slice(0, 500) };
     }
 
     const insight = this.insightRepo.create({
@@ -1976,13 +2136,34 @@ Responde SOLO con el JSON.`;
       userId: null,
       content,
       model: 'claude-haiku-4-5',
-      tokensUsed,
+      tokensUsed: aiCall.tokensUsed,
       generatedBy,
     });
-    await this.insightRepo.save(insight);
+    const savedInsight = await this.insightRepo.save(insight);
+
+    // Audit trail SIEMPRE.
+    try {
+      await this.callLogRepo.save(
+        this.callLogRepo.create({
+          tenantId,
+          type: InsightType.RECRUITMENT_RECOMMENDATION,
+          generatedBy,
+          tokensUsed: aiCall.tokensUsed,
+          inputTokens: aiCall.inputTokens,
+          outputTokens: aiCall.outputTokens,
+          model: 'claude-haiku-4-5',
+          parseSuccess,
+          errorMessage: parseError,
+          insightId: savedInsight.id,
+        }),
+      );
+    } catch (logErr: any) {
+      this.logger.warn(`Failed to persist ai_call_log: ${logErr?.message ?? logErr}`);
+    }
+
     await this.trackAddonUsage(tenantId);
 
-    return { content, tokensUsed };
+    return { content, tokensUsed: aiCall.tokensUsed };
     }); // ← cierra withAiQuotaLock (generateRecruitmentRecommendation)
   }
 }

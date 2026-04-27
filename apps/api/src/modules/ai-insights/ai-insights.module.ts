@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiInsight } from './entities/ai-insight.entity';
+import { AiCallLog } from './entities/ai-call-log.entity';
 import { AiInsightsService } from './ai-insights.service';
 import { AiInsightsController } from './ai-insights.controller';
 import { ReportsModule } from '../reports/reports.module';
@@ -20,6 +21,7 @@ import { Subscription } from '../subscriptions/entities/subscription.entity';
   imports: [
     TypeOrmModule.forFeature([
       AiInsight,
+      AiCallLog,
       EvaluationResponse,
       EvaluationAssignment,
       EvaluationCycle,

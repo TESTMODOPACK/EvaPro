@@ -55,6 +55,7 @@ import { Notification } from '../modules/notifications/entities/notification.ent
 
 // ── Phase 3: AI Insights ─────────────────────────────────────────────────
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
+import { AiCallLog } from '../modules/ai-insights/entities/ai-call-log.entity';
 
 // ── PDO: Org Development ─────────────────────────────────────────────────
 import { OrgDevelopmentPlan } from '../modules/org-development/entities/org-development-plan.entity';
@@ -99,7 +100,7 @@ const dataSource = new DataSource({
     // B3: Notifications
     Notification,
     // Phase 3: AI
-    AiInsight,
+    AiInsight, AiCallLog,
     // Billing & new modules
     PaymentHistory, RoleCompetency,
     Recognition, Badge, UserBadge, UserPoints,

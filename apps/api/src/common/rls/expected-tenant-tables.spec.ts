@@ -13,10 +13,11 @@ import {
 } from './expected-tenant-tables';
 
 describe('EXPECTED_TENANT_TABLES baseline', () => {
-  it('contiene exactamente 67 tablas con tenant_id (snapshot al 2026-04-27)', () => {
+  it('contiene exactamente 68 tablas con tenant_id (snapshot al 2026-04-27)', () => {
     // Si este conteo cambia → alguien agrego/quito una tabla. Update
     // baseline + verifica drift contra BD real con el SQL audit.
-    expect(EXPECTED_TENANT_TABLES.length).toBe(67);
+    // 67 → 68: agregada `ai_call_logs` (audit trail de llamadas a Anthropic).
+    expect(EXPECTED_TENANT_TABLES.length).toBe(68);
   });
 
   it('no tiene duplicados', () => {

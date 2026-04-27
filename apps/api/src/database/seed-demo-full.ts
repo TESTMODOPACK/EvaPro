@@ -54,6 +54,7 @@ import { SurveyQuestion } from '../modules/surveys/entities/survey-question.enti
 import { SurveyResponse } from '../modules/surveys/entities/survey-response.entity';
 import { SurveyAssignment } from '../modules/surveys/entities/survey-assignment.entity';
 import { AiInsight } from '../modules/ai-insights/entities/ai-insight.entity';
+import { AiCallLog } from '../modules/ai-insights/entities/ai-call-log.entity';
 import { RoleCompetency } from '../modules/development/entities/role-competency.entity';
 import { PaymentHistory, BillingPeriod, PaymentStatus } from '../modules/subscriptions/entities/payment-history.entity';
 import { SystemChangelog, ChangelogType } from '../modules/system/entities/system-changelog.entity';
@@ -82,7 +83,7 @@ const ds = new DataSource({
     UserNote, SubscriptionPlan, Subscription,
     TalentAssessment, CalibrationSession, CalibrationEntry,
     Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment,
-    Notification, AiInsight,
+    Notification, AiInsight, AiCallLog,
     Recognition, Badge, UserBadge, UserPoints, DocumentSignature,
     PaymentHistory,
     SystemChangelog,

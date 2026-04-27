@@ -17,10 +17,11 @@
 import type { DataSource } from 'typeorm';
 
 /**
- * 67 tablas con `tenant_id`. Ordenadas alfabeticamente para que un
+ * 68 tablas con `tenant_id`. Ordenadas alfabeticamente para que un
  * diff git sea legible cuando se agregue/quite una.
  */
 export const EXPECTED_TENANT_TABLES: ReadonlyArray<string> = [
+  'ai_call_logs',
   'ai_insights',
   'audit_logs',
   'badges',
