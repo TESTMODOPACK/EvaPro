@@ -2,9 +2,21 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ExtractJwt, Strategy } from 'passport-jwt';
+import { ExtractJwt, Strategy, JwtFromRequestFunction } from 'passport-jwt';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
+import { ACCESS_TOKEN_COOKIE } from './cookie.helper';
+
+/**
+ * Extrae el JWT desde la cookie httpOnly `access_token` (F3 — auth basada
+ * en cookie). Backward-compat: si la cookie no existe, JwtStrategy hace
+ * fallback al header Authorization para que el frontend que aún manda
+ * el bearer siga funcionando durante la transición (Fase 2).
+ */
+const cookieExtractor: JwtFromRequestFunction = (req) => {
+  const cookies = (req as { cookies?: Record<string, string> })?.cookies;
+  return cookies?.[ACCESS_TOKEN_COOKIE] ?? null;
+};
 
 export interface JwtPayload {
   sub: string;
@@ -35,7 +47,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private readonly userRepo: Repository<User>,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Acepta token desde cookie httpOnly (F3) o Authorization header
+      // (backward-compat). Cookie tiene precedencia — si ambos están,
+      // se usa la cookie y el header se ignora.
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        cookieExtractor,
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ]),
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('JWT_SECRET') ?? '',
     });

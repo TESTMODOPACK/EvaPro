@@ -1,5 +1,7 @@
-import { Controller, Post, Get, Body, Req, UseGuards, Request, UnauthorizedException, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Res, UseGuards, Request, UnauthorizedException, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import type { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { SsoService } from './sso/sso.service';
@@ -7,6 +9,7 @@ import { NoImpersonation } from '../../common/decorators/no-impersonation.decora
 import { Public } from '../../common/decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { setAccessTokenCookie, clearAccessTokenCookie } from './cookie.helper';
 
 class RequestResetDto {
   @IsEmail()
@@ -173,7 +176,14 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly passwordPolicyService: PasswordPolicyService,
     private readonly ssoService: SsoService,
+    private readonly configService: ConfigService,
   ) {}
+
+  /** Helper: NODE_ENV === 'production' para configurar cookies con
+   *  secure: true en prod (HTTPS only) y false en dev (localhost HTTP). */
+  private get isProd(): boolean {
+    return this.configService.get<string>('NODE_ENV') === 'production';
+  }
 
   /**
    * GET /auth/password-policy — returns the ACTIVE password rules for the
@@ -207,7 +217,11 @@ export class AuthController {
   @Post('login')
   @Public()
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto, @Req() req: any) {
+  async login(
+    @Body() loginDto: LoginDto,
+    @Req() req: any,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const clientIp = getClientIp(req);
 
     // Rate limit check
@@ -268,6 +282,12 @@ export class AuthController {
 
     const result = await this.authService.login(user, clientIp);
 
+    // F3 — setear cookie httpOnly con el JWT alongside body. Backward-compat:
+    // body sigue retornando access_token para que el frontend actual (que lee
+    // del body y guarda en localStorage) siga funcionando. Fase 2 elimina el
+    // body y el frontend usa solo cookie.
+    setAccessTokenCookie(res, result.access_token, this.isProd);
+
     return {
       ...result,
       mustChangePassword: user.mustChangePassword ?? false,
@@ -282,8 +302,35 @@ export class AuthController {
   @Public()
   @UseGuards(AuthGuard('jwt-refresh'))
   @HttpCode(HttpStatus.OK)
-  async refresh(@Request() req: any) {
-    return this.authService.refreshToken(req.user.userId, req.user.tenantId);
+  async refresh(
+    @Request() req: any,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.refreshToken(
+      req.user.userId,
+      req.user.tenantId,
+    );
+    // F3 — actualizar cookie httpOnly con el nuevo access token (el cron de
+    // refresh del frontend ahora dispara cookie new + body new; cuando Fase
+    // 2 elimine el body, este endpoint solo setea cookie).
+    setAccessTokenCookie(res, result.access_token, this.isProd);
+    return result;
+  }
+
+  /**
+   * F3 — Logout server-side. Limpia la cookie httpOnly del access_token
+   * para que el siguiente request no esté autenticado. El frontend además
+   * limpia su propio estado (Zustand, react-query, sentry).
+   *
+   * @Public porque el caller puede no estar autenticado (cookie expirada,
+   * navegación post-logout, etc.) — siempre devuelve 200 sin throws.
+   */
+  @Post('logout')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async logout(@Res({ passthrough: true }) res: Response): Promise<{ ok: true }> {
+    clearAccessTokenCookie(res, this.isProd);
+    return { ok: true };
   }
 
   @Post('request-reset')

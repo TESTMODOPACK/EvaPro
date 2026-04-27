@@ -20,6 +20,7 @@ import { NoImpersonation } from '../../../common/decorators/no-impersonation.dec
 import { Public } from '../../../common/decorators/public.decorator';
 import { SsoService } from './sso.service';
 import { SsoConfigDto, SsoDiscoverDto } from './dto/sso-config.dto';
+import { setAccessTokenCookie } from '../cookie.helper';
 
 const STATE_COOKIE = 'eva_sso_state';
 
@@ -92,6 +93,11 @@ export class SsoController {
     const { access_token } = await this.svc.handleCallback(cookie, req.query as any);
     // Clear the state cookie — its job is done.
     res.clearCookie(STATE_COOKIE, { path: '/auth/sso' });
+    // F3 — Setea la cookie httpOnly del access_token antes del redirect.
+    // El URL-token (sso_token query param) se mantiene como backward-compat
+    // para el login.tsx actual. Cuando Fase 2 retire la dependencia del
+    // URL token, este redirect se simplifica a no llevar el token en la URL.
+    setAccessTokenCookie(res, access_token, process.env.NODE_ENV === 'production');
     // Ship the token to the SPA via URL — same convention as the normal
     // login flow when redirecting from an external auth step.
     const frontend = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
