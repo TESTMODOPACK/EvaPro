@@ -291,20 +291,25 @@ function RegularDashboard() {
   const activeCycle = cycles?.find((c: any) => c.status === 'active');
   const atRiskCount = atRiskObjectives?.length || 0;
 
-  // Cada KPI declara su propio `sub` (subt\u00edtulo) \u2014 antes hab\u00eda un unico
-  // completionRate aplicado a las 4 cards (mostraba "56% completado"
-  // debajo de "Pendientes" o "Promedio", lo que no tenia sentido). Ahora
-  // cada card muestra contexto pertinente solo cuando aplica.
+  // Cada KPI declara su propio `sub` enriquecido con info accionable.
+  // Backend (getStats) provee los counters: overdueCount, dueSoonCount,
+  // fullyEvaluatedCount, cycleScoreDelta para alimentar los subs.
   const kpis = [
     {
       label: t('dashboard.activeEvals'),
       value: stats ? String(stats.totalAssignments) : '\u2013',
       color: '#6366f1',
-      // Solo aqui aplica el % completado (es proporcion sobre el total).
-      sub:
-        stats && stats.completionRate != null
-          ? `${stats.completionRate}% ${t('dashboard.completed')}`
-          : null,
+      sub: (() => {
+        if (!stats) return null;
+        const parts: string[] = [];
+        if (stats.completionRate != null) {
+          parts.push(`${stats.completionRate}% ${t('dashboard.completed')}`);
+        }
+        if (stats.activeCycles > 0) {
+          parts.push(`${stats.activeCycles} ciclo${stats.activeCycles !== 1 ? 's' : ''} activo${stats.activeCycles !== 1 ? 's' : ''}`);
+        }
+        return parts.join(' \u00b7 ') || null;
+      })(),
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -314,17 +319,22 @@ function RegularDashboard() {
       ),
     },
     {
-      // Cuenta DISTINCT(evaluatee_id) WHERE status=completed dentro del
-      // scope. Para manager: cuantos de sus N directos tienen al menos
-      // una eval completada (max = teamSize). Para admin: cuantas
-      // personas distintas hay evaluadas en toda la org.
+      // DISTINCT(evaluatee_id) WHERE status=completed dentro del scope.
+      // sub: "de N colaboradores \u00b7 X al 100%" cuando aplica.
       label: t('dashboard.evaluatedEmployees'),
       value: stats ? String(stats.evaluatedPeopleCount ?? 0) : '\u2013',
       color: '#10b981',
-      sub:
-        stats?.scope === 'team' && stats.teamSize != null
-          ? `de ${stats.teamSize} colaborador${stats.teamSize !== 1 ? 'es' : ''}`
-          : null,
+      sub: (() => {
+        if (!stats) return null;
+        const parts: string[] = [];
+        if (stats.scope === 'team' && stats.teamSize != null) {
+          parts.push(`de ${stats.teamSize} colaborador${stats.teamSize !== 1 ? 'es' : ''}`);
+        }
+        if (stats.fullyEvaluatedCount > 0) {
+          parts.push(`${stats.fullyEvaluatedCount} al 100%`);
+        }
+        return parts.join(' \u00b7 ') || null;
+      })(),
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -338,8 +348,18 @@ function RegularDashboard() {
       label: t('dashboard.averageScore'),
       value: stats?.averageScore ? Number(stats.averageScore).toFixed(1) : '\u2013',
       color: '#f59e0b',
-      // Sin sub \u2014 la escala 0-10 ya esta implicita en el contexto.
-      sub: null,
+      // sub: escala + tendencia vs ciclo anterior (cuando hay 2 ciclos
+      // cerrados con data). cycleScoreDelta es null cuando no aplica.
+      sub: (() => {
+        if (!stats) return null;
+        const base = 'Escala 0\u201310';
+        if (stats.cycleScoreDelta == null || stats.cycleScoreDelta === 0) {
+          return base;
+        }
+        const arrow = stats.cycleScoreDelta > 0 ? '\u25b2' : '\u25bc';
+        const abs = Math.abs(stats.cycleScoreDelta).toFixed(1);
+        return `${base} \u00b7 ${arrow} ${abs} vs ciclo anterior`;
+      })(),
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -350,7 +370,18 @@ function RegularDashboard() {
       label: t('dashboard.pendingToComplete'),
       value: stats ? String(stats.pendingAssignments) : '\u2013',
       color: '#ef4444',
-      sub: null,
+      // sub: vencidas + due-soon. Vencidas en rojo si > 0.
+      sub: (() => {
+        if (!stats) return null;
+        const parts: string[] = [];
+        if (stats.overdueCount > 0) {
+          parts.push(`\u26a0\ufe0f ${stats.overdueCount} vencida${stats.overdueCount !== 1 ? 's' : ''}`);
+        }
+        if (stats.dueSoonCount > 0) {
+          parts.push(`${stats.dueSoonCount} vencen esta semana`);
+        }
+        return parts.join(' \u00b7 ') || null;
+      })(),
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10" />

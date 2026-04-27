@@ -293,15 +293,28 @@ export default function MiDesempenoPage() {
   // Pending = evaluations I need to complete (as evaluator) — ALL go to personal tab
   const myPendingEvals = pending;
 
-  // El header KPI "Eval. completadas" y el tab Evaluaciones consumen
-  // teamReceived (evaluaciones que el equipo recibe — incluye self,
-  // peer, manager, direct_report, external). Coincide en numero con
-  // el dashboard /dashboard cuando el caller es manager.
-  // Las anteriores variables teamCompletedEvals / otherCompletedEvals
-  // / etc. se eliminaron porque mostraban Carlos como evaluador
-  // (scope distinto), lo cual generaba inconsistencia entre dashboard
-  // y mi-desempeno. La info "Carlos como evaluador" sigue accesible
-  // en la bandeja /dashboard/evaluaciones.
+  // ─── Variables para header KPI "Tu trabajo como evaluador" ─────────
+  // Estas representan lo que CARLOS hizo como evaluador (scope distinto
+  // al del dashboard /dashboard que muestra team-as-evaluatee). El
+  // header card del Mi Equipo lleva el label "Tu trabajo como evaluador"
+  // y desglosa: cuantas a tu equipo directo, a otros departamentos, y
+  // personales (autoeval + admin). El detalle por colaborador esta en
+  // Informes > Por Colaborador.
+  const teamCompletedEvals = completed.filter((e: any) =>
+    e.evaluateeId !== myUserId &&
+    e.evaluatee?.role !== 'tenant_admin' &&
+    teamMemberIds.has(e.evaluateeId)
+  );
+  const otherCompletedEvals = completed.filter((e: any) =>
+    e.evaluateeId !== myUserId &&
+    e.evaluatee?.role !== 'tenant_admin' &&
+    !teamMemberIds.has(e.evaluateeId)
+  );
+  const selfCompletedEvals = completed.filter((e: any) => e.evaluateeId === myUserId);
+  const adminCompletedEvals = completed.filter((e: any) =>
+    e.evaluateeId !== myUserId && e.evaluatee?.role === 'tenant_admin'
+  );
+  const personalCompletedCount = selfCompletedEvals.length + adminCompletedEvals.length;
 
   // My objectives vs team objectives (backend already filters by manager for managers)
   const myObjectives = objectives.filter((o: any) => o.userId === myUserId);
@@ -425,28 +438,14 @@ export default function MiDesempenoPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
             <KPI label="Miembros" value={teamMemberCount} />
             <KPI
-              label="Eval. completadas"
-              value={teamReceived.length}
-              sub={(() => {
-                // Breakdown por tipo de relacion (consistente con el footer
-                // del tab Evaluaciones). Muestra solo los tipos > 0.
-                const byType: Record<string, number> = {};
-                for (const ev of teamReceived) {
-                  const t = ev.relationType || 'other';
-                  byType[t] = (byType[t] || 0) + 1;
-                }
-                const labels: Record<string, string> = {
-                  self: 'autoeval',
-                  manager: 'jefe',
-                  peer: 'pares',
-                  direct_report: 'subord.',
-                  external: 'externas',
-                };
-                return Object.entries(byType)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([type, count]) => `${count} ${labels[type] || type}`)
-                  .join(' · ') || undefined;
-              })()}
+              // Renombrado de "Eval. completadas" para hacer scope explicito.
+              // Muestra Carlos como evaluador (lo que el manager ha hecho),
+              // no el estado de evaluaciones del equipo. Esa metrica esta
+              // en el dashboard /dashboard ("Métricas de tu equipo") y en
+              // el tab Evaluaciones de abajo (vista detallada).
+              label="Tu trabajo como evaluador"
+              value={completed.length}
+              sub={`${teamCompletedEvals.length} a equipo · ${otherCompletedEvals.length} a otros · ${personalCompletedCount} personales`}
             />
             <KPI label="Objetivos equipo" value={`${teamActiveObj} act.`} />
             <KPI label="PDI equipo" value={`${teamActivePdi} act.`} />

@@ -123,6 +123,17 @@ export interface DashboardStats {
    *  evaluatee). Distinto a completedAssignments — Pedro con 6 evals
    *  cuenta 1 aquí, pero 6 en completedAssignments. */
   evaluatedPeopleCount: number;
+  /** Personas que tienen TODAS sus evals completadas (>=1 completed,
+   *  0 pending). Subset de evaluatedPeopleCount. */
+  fullyEvaluatedCount: number;
+  /** Assignments pendientes con due_date < hoy. */
+  overdueCount: number;
+  /** Assignments pendientes con due_date entre hoy y +7 días. */
+  dueSoonCount: number;
+  /** Diferencia de avg score entre el último ciclo cerrado y el
+   *  anterior (recientAvg - prevAvg). null si no hay 2 ciclos
+   *  cerrados con data en el scope. */
+  cycleScoreDelta: number | null;
   averageScore: string | null;
   scope?: 'team' | 'organization' | 'personal';
   teamSize?: number | null;
