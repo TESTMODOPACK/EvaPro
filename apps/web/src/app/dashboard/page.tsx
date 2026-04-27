@@ -794,13 +794,24 @@ function RegularDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingEvals.slice(0, 5).map((ev: any, i: number) => (
+                  {pendingEvals.slice(0, 5).map((ev: any, i: number) => {
+                    // Cuando el evaluatee es el propio user (autoeval)
+                    // mostrar "Autoevaluación" en vez de TuPropioNombre
+                    // — eso confunde al usuario al ver su nombre como
+                    // tarea pendiente.
+                    const isSelf =
+                      ev.relationType === 'self' ||
+                      ev.evaluateeId === user?.userId;
+                    const evaluateeLabel = isSelf
+                      ? 'Autoevaluación'
+                      : ev.evaluatee
+                        ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}`
+                        : 'Sin asignar';
+                    return (
                     <tr key={ev.id || i}>
                       <td>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.875rem' }}>
-                          {ev.evaluatee
-                            ? `${ev.evaluatee.firstName} ${ev.evaluatee.lastName}`
-                            : 'Sin asignar'}
+                          {evaluateeLabel}
                         </div>
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
@@ -821,7 +832,8 @@ function RegularDashboard() {
                         </Link>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
