@@ -128,6 +128,8 @@ Bloqueante para Fase B en queries que cruzan los crons del Tier 3 (los demás se
 
 ### Fase B — Habilitar RLS en tabla pivot (riesgo alto — primer cutover real)
 
+**Estado**: ✅ Artefactos preparados (SQL forward + rollback + validate + test E2E + runbook). Pendiente aplicar en prod cuando se decida.
+
 **Esfuerzo**: 3-4h.
 
 **Tabla elegida**: `evaluation_responses`. Razones:
@@ -135,28 +137,45 @@ Bloqueante para Fase B en queries que cruzan los crons del Tier 3 (los demás se
 - Datos sensibles (respuestas de evaluación)
 - Pocas queries cross-tenant legítimas (sólo super_admin reports)
 
-**Migration SQL**:
+**Migration SQL** (con FORCE para que aplique al owner; sin esto, app es owner y bypassea):
 ```sql
 ALTER TABLE evaluation_responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE evaluation_responses FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON evaluation_responses
   USING (
     tenant_id::text = current_setting('app.current_tenant_id', true)
-    OR current_setting('app.current_tenant_id', true) = ''  -- super_admin bypass
+    OR current_setting('app.current_tenant_id', true) = ''  -- super_admin/system bypass
   );
 ```
 
-**Validación**:
-1. Test E2E: login como tenant A, query evaluation_responses → solo retorna data de A
-2. Test E2E: login como super_admin, query → retorna todo (bypass funciona)
-3. Test E2E: cron job que toca evaluation_responses → funciona (vía Fase A3)
-4. Performance: medir latencia antes/después en query típica
+**Entregables Fase B**:
+- `apps/api/src/database/sql/2026-04-27-F4B-enable-rls-evaluation-responses.sql` (idempotente)
+- `apps/api/src/database/sql/2026-04-27-F4B-rollback-rls-evaluation-responses.sql` (idempotente, <1s)
+- `apps/api/src/database/sql/2026-04-27-F4B-validate-rls.sql` (validación post-deploy automática con BEGIN/ROLLBACK)
+- `apps/api/test/rls-evaluation-responses.e2e-spec.ts` (test E2E self-contained — aplica/rollbackea la migration en CI; skip si no hay DATABASE_URL)
+- `docs/F4-RLS-FASE-B-RUNBOOK.md` (runbook operacional con pasos exactos, smoke tests, criterios de rollback)
 
-**Plan de rollback**:
-```sql
-ALTER TABLE evaluation_responses DISABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS tenant_isolation ON evaluation_responses;
-```
+**Validación cubierta**:
+1. ✅ SIN GUC seteado → query retorna 0 filas (defense-in-depth)
+2. ✅ GUC vacío (modo super_admin / cron sistema) → ve todas las filas
+3. ✅ GUC = UUID inexistente → 0 filas (no leak)
+4. ✅ GUC = UUID de tenant existente → ve solo ese tenant
+5. ✅ Cross-tenant UPDATE bloqueado por RLS
+6. ✅ INSERT con tenant_id distinto al GUC bloqueado (WITH CHECK via reuso USING)
+
+**Smoke tests funcionales** (manuales, post-deploy):
+- Login como `tenant_admin` → ver respuestas de su tenant
+- Login como `super_admin` → ver respuestas cross-tenant
+- Crear nueva respuesta → verificar que se guarda
+- Crons que tocan evaluation_responses indirectamente (ej. recognition.calculateMvpOfTheMonth) siguen funcionando vía A3
+
+**Plan de rollback**: `psql < 2026-04-27-F4B-rollback-rls-evaluation-responses.sql` (<1s, sin restart del API).
+
+**Trade-offs aceptados**:
+- Latencia +1-2ms por query (filtro RLS, despreciable con índice sobre tenant_id)
+- Conexiones admin sin GUC ven 0 filas → operadores deben `set_config(...)` al inicio
+- Audit log de `cron.failed` puede perderse en rollback de tx interna (Sentry sigue capturando)
 
 **Si la Fase B funciona durante 24-48h en producción sin issues**, avanzamos a Fase C. Si rompe algo, rollback inmediato y debug.
 
@@ -182,16 +201,17 @@ Validación post-deploy: smoke test recorriendo todas las features de la app, ve
 
 ## Total estimado
 
-| Fase | Esfuerzo | Riesgo deploy |
-|---|---|---|
-| A0 — Foundation | 2-3h | 🟢 Cero (este commit) |
-| A1 — Tests + audit | 2-3h | 🟢 Cero (solo testing) |
-| A2 — Connection pinning | 1 día (8h) | 🟡 Medio (deps nuevas) |
-| A3 — Refactor cron jobs | 4-5h | 🟠 Medio-alto (cron failures = silenciosos) |
-| B — RLS en tabla pivot | 3-4h | 🔴 Alto (primer cutover) |
-| C — Roll out 65 tablas | 4-6h | 🟠 Medio (Fase B ya valido patrón) |
-| D — Cleanup | 2-3h | 🟢 Bajo |
-| **Total** | **3-5 días** | |
+| Fase | Esfuerzo | Riesgo deploy | Estado |
+|---|---|---|---|
+| A0 — Foundation | 2-3h | 🟢 Cero | ✅ Mergeado (`371b48d`) |
+| A1 — Tests + audit | 2-3h | 🟢 Cero | ✅ Mergeado (`b1a67fa`) |
+| A2 — Connection pinning | 1 día (8h) | 🟡 Medio (deps nuevas) | ✅ Mergeado (`e603b1f`) |
+| A3.1 — Helper + cron piloto | 2h | 🟢 Cero | ✅ Mergeado (`dc9406e`) |
+| A3.2 + A3.3 — 28 crons refactor | 4-5h | 🟠 Medio-alto | ✅ Mergeado (`c9eec84`) |
+| B — RLS en tabla pivot | 3-4h | 🔴 Alto (primer cutover) | 📦 Artefactos listos, pendiente aplicar |
+| C — Roll out 65 tablas | 4-6h | 🟠 Medio (Fase B ya validó patrón) | ⏳ Pendiente |
+| D — Cleanup | 2-3h | 🟢 Bajo | ⏳ Pendiente |
+| **Total** | **3-5 días** | | |
 
 ## Decisiones pendientes (al inicio de Fase A1)
 
