@@ -1923,22 +1923,23 @@ export class EvaluationsService {
     //    estan en proceso, completadas, etc. para sus colaboradores. Es
     //    la misma scope que el endpoint /evaluations/team-received que
     //    usa /dashboard/mi-desempeno > Mi Equipo. Asi ambas paginas son
-    //    numericamente consistentes — el dashboard es el resumen agregado
-    //    y mi-desempeno equipo es el detalle. (No incluye a Carlos
-    //    mismo: para ver tu propio trabajo como evaluador esta la
-    //    bandeja /dashboard/evaluaciones, que es scope distinto y
-    //    claramente labeled).
+    //    numericamente consistentes.
     //
-    // 2) Employee: filtra por evaluatee_id = userId — evaluaciones que
-    //    se han hecho/se haran SOBRE el employee. Diferente de la
-    //    bandeja (que muestra el trabajo del employee como evaluador).
+    // 2) Employee: filtra por evaluator_id = userId — el trabajo del
+    //    empleado como evaluador (sus evals pendientes + completadas).
+    //    Mismo scope que la bandeja /dashboard/evaluaciones, asi el
+    //    KPI "Pendientes de completar" coincide con lo que muestra la
+    //    bandeja. Antes era evaluatee scope (evals que recibia), pero
+    //    el label "Pendientes de completar" sugiere accion → mejor que
+    //    matchee con la bandeja donde el usuario realmente actua.
     //
     // 3) Admin (super_admin / tenant_admin): sin filtro — alcance
     //    org-wide.
     let evaluateeFilter: string[] | null = null;
+    let evaluatorId: string | null = null;
 
     if (isEmployee && userId) {
-      evaluateeFilter = [userId];
+      evaluatorId = userId;
     } else if (isManager && userId) {
       // Solo directos del manager — match team-received endpoint scope
       const directReports = await this.userRepo.find({
@@ -1968,13 +1969,15 @@ export class EvaluationsService {
       AssignmentStatus.COMPLETED,
     ];
 
-    // Helper: aplica scope (siempre evaluatee filter — manager filtra a
-    // sus directos, employee a si mismo, admin sin filtro) a cualquier
-    // QueryBuilder de assignments con alias 'a'. Si evaluateeFilter es
-    // un array vacio (manager sin directos), explicitamente devuelve 0
-    // matches con `1=0`.
+    // Helper: aplica scope a cualquier QueryBuilder de assignments con
+    // alias 'a'. Manager → evaluatee IN [team]; employee → evaluator
+    // = userId; admin → sin filtro. Si evaluateeFilter es un array
+    // vacio (manager sin directos), explicitamente devuelve 0 matches
+    // con `1=0`.
     const applyScope = <T extends { andWhere: (...args: any[]) => T }>(qb: T): T => {
-      if (evaluateeFilter) {
+      if (evaluatorId) {
+        qb.andWhere('a.evaluator_id = :evaluatorId', { evaluatorId });
+      } else if (evaluateeFilter) {
         if (evaluateeFilter.length === 0) {
           qb.andWhere('1 = 0'); // sin equipo → sin resultados
         } else {
@@ -2174,10 +2177,24 @@ export class EvaluationsService {
     const evalActions = pendingAssignments.map((a) => {
       const dueDate = a.dueDate ? new Date(a.dueDate) : null;
       const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - now.getTime()) / 86_400_000) : null;
+      // Cuando el evaluatee es el propio caller (autoeval), no decir
+      // "Evaluar a TuPropioNombre" — eso confunde al usuario que se ve
+      // a si mismo en una lista de tareas. Usamos "Autoevaluación" o
+      // detectamos por relationType=SELF (mas semantico) o por
+      // evaluateeId=userId (defensivo si relationType viene null).
+      const isSelfEvaluation =
+        a.relationType === RelationType.SELF || a.evaluateeId === userId;
+      const evaluateeName =
+        `${a.evaluatee?.firstName ?? ''} ${a.evaluatee?.lastName ?? ''}`.trim();
+      const title = isSelfEvaluation
+        ? 'Completar mi autoevaluación'
+        : evaluateeName
+          ? `Evaluar a ${evaluateeName}`
+          : 'Evaluación pendiente';
       return {
         type: 'evaluation' as const,
         id: a.id,
-        title: `Evaluar a ${a.evaluatee?.firstName ?? ''} ${a.evaluatee?.lastName ?? ''}`.trim() || 'Evaluación pendiente',
+        title,
         subtitle: a.cycle?.name ?? '',
         dueDate: dueDate?.toISOString().slice(0, 10) ?? null,
         daysLeft,
