@@ -1550,6 +1550,7 @@ export class EvaluationsService {
     userId: string,
     tenantId: string,
     opts: EvaluationListOpts = {},
+    callerRole?: string,
   ): Promise<PaginatedEvaluations<any>> {
     const qb = this.assignmentRepo
       .createQueryBuilder('a')
@@ -1597,10 +1598,37 @@ export class EvaluationsService {
     items.forEach((a) => {
       if (a.response === undefined) a.response = null;
     });
+
+    // ─── Anonimato peer / direct_report ─────────────────────────────────
+    // Aplica para empleado viendo sus propias evals recibidas
+    // (psychological safety: si Rosa sabe que Hector la calificó X,
+    // daña la confianza del peer feedback) y para manager viendo de su
+    // directo. tenant_admin / super_admin (HR) no se anonimizan porque
+    // necesitan auditar y resolver conflictos. Mismo criterio que en
+    // findReceivedByTeam.
+    const isAdminCaller =
+      callerRole === 'super_admin' || callerRole === 'tenant_admin';
+    if (!isAdminCaller) {
+      items.forEach((a) => {
+        if (
+          a.relationType === RelationType.PEER ||
+          a.relationType === RelationType.DIRECT_REPORT
+        ) {
+          a.evaluator = null;
+          a.evaluatorId = null;
+        }
+      });
+    }
+
     return { items, total };
   }
 
-  async getAssignmentDetail(assignmentId: string, tenantId: string) {
+  async getAssignmentDetail(
+    assignmentId: string,
+    tenantId: string,
+    callerRole?: string,
+    callerUserId?: string,
+  ) {
     const assignment = await this.assignmentRepo.findOne({
       where: { id: assignmentId, tenantId },
       relations: ['evaluatee', 'evaluator', 'cycle'],
@@ -1687,6 +1715,27 @@ export class EvaluationsService {
       }
     } catch {
       // Objectives module may not exist — graceful fallback
+    }
+
+    // ─── Anonimato peer / direct_report ─────────────────────────────────
+    // Mismo criterio que findEvaluationsOfUser pero con un escape:
+    // si el caller ES el propio evaluador (esta abriendo una eval que
+    // hizo el mismo), no tiene sentido anonimizar — el ya sabe quien
+    // es. Para admin (tenant_admin/super_admin) tampoco se anonimiza.
+    // Para todos los demas (evaluatee viendo lo que recibio, manager
+    // viendo de su directo), si la relacion es peer/direct_report el
+    // nombre del evaluador se oculta.
+    const isAdminCaller =
+      callerRole === 'super_admin' || callerRole === 'tenant_admin';
+    const isOwnEvaluation = callerUserId && assignment.evaluatorId === callerUserId;
+    if (
+      !isAdminCaller &&
+      !isOwnEvaluation &&
+      (assignment.relationType === RelationType.PEER ||
+        assignment.relationType === RelationType.DIRECT_REPORT)
+    ) {
+      (assignment as any).evaluator = null;
+      (assignment as any).evaluatorId = null;
     }
 
     return { assignment, template, response, evaluateeObjectives, evaluateeObjectivesSummary };

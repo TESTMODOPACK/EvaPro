@@ -631,7 +631,15 @@ export default function MiDesempenoPage() {
                           </thead>
                           <tbody>
                             {receivedFiltered.map((ev: any, i: number) => {
-                              const evaluatorName = ev.evaluator ? `${ev.evaluator.firstName || ''} ${ev.evaluator.lastName || ''}`.trim() : (ev.relationType === 'self' ? 'Autoevaluación' : '--');
+                              // Anonimato peer/direct_report — el backend nulea
+                              // evaluator/evaluatorId en estos tipos para empleado
+                              // y manager (no para admin). Render: "🔒 Anónimo".
+                              const isAnonymized = !ev.evaluator && (ev.relationType === 'peer' || ev.relationType === 'direct_report');
+                              const evaluatorName = isAnonymized
+                                ? '🔒 Anónimo'
+                                : ev.evaluator
+                                ? `${ev.evaluator.firstName || ''} ${ev.evaluator.lastName || ''}`.trim()
+                                : (ev.relationType === 'self' ? 'Autoevaluación' : '--');
                               const respId = ev.response?.id || ev.responseId;
                               const sigs = respId ? signatureMap[respId] : null;
                               return (
@@ -651,7 +659,7 @@ export default function MiDesempenoPage() {
                                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover, rgba(0,0,0,0.03))'; }}
                                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                                 >
-                                  <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{evaluatorName}</td>
+                                  <td style={{ fontWeight: 600, fontSize: '0.82rem', fontStyle: isAnonymized ? 'italic' : 'normal', color: isAnonymized ? 'var(--text-muted)' : 'inherit' }}>{evaluatorName}</td>
                                   <td><span className="badge badge-accent" style={{ fontSize: '0.65rem' }}>{relLabel[ev.relationType] || ev.relationType}</span></td>
                                   <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{ev.cycle?.name || '--'}</td>
                                   <td><ScoreBadge score={ev.response?.overallScore} size="sm" /></td>
