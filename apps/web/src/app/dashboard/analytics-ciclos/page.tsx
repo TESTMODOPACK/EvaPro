@@ -4,6 +4,7 @@ import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 // P8-C: import dinámico de Recharts.
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/components/DynamicCharts';
@@ -66,22 +67,16 @@ function CycleComparisonPageContent() {
     setAnalyzing(true);
     setAnalyzeError(null);
     try {
-      const res = await fetch(`${API}/ai/cycle-comparison`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cycleIds: Array.from(selected) }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || t('analyticsCiclos.errorGeneratingAnalysis'));
-      }
-      const result = await res.json();
+      // F3 Fase 3: usar wrapper api.ts para que cookie + X-CSRF-Token
+      // se incluyan correctamente. El fetch directo se rompia con 403
+      // CSRF al desplegar Fase 3 (sin header X-CSRF-Token).
+      const result = await api.ai.analyzeCycleComparison(token, Array.from(selected));
       setAiAnalysis(result);
-      // Refresh quota
-      fetch(`${API}/ai/usage`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.ok ? r.json() : null).then(setQuotaInfo).catch(() => {});
+      // Refresh quota (GET, no necesita CSRF — pero usar wrapper igual
+      // para consistencia y para que mande la cookie automaticamente).
+      api.ai.getUsage(token).then(setQuotaInfo).catch(() => {});
     } catch (e: any) {
-      setAnalyzeError(e.message);
+      setAnalyzeError(e.message || t('analyticsCiclos.errorGeneratingAnalysis'));
     }
     setAnalyzing(false);
   };
