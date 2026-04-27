@@ -247,16 +247,12 @@ export default function UserProfilePage() {
     if (!token || !movForm.effectiveDate) return;
     setSavingMovement(true);
     try {
-      const res = await fetch(`${API}/users/${userId}/movement`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(movForm),
-      });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Error'); }
+      // F3 Fase 3: usar wrapper api.ts (cookie + X-CSRF-Token automatico).
+      await api.users.registerMovement(token, userId, movForm);
       setShowMovementForm(false);
       setMovForm({ movementType: 'department_change', effectiveDate: new Date().toISOString().split('T')[0], fromDepartment: '', toDepartment: '', fromPosition: '', toPosition: '', reason: '' });
       // Reload
-      const movs = await fetch(`${API}/users/${userId}/movements`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => []);
+      const movs = await api.users.listMovements(token, userId).catch(() => [] as any[]);
       setMovements(movs);
       toast.success('Movimiento registrado');
     } catch (err: any) {

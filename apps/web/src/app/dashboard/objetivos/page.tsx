@@ -137,21 +137,15 @@ function CommentsSection({ objectiveId, currentUserId, isAdmin }: { objectiveId:
     if (!file || !token) return;
     setUploading(true);
     try {
+      // F3 Fase 3: usar wrapper api.ts. El wrapper detecta FormData y
+      // skipea Content-Type para que el navegador setee el boundary
+      // correctamente; tambien manda credentials: 'include' + cookie
+      // X-CSRF-Token (sin esto, fallaria con 403 al desplegar Fase 3).
       const formData = new FormData();
       formData.append('file', file);
-      const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
-      const res = await fetch(`${BASE_URL}/uploads`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Error al subir archivo');
-      }
-      const result = await res.json();
+      const result = await api.uploads.create(token, formData);
       setAttachmentUrl(result.url);
-      setAttachmentName(result.originalName || file.name);
+      setAttachmentName((result as any).originalName || file.name);
     } catch (err: any) {
       toast.error(err.message || 'Error al subir el archivo');
     } finally {

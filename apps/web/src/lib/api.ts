@@ -322,8 +322,15 @@ async function request<T>(
   // headers — el JWT no esta en JavaScript, vive solo en la cookie
   // (no readable por XSS). El parametro `_token` se mantiene en la
   // firma para que los callers existentes no rompan; se ignora.
+  //
+  // FormData: cuando el body es FormData (file uploads multipart) NO
+  // seteamos Content-Type — el navegador lo setea automaticamente con
+  // el boundary correcto. Si forzamos application/json el server no
+  // puede parsear el multipart.
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers as Record<string, string>),
   };
 
@@ -739,6 +746,23 @@ export const api = {
       request<any[]>(`/users/${userId}/departures`, {}, token),
     listMovements: (token: string, userId: string) =>
       request<any[]>(`/users/${userId}/movements`, {}, token),
+    registerMovement: (
+      token: string,
+      userId: string,
+      dto: {
+        movementType: string;
+        effectiveDate: string;
+        fromDepartment?: string;
+        toDepartment?: string;
+        fromPosition?: string;
+        toPosition?: string;
+        reason?: string;
+      },
+    ) =>
+      request<any>(`/users/${userId}/movement`, {
+        method: 'POST',
+        body: JSON.stringify(dto),
+      }, token),
     reactivate: (
       token: string,
       userId: string,
@@ -1431,6 +1455,14 @@ export const api = {
       request<any>(`/ai/flight-risk`, {}, token),
     getUsage: (token: string) => request<any>('/ai/usage', {}, token),
     getTenantUsage: (token: string) => request<any>('/ai/tenant-usage', {}, token),
+    /** POST /ai/cycle-comparison — IA-driven análisis comparativo entre
+     *  ciclos seleccionados. Difiere del endpoint reports/.../cycle-comparison
+     *  (que es solo numerico). */
+    analyzeCycleComparison: (token: string, cycleIds: string[]) =>
+      request<any>('/ai/cycle-comparison', {
+        method: 'POST',
+        body: JSON.stringify({ cycleIds }),
+      }, token),
     exportSummaryPdf: (token: string, cycleId: string, userId: string) =>
       `${BASE_URL}/ai/summary-pdf/${userId}/${cycleId}`,
     getPerformancePrediction: (token: string, userId: string) =>
@@ -1467,6 +1499,17 @@ export const api = {
       request<any>("/dei/corrective-actions", { method: "POST", body: JSON.stringify(data) }, token),
     updateCorrectiveAction: (token: string, id: string, data: any) =>
       request<any>(`/dei/corrective-actions/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+  },
+
+  /** Uploads — multipart/form-data. El wrapper detecta FormData y skipea
+   *  Content-Type para que el navegador setee el boundary correctamente. */
+  uploads: {
+    create: (token: string, formData: FormData) =>
+      request<{ id: string; url: string; mimeType: string; size: number }>(
+        '/uploads',
+        { method: 'POST', body: formData },
+        token,
+      ),
   },
 
   recognition: {

@@ -343,23 +343,17 @@ export default function UsuariosPage() {
     if (!departureUser || !token) return;
     setDepartureSubmitting(true);
     try {
-      const body = {
+      // F3 Fase 3: usar wrapper api.ts (cookie + X-CSRF-Token automatico).
+      // Antes era fetch directo que se rompia con 403 CSRF al desplegar
+      // Fase 3 (sin header X-CSRF-Token).
+      await api.users.registerDeparture(token, departureUser.id, {
         departureType: departureForm.departureType,
         departureDate: departureForm.departureDate,
         isVoluntary: departureForm.isVoluntary,
-        reasonCategory: departureForm.reasonCategory || null,
-        reasonDetail: departureForm.reasonDetail || null,
+        reasonCategory: departureForm.reasonCategory || undefined,
+        reasonDetail: departureForm.reasonDetail || undefined,
         wouldRehire: departureForm.wouldRehire === 'true' ? true : departureForm.wouldRehire === 'false' ? false : null,
-      };
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/users/${departureUser.id}/departure`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Error desconocido' }));
-        throw new Error(err.message || 'Error al registrar salida');
-      }
       toast.success(`Salida de ${departureUser.name} registrada correctamente`);
       setDepartureUser(null);
       // Refresh users list (user was already deactivated by the departure endpoint)
