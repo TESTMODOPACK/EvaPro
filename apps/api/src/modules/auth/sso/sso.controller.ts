@@ -21,6 +21,7 @@ import { Public } from '../../../common/decorators/public.decorator';
 import { SsoService } from './sso.service';
 import { SsoConfigDto, SsoDiscoverDto } from './dto/sso-config.dto';
 import { setAccessTokenCookie } from '../cookie.helper';
+import { setCsrfTokenCookie, generateCsrfToken } from '../csrf.helper';
 
 const STATE_COOKIE = 'eva_sso_state';
 
@@ -97,7 +98,10 @@ export class SsoController {
     // El URL-token (sso_token query param) se mantiene como backward-compat
     // para el login.tsx actual. Cuando Fase 2 retire la dependencia del
     // URL token, este redirect se simplifica a no llevar el token en la URL.
-    setAccessTokenCookie(res, access_token, process.env.NODE_ENV === 'production');
+    const isProdSso = process.env.NODE_ENV === 'production';
+    setAccessTokenCookie(res, access_token, isProdSso);
+    // F3 Fase 3 — CSRF token cookie alongside JWT (mismo patron que login).
+    setCsrfTokenCookie(res, generateCsrfToken(), isProdSso);
     // Ship the token to the SPA via URL — same convention as the normal
     // login flow when redirecting from an external auth step.
     const frontend = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';

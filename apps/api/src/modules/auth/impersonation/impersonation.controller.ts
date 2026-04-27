@@ -17,6 +17,7 @@ import { ImpersonationService } from './impersonation.service';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { setAccessTokenCookie } from '../cookie.helper';
+import { setCsrfTokenCookie, generateCsrfToken } from '../csrf.helper';
 
 class StartImpersonationDto {
   @IsUUID()
@@ -78,6 +79,8 @@ export class ImpersonationController {
     // impersonacion. La cookie original se sobrescribe; al terminar
     // (`/support/impersonate/end`) se restaura la del super_admin.
     setAccessTokenCookie(res, result.access_token, this.isProd);
+    // F3 Fase 3 — CSRF token nuevo para la sesion de impersonacion.
+    setCsrfTokenCookie(res, generateCsrfToken(), this.isProd);
     return result;
   }
 
@@ -114,6 +117,8 @@ export class ImpersonationController {
     );
     // F3 Fase 2 — Restaura la cookie del super_admin (el JWT original).
     setAccessTokenCookie(res, result.access_token, this.isProd);
+    // F3 Fase 3 — CSRF token nuevo al volver al super_admin.
+    setCsrfTokenCookie(res, generateCsrfToken(), this.isProd);
     return result;
   }
 }

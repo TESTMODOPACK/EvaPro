@@ -10,6 +10,11 @@ import { Public } from '../../common/decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { setAccessTokenCookie, clearAccessTokenCookie } from './cookie.helper';
+import {
+  setCsrfTokenCookie,
+  clearCsrfTokenCookie,
+  generateCsrfToken,
+} from './csrf.helper';
 
 class RequestResetDto {
   @IsEmail()
@@ -287,6 +292,10 @@ export class AuthController {
     // del body y guarda en localStorage) siga funcionando. Fase 2 elimina el
     // body y el frontend usa solo cookie.
     setAccessTokenCookie(res, result.access_token, this.isProd);
+    // F3 Fase 3 — generar nuevo CSRF token y setearlo como cookie no-httpOnly.
+    // El frontend la lee y la envia en header X-CSRF-Token en cada request
+    // mutante. CsrfGuard valida que header == cookie (double-submit).
+    setCsrfTokenCookie(res, generateCsrfToken(), this.isProd);
 
     return {
       ...result,
@@ -314,6 +323,10 @@ export class AuthController {
     // refresh del frontend ahora dispara cookie new + body new; cuando Fase
     // 2 elimine el body, este endpoint solo setea cookie).
     setAccessTokenCookie(res, result.access_token, this.isProd);
+    // F3 Fase 3 — rotar CSRF token en cada refresh (limita la ventana de un
+    // token comprometido). El frontend lee la cookie nueva en el siguiente
+    // ciclo y la envia en X-CSRF-Token.
+    setCsrfTokenCookie(res, generateCsrfToken(), this.isProd);
     return result;
   }
 
@@ -330,6 +343,10 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async logout(@Res({ passthrough: true }) res: Response): Promise<{ ok: true }> {
     clearAccessTokenCookie(res, this.isProd);
+    // F3 Fase 3 — limpiar tambien el CSRF cookie. Si solo limpiaramos el
+    // access_token, la cookie csrf_token quedaria huerfana en el navegador
+    // hasta el siguiente login (cosmético pero limpio mejor).
+    clearCsrfTokenCookie(res, this.isProd);
     return { ok: true };
   }
 
