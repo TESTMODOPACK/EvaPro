@@ -22,6 +22,7 @@ import { EmailService } from '../notifications/email.service';
 import { PushService } from '../notifications/push.service';
 import { buildPushMessage } from '../notifications/push-messages';
 import { AuditService } from '../audit/audit.service';
+import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 
 /**
  * v3.1 F1 — Versión del generador de la Agenda Mágica. Bump cuando cambie
@@ -70,6 +71,8 @@ export class FeedbackService {
     private readonly auditService: AuditService,
     // v3.1 — para runWithCronLock en crons de auto-close.
     private readonly dataSource: DataSource,
+    // F4 A3 — para setear app.current_tenant_id en crons.
+    private readonly tenantCronRunner: TenantCronRunner,
   ) {}
 
   // ─── Check-ins ────────────────────────────────────────────────────────────
@@ -411,55 +414,61 @@ export class FeedbackService {
       this.dataSource,
       this.logger,
       async () => {
-        const cutoff = new Date();
-        cutoff.setUTCDate(cutoff.getUTCDate() - 5);
-        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        // F4 A3 — runForEachTenant: cierra checkins vencidos por tenant.
+        await this.tenantCronRunner.runForEachTenant(
+          'feedback.autoCompleteStaleCheckIns',
+          async (tenantId) => {
+            const cutoff = new Date();
+            cutoff.setUTCDate(cutoff.getUTCDate() - 5);
+            const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-        const stale = await this.checkInRepo.find({
-          where: {
-            status: CheckInStatus.SCHEDULED,
-            scheduledDate: LessThan(new Date(cutoffStr)) as any,
-          },
-          select: ['id', 'tenantId', 'managerId', 'employeeId', 'topic', 'scheduledDate'],
-        });
-
-        if (stale.length === 0) {
-          this.logger.log('[autoCompleteStaleCheckIns] 0 check-ins vencidos +5d');
-          return;
-        }
-
-        const autoNote =
-          'Cerrado automáticamente por política de cierre de Eva360: han pasado ' +
-          'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
-          'reunión. El encargado puede agregar retroactivamente notas, minuta, ' +
-          'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
-
-        for (const ci of stale) {
-          try {
-            await this.checkInRepo.update(
-              { id: ci.id },
-              {
-                status: CheckInStatus.COMPLETED,
-                autoCompleted: true,
-                completedAt: new Date(),
-                notes: autoNote,
+            const stale = await this.checkInRepo.find({
+              where: {
+                tenantId,
+                status: CheckInStatus.SCHEDULED,
+                scheduledDate: LessThan(new Date(cutoffStr)) as any,
               },
-            );
-            await this.auditService
-              .log(ci.tenantId, null, 'checkin.auto_completed', 'checkin', ci.id, {
-                topic: ci.topic,
-                scheduledDate: ci.scheduledDate,
-              })
-              .catch(() => undefined);
-          } catch (err: any) {
-            this.logger.warn(
-              `[autoCompleteStaleCheckIns] falló cerrar ${ci.id}: ${err?.message}`,
-            );
-          }
-        }
+              select: ['id', 'tenantId', 'managerId', 'employeeId', 'topic', 'scheduledDate'],
+            });
 
-        this.logger.log(
-          `[autoCompleteStaleCheckIns] auto-cerrados: ${stale.length}`,
+            if (stale.length === 0) {
+              return;
+            }
+
+            const autoNote =
+              'Cerrado automáticamente por política de cierre de Eva360: han pasado ' +
+              'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
+              'reunión. El encargado puede agregar retroactivamente notas, minuta, ' +
+              'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
+
+            for (const ci of stale) {
+              try {
+                await this.checkInRepo.update(
+                  { id: ci.id },
+                  {
+                    status: CheckInStatus.COMPLETED,
+                    autoCompleted: true,
+                    completedAt: new Date(),
+                    notes: autoNote,
+                  },
+                );
+                await this.auditService
+                  .log(ci.tenantId, null, 'checkin.auto_completed', 'checkin', ci.id, {
+                    topic: ci.topic,
+                    scheduledDate: ci.scheduledDate,
+                  })
+                  .catch(() => undefined);
+              } catch (err: any) {
+                this.logger.warn(
+                  `[autoCompleteStaleCheckIns] falló cerrar ${ci.id}: ${err?.message}`,
+                );
+              }
+            }
+
+            this.logger.log(
+              `[autoCompleteStaleCheckIns] tenant=${tenantId.slice(0, 8)} auto-cerrados: ${stale.length}`,
+            );
+          },
         );
       },
     );

@@ -20,6 +20,7 @@ import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { ReportsModule } from '../reports/reports.module';
 import { AuditModule } from '../audit/audit.module';
+import { RlsModule } from '../../common/rls/rls.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AuditModule } from '../audit/audit.module';
     forwardRef(() => SubscriptionsModule),
     forwardRef(() => ReportsModule),
     AuditModule,
+    RlsModule,
   ],
   controllers: [NotificationsController, PushController],
   providers: [NotificationsService, RemindersService, EmailService, PushService],

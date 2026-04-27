@@ -20,6 +20,7 @@ import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
 import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 
 /**
  * Servicio de recordatorios automáticos.
@@ -73,9 +74,21 @@ export class RemindersService {
     // Requerido por runWithCronLock (pg advisory locks para dedup en
     // deployment multi-replica).
     private readonly dataSource: DataSource,
+    // F4 Fase A3 — helper para que crons seteen `app.current_tenant_id`
+    // antes de cada query (defense vs RLS cuando se active en Fase B/C).
+    private readonly tenantCronRunner: TenantCronRunner,
   ) {}
 
-  /** Registra un fallo de cron en el audit log (fire-and-forget). */
+  /**
+   * Registra un fallo de cron en el audit log (fire-and-forget).
+   *
+   * NOTA F4 A3: si el cron usa `tenantCronRunner.runForEachTenant` y el
+   * callback hace `throw` para que el helper aisle el error, la tx interna
+   * hace ROLLBACK y este audit log se pierde junto con el resto. La traza
+   * completa queda en `logger.error()` (capturada por Sentry/stdout). El
+   * audit log de `cron.failed` solo sobrevive cuando la falla ocurre fuera
+   * de una tx (Tier 1 / runAsSystem que no rethrowea).
+   */
   private async recordCronFailure(cronName: string, error: unknown, tenantId?: string | null) {
     await this.auditService.logFailure('cron.failed', {
       tenantId: tenantId ?? null,
@@ -118,15 +131,21 @@ export class RemindersService {
 
   @Cron(CronExpression.EVERY_6_HOURS)
   async remindPendingEvaluations() {
-    this.logger.log('[Cron] Checking pending evaluations...');
-    try {
+    // F4 A3 — runForEachTenant: itera tenants activos y, dentro de cada
+    // tx con `app.current_tenant_id` seteado, ejecuta la logica original.
+    // Las queries internas filtran por `tenantId` explicito (defense-in-
+    // depth: hoy sin RLS, ese filtro es la unica garantia de aislamiento;
+    // mañana con RLS activo, es redundante pero no daña).
+    await this.tenantCronRunner.runForEachTenant('remindPendingEvaluations', async (tenantId) => {
+      this.logger.log(`[Cron] Checking pending evaluations for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const activeCycles = await this.cycleRepo.find({
-        where: { status: CycleStatus.ACTIVE },
+        where: { tenantId, status: CycleStatus.ACTIVE },
       });
 
       for (const cycle of activeCycles) {
         const pendingAssignments = await this.assignmentRepo.find({
-          where: { cycleId: cycle.id, status: AssignmentStatus.IN_PROGRESS },
+          where: { tenantId, cycleId: cycle.id, status: AssignmentStatus.IN_PROGRESS },
           relations: ['evaluator'],
         });
 
@@ -183,75 +202,85 @@ export class RemindersService {
             for (const [evId, ev] of evaluatorMap) {
               this.emailService.sendEvaluationReminder(ev.email, {
                 firstName: ev.firstName, cycleName: cycle.name, pendingCount: ev.count,
-                daysLeft, cycleId: cycle.id, tenantId: cycle.tenantId, userId: evId,
+                daysLeft, cycleId: cycle.id, tenantId, userId: evId,
               }).catch(() => {});
             }
           }
         }
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in remindPendingEvaluations: ${error}`);
-      await this.recordCronFailure('remindPendingEvaluations', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in remindPendingEvaluations (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('remindPendingEvaluations', error, tenantId);
+        throw error; // propagar para que runForEachTenant lo capture y aisle
+      }
+    });
   }
 
   // ─── 2. Ciclos próximos a cerrar (diario a las 8am) ─────────────────
 
   @Cron('0 8 * * *')
   async remindCycleClosing() {
-    this.logger.log('[Cron] Checking cycles closing soon...');
-    try {
-      const fiveDaysFromNow = new Date();
-      fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5);
-      const today = new Date();
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('remindCycleClosing', async (tenantId) => {
+      this.logger.log(`[Cron] Checking cycles closing soon for tenant ${tenantId.slice(0, 8)}...`);
+      try {
+        const fiveDaysFromNow = new Date();
+        fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5);
+        const today = new Date();
 
-      const closingCycles = await this.cycleRepo.find({
-        where: {
-          status: CycleStatus.ACTIVE,
-          endDate: LessThanOrEqual(fiveDaysFromNow),
-        },
-      });
-
-      for (const cycle of closingCycles) {
-        if (new Date(cycle.endDate) < today) continue; // Already past
-
-        const admins = await this.userRepo.find({
-          where: { tenantId: cycle.tenantId, role: In(['tenant_admin']), isActive: true },
+        const closingCycles = await this.cycleRepo.find({
+          where: {
+            tenantId,
+            status: CycleStatus.ACTIVE,
+            endDate: LessThanOrEqual(fiveDaysFromNow),
+          },
         });
 
-        const daysLeft = Math.ceil(
-          (new Date(cycle.endDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-        );
+        for (const cycle of closingCycles) {
+          if (new Date(cycle.endDate) < today) continue; // Already past
 
-        const notifications = admins.map((admin) => ({
-          tenantId: cycle.tenantId,
-          userId: admin.id,
-          type: NotificationType.CYCLE_CLOSING,
-          title: 'Ciclo próximo a cerrar',
-          message: `El ciclo "${cycle.name}" cierra en ${daysLeft} día(s). Verifica que todas las evaluaciones estén completadas.`,
-          metadata: { cycleId: cycle.id, daysLeft },
-        }));
+          const admins = await this.userRepo.find({
+            where: { tenantId, role: In(['tenant_admin']), isActive: true },
+          });
 
-        if (notifications.length > 0) {
-          await this.notificationsService.createBulk(notifications);
+          const daysLeft = Math.ceil(
+            (new Date(cycle.endDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+          );
+
+          const notifications = admins.map((admin) => ({
+            tenantId,
+            userId: admin.id,
+            type: NotificationType.CYCLE_CLOSING,
+            title: 'Ciclo próximo a cerrar',
+            message: `El ciclo "${cycle.name}" cierra en ${daysLeft} día(s). Verifica que todas las evaluaciones estén completadas.`,
+            metadata: { cycleId: cycle.id, daysLeft },
+          }));
+
+          if (notifications.length > 0) {
+            await this.notificationsService.createBulk(notifications);
+          }
         }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in remindCycleClosing (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('remindCycleClosing', error, tenantId);
+        throw error;
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in remindCycleClosing: ${error}`);
-      await this.recordCronFailure('remindCycleClosing', error);
-    }
+    });
   }
 
   // ─── 3. Objetivos en riesgo (diario a las 9am) ──────────────────────
 
   @Cron('0 9 * * *')
   async remindObjectivesAtRisk() {
-    this.logger.log('[Cron] Checking objectives at risk...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('remindObjectivesAtRisk', async (tenantId) => {
+      this.logger.log(`[Cron] Checking objectives at risk for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const atRisk = await this.objectiveRepo
         .createQueryBuilder('o')
         .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
-        .where('o.status = :status', { status: ObjectiveStatus.ACTIVE })
+        .where('o.tenant_id = :tenantId', { tenantId })
+        .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE })
         .andWhere('o.progress < :threshold', { threshold: 40 })
         .andWhere('o.target_date IS NOT NULL')
         // F-004 — excluir usuarios desvinculados
@@ -299,31 +328,37 @@ export class RemindersService {
           else { userObjectives.set(obj.userId, { user: obj.user, objectives: [item], tenantId: obj.tenantId }); }
         }
         for (const [userId, data] of userObjectives) {
-          const user = data.user || await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
+          // Filtro tenantId defense-in-depth (RLS lo cubrira en Fase B/C).
+          const user = data.user || await this.userRepo.findOne({ where: { id: userId, tenantId }, select: ['id', 'email', 'firstName'] });
           if (!user?.email) continue;
           this.emailService.sendOkrAtRisk(user.email, {
-            firstName: user.firstName, objectives: data.objectives, tenantId: data.tenantId, userId,
+            firstName: user.firstName, objectives: data.objectives, tenantId, userId,
           }).catch(() => {});
         }
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in remindObjectivesAtRisk: ${error}`);
-      await this.recordCronFailure('remindObjectivesAtRisk', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in remindObjectivesAtRisk (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('remindObjectivesAtRisk', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 4. Acciones PDI vencidas (diario a las 9:30am) ─────────────────
 
   @Cron('30 9 * * *')
   async remindOverduePDIActions() {
-    this.logger.log('[Cron] Checking overdue PDI actions...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('remindOverduePDIActions', async (tenantId) => {
+      this.logger.log(`[Cron] Checking overdue PDI actions for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const today = new Date();
       const overdueActions = await this.actionRepo
         .createQueryBuilder('a')
-        .leftJoinAndSelect('a.plan', 'p')
-        .leftJoin('p.user', 'u')
-        .where('a.status != :completed', { completed: 'completada' })
+        .leftJoinAndSelect('a.plan', 'p', 'p.tenant_id = a.tenant_id')
+        .leftJoin('p.user', 'u', 'u.tenant_id = p.tenant_id')
+        .where('a.tenant_id = :tenantId', { tenantId })
+        .andWhere('a.status != :completed', { completed: 'completada' })
         .andWhere('a.due_date IS NOT NULL')
         .andWhere('a.due_date < :today', { today: today.toISOString().split('T')[0] })
         .andWhere('p.status = :active', { active: 'activo' })
@@ -361,25 +396,30 @@ export class RemindersService {
           else { userActions.set(uid, { tenantId: a.tenantId, actions: [item] }); }
         }
         for (const [userId, data] of userActions) {
-          const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
+          // Filtro tenantId defense-in-depth (RLS lo cubrira en Fase B/C).
+          const user = await this.userRepo.findOne({ where: { id: userId, tenantId }, select: ['id', 'email', 'firstName'] });
           if (!user?.email) continue;
           this.emailService.sendPdiActionOverdue(user.email, {
-            firstName: user.firstName, actions: data.actions, tenantId: data.tenantId, userId,
+            firstName: user.firstName, actions: data.actions, tenantId, userId,
           }).catch(() => {});
         }
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in remindOverduePDIActions: ${error}`);
-      await this.recordCronFailure('remindOverduePDIActions', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in remindOverduePDIActions (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('remindOverduePDIActions', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 4b. Recordatorio previo a check-in programado (diario 7:45am) ──────
 
   @Cron('45 7 * * *')
   async remindUpcomingCheckins() {
-    this.logger.log('[Cron] Checking upcoming check-ins (next 24h)...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('remindUpcomingCheckins', async (tenantId) => {
+      this.logger.log(`[Cron] Checking upcoming check-ins (next 24h) for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       // scheduledDate is a 'date' column (no time component), so compare with date-only strings
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -391,7 +431,8 @@ export class RemindersService {
         .createQueryBuilder('c')
         .leftJoinAndSelect('c.manager', 'mgr', 'mgr.tenant_id = c.tenant_id')
         .leftJoinAndSelect('c.employee', 'emp', 'emp.tenant_id = c.tenant_id')
-        .where('c.status = :status', { status: 'scheduled' })
+        .where('c.tenant_id = :tenantId', { tenantId })
+        .andWhere('c.status = :status', { status: 'scheduled' })
         .andWhere('c.scheduledDate >= :today', { today: todayStr })
         .andWhere('c.scheduledDate <= :tomorrow', { tomorrow: tomorrowStr })
         .getMany();
@@ -476,73 +517,62 @@ export class RemindersService {
           }
         }
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in remindUpcomingCheckins: ${error}`);
-      await this.recordCronFailure('remindUpcomingCheckins', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in remindUpcomingCheckins (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('remindUpcomingCheckins', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 5. Check-ins sin realizar (semanal, lunes 8am) ─────────────────
 
   @Cron('0 8 * * 1')
   async remindOverdueCheckins() {
-    this.logger.log('[Cron] Checking overdue check-ins...');
-    try {
-      // ── Bug fix: pre-filtros para evitar spam a tenants inactivos ──────
-      //
-      // Sin estas validaciones, el cron notificaba a TODOS los managers +
-      // tenant_admins del sistema cada lunes, independiente de si su tenant
-      // estaba realmente usando Eva360. Caso reportado: tenant recién
-      // onboardeado sin ciclos creados aún recibía "No tienes check-ins
-      // registrados. Agenda una reunión 1:1" — mensaje sin contexto y ruidoso.
-      //
-      // Filtro #1: tenant con al menos un ciclo no-DRAFT (lanzado en algún
-      // momento). DRAFT significa "admin está configurando", no implica uso
-      // real. ACTIVE/PAUSED/CLOSED/CANCELLED implican que el ciclo pasó del
-      // estado inicial → el sistema está en uso.
-      //
-      // Filtro #2: manager con al menos un subordinado directo activo. Un
-      // manager sin equipo no puede agendar 1:1 con nadie, así que el
-      // recordatorio es inútil para ellos.
-      const activeTenantIds = new Set(
-        (
-          await this.cycleRepo
-            .createQueryBuilder('c')
-            .select('DISTINCT c.tenant_id', 'tenantId')
-            .where('c.status != :draft', { draft: CycleStatus.DRAFT })
-            .getRawMany<{ tenantId: string }>()
-        ).map((r) => r.tenantId),
-      );
+    // F4 A3 — runForEachTenant. Los pre-filtros (tenant con ciclos
+    // lanzados, manager con reports) ahora se aplican dentro de cada
+    // tenant. Diferencia de comportamiento (vs version pre-A3): si un
+    // tenant no tiene ciclos no-DRAFT, en la version original el cron
+    // ENTERO se saltaba; ahora skipea solo ese tenant — los demas se
+    // procesan. Mejora la robustez (un tenant en setup no bloquea a los
+    // que ya estan operando).
+    await this.tenantCronRunner.runForEachTenant('remindOverdueCheckins', async (tenantId) => {
+      this.logger.log(`[Cron] Checking overdue check-ins for tenant ${tenantId.slice(0, 8)}...`);
+      try {
+      // Filtro #1: tenant con al menos un ciclo no-DRAFT.
+      const launchedCycleCount = await this.cycleRepo
+        .createQueryBuilder('c')
+        .where('c.tenant_id = :tenantId', { tenantId })
+        .andWhere('c.status != :draft', { draft: CycleStatus.DRAFT })
+        .getCount();
 
-      if (activeTenantIds.size === 0) {
-        this.logger.log('[Cron] No tenants with launched cycles — skipping check-in reminders');
-        return;
+      if (launchedCycleCount === 0) {
+        return; // tenant aun no opera; skip silently
       }
 
-      // Pre-compute managers con al menos 1 subordinado directo activo.
-      // 1 query total en vez de N queries (una por manager) dentro del loop.
+      // Filtro #2: managers del tenant con al menos 1 subordinado activo.
       const managersWithReports = new Set(
         (
           await this.userRepo
             .createQueryBuilder('u')
             .select('DISTINCT u.manager_id', 'managerId')
-            .where('u.manager_id IS NOT NULL')
+            .where('u.tenant_id = :tenantId', { tenantId })
+            .andWhere('u.manager_id IS NOT NULL')
             .andWhere('u.is_active = true')
             .getRawMany<{ managerId: string }>()
         ).map((r) => r.managerId),
       );
 
       if (managersWithReports.size === 0) {
-        this.logger.log('[Cron] No managers with active reports — skipping check-in reminders');
         return;
       }
 
       const fourteenDaysAgo = new Date();
       fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-      // Find managers who haven't had a check-in in 14+ days
+      // Managers + tenant_admins ACTIVOS de este tenant
       const managers = await this.userRepo.find({
-        where: { role: In(['manager', 'tenant_admin']), isActive: true },
+        where: { tenantId, role: In(['manager', 'tenant_admin']), isActive: true },
       });
 
       const notifications: Array<{
@@ -558,14 +588,11 @@ export class RemindersService {
       const overdueManagers: Array<{ manager: typeof managers[0]; daysSince: number | null }> = [];
 
       for (const manager of managers) {
-        // Skip tenants sin ciclos lanzados (filtro #1).
-        if (!activeTenantIds.has(manager.tenantId)) continue;
-
         // Skip managers sin equipo directo (filtro #2).
         if (!managersWithReports.has(manager.id)) continue;
 
         const lastCheckin = await this.checkinRepo.findOne({
-          where: { tenantId: manager.tenantId, managerId: manager.id },
+          where: { tenantId, managerId: manager.id },
           order: { scheduledDate: 'DESC' },
         });
 
@@ -577,7 +604,7 @@ export class RemindersService {
 
           overdueManagers.push({ manager, daysSince });
           notifications.push({
-            tenantId: manager.tenantId,
+            tenantId,
             userId: manager.id,
             type: NotificationType.CHECKIN_OVERDUE,
             title: 'Check-in pendiente',
@@ -591,28 +618,33 @@ export class RemindersService {
 
       if (notifications.length > 0) {
         await this.notificationsService.createBulk(notifications);
-        this.logger.log(`[Cron] Created ${notifications.length} check-in reminders`);
+        this.logger.log(`[Cron] Created ${notifications.length} check-in reminders for tenant ${tenantId.slice(0, 8)}`);
 
         // Send email to overdue managers (reuse data from above, no duplicate queries)
         for (const { manager, daysSince } of overdueManagers) {
           if (!manager.email) continue;
           this.emailService.sendCheckinOverdue(manager.email, {
-            firstName: manager.firstName, daysSince, tenantId: manager.tenantId, userId: manager.id,
+            firstName: manager.firstName, daysSince, tenantId, userId: manager.id,
           }).catch(() => {});
         }
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in remindOverdueCheckins: ${error}`);
-      await this.recordCronFailure('remindOverdueCheckins', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in remindOverdueCheckins (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('remindOverdueCheckins', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 5b. Escalación: 2+ check-ins consecutivos sin completar → HRBP (semanal miércoles 9am) ──
 
   @Cron('0 9 * * 3')
   async escalateMissedCheckins() {
-    this.logger.log('[Cron] Checking for 2+ consecutive missed check-ins...');
-    try {
+    // F4 A3 — runForEachTenant. La estructura logica per-tenant es la
+    // misma; solo se filtra checkinRepo por tenant.
+    await this.tenantCronRunner.runForEachTenant('escalateMissedCheckins', async (tenantId) => {
+      this.logger.log(`[Cron] Checking for 2+ consecutive missed check-ins for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const now = new Date();
 
       // Get distinct manager-employee pairs that have recent check-ins (last 90 days)
@@ -621,7 +653,8 @@ export class RemindersService {
 
       const recentCheckins = await this.checkinRepo
         .createQueryBuilder('c')
-        .where('c.scheduledDate > :start', { start: ninetyDaysAgo.toISOString() })
+        .where('c.tenant_id = :tenantId', { tenantId })
+        .andWhere('c.scheduledDate > :start', { start: ninetyDaysAgo.toISOString() })
         .andWhere('c.scheduledDate < :now', { now: now.toISOString() })
         .orderBy('c.managerId', 'ASC')
         .addOrderBy('c.employeeId', 'ASC')
@@ -630,7 +663,7 @@ export class RemindersService {
         .getMany();
 
       // Group by manager-employee pair and count consecutive missed from most recent
-      const pairConsecutiveMissed = new Map<string, { count: number; tenantId: string }>();
+      const pairConsecutiveMissed = new Map<string, { count: number }>();
       const pairsByKey = new Map<string, typeof recentCheckins>();
       for (const ci of recentCheckins) {
         const key = `${ci.managerId}|${ci.employeeId}`;
@@ -650,10 +683,7 @@ export class RemindersService {
           }
         }
         if (consecutiveMissed >= 2) {
-          pairConsecutiveMissed.set(key, {
-            count: consecutiveMissed,
-            tenantId: checkins[0].tenantId,
-          });
+          pairConsecutiveMissed.set(key, { count: consecutiveMissed });
         }
       }
 
@@ -668,17 +698,15 @@ export class RemindersService {
         metadata?: Record<string, any>;
       }> = [];
 
-      // Batch-load admins for affected tenants
-      const tenantIds = [...new Set([...pairConsecutiveMissed.values()].map((v) => v.tenantId))];
+      // Batch-load admins for THIS tenant
       const admins = await this.userRepo.find({
-        where: { tenantId: In(tenantIds), role: In(['tenant_admin']), isActive: true },
+        where: { tenantId, role: In(['tenant_admin']), isActive: true },
         select: ['id', 'tenantId'],
       });
 
-      for (const [key, { count, tenantId }] of pairConsecutiveMissed.entries()) {
+      for (const [key, { count }] of pairConsecutiveMissed.entries()) {
         const [managerId, employeeId] = key.split('|');
-        const tenantAdmins = admins.filter((a) => a.tenantId === tenantId);
-        for (const admin of tenantAdmins) {
+        for (const admin of admins) {
           notifications.push({
             tenantId,
             userId: admin.id,
@@ -692,22 +720,26 @@ export class RemindersService {
 
       if (notifications.length > 0) {
         await this.notificationsService.createBulk(notifications);
-        this.logger.log(`[Cron] Created ${notifications.length} missed check-in escalation notifications`);
+        this.logger.log(`[Cron] Created ${notifications.length} missed check-in escalation notifications for tenant ${tenantId.slice(0, 8)}`);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in escalateMissedCheckins: ${error}`);
-      await this.recordCronFailure('escalateMissedCheckins', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in escalateMissedCheckins (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('escalateMissedCheckins', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 6. Escalación: evaluaciones vencidas → manager + admin (diario 10am) ──
 
   @Cron('0 10 * * *')
   async escalateOverdueEvaluations() {
-    this.logger.log('[Cron] Escalating overdue evaluations...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('escalateOverdueEvaluations', async (tenantId) => {
+      this.logger.log(`[Cron] Escalating overdue evaluations for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const activeCycles = await this.cycleRepo.find({
-        where: { status: CycleStatus.ACTIVE },
+        where: { tenantId, status: CycleStatus.ACTIVE },
       });
 
       const notifications: Array<{
@@ -730,8 +762,8 @@ export class RemindersService {
         // Find evaluators who haven't submitted (still PENDING or IN_PROGRESS)
         const overdueAssignments = await this.assignmentRepo.find({
           where: [
-            { cycleId: cycle.id, status: AssignmentStatus.PENDING },
-            { cycleId: cycle.id, status: AssignmentStatus.IN_PROGRESS },
+            { tenantId, cycleId: cycle.id, status: AssignmentStatus.PENDING },
+            { tenantId, cycleId: cycle.id, status: AssignmentStatus.IN_PROGRESS },
           ],
           relations: ['evaluator', 'evaluatee'],
         });
@@ -756,7 +788,7 @@ export class RemindersService {
           )];
 
           notifications.push({
-            tenantId: cycle.tenantId,
+            tenantId,
             userId: managerId,
             type: NotificationType.ESCALATION_EVALUATION_OVERDUE,
             title: '⚠️ Escalación: evaluaciones vencidas en tu equipo',
@@ -772,12 +804,12 @@ export class RemindersService {
 
         // Notify tenant admins about total overdue
         const admins = await this.userRepo.find({
-          where: { tenantId: cycle.tenantId, role: In(['tenant_admin']), isActive: true },
+          where: { tenantId, role: In(['tenant_admin']), isActive: true },
         });
 
         for (const admin of admins) {
           notifications.push({
-            tenantId: cycle.tenantId,
+            tenantId,
             userId: admin.id,
             type: NotificationType.ESCALATION_EVALUATION_OVERDUE,
             title: '⚠️ Escalación: evaluaciones sin completar',
@@ -795,20 +827,24 @@ export class RemindersService {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} escalation notifications`);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in escalateOverdueEvaluations: ${error}`);
-      await this.recordCronFailure('escalateOverdueEvaluations', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in escalateOverdueEvaluations (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('escalateOverdueEvaluations', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 6b. Escalación: evaluadores con 2+ recordatorios sin respuesta → HRBP (diario 10:15am) ──
 
   @Cron('15 10 * * *')
   async escalateUnresponsiveEvaluators() {
-    this.logger.log('[Cron] Escalating unresponsive evaluators (2+ reminders)...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('escalateUnresponsiveEvaluators', async (tenantId) => {
+      this.logger.log(`[Cron] Escalating unresponsive evaluators (2+ reminders) for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const activeCycles = await this.cycleRepo.find({
-        where: { status: CycleStatus.ACTIVE },
+        where: { tenantId, status: CycleStatus.ACTIVE },
       });
 
       const notifications: Array<{
@@ -827,7 +863,7 @@ export class RemindersService {
           .leftJoinAndSelect('a.evaluator', 'evaluator', 'evaluator.tenant_id = a.tenant_id')
           .leftJoinAndSelect('a.evaluatee', 'evaluatee', 'evaluatee.tenant_id = a.tenant_id')
           .where('a.cycleId = :cycleId', { cycleId: cycle.id })
-          .andWhere('a.tenantId = :tenantId', { tenantId: cycle.tenantId })
+          .andWhere('a.tenantId = :tenantId', { tenantId })
           .andWhere('a.reminderCount >= :min', { min: 2 })
           .andWhere('a.status != :completed', { completed: AssignmentStatus.COMPLETED })
           .getMany();
@@ -836,7 +872,7 @@ export class RemindersService {
 
         // Notify HRBP / tenant admins about unresponsive evaluators
         const admins = await this.userRepo.find({
-          where: { tenantId: cycle.tenantId, role: In(['tenant_admin']), isActive: true },
+          where: { tenantId, role: In(['tenant_admin']), isActive: true },
         });
 
         const evaluatorNames = [...new Set(
@@ -847,7 +883,7 @@ export class RemindersService {
 
         for (const admin of admins) {
           notifications.push({
-            tenantId: cycle.tenantId,
+            tenantId,
             userId: admin.id,
             type: NotificationType.ESCALATION_EVALUATION_OVERDUE,
             title: 'Escalación: evaluadores sin respuesta tras múltiples recordatorios',
@@ -865,18 +901,22 @@ export class RemindersService {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} unresponsive evaluator escalation notifications`);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in escalateUnresponsiveEvaluators: ${error}`);
-      await this.recordCronFailure('escalateUnresponsiveEvaluators', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in escalateUnresponsiveEvaluators (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('escalateUnresponsiveEvaluators', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 7. Escalación: acciones PDI vencidas > 7 días → manager (diario 10:30am) ──
 
   @Cron('30 10 * * *')
   async escalateOverduePDIActions() {
-    this.logger.log('[Cron] Escalating overdue PDI actions to managers...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('escalateOverduePDIActions', async (tenantId) => {
+      this.logger.log(`[Cron] Escalating overdue PDI actions to managers for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -884,7 +924,8 @@ export class RemindersService {
         .createQueryBuilder('a')
         .leftJoinAndSelect('a.plan', 'p', 'p.tenant_id = a.tenant_id')
         .leftJoinAndSelect('p.user', 'u', 'u.tenant_id = p.tenant_id')
-        .where('a.status != :completed', { completed: 'completada' })
+        .where('a.tenant_id = :tenantId', { tenantId })
+        .andWhere('a.status != :completed', { completed: 'completada' })
         .andWhere('a.due_date IS NOT NULL')
         .andWhere('a.due_date < :sevenDaysAgo', { sevenDaysAgo: sevenDaysAgo.toISOString().split('T')[0] })
         .andWhere('p.status = :active', { active: 'activo' })
@@ -923,7 +964,7 @@ export class RemindersService {
         if (!user) continue;
 
         notifications.push({
-          tenantId: user.tenantId,
+          tenantId,
           userId: managerId,
           type: NotificationType.ESCALATION_PDI_OVERDUE,
           title: '⚠️ Escalación: acciones de desarrollo vencidas',
@@ -936,25 +977,30 @@ export class RemindersService {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} PDI escalation notifications`);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in escalateOverduePDIActions: ${error}`);
-      await this.recordCronFailure('escalateOverduePDIActions', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in escalateOverduePDIActions (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('escalateOverduePDIActions', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 8. Escalación: objetivos críticos (<20% con < 7 días) → manager (diario 11am) ──
 
   @Cron('0 11 * * *')
   async escalateCriticalObjectives() {
-    this.logger.log('[Cron] Escalating critical objectives...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('escalateCriticalObjectives', async (tenantId) => {
+      this.logger.log(`[Cron] Escalating critical objectives for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const sevenDaysFromNow = new Date();
       sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
 
       const criticalObjectives = await this.objectiveRepo
         .createQueryBuilder('o')
         .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
-        .where('o.status = :status', { status: ObjectiveStatus.ACTIVE })
+        .where('o.tenant_id = :tenantId', { tenantId })
+        .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE })
         .andWhere('o.progress < :threshold', { threshold: 20 })
         .andWhere('o.target_date IS NOT NULL')
         .andWhere('o.target_date <= :deadline', { deadline: sevenDaysFromNow.toISOString().split('T')[0] })
@@ -979,9 +1025,8 @@ export class RemindersService {
       }> = [];
 
       for (const [managerId, objs] of byManager.entries()) {
-        const first = objs[0];
         notifications.push({
-          tenantId: first.tenantId,
+          tenantId,
           userId: managerId,
           type: NotificationType.ESCALATION_OBJECTIVE_CRITICAL,
           title: '🔴 Objetivos críticos en tu equipo',
@@ -1002,24 +1047,29 @@ export class RemindersService {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} critical objective escalations`);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in escalateCriticalObjectives: ${error}`);
-      await this.recordCronFailure('escalateCriticalObjectives', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in escalateCriticalObjectives (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('escalateCriticalObjectives', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 10. PDI obligatorio 30 días post-evaluación (diario 7:30am) ────
 
   @Cron('30 7 * * *')
   async remindPDIRequired() {
-    this.logger.log('[Cron] Checking PDI requirement post-evaluation...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('remindPDIRequired', async (tenantId) => {
+      this.logger.log(`[Cron] Checking PDI requirement post-evaluation for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       // Find cycles closed in the last 30 days (use endDate as proxy for close date)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       const closedInWindow = await this.cycleRepo.find({
         where: {
+          tenantId,
           status: CycleStatus.CLOSED,
           endDate: MoreThanOrEqual(thirtyDaysAgo),
         },
@@ -1033,7 +1083,7 @@ export class RemindersService {
       for (const cycle of closedInWindow) {
         // Get all evaluated employees in this cycle
         const assignments = await this.assignmentRepo.find({
-          where: { cycleId: cycle.id, status: AssignmentStatus.COMPLETED },
+          where: { tenantId, cycleId: cycle.id, status: AssignmentStatus.COMPLETED },
           select: ['evaluateeId', 'tenantId'],
         });
         const evaluatedUserIds = [...new Set(assignments.map((a) => a.evaluateeId))];
@@ -1042,7 +1092,7 @@ export class RemindersService {
 
         // Check which ones DON'T have a PDI
         const existingPlans = await this.planRepo.find({
-          where: { tenantId: cycle.tenantId, cycleId: cycle.id },
+          where: { tenantId, cycleId: cycle.id },
           select: ['userId'],
         });
         const usersWithPlan = new Set(existingPlans.map((p) => p.userId));
@@ -1052,7 +1102,7 @@ export class RemindersService {
 
         // Get their managers
         const users = await this.userRepo.find({
-          where: { id: In(usersWithoutPlan), tenantId: cycle.tenantId, isActive: true },
+          where: { id: In(usersWithoutPlan), tenantId, isActive: true },
           select: ['id', 'firstName', 'lastName', 'managerId'],
         });
 
@@ -1067,7 +1117,7 @@ export class RemindersService {
 
         for (const [managerId, employeeNames] of byManager.entries()) {
           notifications.push({
-            tenantId: cycle.tenantId,
+            tenantId,
             userId: managerId,
             type: NotificationType.PDI_REQUIRED,
             title: 'Plan de desarrollo requerido',
@@ -1081,29 +1131,36 @@ export class RemindersService {
         await this.notificationsService.createBulk(notifications);
         this.logger.log(`[Cron] Created ${notifications.length} PDI-required reminders`);
       }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in remindPDIRequired: ${error}`);
-      await this.recordCronFailure('remindPDIRequired', error);
-    }
+      } catch (error) {
+        this.logger.error(`[Cron] Error in remindPDIRequired (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('remindPDIRequired', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 11. Limpieza de notificaciones viejas (domingo 3am) ─────────────
 
   @Cron('0 3 * * 0')
   async cleanupOldNotifications() {
-    this.logger.log('[Cron] Cleaning up old and orphan notifications...');
-    try {
-      const deleted = await this.notificationsService.deleteOlderThan(90);
-      this.logger.log(`[Cron] Deleted ${deleted} read notifications older than 90 days`);
+    // F4 A3 — runAsSystem: cleanup cross-tenant legitimo (notificaciones
+    // de cualquier tenant; cuando RLS este activo, la policy debe permitir
+    // bypass con app.current_tenant_id = '').
+    await this.tenantCronRunner.runAsSystem('cleanupOldNotifications', async () => {
+      this.logger.log('[Cron] Cleaning up old and orphan notifications...');
+      try {
+        const deleted = await this.notificationsService.deleteOlderThan(90);
+        this.logger.log(`[Cron] Deleted ${deleted} read notifications older than 90 days`);
 
-      const orphans = await this.notificationsService.cleanupOrphanNotifications();
-      this.logger.log(
-        `[Cron] Orphan cleanup: ${orphans.surveys} survey orphans, ${orphans.cycles} stale cycle notifs, ${orphans.old} very old notifications`,
-      );
-    } catch (error) {
-      this.logger.error(`[Cron] Error in cleanupOldNotifications: ${error}`);
-      await this.recordCronFailure('cleanupOldNotifications', error);
-    }
+        const orphans = await this.notificationsService.cleanupOrphanNotifications();
+        this.logger.log(
+          `[Cron] Orphan cleanup: ${orphans.surveys} survey orphans, ${orphans.cycles} stale cycle notifs, ${orphans.old} very old notifications`,
+        );
+      } catch (error) {
+        this.logger.error(`[Cron] Error in cleanupOldNotifications: ${error}`);
+        await this.recordCronFailure('cleanupOldNotifications', error);
+      }
+    });
   }
 
   // ─── 12. Expiración automática de trials (diario 1am) ──────────────
@@ -1112,17 +1169,21 @@ export class RemindersService {
   async expireTrialSubscriptions() {
     // P0: distributed lock — en multi-replica, 2x expiración concurrente
     // podrían disparar 2x bumps de status y 2x emails "tu trial venció".
+    // F4 A3 — runAsSystem (cross-tenant legitimo: scan trials de todos los
+    // tenants en una sola pasada).
     await runWithCronLock('expireTrialSubscriptions', this.dataSource, this.logger, async () => {
-      this.logger.log('[Cron] Checking expired trial subscriptions...');
-      try {
-        const count = await this.subscriptionsService.expireTrials();
-        if (count > 0) {
-          this.logger.log(`[Cron] Expired ${count} trial subscriptions`);
+      await this.tenantCronRunner.runAsSystem('expireTrialSubscriptions', async () => {
+        this.logger.log('[Cron] Checking expired trial subscriptions...');
+        try {
+          const count = await this.subscriptionsService.expireTrials();
+          if (count > 0) {
+            this.logger.log(`[Cron] Expired ${count} trial subscriptions`);
+          }
+        } catch (error) {
+          this.logger.error(`[Cron] Error in expireTrialSubscriptions: ${error}`);
+          await this.recordCronFailure('expireTrialSubscriptions', error);
         }
-      } catch (error) {
-        this.logger.error(`[Cron] Error in expireTrialSubscriptions: ${error}`);
-        await this.recordCronFailure('expireTrialSubscriptions', error);
-      }
+      });
     });
   }
 
@@ -1132,7 +1193,10 @@ export class RemindersService {
   async alertSubscriptionExpiring() {
     // P0: distributed lock — evita mandar el email "tu suscripción vence
     // en N días" 2x al admin en replicas concurrentes.
+    // F4 A3 — runAsSystem (scan cross-tenant de subs proximas a vencer;
+    // dentro mantiene WHERE tenantId explicito para los lookups de admins).
     await runWithCronLock('alertSubscriptionExpiring', this.dataSource, this.logger, async () => {
+    await this.tenantCronRunner.runAsSystem('alertSubscriptionExpiring', async () => {
     this.logger.log('[Cron] Checking expiring subscriptions...');
     try {
       const now = new Date();
@@ -1202,6 +1266,7 @@ export class RemindersService {
       await this.recordCronFailure('alertSubscriptionExpiring', error);
     }
     });
+    });
   }
 
   // ─── 14. Auto-cierre de ciclos vencidos + generación de informe (diario 0:00) ──
@@ -1211,8 +1276,10 @@ export class RemindersService {
     // P0: distributed lock — el cron cambia status de ciclos y manda
     // emails. 2 replicas podrían cerrar el mismo ciclo 2x + duplicar
     // emails a todos los participantes.
+    // F4 A3 — runForEachTenant: el cierre es per-tenant.
     await runWithCronLock('autoCloseCycles', this.dataSource, this.logger, async () => {
-    this.logger.log('[Cron] Checking for cycles to auto-close...');
+    await this.tenantCronRunner.runForEachTenant('autoCloseCycles', async (tenantId) => {
+    this.logger.log(`[Cron] Checking for cycles to auto-close for tenant ${tenantId.slice(0, 8)}...`);
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -1220,7 +1287,8 @@ export class RemindersService {
       // Find active cycles whose end date has passed (close on or after the end date)
       const expiredCycles = await this.cycleRepo
         .createQueryBuilder('c')
-        .where('c.status = :status', { status: CycleStatus.ACTIVE })
+        .where('c.tenant_id = :tenantId', { tenantId })
+        .andWhere('c.status = :status', { status: CycleStatus.ACTIVE })
         .andWhere('c.endDate < :today', { today })
         .getMany();
 
@@ -1230,7 +1298,7 @@ export class RemindersService {
           cycle.status = CycleStatus.CLOSED;
 
           // Generate closure summary report and store in settings
-          const summary = await this.reportsService.cycleSummary(cycle.id, cycle.tenantId);
+          const summary = await this.reportsService.cycleSummary(cycle.id, tenantId);
           cycle.settings = {
             ...cycle.settings,
             closureSummary: summary,
@@ -1240,7 +1308,7 @@ export class RemindersService {
 
           // Notify all participants
           const assignments = await this.assignmentRepo.find({
-            where: { cycleId: cycle.id },
+            where: { tenantId, cycleId: cycle.id },
             select: ['evaluatorId', 'evaluateeId', 'tenantId'],
           });
 
@@ -1254,7 +1322,7 @@ export class RemindersService {
           const activeParticipants = participantIds.length === 0
             ? []
             : await this.userRepo.find({
-                where: { id: In(participantIds as string[]), isActive: true },
+                where: { id: In(participantIds as string[]), tenantId, isActive: true },
                 select: ['id'],
               });
           const activeIds = new Set(activeParticipants.map((u) => u.id));
@@ -1262,7 +1330,7 @@ export class RemindersService {
           const notifications = participantIds
             .filter((id) => activeIds.has(id))
             .map((userId) => ({
-              tenantId: cycle.tenantId,
+              tenantId,
               userId,
               type: NotificationType.CYCLE_CLOSED,
               title: `Ciclo "${cycle.name}" cerrado`,
@@ -1276,7 +1344,7 @@ export class RemindersService {
 
           // Send email to tenant admins
           const admins = await this.userRepo.find({
-            where: { tenantId: cycle.tenantId, role: In(['tenant_admin']), isActive: true },
+            where: { tenantId, role: In(['tenant_admin']), isActive: true },
             select: ['id', 'email', 'firstName'],
           });
           for (const admin of admins) {
@@ -1294,12 +1362,14 @@ export class RemindersService {
       }
 
       if (expiredCycles.length > 0) {
-        this.logger.log(`[Cron] Auto-closed ${expiredCycles.length} expired cycle(s)`);
+        this.logger.log(`[Cron] Auto-closed ${expiredCycles.length} expired cycle(s) for tenant ${tenantId.slice(0, 8)}`);
       }
     } catch (error) {
-      this.logger.error(`[Cron] Error in autoCloseCycles: ${error}`);
-      await this.recordCronFailure('autoCloseCycles', error);
+      this.logger.error(`[Cron] Error in autoCloseCycles (tenant=${tenantId.slice(0, 8)}): ${error}`);
+      await this.recordCronFailure('autoCloseCycles', error, tenantId);
+      throw error;
     }
+    });
     });
   }
 
@@ -1309,17 +1379,21 @@ export class RemindersService {
   async processAutoRenewals() {
     // P0: distributed lock — auto-renovación CREA INVOICES. 2 replicas =
     // facturas duplicadas al cliente. Este es el bug financiero más caro.
+    // F4 A3 — runAsSystem (scan cross-tenant de subs por renovar; las
+    // mutations internas usan tenantId del propio sub).
     await runWithCronLock('processAutoRenewals', this.dataSource, this.logger, async () => {
-      this.logger.log('[Cron] Processing auto-renewals...');
-      try {
-        const result = await this.subscriptionsService.processAutoRenewals();
-        if (result.renewed > 0 || result.suspended > 0) {
-          this.logger.log(`[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended`);
+      await this.tenantCronRunner.runAsSystem('processAutoRenewals', async () => {
+        this.logger.log('[Cron] Processing auto-renewals...');
+        try {
+          const result = await this.subscriptionsService.processAutoRenewals();
+          if (result.renewed > 0 || result.suspended > 0) {
+            this.logger.log(`[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended`);
+          }
+        } catch (error) {
+          this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
+          await this.recordCronFailure('processAutoRenewals', error);
         }
-      } catch (error) {
-        this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
-        await this.recordCronFailure('processAutoRenewals', error);
-      }
+      });
     });
   }
 
@@ -1327,10 +1401,12 @@ export class RemindersService {
 
   @Cron('0 8 * * 1')
   async sendWeeklyManagerSummary() {
-    this.logger.log('[Cron] Sending weekly manager summaries...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('sendWeeklyManagerSummary', async (tenantId) => {
+      this.logger.log(`[Cron] Sending weekly manager summaries for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const managers = await this.userRepo.find({
-        where: { role: 'manager', isActive: true },
+        where: { tenantId, role: 'manager', isActive: true },
         select: ['id', 'email', 'firstName', 'tenantId'],
       });
 
@@ -1342,7 +1418,7 @@ export class RemindersService {
 
         // Count pending evals for this manager
         const pendingEvals = await this.assignmentRepo.count({
-          where: { evaluatorId: mgr.id, tenantId: mgr.tenantId, status: In([AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS]) },
+          where: { evaluatorId: mgr.id, tenantId, status: In([AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS]) },
         });
 
         // Count overdue PDI actions for direct reports
@@ -1350,21 +1426,21 @@ export class RemindersService {
           .innerJoin(DevelopmentPlan, 'p', 'p.id = a.plan_id AND p.tenant_id = a.tenant_id')
           .innerJoin(User, 'u', 'u.id = p.user_id AND u.tenant_id = p.tenant_id')
           .where('u.manager_id = :managerId', { managerId: mgr.id })
-          .andWhere('a.tenant_id = :tenantId', { tenantId: mgr.tenantId })
+          .andWhere('a.tenant_id = :tenantId', { tenantId })
           .andWhere('a.status NOT IN (:...done)', { done: ['completada', 'completed', 'cancelada'] })
           .andWhere('a.due_date < :today', { today: today.toISOString().split('T')[0] })
           .getCount();
 
         // Count at-risk objectives for manager's team (direct reports + own)
         const teamUserIds = await this.userRepo.find({
-          where: { managerId: mgr.id, tenantId: mgr.tenantId, isActive: true },
+          where: { managerId: mgr.id, tenantId, isActive: true },
           select: ['id'],
         }).then((users) => [mgr.id, ...users.map((u) => u.id)]);
 
         const atRiskObj = teamUserIds.length > 0
           ? await this.objectiveRepo.createQueryBuilder('o')
               .where('o.userId IN (:...uids)', { uids: teamUserIds })
-              .andWhere('o.tenantId = :tid', { tid: mgr.tenantId })
+              .andWhere('o.tenantId = :tid', { tid: tenantId })
               .andWhere('o.status = :s', { s: ObjectiveStatus.ACTIVE })
               .andWhere('o.progress < 40')
               .getCount()
@@ -1378,17 +1454,19 @@ export class RemindersService {
           pendingEvals,
           overduePdi,
           atRiskObjectives: atRiskObj,
-          tenantId: mgr.tenantId,
+          tenantId,
           userId: mgr.id,
         }).catch((err) => this.logger.warn(`Failed to send weekly summary to ${mgr.email}: ${err.message}`));
         sent++;
       }
 
-      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} weekly manager summaries`);
-    } catch (error) {
-      this.logger.error(`[Cron] Error in sendWeeklyManagerSummary: ${error}`);
-      await this.recordCronFailure('sendWeeklyManagerSummary', error);
-    }
+      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} weekly manager summaries for tenant ${tenantId.slice(0, 8)}`);
+      } catch (error) {
+        this.logger.error(`[Cron] Error in sendWeeklyManagerSummary (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('sendWeeklyManagerSummary', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── 17. Resumen semanal para EMPLOYEES (lunes 8:15am) ─────────────
@@ -1397,10 +1475,12 @@ export class RemindersService {
 
   @Cron('15 8 * * 1')
   async sendWeeklyEmployeeSummary() {
-    this.logger.log('[Cron] Sending weekly employee summaries...');
-    try {
+    // F4 A3 — runForEachTenant.
+    await this.tenantCronRunner.runForEachTenant('sendWeeklyEmployeeSummary', async (tenantId) => {
+      this.logger.log(`[Cron] Sending weekly employee summaries for tenant ${tenantId.slice(0, 8)}...`);
+      try {
       const employees = await this.userRepo.find({
-        where: { role: 'employee', isActive: true },
+        where: { tenantId, role: 'employee', isActive: true },
         select: ['id', 'email', 'firstName', 'tenantId'],
       });
 
@@ -1418,7 +1498,7 @@ export class RemindersService {
         const pendingEvals = await this.assignmentRepo.count({
           where: {
             evaluatorId: emp.id,
-            tenantId: emp.tenantId,
+            tenantId,
             status: In([AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS]),
           },
         });
@@ -1428,7 +1508,7 @@ export class RemindersService {
         const overdueActions = await this.actionRepo.createQueryBuilder('a')
           .innerJoin(DevelopmentPlan, 'p', 'p.id = a.plan_id AND p.tenant_id = a.tenant_id')
           .where('p.user_id = :uid', { uid: emp.id })
-          .andWhere('a.tenant_id = :tid', { tid: emp.tenantId })
+          .andWhere('a.tenant_id = :tid', { tid: tenantId })
           .andWhere('a.status NOT IN (:...done)', { done: ['completada', 'cancelada'] })
           .andWhere('a.due_date < :today', { today: todayIso })
           .getCount();
@@ -1436,7 +1516,7 @@ export class RemindersService {
         // 3. Check-ins agendados esta semana (próximos 7 días) en los
         //    que el employee participa (como manager o como employee).
         const upcomingCheckins = await this.checkinRepo.createQueryBuilder('c')
-          .where('c.tenant_id = :tid', { tid: emp.tenantId })
+          .where('c.tenant_id = :tid', { tid: tenantId })
           .andWhere('(c.employee_id = :uid OR c.manager_id = :uid)', { uid: emp.id })
           .andWhere('c.status IN (:...active)', { active: ['scheduled', 'requested'] })
           .andWhere('c.scheduled_date >= :today', { today: todayIso })
@@ -1457,17 +1537,19 @@ export class RemindersService {
           overdueActions,
           upcomingCheckins,
           newRecognitions,
-          tenantId: emp.tenantId,
+          tenantId,
           userId: emp.id,
         }).catch((err) => this.logger.warn(`Failed to send weekly summary to ${emp.email}: ${err.message}`));
         sent++;
       }
 
-      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} weekly employee summaries`);
-    } catch (error) {
-      this.logger.error(`[Cron] Error in sendWeeklyEmployeeSummary: ${error}`);
-      await this.recordCronFailure('sendWeeklyEmployeeSummary', error);
-    }
+      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} weekly employee summaries for tenant ${tenantId.slice(0, 8)}`);
+      } catch (error) {
+        this.logger.error(`[Cron] Error in sendWeeklyEmployeeSummary (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('sendWeeklyEmployeeSummary', error, tenantId);
+        throw error;
+      }
+    });
   }
 
   // ─── C1 Password expiry warning (daily 10am) ─────────────────────────
@@ -1486,74 +1568,75 @@ export class RemindersService {
     // en ejecuciones seriales, pero 2 replicas concurrentes podrían leer
     // el array antes de que la otra escriba → 2 emails. El lock garantiza
     // serial execution por tick.
+    // F4 A3 — runForEachTenant: itera tenants activos via el helper.
+    // El filtro adicional `passwordPolicy.expiryDays > 0` lo hacemos en JS
+    // (no necesitamos JSONB query porque el helper ya pre-filtra activos).
     await runWithCronLock('warnPasswordExpiry', this.dataSource, this.logger, async () => {
     this.logger.log('[Cron] Scanning for password expiry warnings...');
-    try {
-      // Fetch active tenants that have password expiry enabled. The JSONB
-      // path query filters in-DB instead of hydrating all tenants.
-      const tenants = await this.tenantRepo
-        .createQueryBuilder('t')
-        .where(`(t.settings->'passwordPolicy'->>'expiryDays')::int > 0`)
-        .andWhere('t.isActive = true')
-        .select(['t.id', 't.name', 't.settings'])
-        .getMany()
-        .catch(() => [] as Tenant[]);
+    await this.tenantCronRunner.runForEachTenant('warnPasswordExpiry', async (tenantId) => {
+      try {
+      const now = new Date();
+      // Cargar tenant settings (pasamos por el helper que ya filtra
+      // isActive=true; aqui solo necesitamos settings.passwordPolicy).
+      const tenant = await this.tenantRepo.findOne({
+        where: { id: tenantId },
+        select: ['id', 'name', 'settings'],
+      });
+      if (!tenant) return;
+      const expiryDays = Number((tenant.settings as any)?.passwordPolicy?.expiryDays || 0);
+      if (!expiryDays || expiryDays <= 0) return;
 
       let sent = 0;
-      const now = new Date();
 
-      for (const t of tenants) {
-        const expiryDays = Number((t.settings as any)?.passwordPolicy?.expiryDays || 0);
-        if (!expiryDays || expiryDays <= 0) continue;
+      const users = await this.userRepo.find({
+        where: { tenantId, isActive: true },
+        select: ['id', 'email', 'firstName', 'passwordChangedAt', 'notificationPreferences'],
+      });
 
-        const users = await this.userRepo.find({
-          where: { tenantId: t.id, isActive: true },
-          select: ['id', 'email', 'firstName', 'passwordChangedAt', 'notificationPreferences'],
-        });
+      for (const u of users) {
+        if (!u.email || !u.passwordChangedAt) continue;
+        const expiresAt = new Date(u.passwordChangedAt).getTime() + expiryDays * 24 * 60 * 60 * 1000;
+        const daysLeft = Math.ceil((expiresAt - now.getTime()) / (24 * 60 * 60 * 1000));
+        // We only fire on the 7, 3 and 1 day buckets. Anything else is
+        // ignored on this run.
+        let bucket: number | null = null;
+        if (daysLeft === 7) bucket = 7;
+        else if (daysLeft === 3) bucket = 3;
+        else if (daysLeft === 1) bucket = 1;
+        if (bucket === null) continue;
 
-        for (const u of users) {
-          if (!u.email || !u.passwordChangedAt) continue;
-          const expiresAt = new Date(u.passwordChangedAt).getTime() + expiryDays * 24 * 60 * 60 * 1000;
-          const daysLeft = Math.ceil((expiresAt - now.getTime()) / (24 * 60 * 60 * 1000));
-          // We only fire on the 7, 3 and 1 day buckets. Anything else is
-          // ignored on this run.
-          let bucket: number | null = null;
-          if (daysLeft === 7) bucket = 7;
-          else if (daysLeft === 3) bucket = 3;
-          else if (daysLeft === 1) bucket = 1;
-          if (bucket === null) continue;
+        const prefs: any = u.notificationPreferences ?? {};
+        const alreadySent: number[] = Array.isArray(prefs.__password_expiry_sent)
+          ? prefs.__password_expiry_sent
+          : [];
+        if (alreadySent.includes(bucket)) continue;
 
-          const prefs: any = u.notificationPreferences ?? {};
-          const alreadySent: number[] = Array.isArray(prefs.__password_expiry_sent)
-            ? prefs.__password_expiry_sent
-            : [];
-          if (alreadySent.includes(bucket)) continue;
-
-          try {
-            await this.emailService.sendPasswordExpiringSoon(u.email, {
-              firstName: u.firstName,
-              orgName: t.name,
-              daysLeft: bucket,
-              tenantId: t.id,
-            });
-            await this.userRepo.update(u.id, {
-              notificationPreferences: {
-                ...prefs,
-                __password_expiry_sent: [...alreadySent, bucket].sort((a, b) => b - a),
-              },
-            });
-            sent++;
-          } catch (err: any) {
-            this.logger.warn(`Password expiry email failed for user ${u.id}: ${err?.message || err}`);
-          }
+        try {
+          await this.emailService.sendPasswordExpiringSoon(u.email, {
+            firstName: u.firstName,
+            orgName: tenant.name,
+            daysLeft: bucket,
+            tenantId,
+          });
+          await this.userRepo.update(u.id, {
+            notificationPreferences: {
+              ...prefs,
+              __password_expiry_sent: [...alreadySent, bucket].sort((a, b) => b - a),
+            },
+          });
+          sent++;
+        } catch (err: any) {
+          this.logger.warn(`Password expiry email failed for user ${u.id}: ${err?.message || err}`);
         }
       }
 
-      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} password expiry warnings`);
-    } catch (error) {
-      this.logger.error(`[Cron] Error in warnPasswordExpiry: ${error}`);
-      await this.recordCronFailure('warnPasswordExpiry', error);
-    }
+      if (sent > 0) this.logger.log(`[Cron] Sent ${sent} password expiry warnings for tenant ${tenantId.slice(0, 8)}`);
+      } catch (error) {
+        this.logger.error(`[Cron] Error in warnPasswordExpiry (tenant=${tenantId.slice(0, 8)}): ${error}`);
+        await this.recordCronFailure('warnPasswordExpiry', error, tenantId);
+        throw error;
+      }
+    });
     });
   }
 
@@ -1568,19 +1651,22 @@ export class RemindersService {
   async escalateOverdueInvoices() {
     // P0: distributed lock — dunning duplicado en multi-replica causaría
     // 2x emails "tu factura está vencida" al cliente + 2x avance de stage.
+    // F4 A3 — runAsSystem (dunning cross-tenant de invoices vencidas).
     await runWithCronLock('escalateOverdueInvoices', this.dataSource, this.logger, async () => {
-      this.logger.log('[Cron] Processing dunning for overdue invoices...');
-      try {
-        const result = await this.invoicesService.processDunning();
-        if (result.advanced > 0) {
-          this.logger.log(
-            `[Cron] Dunning advanced ${result.advanced} invoices (scanned ${result.processed})`,
-          );
+      await this.tenantCronRunner.runAsSystem('escalateOverdueInvoices', async () => {
+        this.logger.log('[Cron] Processing dunning for overdue invoices...');
+        try {
+          const result = await this.invoicesService.processDunning();
+          if (result.advanced > 0) {
+            this.logger.log(
+              `[Cron] Dunning advanced ${result.advanced} invoices (scanned ${result.processed})`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(`[Cron] Error in escalateOverdueInvoices: ${error}`);
+          await this.recordCronFailure('escalateOverdueInvoices', error);
         }
-      } catch (error) {
-        this.logger.error(`[Cron] Error in escalateOverdueInvoices: ${error}`);
-        await this.recordCronFailure('escalateOverdueInvoices', error);
-      }
+      });
     });
   }
 
@@ -1601,7 +1687,10 @@ export class RemindersService {
     // P0: distributed lock — los emails nurture dependen de un array
     // JSONB (`nurtureEmailsSent`) para dedup. 2 replicas leyendo antes
     // de que la otra escriba mandarían el mismo stage 2x al cliente.
+    // F4 A3 — runAsSystem (scan cross-tenant de subs en TRIAL/EXPIRED;
+    // las queries internas usan WHERE tenantId del propio sub).
     await runWithCronLock('sendTrialNurtureEmails', this.dataSource, this.logger, async () => {
+    await this.tenantCronRunner.runAsSystem('sendTrialNurtureEmails', async () => {
     this.logger.log('[Cron] Sending trial nurture emails...');
     try {
       const cutoffExpired = new Date();
@@ -1734,6 +1823,7 @@ export class RemindersService {
       await this.recordCronFailure('sendTrialNurtureEmails', error);
     }
     });
+    });
   }
 
   // ─── P2.2: Retention policy de audit logs (diario 04:30 AM) ────────
@@ -1751,26 +1841,29 @@ export class RemindersService {
   @Cron('30 4 * * *')
   async purgeOldAuditLogs() {
     await runWithCronLock('purgeOldAuditLogs', this.dataSource, this.logger, async () => {
-      this.logger.log('[Cron] Purging old audit logs...');
-      try {
-        const retentionYears = parseInt(process.env.AUDIT_LOGS_RETENTION_YEARS || '2', 10);
-        const criticalRetentionYears = parseInt(process.env.AUDIT_LOGS_CRITICAL_RETENTION_YEARS || '6', 10);
-        if (retentionYears < 1 || criticalRetentionYears < retentionYears) {
-          this.logger.warn(
-            `[Cron] AUDIT_LOGS_RETENTION_YEARS=${retentionYears} CRITICAL=${criticalRetentionYears} inválidos; skipping purge`,
-          );
-          return;
+      // F4 A3 — runAsSystem (purga cross-tenant de audit_logs viejos).
+      await this.tenantCronRunner.runAsSystem('purgeOldAuditLogs', async () => {
+        this.logger.log('[Cron] Purging old audit logs...');
+        try {
+          const retentionYears = parseInt(process.env.AUDIT_LOGS_RETENTION_YEARS || '2', 10);
+          const criticalRetentionYears = parseInt(process.env.AUDIT_LOGS_CRITICAL_RETENTION_YEARS || '6', 10);
+          if (retentionYears < 1 || criticalRetentionYears < retentionYears) {
+            this.logger.warn(
+              `[Cron] AUDIT_LOGS_RETENTION_YEARS=${retentionYears} CRITICAL=${criticalRetentionYears} inválidos; skipping purge`,
+            );
+            return;
+          }
+          const result = await this.auditService.purgeOldAuditLogs(retentionYears, criticalRetentionYears);
+          if (result.purgedRegular > 0 || result.purgedCritical > 0) {
+            this.logger.log(
+              `[Cron] Audit logs purged: regular=${result.purgedRegular} (>${retentionYears}y), critical=${result.purgedCritical} (>${criticalRetentionYears}y)`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(`[Cron] Error in purgeOldAuditLogs: ${error}`);
+          await this.recordCronFailure('purgeOldAuditLogs', error);
         }
-        const result = await this.auditService.purgeOldAuditLogs(retentionYears, criticalRetentionYears);
-        if (result.purgedRegular > 0 || result.purgedCritical > 0) {
-          this.logger.log(
-            `[Cron] Audit logs purged: regular=${result.purgedRegular} (>${retentionYears}y), critical=${result.purgedCritical} (>${criticalRetentionYears}y)`,
-          );
-        }
-      } catch (error) {
-        this.logger.error(`[Cron] Error in purgeOldAuditLogs: ${error}`);
-        await this.recordCronFailure('purgeOldAuditLogs', error);
-      }
+      });
     });
   }
 
@@ -1783,15 +1876,18 @@ export class RemindersService {
   @Cron('15 3 * * *')
   async purgeDeadPushSubscriptions() {
     await runWithCronLock('purgeDeadPushSubscriptions', this.dataSource, this.logger, async () => {
-      try {
-        const { deleted } = await this.pushService.pruneDeadSubscriptions(90);
-        if (deleted > 0) {
-          this.logger.log(`[Cron] Push subscriptions purged: ${deleted}`);
+      // F4 A3 — runAsSystem (purga cross-tenant de push subs inactivas).
+      await this.tenantCronRunner.runAsSystem('purgeDeadPushSubscriptions', async () => {
+        try {
+          const { deleted } = await this.pushService.pruneDeadSubscriptions(90);
+          if (deleted > 0) {
+            this.logger.log(`[Cron] Push subscriptions purged: ${deleted}`);
+          }
+        } catch (error) {
+          this.logger.error(`[Cron] Error in purgeDeadPushSubscriptions: ${error}`);
+          await this.recordCronFailure('purgeDeadPushSubscriptions', error);
         }
-      } catch (error) {
-        this.logger.error(`[Cron] Error in purgeDeadPushSubscriptions: ${error}`);
-        await this.recordCronFailure('purgeDeadPushSubscriptions', error);
-      }
+      });
     });
   }
 

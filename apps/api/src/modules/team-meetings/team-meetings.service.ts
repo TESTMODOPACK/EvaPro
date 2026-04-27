@@ -13,6 +13,7 @@ import {
 } from './entities/team-meeting-participant.entity';
 import { User } from '../users/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
+import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 import {
   AddAgendaTopicDto, CancelTeamMeetingDto, CompleteTeamMeetingDto,
   CreateTeamMeetingDto, RespondInvitationDto, UpdateTeamMeetingDto,
@@ -41,6 +42,8 @@ export class TeamMeetingsService {
     private readonly userRepo: Repository<User>,
     private readonly auditService: AuditService,
     private readonly dataSource: DataSource,
+    // F4 A3 — para setear app.current_tenant_id en crons.
+    private readonly tenantCronRunner: TenantCronRunner,
   ) {}
 
   // ─── Date helpers (consistentes con FeedbackService.assertFutureScheduledDatetime) ──
@@ -552,55 +555,61 @@ export class TeamMeetingsService {
       this.dataSource,
       this.logger,
       async () => {
-        const cutoff = new Date();
-        cutoff.setUTCDate(cutoff.getUTCDate() - 5);
-        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        // F4 A3 — runForEachTenant: cierra reuniones vencidas por tenant.
+        await this.tenantCronRunner.runForEachTenant(
+          'team_meetings.autoCompleteStaleMeetings',
+          async (tenantId) => {
+            const cutoff = new Date();
+            cutoff.setUTCDate(cutoff.getUTCDate() - 5);
+            const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-        const stale = await this.meetingRepo.find({
-          where: {
-            status: TeamMeetingStatus.SCHEDULED,
-            scheduledDate: LessThan(new Date(cutoffStr)) as any,
-          },
-          select: ['id', 'tenantId', 'title', 'scheduledDate'],
-        });
-
-        if (stale.length === 0) {
-          this.logger.log('[autoCompleteStaleMeetings] 0 reuniones vencidas +5d');
-          return;
-        }
-
-        const autoNote =
-          'Cerrada automáticamente por política de cierre de Eva360: han pasado ' +
-          'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
-          'reunión. El organizador puede agregar retroactivamente notas, minuta, ' +
-          'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
-
-        for (const m of stale) {
-          try {
-            await this.meetingRepo.update(
-              { id: m.id },
-              {
-                status: TeamMeetingStatus.COMPLETED,
-                autoCompleted: true,
-                completedAt: new Date(),
-                notes: autoNote,
+            const stale = await this.meetingRepo.find({
+              where: {
+                tenantId,
+                status: TeamMeetingStatus.SCHEDULED,
+                scheduledDate: LessThan(new Date(cutoffStr)) as any,
               },
-            );
-            await this.auditService
-              .log(m.tenantId, null, 'team_meeting.auto_completed', 'team_meeting', m.id, {
-                title: m.title,
-                scheduledDate: m.scheduledDate,
-              })
-              .catch(() => undefined);
-          } catch (err: any) {
-            this.logger.warn(
-              `[autoCompleteStaleMeetings] falló cerrar ${m.id}: ${err?.message}`,
-            );
-          }
-        }
+              select: ['id', 'tenantId', 'title', 'scheduledDate'],
+            });
 
-        this.logger.log(
-          `[autoCompleteStaleMeetings] auto-cerradas: ${stale.length}`,
+            if (stale.length === 0) {
+              return;
+            }
+
+            const autoNote =
+              'Cerrada automáticamente por política de cierre de Eva360: han pasado ' +
+              'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
+              'reunión. El organizador puede agregar retroactivamente notas, minuta, ' +
+              'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
+
+            for (const m of stale) {
+              try {
+                await this.meetingRepo.update(
+                  { id: m.id },
+                  {
+                    status: TeamMeetingStatus.COMPLETED,
+                    autoCompleted: true,
+                    completedAt: new Date(),
+                    notes: autoNote,
+                  },
+                );
+                await this.auditService
+                  .log(m.tenantId, null, 'team_meeting.auto_completed', 'team_meeting', m.id, {
+                    title: m.title,
+                    scheduledDate: m.scheduledDate,
+                  })
+                  .catch(() => undefined);
+              } catch (err: any) {
+                this.logger.warn(
+                  `[autoCompleteStaleMeetings] falló cerrar ${m.id}: ${err?.message}`,
+                );
+              }
+            }
+
+            this.logger.log(
+              `[autoCompleteStaleMeetings] tenant=${tenantId.slice(0, 8)} auto-cerradas: ${stale.length}`,
+            );
+          },
         );
       },
     );

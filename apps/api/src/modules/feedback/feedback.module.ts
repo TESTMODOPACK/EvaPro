@@ -16,6 +16,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuditModule } from '../audit/audit.module';
 // v3.1 F1 — opcional (degradación graceful si el tenant no tiene AI_INSIGHTS)
 import { AiInsightsModule } from '../ai-insights/ai-insights.module';
+import { RlsModule } from '../../common/rls/rls.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { AiInsightsModule } from '../ai-insights/ai-insights.module';
     ]),
     forwardRef(() => NotificationsModule),
     forwardRef(() => AiInsightsModule),
+    RlsModule,
   ],
   controllers: [FeedbackController],
   providers: [FeedbackService],
