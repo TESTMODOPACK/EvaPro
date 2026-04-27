@@ -2011,6 +2011,10 @@ export class UsersService {
         level: u.hierarchyLevel || null,
         department: u.department || null,
         role: u.role,
+        // Necesario en el frontend para que el manager pueda discriminar
+        // sus directos (mostrar boton "Ver perfil" solo para ellos) sin
+        // hacer otra llamada al API. Empleados/admin no usan este campo.
+        managerId: u.managerId || null,
         children: [],
       });
     }

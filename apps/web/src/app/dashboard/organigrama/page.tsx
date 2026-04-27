@@ -7,7 +7,19 @@ import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useDepartments } from '@/hooks/useDepartments';
 
-function OrgNode({ node, depth = 0, autoCollapseDepth = 3 }: { node: any; depth?: number; autoCollapseDepth?: number }) {
+function OrgNode({
+  node,
+  depth = 0,
+  autoCollapseDepth = 3,
+  callerRole,
+  callerUserId,
+}: {
+  node: any;
+  depth?: number;
+  autoCollapseDepth?: number;
+  callerRole: string;
+  callerUserId: string | undefined;
+}) {
   // P8-F: default collapsed según autoCollapseDepth que se adapta al tamaño
   // del árbol — en organizaciones grandes (>80 colaboradores) colapsa más
   // temprano para evitar render con miles de nodos simultáneos. Cuando el
@@ -64,32 +76,49 @@ function OrgNode({ node, depth = 0, autoCollapseDepth = 3 }: { node: any; depth?
               {totalDescendants(node) > node.children.length && ` (${totalDescendants(node)} total)`}
             </span>
           )}
-          {node.id && (
-            <a
-              href={`/dashboard/usuarios/${node.id}`}
-              title="Ver perfil del colaborador"
-              style={{
-                fontSize: '0.68rem',
-                color: 'var(--accent)',
-                textDecoration: 'none',
-                padding: '2px 6px',
-                borderRadius: 4,
-                border: '1px solid rgba(201,147,58,0.3)',
-                background: 'rgba(201,147,58,0.06)',
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Ver perfil
-            </a>
-          )}
+          {/* Boton "Ver perfil" gateado por rol — el backend
+              (assertCanAccessUser) ya rechaza accesos invalidos con 404
+              pero el guard frontend evita la mala UX de clickear y
+              caer en redirect a /dashboard/perfil:
+              - super_admin / tenant_admin: ven boton para todos
+              - manager: solo para sus directos (managerId === callerUserId)
+                + para si mismo
+              - employee / external: nunca ven el boton (el perfil propio
+                lo acceden por TopBar > Mi Perfil) */}
+          {node.id && (() => {
+            const canViewProfile =
+              callerRole === 'super_admin' ||
+              callerRole === 'tenant_admin' ||
+              (callerRole === 'manager' &&
+                (node.managerId === callerUserId || node.id === callerUserId));
+            if (!canViewProfile) return null;
+            return (
+              <a
+                href={`/dashboard/usuarios/${node.id}`}
+                title="Ver perfil del colaborador"
+                style={{
+                  fontSize: '0.68rem',
+                  color: 'var(--accent)',
+                  textDecoration: 'none',
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  border: '1px solid rgba(201,147,58,0.3)',
+                  background: 'rgba(201,147,58,0.06)',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Ver perfil
+              </a>
+            );
+          })()}
         </div>
       </div>
 
       {hasChildren && !collapsed && (
         <div style={{ borderLeft: '2px dashed var(--border)', marginLeft: '0.85rem', paddingLeft: '0.25rem' }}>
           {node.children.map((child: any) => (
-            <OrgNode key={child.id} node={child} depth={depth + 1} autoCollapseDepth={autoCollapseDepth} />
+            <OrgNode key={child.id} node={child} depth={depth + 1} autoCollapseDepth={autoCollapseDepth} callerRole={callerRole} callerUserId={callerUserId} />
           ))}
         </div>
       )}
@@ -100,6 +129,9 @@ function OrgNode({ node, depth = 0, autoCollapseDepth = 3 }: { node: any; depth?
 export default function OrganigramaPage() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
+  const currentUser = useAuthStore((s) => s.user);
+  const callerRole = currentUser?.role || 'employee';
+  const callerUserId = currentUser?.userId;
   const [data, setData] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -217,7 +249,7 @@ export default function OrganigramaPage() {
             })(filtered);
             const autoDepth = totalNodes > 150 ? 2 : totalNodes > 50 ? 3 : 4;
             return filtered.map((root: any) => (
-              <OrgNode key={root.id} node={root} autoCollapseDepth={autoDepth} />
+              <OrgNode key={root.id} node={root} autoCollapseDepth={autoDepth} callerRole={callerRole} callerUserId={callerUserId} />
             ));
           })()}
         </div>
