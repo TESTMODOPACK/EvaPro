@@ -182,11 +182,34 @@ async function main() {
         updated_at timestamptz NOT NULL DEFAULT now()
       )`,
       `CREATE INDEX IF NOT EXISTS idx_oidc_configurations_enabled ON oidc_configurations(enabled)`,
+
+      // ── ai_call_logs (audit trail de llamadas a Anthropic, F4) ────────
+      // Persiste cada llamada al API de IA antes del parseJson, asegurando
+      // que tokens consumidos quedan trackeados aunque el response sea
+      // JSON malformado. Ver ai-insights.service.ts callClaudeAndPersistInsight.
+      `CREATE TABLE IF NOT EXISTS ai_call_logs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        type ai_insights_type_enum NOT NULL,
+        tokens_used int NOT NULL DEFAULT 0,
+        input_tokens int NOT NULL DEFAULT 0,
+        output_tokens int NOT NULL DEFAULT 0,
+        model varchar(100) NOT NULL,
+        generated_by uuid NOT NULL REFERENCES users(id),
+        parse_success boolean NOT NULL DEFAULT true,
+        error_message text,
+        insight_id uuid REFERENCES ai_insights(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_ai_call_logs_tenant ON ai_call_logs(tenant_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_ai_call_logs_created ON ai_call_logs(created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_ai_call_logs_tenant_created ON ai_call_logs(tenant_id, created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_ai_call_logs_parse_errors ON ai_call_logs(tenant_id, created_at DESC) WHERE parse_success = false`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }
     }
-    console.log('[startup] Calibration + GDPR tables ensured');
+    console.log('[startup] Calibration + GDPR + ai_call_logs tables ensured');
 
     // ── 1. Pre-add nullable/default columns ────────────────────────────
     // Evita conflictos de TypeORM ALTER en tablas con datos existentes.

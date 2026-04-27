@@ -11,6 +11,7 @@ import { AuditLog } from '../audit/entities/audit-log.entity';
 import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
 import { SupportTicket } from './entities/support-ticket.entity';
 import { AiInsight } from '../ai-insights/entities/ai-insight.entity';
+import { AiCallLog } from '../ai-insights/entities/ai-call-log.entity';
 import { SubscriptionPlan } from '../subscriptions/entities/subscription-plan.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
@@ -113,6 +114,8 @@ export class TenantsService {
     private readonly ticketRepo: Repository<SupportTicket>,
     @InjectRepository(AiInsight)
     private readonly aiInsightRepo: Repository<AiInsight>,
+    @InjectRepository(AiCallLog)
+    private readonly aiCallLogRepo: Repository<AiCallLog>,
     @InjectRepository(SubscriptionPlan)
     private readonly planRepo: Repository<SubscriptionPlan>,
     @InjectRepository(Department)
@@ -1054,8 +1057,10 @@ export class TenantsService {
         const addonCalls = sub?.aiAddonCalls ?? 0;
         const addonUsed = sub?.aiAddonUsed ?? 0;
 
-        // Count total AI insights for this tenant (all time)
-        const totalAllTime = await this.aiInsightRepo.count({
+        // Count total AI calls for this tenant (all time) — usa
+        // ai_call_logs como source-of-truth (incluye llamadas que fallaron
+        // en parseJson, pero gastaron tokens igual).
+        const totalAllTime = await this.aiCallLogRepo.count({
           where: { tenantId: tenant.id },
         });
 
@@ -1068,26 +1073,27 @@ export class TenantsService {
           ? thisMonthStart
           : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, subDay));
 
-        const periodUsed = await this.aiInsightRepo
-          .createQueryBuilder('i')
-          .where('i.tenant_id = :tenantId', { tenantId: tenant.id })
-          .andWhere('i.created_at > :start', { start: periodStart })
+        const periodUsed = await this.aiCallLogRepo
+          .createQueryBuilder('c')
+          .where('c.tenant_id = :tenantId', { tenantId: tenant.id })
+          .andWhere('c.created_at > :start', { start: periodStart })
           .getCount();
 
         // Count by type for this tenant (all time)
-        const byType = await this.aiInsightRepo
-          .createQueryBuilder('i')
-          .select('i.type', 'type')
-          .addSelect('COUNT(i.id)', 'count')
-          .where('i.tenant_id = :tenantId', { tenantId: tenant.id })
-          .groupBy('i.type')
+        const byType = await this.aiCallLogRepo
+          .createQueryBuilder('c')
+          .select('c.type', 'type')
+          .addSelect('COUNT(c.id)', 'count')
+          .where('c.tenant_id = :tenantId', { tenantId: tenant.id })
+          .groupBy('c.type')
           .getRawMany();
 
-        // Tokens used total
-        const tokensResult = await this.aiInsightRepo
-          .createQueryBuilder('i')
-          .select('COALESCE(SUM(i.tokens_used), 0)', 'totalTokens')
-          .where('i.tenant_id = :tenantId', { tenantId: tenant.id })
+        // Tokens used total — desde ai_call_logs (source-of-truth real
+        // de lo que se cobra a Anthropic).
+        const tokensResult = await this.aiCallLogRepo
+          .createQueryBuilder('c')
+          .select('COALESCE(SUM(c.tokens_used), 0)', 'totalTokens')
+          .where('c.tenant_id = :tenantId', { tenantId: tenant.id })
           .getRawOne();
 
         const totalLimit = planLimit + Math.max(0, addonCalls - addonUsed);
