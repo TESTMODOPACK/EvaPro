@@ -48,6 +48,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { SystemErrorAuditInterceptor } from './common/interceptors/system-error-audit.interceptor';
 import { NoImpersonationGuard } from './common/guards/no-impersonation.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { CsrfGuard } from './common/guards/csrf.guard';
 
 @Module({
   imports: [
@@ -164,6 +165,16 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     {
       provide: APP_GUARD,
       useClass: NoImpersonationGuard,
+    },
+    // CsrfGuard — F3 Fase 3: protección CSRF via double-submit cookie.
+    // Solo aplica a metodos mutantes (POST/PUT/PATCH/DELETE) que tengan
+    // cookie csrf_token (request autenticado). Skip natural en
+    // unauthenticated o GET/HEAD/OPTIONS. Se registra DESPUES del
+    // JwtAuthGuard para que requests publicos sin cookie pasen sin
+    // gatear CSRF (ej. /auth/login, webhooks).
+    {
+      provide: APP_GUARD,
+      useClass: CsrfGuard,
     },
   ],
 })

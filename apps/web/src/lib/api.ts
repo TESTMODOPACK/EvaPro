@@ -293,6 +293,23 @@ export interface AnalyticsData {
 
 // ─── Request helper ─────────────────────────────────────────────────────────
 
+/**
+ * F3 Fase 3 — CSRF protection (double-submit cookie).
+ * Lee la cookie csrf_token (no httpOnly, asi JS la puede leer) y la
+ * envia en el header X-CSRF-Token en cada request mutante. El backend
+ * (CsrfGuard) valida que coincidan: si un atacante cross-site dispara
+ * un fetch desde su origen, el navegador adjunta la cookie de sesion
+ * pero NO el header (porque el atacante no puede leer la cookie del
+ * victim). El guard rechaza con 403.
+ */
+function readCsrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+const CSRF_PROTECTED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -309,6 +326,14 @@ async function request<T>(
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
+
+  // F3 Fase 3 — Anadir X-CSRF-Token en metodos mutantes si tenemos
+  // cookie. El backend valida via double-submit (header == cookie).
+  const method = (options.method || "GET").toUpperCase();
+  if (CSRF_PROTECTED_METHODS.has(method)) {
+    const csrf = readCsrfToken();
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+  }
 
   const url = `${BASE_URL}${path}`;
   const res = await fetch(url, {
