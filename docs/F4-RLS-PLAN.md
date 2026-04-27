@@ -89,31 +89,40 @@ Implementar RLS de Postgres como capa adicional de aislamiento multi-tenant, enc
 
 ### Fase A3 — Refactor cron jobs (riesgo medio)
 
-**Esfuerzo**: 4-5h.
+**Estado**: A3.1 ✅ completado. A3.2/A3.3 pendientes.
 
-20+ cron handlers ejecutan sin tenant context. Hay que refactorizar para que cada uno:
-- Itere tenants explícitamente (como hace ya `recognition.service.calculateMvpOfTheMonth`)
-- Setee `app.current_tenant_id` antes de queries del tenant
-- Limpie al fin
+**Esfuerzo total**: 4-6h. Dividido en 3 sub-fases para reducir riesgo de rollout.
 
-Approach concreto: helper `runForEachTenant(callback)` que envuelve la iteración + set_config + reset.
+#### A3.1 — Helper + 1 cron piloto (DONE)
 
-```ts
-// Pseudo-código
-await this.tenantRunner.runForEachTenant(async (tenantId) => {
-  // queries dentro ven app.current_tenant_id = tenantId
-  await this.processCycleReminders(tenantId);
-});
-```
+Entregables:
+- `apps/api/src/common/rls/tenant-cron-runner.ts` — helper con dos APIs:
+  - `runForEachTenant(label, callback)`: itera tenants activos, abre tx por cada uno, setea `app.current_tenant_id`. Aisla errores per-tenant (uno fallando no detiene los siguientes).
+  - `runAsSystem(label, callback)`: ejecuta una sola tx con `app.current_tenant_id=''` para crons globales (cleanup, dunning, expirar trials). Errores propagan loud.
+- `apps/api/src/common/rls/rls.module.ts` — exporta el helper.
+- `recognition.service.calculateMvpOfTheMonth` refactorizado: usa `tenantCronRunner.runForEachTenant` en lugar del loop manual con `getRepository(Tenant)`. Pattern de referencia para los demás.
+- 11 tests unitarios del helper (sin BD).
 
-Cron jobs identificados que requieren refactor (lista parcial):
-- `feedback.service.autoCompleteStaleCheckIns`
-- `recruitment.service` (cron a 1am)
-- `notifications/reminders.service.*` (20+ handlers)
-- `surveys.service.daily_10am`
-- `team-meetings.service.daily_205am`
+#### A3.2 — Refactor crons de Tier 2 (Bx pendiente)
 
-**Riesgo**: si un cron rompe, falla silenciosamente (los crons no atienden requests). Tests obligatorios.
+Auditoría completa identificó **24 crons con queries tenant-scoped sin context**, divididos en 3 tiers:
+
+**Tier 1 — Trivial** (6 crons; usar `runAsSystem`): `cleanupOldNotifications`, `expireTrialSubscriptions`, `alertSubscriptionExpiring`, `escalateOverdueInvoices`, `purgeOldAuditLogs`, `checkHealth` (no necesita context).
+
+**Tier 2 — Medio** (13 crons; iteran tenants implícitamente, queries retornan `tenantId` via FK; usar `runForEachTenant`):
+- `feedback.service.autoCompleteStaleCheckIns` (2am)
+- `recruitment.service.autoCloseExpiredProcesses` (1am)
+- `surveys.service.remindIncompleteSurveys` (10am)
+- `team-meetings.service.autoCompleteStaleMeetings` (02:05)
+- `reminders.service`: `remindPendingEvaluations`, `remindCycleClosing`, `remindObjectivesAtRisk`, `remindOverduePDIActions`, `remindUpcomingCheckins`, `escalateOverdueEvaluations`, `escalateUnresponsiveEvaluators`, `escalateOverduePDIActions`, `escalateCriticalObjectives`, `remindPDIRequired`, `autoCloseCycles`, `warnPasswordExpiry`
+
+**Tier 3 — Alto** (4 crons; loops globales sobre `users`/`cycles` sin filtro tenant — refactor mayor): `remindOverdueCheckins`, `escalateMissedCheckins`, `sendWeeklyManagerSummary`, `sendWeeklyEmployeeSummary`. Estos requieren cambiar el loop de "for user in all" a "for tenant: for user in tenant".
+
+#### A3.3 — Refactor Tier 3 (los 4 más complejos)
+
+Bloqueante para Fase B en queries que cruzan los crons del Tier 3 (los demás se pueden refactorizar después de habilitar RLS si es necesario).
+
+**Riesgo**: si un cron rompe, falla silenciosamente. Tests obligatorios para cada uno antes de mergear.
 
 ---
 

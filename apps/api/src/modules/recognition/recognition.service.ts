@@ -6,10 +6,10 @@ import { cachedFetch, invalidateCache } from '../../common/cache/cache.helper';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, IsNull, Repository, DataSource, MoreThan } from 'typeorm';
 import { runWithCronLock } from '../../common/utils/cron-lock';
+import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 import { Recognition } from './entities/recognition.entity';
 import { RecognitionComment } from './entities/recognition-comment.entity';
 import { MvpOfTheMonth } from './entities/mvp-of-the-month.entity';
-import { Tenant } from '../tenants/entities/tenant.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
 import { UserPoints, PointsSource } from './entities/user-points.entity';
@@ -55,6 +55,7 @@ export class RecognitionService {
     private readonly emailService: EmailService,
     private readonly pushService: PushService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly tenantCronRunner: TenantCronRunner,
   ) {}
 
   /** Send in-app notification to all active users in tenant (batched). */
@@ -1776,28 +1777,15 @@ export class RecognitionService {
       this.logger,
       async () => {
         const monthKey = this.monthKey(-1); // mes anterior
-        this.logger.log(`[mvpCron] arrancando para mes ${monthKey}`);
-
-        // Todos los tenants (el calc es barato — iteramos todos, idempotente).
-        // Bug fix (F3+F7 review): antes usaba getRepository('tenants') con
-        // string — frágil ante refactors y sin type safety. Ahora usa la
-        // entity Tenant directamente.
-        const tenants = await this.dataSource
-          .getRepository(Tenant)
-          .createQueryBuilder('t')
-          .select(['t.id'])
-          .getMany();
-
-        for (const t of tenants) {
-          try {
-            await this.calculateMvpForTenant(t.id, monthKey);
-          } catch (err: any) {
-            this.logger.warn(
-              `[mvpCron] tenant=${t.id?.slice(0, 8)} falló: ${err?.message}`,
-            );
-          }
-        }
-        this.logger.log(`[mvpCron] completo para ${tenants.length} tenants`);
+        // F4 Fase A3 — usar TenantCronRunner: itera tenants activos
+        // dentro de una tx con app.current_tenant_id seteado para
+        // cada uno. Antes este metodo tenia su propio loop +
+        // try/catch per-tenant manual. El helper centraliza el
+        // patron y deja todos los crons listos para RLS en Fase B.
+        await this.tenantCronRunner.runForEachTenant(
+          `mvpCron:${monthKey}`,
+          (tenantId) => this.calculateMvpForTenant(tenantId, monthKey),
+        );
       },
     );
   }
