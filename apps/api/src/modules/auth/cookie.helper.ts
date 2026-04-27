@@ -45,10 +45,17 @@ function jwtTtlMs(accessToken: string): number {
 }
 
 function baseCookieOptions(isProd: boolean) {
+  // sameSite policy:
+  // - dev: 'lax' funciona en localhost (mismo registrable domain) y permite
+  //   secure=false (HTTP). 'none' requiere secure=true que rompe en HTTP.
+  // - prod: 'none' es necesario si el deploy es cross-site (web en Netlify
+  //   y api en Hostinger, por ejemplo). Para deploys same-site (api.foo.com
+  //   + app.foo.com) tambien funciona, solo es ligeramente menos restrictivo.
+  //   La proteccion CSRF se cubre en Fase 3 con double-submit token.
   return {
     httpOnly: true,
     secure: isProd,
-    sameSite: 'lax' as const,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
     path: '/',
   };
 }
