@@ -16,6 +16,7 @@ import { RecruitmentController } from './recruitment.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuditModule } from '../audit/audit.module';
 import { AiInsightsModule } from '../ai-insights/ai-insights.module';
+import { RlsModule } from '../../common/rls/rls.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AiInsightsModule } from '../ai-insights/ai-insights.module';
     SubscriptionsModule,
     AuditModule,
     AiInsightsModule,
+    RlsModule,
   ],
   controllers: [RecruitmentController],
   providers: [RecruitmentService],

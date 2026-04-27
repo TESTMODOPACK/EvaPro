@@ -22,6 +22,7 @@ import { OrgDevelopmentService } from '../org-development/org-development.servic
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { AuditService } from '../audit/audit.service';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 
 @Injectable()
 export class SurveysService {
@@ -47,6 +48,8 @@ export class SurveysService {
     private readonly auditService: AuditService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    // F4 A3 — para setear app.current_tenant_id en crons.
+    private readonly tenantCronRunner: TenantCronRunner,
   ) {}
 
   // ─── Feature gate ──────────────────────────────────────────────────────
@@ -969,47 +972,54 @@ export class SurveysService {
 
   @Cron('0 10 * * *') // Daily at 10am
   async remindIncompleteSurveys() {
-    this.logger.log('[Cron] Checking incomplete survey responses...');
-    try {
-      const activeSurveys = await this.surveyRepo.find({
-        where: { status: 'active' },
-      });
+    // F4 A3 — runForEachTenant: encuestas son tenant-scoped.
+    await this.tenantCronRunner.runForEachTenant(
+      'surveys.remindIncompleteSurveys',
+      async (tenantId) => {
+        this.logger.log(`[Cron] Checking incomplete survey responses for tenant ${tenantId.slice(0, 8)}...`);
+        try {
+          const activeSurveys = await this.surveyRepo.find({
+            where: { tenantId, status: 'active' },
+          });
 
-      for (const survey of activeSurveys) {
-        // Skip if past end date
-        if (new Date() > survey.endDate) continue;
+          for (const survey of activeSurveys) {
+            // Skip if past end date
+            if (new Date() > survey.endDate) continue;
 
-        const pendingAssignments = await this.assignmentRepo.find({
-          where: { surveyId: survey.id, status: 'pending' },
-          relations: ['user'],
-        });
+            const pendingAssignments = await this.assignmentRepo.find({
+              where: { tenantId, surveyId: survey.id, status: 'pending' },
+              relations: ['user'],
+            });
 
-        const toNotify = pendingAssignments.filter((a) => a.reminderCount < 3 && a.user);
+            const toNotify = pendingAssignments.filter((a) => a.reminderCount < 3 && a.user);
 
-        if (toNotify.length === 0) continue;
+            if (toNotify.length === 0) continue;
 
-        const notifications = toNotify.map((a) => ({
-          tenantId: a.tenantId,
-          userId: a.userId,
-          type: 'survey_reminder' as any,
-          title: 'Recordatorio: encuesta pendiente',
-          message: `Tienes pendiente la encuesta "${survey.title}". ${survey.isAnonymous ? 'Tus respuestas son anónimas.' : ''} Fecha límite: ${survey.endDate.toISOString().split('T')[0]}.`,
-          metadata: { surveyId: survey.id },
-        }));
+            const notifications = toNotify.map((a) => ({
+              tenantId: a.tenantId,
+              userId: a.userId,
+              type: 'survey_reminder' as any,
+              title: 'Recordatorio: encuesta pendiente',
+              message: `Tienes pendiente la encuesta "${survey.title}". ${survey.isAnonymous ? 'Tus respuestas son anónimas.' : ''} Fecha límite: ${survey.endDate.toISOString().split('T')[0]}.`,
+              metadata: { surveyId: survey.id },
+            }));
 
-        await this.notificationsService.createBulk(notifications);
+            await this.notificationsService.createBulk(notifications);
 
-        // Update reminder count
-        for (const a of toNotify) {
-          a.reminderCount = (a.reminderCount || 0) + 1;
+            // Update reminder count
+            for (const a of toNotify) {
+              a.reminderCount = (a.reminderCount || 0) + 1;
+            }
+            await this.assignmentRepo.save(toNotify);
+
+            this.logger.log(`[Cron] Sent ${toNotify.length} survey reminders for "${survey.title}"`);
+          }
+        } catch (error) {
+          this.logger.error(`[Cron] Error in remindIncompleteSurveys (tenant=${tenantId.slice(0, 8)}): ${error}`);
+          throw error;
         }
-        await this.assignmentRepo.save(toNotify);
-
-        this.logger.log(`[Cron] Sent ${toNotify.length} survey reminders for "${survey.title}"`);
-      }
-    } catch (error) {
-      this.logger.error(`[Cron] Error in remindIncompleteSurveys: ${error}`);
-    }
+      },
+    );
   }
 
   // ─── Export ────────────────────────────────────────────────────────────

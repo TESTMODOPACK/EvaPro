@@ -18,6 +18,7 @@ import { Department } from '../tenants/entities/department.entity';
 import { Position } from '../tenants/entities/position.entity';
 import { AiInsightsService } from '../ai-insights/ai-insights.service';
 import { AuditService } from '../audit/audit.service';
+import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 
 @Injectable()
 export class RecruitmentService {
@@ -37,6 +38,8 @@ export class RecruitmentService {
     private readonly aiInsightsService: AiInsightsService,
     private readonly auditService: AuditService,
     private readonly dataSource: DataSource,
+    // F4 A3 — para setear app.current_tenant_id en crons.
+    private readonly tenantCronRunner: TenantCronRunner,
   ) {}
 
   // ─── Date & status validators (v3.1 — date flow rules) ──────────────────
@@ -461,44 +464,48 @@ export class RecruitmentService {
       this.dataSource,
       this.logger,
       async () => {
-        const today = this.todayYmd();
-        // Comparación directa contra columna date (YYYY-MM-DD string).
-        const expired = await this.processRepo.find({
-          where: {
-            status: ProcessStatus.ACTIVE,
-            endDate: LessThan(new Date(today)) as any,
+        // F4 A3 — runForEachTenant: cierra procesos vencidos por tenant.
+        await this.tenantCronRunner.runForEachTenant(
+          'recruitment.autoCloseExpiredProcesses',
+          async (tenantId) => {
+            const today = this.todayYmd();
+            // Comparación directa contra columna date (YYYY-MM-DD string).
+            const expired = await this.processRepo.find({
+              where: {
+                tenantId,
+                status: ProcessStatus.ACTIVE,
+                endDate: LessThan(new Date(today)) as any,
+              },
+              select: ['id', 'tenantId', 'title'],
+            });
+
+            if (expired.length === 0) {
+              return;
+            }
+
+            for (const p of expired) {
+              try {
+                await this.processRepo.update(
+                  { id: p.id },
+                  { status: ProcessStatus.CLOSED, autoClosed: true },
+                );
+                await this.auditService
+                  .log(p.tenantId, null, 'recruitment.process_auto_closed', 'recruitment_process', p.id, {
+                    title: p.title,
+                    closedAt: new Date().toISOString(),
+                  })
+                  .catch(() => undefined);
+              } catch (err: any) {
+                this.logger.warn(
+                  `[autoCloseExpiredProcesses] falló cerrar proceso ${p.id}: ${err?.message}`,
+                );
+              }
+            }
+
+            this.logger.log(
+              `[autoCloseExpiredProcesses] tenant=${tenantId.slice(0, 8)} cerrados: ${expired.length}`,
+            );
           },
-          select: ['id', 'tenantId', 'title'],
-        });
-
-        if (expired.length === 0) {
-          this.logger.log(
-            `[autoCloseExpiredProcesses] no hay procesos vencidos para cerrar.`,
-          );
-          return;
-        }
-
-        for (const p of expired) {
-          try {
-            await this.processRepo.update(
-              { id: p.id },
-              { status: ProcessStatus.CLOSED, autoClosed: true },
-            );
-            await this.auditService
-              .log(p.tenantId, null, 'recruitment.process_auto_closed', 'recruitment_process', p.id, {
-                title: p.title,
-                closedAt: new Date().toISOString(),
-              })
-              .catch(() => undefined);
-          } catch (err: any) {
-            this.logger.warn(
-              `[autoCloseExpiredProcesses] falló cerrar proceso ${p.id}: ${err?.message}`,
-            );
-          }
-        }
-
-        this.logger.log(
-          `[autoCloseExpiredProcesses] cerrados automáticamente: ${expired.length}`,
         );
       },
     );

@@ -12,12 +12,14 @@ import { AuditModule } from '../audit/audit.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { TeamMeetingsService } from './team-meetings.service';
 import { TeamMeetingsController } from './team-meetings.controller';
+import { RlsModule } from '../../common/rls/rls.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([TeamMeeting, TeamMeetingParticipant, User]),
     AuditModule,
     SubscriptionsModule,
+    RlsModule,
   ],
   providers: [TeamMeetingsService],
   controllers: [TeamMeetingsController],

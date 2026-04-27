@@ -12,6 +12,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AiInsightsModule } from '../ai-insights/ai-insights.module';
 import { OrgDevelopmentModule } from '../org-development/org-development.module';
+import { RlsModule } from '../../common/rls/rls.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { OrgDevelopmentModule } from '../org-development/org-development.module'
     NotificationsModule,
     AiInsightsModule,
     OrgDevelopmentModule,
+    RlsModule,
   ],
   controllers: [SurveysController],
   providers: [SurveysService],
