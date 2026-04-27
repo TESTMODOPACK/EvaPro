@@ -1982,6 +1982,101 @@ export class EvaluationsService {
     applyScope(avgQb);
     const avgScoreResult = await avgQb.select('AVG(r.overall_score)', 'avg').getRawOne();
 
+    // ─── Enrichments para los KPI subs del dashboard ───────────────────
+    // Se calculan con el mismo scope (applyScope) para que el manager
+    // solo vea data de su equipo.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const inSevenDays = new Date(today);
+    inSevenDays.setDate(inSevenDays.getDate() + 7);
+    const PENDING_STATUSES = [
+      AssignmentStatus.PENDING,
+      AssignmentStatus.IN_PROGRESS,
+    ];
+
+    // Vencidas: due_date < hoy y status pending/in_progress
+    const overdueQb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .where('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.status IN (:...pendingStatuses)', { pendingStatuses: PENDING_STATUSES })
+      .andWhere('a.due_date < :today', { today });
+    applyScope(overdueQb);
+    const overdueCount = await overdueQb.getCount();
+
+    // Vencen pronto: due_date entre hoy y +7 dias y status activo
+    const dueSoonQb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .where('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.status IN (:...pendingStatuses)', { pendingStatuses: PENDING_STATUSES })
+      .andWhere('a.due_date >= :today', { today })
+      .andWhere('a.due_date <= :inSevenDays', { inSevenDays });
+    applyScope(dueSoonQb);
+    const dueSoonCount = await dueSoonQb.getCount();
+
+    // Personas con TODAS sus evals al 100% (al menos 1 completed, 0
+    // pendientes). Util para "Z al 100%" en la card "Empleados evaluados".
+    // Solo cuenta a quienes tienen al menos 1 eval completed (los que
+    // tienen 0 evals nunca contarian aunque pending tambien sea 0).
+    const evalueeStatsQb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .select('a.evaluatee_id', 'evaluateeId')
+      .addSelect('a.status', 'status')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.status IN (:...activeStatuses)', { activeStatuses: ACTIVE_STATUSES })
+      .groupBy('a.evaluatee_id')
+      .addGroupBy('a.status');
+    applyScope(evalueeStatsQb);
+    const evalueeRows = await evalueeStatsQb.getRawMany<{
+      evaluateeId: string;
+      status: string;
+      cnt: string;
+    }>();
+    const byEvaluatee: Record<string, { completed: number; pending: number }> = {};
+    for (const row of evalueeRows) {
+      if (!byEvaluatee[row.evaluateeId]) {
+        byEvaluatee[row.evaluateeId] = { completed: 0, pending: 0 };
+      }
+      const cnt = parseInt(row.cnt, 10);
+      if (row.status === AssignmentStatus.COMPLETED) {
+        byEvaluatee[row.evaluateeId].completed += cnt;
+      } else {
+        byEvaluatee[row.evaluateeId].pending += cnt;
+      }
+    }
+    const fullyEvaluatedCount = Object.values(byEvaluatee).filter(
+      (s) => s.completed > 0 && s.pending === 0,
+    ).length;
+
+    // Trend de score: comparar avg del ciclo cerrado mas reciente con
+    // el anterior. Devuelve null si no hay 2 ciclos cerrados con data.
+    let cycleScoreDelta: number | null = null;
+    const recentClosedCycles = await this.cycleRepo.find({
+      where: { tenantId, status: CycleStatus.CLOSED },
+      order: { endDate: 'DESC' },
+      take: 2,
+    });
+    if (recentClosedCycles.length === 2) {
+      const getCycleAvg = async (cycleId: string): Promise<number | null> => {
+        const qb = this.responseRepo
+          .createQueryBuilder('r')
+          .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
+          .where('r.tenantId = :tenantId', { tenantId })
+          .andWhere('a.cycle_id = :cycleId', { cycleId })
+          .andWhere('r.overall_score IS NOT NULL');
+        applyScope(qb);
+        const result = await qb.select('AVG(r.overall_score)', 'avg').getRawOne();
+        return result?.avg ? parseFloat(result.avg) : null;
+      };
+      const [recentAvg, prevAvg] = await Promise.all([
+        getCycleAvg(recentClosedCycles[0].id),
+        getCycleAvg(recentClosedCycles[1].id),
+      ]);
+      if (recentAvg !== null && prevAvg !== null) {
+        cycleScoreDelta = Math.round((recentAvg - prevAvg) * 10) / 10;
+      }
+    }
+
     return {
       totalCycles,
       activeCycles,
@@ -1989,6 +2084,10 @@ export class EvaluationsService {
       completedAssignments,
       pendingAssignments: totalAssignments - completedAssignments,
       evaluatedPeopleCount,
+      fullyEvaluatedCount,
+      overdueCount,
+      dueSoonCount,
+      cycleScoreDelta,
       completionRate: totalAssignments > 0
         ? Math.round((completedAssignments / totalAssignments) * 100)
         : 0,
