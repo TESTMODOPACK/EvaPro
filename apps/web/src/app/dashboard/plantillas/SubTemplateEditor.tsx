@@ -474,6 +474,104 @@ export function SubTemplateEditor({
         </div>
       )}
 
+      {/* Pesos (movido arriba — Lote UX) */}
+      <div
+        className="card"
+        style={{ padding: '1.25rem 1.5rem', marginBottom: '1.25rem' }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '0.85rem',
+          }}
+        >
+          <h3 style={{ fontWeight: 700, fontSize: '0.92rem' }}>
+            ⚖ Peso de cada perspectiva en el score final
+          </h3>
+          <button
+            className="btn-ghost"
+            style={{ fontSize: '0.78rem' }}
+            onClick={autoBalance}
+          >
+            Balancear equitativamente
+          </button>
+        </div>
+
+        {subs.map((sub) => {
+          const meta = RELATION_LABELS[sub.relationType] || {
+            label: sub.relationType,
+            emoji: '📋',
+            hint: '',
+          };
+          return (
+            <div
+              key={sub.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                marginBottom: '0.5rem',
+                opacity: sub.isActive ? 1 : 0.5,
+              }}
+            >
+              <div style={{ width: '180px', fontSize: '0.85rem' }}>
+                {meta.emoji} {meta.label}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={sub.weight}
+                onChange={(e) => updateWeight(sub.relationType, parseFloat(e.target.value))}
+                disabled={!sub.isActive}
+                style={{
+                  flex: 1,
+                  accentColor: 'var(--accent)',
+                  cursor: sub.isActive ? 'pointer' : 'not-allowed',
+                }}
+              />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(sub.weight * 100)}
+                onChange={(e) =>
+                  updateWeight(sub.relationType, parseInt(e.target.value) / 100)
+                }
+                disabled={!sub.isActive}
+                style={{
+                  ...inputStyle,
+                  width: '80px',
+                  textAlign: 'center',
+                  fontWeight: 600,
+                }}
+              />
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>%</span>
+            </div>
+          );
+        })}
+
+        <div
+          style={{
+            marginTop: '0.85rem',
+            padding: '0.5rem 0.75rem',
+            borderRadius: 'var(--radius-sm)',
+            background: weightOK ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+            color: weightOK ? 'var(--success)' : 'var(--danger)',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            textAlign: 'center',
+          }}
+        >
+          Total: {(totalWeight * 100).toFixed(1)}%{' '}
+          {weightOK ? '✅' : '⚠️ Debe ser 100%'}
+        </div>
+      </div>
+
       {/* Tabs */}
       <div
         style={{
@@ -777,104 +875,6 @@ export function SubTemplateEditor({
           </button>
         </div>
       )}
-
-      {/* Pesos */}
-      <div
-        className="card"
-        style={{ padding: '1.5rem', marginTop: '2rem', marginBottom: '1.5rem' }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-          }}
-        >
-          <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-            ⚖ Peso de cada perspectiva en el score final
-          </h3>
-          <button
-            className="btn-ghost"
-            style={{ fontSize: '0.78rem' }}
-            onClick={autoBalance}
-          >
-            Balancear equitativamente
-          </button>
-        </div>
-
-        {subs.map((sub) => {
-          const meta = RELATION_LABELS[sub.relationType] || {
-            label: sub.relationType,
-            emoji: '📋',
-            hint: '',
-          };
-          return (
-            <div
-              key={sub.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                marginBottom: '0.6rem',
-                opacity: sub.isActive ? 1 : 0.5,
-              }}
-            >
-              <div style={{ width: '180px', fontSize: '0.85rem' }}>
-                {meta.emoji} {meta.label}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={sub.weight}
-                onChange={(e) => updateWeight(sub.relationType, parseFloat(e.target.value))}
-                disabled={!sub.isActive}
-                style={{
-                  flex: 1,
-                  accentColor: 'var(--accent)',
-                  cursor: sub.isActive ? 'pointer' : 'not-allowed',
-                }}
-              />
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={1}
-                value={Math.round(sub.weight * 100)}
-                onChange={(e) =>
-                  updateWeight(sub.relationType, parseInt(e.target.value) / 100)
-                }
-                disabled={!sub.isActive}
-                style={{
-                  ...inputStyle,
-                  width: '80px',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                }}
-              />
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>%</span>
-            </div>
-          );
-        })}
-
-        <div
-          style={{
-            marginTop: '1rem',
-            padding: '0.6rem 0.75rem',
-            borderRadius: 'var(--radius-sm)',
-            background: weightOK ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-            color: weightOK ? 'var(--success)' : 'var(--danger)',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            textAlign: 'center',
-          }}
-        >
-          Total: {(totalWeight * 100).toFixed(1)}%{' '}
-          {weightOK ? '✅' : '⚠️ Debe ser 100%'}
-        </div>
-      </div>
 
       {/* Save */}
       <div style={{ display: 'flex', gap: '0.75rem' }}>
