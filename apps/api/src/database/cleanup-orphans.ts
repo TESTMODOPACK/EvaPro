@@ -205,6 +205,30 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS idx_ai_call_logs_created ON ai_call_logs(created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_ai_call_logs_tenant_created ON ai_call_logs(tenant_id, created_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_ai_call_logs_parse_errors ON ai_call_logs(tenant_id, created_at DESC) WHERE parse_success = false`,
+
+      // ── form_sub_templates (Fase 3 plan auditoria - Opción A) ──────────
+      // Subplantillas anidadas a un FormTemplate padre. Cada subplantilla
+      // pertenece a un relation_type (self/manager/peer/direct_report/
+      // external) y tiene su propio set de secciones/preguntas + un peso
+      // que pondera su contribución al score final del ciclo.
+      //
+      // Idempotente: CREATE TABLE IF NOT EXISTS no afecta DBs ya migradas.
+      `CREATE TABLE IF NOT EXISTS form_sub_templates (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        parent_template_id uuid NOT NULL REFERENCES form_templates(id) ON DELETE CASCADE,
+        relation_type varchar(20) NOT NULL,
+        sections jsonb NOT NULL DEFAULT '[]',
+        weight numeric(4,3) NOT NULL DEFAULT 0,
+        display_order int NOT NULL DEFAULT 0,
+        is_active boolean NOT NULL DEFAULT true,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT uq_sub_template_parent_relation UNIQUE (parent_template_id, relation_type)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_sub_templates_parent ON form_sub_templates(parent_template_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_sub_templates_tenant ON form_sub_templates(tenant_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_sub_templates_active ON form_sub_templates(parent_template_id, is_active) WHERE is_active = true`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }
@@ -237,6 +261,10 @@ async function main() {
       { table: 'users', column: 'password_changed_at', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_changed_at" timestamptz NULL` },
       { table: 'users', column: 'failed_login_attempts', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "failed_login_attempts" int NOT NULL DEFAULT 0` },
       { table: 'users', column: 'locked_until', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "locked_until" timestamptz NULL` },
+      // Grupo D — Fase 3 plan auditoria evaluaciones (Opción A)
+      // form_templates.default_cycle_type: si está set, al crear la
+      // plantilla se auto-generan las form_sub_templates correspondientes.
+      { table: 'form_templates', column: 'default_cycle_type', sql: `ALTER TABLE "form_templates" ADD COLUMN IF NOT EXISTS "default_cycle_type" varchar(5) NULL` },
     ];
 
     for (const fix of columnFixes) {

@@ -36,11 +36,36 @@ export class FormTemplate {
    *   { id: "q1", text: "...", type: "scale"|"text"|"multi",
    *     scale?: { min: 1, max: 5, labels: { 1: "Deficiente", 5: "Excelente" } },
    *     options?: ["opA", "opB"],
-   *     required: true }
+   *     required: true,
+   *     applicableTo?: ['self', 'manager', ...]  // Fase 2 (legacy)
+   *   }
    * ]}]
+   *
+   * **Fase 3 (Opción A):** este campo queda como LEGACY para plantillas
+   * Fase 2. Las nuevas plantillas guardan su contenido en
+   * `form_sub_templates` (una fila por relationType). El service migra
+   * inline al primer GET cuando detecta plantillas sin sub_templates.
    */
   @Column({ type: 'jsonb' })
   sections: any;
+
+  /**
+   * Tipo de ciclo recomendado para esta plantilla (90/180/270/360).
+   * Si está set, al crear la plantilla se auto-generan las
+   * subplantillas (form_sub_templates) correspondientes a los roles
+   * incluidos por ALLOWED_RELATIONS para ese cycle type.
+   *
+   * NULL = plantilla agnóstica (admin debe agregar subplantillas a mano).
+   *
+   * Fase 3 — Opción A.
+   */
+  @Column({
+    type: 'varchar',
+    length: 5,
+    name: 'default_cycle_type',
+    nullable: true,
+  })
+  defaultCycleType: string | null;
 
   @Column({ type: 'boolean', default: false, name: 'is_default' })
   isDefault: boolean;

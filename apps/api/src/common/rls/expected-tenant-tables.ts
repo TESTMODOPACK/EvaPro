@@ -17,8 +17,10 @@
 import type { DataSource } from 'typeorm';
 
 /**
- * 68 tablas con `tenant_id`. Ordenadas alfabeticamente para que un
+ * 69 tablas con `tenant_id`. Ordenadas alfabeticamente para que un
  * diff git sea legible cuando se agregue/quite una.
+ *
+ * 2026-04-28: agregada `form_sub_templates` (Fase 3 plan auditoria - Opción A).
  */
 export const EXPECTED_TENANT_TABLES: ReadonlyArray<string> = [
   'ai_call_logs',
@@ -44,6 +46,7 @@ export const EXPECTED_TENANT_TABLES: ReadonlyArray<string> = [
   'evaluation_assignments',
   'evaluation_cycles',
   'evaluation_responses',
+  'form_sub_templates',
   'form_templates',
   'gdpr_requests',
   'invoices',
