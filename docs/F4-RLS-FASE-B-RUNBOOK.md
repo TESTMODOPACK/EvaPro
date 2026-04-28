@@ -5,36 +5,105 @@ Activación de Row-Level Security en `evaluation_responses` (primer cutover).
 ## Pre-requisitos (verificar antes de empezar)
 
 - [ ] F4 Fase A0–A3 mergeadas a main y desplegadas en producción.
-- [ ] **CRÍTICO — Backups arreglados**: `backup-daily.sh`, `backup-restore.sh` y `verify-backup.sh` deben estar **mergeados a main y desplegados en el VPS**. Los scripts antiguos (que usan `$POSTGRES_USER` = `eva360` owner) producen backups con **0 filas en evaluation_responses** una vez que `FORCE ROW LEVEL SECURITY` está activo (eva360 es owner → RLS lo afecta sin GUC seteado). El fix usa `postgres` superuser (BYPASSRLS automático). Ver commit asociado a este runbook.
-
-  Verificar que el VPS tiene la versión correcta:
-  ```bash
-  grep -c "pg_dump -U postgres" /docker/eva360/scripts/backup-daily.sh   # Debe ser 1+
-  grep -c 'pg_dump -U "$POSTGRES_USER"' /docker/eva360/scripts/backup-daily.sh   # Debe ser 0
-  ```
-
-- [ ] **Backup reciente válido**: ejecutar `./scripts/backup-daily.sh` post-fix y confirmar que el dump tiene tamaño normal (no se redujo dramáticamente vs el de hace 1 semana).
+- [ ] **CRÍTICO — Role separation aplicado**: ver sección "Role separation" abajo. Sin esto, RLS es decorativa porque la app conecta como `eva360` (SUPERUSER) y el superuser tiene `BYPASSRLS` automático.
+- [ ] Backup reciente de la BD (`pg_dump` exitoso en las últimas 24h, ejecutado con `eva360` que es superuser → backup completo).
 - [ ] Ventana de mantenimiento aprobada (impacto esperado: <30s de queries lentas mientras se cambia el plan; sin downtime).
 - [ ] Acceso SSH al VPS Hostinger.
 - [ ] Operador presente para ejecutar rollback si algo falla.
 
+## Role separation (paso intermedio crítico antes del SQL RLS)
+
+### Por qué
+
+`postgres:16-alpine` con `POSTGRES_USER=eva360` crea ese role como **SUPERUSER**. Cualquier query del rol superuser bypasea RLS automáticamente — la policy `tenant_isolation` se evalúa pero el privilegio del rol la salta.
+
+Por lo tanto, **aplicar `2026-04-27-F4B-enable-rls-evaluation-responses.sql` solo, sin separar roles, no protege nada**. La aplicación seguiría leyendo cross-tenant si una query olvida el filtro `WHERE tenant_id = ?`.
+
+### Solución: dos roles separados
+
+| Rol | Atributos | Uso |
+|---|---|---|
+| `eva360` (existente, no se toca) | SUPERUSER, LOGIN | Backups, migrations, scripts admin |
+| `eva360_app` (nuevo) | LOGIN, **NO SUPERUSER**, CONNECT, USAGE, INSERT/SELECT/UPDATE/DELETE en todas las tablas | La app (DATABASE_URL) |
+
+`eva360_app` es non-superuser → RLS le aplica → policies efectivas.
+`eva360` queda intacto como superuser → `pg_dump`/`pg_restore` no requieren cambio.
+
+### Pasos
+
+1. **Aplicar la migration de role separation** (incluido en este commit):
+   ```bash
+   docker compose exec -T db psql -U eva360 -d eva360 \
+     < apps/api/src/database/sql/2026-04-28-create-eva360-app-role.sql
+   ```
+
+   El script:
+   - `CREATE ROLE eva360_app WITH LOGIN PASSWORD 'xxx' NOSUPERUSER`
+   - `GRANT CONNECT ON DATABASE eva360 TO eva360_app`
+   - `GRANT USAGE ON SCHEMA public TO eva360_app`
+   - `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO eva360_app`
+   - `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO eva360_app`
+   - `ALTER DEFAULT PRIVILEGES ...` para tablas/sequences futuras (cuando cleanup-orphans cree algo nuevo)
+
+   La password se pasa via env var `EVA360_APP_PASSWORD` (settear en el `.env` antes de ejecutar).
+
+2. **Cambiar `DATABASE_URL` en `.env` del VPS**: del role `eva360` al role `eva360_app`:
+   ```bash
+   # Antes:
+   DATABASE_URL=postgresql://eva360:<password-eva360>@db:5432/eva360
+   # Después:
+   DATABASE_URL=postgresql://eva360_app:<password-eva360-app>@db:5432/eva360
+   ```
+
+3. **Restart del API** (sin rebuild):
+   ```bash
+   docker compose restart api
+   ```
+
+4. **Smoke test**: login + ver dashboard. Si todo funciona, la app ya conecta como `eva360_app`.
+
+5. **Validar privilegios**:
+   ```bash
+   docker compose exec -T db psql -U eva360 -c \
+     "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname IN ('eva360', 'eva360_app');"
+   ```
+   Esperado:
+   ```
+    rolname    | rolsuper | rolbypassrls
+   ------------+----------+--------------
+    eva360     | t        | t
+    eva360_app | f        | f
+   ```
+
+6. **Recién ahora aplicar la migration de RLS** (siguiente sección).
+
+### Rollback role separation (si algo falla)
+
+```bash
+# Revertir DATABASE_URL al rol eva360 superuser
+sed -i 's/eva360_app:/eva360:/' /docker/eva360/.env
+docker compose restart api
+
+# (Opcional) eliminar el rol nuevo
+docker compose exec -T db psql -U eva360 -d eva360 \
+  < apps/api/src/database/sql/2026-04-28-drop-eva360-app-role.sql
+```
+
 ## Decisión arquitectónica clave
 
-**FORCE ROW LEVEL SECURITY**: la migración activa esta opción. Sin ella, el user `eva360` (owner de la tabla) bypasea la policy automáticamente y el RLS sería decorativo. Con `FORCE`, la app misma queda sujeta al filtrado.
+**FORCE ROW LEVEL SECURITY** + **role separation**: la migración SQL activa `FORCE`. Sin separación de roles, el user que conecta como SUPERUSER bypasea la policy automáticamente y RLS sería decorativo.
 
-**Consecuencia**: cualquier conexión a la BD que NO setee `app.current_tenant_id` verá 0 filas en `evaluation_responses`. Esto incluye:
+Con role separation aplicado (sección anterior):
 
-- Conexiones admin vía `psql` directo como `eva360` → operador debe correr `SELECT set_config('app.current_tenant_id', '', true);` al inicio de la sesión para entrar en modo "system" (ve todo). Alternativa: usar `postgres` superuser (BYPASSRLS).
-- Scripts ad-hoc (seed, migration) → mismo set_config explícito necesario, o usar postgres superuser.
-- **pg_dump / pg_restore**: ya arreglado en `scripts/backup-daily.sh` y `backup-restore.sh` para usar `postgres` superuser (BYPASSRLS automático). Antes del fix, los backups producían dumps incompletos silenciosamente.
+- `eva360_app` (app): NOT SUPERUSER → RLS aplica → policy filtra correctamente.
+- `eva360` (admin/backups): SUPERUSER → BYPASSRLS automático → backups y migrations funcionan sin cambios.
 
-  Verificar manualmente:
-  ```sql
-  SELECT rolname, rolbypassrls, rolsuper FROM pg_roles WHERE rolname IN ('eva360','postgres');
-  -- Esperado: eva360 → bypass=f, super=f. postgres → bypass=t (vía super=t).
-  ```
+**Consecuencia para conexiones admin sin GUC**: `psql -U eva360_app -c "..."` directo verá 0 filas en evaluation_responses (porque el GUC no está seteado). Operadores deben usar:
 
-La app via `TenantContextInterceptor` (cada request HTTP) y los crons via `TenantCronRunner` (Fase A3) ya setean el GUC correctamente.
+- `psql -U eva360 ...` (admin superuser) para queries cross-tenant.
+- `psql -U eva360_app -c "SELECT set_config('app.current_tenant_id', '', true); ..."` para emular "modo system" como app.
+
+La app vía `TenantContextInterceptor` (cada request HTTP) y los crons vía `TenantCronRunner` (Fase A3) ya setean el GUC correctamente — no requieren cambios.
 
 ## Pasos del cutover
 

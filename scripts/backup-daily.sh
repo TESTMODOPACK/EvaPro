@@ -18,9 +18,7 @@
 #   5. Loggea exito/fallo via `logger` (journalctl)
 #
 # Restaurar un backup:
-#   docker compose exec -T db pg_restore -U postgres -d $POSTGRES_DB -c < /ruta/al/backup.dump
-# Nota: usar postgres superuser (no $POSTGRES_USER) para bypassear RLS al
-# restaurar — sino los INSERT a tablas con FORCE RLS fallan por WITH CHECK.
+#   docker compose exec -T db pg_restore -U $POSTGRES_USER -d $POSTGRES_DB -c < /ruta/al/backup.dump
 #
 # ══════════════════════════════════════════════════════════════════════
 
@@ -62,16 +60,20 @@ mkdir -p "${BACKUP_DIR}"
 log_info "Starting pg_dump to ${BACKUP_FILE}"
 start_ts=$(date +%s)
 
-# IMPORTANTE: pg_dump corre como `postgres` superuser (no como
-# $POSTGRES_USER que es el owner `eva360`). Esto es necesario porque
-# las tablas con RLS + FORCE (F4 Fase B/C) se aplican al owner — un
-# pg_dump como eva360 sin set_config exporta 0 filas para esas tablas.
-# Postgres superuser tiene BYPASSRLS automatico → exporta todo.
+# Usa las variables de entorno del container (POSTGRES_USER, POSTGRES_DB)
+# para que este script funcione sin importar como esten seteadas las
+# credenciales en el .env del VPS.
 #
-# Auth via Unix socket dentro del container (peer auth → sin password).
-# `-d "$POSTGRES_DB"` resuelve el nombre de BD desde la env del container.
+# F4 RLS NOTA: en el setup default de postgres:16-alpine con
+# POSTGRES_USER=eva360, ese role se crea como SUPERUSER. SUPERUSER tiene
+# BYPASSRLS automatico, asi que pg_dump exporta TODAS las filas incluso
+# con tablas en FORCE ROW LEVEL SECURITY. NO requiere cambio.
+#
+# Si en el futuro se separa el rol de la app (eva360_app non-superuser
+# para que RLS aplique realmente), el rol `eva360` queda solo para
+# admin/backups y sigue siendo superuser. Los scripts no cambian.
 if ! docker exec -t "${CONTAINER_NAME}" sh -c \
-    'pg_dump -U postgres -d "$POSTGRES_DB" -F c -Z 9' > "${BACKUP_FILE}"; then
+    'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -F c -Z 9' > "${BACKUP_FILE}"; then
   log_error "pg_dump failed"
   rm -f "${BACKUP_FILE}"
   exit 1

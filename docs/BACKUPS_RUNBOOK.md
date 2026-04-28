@@ -9,18 +9,22 @@ Guía operacional para configurar, mantener y ejecutar backups de la base de dat
 - **Qué se backupea:** DB Postgres completa (todos los tenants, users, evaluaciones, etc.). NO se backupean uploads (CVs, exports GDPR) — están en Cloudinary, que tiene su propia durabilidad.
 - **Frecuencia:** diaria a las 03:00 AM del VPS.
 - **Formato:** `pg_dump -F c -Z 9` (custom format, compresión máxima). Restorable con `pg_restore`.
-- **Role utilizado:** `postgres` superuser (NO `eva360` que es owner). Necesario porque las tablas con `FORCE ROW LEVEL SECURITY` (F4 Fase B/C) afectan al owner — pg_dump como `eva360` sin `app.current_tenant_id` seteado exporta 0 filas. El superuser tiene `BYPASSRLS` automático.
+- **Role utilizado:** `$POSTGRES_USER` (= `eva360`). En el image `postgres:16-alpine` con `POSTGRES_USER=eva360`, ese role se crea con atributo `SUPERUSER`, que implica `BYPASSRLS` automático — los backups funcionan correctamente incluso después de F4 Fase B/C (RLS + FORCE en tablas tenant-scoped).
 - **Retención local:** 30 días (configurable via `RETENTION_DAYS` env).
 - **Retención off-site (recomendada):** indefinida, con rotación manual si el costo crece. Ver sección "Off-site".
 
-> ⚠️ **NOTA F4 RLS**: si volvés a un commit pre-F4 donde `backup-daily.sh` usaba `$POSTGRES_USER`, los backups producidos están **silenciosamente incompletos** para tablas con RLS activo (incluyendo evaluation_responses + 66 más en Fase C). Verificá la versión actual con:
+> ⚠️ **NOTA F4 RLS — separación de roles para que RLS proteja realmente**:
 >
-> ```bash
-> grep "pg_dump -U" /root/eva360/scripts/backup-daily.sh
-> # Debe imprimir: pg_dump -U postgres -d "$POSTGRES_DB" ...
-> ```
+> En el setup actual, `eva360` es a la vez (a) el rol que la app usa para conectarse y (b) el SUPERUSER que ejecuta backups/migrations. Como SUPERUSER tiene `BYPASSRLS` automático, **las policies RLS son decorativas mientras la app conecte como `eva360`**: cualquier query que ejecute la aplicación bypasea la policy.
 >
-> Si ves `-U "$POSTGRES_USER"` en lugar de `-U postgres` → tu deploy está atrás de main. Hacer `git pull` y los backups vuelven a producir dumps completos.
+> Para que RLS proteja de verdad, hace falta separar roles:
+>
+> | Rol | Privilegios | Uso |
+> |---|---|---|
+> | `eva360` (existente) | SUPERUSER | Solo backups + migrations + admin |
+> | `eva360_app` (nuevo, NOT SUPERUSER) | CONNECT, USAGE, GRANTs explícitos | La app (DATABASE_URL) |
+>
+> Ver `docs/F4-RLS-FASE-B-RUNBOOK.md` para el procedimiento de role separation. Hasta que se haga, RLS Fase B/C son artefactos preparados pero NO efectivos.
 
 ---
 
