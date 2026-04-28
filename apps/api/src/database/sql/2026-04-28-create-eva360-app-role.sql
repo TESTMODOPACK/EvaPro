@@ -160,13 +160,13 @@ SELECT
   rolbypassrls,
   rolcreatedb,
   rolcreaterole,
-  rollogin,
+  rolcanlogin,
   CASE
-    WHEN NOT rolsuper AND NOT rolbypassrls AND rollogin
+    WHEN NOT rolsuper AND NOT rolbypassrls AND rolcanlogin
     THEN '✓ Setup correcto para app'
     WHEN rolsuper THEN '✗ Es SUPERUSER — bypasea RLS, no sirve para la app'
     WHEN rolbypassrls THEN '✗ Tiene BYPASSRLS — RLS no aplicaria'
-    WHEN NOT rollogin THEN '✗ NO tiene LOGIN — no se puede conectar'
+    WHEN NOT rolcanlogin THEN '✗ NO tiene LOGIN — no se puede conectar'
     ELSE '?'
   END AS status
 FROM pg_roles
