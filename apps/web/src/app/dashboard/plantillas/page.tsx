@@ -32,6 +32,12 @@ interface Question {
   options?: string[];
   required: boolean;
   condition?: Condition | null;
+  /**
+   * Restringe la pregunta a roles especificos (Fase 2 plan auditoria).
+   * Vacio o ausente = aplica a todos (backwards-compat).
+   * Valores: 'self' | 'manager' | 'peer' | 'direct_report' | 'external'
+   */
+  applicableTo?: string[];
 }
 
 interface Section {
@@ -40,7 +46,22 @@ interface Section {
   competencyId?: string | null;
   questions: Question[];
   condition?: Condition | null;
+  /**
+   * Restringe toda la seccion a roles especificos. Si NO incluye el rol
+   * del evaluador, la seccion entera no se le muestra. Vacio = aplica a
+   * todos.
+   */
+  applicableTo?: string[];
 }
+
+// Roles disponibles para applicableTo + sus labels en el editor.
+const RELATION_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: 'self', label: 'Auto-evaluación', hint: 'Lo responde el propio evaluado' },
+  { value: 'manager', label: 'Jefe directo', hint: 'Quien lidera al evaluado' },
+  { value: 'peer', label: 'Par', hint: 'Compañeros del mismo nivel' },
+  { value: 'direct_report', label: 'Reporte directo', hint: 'Subordinados del evaluado' },
+  { value: 'external', label: 'Externo', hint: 'Cliente, proveedor, stakeholder' },
+];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -174,6 +195,161 @@ function ConditionBuilder({
           >
             Quitar
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── RoleBadges ─────────────────────────────────────────────────────────────
+// Muestra inline qué roles aplican (cuando hay restricción). Se usa en el
+// preview y en la lista de plantillas para que el admin vea de un vistazo
+// si una sección/pregunta es role-specific.
+
+function RoleBadges({ roles }: { roles?: string[] }) {
+  if (!Array.isArray(roles) || roles.length === 0) return null;
+  return (
+    <span style={{ display: 'inline-flex', gap: '0.25rem', marginLeft: '0.5rem', flexWrap: 'wrap' }}>
+      {roles.map((role) => {
+        const opt = RELATION_OPTIONS.find((o) => o.value === role);
+        return (
+          <span
+            key={role}
+            title={opt?.hint || role}
+            style={{
+              fontSize: '0.62rem',
+              fontWeight: 600,
+              padding: '0.1rem 0.35rem',
+              borderRadius: '4px',
+              background: 'rgba(99,102,241,0.12)',
+              color: 'var(--accent-hover)',
+              border: '1px solid rgba(99,102,241,0.3)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              verticalAlign: 'middle',
+            }}
+          >
+            {opt?.label || role}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+// ─── ApplicableToPicker ─────────────────────────────────────────────────────
+//
+// Permite restringir una seccion o pregunta a roles especificos del evaluador
+// (self/manager/peer/direct_report/external). Sin seleccion = aplica a todos
+// (backwards-compat: templates pre-Fase 2 siguen funcionando sin cambios).
+//
+// El backend filtra el template segun assignment.relationType en
+// getAssignmentDetail (ver evaluations.service.ts) usando el helper
+// filterTemplateForRelation.
+
+function ApplicableToPicker({
+  value,
+  onChange,
+  scope,
+}: {
+  value?: string[];
+  onChange: (roles: string[]) => void;
+  scope: 'section' | 'question';
+}) {
+  const selected = Array.isArray(value) ? value : [];
+  const isEmpty = selected.length === 0;
+  const toggle = (role: string) => {
+    if (selected.includes(role)) {
+      onChange(selected.filter((r) => r !== role));
+    } else {
+      onChange([...selected, role]);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: '0.6rem',
+        padding: '0.6rem 0.75rem',
+        background: 'rgba(99,102,241,0.04)',
+        border: '1px dashed var(--border)',
+        borderRadius: 'var(--radius-sm)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          marginBottom: '0.5rem',
+          fontSize: '0.78rem',
+          color: 'var(--text-secondary)',
+          fontWeight: 600,
+        }}
+      >
+        <span>Aplica a:</span>
+        {isEmpty && (
+          <span
+            style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}
+          >
+            (sin selección = todos los evaluadores)
+          </span>
+        )}
+        {!isEmpty && (
+          <button
+            type="button"
+            className="btn-ghost"
+            style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', marginLeft: 'auto' }}
+            onClick={() => onChange([])}
+            title="Quitar restricción (= aplica a todos)"
+          >
+            Limpiar
+          </button>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        {RELATION_OPTIONS.map((opt) => {
+          const checked = selected.includes(opt.value);
+          return (
+            <label
+              key={opt.value}
+              title={opt.hint}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.3rem 0.55rem',
+                background: checked ? 'rgba(99,102,241,0.15)' : 'var(--bg-surface)',
+                border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                color: checked ? 'var(--accent-hover)' : 'var(--text-secondary)',
+                fontWeight: checked ? 600 : 400,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(opt.value)}
+                style={{ accentColor: 'var(--accent)' }}
+              />
+              {opt.label}
+            </label>
+          );
+        })}
+      </div>
+      {scope === 'section' && !isEmpty && (
+        <div
+          style={{
+            marginTop: '0.4rem',
+            fontSize: '0.7rem',
+            color: 'var(--text-muted)',
+            fontStyle: 'italic',
+          }}
+        >
+          Si el evaluador no es uno de los roles seleccionados, la sección
+          entera (con todas sus preguntas) se omite.
         </div>
       )}
     </div>
@@ -417,11 +593,13 @@ export default function PlantillasPage() {
             <div key={sec.id} style={{ marginBottom: '2rem' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--accent-hover)' }}>
                 {si + 1}. {sec.title}
+                <RoleBadges roles={sec.applicableTo} />
               </h2>
-              {sec.questions.map((q, qi) => (
+              {sec.questions.map((q) => (
                 <div key={q.id} style={{ marginBottom: '1.25rem', paddingLeft: '1rem', borderLeft: '2px solid var(--border)' }}>
                   <p style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem' }}>
                     {q.text} {q.required && <span style={{ color: 'var(--danger)' }}>*</span>}
+                    <RoleBadges roles={q.applicableTo} />
                   </p>
                   {q.type === 'scale' && (
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -644,6 +822,11 @@ export default function PlantillasPage() {
               onChange={(c) => updateSection(si, 'condition', c)}
               allQuestions={allQuestions}
             />
+            <ApplicableToPicker
+              scope="section"
+              value={sec.applicableTo}
+              onChange={(roles) => updateSection(si, 'applicableTo', roles)}
+            />
             <div style={{ marginBottom: '1rem' }} />
 
             {/* Questions */}
@@ -731,6 +914,13 @@ export default function PlantillasPage() {
                   onChange={(c) => updateQuestion(si, qi, 'condition', c)}
                   allQuestions={allQuestions}
                   excludeId={q.id}
+                />
+
+                {/* Restriccion por rol del evaluador (Fase 2) */}
+                <ApplicableToPicker
+                  scope="question"
+                  value={q.applicableTo}
+                  onChange={(roles) => updateQuestion(si, qi, 'applicableTo', roles)}
                 />
               </div>
             ))}
@@ -938,11 +1128,40 @@ export default function PlantillasPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>
           {templates.map((tpl: any) => {
             const totalQuestions = (tpl.sections || []).reduce((acc: number, s: any) => acc + (s.questions?.length || 0), 0);
+            // Detectar si la plantilla tiene secciones o preguntas con applicableTo
+            // (= filtra por rol del evaluador). Sirve para mostrar badge.
+            const hasRoleFilter = (tpl.sections || []).some(
+              (s: any) =>
+                (Array.isArray(s.applicableTo) && s.applicableTo.length > 0) ||
+                (s.questions || []).some(
+                  (q: any) => Array.isArray(q.applicableTo) && q.applicableTo.length > 0,
+                ),
+            );
             return (
               <div key={tpl.id} className="card animate-fade-up" style={{ padding: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', gap: '0.5rem' }}>
                   <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>{tpl.name}</h3>
-                  {tpl.isDefault && <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>Default</span>}
+                  <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                    {hasRoleFilter && (
+                      <span
+                        title="Esta plantilla tiene secciones o preguntas restringidas por rol del evaluador"
+                        style={{
+                          fontSize: '0.65rem',
+                          fontWeight: 600,
+                          padding: '0.15rem 0.4rem',
+                          borderRadius: '4px',
+                          background: 'rgba(99,102,241,0.12)',
+                          color: 'var(--accent-hover)',
+                          border: '1px solid rgba(99,102,241,0.3)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        Por rol
+                      </span>
+                    )}
+                    {tpl.isDefault && <span className="badge badge-accent" style={{ fontSize: '0.68rem' }}>Default</span>}
+                  </div>
                 </div>
                 {tpl.description && (
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '0.75rem', lineHeight: 1.4 }}>

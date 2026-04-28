@@ -511,6 +511,23 @@ export default function ResponderEvaluacionPage() {
           </div>
         )}
 
+        {/* Empty state (Fase 2): el template puede haber filtrado todas las
+            secciones si el evaluador tiene un relationType que no aplica
+            a ninguna seccion de la plantilla. Esto deberia ser raro (el admin
+            no deberia asignar un evaluador cuyo rol no aplica), pero damos
+            mensaje claro en vez de un form vacio sin contexto. */}
+        {visibleSections.length === 0 && sections.length === 0 && (
+          <div className="card animate-fade-up" style={{ padding: '2rem', textAlign: 'center' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '0.5rem' }}>
+              No hay preguntas aplicables a tu rol como evaluador en esta plantilla.
+            </p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+              Esta plantilla restringe sus preguntas a otros roles. Contacta al administrador
+              del ciclo si crees que es un error.
+            </p>
+          </div>
+        )}
+
         {/* Sections */}
         {visibleSections.map((section: any, sIdx: number) => (
           <div key={section.id || sIdx} className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.25rem' }}>

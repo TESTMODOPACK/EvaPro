@@ -1203,9 +1203,15 @@ export class ReportsService {
       const normalize = (rawAvg: number) =>
         Math.round(((rawAvg / sourceMaxScale) * 10) * 100) / 100;
 
+      // Fase 2 fix: con applicableTo, un evaluador puede haber completado
+      // una evaluacion pero NO haber respondido preguntas de esta seccion
+      // (porque sus preguntas estan tagged a otro rol). En ese caso
+      // count === 0 y devolver score=0 es enganoso (parece "calificó 0").
+      // Omitimos el rol del output cuando no contribuyo a esta seccion.
       const relationScores: Record<string, number> = {};
       for (const [rel, data] of Object.entries(byRelation)) {
-        relationScores[rel] = data.count > 0 ? normalize(data.sum / data.count) : 0;
+        if (data.count === 0) continue; // sin datos del rol en esta seccion
+        relationScores[rel] = normalize(data.sum / data.count);
       }
 
       return {
