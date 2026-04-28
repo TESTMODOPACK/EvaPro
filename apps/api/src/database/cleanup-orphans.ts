@@ -278,6 +278,39 @@ async function main() {
     }
     console.log(`[startup] Enum fixes checked (${enumFixes.length} values)`);
 
+    // ── 2b. Indices de performance (idempotentes) ──────────────────────
+    // Indices compuestos para queries jerarquicos del modulo de
+    // evaluaciones (autoGenerateAssignments, suggestPeers). En orgs >
+    // 1000 users, los queries:
+    //   - "managers de tenant X con cierto hierarchy_level"
+    //   - "users de departmentId X con cierto hierarchy_level"
+    // hacian full-table scan. Con estos indices parciales (solo
+    // is_active=true, que es como se consultan), el SELECT cae en
+    // index scan rapido.
+    //
+    // CONCURRENTLY no se usa porque cleanup-orphans corre al startup
+    // del API (single-process, no concurrencia). IF NOT EXISTS hace que
+    // re-ejecutar no falle si el indice ya existe.
+    const performanceIndexes = [
+      `CREATE INDEX IF NOT EXISTS idx_users_manager_hierarchy
+         ON users (manager_id, hierarchy_level)
+         WHERE is_active = true`,
+      `CREATE INDEX IF NOT EXISTS idx_users_dept_hierarchy
+         ON users (department_id, hierarchy_level)
+         WHERE is_active = true`,
+    ];
+    for (const sql of performanceIndexes) {
+      try {
+        await client.query(sql);
+      } catch (err: any) {
+        // Solo loguear; los indices son nice-to-have, no deben romper
+        // el deploy si por algun motivo fallan (ej. columna no existe
+        // en una BD vieja).
+        console.warn(`[startup] performance index skipped: ${err.message}`);
+      }
+    }
+    console.log(`[startup] Performance indexes ensured (${performanceIndexes.length})`);
+
     // ── 3. Sync positions.level from tenant settings JSONB ─────────────
     // El mantenedor guarda niveles en tenant.settings.positions (JSONB).
     // Cuando los cargos se auto-crean via findOrCreatePosition (form de
