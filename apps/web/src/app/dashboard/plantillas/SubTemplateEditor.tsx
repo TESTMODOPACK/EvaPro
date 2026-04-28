@@ -114,6 +114,8 @@ export function SubTemplateEditor({
   const [subs, setSubs] = useState<SubTemplate[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  // Lote 2: nota de cambio (versionHistory.changeNote) opcional al save.
+  const [changeNote, setChangeNote] = useState('');
 
   // ─── IA suggestions state (Fase 3 A6 bonus) ───────────────────────────
   const [aiSuggesting, setAiSuggesting] = useState(false);
@@ -223,17 +225,28 @@ export function SubTemplateEditor({
       toast.warning(`Los pesos deben sumar 100%. Actual: ${(totalWeight * 100).toFixed(1)}%`);
       return;
     }
-    // Validar que todas las preguntas tengan texto
+    // Validar que todas las preguntas tengan texto + multi tenga ≥2 opciones
     for (const sub of subs) {
+      const subLabel = RELATION_LABELS[sub.relationType]?.label || sub.relationType;
       for (const sec of sub.sections) {
         if (!sec.title?.trim()) {
-          toast.warning(`En "${RELATION_LABELS[sub.relationType]?.label || sub.relationType}" hay secciones sin título`);
+          toast.warning(`En "${subLabel}" hay secciones sin título`);
           return;
         }
         for (const q of sec.questions) {
           if (!q.text?.trim()) {
-            toast.warning(`En "${RELATION_LABELS[sub.relationType]?.label || sub.relationType}" hay preguntas sin texto`);
+            toast.warning(`En "${subLabel}" hay preguntas sin texto`);
             return;
+          }
+          // Lote 2: validar que tipo "multi" tenga al menos 2 opciones no vacías
+          if (q.type === 'multi') {
+            const validOpts = (q.options || []).filter((o) => o && o.trim().length > 0);
+            if (validOpts.length < 2) {
+              toast.warning(
+                `En "${subLabel}" la pregunta "${q.text.slice(0, 40)}..." tipo opción múltiple debe tener al menos 2 opciones`,
+              );
+              return;
+            }
           }
         }
       }
@@ -251,10 +264,11 @@ export function SubTemplateEditor({
             isActive: s.isActive,
             displayOrder: s.displayOrder,
           })),
-          // changeNote opcional — Lote 2 agregará un input UI para esto.
+          changeNote: changeNote.trim() || undefined,
         },
       });
       toast.success('Plantilla guardada exitosamente');
+      setChangeNote(''); // limpiar despues del save exitoso
       await refetch();
     } catch (err: any) {
       toast.error(err?.message || 'Error al guardar');
@@ -308,6 +322,45 @@ export function SubTemplateEditor({
               questions: s.questions.map((q, qi) =>
                 qi === qIdx ? { ...q, [field]: value } : q,
               ),
+            }
+          : s,
+      ),
+    );
+  };
+
+  /**
+   * Cambia el tipo de pregunta inicializando los campos correspondientes
+   * (scale tiene labels default, multi tiene 2 opciones default).
+   * Mantiene id/text/required del original.
+   */
+  const changeQuestionType = (sIdx: number, qIdx: number, newType: Question['type']) => {
+    if (!activeSub) return;
+    const q = activeSub.sections[sIdx]?.questions[qIdx];
+    if (!q) return;
+    const updated: Question = { ...q, type: newType };
+    if (newType === 'scale') {
+      updated.scale = q.scale || {
+        min: 1,
+        max: 5,
+        labels: { ...defaultScaleLabels },
+      };
+      updated.options = undefined;
+    } else if (newType === 'multi') {
+      updated.options = q.options && q.options.length > 0
+        ? q.options
+        : ['Opción 1', 'Opción 2'];
+      updated.scale = undefined;
+    } else {
+      // text
+      updated.scale = undefined;
+      updated.options = undefined;
+    }
+    updateActiveSubSections(
+      activeSub.sections.map((s, si) =>
+        si === sIdx
+          ? {
+              ...s,
+              questions: s.questions.map((qq, qi) => (qi === qIdx ? updated : qq)),
             }
           : s,
       ),
@@ -822,7 +875,7 @@ export function SubTemplateEditor({
                     <select
                       style={{ ...inputStyle, width: 'auto', minWidth: '160px' }}
                       value={q.type}
-                      onChange={(e) => updateQuestion(si, qi, 'type', e.target.value)}
+                      onChange={(e) => changeQuestionType(si, qi, e.target.value as Question['type'])}
                     >
                       <option value="scale">Escala (1-5)</option>
                       <option value="text">Texto libre</option>
@@ -847,6 +900,160 @@ export function SubTemplateEditor({
                       Requerida
                     </label>
                   </div>
+
+                  {/* Lote 2: editor de etiquetas para escala 1-5.
+                      La escala es fija 1-5 (todos los reports normalizan a 0-10).
+                      El admin puede personalizar las etiquetas que ve el evaluador. */}
+                  {q.type === 'scale' && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <label
+                        style={{
+                          fontSize: '0.75rem',
+                          color: 'var(--text-muted)',
+                          marginBottom: '0.4rem',
+                          display: 'block',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Etiquetas de la escala 1-5 (lo que verá el evaluador):
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem' }}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <div
+                            key={n}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                color: 'var(--accent)',
+                                width: '20px',
+                                textAlign: 'center',
+                              }}
+                            >
+                              {n}:
+                            </span>
+                            <input
+                              style={{ ...inputStyle, fontSize: '0.78rem' }}
+                              value={q.scale?.labels?.[String(n)] ?? ''}
+                              onChange={(e) => {
+                                const newScale = {
+                                  min: 1,
+                                  max: 5,
+                                  labels: {
+                                    ...(q.scale?.labels || {}),
+                                    [String(n)]: e.target.value,
+                                  },
+                                };
+                                updateQuestion(si, qi, 'scale', newScale);
+                              }}
+                              placeholder={`Ej: ${defaultScaleLabels[String(n)]}`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <p
+                        style={{
+                          fontSize: '0.7rem',
+                          color: 'var(--text-muted)',
+                          marginTop: '0.5rem',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        Los puntajes se normalizan a 0-10 en todos los reportes
+                        (radar, comparaciones, IA) para consistencia. La escala
+                        1-5 es solo para la respuesta del evaluador.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Lote 2: editor de opciones para tipo múltiple.
+                      Lista editable con +Agregar opción y X para eliminar. */}
+                  {q.type === 'multi' && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <label
+                        style={{
+                          fontSize: '0.75rem',
+                          color: 'var(--text-muted)',
+                          marginBottom: '0.4rem',
+                          display: 'block',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Opciones que el evaluador podrá seleccionar:
+                      </label>
+                      {(q.options || []).map((opt, oi) => (
+                        <div
+                          key={oi}
+                          style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            marginBottom: '0.4rem',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '0.78rem',
+                              color: 'var(--text-muted)',
+                              minWidth: '20px',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {oi + 1}.
+                          </span>
+                          <input
+                            style={{ ...inputStyle, flex: 1, fontSize: '0.82rem' }}
+                            value={opt}
+                            onChange={(e) => {
+                              const newOpts = [...(q.options || [])];
+                              newOpts[oi] = e.target.value;
+                              updateQuestion(si, qi, 'options', newOpts);
+                            }}
+                            placeholder={`Opción ${oi + 1}`}
+                          />
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            style={{
+                              fontSize: '0.72rem',
+                              color: 'var(--danger)',
+                              padding: '0.2rem 0.5rem',
+                            }}
+                            onClick={() =>
+                              updateQuestion(
+                                si,
+                                qi,
+                                'options',
+                                (q.options || []).filter((_, idx) => idx !== oi),
+                              )
+                            }
+                            title="Eliminar opción"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{
+                          fontSize: '0.78rem',
+                          padding: '0.3rem 0.6rem',
+                          marginTop: '0.25rem',
+                        }}
+                        onClick={() =>
+                          updateQuestion(si, qi, 'options', [
+                            ...(q.options || []),
+                            `Opción ${(q.options?.length || 0) + 1}`,
+                          ])
+                        }
+                      >
+                        + Agregar opción
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
 
@@ -875,6 +1082,32 @@ export function SubTemplateEditor({
           </button>
         </div>
       )}
+
+      {/* Lote 2: nota de cambio (queda en versionHistory) */}
+      <div style={{ marginBottom: '1rem' }}>
+        <label
+          style={{
+            display: 'block',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            color: 'var(--text-secondary)',
+            marginBottom: '0.3rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          Nota de cambio{' '}
+          <span style={{ textTransform: 'none', fontWeight: 400, color: 'var(--text-muted)' }}>
+            (opcional, queda en el historial de versiones)
+          </span>
+        </label>
+        <textarea
+          style={{ ...inputStyle, minHeight: '48px', resize: 'vertical' }}
+          value={changeNote}
+          onChange={(e) => setChangeNote(e.target.value)}
+          placeholder="Ej: Agregadas competencias de liderazgo, ajustados pesos para Q2 2026..."
+        />
+      </div>
 
       {/* Save */}
       <div style={{ display: 'flex', gap: '0.75rem' }}>
