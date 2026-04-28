@@ -679,8 +679,24 @@ export class EvaluationsService {
             relationType: 'manager',
           });
         } else {
+          // `users` ya viene filtrado por `isActive: true` (linea 624). Si
+          // el evaluatee.managerId apunta a un user inactivo o eliminado,
+          // `users.find()` retorna undefined. Antes (pre-Fase 1.2) esto
+          // caia al branch generico "MANAGER_DIFF_DEPT" con mensaje
+          // confuso "(no encontrado)". Ahora detectamos explicitamente
+          // el caso para mejor UX y para que el admin sepa que tiene que
+          // re-asignar manager o reactivar al user.
           const manager = users.find((u) => u.id === evaluatee.managerId);
-          if (!evaluatee.department) {
+          if (!manager) {
+            exceptions.push({
+              evaluateeId: evaluatee.id,
+              evaluateeName: evalName(evaluatee),
+              department: evaluatee.department,
+              type: 'MANAGER_INACTIVE',
+              message: 'El jefe directo asignado esta inactivo o fue eliminado. Reasigne el manager del colaborador o reactive al jefe.',
+              relationType: 'manager',
+            });
+          } else if (!evaluatee.department) {
             exceptions.push({
               evaluateeId: evaluatee.id,
               evaluateeName: evalName(evaluatee),
