@@ -99,13 +99,17 @@ yellow "Modo --restore: restaurando a DB temporal para validación completa…"
 TMP_DB="eva360_verify_$(date +%s)"
 echo "  DB temporal: ${TMP_DB}"
 
-# IMPORTANTE: usamos `postgres` superuser para createdb/pg_restore/psql
-# en la BD temporal. Si Fase B/C de F4 RLS esta activa, el dump incluye
-# ALTER TABLE FORCE ROW LEVEL SECURITY — al restaurar como eva360
-# (owner), los INSERTs fallan por WITH CHECK. Postgres superuser tiene
-# BYPASSRLS automatico.
+# Usamos $POSTGRES_USER (= eva360) que en postgres:16-alpine es SUPERUSER
+# por default → tiene BYPASSRLS automatico, funciona aunque las tablas
+# tengan FORCE ROW LEVEL SECURITY (F4 Fase B/C).
+#
+# Si en el futuro se separa la app a un rol non-superuser (eva360_app),
+# este script SIGUE usando $POSTGRES_USER (eva360 admin) — el detector
+# RLS abajo seguira siendo util porque verifica que el dump producido
+# tiene data en evaluation_responses (proxy de que pg_dump se ejecuto
+# con el role correcto).
 docker exec -T "${CONTAINER_NAME}" sh -c \
-  "createdb -U postgres ${TMP_DB}" || {
+  "createdb -U \"\$POSTGRES_USER\" ${TMP_DB}" || {
     red "✗ No se pudo crear DB temporal"
     exit 1
   }
@@ -113,13 +117,13 @@ docker exec -T "${CONTAINER_NAME}" sh -c \
 # Cleanup en cualquier salida
 cleanup() {
   docker exec -T "${CONTAINER_NAME}" sh -c \
-    "dropdb -U postgres --if-exists ${TMP_DB}" >/dev/null 2>&1 || true
+    "dropdb -U \"\$POSTGRES_USER\" --if-exists ${TMP_DB}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-# Restore — postgres superuser para bypass RLS (ver nota arriba)
+# Restore en BD temp como $POSTGRES_USER (eva360 superuser).
 if docker exec -i "${CONTAINER_NAME}" sh -c \
-    "pg_restore -U postgres -d ${TMP_DB} --no-owner" < "${latest}" 2>/dev/null; then
+    "pg_restore -U \"\$POSTGRES_USER\" -d ${TMP_DB} --no-owner" < "${latest}" 2>/dev/null; then
   green "  ✓ Restore en DB temporal OK"
 else
   red "  ✗ Restore falló"
@@ -131,17 +135,19 @@ fi
 #   - `users` (recibe RLS en Fase C — debe tener > 0)
 #   - `evaluation_responses` (PRIMERA tabla con RLS, F4 Fase B)
 #
-# Si `evaluation_responses` queda en 0 mientras tenants/users tienen
-# data, indica que pg_dump fue ejecutado por un role no-superuser sin
-# bypass de RLS — bug critico en backup-daily.sh. Ver F4-RLS-FASE-B-RUNBOOK.md
+# Detector de bug RLS: si tenants > 0 + users > 5 + evaluation_responses = 0
+# es alta sospecha de que pg_dump se ejecuto con un role NON-superuser
+# (eva360_app post-role-separation) sin haber seteado app.current_tenant_id.
+# El backup quedaria silenciosamente incompleto. Este check evita que ese
+# bug pase desapercibido en el futuro.
 tenant_count=$(docker exec -T "${CONTAINER_NAME}" sh -c \
-  "psql -U postgres -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM tenants'")
+  "psql -U \"\$POSTGRES_USER\" -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM tenants'")
 user_count=$(docker exec -T "${CONTAINER_NAME}" sh -c \
-  "psql -U postgres -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM users'")
+  "psql -U \"\$POSTGRES_USER\" -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM users'")
 # evaluation_responses puede legitimamente tener 0 filas en BD virgen;
 # solo gritamos si las OTRAS tablas tienen data Y eval_responses esta vacia.
 eval_count=$(docker exec -T "${CONTAINER_NAME}" sh -c \
-  "psql -U postgres -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM evaluation_responses'" \
+  "psql -U \"\$POSTGRES_USER\" -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM evaluation_responses'" \
   2>/dev/null || echo "0")
 
 echo "  Tenants:              ${tenant_count}"
