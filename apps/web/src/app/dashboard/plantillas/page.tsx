@@ -17,6 +17,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
 import { SubTemplateEditor } from './SubTemplateEditor';
+import { TemplatePreview } from './TemplatePreview';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -372,7 +373,7 @@ export default function PlantillasPage() {
   const removeTemplate = useRemoveTemplate();
   const duplicateTemplate = useDuplicateTemplate();
 
-  const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'tabs-edit' | 'preview' | 'history'>('list');
+  const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'tabs-edit' | 'tabs-preview' | 'preview' | 'history'>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -407,11 +408,9 @@ export default function PlantillasPage() {
       // Limpiar query param para evitar re-trigger en navegacion atras.
       router.replace('/dashboard/plantillas');
     } else if (previewId) {
+      // Lote 3 (Pregunta 3B): vista previa tipo evaluador, no editor.
       setEditingId(previewId);
-      // Preview del editor con tabs (read-only se maneja dentro del editor
-      // si pasaramos un flag — por ahora abrimos el editor en modo edit
-      // ya que admin puede entrar desde detalle del ciclo igualmente).
-      setMode('tabs-edit');
+      setMode('tabs-preview');
       router.replace('/dashboard/plantillas');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -512,6 +511,16 @@ export default function PlantillasPage() {
   };
 
   const handlePreview = (tpl: any) => {
+    // Lote 3 (Pregunta 3B): si la plantilla tiene subplantillas, abrir
+    // el preview tipo evaluador (TemplatePreview con tabs). Si no, usar
+    // el preview legacy basado en sections del padre.
+    const hasSubs =
+      tpl?.subTemplatesSummary && tpl.subTemplatesSummary.count > 0;
+    if (hasSubs) {
+      setEditingId(tpl.id);
+      setMode('tabs-preview');
+      return;
+    }
     setName(tpl.name);
     setDescription(tpl.description || '');
     setSections(tpl.sections || []);
@@ -663,6 +672,19 @@ export default function PlantillasPage() {
           setEditingId(null);
           setMode('list');
           reloadTemplates();
+        }}
+      />
+    );
+  }
+
+  // Lote 3 (Pregunta 3B): vista previa tipo evaluador (read-only)
+  if (mode === 'tabs-preview' && editingId) {
+    return (
+      <TemplatePreview
+        templateId={editingId}
+        onClose={() => {
+          setEditingId(null);
+          setMode('list');
         }}
       />
     );

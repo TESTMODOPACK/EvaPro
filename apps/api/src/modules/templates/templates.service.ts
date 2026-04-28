@@ -1134,8 +1134,19 @@ export class TemplatesService {
     return this.subTemplateRepo.save(sub);
   }
 
-  /** Elimina una subplantilla (hard delete). */
-  async deleteSubTemplate(subId: string, tenantId: string | undefined): Promise<void> {
+  /**
+   * Elimina una subplantilla (hard delete) + snapshot del padre antes
+   * de borrar para que quede en versionHistory. Sin el snapshot, una
+   * eliminacion accidental seria irreversible (ni siquiera restoreVersion
+   * ayudaria — la sub eliminada no esta en ninguna version).
+   *
+   * Lote 3 (Pregunta 2B): hard delete con audit completo.
+   */
+  async deleteSubTemplate(
+    subId: string,
+    tenantId: string | undefined,
+    userId?: string,
+  ): Promise<void> {
     const sub = await this.subTemplateRepo.findOne({ where: { id: subId } });
     if (!sub) throw new NotFoundException('Subplantilla no encontrada');
 
@@ -1145,7 +1156,44 @@ export class TemplatesService {
       throw new BadRequestException('No se pueden eliminar subplantillas de plantillas globales');
     }
 
-    await this.subTemplateRepo.remove(sub);
+    // Transaccion atomica: snapshot del padre con TODAS sus subs (incluida
+    // la que se va a borrar) → delete sub → save padre con history actualizado.
+    // Si admin restaura esta version, la sub se va a recrear (con nuevo id).
+    await this.dataSource.transaction(async (manager) => {
+      const txParentRepo = manager.getRepository(FormTemplate);
+      const txSubRepo = manager.getRepository(FormSubTemplate);
+
+      const allSubs = await txSubRepo.find({
+        where: { parentTemplateId: parent.id },
+      });
+      const meta = (sub as any).relationType;
+
+      const history = Array.isArray(parent.versionHistory)
+        ? [...(parent.versionHistory as any[])]
+        : [];
+      history.push({
+        version: parent.version,
+        name: parent.name,
+        sections: parent.sections,
+        subTemplates: allSubs.map((s) => ({
+          id: s.id,
+          relationType: s.relationType,
+          sections: s.sections,
+          weight: Number(s.weight) || 0,
+          displayOrder: s.displayOrder,
+          isActive: s.isActive,
+        })),
+        changedBy: userId || null,
+        changedAt: new Date().toISOString(),
+        changeNote: `Auto-snapshot antes de eliminar subplantilla "${meta}"`,
+      });
+      if (history.length > 20) history.splice(0, history.length - 20);
+      parent.versionHistory = history;
+      parent.version = (parent.version || 1) + 1;
+      await txParentRepo.save(parent);
+
+      await txSubRepo.remove(sub);
+    });
   }
 
   /**

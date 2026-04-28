@@ -19,6 +19,8 @@ import { api } from '@/lib/api';
 import {
   useTemplateWithSubTemplates,
   useSaveAllSubTemplates,
+  useCreateSubTemplate,
+  useDeleteSubTemplate,
 } from '@/hooks/useTemplates';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -108,6 +110,8 @@ export function SubTemplateEditor({
   const token = useAuthStore((s) => s.token);
   const { data, isLoading, refetch } = useTemplateWithSubTemplates(templateId);
   const saveAll = useSaveAllSubTemplates();
+  const createSub = useCreateSubTemplate();
+  const deleteSub = useDeleteSubTemplate();
 
   // Local state — copia editable de las subplantillas (para guardar todo
   // junto cuando el admin clica "Guardar").
@@ -116,6 +120,34 @@ export function SubTemplateEditor({
   const [saving, setSaving] = useState(false);
   // Lote 2: nota de cambio (versionHistory.changeNote) opcional al save.
   const [changeNote, setChangeNote] = useState('');
+
+  // Lote 3: estado del dropdown "+ Agregar subplantilla".
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
+
+  // Lote 3 revision: click-outside cierra el dropdown automaticamente.
+  useEffect(() => {
+    if (!showAddDropdown) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Si el click no fue en un elemento dentro del dropdown ni en el
+      // boton "+ Agregar", cerrar.
+      if (!target.closest('[data-add-subtemplate-dropdown]')) {
+        setShowAddDropdown(false);
+      }
+    };
+    // Delay 1 tick para evitar que el mismo click que abrio el dropdown
+    // lo cierre inmediatamente.
+    const timer = setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handler);
+    };
+  }, [showAddDropdown]);
+
+  // Lote 3 (Pregunta 1A): roles que aún NO tienen subplantilla — los
+  // que aparecen en el dropdown del tab "+ Agregar".
+  const availableRolesToAdd = (Object.keys(RELATION_LABELS) as Array<keyof typeof RELATION_LABELS>)
+    .filter((rel) => !subs.some((s) => s.relationType === rel));
 
   // ─── IA suggestions state (Fase 3 A6 bonus) ───────────────────────────
   const [aiSuggesting, setAiSuggesting] = useState(false);
@@ -135,6 +167,54 @@ export function SubTemplateEditor({
       toast.error(err?.message || 'Error generando sugerencias con IA');
     } finally {
       setAiSuggesting(false);
+    }
+  };
+
+  // ─── Lote 3: agregar/eliminar subplantilla ────────────────────────────────
+
+  const handleAddSubTemplate = async (relationType: string) => {
+    setShowAddDropdown(false);
+    try {
+      await createSub.mutateAsync({
+        parentId: templateId,
+        data: {
+          relationType,
+          sections: [],
+          weight: 0, // user debe ajustar pesos despues + balancear
+          isActive: true,
+        },
+      });
+      toast.success(
+        `Subplantilla "${RELATION_LABELS[relationType]?.label || relationType}" creada. Recordá ajustar los pesos para que sumen 100%.`,
+      );
+      await refetch();
+      // Cambiar al tab nuevo
+      setActiveTab(relationType);
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al agregar subplantilla');
+    }
+  };
+
+  const handleDeleteSubTemplate = async () => {
+    if (!activeSub) return;
+    const meta = RELATION_LABELS[activeSub.relationType];
+    const label = meta?.label || activeSub.relationType;
+    const totalQs = activeSub.sections.reduce((acc, s) => acc + s.questions.length, 0);
+    const confirmMsg = totalQs > 0
+      ? `¿Eliminar definitivamente la subplantilla "${label}"? Tiene ${totalQs} pregunta(s) configurada(s) que se perderán. Esta acción no se puede deshacer.`
+      : `¿Eliminar definitivamente la subplantilla "${label}"?`;
+    if (!confirm(confirmMsg)) return;
+
+    const subIdToDelete = activeSub.id;
+    try {
+      await deleteSub.mutateAsync({ subId: subIdToDelete, parentId: templateId });
+      toast.success(`Subplantilla "${label}" eliminada`);
+      // Cambiar al primer tab restante
+      const remaining = subs.filter((s) => s.id !== subIdToDelete);
+      setActiveTab(remaining.length > 0 ? remaining[0].relationType : '');
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al eliminar subplantilla');
     }
   };
 
@@ -685,6 +765,91 @@ export function SubTemplateEditor({
             </button>
           );
         })}
+
+        {/* Lote 3 (Pregunta 1A): tab "+ Agregar" con dropdown de roles disponibles */}
+        {availableRolesToAdd.length > 0 && (
+          <div
+            data-add-subtemplate-dropdown
+            style={{ position: 'relative', marginBottom: '-2px' }}
+          >
+            <button
+              onClick={() => setShowAddDropdown((v) => !v)}
+              title="Agregar subplantilla para otro tipo de evaluador"
+              disabled={createSub.isPending}
+              style={{
+                padding: '0.6rem 1rem',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '3px solid transparent',
+                color: 'var(--text-muted)',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                cursor: createSub.isPending ? 'wait' : 'pointer',
+              }}
+            >
+              {createSub.isPending ? '⏳ Agregando...' : '+ Agregar'}
+            </button>
+            {showAddDropdown && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 4px)',
+                  left: 0,
+                  zIndex: 10,
+                  minWidth: '220px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                  padding: '0.4rem 0',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.72rem',
+                    color: 'var(--text-muted)',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    borderBottom: '1px solid var(--border)',
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  Tipo de evaluador
+                </div>
+                {availableRolesToAdd.map((rel) => {
+                  const meta = RELATION_LABELS[rel];
+                  return (
+                    <button
+                      key={rel}
+                      onClick={() => handleAddSubTemplate(rel)}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '0.55rem 0.75rem',
+                        background: 'transparent',
+                        border: 'none',
+                        textAlign: 'left',
+                        fontSize: '0.85rem',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer',
+                      }}
+                      title={meta.hint}
+                    >
+                      <div style={{ fontWeight: 600 }}>
+                        {meta.emoji} {meta.label}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        {meta.hint}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Contenido del tab activo */}
@@ -741,6 +906,25 @@ export function SubTemplateEditor({
               />
               Subplantilla activa
             </label>
+            {/* Lote 3 (Pregunta 2B): hard delete de subplantilla con confirmacion */}
+            <button
+              type="button"
+              onClick={handleDeleteSubTemplate}
+              disabled={deleteSub.isPending}
+              title="Elimina la subplantilla y todas sus preguntas (irreversible)"
+              style={{
+                marginLeft: '0.75rem',
+                padding: '0.3rem 0.6rem',
+                background: 'transparent',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--danger)',
+                fontSize: '0.78rem',
+                cursor: deleteSub.isPending ? 'wait' : 'pointer',
+              }}
+            >
+              {deleteSub.isPending ? '⏳ Eliminando...' : '🗑 Eliminar subplantilla'}
+            </button>
           </div>
 
           {/* Sections editor */}

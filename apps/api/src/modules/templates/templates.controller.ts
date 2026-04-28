@@ -231,7 +231,7 @@ export class TemplatesController {
     return this.templatesService.updateSubTemplate(subId, tenantId, dto);
   }
 
-  /** Elimina una subplantilla (hard delete). */
+  /** Elimina una subplantilla (hard delete) + snapshot del padre. */
   @Delete('sub-templates/:subId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('super_admin', 'tenant_admin')
@@ -240,7 +240,7 @@ export class TemplatesController {
     @Request() req: any,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.templatesService.deleteSubTemplate(subId, tenantId);
+    return this.templatesService.deleteSubTemplate(subId, tenantId, req.user.userId);
   }
 
   /**
