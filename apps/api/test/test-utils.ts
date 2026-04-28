@@ -128,6 +128,12 @@ export function createMockNotificationsService() {
   return {
     create: jest.fn().mockResolvedValue({ id: 'notif-mock' }),
     createBulk: jest.fn().mockResolvedValue(undefined),
+    // Pre-fix Fase 1: agregado para que evaluations.service.spec pase.
+    // El service real lo llama desde closeCycle() para limpiar notificaciones
+    // pendientes del ciclo cerrado. Mock retorna [{}, 0] (TypeORM result tuple).
+    cleanupByMetadata: jest.fn().mockResolvedValue([{}, 0]),
+    deleteOlderThan: jest.fn().mockResolvedValue(0),
+    cleanupOrphanNotifications: jest.fn().mockResolvedValue({ surveys: 0, cycles: 0, old: 0 }),
   };
 }
 

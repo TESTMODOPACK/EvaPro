@@ -451,12 +451,26 @@ export class EvaluationsService {
   }
 
   // ─── Allowed relation types per cycle type ──────────────────────────────
-
+  //
+  // Definicion estandar de la industria:
+  //   90°  = Autoevaluacion + Manager
+  //   180° = Autoevaluacion + Manager + Pares
+  //   270° = Autoevaluacion + Manager + Pares + Reportes Directos
+  //   360° = Autoevaluacion + Manager + Pares + Reportes Directos + Externos
+  //
+  // El mapping anterior (pre-fix Fase 1) tenia los tipos corridos un nivel —
+  // 90° solo creaba MANAGER (sin SELF), 180° no creaba PEER, etc. Los
+  // assignments generados no coincidian con la definicion del producto.
+  // Ver `docs/F4-RLS-PLAN.md` y la auditoria de evaluaciones.
+  //
+  // Externos (`RelationType.EXTERNAL`) NO se auto-asignan: son agregados
+  // manualmente por el admin cuando un cliente/proveedor evalua. Por eso
+  // 360° aqui solo lista los 4 roles internos auto-derivables del organigrama.
   private readonly ALLOWED_RELATIONS: Record<string, RelationType[]> = {
-    [CycleType.DEGREE_90]: [RelationType.MANAGER],
-    [CycleType.DEGREE_180]: [RelationType.MANAGER, RelationType.SELF],
-    [CycleType.DEGREE_270]: [RelationType.MANAGER, RelationType.SELF, RelationType.PEER],
-    [CycleType.DEGREE_360]: [RelationType.MANAGER, RelationType.SELF, RelationType.PEER, RelationType.DIRECT_REPORT],
+    [CycleType.DEGREE_90]: [RelationType.SELF, RelationType.MANAGER],
+    [CycleType.DEGREE_180]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER],
+    [CycleType.DEGREE_270]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER, RelationType.DIRECT_REPORT],
+    [CycleType.DEGREE_360]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER, RelationType.DIRECT_REPORT],
   };
 
   private getAllowedRelations(cycleType: CycleType): RelationType[] {
@@ -731,8 +745,12 @@ export class EvaluationsService {
         }
       }
 
-      // ── Peer auto-assignment (270° only — same department, min 3) ──
-      if (cycleType === CycleType.DEGREE_270 && allowedRelations.includes(RelationType.PEER)) {
+      // ── Peer auto-assignment (180°/270°/360° — same department, min 3) ──
+      // Pre-fix Fase 1: este branch tenia `cycleType === DEGREE_270 && ...`
+      // hardcoded, lo cual ignoraba ciclos 180° y 360°. Tras corregir
+      // ALLOWED_RELATIONS, delegamos el control a ese map (single source
+      // of truth) — el includes() ya filtra correctamente por tipo de ciclo.
+      if (allowedRelations.includes(RelationType.PEER)) {
         if (!evaluatee.department && !(evaluatee as any).departmentId) {
           exceptions.push({
             evaluateeId: evaluatee.id,

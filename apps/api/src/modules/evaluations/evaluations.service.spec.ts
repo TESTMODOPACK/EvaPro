@@ -26,6 +26,7 @@ import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { EmailService } from '../notifications/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PushService } from '../notifications/push.service';
 import {
   createMockRepository,
   createMockDataSource,
@@ -75,6 +76,17 @@ describe('EvaluationsService', () => {
         { provide: SubscriptionsService, useValue: createMockSubscriptionsService() },
         { provide: EmailService, useValue: createMockEmailService() },
         { provide: NotificationsService, useValue: createMockNotificationsService() },
+        // Mock PushService — agregado en pre-fix Fase 1: el constructor de
+        // EvaluationsService lo inyecta para enviar notificaciones push, pero
+        // el spec original no lo incluia → tests rompian al compilar el modulo.
+        {
+          provide: PushService,
+          useValue: {
+            sendBatch: jest.fn().mockResolvedValue(undefined),
+            send: jest.fn().mockResolvedValue(undefined),
+            sendNotification: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
