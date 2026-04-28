@@ -101,6 +101,12 @@ export function createMockDataSource(): Partial<DataSource> {
       commitTransaction: jest.fn(),
       rollbackTransaction: jest.fn(),
       release: jest.fn(),
+      // Pre-fix Fase 1: agregado `query()` al queryRunner mock. Algunos
+      // services (ej. InvoicesService.generateInvoice) hacen
+      // `queryRunner.query(...)` directo (no via manager) para advisory
+      // locks o set_config. Sin esto el test falla con
+      // "runner.query is not a function".
+      query: jest.fn().mockResolvedValue([]),
       manager: {
         save: jest.fn().mockImplementation((_: any, entity: any) => Promise.resolve(entity)),
         getRepository: jest.fn().mockReturnValue(createMockRepository()),
@@ -128,6 +134,12 @@ export function createMockNotificationsService() {
   return {
     create: jest.fn().mockResolvedValue({ id: 'notif-mock' }),
     createBulk: jest.fn().mockResolvedValue(undefined),
+    // Pre-fix Fase 1: agregado para que evaluations.service.spec pase.
+    // El service real lo llama desde closeCycle() para limpiar notificaciones
+    // pendientes del ciclo cerrado. Mock retorna [{}, 0] (TypeORM result tuple).
+    cleanupByMetadata: jest.fn().mockResolvedValue([{}, 0]),
+    deleteOlderThan: jest.fn().mockResolvedValue(0),
+    cleanupOrphanNotifications: jest.fn().mockResolvedValue({ surveys: 0, cycles: 0, old: 0 }),
   };
 }
 

@@ -451,12 +451,26 @@ export class EvaluationsService {
   }
 
   // ─── Allowed relation types per cycle type ──────────────────────────────
-
+  //
+  // Definicion estandar de la industria:
+  //   90°  = Autoevaluacion + Manager
+  //   180° = Autoevaluacion + Manager + Pares
+  //   270° = Autoevaluacion + Manager + Pares + Reportes Directos
+  //   360° = Autoevaluacion + Manager + Pares + Reportes Directos + Externos
+  //
+  // El mapping anterior (pre-fix Fase 1) tenia los tipos corridos un nivel —
+  // 90° solo creaba MANAGER (sin SELF), 180° no creaba PEER, etc. Los
+  // assignments generados no coincidian con la definicion del producto.
+  // Ver `docs/F4-RLS-PLAN.md` y la auditoria de evaluaciones.
+  //
+  // Externos (`RelationType.EXTERNAL`) NO se auto-asignan: son agregados
+  // manualmente por el admin cuando un cliente/proveedor evalua. Por eso
+  // 360° aqui solo lista los 4 roles internos auto-derivables del organigrama.
   private readonly ALLOWED_RELATIONS: Record<string, RelationType[]> = {
-    [CycleType.DEGREE_90]: [RelationType.MANAGER],
-    [CycleType.DEGREE_180]: [RelationType.MANAGER, RelationType.SELF],
-    [CycleType.DEGREE_270]: [RelationType.MANAGER, RelationType.SELF, RelationType.PEER],
-    [CycleType.DEGREE_360]: [RelationType.MANAGER, RelationType.SELF, RelationType.PEER, RelationType.DIRECT_REPORT],
+    [CycleType.DEGREE_90]: [RelationType.SELF, RelationType.MANAGER],
+    [CycleType.DEGREE_180]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER],
+    [CycleType.DEGREE_270]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER, RelationType.DIRECT_REPORT],
+    [CycleType.DEGREE_360]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER, RelationType.DIRECT_REPORT],
   };
 
   private getAllowedRelations(cycleType: CycleType): RelationType[] {
@@ -665,8 +679,24 @@ export class EvaluationsService {
             relationType: 'manager',
           });
         } else {
+          // `users` ya viene filtrado por `isActive: true` (linea 624). Si
+          // el evaluatee.managerId apunta a un user inactivo o eliminado,
+          // `users.find()` retorna undefined. Antes (pre-Fase 1.2) esto
+          // caia al branch generico "MANAGER_DIFF_DEPT" con mensaje
+          // confuso "(no encontrado)". Ahora detectamos explicitamente
+          // el caso para mejor UX y para que el admin sepa que tiene que
+          // re-asignar manager o reactivar al user.
           const manager = users.find((u) => u.id === evaluatee.managerId);
-          if (!evaluatee.department) {
+          if (!manager) {
+            exceptions.push({
+              evaluateeId: evaluatee.id,
+              evaluateeName: evalName(evaluatee),
+              department: evaluatee.department,
+              type: 'MANAGER_INACTIVE',
+              message: 'El jefe directo asignado esta inactivo o fue eliminado. Reasigne el manager del colaborador o reactive al jefe.',
+              relationType: 'manager',
+            });
+          } else if (!evaluatee.department) {
             exceptions.push({
               evaluateeId: evaluatee.id,
               evaluateeName: evalName(evaluatee),
@@ -731,8 +761,12 @@ export class EvaluationsService {
         }
       }
 
-      // ── Peer auto-assignment (270° only — same department, min 3) ──
-      if (cycleType === CycleType.DEGREE_270 && allowedRelations.includes(RelationType.PEER)) {
+      // ── Peer auto-assignment (180°/270°/360° — same department, min 3) ──
+      // Pre-fix Fase 1: este branch tenia `cycleType === DEGREE_270 && ...`
+      // hardcoded, lo cual ignoraba ciclos 180° y 360°. Tras corregir
+      // ALLOWED_RELATIONS, delegamos el control a ese map (single source
+      // of truth) — el includes() ya filtra correctamente por tipo de ciclo.
+      if (allowedRelations.includes(RelationType.PEER)) {
         if (!evaluatee.department && !(evaluatee as any).departmentId) {
           exceptions.push({
             evaluateeId: evaluatee.id,
@@ -1821,8 +1855,9 @@ export class EvaluationsService {
       await this.validateRequiredAnswers(assignment.cycle.templateId, dto.answers);
     }
 
-    // Calculate overall score from scale answers
-    const overallScore = this.calculateScore(dto.answers, assignment.cycle.templateId);
+    // Calculate overall score from scale answers (parametrizado por escala
+    // del template — ver Fase 1.5 del plan de evaluaciones)
+    const overallScore = await this.calculateScore(dto.answers, assignment.cycle.templateId);
 
     // Save response
     let response = await this.responseRepo.findOne({ where: { assignmentId } });
@@ -1887,25 +1922,70 @@ export class EvaluationsService {
     }
   }
 
-  private calculateScore(answers: any, templateId: string | null): number | null {
+  /**
+   * Calcula el `overallScore` (escala 0-10) a partir de las respuestas
+   * numericas del evaluador.
+   *
+   * Fase 1.5 — parametrizado por escala del template:
+   *
+   *   Antes: hardcoded `(avg / 5) * 10`. Si el template usaba escala 1-10
+   *   (custom), `(8 / 5) * 10 = 16` daba scores fuera de rango. Si usaba
+   *   1-7 daba scores >10. Solo funcionaba para 1-5 (default seed).
+   *
+   *   Ahora: lee `maxScale` del template (toma el max de los `q.scale.max`
+   *   de las preguntas tipo `scale`). Default 5 si no se puede determinar
+   *   (backwards-compat con templates sin metadata).
+   *
+   *   Formula: `(avg / maxScale) * 10`
+   *     - Template 1-5  + avg 4.42 → (4.42 / 5)  * 10 = 8.84
+   *     - Template 1-10 + avg 8.84 → (8.84 / 10) * 10 = 8.84  (sin cambio)
+   *     - Template 1-7  + avg 6.0  → (6.0 / 7)   * 10 = 8.57
+   *
+   * Filtra valores fuera del rango [1, maxScale]. Si todos quedan filtrados,
+   * retorna null (no se puede calcular).
+   *
+   * Es async porque debe consultar el template. El caller (submitResponse)
+   * debe usar `await`.
+   */
+  private async calculateScore(answers: any, templateId: string | null): Promise<number | null> {
     if (!answers || typeof answers !== 'object') return null;
 
-    // Extract numeric answers (handle both number and string-number types)
+    // Determinar maxScale del template
+    let maxScale = 5; // default backwards-compat con templates sin scale config
+    if (templateId) {
+      const template = await this.templateRepo.findOne({ where: { id: templateId } });
+      if (template?.sections && Array.isArray(template.sections)) {
+        const scaleQuestions: any[] = (template.sections as any[]).flatMap(
+          (s: any) => Array.isArray(s.questions) ? s.questions.filter((q: any) => q.type === 'scale') : []
+        );
+        if (scaleQuestions.length > 0) {
+          const maxes = scaleQuestions
+            .map((q: any) => q.scale?.max)
+            .filter((m: any) => typeof m === 'number' && m > 0);
+          if (maxes.length > 0) maxScale = Math.max(...maxes);
+        }
+      }
+    }
+
+    // Extraer valores numericos validos dentro del rango [1, maxScale]
     const numericValues: number[] = [];
     for (const v of Object.values(answers)) {
+      let n: number | null = null;
       if (typeof v === 'number' && !isNaN(v)) {
-        numericValues.push(v);
+        n = v;
       } else if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
-        const n = Number(v);
-        if (n >= 1 && n <= 10) numericValues.push(n);
+        n = Number(v);
+      }
+      if (n !== null && n >= 1 && n <= maxScale) {
+        numericValues.push(n);
       }
     }
 
     if (numericValues.length === 0) return null;
 
     const avg = numericValues.reduce((sum, v) => sum + v, 0) / numericValues.length;
-    // Normalize to 0-10 scale (scale questions may be 1-5)
-    const normalized = (avg / 5) * 10;
+    // Normalize to 0-10 scale (parametrizado por escala del template)
+    const normalized = (avg / maxScale) * 10;
     return Math.round(normalized * 100) / 100;
   }
 
