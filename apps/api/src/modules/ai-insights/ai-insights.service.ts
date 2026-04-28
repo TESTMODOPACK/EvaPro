@@ -1698,12 +1698,14 @@ export class AiInsightsService {
 
     const prompt = `Eres un experto en gestión de talento y RRHH. Analiza la siguiente comparativa entre ${cycles.length} ciclos de evaluación de desempeño de una organización.
 
+ESCALA DE PUNTUACIÓN: todos los promedios, mínimos, máximos y avgScore por departamento están normalizados a escala 0-10 (10=excelente, 0=deficiente). Cuando cites valores en tu análisis, usa SIEMPRE el formato "X.XX/10".
+
 Datos de los ciclos:
 ${cycles.map((c, i) => `
 Ciclo ${i + 1}: "${c.name}" (${c.type})
 - Período: ${c.startDate ? new Date(c.startDate).toLocaleDateString('es-CL') : 'N/A'} al ${c.endDate ? new Date(c.endDate).toLocaleDateString('es-CL') : 'N/A'}
 - Evaluados: ${c.totalEvaluated}, Con puntaje: ${c.withScores}
-- Promedio: ${c.avgScore ?? 'N/A'}, Mín: ${c.minScore ?? 'N/A'}, Máx: ${c.maxScore ?? 'N/A'}
+- Promedio: ${c.avgScore ?? 'N/A'}, Mín: ${c.minScore ?? 'N/A'}, Máx: ${c.maxScore ?? 'N/A'} (escala 0-10)
 - Por departamento: ${c.byDepartment.map((d: any) => `${d.department}: ${d.avgScore} (${d.count} eval.)`).join(', ') || 'Sin datos'}
 `).join('\n')}
 

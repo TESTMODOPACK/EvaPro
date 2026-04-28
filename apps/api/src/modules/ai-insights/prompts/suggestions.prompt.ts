@@ -15,6 +15,10 @@ export function buildSuggestionsPrompt(data: {
 
 Genera sugerencias de desarrollo personalizadas basadas en los datos de evaluación del colaborador.
 
+## ESCALA DE PUNTUACIÓN (CRÍTICO)
+**Todas las puntuaciones están normalizadas a escala 0-10** (10=excelente, 0=deficiente).
+Cuando menciones valores en justificaciones, usa SIEMPRE "X.XX/10" — nunca "/5" ni otra escala.
+
 ## Datos del Colaborador
 - Nombre: ${data.employeeName}
 - Cargo: ${data.position || 'No especificado'}
@@ -25,10 +29,10 @@ Genera sugerencias de desarrollo personalizadas basadas en los datos de evaluaci
 ## Cuadrante Nine Box
 ${data.nineBoxQuadrant || 'Sin evaluación de talento disponible'}
 
-## Radar de Competencias
+## Radar de Competencias (escala 0-10)
 ${JSON.stringify(data.competencyRadar?.sections || [], null, 2)}
 
-## Brecha Autoevaluación vs Otros
+## Brecha Autoevaluación vs Otros (escala 0-10)
 - Autoevaluación: ${data.selfVsOthers?.selfScore ?? 'N/A'}
 - Promedio otros: ${data.selfVsOthers?.othersAvg ?? 'N/A'}
 - Brecha: ${data.selfVsOthers?.gap ?? 'N/A'}
@@ -75,5 +79,6 @@ IMPORTANTE:
 - Vincula acciones a competencias del catálogo cuando sea posible
 - Las acciones deben ser específicas y accionables, no genéricas
 - Usa español latinoamericano neutro
-- Si hay poca información, genera menos acciones pero de mayor calidad`;
+- Si hay poca información, genera menos acciones pero de mayor calidad
+- **Cuando cites puntuaciones en las justificaciones, usa el formato "X.XX/10"** (ej. "3.58/10"). NUNCA "/5" porque están normalizadas a 0-10`;
 }

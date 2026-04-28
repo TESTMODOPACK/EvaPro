@@ -1159,13 +1159,26 @@ export class ReportsService {
     }
 
     // Build section-level averages
+    //
+    // SCALE NORMALIZATION (Fix bug #6 auditoria F4):
+    // El template puede tener escala 1-5 (default seed) o 1-10 (custom).
+    // Todos los outputs de reports SE NORMALIZAN A 0-10 para consistencia
+    // con el resto del sistema (overallScore en evaluation_responses ya
+    // viene en 0-10) y para que la IA reciba valores comparables sin
+    // tener que adivinar la escala.
+    //
+    // Formula: normalizedAvg = (rawAvg / sourceMaxScale) * 10
+    //   - sourceMaxScale = 5 → normalizedAvg = rawAvg * 2 (ej. 4.42 → 8.84)
+    //   - sourceMaxScale = 10 → normalizedAvg = rawAvg (sin cambio)
     const sections = template.sections.map((sec: any) => {
       const scaleQuestions = (sec.questions || []).filter((q: any) => q.type === 'scale');
       if (scaleQuestions.length === 0) return null;
 
       const questionIds = scaleQuestions.map((q: any) => q.id);
-      // Fix C4: Calculate maxScale from ALL scale questions
-      const maxScale = Math.max(...scaleQuestions.map((q: any) => q.scale?.max ?? 10));
+      // Source scale: tomamos el max de las preguntas. Si la seccion
+      // mezcla escalas (raro), usamos el max — los valores raw siguen
+      // sumando OK porque normalizamos al final.
+      const sourceMaxScale = Math.max(...scaleQuestions.map((q: any) => q.scale?.max ?? 10));
 
       const byRelation: Record<string, { sum: number; count: number }> = {};
       let allSum = 0;
@@ -1186,15 +1199,23 @@ export class ReportsService {
         }
       }
 
+      // Normalizar todos los averages a escala 0-10
+      const normalize = (rawAvg: number) =>
+        Math.round(((rawAvg / sourceMaxScale) * 10) * 100) / 100;
+
       const relationScores: Record<string, number> = {};
       for (const [rel, data] of Object.entries(byRelation)) {
-        relationScores[rel] = data.count > 0 ? Math.round((data.sum / data.count) * 100) / 100 : 0;
+        relationScores[rel] = data.count > 0 ? normalize(data.sum / data.count) : 0;
       }
 
       return {
         section: sec.title || sec.id || 'Sin nombre',
-        overall: allCount > 0 ? Math.round((allSum / allCount) * 100) / 100 : 0,
-        maxScale,
+        overall: allCount > 0 ? normalize(allSum / allCount) : 0,
+        // maxScale del OUTPUT siempre es 10 (post-normalizacion).
+        // sourceMaxScale documenta la escala original del template para
+        // auditoria/debugging.
+        maxScale: 10,
+        sourceMaxScale,
         byRelation: relationScores,
         questionCount: scaleQuestions.length,
       };
