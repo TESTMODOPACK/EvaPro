@@ -18,7 +18,9 @@
 #   5. Loggea exito/fallo via `logger` (journalctl)
 #
 # Restaurar un backup:
-#   docker compose exec -T db pg_restore -U $POSTGRES_USER -d $POSTGRES_DB -c < /ruta/al/backup.dump
+#   docker compose exec -T db pg_restore -U postgres -d $POSTGRES_DB -c < /ruta/al/backup.dump
+# Nota: usar postgres superuser (no $POSTGRES_USER) para bypassear RLS al
+# restaurar — sino los INSERT a tablas con FORCE RLS fallan por WITH CHECK.
 #
 # ══════════════════════════════════════════════════════════════════════
 
@@ -60,11 +62,16 @@ mkdir -p "${BACKUP_DIR}"
 log_info "Starting pg_dump to ${BACKUP_FILE}"
 start_ts=$(date +%s)
 
-# Usa las variables de entorno del container (POSTGRES_USER, POSTGRES_DB)
-# para que este script funcione sin importar como esten seteadas las
-# credenciales en el .env del VPS.
+# IMPORTANTE: pg_dump corre como `postgres` superuser (no como
+# $POSTGRES_USER que es el owner `eva360`). Esto es necesario porque
+# las tablas con RLS + FORCE (F4 Fase B/C) se aplican al owner — un
+# pg_dump como eva360 sin set_config exporta 0 filas para esas tablas.
+# Postgres superuser tiene BYPASSRLS automatico → exporta todo.
+#
+# Auth via Unix socket dentro del container (peer auth → sin password).
+# `-d "$POSTGRES_DB"` resuelve el nombre de BD desde la env del container.
 if ! docker exec -t "${CONTAINER_NAME}" sh -c \
-    'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -F c -Z 9' > "${BACKUP_FILE}"; then
+    'pg_dump -U postgres -d "$POSTGRES_DB" -F c -Z 9' > "${BACKUP_FILE}"; then
   log_error "pg_dump failed"
   rm -f "${BACKUP_FILE}"
   exit 1

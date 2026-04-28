@@ -5,7 +5,15 @@ Activación de Row-Level Security en `evaluation_responses` (primer cutover).
 ## Pre-requisitos (verificar antes de empezar)
 
 - [ ] F4 Fase A0–A3 mergeadas a main y desplegadas en producción.
-- [ ] Backup reciente de la BD (`pg_dump` exitoso en las últimas 24h).
+- [ ] **CRÍTICO — Backups arreglados**: `backup-daily.sh`, `backup-restore.sh` y `verify-backup.sh` deben estar **mergeados a main y desplegados en el VPS**. Los scripts antiguos (que usan `$POSTGRES_USER` = `eva360` owner) producen backups con **0 filas en evaluation_responses** una vez que `FORCE ROW LEVEL SECURITY` está activo (eva360 es owner → RLS lo afecta sin GUC seteado). El fix usa `postgres` superuser (BYPASSRLS automático). Ver commit asociado a este runbook.
+
+  Verificar que el VPS tiene la versión correcta:
+  ```bash
+  grep -c "pg_dump -U postgres" /docker/eva360/scripts/backup-daily.sh   # Debe ser 1+
+  grep -c 'pg_dump -U "$POSTGRES_USER"' /docker/eva360/scripts/backup-daily.sh   # Debe ser 0
+  ```
+
+- [ ] **Backup reciente válido**: ejecutar `./scripts/backup-daily.sh` post-fix y confirmar que el dump tiene tamaño normal (no se redujo dramáticamente vs el de hace 1 semana).
 - [ ] Ventana de mantenimiento aprobada (impacto esperado: <30s de queries lentas mientras se cambia el plan; sin downtime).
 - [ ] Acceso SSH al VPS Hostinger.
 - [ ] Operador presente para ejecutar rollback si algo falla.
@@ -16,11 +24,14 @@ Activación de Row-Level Security en `evaluation_responses` (primer cutover).
 
 **Consecuencia**: cualquier conexión a la BD que NO setee `app.current_tenant_id` verá 0 filas en `evaluation_responses`. Esto incluye:
 
-- Conexiones admin vía `psql` directo → operador debe correr `SELECT set_config('app.current_tenant_id', '', true);` al inicio de la sesión para entrar en modo "system" (ve todo).
-- Scripts ad-hoc (seed, migration) → mismo set_config explícito necesario.
-- pg_dump con role distinto → si el role tiene BYPASSRLS (postgres superuser), no hay problema. Verificar:
+- Conexiones admin vía `psql` directo como `eva360` → operador debe correr `SELECT set_config('app.current_tenant_id', '', true);` al inicio de la sesión para entrar en modo "system" (ve todo). Alternativa: usar `postgres` superuser (BYPASSRLS).
+- Scripts ad-hoc (seed, migration) → mismo set_config explícito necesario, o usar postgres superuser.
+- **pg_dump / pg_restore**: ya arreglado en `scripts/backup-daily.sh` y `backup-restore.sh` para usar `postgres` superuser (BYPASSRLS automático). Antes del fix, los backups producían dumps incompletos silenciosamente.
+
+  Verificar manualmente:
   ```sql
-  SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname IN ('eva360','postgres');
+  SELECT rolname, rolbypassrls, rolsuper FROM pg_roles WHERE rolname IN ('eva360','postgres');
+  -- Esperado: eva360 → bypass=f, super=f. postgres → bypass=t (vía super=t).
   ```
 
 La app via `TenantContextInterceptor` (cada request HTTP) y los crons via `TenantCronRunner` (Fase A3) ya setean el GUC correctamente.
