@@ -166,23 +166,39 @@ async function main() {
       `, [crypto.randomUUID(), tenantId, cycleId, stageTypes[i].name, stageTypes[i].type, i + 1, config.start, config.end]);
     }
 
-    // Get scale questions from template
+    // Get scale/text question IDs per relationType. Fase 2 (plan auditoria
+    // evaluaciones): los templates ahora pueden tener preguntas con
+    // `applicableTo: ['manager']` etc. Para que la data demo sea realista,
+    // cada evaluador solo responde las preguntas que SU rol veria en el form
+    // (filtro identico al que aplica filterTemplateForRelation en runtime).
     const sections = typeof config.template.sections === 'string' ? JSON.parse(config.template.sections) : config.template.sections;
-    const scaleQuestions: string[] = [];
-    const textQuestions: string[] = [];
-    for (const sec of sections) {
-      for (const q of (sec.questions || [])) {
-        if (q.type === 'scale') scaleQuestions.push(q.id);
-        else if (q.type === 'text') textQuestions.push(q.id);
+    function applicableForRole(applicableTo: any, role: string): boolean {
+      if (!Array.isArray(applicableTo) || applicableTo.length === 0) return true;
+      return applicableTo.includes(role);
+    }
+    function getQuestionsForRole(role: string): { scaleIds: string[]; textIds: string[] } {
+      const scaleIds: string[] = [];
+      const textIds: string[] = [];
+      for (const sec of sections) {
+        if (!applicableForRole(sec.applicableTo, role)) continue;
+        for (const q of (sec.questions || [])) {
+          if (!applicableForRole(q.applicableTo, role)) continue;
+          if (q.type === 'scale') scaleIds.push(q.id);
+          else if (q.type === 'text') textIds.push(q.id);
+        }
       }
+      return { scaleIds, textIds };
     }
 
-    // Determine relation types per cycle type
-    const relationTypes: string[] = [];
-    if (['180', '270', '360'].includes(config.type)) relationTypes.push('self');
-    relationTypes.push('manager');
-    if (['270', '360'].includes(config.type)) relationTypes.push('peer');
-    if (config.type === '360') relationTypes.push('direct_report');
+    // Determine relation types per cycle type — alineado con ALLOWED_RELATIONS
+    // de evaluations.service.ts (Fase 1 plan auditoria evaluaciones):
+    //   90  → self + manager
+    //   180 → self + manager + peer
+    //   270 → self + manager + peer + direct_report
+    //   360 → self + manager + peer + direct_report (igual que 270 + calibracion)
+    const relationTypes: string[] = ['self', 'manager'];
+    if (['180', '270', '360'].includes(config.type)) relationTypes.push('peer');
+    if (['270', '360'].includes(config.type)) relationTypes.push('direct_report');
 
     // Create assignments + responses
     let cycleAssignments = 0;
@@ -239,9 +255,12 @@ async function main() {
         // Create response for completed assignments
         if (isCompleted) {
           const answers: Record<string, any> = {};
+          // Fase 2: solo respondemos las preguntas aplicables a este relType
+          // (= las mismas que filterTemplateForRelation mostraria en runtime).
+          const { scaleIds, textIds } = getQuestionsForRole(relType);
 
           // Scale answers: realistic distribution (mostly 3-5, occasional 2)
-          for (const qId of scaleQuestions) {
+          for (const qId of scaleIds) {
             const r = Math.random();
             if (r < 0.05) answers[qId] = 2;
             else if (r < 0.20) answers[qId] = 3;
@@ -250,8 +269,8 @@ async function main() {
           }
 
           // Text answers
-          for (const qId of textQuestions) {
-            const idx = textQuestions.indexOf(qId);
+          for (let idx = 0; idx < textIds.length; idx++) {
+            const qId = textIds[idx];
             if (idx === 0) answers[qId] = FORTALEZAS[randInt(0, FORTALEZAS.length - 1)];
             else if (idx === 1) answers[qId] = MEJORAS[randInt(0, MEJORAS.length - 1)];
             else answers[qId] = CONSEJOS[randInt(0, CONSEJOS.length - 1)];

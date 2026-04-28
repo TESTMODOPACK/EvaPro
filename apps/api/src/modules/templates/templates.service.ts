@@ -458,21 +458,27 @@ export class TemplatesService {
 
     const scale = { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } };
 
-    // Question banks per evaluation type perspective
-    // Optimized: 2 supervisor questions per competency (was 5) to keep templates
-    // within 18-40 questions total depending on evaluation type.
+    // Question banks per evaluation type perspective.
+    // Fase 2 (plan auditoria evaluaciones): cada banco de preguntas se tagea
+    // con `applicableTo` para que el helper filterTemplateForRelation muestre
+    // solo las preguntas aplicables al rol del evaluador (self / manager /
+    // peer / direct_report). Sin esto, un peer veria preguntas de manager
+    // que no le corresponden, y viceversa.
+    //
+    // Optimized: 2 supervisor questions per competency (was 5) to keep
+    // templates within 18-40 questions total.
     const supervisorQuestions = (name: string) => [
-      { text: `El colaborador demuestra dominio en ${name}`, type: 'scale', scale, required: true },
-      { text: `Ha demostrado mejora en ${name} durante el período evaluado`, type: 'scale', scale, required: true },
+      { text: `El colaborador demuestra dominio en ${name}`, type: 'scale', scale, required: true, applicableTo: ['manager'] },
+      { text: `Ha demostrado mejora en ${name} durante el período evaluado`, type: 'scale', scale, required: true, applicableTo: ['manager'] },
     ];
     const selfQuestions = (name: string) => [
-      { text: `Considero que mi desempeño en ${name} es adecuado para mi cargo`, type: 'scale', scale, required: true },
+      { text: `Considero que mi desempeño en ${name} es adecuado para mi cargo`, type: 'scale', scale, required: true, applicableTo: ['self'] },
     ];
     const peerQuestions = (name: string) => [
-      { text: `Este compañero demuestra ${name} en la colaboración con el equipo`, type: 'scale', scale, required: true },
+      { text: `Este compañero demuestra ${name} en la colaboración con el equipo`, type: 'scale', scale, required: true, applicableTo: ['peer'] },
     ];
     const reportQuestions = (name: string) => [
-      { text: `Mi encargado me brinda orientación efectiva en ${name}`, type: 'scale', scale, required: true },
+      { text: `Mi encargado me brinda orientación efectiva en ${name}`, type: 'scale', scale, required: true, applicableTo: ['direct_report'] },
     ];
 
     // Feedback section (common) — 2 questions to keep total count lean
@@ -487,10 +493,10 @@ export class TemplatesService {
     };
 
     const types = [
-      { type: '90', name: 'Evaluación 90° — Jefatura', desc: 'Evaluación directa del supervisor. Mide desempeño observable desde la perspectiva del encargado.' },
-      { type: '180', name: 'Evaluación 180° — Jefatura + Autoevaluación', desc: 'Combina la evaluación del supervisor con la autoevaluación del colaborador.' },
-      { type: '270', name: 'Evaluación 270° — Jefatura + Auto + Pares', desc: 'Incluye la perspectiva del supervisor, autoevaluación y evaluación de pares.' },
-      { type: '360', name: 'Evaluación 360° — Completa', desc: 'Evaluación integral: supervisor, autoevaluación, pares y reportes directos.' },
+      { type: '90', name: 'Evaluación 90° — Jefatura + Auto', desc: 'Evaluación del supervisor combinada con la autoevaluación del colaborador. Cada perspectiva ve solo sus preguntas (filtrado por rol).' },
+      { type: '180', name: 'Evaluación 180° — Jefatura + Auto + Pares', desc: 'Suma la perspectiva de pares al 90° estándar. Cada evaluador (manager / colaborador / par) responde un set de preguntas distinto adaptado a su rol.' },
+      { type: '270', name: 'Evaluación 270° — Jefatura + Auto + Pares + Reportes directos', desc: 'Incluye además a los reportes directos del evaluado, que evalúan la calidad del liderazgo recibido.' },
+      { type: '360', name: 'Evaluación 360° — Completa', desc: 'Evaluación integral: supervisor, autoevaluación, pares y reportes directos. Equivalente al 270° con etapa adicional de calibración.' },
     ];
 
     const templates: FormTemplate[] = [];
@@ -503,24 +509,25 @@ export class TemplatesService {
         const secId = `sec-${comp.id.slice(0, 8)}`;
         const questions: any[] = [];
 
-        // Supervisor questions (all types)
+        // Supervisor questions: aplican a todos los cycle types (90/180/270/360
+        // siempre incluyen al manager segun ALLOWED_RELATIONS).
         for (const q of supervisorQuestions(comp.name)) {
           questions.push({ id: `q-${++qIdx}`, ...q });
         }
-        // Self-evaluation questions (180+)
-        if (['180', '270', '360'].includes(evalType.type)) {
-          for (const q of selfQuestions(comp.name)) {
-            questions.push({ id: `q-${++qIdx}`, ...q });
-          }
+        // Self-evaluation questions: 90+ (Fase 1 actualizo ALLOWED_RELATIONS
+        // para incluir SELF tambien en 90).
+        for (const q of selfQuestions(comp.name)) {
+          questions.push({ id: `q-${++qIdx}`, ...q });
         }
-        // Peer questions (270+)
-        if (['270', '360'].includes(evalType.type)) {
+        // Peer questions: 180+ (Fase 1 incluyo PEER en 180; antes era 270+).
+        if (['180', '270', '360'].includes(evalType.type)) {
           for (const q of peerQuestions(comp.name)) {
             questions.push({ id: `q-${++qIdx}`, ...q });
           }
         }
-        // Direct report questions (360 only)
-        if (evalType.type === '360') {
+        // Direct report questions: 270+ (Fase 1 incluyo DIRECT_REPORT en 270;
+        // antes era solo 360).
+        if (['270', '360'].includes(evalType.type)) {
           for (const q of reportQuestions(comp.name)) {
             questions.push({ id: `q-${++qIdx}`, ...q });
           }
