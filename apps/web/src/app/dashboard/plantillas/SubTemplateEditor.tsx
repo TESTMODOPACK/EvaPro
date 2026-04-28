@@ -124,6 +124,46 @@ export function SubTemplateEditor({
   // Lote 3: estado del dropdown "+ Agregar subplantilla".
   const [showAddDropdown, setShowAddDropdown] = useState(false);
 
+  // UX fix: secciones colapsadas (set de section ids). Default depende
+  // del activeSub: si tiene >4 secciones, auto-colapsar todas excepto la
+  // primera al cambiar de tab. Click en el header hace toggle.
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+  // Auto-colapsar al cargar/cambiar de tab si hay muchas secciones,
+  // para que la pagina no sea tan larga. El admin puede expandir
+  // las que quiera con click.
+  useEffect(() => {
+    const sub = subs.find((s) => s.relationType === activeTab);
+    if (!sub) return;
+    if (sub.sections.length > 4) {
+      // Colapsar todas excepto la primera
+      const toCollapse = new Set(sub.sections.slice(1).map((s) => s.id));
+      setCollapsedSections(toCollapse);
+    } else {
+      // Pocas secciones → expandir todas
+      setCollapsedSections(new Set());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, subs.length]);
+
+  const toggleSection = (sectionId: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  };
+
+  const collapseAllSections = () => {
+    if (!activeSub) return;
+    setCollapsedSections(new Set(activeSub.sections.map((s) => s.id)));
+  };
+
+  const expandAllSections = () => {
+    setCollapsedSections(new Set());
+  };
+
   // Lote 3 revision: click-outside cierra el dropdown automaticamente.
   useEffect(() => {
     if (!showAddDropdown) return;
@@ -927,18 +967,87 @@ export function SubTemplateEditor({
             </button>
           </div>
 
+          {/* Toolbar de colapsar/expandir todas las secciones — UX fix */}
+          {activeSub.sections.length > 1 && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.5rem',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                onClick={collapseAllSections}
+                title="Colapsar todas las secciones para ver solo títulos"
+              >
+                ▶ Colapsar todas
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                onClick={expandAllSections}
+                title="Expandir todas las secciones"
+              >
+                ▼ Expandir todas
+              </button>
+            </div>
+          )}
+
           {/* Sections editor */}
-          {activeSub.sections.map((sec, si) => (
-            <div key={sec.id} className="card" style={{ padding: '1.5rem', marginBottom: '1rem' }}>
+          {activeSub.sections.map((sec, si) => {
+            const isCollapsed = collapsedSections.has(sec.id);
+            const totalQs = sec.questions?.length || 0;
+            return (
+            <div key={sec.id} className="card" style={{ padding: isCollapsed ? '0.85rem 1.5rem' : '1.5rem', marginBottom: '0.75rem' }}>
               <div
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  marginBottom: '1rem',
+                  marginBottom: isCollapsed ? 0 : '1rem',
+                  cursor: 'pointer',
+                  userSelect: 'none',
                 }}
+                onClick={() => toggleSection(sec.id)}
+                title={isCollapsed ? 'Click para expandir' : 'Click para colapsar'}
               >
-                <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Sección {si + 1}</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                  <span
+                    style={{
+                      fontSize: '0.85rem',
+                      color: 'var(--text-muted)',
+                      transition: 'transform 0.15s ease',
+                      display: 'inline-block',
+                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                    }}
+                  >
+                    ▼
+                  </span>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>
+                    Sección {si + 1}
+                    {sec.title && (
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                        : {sec.title}
+                      </span>
+                    )}
+                  </h3>
+                  {isCollapsed && (
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        color: 'var(--text-muted)',
+                        marginLeft: '0.5rem',
+                      }}
+                    >
+                      ({totalQs} pregunta{totalQs !== 1 ? 's' : ''})
+                    </span>
+                  )}
+                </div>
                 {activeSub.sections.length > 1 && (
                   <button
                     className="btn-ghost"
@@ -947,13 +1056,16 @@ export function SubTemplateEditor({
                       color: 'var(--danger)',
                       padding: '0.2rem 0.5rem',
                     }}
-                    onClick={() => removeSection(si)}
+                    onClick={(e) => {
+                      e.stopPropagation(); // no togglear al borrar
+                      removeSection(si);
+                    }}
                   >
                     Eliminar sección
                   </button>
                 )}
               </div>
-
+              {!isCollapsed && (<>
               {/* Section title — competency picker or custom */}
               {(() => {
                 const isCustom = !sec.competencyId;
@@ -1248,8 +1360,10 @@ export function SubTemplateEditor({
               >
                 + Agregar pregunta
               </button>
+              </>)}{/* /!isCollapsed */}
             </div>
-          ))}
+            );
+          })}
 
           <button
             className="btn-ghost"
