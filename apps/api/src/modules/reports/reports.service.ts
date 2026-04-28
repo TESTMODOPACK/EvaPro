@@ -1143,11 +1143,17 @@ export class ReportsService {
       where: { parentTemplateId: template.id, isActive: true },
     });
 
-    // weightsByRelation: usado para calcular `overall` ponderado por sección.
-    // Solo se llena si hay subplantillas con weights configurados.
+    // weightsByRelation: prioridad cycle.settings.weights → sub_template.weight.
+    // El admin puede sobreescribir los pesos del template a nivel ciclo (ej.
+    // mismo template usado en 2 ciclos con pesos distintos). Si cycle no tiene
+    // weights, fallback al weight de cada sub_template.
+    const cycleWeights = (cycle.settings as any)?.weights as Record<string, number> | undefined;
     const weightsByRelation: Record<string, number> = {};
     for (const sub of subTemplates) {
-      weightsByRelation[sub.relationType] = Number(sub.weight) || 0;
+      const cycleWeight = cycleWeights && typeof cycleWeights[sub.relationType] === 'number'
+        ? cycleWeights[sub.relationType]
+        : null;
+      weightsByRelation[sub.relationType] = cycleWeight ?? (Number(sub.weight) || 0);
     }
     const hasWeights = Object.values(weightsByRelation).some((w) => w > 0);
 
@@ -1325,15 +1331,19 @@ export class ReportsService {
   async selfVsOthers(cycleId: string, userId: string, tenantId: string) {
     const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
 
-    // Fase 3 (Opción A): cargar weights de subplantillas si existen
-    // (para que othersAvg sea ponderado por los pesos del manager/peer/dr).
+    // Fase 3 (Opción A): cargar weights — cycle.settings.weights gana sobre
+    // sub_template.weight. Permite override por ciclo del template default.
     const weightsByRelation: Record<string, number> = {};
+    const cycleWeights = (cycle?.settings as any)?.weights as Record<string, number> | undefined;
     if (cycle?.templateId) {
       const subs = await this.subTemplateRepo.find({
         where: { parentTemplateId: cycle.templateId, isActive: true },
       });
       for (const sub of subs) {
-        weightsByRelation[sub.relationType] = Number(sub.weight) || 0;
+        const cycleWeight = cycleWeights && typeof cycleWeights[sub.relationType] === 'number'
+          ? cycleWeights[sub.relationType]
+          : null;
+        weightsByRelation[sub.relationType] = cycleWeight ?? (Number(sub.weight) || 0);
       }
     }
     const hasWeights = Object.values(weightsByRelation).some((w) => w > 0);

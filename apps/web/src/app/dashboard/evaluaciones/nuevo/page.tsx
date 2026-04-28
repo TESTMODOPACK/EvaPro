@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useCreateCycle } from '@/hooks/useCycles';
-import { useTemplates } from '@/hooks/useTemplates';
+import { useTemplates, useTemplateWithSubTemplates } from '@/hooks/useTemplates';
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -33,6 +33,31 @@ export default function NuevoCicloPage() {
     templateId: '',
   });
 
+  // Fase 3: pesos del ciclo (override de los defaults del template).
+  // Se inicializa al seleccionar template; user los puede ajustar antes
+  // de crear. Persisten en cycle.settings.weights.
+  const [cycleWeights, setCycleWeights] = useState<Record<string, number>>({});
+  const { data: templateWithSubs } = useTemplateWithSubTemplates(
+    form.templateId || null,
+  );
+
+  // Inicializar pesos al cargar las subs del template seleccionado.
+  useEffect(() => {
+    if (templateWithSubs?.subTemplates && templateWithSubs.subTemplates.length > 0) {
+      const initial: Record<string, number> = {};
+      for (const sub of templateWithSubs.subTemplates) {
+        initial[sub.relationType] = Number(sub.weight) || 0;
+      }
+      setCycleWeights(initial);
+    }
+  }, [templateWithSubs?.subTemplates]);
+
+  const totalWeight = useMemo(
+    () => Object.values(cycleWeights).reduce((sum, w) => sum + (Number(w) || 0), 0),
+    [cycleWeights],
+  );
+  const weightsOK = Object.keys(cycleWeights).length === 0 || Math.abs(totalWeight - 1.0) < 0.001;
+
   const set = (field: string, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -40,11 +65,18 @@ export default function NuevoCicloPage() {
     if (step === 1) return form.name.trim().length > 0;
     if (step === 2) return form.startDate && form.endDate;
     if (step === 3) return form.templateId !== '';
+    if (step === 4) return weightsOK;
     return true;
   };
 
   const handleCreate = async () => {
+    if (!weightsOK) return;
     try {
+      const settings: any = {};
+      // Solo enviar weights si la plantilla tiene subplantillas
+      if (Object.keys(cycleWeights).length > 0) {
+        settings.weights = cycleWeights;
+      }
       await createCycle.mutateAsync({
         name: form.name,
         description: form.description,
@@ -52,6 +84,7 @@ export default function NuevoCicloPage() {
         startDate: form.startDate,
         endDate: form.endDate,
         templateId: form.templateId,
+        settings: Object.keys(settings).length > 0 ? settings : undefined,
       });
       router.push('/dashboard/evaluaciones');
     } catch {
@@ -312,22 +345,39 @@ export default function NuevoCicloPage() {
                           {tpl.description}
                         </div>
                       )}
-                      {tpl.sections && (
-                        <div
-                          style={{
-                            fontSize: '0.75rem',
-                            color: 'var(--text-muted)',
-                            marginTop: '0.35rem',
-                          }}
-                        >
-                          {tpl.sections.length} secciones &middot;{' '}
-                          {tpl.sections.reduce(
-                            (acc: number, s: any) => acc + (s.questions?.length || 0),
-                            0,
-                          )}{' '}
-                          preguntas
-                        </div>
-                      )}
+                      {(() => {
+                        // Fase 3: priorizar subTemplatesSummary (preguntas
+                        // viven en form_sub_templates). Fallback a
+                        // tpl.sections legacy si no hay sub_templates.
+                        const summary = (tpl as any).subTemplatesSummary;
+                        const totalSections = summary && summary.totalSections > 0
+                          ? summary.totalSections
+                          : (Array.isArray(tpl.sections) ? tpl.sections.length : 0);
+                        const totalQuestions = summary && summary.totalQuestions > 0
+                          ? summary.totalQuestions
+                          : (Array.isArray(tpl.sections)
+                              ? tpl.sections.reduce(
+                                  (acc: number, s: any) => acc + (s.questions?.length || 0),
+                                  0,
+                                )
+                              : 0);
+                        return (
+                          <div
+                            style={{
+                              fontSize: '0.75rem',
+                              color: 'var(--text-muted)',
+                              marginTop: '0.35rem',
+                            }}
+                          >
+                            {summary && summary.count > 0 && (
+                              <span>
+                                {summary.count} subplantillas · {' '}
+                              </span>
+                            )}
+                            {totalSections} secciones &middot; {totalQuestions} preguntas
+                          </div>
+                        );
+                      })()}
                     </div>
                   </label>
                 ))}
@@ -409,6 +459,103 @@ export default function NuevoCicloPage() {
                 </span>
               </div>
             </div>
+
+            {/* Fase 3: pesos editables si la plantilla tiene subplantillas */}
+            {Object.keys(cycleWeights).length > 0 && (
+              <div
+                style={{
+                  background: 'var(--bg-surface)',
+                  padding: '1.25rem',
+                  borderRadius: 'var(--radius-sm, 0.5rem)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                  ⚖ Peso de cada perspectiva en el score final
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                  Los pesos default vienen de la plantilla. Puedes ajustarlos
+                  para este ciclo específico — no afectan otros ciclos que
+                  usen la misma plantilla.
+                </p>
+                {Object.entries(cycleWeights).map(([rel, weight]) => {
+                  const labels: Record<string, { emoji: string; label: string }> = {
+                    self: { emoji: '🧑', label: 'Auto-evaluación' },
+                    manager: { emoji: '👔', label: 'Jefe directo' },
+                    peer: { emoji: '👥', label: 'Pares' },
+                    direct_report: { emoji: '👇', label: 'Reportes directos' },
+                    external: { emoji: '🌐', label: 'Externo' },
+                  };
+                  const meta = labels[rel] || { emoji: '📋', label: rel };
+                  return (
+                    <div
+                      key={rel}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      <div style={{ width: '180px', fontSize: '0.85rem' }}>
+                        {meta.emoji} {meta.label}
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={weight}
+                        onChange={(e) =>
+                          setCycleWeights((prev) => ({ ...prev, [rel]: parseFloat(e.target.value) }))
+                        }
+                        style={{ flex: 1, accentColor: 'var(--accent)' }}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={Math.round(weight * 100)}
+                        onChange={(e) =>
+                          setCycleWeights((prev) => ({
+                            ...prev,
+                            [rel]: parseInt(e.target.value || '0') / 100,
+                          }))
+                        }
+                        style={{
+                          padding: '0.4rem 0.6rem',
+                          background: 'var(--bg-base)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.85rem',
+                          width: '70px',
+                          textAlign: 'center',
+                          fontWeight: 600,
+                        }}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>%</span>
+                    </div>
+                  );
+                })}
+                <div
+                  style={{
+                    marginTop: '0.75rem',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    background: weightsOK ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                    color: weightsOK ? 'var(--success)' : 'var(--danger)',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    textAlign: 'center',
+                  }}
+                >
+                  Total: {(totalWeight * 100).toFixed(1)}%{' '}
+                  {weightsOK ? '✅' : '⚠️ Debe ser 100%'}
+                </div>
+              </div>
+            )}
 
             {createCycle.isError && (
               <div

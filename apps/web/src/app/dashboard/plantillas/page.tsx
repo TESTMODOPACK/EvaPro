@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useToastStore } from '@/store/toast.store';
 import {
@@ -363,6 +364,8 @@ export default function PlantillasPage() {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { data: templates, isLoading, refetch: reloadTemplates } = useTemplates();
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
@@ -391,6 +394,28 @@ export default function PlantillasPage() {
     if (!token) return;
     api.development.competencies.list(token).then((data) => setCompetencies(Array.isArray(data) ? data : [])).catch(() => setCompetencies([]));
   }, [token]);
+
+  // Fase 3: procesar query params ?edit=ID o ?preview=ID para deep-link
+  // desde la pantalla de detalle del ciclo (botones "Editar plantilla" /
+  // "Ver plantilla").
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    const previewId = searchParams.get('preview');
+    if (editId) {
+      setEditingId(editId);
+      setMode('tabs-edit');
+      // Limpiar query param para evitar re-trigger en navegacion atras.
+      router.replace('/dashboard/plantillas');
+    } else if (previewId) {
+      setEditingId(previewId);
+      // Preview del editor con tabs (read-only se maneja dentro del editor
+      // si pasaramos un flag — por ahora abrimos el editor en modo edit
+      // ya que admin puede entrar desde detalle del ciclo igualmente).
+      setMode('tabs-edit');
+      router.replace('/dashboard/plantillas');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleGenerateSamples = async () => {
     if (!token) return;
@@ -1340,10 +1365,18 @@ export default function PlantillasPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>
           {templates.map((tpl: any) => {
-            const totalQuestions = (tpl.sections || []).reduce((acc: number, s: any) => acc + (s.questions?.length || 0), 0);
-            // Detectar si la plantilla tiene secciones o preguntas con applicableTo
-            // (= filtra por rol del evaluador). Sirve para mostrar badge.
-            const hasRoleFilter = (tpl.sections || []).some(
+            // Fase 3: priorizar subTemplatesSummary (preguntas viven en
+            // form_sub_templates). Fallback a tpl.sections legacy.
+            const summary = tpl.subTemplatesSummary;
+            const totalSections = summary && summary.totalSections > 0
+              ? summary.totalSections
+              : (Array.isArray(tpl.sections) ? tpl.sections.length : 0);
+            const totalQuestions = summary && summary.totalQuestions > 0
+              ? summary.totalQuestions
+              : (tpl.sections || []).reduce((acc: number, s: any) => acc + (s.questions?.length || 0), 0);
+            const hasSubTemplates = summary && summary.count > 0;
+            // Badge "Por rol": Fase 3 (tiene subs) o Fase 2 legacy (applicableTo en sections)
+            const hasRoleFilter = hasSubTemplates || (tpl.sections || []).some(
               (s: any) =>
                 (Array.isArray(s.applicableTo) && s.applicableTo.length > 0) ||
                 (s.questions || []).some(
@@ -1382,7 +1415,12 @@ export default function PlantillasPage() {
                   </p>
                 )}
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                  {(tpl.sections || []).length} {(tpl.sections || []).length !== 1 ? t('plantillas.countSectionsPlural') : t('plantillas.countSections')} &middot; {totalQuestions} {totalQuestions !== 1 ? t('plantillas.countQuestionsPlural') : t('plantillas.countQuestions')}
+                  {hasSubTemplates && (
+                    <span style={{ marginRight: '0.4rem' }}>
+                      {summary.count} subplantillas ·
+                    </span>
+                  )}
+                  {totalSections} {totalSections !== 1 ? t('plantillas.countSectionsPlural') : t('plantillas.countSections')} &middot; {totalQuestions} {totalQuestions !== 1 ? t('plantillas.countQuestionsPlural') : t('plantillas.countQuestions')}
                 </div>
 
                 {/* Section preview */}

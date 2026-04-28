@@ -666,7 +666,20 @@ export default function CycleDetailPage() {
       )}
 
       {/* Template section */}
-      {template && (
+      {template && (() => {
+        // Fase 3: leer subTemplatesSummary primero. Si no hay,
+        // fallback a sections legacy del padre.
+        const summary = (template as any).subTemplatesSummary;
+        const totalSections = summary && summary.totalSections > 0
+          ? summary.totalSections
+          : (Array.isArray(template.sections) ? template.sections.length : 0);
+        const totalQuestions = summary && summary.totalQuestions > 0
+          ? summary.totalQuestions
+          : (Array.isArray(template.sections)
+              ? template.sections.reduce((sum: number, s: any) => sum + (s.questions?.length || 0), 0)
+              : 0);
+        const hasSubTemplates = summary && summary.count > 0;
+        return (
         <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showTemplate ? '0.75rem' : 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -674,23 +687,45 @@ export default function CycleDetailPage() {
               <div>
                 <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>Plantilla: {template.name}</span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>
-                  {template.sections?.length || 0} secciones · {template.sections?.reduce((sum: number, s: any) => sum + (s.questions?.length || 0), 0) || 0} preguntas
+                  {hasSubTemplates && (
+                    <span style={{ marginRight: '0.4rem' }}>
+                      {summary.count} subplantillas ·
+                    </span>
+                  )}
+                  {totalSections} secciones · {totalQuestions} preguntas
                 </span>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowTemplate(!showTemplate)}>
-                {showTemplate ? 'Ocultar' : 'Ver plantilla'}
-              </button>
+              {/* Ver plantilla: navega a /dashboard/plantillas?preview=ID
+                  cuando tiene sub_templates (mostrar todas las subs).
+                  Para legacy, usa el toggle inline (preview rapido). */}
+              {hasSubTemplates ? (
+                <Link
+                  href={`/dashboard/plantillas?preview=${template.id}`}
+                  className="btn-ghost"
+                  style={{ fontSize: '0.78rem', textDecoration: 'none' }}
+                >
+                  Ver plantilla
+                </Link>
+              ) : (
+                <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowTemplate(!showTemplate)}>
+                  {showTemplate ? 'Ocultar' : 'Ver plantilla'}
+                </button>
+              )}
               {cycle?.status === 'draft' && template?.id && (
-                <Link href={`/dashboard/plantillas?edit=${template.id}`} className="btn-ghost" style={{ fontSize: '0.78rem', textDecoration: 'none' }}>
+                <Link
+                  href={`/dashboard/plantillas?edit=${template.id}`}
+                  className="btn-ghost"
+                  style={{ fontSize: '0.78rem', textDecoration: 'none' }}
+                >
                   Editar plantilla
                 </Link>
               )}
             </div>
           </div>
 
-          {showTemplate && (
+          {showTemplate && !hasSubTemplates && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {(template.sections || []).map((sec: any, si: number) => (
                 <div key={sec.id || si} style={{ padding: '0.75rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -717,7 +752,8 @@ export default function CycleDetailPage() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Guide toggle — only for draft cycles (before assignments are generated) */}
       {cycle.status === 'draft' && (

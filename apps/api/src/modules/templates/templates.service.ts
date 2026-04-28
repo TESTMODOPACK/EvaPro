@@ -62,23 +62,82 @@ export class TemplatesService {
     return this.anthropicClient;
   }
 
+  /**
+   * Fase 3 helper: agrega counts agregados de las subplantillas a una
+   * lista de plantillas. Hace UNA sola query batch a form_sub_templates
+   * para evitar N+1 — devuelve el mapa parentId → counts.
+   *
+   * Si una plantilla NO tiene subplantillas (caso legacy puro), los
+   * counts se calculan desde template.sections (formato pre-Fase 3).
+   *
+   * Output (mutable): cada FormTemplate recibe `subTemplatesSummary`:
+   *   { count, totalSections, totalQuestions }
+   */
+  private async enrichWithSubTemplateSummary(templates: FormTemplate[]): Promise<FormTemplate[]> {
+    if (templates.length === 0) return templates;
+
+    const ids = templates.map((t) => t.id);
+    const allSubs = await this.subTemplateRepo
+      .createQueryBuilder('s')
+      .where('s.parentTemplateId IN (:...ids)', { ids })
+      .getMany();
+
+    const summaryByParent = new Map<string, { count: number; totalSections: number; totalQuestions: number }>();
+    for (const sub of allSubs) {
+      const cur = summaryByParent.get(sub.parentTemplateId) || { count: 0, totalSections: 0, totalQuestions: 0 };
+      cur.count++;
+      const sections = Array.isArray(sub.sections) ? (sub.sections as any[]) : [];
+      cur.totalSections += sections.length;
+      cur.totalQuestions += sections.reduce(
+        (acc, s) => acc + (Array.isArray(s.questions) ? s.questions.length : 0),
+        0,
+      );
+      summaryByParent.set(sub.parentTemplateId, cur);
+    }
+
+    for (const t of templates) {
+      const summary = summaryByParent.get(t.id);
+      if (summary && summary.count > 0) {
+        (t as any).subTemplatesSummary = summary;
+      } else {
+        // Fallback legacy: contar desde template.sections
+        const sections = Array.isArray(t.sections) ? (t.sections as any[]) : [];
+        const totalQuestions = sections.reduce(
+          (acc, s) => acc + (Array.isArray(s.questions) ? s.questions.length : 0),
+          0,
+        );
+        (t as any).subTemplatesSummary = {
+          count: 0,
+          totalSections: sections.length,
+          totalQuestions,
+        };
+      }
+    }
+
+    return templates;
+  }
+
   async findAll(tenantId: string, includeAll = false): Promise<FormTemplate[]> {
+    let templates: FormTemplate[];
     if (includeAll) {
       // Admin view: all statuses + global templates
-      return this.templateRepo.find({
+      templates = await this.templateRepo.find({
         where: [{ tenantId }, { tenantId: IsNull() }],
         relations: ['creator'],
         order: { createdAt: 'DESC' },
       });
+    } else {
+      // Regular view: only published templates + global
+      templates = await this.templateRepo.find({
+        where: [
+          { tenantId, status: 'published' },
+          { tenantId: IsNull() },
+        ],
+        order: { createdAt: 'DESC' },
+      });
     }
-    // Regular view: only published templates + global
-    return this.templateRepo.find({
-      where: [
-        { tenantId, status: 'published' },
-        { tenantId: IsNull() },
-      ],
-      order: { createdAt: 'DESC' },
-    });
+    // Fase 3: enriquecer con counts agregados de sub_templates
+    return this.enrichWithSubTemplateSummary(templates);
   }
 
   /**
@@ -93,7 +152,9 @@ export class TemplatesService {
       : { id };
     const template = await this.templateRepo.findOne({ where });
     if (!template) throw new NotFoundException('Plantilla no encontrada');
-    return template;
+    // Fase 3: enriquecer con summary de sub_templates
+    const [enriched] = await this.enrichWithSubTemplateSummary([template]);
+    return enriched;
   }
 
   // Validate no duplicate competencyIds across sections
