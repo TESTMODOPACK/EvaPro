@@ -8,6 +8,7 @@ import { EvaluationAssignment, AssignmentStatus, RelationType } from '../evaluat
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
+import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
 import { User } from '../users/entities/user.entity';
 import { RoleCompetency } from '../development/entities/role-competency.entity';
 import { Competency } from '../development/entities/competency.entity';
@@ -45,6 +46,8 @@ export class ReportsService {
     private readonly objectiveRepo: Repository<Objective>,
     @InjectRepository(FormTemplate)
     private readonly templateRepo: Repository<FormTemplate>,
+    @InjectRepository(FormSubTemplate)
+    private readonly subTemplateRepo: Repository<FormSubTemplate>,
     @InjectRepository(RoleCompetency)
     private readonly roleCompetencyRepo: Repository<RoleCompetency>,
     @InjectRepository(Competency)
@@ -1128,8 +1131,86 @@ export class ReportsService {
     if (cycle.templateId) {
       template = await this.templateRepo.findOne({ where: { id: cycle.templateId } });
     }
-    if (!template || !Array.isArray(template.sections) || template.sections.length === 0) {
-      return { userId, cycleId, sections: [], message: 'Sin plantilla con secciones asociada al ciclo' };
+    if (!template) {
+      return { userId, cycleId, sections: [], message: 'Sin plantilla asociada al ciclo' };
+    }
+
+    // ─── Fase 3 (Opción A): cargar subplantillas del padre ───────────────
+    // El radar consolida secciones a través de TODAS las subplantillas
+    // (cada rol tiene sus propias preguntas para la misma competencia).
+    // Las secciones se correlacionan por competencyId (o title si no hay).
+    const subTemplates = await this.subTemplateRepo.find({
+      where: { parentTemplateId: template.id, isActive: true },
+    });
+
+    // weightsByRelation: usado para calcular `overall` ponderado por sección.
+    // Solo se llena si hay subplantillas con weights configurados.
+    const weightsByRelation: Record<string, number> = {};
+    for (const sub of subTemplates) {
+      weightsByRelation[sub.relationType] = Number(sub.weight) || 0;
+    }
+    const hasWeights = Object.values(weightsByRelation).some((w) => w > 0);
+
+    // Construir mapa unificado de secciones agrupando por competencyId
+    // (o title si no hay competencyId — fallback). Cada entrada agrega
+    // sus preguntas y registra qué relationType ownsthe each pregunta
+    // (para acumular respuestas correctamente).
+    const unifiedSections = new Map<
+      string,
+      {
+        title: string;
+        questionsByRelation: Record<string, any[]>; // relationType → questions
+        sourceMaxScale: number;
+      }
+    >();
+
+    const indexSection = (sec: any, relationType: string) => {
+      const scaleQs = (sec.questions || []).filter((q: any) => q.type === 'scale');
+      if (scaleQs.length === 0) return;
+      const key = sec.competencyId || sec.title || sec.id || 'unknown';
+      const existing = unifiedSections.get(key);
+      const sourceMax = Math.max(...scaleQs.map((q: any) => q.scale?.max ?? 10));
+      if (!existing) {
+        unifiedSections.set(key, {
+          title: sec.title || sec.id || 'Sin nombre',
+          questionsByRelation: { [relationType]: scaleQs },
+          sourceMaxScale: sourceMax,
+        });
+      } else {
+        existing.questionsByRelation[relationType] = [
+          ...(existing.questionsByRelation[relationType] || []),
+          ...scaleQs,
+        ];
+        existing.sourceMaxScale = Math.max(existing.sourceMaxScale, sourceMax);
+      }
+    };
+
+    if (subTemplates.length > 0) {
+      // Path Fase 3: cada subplantilla aporta sus secciones para SU rol.
+      for (const sub of subTemplates) {
+        for (const sec of (sub.sections as any[]) || []) {
+          indexSection(sec, sub.relationType);
+        }
+      }
+    } else if (Array.isArray(template.sections) && template.sections.length > 0) {
+      // Path legacy (Fase 1/2): el padre tiene sections — aplica a todos
+      // los roles encontrados en las responses (o como '_legacy' si no
+      // tenemos applicableTo para discriminar).
+      for (const sec of template.sections as any[]) {
+        // Si la sección/pregunta tiene applicableTo, indexamos por cada
+        // rol incluido. Si no, usamos un bucket especial '_all' que
+        // matchea cualquier respuesta.
+        const secApplicable = Array.isArray(sec.applicableTo) && sec.applicableTo.length > 0
+          ? sec.applicableTo
+          : ['_all'];
+        for (const rel of secApplicable) {
+          indexSection(sec, rel);
+        }
+      }
+    }
+
+    if (unifiedSections.size === 0) {
+      return { userId, cycleId, sections: [], message: 'La plantilla no contiene preguntas de escala para generar el radar' };
     }
 
     // Fix C2: Batch load responses (no N+1)
@@ -1158,85 +1239,105 @@ export class ReportsService {
       return { userId, cycleId, sections: [], message: 'Las evaluaciones completadas aún no tienen respuestas registradas' };
     }
 
-    // Build section-level averages
-    //
-    // SCALE NORMALIZATION (Fix bug #6 auditoria F4):
-    // El template puede tener escala 1-5 (default seed) o 1-10 (custom).
-    // Todos los outputs de reports SE NORMALIZAN A 0-10 para consistencia
+    // ─── SCALE NORMALIZATION (Fix bug #6 auditoria F4) ──────────────────
+    // Todos los averages se normalizan a escala 0-10 para consistencia
     // con el resto del sistema (overallScore en evaluation_responses ya
-    // viene en 0-10) y para que la IA reciba valores comparables sin
-    // tener que adivinar la escala.
+    // viene en 0-10) y para que la IA reciba valores comparables.
     //
-    // Formula: normalizedAvg = (rawAvg / sourceMaxScale) * 10
-    //   - sourceMaxScale = 5 → normalizedAvg = rawAvg * 2 (ej. 4.42 → 8.84)
-    //   - sourceMaxScale = 10 → normalizedAvg = rawAvg (sin cambio)
-    const sections = template.sections.map((sec: any) => {
-      const scaleQuestions = (sec.questions || []).filter((q: any) => q.type === 'scale');
-      if (scaleQuestions.length === 0) return null;
-
-      const questionIds = scaleQuestions.map((q: any) => q.id);
-      // Source scale: tomamos el max de las preguntas. Si la seccion
-      // mezcla escalas (raro), usamos el max — los valores raw siguen
-      // sumando OK porque normalizamos al final.
-      const sourceMaxScale = Math.max(...scaleQuestions.map((q: any) => q.scale?.max ?? 10));
+    //   normalizedAvg = (rawAvg / sourceMaxScale) * 10
+    //
+    // ─── Fase 3: overall PONDERADO por weights de subplantillas ─────────
+    //   Si hay weights, overall = Σ (weight_rel × score_rel) / Σ weights_que_contribuyeron
+    //   Si no hay weights → promedio simple (como antes).
+    const sections: any[] = [];
+    for (const [, sec] of unifiedSections) {
+      const sourceMaxScale = sec.sourceMaxScale;
+      const normalize = (rawAvg: number) =>
+        Math.round(((rawAvg / sourceMaxScale) * 10) * 100) / 100;
 
       const byRelation: Record<string, { sum: number; count: number }> = {};
-      let allSum = 0;
-      let allCount = 0;
 
       for (const resp of responses) {
         const rel = resp.relationType || 'unknown';
-        if (!byRelation[rel]) byRelation[rel] = { sum: 0, count: 0 };
+        // Las preguntas que respondió este evaluador son las de SU
+        // sub_template (o las del bucket '_all' en path legacy).
+        const ownQs = sec.questionsByRelation[rel] || sec.questionsByRelation['_all'] || [];
+        if (ownQs.length === 0) continue;
 
-        for (const qId of questionIds) {
-          const val = Number(resp.answers[qId]);
+        if (!byRelation[rel]) byRelation[rel] = { sum: 0, count: 0 };
+        for (const q of ownQs) {
+          const val = Number(resp.answers[q.id]);
           if (!isNaN(val) && val > 0) {
             byRelation[rel].sum += val;
             byRelation[rel].count++;
-            allSum += val;
-            allCount++;
           }
         }
       }
 
-      // Normalizar todos los averages a escala 0-10
-      const normalize = (rawAvg: number) =>
-        Math.round(((rawAvg / sourceMaxScale) * 10) * 100) / 100;
-
-      // Fase 2 fix: con applicableTo, un evaluador puede haber completado
-      // una evaluacion pero NO haber respondido preguntas de esta seccion
-      // (porque sus preguntas estan tagged a otro rol). En ese caso
-      // count === 0 y devolver score=0 es enganoso (parece "calificó 0").
-      // Omitimos el rol del output cuando no contribuyo a esta seccion.
+      // relationScores: solo roles con datos (omite count=0).
       const relationScores: Record<string, number> = {};
       for (const [rel, data] of Object.entries(byRelation)) {
-        if (data.count === 0) continue; // sin datos del rol en esta seccion
+        if (data.count === 0) continue;
         relationScores[rel] = normalize(data.sum / data.count);
       }
 
-      return {
-        section: sec.title || sec.id || 'Sin nombre',
-        overall: allCount > 0 ? normalize(allSum / allCount) : 0,
-        // maxScale del OUTPUT siempre es 10 (post-normalizacion).
-        // sourceMaxScale documenta la escala original del template para
-        // auditoria/debugging.
+      // overall: promedio ponderado (Fase 3) o simple (legacy).
+      let overall = 0;
+      if (hasWeights && Object.keys(relationScores).length > 0) {
+        let weightedSum = 0;
+        let weightTotal = 0;
+        for (const [rel, score] of Object.entries(relationScores)) {
+          const w = weightsByRelation[rel] ?? 0;
+          if (w > 0) {
+            weightedSum += score * w;
+            weightTotal += w;
+          }
+        }
+        overall = weightTotal > 0
+          ? Math.round((weightedSum / weightTotal) * 100) / 100
+          : 0;
+      } else if (Object.keys(relationScores).length > 0) {
+        // Promedio simple si no hay weights
+        const scores = Object.values(relationScores);
+        overall = Math.round((scores.reduce((s, v) => s + v, 0) / scores.length) * 100) / 100;
+      }
+
+      const totalQuestionCount = Object.values(sec.questionsByRelation)
+        .reduce((sum, qs) => sum + qs.length, 0);
+
+      sections.push({
+        section: sec.title,
+        overall,
         maxScale: 10,
         sourceMaxScale,
         byRelation: relationScores,
-        questionCount: scaleQuestions.length,
-      };
-    }).filter(Boolean);
-
-    if (sections.length === 0 && template.sections.length > 0) {
-      return { userId, cycleId, sections: [], message: 'La plantilla no contiene preguntas de escala para generar el radar' };
+        questionCount: totalQuestionCount,
+        // Metadata Fase 3: indica si el overall fue ponderado
+        weighted: hasWeights,
+      });
     }
 
-    return { userId, cycleId, sections };
+    return { userId, cycleId, sections, weighted: hasWeights };
   }
 
   // ─── C2: Self vs Others comparison ─────────────────────────────────────
 
   async selfVsOthers(cycleId: string, userId: string, tenantId: string) {
+    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
+
+    // Fase 3 (Opción A): cargar weights de subplantillas si existen
+    // (para que othersAvg sea ponderado por los pesos del manager/peer/dr).
+    const weightsByRelation: Record<string, number> = {};
+    if (cycle?.templateId) {
+      const subs = await this.subTemplateRepo.find({
+        where: { parentTemplateId: cycle.templateId, isActive: true },
+      });
+      for (const sub of subs) {
+        weightsByRelation[sub.relationType] = Number(sub.weight) || 0;
+      }
+    }
+    const hasWeights = Object.values(weightsByRelation).some((w) => w > 0);
+
     // Fix C2: Batch load (no N+1)
     const assignments = await this.assignmentRepo.find({
       where: { cycleId, evaluateeId: userId, tenantId, status: AssignmentStatus.COMPLETED },
@@ -1264,24 +1365,41 @@ export class ReportsService {
       }
     }
 
-    const othersAvg = otherScores.length > 0
-      ? Math.round((otherScores.reduce((s, o) => s + o.score, 0) / otherScores.length) * 100) / 100
-      : null;
-
-    // Fix C4: Removed dead code. Group and average by relation type directly.
+    // Group por relationType (used for byRelationAvg + ponderacion).
     const grouped: Record<string, number[]> = {};
     for (const o of otherScores) {
       if (!grouped[o.relationType]) grouped[o.relationType] = [];
       grouped[o.relationType].push(o.score);
     }
     const byRelationAvg: Record<string, number | null> = {};
-    // Include all possible relation types for completeness
-    for (const rel of ['self', 'manager', 'peer', 'direct_report', 'external']) {
-      if (rel === 'self') continue; // self is separate
+    for (const rel of ['manager', 'peer', 'direct_report', 'external']) {
       const scores = grouped[rel];
       byRelationAvg[rel] = scores && scores.length > 0
         ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
         : null;
+    }
+
+    // othersAvg: ponderado (Fase 3) o promedio simple (legacy).
+    let othersAvg: number | null = null;
+    if (hasWeights) {
+      // Pondera con el weight de cada relationType (excluyendo self).
+      let weightedSum = 0;
+      let weightTotal = 0;
+      for (const [rel, avg] of Object.entries(byRelationAvg)) {
+        if (avg == null) continue;
+        const w = weightsByRelation[rel] ?? 0;
+        if (w > 0) {
+          weightedSum += avg * w;
+          weightTotal += w;
+        }
+      }
+      othersAvg = weightTotal > 0
+        ? Math.round((weightedSum / weightTotal) * 100) / 100
+        : null;
+    } else if (otherScores.length > 0) {
+      othersAvg = Math.round(
+        (otherScores.reduce((s, o) => s + o.score, 0) / otherScores.length) * 100,
+      ) / 100;
     }
 
     const gap = selfScore != null && othersAvg != null
@@ -1295,6 +1413,7 @@ export class ReportsService {
       othersAvg,
       gap,
       byRelation: byRelationAvg,
+      weighted: hasWeights,
       interpretation: gap != null
         ? gap > 1 ? 'El colaborador se autoevalúa significativamente más alto que sus evaluadores'
           : gap < -1 ? 'El colaborador se autoevalúa significativamente más bajo que sus evaluadores'

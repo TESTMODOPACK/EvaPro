@@ -5,6 +5,7 @@ import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignm
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { Objective } from '../objectives/entities/objective.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
+import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
 import { User } from '../users/entities/user.entity';
 import { RoleCompetency } from '../development/entities/role-competency.entity';
 import { Competency } from '../development/entities/competency.entity';
@@ -40,6 +41,7 @@ import { UserMovement } from '../users/entities/user-movement.entity';
       EvaluationResponse,
       Objective,
       FormTemplate,
+      FormSubTemplate,
       User,
       RoleCompetency,
       Competency,
