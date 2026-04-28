@@ -70,3 +70,66 @@ export function useRestoreVersion() {
     },
   });
 }
+
+// ─── Fase 3 (Opción A) — subplantillas ────────────────────────────────────
+
+/** Devuelve plantilla padre + subplantillas. Hace migración inline si aplica. */
+export function useTemplateWithSubTemplates(id: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['template-sub-templates', id],
+    queryFn: () => api.templates.getWithSubTemplates(token!, id!),
+    enabled: !!token && !!id,
+  });
+}
+
+export function useCreateSubTemplate() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ parentId, data }: { parentId: string; data: any }) =>
+      api.templates.createSubTemplate(token!, parentId, data),
+    onSuccess: (_, { parentId }) => {
+      qc.invalidateQueries({ queryKey: ['template-sub-templates', parentId] });
+      qc.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+export function useUpdateSubTemplate() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ subId, data }: { subId: string; data: any; parentId?: string }) =>
+      api.templates.updateSubTemplate(token!, subId, data),
+    onSuccess: (_, { parentId }) => {
+      if (parentId) qc.invalidateQueries({ queryKey: ['template-sub-templates', parentId] });
+      qc.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+export function useDeleteSubTemplate() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ subId }: { subId: string; parentId?: string }) =>
+      api.templates.deleteSubTemplate(token!, subId),
+    onSuccess: (_, { parentId }) => {
+      if (parentId) qc.invalidateQueries({ queryKey: ['template-sub-templates', parentId] });
+      qc.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+export function useUpdateWeights() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ parentId, weights }: { parentId: string; weights: Record<string, number> }) =>
+      api.templates.updateWeights(token!, parentId, weights),
+    onSuccess: (_, { parentId }) => {
+      qc.invalidateQueries({ queryKey: ['template-sub-templates', parentId] });
+    },
+  });
+}

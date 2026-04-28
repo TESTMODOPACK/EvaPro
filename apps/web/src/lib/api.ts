@@ -942,6 +942,25 @@ export const api = {
       request<TemplateData>(`/templates/${id}/publish`, { method: "POST", body: JSON.stringify({ note }) }, token),
     reject: (token: string, id: string, note: string) =>
       request<TemplateData>(`/templates/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }, token),
+
+    // ─── Fase 3 (Opción A): subplantillas ──────────────────────────────
+    /** Devuelve template padre + subplantillas (con migración inline legacy si aplica). */
+    getWithSubTemplates: (token: string, id: string) =>
+      request<{ template: TemplateData; subTemplates: any[] }>(
+        `/templates/${id}/sub-templates`, {}, token,
+      ),
+    createSubTemplate: (token: string, parentId: string, data: any) =>
+      request<any>(`/templates/${parentId}/sub-templates`,
+        { method: "POST", body: JSON.stringify(data) }, token),
+    updateSubTemplate: (token: string, subId: string, data: any) =>
+      request<any>(`/templates/sub-templates/${subId}`,
+        { method: "PATCH", body: JSON.stringify(data) }, token),
+    deleteSubTemplate: (token: string, subId: string) =>
+      request<void>(`/templates/sub-templates/${subId}`, { method: "DELETE" }, token),
+    /** Update batch de pesos. Body: { weights: { manager: 0.4, ... } } */
+    updateWeights: (token: string, parentId: string, weights: Record<string, number>) =>
+      request<any[]>(`/templates/${parentId}/sub-templates/weights`,
+        { method: "PUT", body: JSON.stringify({ weights }) }, token),
   },
 
   peerAssignments: {

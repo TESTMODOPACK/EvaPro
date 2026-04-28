@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
+import { SubTemplateEditor } from './SubTemplateEditor';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -368,7 +369,7 @@ export default function PlantillasPage() {
   const removeTemplate = useRemoveTemplate();
   const duplicateTemplate = useDuplicateTemplate();
 
-  const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'preview' | 'history'>('list');
+  const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'tabs-edit' | 'preview' | 'history'>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -425,10 +426,58 @@ export default function PlantillasPage() {
 
   const handleNew = () => {
     resetForm();
-    setMode('create');
+    // Fase 3 (Opción A): el modo nuevo abre un quick-create con cycle type
+    // selector. Se crea el template padre vacio + auto-creacion de subs y
+    // luego abre el editor con tabs.
+    setShowQuickCreate(true);
+  };
+
+  // ─── Fase 3: Quick-create con cycle type selector ─────────────────────
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickDescription, setQuickDescription] = useState('');
+  const [quickCycleType, setQuickCycleType] = useState<'90' | '180' | '270' | '360'>('360');
+  const [quickCreating, setQuickCreating] = useState(false);
+
+  const handleQuickCreateSubmit = async () => {
+    if (!quickName.trim()) {
+      toast.warning('El nombre es requerido');
+      return;
+    }
+    setQuickCreating(true);
+    try {
+      const created: any = await createTemplate.mutateAsync({
+        name: quickName.trim(),
+        description: quickDescription.trim() || undefined,
+        defaultCycleType: quickCycleType,
+        // sections vacio — el backend auto-genera las subplantillas
+      });
+      setShowQuickCreate(false);
+      setQuickName('');
+      setQuickDescription('');
+      setQuickCycleType('360');
+      // Abrir el editor con tabs sobre la plantilla recien creada
+      setEditingId(created.id);
+      setMode('tabs-edit');
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al crear plantilla');
+    } finally {
+      setQuickCreating(false);
+    }
   };
 
   const handleEdit = (tpl: any) => {
+    // Fase 3 (Opción A): por defecto abrimos el editor con tabs (modelo
+    // de subplantillas). El backend hace migración inline de plantillas
+    // legacy al primer GET, así que casi todas las plantillas tendrán
+    // sub_templates al editar.
+    setEditingId(tpl.id);
+    setMode('tabs-edit');
+  };
+
+  /** Editor clásico (legacy/Fase 2). Se usa solo si admin lo elige
+   *  expl­citamente desde el editor de tabs (caso plantillas no migrables). */
+  const handleEditLegacy = (tpl: any) => {
     setEditingId(tpl.id);
     setName(tpl.name);
     setDescription(tpl.description || '');
@@ -578,6 +627,21 @@ export default function PlantillasPage() {
   };
 
   // ─── Render ─────────────────────────────────────────────────────────
+
+  // Fase 3 (Opción A): editor con tabs por subplantilla
+  if (mode === 'tabs-edit' && editingId) {
+    return (
+      <SubTemplateEditor
+        templateId={editingId}
+        competencies={competencies}
+        onClose={() => {
+          setEditingId(null);
+          setMode('list');
+          reloadTemplates();
+        }}
+      />
+    );
+  }
 
   // Preview mode
   if (mode === 'preview') {
@@ -994,6 +1058,155 @@ export default function PlantillasPage() {
         title="Construye plantillas de evaluación reutilizables"
         description="Crea secciones con preguntas escala (1–5), texto libre o selección múltiple. Asócialas a competencias y reutilízalas en cada ciclo. Publica para bloquear cambios y usa 'Importar CSV' para subir plantillas existentes."
       />
+
+      {/* Fase 3 (Opción A): Quick-create modal con cycle type selector */}
+      {showQuickCreate && (
+        <div
+          className="card animate-fade-up"
+          style={{
+            padding: '1.5rem',
+            marginBottom: '1.5rem',
+            borderLeft: '4px solid var(--accent)',
+          }}
+        >
+          <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.5rem' }}>
+            Nueva plantilla
+          </h3>
+          <p
+            style={{
+              fontSize: '0.82rem',
+              color: 'var(--text-muted)',
+              marginBottom: '1rem',
+            }}
+          >
+            Selecciona el tipo de evaluación y el sistema generará automáticamente
+            las subplantillas (una por cada tipo de evaluador) con pesos por
+            defecto. Después podrás llenarlas con preguntas en cada tab.
+          </p>
+
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  marginBottom: '0.3rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                Nombre *
+              </label>
+              <input
+                style={inputStyle}
+                value={quickName}
+                onChange={(e) => setQuickName(e.target.value)}
+                placeholder="Ej: Evaluación 360° — Liderazgo Q2 2026"
+              />
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  marginBottom: '0.3rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                Descripción (opcional)
+              </label>
+              <textarea
+                style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }}
+                value={quickDescription}
+                onChange={(e) => setQuickDescription(e.target.value)}
+                placeholder="Para qué sirve esta plantilla, qué evalúa, etc."
+              />
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  marginBottom: '0.5rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                Tipo de evaluación *
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem' }}>
+                {[
+                  { type: '90', label: '90° — Jefatura + Auto', desc: '2 subplantillas (manager + self)' },
+                  { type: '180', label: '180° — + Pares', desc: '3 subplantillas (+ peer)' },
+                  { type: '270', label: '270° — + Reportes directos', desc: '4 subplantillas (+ direct_report)' },
+                  { type: '360', label: '360° — Completa', desc: '4 subplantillas + calibración' },
+                ].map((opt) => {
+                  const isActive = quickCycleType === opt.type;
+                  return (
+                    <button
+                      key={opt.type}
+                      type="button"
+                      onClick={() => setQuickCycleType(opt.type as any)}
+                      style={{
+                        padding: '0.75rem',
+                        background: isActive ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
+                        border: `2px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                        borderRadius: 'var(--radius-sm)',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                          marginBottom: '0.2rem',
+                          color: isActive ? 'var(--accent-hover)' : 'var(--text-primary)',
+                        }}
+                      >
+                        {opt.label}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        {opt.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <button
+              className="btn-primary"
+              disabled={quickCreating || !quickName.trim()}
+              onClick={handleQuickCreateSubmit}
+            >
+              {quickCreating ? 'Creando...' : 'Crear y editar →'}
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setShowQuickCreate(false);
+                setQuickName('');
+                setQuickDescription('');
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* CSV Import Panel */}
       {showImport && (
