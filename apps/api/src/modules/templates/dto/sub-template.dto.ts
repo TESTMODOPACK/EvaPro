@@ -76,3 +76,32 @@ export class UpdateWeightsDto {
   @IsNotEmpty()
   weights: Partial<Record<RelationType, number>>;
 }
+
+/**
+ * Save-all batch: actualiza TODAS las subs + pesos en una sola
+ * transaccion atomica. Hace snapshot del estado actual ANTES de
+ * modificar (versionHistory). Mejor que N llamadas separadas por:
+ *   - Atomicidad: si una sub falla, ninguna se persiste
+ *   - Snapshot consistente: 1 version por save (no N+1)
+ *   - Race-safety: no hay 2-tier modificaciones
+ */
+export class SaveAllSubTemplatesDto {
+  /**
+   * Subs a actualizar (todas las que el editor controla). Cada item
+   * debe incluir `id` para identificar la sub. Los demas campos son
+   * opcionales — solo se actualizan si están presentes.
+   */
+  @IsNotEmpty()
+  subTemplates: Array<{
+    id: string;
+    sections?: any[];
+    weight?: number;
+    displayOrder?: number;
+    isActive?: boolean;
+  }>;
+
+  /** Nota de cambio opcional (queda en versionHistory.changeNote). */
+  @IsString()
+  @IsOptional()
+  changeNote?: string;
+}

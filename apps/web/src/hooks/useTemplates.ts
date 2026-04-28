@@ -133,3 +133,32 @@ export function useUpdateWeights() {
     },
   });
 }
+
+/** Save-all atomico: subs + pesos en una sola transaccion (Fase 3 opcion B). */
+export function useSaveAllSubTemplates() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      parentId,
+      data,
+    }: {
+      parentId: string;
+      data: {
+        subTemplates: Array<{
+          id: string;
+          sections?: any[];
+          weight?: number;
+          displayOrder?: number;
+          isActive?: boolean;
+        }>;
+        changeNote?: string;
+      };
+    }) => api.templates.saveAllSubTemplates(token!, parentId, data),
+    onSuccess: (_, { parentId }) => {
+      qc.invalidateQueries({ queryKey: ['template-sub-templates', parentId] });
+      qc.invalidateQueries({ queryKey: ['templates'] });
+      qc.invalidateQueries({ queryKey: ['template-versions', parentId] });
+    },
+  });
+}

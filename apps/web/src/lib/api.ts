@@ -962,6 +962,28 @@ export const api = {
       request<any[]>(`/templates/${parentId}/sub-templates/weights`,
         { method: "PUT", body: JSON.stringify({ weights }) }, token),
 
+    /** Save-all atomico: actualiza todas las subs + pesos en una sola tx,
+     *  hace snapshot en versionHistory. Reemplaza N llamadas con 1. */
+    saveAllSubTemplates: (
+      token: string,
+      parentId: string,
+      data: {
+        subTemplates: Array<{
+          id: string;
+          sections?: any[];
+          weight?: number;
+          displayOrder?: number;
+          isActive?: boolean;
+        }>;
+        changeNote?: string;
+      },
+    ) =>
+      request<{ template: any; subTemplates: any[] }>(
+        `/templates/${parentId}/save-all`,
+        { method: "PUT", body: JSON.stringify(data) },
+        token,
+      ),
+
     /** Pide a Claude sugerencias de distribución de competencias por rol. */
     suggestDistribution: (token: string, templateId: string) =>
       request<{

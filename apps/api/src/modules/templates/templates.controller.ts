@@ -22,6 +22,7 @@ import {
   CreateSubTemplateDto,
   UpdateSubTemplateDto,
   UpdateWeightsDto,
+  SaveAllSubTemplatesDto,
 } from './dto/sub-template.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -255,6 +256,26 @@ export class TemplatesController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.templatesService.updateWeights(parentId, tenantId, dto);
+  }
+
+  /**
+   * Save-all atomico: actualiza TODAS las subs + pesos en una sola
+   * transaccion + hace snapshot del estado en versionHistory.
+   * Reemplaza N llamadas separadas (updateSubTemplate × N + updateWeights)
+   * con una sola call.
+   *
+   * Body: { subTemplates: [{ id, sections, weight, displayOrder, isActive }],
+   *         changeNote?: string }
+   */
+  @Put(':id/save-all')
+  @Roles('super_admin', 'tenant_admin')
+  saveAllSubTemplates(
+    @Param('id', ParseUUIDPipe) parentId: string,
+    @Body() dto: SaveAllSubTemplatesDto,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.saveAllSubTemplates(parentId, tenantId, req.user.userId, dto);
   }
 
   // ═══════════════════════════════════════════════════════════════════

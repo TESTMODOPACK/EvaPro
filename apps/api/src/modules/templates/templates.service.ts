@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException, BadRequestException, ServiceUnavailableException, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, DataSource } from 'typeorm';
 import Anthropic from '@anthropic-ai/sdk';
 import { FormTemplate } from './entities/form-template.entity';
 import { FormSubTemplate } from './entities/form-sub-template.entity';
@@ -16,6 +16,7 @@ import {
   CreateSubTemplateDto,
   UpdateSubTemplateDto,
   UpdateWeightsDto,
+  SaveAllSubTemplatesDto,
 } from './dto/sub-template.dto';
 import {
   DEFAULT_WEIGHTS_BY_CYCLE_TYPE,
@@ -44,6 +45,7 @@ export class TemplatesService {
     private readonly aiInsightRepo: Repository<AiInsight>,
     @Inject(forwardRef(() => AiInsightsService))
     private readonly aiInsightsService: AiInsightsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -324,23 +326,75 @@ export class TemplatesService {
       throw new NotFoundException(`Versión ${version} no encontrada en el historial`);
     }
 
-    // Snapshot current before restoring
-    history.push({
-      version: template.version,
-      name: template.name,
-      sections: template.sections,
-      changedBy: userId,
-      changedAt: new Date().toISOString(),
-      changeNote: `Auto-snapshot antes de restaurar versión ${version}`,
+    // Fase 3: si el snapshot a restaurar tiene `subTemplates`, restaurar
+    // tambien las subs (no solo el padre). Hace todo en transaccion para
+    // garantizar atomicidad.
+    return this.dataSource.transaction(async (manager) => {
+      const txParentRepo = manager.getRepository(FormTemplate);
+      const txSubRepo = manager.getRepository(FormSubTemplate);
+
+      // 1. Cargar subs actuales para snapshot pre-restore (no perder
+      //    el estado actual antes de sobreescribirlo).
+      const currentSubs = await txSubRepo.find({
+        where: { parentTemplateId: id },
+      });
+
+      // 2. Snapshot del estado ACTUAL antes de restaurar.
+      history.push({
+        version: template.version,
+        name: template.name,
+        sections: template.sections,
+        subTemplates: currentSubs.map((s) => ({
+          id: s.id,
+          relationType: s.relationType,
+          sections: s.sections,
+          weight: Number(s.weight) || 0,
+          displayOrder: s.displayOrder,
+          isActive: s.isActive,
+        })),
+        changedBy: userId,
+        changedAt: new Date().toISOString(),
+        changeNote: `Auto-snapshot antes de restaurar versión ${version}`,
+      });
+      if (history.length > 20) history.splice(0, history.length - 20);
+
+      // 3. Restaurar el padre (siempre)
+      template.sections = target.sections;
+      template.name = target.name || template.name;
+      template.version = (template.version || 1) + 1;
+      template.versionHistory = history;
+      const savedTemplate = await txParentRepo.save(template);
+
+      // 4. Restaurar subs si el snapshot las tiene (Fase 3+ snapshots).
+      //    Snapshots legacy (Fase 2 o anterior) no tienen subTemplates →
+      //    no restauramos nada de las subs (mantienen el estado actual).
+      if (Array.isArray(target.subTemplates)) {
+        // Estrategia de restore: actualizar las que existen por ID,
+        // recrear las que ya no existen (raro), DEJAR las nuevas (creadas
+        // post-snapshot) intactas — al user puede sorprenderle si esperaba
+        // un "rollback total". Tradeoff aceptado: preservamos data nueva.
+        for (const snapSub of target.subTemplates as any[]) {
+          const existing = currentSubs.find((s) => s.id === snapSub.id);
+          if (existing) {
+            existing.sections = snapSub.sections;
+            existing.weight = snapSub.weight;
+            existing.displayOrder = snapSub.displayOrder;
+            existing.isActive = snapSub.isActive;
+            await txSubRepo.save(existing);
+          } else {
+            // La sub fue eliminada despues del snapshot — recrearla con
+            // mismo id seria problematico (FK conflicts). Skipping para
+            // evitar conflictos. El user puede ver el snapshot y agregar
+            // manualmente la sub si la quiere.
+            this.logger.warn(
+              `restoreVersion: sub ${snapSub.id} del snapshot v${version} ya no existe — skip`,
+            );
+          }
+        }
+      }
+
+      return savedTemplate;
     });
-    if (history.length > 20) history.splice(0, history.length - 20);
-
-    template.sections = target.sections;
-    template.name = target.name || template.name;
-    template.version = (template.version || 1) + 1;
-    template.versionHistory = history;
-
-    return this.templateRepo.save(template);
   }
 
   async remove(id: string, tenantId: string | undefined): Promise<void> {
@@ -491,15 +545,47 @@ export class TemplatesService {
     // si el caller es super_admin sin tenant contexto; si es tenant_admin,
     // la copia queda en su tenant.
     const effectiveTenantId = tenantId ?? original.tenantId;
+
+    // Fase 3: la copia tambien hereda defaultCycleType para que la
+    // auto-creacion de subs (al estar set) se evite — vamos a copiar las
+    // subs del original explicitamente abajo.
     const copy = this.templateRepo.create({
       tenantId: effectiveTenantId,
       name: `${original.name} (copia)`,
       description: original.description,
-      sections: JSON.parse(JSON.stringify(original.sections)),
+      sections: JSON.parse(JSON.stringify(original.sections || [])),
+      defaultCycleType: original.defaultCycleType,
+      language: original.language,
+      translations: original.translations
+        ? JSON.parse(JSON.stringify(original.translations))
+        : {},
       isDefault: false,
       createdBy: userId,
     });
-    return this.templateRepo.save(copy);
+    const savedCopy = await this.templateRepo.save(copy);
+
+    // Fase 3: copiar TODAS las sub_templates del original a la copia.
+    // Cada sub recibe nuevo id (autogen) pero conserva relationType,
+    // sections, weight, displayOrder e isActive.
+    const originalSubs = await this.subTemplateRepo.find({
+      where: { parentTemplateId: original.id },
+    });
+    if (originalSubs.length > 0) {
+      const newSubs = originalSubs.map((origSub) =>
+        this.subTemplateRepo.create({
+          tenantId: savedCopy.tenantId,
+          parentTemplateId: savedCopy.id,
+          relationType: origSub.relationType,
+          sections: JSON.parse(JSON.stringify(origSub.sections || [])),
+          weight: Number(origSub.weight) || 0,
+          displayOrder: origSub.displayOrder,
+          isActive: origSub.isActive,
+        }),
+      );
+      await this.subTemplateRepo.save(newSubs);
+    }
+
+    return savedCopy;
   }
 
   /**
@@ -508,20 +594,26 @@ export class TemplatesService {
    */
   async getPreview(id: string, tenantId: string) {
     const template = await this.findById(id, tenantId);
-    const sections = (template.sections || []) as any[];
+
+    // Fase 3 (Opción A): si la plantilla tiene sub_templates, el preview
+    // se compone como `subTemplates: [{ relationType, weight, sections, ... }]`.
+    // Si NO tiene subs, fallback al modo legacy (sections del padre).
+    const subs = await this.subTemplateRepo.find({
+      where: { parentTemplateId: id },
+      order: { displayOrder: 'ASC' },
+    });
 
     let totalQuestions = 0;
     let scaleCount = 0;
     let textCount = 0;
     let multiCount = 0;
 
-    const previewSections = sections.map((sec: any) => {
+    const buildPreviewSection = (sec: any) => {
       const questions = (sec.questions || []).map((q: any) => {
         totalQuestions++;
         if (q.type === 'scale') scaleCount++;
         else if (q.type === 'text') textCount++;
         else if (q.type === 'multi') multiCount++;
-
         return {
           id: q.id,
           text: q.text,
@@ -529,10 +621,9 @@ export class TemplatesService {
           required: q.required ?? true,
           scale: q.type === 'scale' ? q.scale : undefined,
           options: q.type === 'multi' ? q.options : undefined,
-          condition: q.condition || null, // P2-#35: conditional logic support
+          condition: q.condition || null,
         };
       });
-
       return {
         id: sec.id,
         title: sec.title,
@@ -541,16 +632,58 @@ export class TemplatesService {
         condition: sec.condition || null,
         questions,
       };
-    });
+    };
 
-    // Estimated time: ~30s per scale, ~90s per text, ~45s per multi
-    const estimatedMinutes = Math.ceil((scaleCount * 30 + textCount * 90 + multiCount * 45) / 60);
+    if (subs.length > 0) {
+      // Path Fase 3: agrupa preview por subplantilla.
+      const subTemplates = subs.map((sub) => ({
+        id: sub.id,
+        relationType: sub.relationType,
+        weight: Number(sub.weight) || 0,
+        isActive: sub.isActive,
+        displayOrder: sub.displayOrder,
+        sectionCount: Array.isArray(sub.sections) ? sub.sections.length : 0,
+        sections: Array.isArray(sub.sections)
+          ? (sub.sections as any[]).map(buildPreviewSection)
+          : [],
+      }));
+
+      // estimatedMinutes consolida sobre TODAS las subs activas
+      const estimatedMinutes = Math.ceil(
+        (scaleCount * 30 + textCount * 90 + multiCount * 45) / 60,
+      );
+
+      return {
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        isDefault: template.isDefault,
+        defaultCycleType: template.defaultCycleType ?? null,
+        // Counters globales (sumados de todas las subs):
+        sectionCount: subTemplates.reduce((acc, s) => acc + s.sectionCount, 0),
+        totalQuestions,
+        questionTypes: { scale: scaleCount, text: textCount, multi: multiCount },
+        estimatedMinutes,
+        subTemplates,
+        // Backwards-compat: incluimos sections vacio para callers que no
+        // detecten subTemplates aun (ej. clientes legacy).
+        sections: [],
+      };
+    }
+
+    // Path legacy: el padre tiene sections (Fase 1/2), sin subs.
+    const sections = (template.sections || []) as any[];
+    const previewSections = sections.map(buildPreviewSection);
+    const estimatedMinutes = Math.ceil(
+      (scaleCount * 30 + textCount * 90 + multiCount * 45) / 60,
+    );
 
     return {
       id: template.id,
       name: template.name,
       description: template.description,
       isDefault: template.isDefault,
+      defaultCycleType: template.defaultCycleType ?? null,
       sectionCount: previewSections.length,
       totalQuestions,
       questionTypes: { scale: scaleCount, text: textCount, multi: multiCount },
@@ -1013,6 +1146,114 @@ export class TemplatesService {
     }
 
     await this.subTemplateRepo.remove(sub);
+  }
+
+  /**
+   * Save-all atomico: actualiza TODAS las subs + pesos en una sola
+   * transaccion + hace snapshot del estado actual ANTES de modificar
+   * (versionHistory). Reemplaza N llamadas separadas
+   * (updateSubTemplate × N + updateWeights) con UNA sola call.
+   *
+   * Garantias:
+   *   - Atomicidad: si una sub falla, NINGUNA se persiste (rollback).
+   *   - Snapshot UNICO en versionHistory por save (no N+1).
+   *   - Validacion de suma de pesos == 1.0 antes del commit.
+   *   - Si changeNote no se pasa, el snapshot lo deja como null.
+   */
+  async saveAllSubTemplates(
+    parentId: string,
+    tenantId: string | undefined,
+    userId: string,
+    dto: SaveAllSubTemplatesDto,
+  ): Promise<{ template: FormTemplate; subTemplates: FormSubTemplate[] }> {
+    const parent = await this.findById(parentId, tenantId);
+    if (parent.tenantId === null) {
+      throw new BadRequestException('No se pueden editar plantillas globales');
+    }
+
+    if (!Array.isArray(dto.subTemplates) || dto.subTemplates.length === 0) {
+      throw new BadRequestException('subTemplates debe ser un array no vacio');
+    }
+
+    // Cargar TODAS las subs actuales para snapshot + validar IDs validos
+    const allSubs = await this.subTemplateRepo.find({
+      where: { parentTemplateId: parentId },
+      order: { displayOrder: 'ASC' },
+    });
+    const subsById = new Map(allSubs.map((s) => [s.id, s]));
+
+    // Validar que todos los IDs del DTO existen
+    for (const item of dto.subTemplates) {
+      if (!subsById.has(item.id)) {
+        throw new BadRequestException(
+          `Subplantilla "${item.id}" no encontrada en la plantilla padre.`,
+        );
+      }
+    }
+
+    // ─── Transacción atomica ───────────────────────────────────────────
+    return this.dataSource.transaction(async (manager) => {
+      const txParentRepo = manager.getRepository(FormTemplate);
+      const txSubRepo = manager.getRepository(FormSubTemplate);
+
+      // 1. Snapshot del estado ACTUAL antes de modificar (versionHistory).
+      //    Snapshot incluye padre + todas las subs (formato JSONB compacto).
+      const snapshot = {
+        version: parent.version,
+        name: parent.name,
+        sections: parent.sections, // legacy, igual lo guardamos
+        subTemplates: allSubs.map((s) => ({
+          id: s.id,
+          relationType: s.relationType,
+          sections: s.sections,
+          weight: Number(s.weight) || 0,
+          displayOrder: s.displayOrder,
+          isActive: s.isActive,
+        })),
+        changedBy: userId,
+        changedAt: new Date().toISOString(),
+        changeNote: dto.changeNote || null,
+      };
+
+      const history = Array.isArray(parent.versionHistory)
+        ? [...(parent.versionHistory as any[])]
+        : [];
+      history.push(snapshot);
+      // Cap a 20 versiones para evitar JSONB bloat
+      if (history.length > 20) history.splice(0, history.length - 20);
+      parent.versionHistory = history;
+      parent.version = (parent.version || 1) + 1;
+      await txParentRepo.save(parent);
+
+      // 2. Aplicar updates de cada sub
+      const updatedSubs: FormSubTemplate[] = [];
+      for (const item of dto.subTemplates) {
+        const sub = subsById.get(item.id)!;
+        if (item.sections !== undefined) sub.sections = item.sections;
+        if (item.weight !== undefined) sub.weight = item.weight;
+        if (item.displayOrder !== undefined) sub.displayOrder = item.displayOrder;
+        if (item.isActive !== undefined) sub.isActive = item.isActive;
+        updatedSubs.push(await txSubRepo.save(sub));
+      }
+
+      // 3. Cargar TODAS las subs (incluyendo las no modificadas en el DTO)
+      //    para validar suma de pesos activos == 1.0.
+      const finalSubs = await txSubRepo.find({
+        where: { parentTemplateId: parentId },
+        order: { displayOrder: 'ASC' },
+      });
+      const totalActive = finalSubs
+        .filter((s) => s.isActive)
+        .reduce((sum, s) => sum + Number(s.weight), 0);
+      if (Math.abs(totalActive - 1.0) > WEIGHT_SUM_TOLERANCE) {
+        // El throw aqui rolleabackea TODA la transaccion (incluido el snapshot)
+        throw new BadRequestException(
+          `La suma de pesos de subplantillas activas debe ser 1.0 (= 100%). Actual: ${totalActive.toFixed(3)}.`,
+        );
+      }
+
+      return { template: parent, subTemplates: finalSubs };
+    });
   }
 
   /**

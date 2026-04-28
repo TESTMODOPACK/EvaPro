@@ -18,8 +18,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import {
   useTemplateWithSubTemplates,
-  useUpdateSubTemplate,
-  useUpdateWeights,
+  useSaveAllSubTemplates,
 } from '@/hooks/useTemplates';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -108,8 +107,7 @@ export function SubTemplateEditor({
   const toast = useToastStore();
   const token = useAuthStore((s) => s.token);
   const { data, isLoading, refetch } = useTemplateWithSubTemplates(templateId);
-  const updateSubTemplate = useUpdateSubTemplate();
-  const updateWeights = useUpdateWeights();
+  const saveAll = useSaveAllSubTemplates();
 
   // Local state — copia editable de las subplantillas (para guardar todo
   // junto cuando el admin clica "Guardar").
@@ -215,6 +213,10 @@ export function SubTemplateEditor({
   };
 
   // ─── Save ─────────────────────────────────────────────────────────────────
+  // Fase 3 opcion B: usa el endpoint atomico save-all que actualiza todas
+  // las subs + pesos en UNA sola transaccion + hace UN snapshot en
+  // versionHistory. Reemplaza N llamadas separadas (que generaban N
+  // versiones).
 
   const handleSave = async () => {
     if (!weightOK) {
@@ -239,19 +241,19 @@ export function SubTemplateEditor({
 
     setSaving(true);
     try {
-      // 1. Guardar sections de cada subplantilla
-      for (const sub of subs) {
-        await updateSubTemplate.mutateAsync({
-          subId: sub.id,
-          parentId: templateId,
-          data: { sections: sub.sections, isActive: sub.isActive },
-        });
-      }
-      // 2. Guardar pesos (batch endpoint)
-      const weightsMap: Record<string, number> = {};
-      for (const sub of subs) weightsMap[sub.relationType] = sub.weight;
-      await updateWeights.mutateAsync({ parentId: templateId, weights: weightsMap });
-
+      await saveAll.mutateAsync({
+        parentId: templateId,
+        data: {
+          subTemplates: subs.map((s) => ({
+            id: s.id,
+            sections: s.sections,
+            weight: s.weight,
+            isActive: s.isActive,
+            displayOrder: s.displayOrder,
+          })),
+          // changeNote opcional — Lote 2 agregará un input UI para esto.
+        },
+      });
       toast.success('Plantilla guardada exitosamente');
       await refetch();
     } catch (err: any) {
