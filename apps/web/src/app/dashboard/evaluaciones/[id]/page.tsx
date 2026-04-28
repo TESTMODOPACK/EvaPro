@@ -1555,11 +1555,13 @@ export default function CycleDetailPage() {
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                           exc.type === 'INSUFFICIENT_PEERS' ? 'bg-amber-100 text-amber-800' :
                           exc.type === 'NO_MANAGER' ? 'bg-red-100 text-red-800' :
+                          exc.type === 'MANAGER_INACTIVE' ? 'bg-red-100 text-red-800' :
                           exc.type === 'MANAGER_DIFF_DEPT' ? 'bg-orange-100 text-orange-800' :
                           exc.type === 'NO_DEPARTMENT' ? 'bg-purple-100 text-purple-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
                           {exc.type === 'NO_MANAGER' && t('evaluaciones.detail.excNoManager')}
+                          {exc.type === 'MANAGER_INACTIVE' && 'Jefe inactivo'}
                           {exc.type === 'MANAGER_DIFF_DEPT' && t('evaluaciones.detail.excManagerDiffDept')}
                           {exc.type === 'NO_DEPARTMENT' && t('evaluaciones.detail.excNoDept')}
                           {exc.type === 'INSUFFICIENT_PEERS' && t('evaluaciones.detail.excInsufficientPeers')}
