@@ -48,24 +48,35 @@
 
 -- ── 1. Crear el rol (idempotente) ──────────────────────────────────
 \echo ── 1. Creando rol eva360_app ──────────────────────────────────────
+
+-- IMPORTANTE: psql variables (`:'name'`) NO se expanden dentro de
+-- dollar-quoted strings (`$$ ... $$`), que es lo que usamos en el DO
+-- block. Workaround: setear el password como una session variable
+-- (custom GUC `app.eva360_app_password`) que el DO block lee con
+-- `current_setting()`.
+SELECT set_config('app.eva360_app_password', :'eva360_app_password', false);
+
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'eva360_app') THEN
     EXECUTE format(
-      $f$CREATE ROLE eva360_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %L$f$,
-      :'eva360_app_password'
+      'CREATE ROLE eva360_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %L',
+      current_setting('app.eva360_app_password')
     );
     RAISE NOTICE '✓ Rol eva360_app creado';
   ELSE
     -- Si ya existe, actualizar password (idempotencia ante re-run con
     -- nueva password). No tocar atributos super/createdb/etc.
     EXECUTE format(
-      $f$ALTER ROLE eva360_app WITH PASSWORD %L$f$,
-      :'eva360_app_password'
+      'ALTER ROLE eva360_app WITH PASSWORD %L',
+      current_setting('app.eva360_app_password')
     );
     RAISE NOTICE '⚠ Rol eva360_app ya existia — password actualizado';
   END IF;
 END $$;
+
+-- Limpiar el GUC custom para que no quede el password en la sesion.
+SELECT set_config('app.eva360_app_password', '', false);
 
 -- ── 2. GRANTs de conexion + schema ─────────────────────────────────
 \echo
