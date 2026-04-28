@@ -9,8 +9,18 @@ Guía operacional para configurar, mantener y ejecutar backups de la base de dat
 - **Qué se backupea:** DB Postgres completa (todos los tenants, users, evaluaciones, etc.). NO se backupean uploads (CVs, exports GDPR) — están en Cloudinary, que tiene su propia durabilidad.
 - **Frecuencia:** diaria a las 03:00 AM del VPS.
 - **Formato:** `pg_dump -F c -Z 9` (custom format, compresión máxima). Restorable con `pg_restore`.
+- **Role utilizado:** `postgres` superuser (NO `eva360` que es owner). Necesario porque las tablas con `FORCE ROW LEVEL SECURITY` (F4 Fase B/C) afectan al owner — pg_dump como `eva360` sin `app.current_tenant_id` seteado exporta 0 filas. El superuser tiene `BYPASSRLS` automático.
 - **Retención local:** 30 días (configurable via `RETENTION_DAYS` env).
 - **Retención off-site (recomendada):** indefinida, con rotación manual si el costo crece. Ver sección "Off-site".
+
+> ⚠️ **NOTA F4 RLS**: si volvés a un commit pre-F4 donde `backup-daily.sh` usaba `$POSTGRES_USER`, los backups producidos están **silenciosamente incompletos** para tablas con RLS activo (incluyendo evaluation_responses + 66 más en Fase C). Verificá la versión actual con:
+>
+> ```bash
+> grep "pg_dump -U" /root/eva360/scripts/backup-daily.sh
+> # Debe imprimir: pg_dump -U postgres -d "$POSTGRES_DB" ...
+> ```
+>
+> Si ves `-U "$POSTGRES_USER"` en lugar de `-U postgres` → tu deploy está atrás de main. Hacer `git pull` y los backups vuelven a producir dumps completos.
 
 ---
 

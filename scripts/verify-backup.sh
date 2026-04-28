@@ -99,9 +99,13 @@ yellow "Modo --restore: restaurando a DB temporal para validación completa…"
 TMP_DB="eva360_verify_$(date +%s)"
 echo "  DB temporal: ${TMP_DB}"
 
-# Crear DB temp
+# IMPORTANTE: usamos `postgres` superuser para createdb/pg_restore/psql
+# en la BD temporal. Si Fase B/C de F4 RLS esta activa, el dump incluye
+# ALTER TABLE FORCE ROW LEVEL SECURITY — al restaurar como eva360
+# (owner), los INSERTs fallan por WITH CHECK. Postgres superuser tiene
+# BYPASSRLS automatico.
 docker exec -T "${CONTAINER_NAME}" sh -c \
-  "createdb -U \"\$POSTGRES_USER\" ${TMP_DB}" || {
+  "createdb -U postgres ${TMP_DB}" || {
     red "✗ No se pudo crear DB temporal"
     exit 1
   }
@@ -109,30 +113,55 @@ docker exec -T "${CONTAINER_NAME}" sh -c \
 # Cleanup en cualquier salida
 cleanup() {
   docker exec -T "${CONTAINER_NAME}" sh -c \
-    "dropdb -U \"\$POSTGRES_USER\" --if-exists ${TMP_DB}" >/dev/null 2>&1 || true
+    "dropdb -U postgres --if-exists ${TMP_DB}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-# Restore
+# Restore — postgres superuser para bypass RLS (ver nota arriba)
 if docker exec -i "${CONTAINER_NAME}" sh -c \
-    "pg_restore -U \"\$POSTGRES_USER\" -d ${TMP_DB} --no-owner" < "${latest}" 2>/dev/null; then
+    "pg_restore -U postgres -d ${TMP_DB} --no-owner" < "${latest}" 2>/dev/null; then
   green "  ✓ Restore en DB temporal OK"
 else
   red "  ✗ Restore falló"
   exit 1
 fi
 
-# Sanity queries — tenants y users deberían tener al menos 1 row cada uno
+# Sanity queries — chequeo de count en 3 tablas representativas:
+#   - `tenants` (sin tenant_id, NUNCA recibe RLS — debe tener > 0)
+#   - `users` (recibe RLS en Fase C — debe tener > 0)
+#   - `evaluation_responses` (PRIMERA tabla con RLS, F4 Fase B)
+#
+# Si `evaluation_responses` queda en 0 mientras tenants/users tienen
+# data, indica que pg_dump fue ejecutado por un role no-superuser sin
+# bypass de RLS — bug critico en backup-daily.sh. Ver F4-RLS-FASE-B-RUNBOOK.md
 tenant_count=$(docker exec -T "${CONTAINER_NAME}" sh -c \
-  "psql -U \"\$POSTGRES_USER\" -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM tenants'")
+  "psql -U postgres -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM tenants'")
 user_count=$(docker exec -T "${CONTAINER_NAME}" sh -c \
-  "psql -U \"\$POSTGRES_USER\" -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM users'")
+  "psql -U postgres -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM users'")
+# evaluation_responses puede legitimamente tener 0 filas en BD virgen;
+# solo gritamos si las OTRAS tablas tienen data Y eval_responses esta vacia.
+eval_count=$(docker exec -T "${CONTAINER_NAME}" sh -c \
+  "psql -U postgres -d ${TMP_DB} -tA -c 'SELECT COUNT(*) FROM evaluation_responses'" \
+  2>/dev/null || echo "0")
 
-echo "  Tenants: ${tenant_count}"
-echo "  Users:   ${user_count}"
+echo "  Tenants:              ${tenant_count}"
+echo "  Users:                ${user_count}"
+echo "  Evaluation responses: ${eval_count}"
 
 if [ "${tenant_count}" -lt 1 ] || [ "${user_count}" -lt 1 ]; then
   red "  ✗ Restore ejecutó pero data crítica está vacía — posible backup incompleto"
+  exit 1
+fi
+
+# Detector de bug RLS en backup: si tenants > 0 y users > 0 pero
+# evaluation_responses = 0, es muy probable que pg_dump corra como
+# eva360 (owner) sobre tablas con FORCE RLS sin GUC seteado. El backup
+# es silenciosamente incompleto.
+if [ "${tenant_count}" -gt 0 ] && [ "${user_count}" -gt 5 ] && [ "${eval_count}" -lt 1 ]; then
+  red "  ⚠ ALERTA: tenants=${tenant_count}, users=${user_count}, pero evaluation_responses=0."
+  red "    Probable causa: pg_dump corre con role NO-superuser y RLS está activo (F4 Fase B/C)."
+  red "    Fix: backup-daily.sh debe usar 'pg_dump -U postgres' (BYPASSRLS)."
+  red "    Ver scripts/backup-daily.sh y docs/F4-RLS-FASE-B-RUNBOOK.md."
   exit 1
 fi
 

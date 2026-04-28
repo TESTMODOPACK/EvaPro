@@ -64,15 +64,25 @@ echo ""
 echo "[1/2] Creando backup de seguridad del estado actual..."
 safety_backup="${BACKUP_DIR}/pre-restore-$(date +%Y-%m-%d_%H-%M).dump"
 mkdir -p "${BACKUP_DIR}"
+# IMPORTANTE: pg_dump como `postgres` superuser, NO `$POSTGRES_USER`. Las
+# tablas con RLS + FORCE (F4 Fase B/C) se aplican al owner — pg_dump como
+# eva360 sin GUC exporta 0 filas. Superuser tiene BYPASSRLS automatico.
 docker exec -t "${CONTAINER_NAME}" sh -c \
-  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -F c -Z 9' > "${safety_backup}"
+  'pg_dump -U postgres -d "$POSTGRES_DB" -F c -Z 9' > "${safety_backup}"
 echo "  Safety backup guardado en: ${safety_backup}"
 
 # ── 2) pg_restore ─────────────────────────────────────────────────────
 echo ""
 echo "[2/2] Restaurando ${BACKUP_FILE}..."
+# pg_restore como postgres superuser por la misma razon: los INSERTs a
+# tablas con FORCE RLS fallan via WITH CHECK si el role no es superuser
+# y no hay GUC seteado. Postgres bypassea automatico.
+# NO usar --no-owner: necesitamos que las tablas queden owned por
+# `eva360` (no `postgres`) para que cleanup-orphans.ts pueda hacer
+# ALTER TABLE / CREATE TABLE al startup del API. pg_restore como
+# superuser tiene permiso para ejecutar las ALTER OWNER del dump.
 if docker exec -i "${CONTAINER_NAME}" sh -c \
-    'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' < "${BACKUP_FILE}"; then
+    'pg_restore -U postgres -d "$POSTGRES_DB" --clean --if-exists' < "${BACKUP_FILE}"; then
   echo ""
   echo "✔ Restore completado exitosamente."
   echo "  Si el sistema no funciona, puedes volver atras con:"
