@@ -74,7 +74,15 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://${DB_USER:-eva360}:${DB_PASSWORD}@db:5432/${DB_NAME:-eva360}?sslmode=disable
+      # F4 Role separation: el API conecta como `eva360_app` (NON-superuser)
+      # para que RLS proteja realmente. El container db sigue siendo
+      # eva360 (DB_USER, superuser) para backups/migrations.
+      #
+      # Si DB_APP_USER no esta definido, fallback a DB_USER (eva360
+      # superuser) — comportamiento pre-F4. Ese fallback es solo
+      # transitorio: cuando DB_APP_USER + DB_APP_PASSWORD esten en .env,
+      # la app cambia a non-superuser automaticamente al restart.
+      DATABASE_URL: postgres://${DB_APP_USER:-${DB_USER:-eva360}}:${DB_APP_PASSWORD:-${DB_PASSWORD}}@db:5432/${DB_NAME:-eva360}?sslmode=disable
       DB_SYNC: "true"
       DB_SSL: "false"
       JWT_SECRET: ${JWT_SECRET:?Debe definir JWT_SECRET en .env}
