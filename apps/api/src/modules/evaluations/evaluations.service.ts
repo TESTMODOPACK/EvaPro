@@ -14,6 +14,7 @@ import { CycleStage, StageType, StageStatus } from './entities/cycle-stage.entit
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { User } from '../users/entities/user.entity';
 import { PeerAssignment } from './entities/peer-assignment.entity';
+import { filterTemplateForRelation } from './utils/template-filter';
 import { CreateCycleDto, UpdateCycleDto } from './dto/cycle.dto';
 import { SaveResponseDto, SubmitResponseDto } from './dto/response.dto';
 import { AddPeerAssignmentDto, BulkPeerAssignmentDto } from './dto/peer-assignment.dto';
@@ -1772,6 +1773,23 @@ export class EvaluationsService {
       (assignment as any).evaluatorId = null;
     }
 
+    // ─── Filtrar template por relationType del evaluador (Fase 2) ────
+    //
+    // El template puede tener secciones/preguntas con `applicableTo: []`
+    // que restringen quien las responde (ej. solo manager evalua liderazgo,
+    // solo self responde reflexion personal). Sin filtro, el evaluador
+    // veria preguntas que no le corresponden.
+    //
+    // El filtro es backwards-compatible: secciones/preguntas SIN
+    // `applicableTo` aplican a todos los relationTypes (comportamiento
+    // pre-Fase 2). Templates seed actuales no se afectan.
+    if (template && Array.isArray(template.sections)) {
+      template = {
+        ...template,
+        sections: filterTemplateForRelation(template.sections, assignment.relationType),
+      } as typeof template;
+    }
+
     return { assignment, template, response, evaluateeObjectives, evaluateeObjectivesSummary };
   }
 
@@ -1850,9 +1868,15 @@ export class EvaluationsService {
       }
     }
 
-    // B2.1: Validate all required template items are answered before submitting
+    // B2.1: Validate all required template items are answered before submitting.
+    // Fase 2: pasa relationType para que el validator filtre por applicableTo
+    // (no exigir respuestas a preguntas que el evaluador nunca vio).
     if (assignment.cycle.templateId) {
-      await this.validateRequiredAnswers(assignment.cycle.templateId, dto.answers);
+      await this.validateRequiredAnswers(
+        assignment.cycle.templateId,
+        dto.answers,
+        assignment.relationType,
+      );
     }
 
     // Calculate overall score from scale answers (parametrizado por escala
@@ -1894,15 +1918,38 @@ export class EvaluationsService {
     return { assignment, response };
   }
 
-  private async validateRequiredAnswers(templateId: string, answers: any): Promise<void> {
+  /**
+   * Valida que el evaluador haya respondido todas las preguntas marcadas
+   * como `required` que SE LE MOSTRARON segun su relationType.
+   *
+   * Fase 2 (plan auditoria evaluaciones): el template puede tener preguntas
+   * con `applicableTo` que las restringen a roles especificos. Sin filtrar,
+   * la validacion exigia respuestas a preguntas que el evaluador nunca vio
+   * (porque getAssignmentDetail ya las omite del form). Con el filtro, solo
+   * validamos las preguntas que el evaluador efectivamente vio.
+   */
+  private async validateRequiredAnswers(
+    templateId: string,
+    answers: any,
+    relationType: string,
+  ): Promise<void> {
     const template = await this.templateRepo.findOne({ where: { id: templateId } });
     if (!template || !template.sections) return;
 
+    // Filtrar secciones/preguntas segun relationType — solo validar las
+    // que el evaluador vio en el form.
+    const applicableSections = filterTemplateForRelation(template.sections, relationType);
+
     const missingQuestions: string[] = [];
-    for (const section of template.sections) {
+    for (const section of applicableSections) {
       if (!section.questions) continue;
       for (const question of section.questions) {
         if (!question.required) continue;
+        // Defensive: skip preguntas sin id (no deberia pasar — todos los
+        // templates tienen id por convencion del editor — pero el tipo
+        // TemplateQuestion lo declara opcional para tolerancia a templates
+        // mal formados).
+        if (!question.id) continue;
         const answer = answers?.[question.id];
         const isEmpty =
           answer === undefined ||
