@@ -7,6 +7,7 @@ import { AiInsight, InsightType } from './entities/ai-insight.entity';
 import { AiCallLog } from './entities/ai-call-log.entity';
 import { ReportsService } from '../reports/reports.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/evaluation-assignment.entity';
 import { User } from '../users/entities/user.entity';
@@ -693,7 +694,7 @@ export class AiInsightsService {
 
     try {
       await this.notificationsService.create({
-        tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
+        tenantId, userId: generatedBy, type: NotificationType.AI_ANALYSIS_READY,
         title: 'Resumen IA generado',
         message: `El resumen de IA para ${user.firstName} ${user.lastName} está listo`,
         metadata: { insightId: saved.id, cycleId, targetUserId: userId },
@@ -793,7 +794,7 @@ export class AiInsightsService {
 
     try {
       await this.notificationsService.create({
-        tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
+        tenantId, userId: generatedBy, type: NotificationType.AI_ANALYSIS_READY,
         title: 'Análisis de sesgos generado',
         message: `El análisis de sesgos del ciclo "${cycle.name}" está listo`,
         metadata: { insightId: saved.id, cycleId },
@@ -885,7 +886,7 @@ export class AiInsightsService {
 
     try {
       await this.notificationsService.create({
-        tenantId, userId: generatedBy, type: 'ai_analysis_ready' as any,
+        tenantId, userId: generatedBy, type: NotificationType.AI_ANALYSIS_READY,
         title: 'Sugerencias de desarrollo generadas',
         message: `Las sugerencias de mejora para ${user.firstName} ${user.lastName} están listas`,
         metadata: { insightId: saved.id, cycleId, targetUserId: userId },
