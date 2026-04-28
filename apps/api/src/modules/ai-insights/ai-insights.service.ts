@@ -268,6 +268,15 @@ export class AiInsightsService {
     }
   }
 
+  /**
+   * Public wrapper de checkRateLimit. Permite que otros modulos (ej.
+   * TemplatesService.suggestCompetencyDistribution) verifiquen la cuota
+   * antes de llamar a Claude. Throws BadRequestException si excedido.
+   */
+  async assertAiQuota(tenantId: string): Promise<void> {
+    return this.checkRateLimit(tenantId);
+  }
+
   private async checkRateLimit(tenantId: string): Promise<void> {
     const { totalUsed, totalLimit, planLimit, addonRemaining, periodEnd } = await this.getMonthlyCallCount(tenantId);
     if (totalLimit <= 0) {
@@ -382,7 +391,7 @@ export class AiInsightsService {
    *   es un refactor de 7 callers. Queda como P2 si el costo real lo
    *   justifica (por ahora: 1-2 análisis gratis por burst es despreciable).
    */
-  private async trackAddonUsage(tenantId: string): Promise<void> {
+  async trackAddonUsage(tenantId: string): Promise<void> {
     try {
       const { planLimit, periodStart } = await this.getSubscriptionAiInfo(tenantId);
       if (planLimit <= 0) return;

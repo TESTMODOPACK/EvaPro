@@ -961,6 +961,25 @@ export const api = {
     updateWeights: (token: string, parentId: string, weights: Record<string, number>) =>
       request<any[]>(`/templates/${parentId}/sub-templates/weights`,
         { method: "PUT", body: JSON.stringify({ weights }) }, token),
+
+    /** Pide a Claude sugerencias de distribución de competencias por rol. */
+    suggestDistribution: (token: string, templateId: string) =>
+      request<{
+        cycleType: string;
+        relations: string[];
+        suggestions: Record<string, Array<{
+          competencyId: string;
+          competencyName: string;
+          perspective: string;
+          suggestedQuestions: string[];
+        }>>;
+      }>(`/templates/${templateId}/suggest-distribution`,
+        { method: "POST" }, token),
+
+    /** Aplica las sugerencias aceptadas a las subplantillas. */
+    applySuggestions: (token: string, templateId: string, suggestions: any) =>
+      request<any[]>(`/templates/${templateId}/apply-suggestions`,
+        { method: "POST", body: JSON.stringify({ suggestions }) }, token),
   },
 
   peerAssignments: {

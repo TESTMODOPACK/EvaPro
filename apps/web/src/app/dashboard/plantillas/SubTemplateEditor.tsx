@@ -14,6 +14,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useToastStore } from '@/store/toast.store';
+import { useAuthStore } from '@/store/auth.store';
+import { api } from '@/lib/api';
 import {
   useTemplateWithSubTemplates,
   useUpdateSubTemplate,
@@ -104,6 +106,7 @@ export function SubTemplateEditor({
   competencies: any[];
 }) {
   const toast = useToastStore();
+  const token = useAuthStore((s) => s.token);
   const { data, isLoading, refetch } = useTemplateWithSubTemplates(templateId);
   const updateSubTemplate = useUpdateSubTemplate();
   const updateWeights = useUpdateWeights();
@@ -113,6 +116,45 @@ export function SubTemplateEditor({
   const [subs, setSubs] = useState<SubTemplate[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [saving, setSaving] = useState(false);
+
+  // ─── IA suggestions state (Fase 3 A6 bonus) ───────────────────────────
+  const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<any | null>(null);
+  const [aiApplying, setAiApplying] = useState(false);
+
+  const handleSuggestWithAI = async () => {
+    if (!token) return;
+    setAiSuggesting(true);
+    try {
+      const result = await api.templates.suggestDistribution(token, templateId);
+      setAiSuggestions(result);
+      toast.success(
+        `Sugerencias generadas. Revisa antes de aplicar.`,
+      );
+    } catch (err: any) {
+      toast.error(err?.message || 'Error generando sugerencias con IA');
+    } finally {
+      setAiSuggesting(false);
+    }
+  };
+
+  const handleApplyAiSuggestions = async () => {
+    if (!token || !aiSuggestions) return;
+    if (!confirm('Aplicar las sugerencias a las subplantillas? Las preguntas se agregarán a las secciones existentes (no se sobrescriben).')) {
+      return;
+    }
+    setAiApplying(true);
+    try {
+      await api.templates.applySuggestions(token, templateId, aiSuggestions.suggestions);
+      toast.success('Sugerencias aplicadas');
+      setAiSuggestions(null);
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error aplicando sugerencias');
+    } finally {
+      setAiApplying(false);
+    }
+  };
 
   // Sync state con data del backend
   useEffect(() => {
@@ -322,16 +364,113 @@ export function SubTemplateEditor({
         &larr; Volver a plantillas
       </button>
 
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
-          Editar plantilla: {data.template.name}
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Cada tab corresponde a una subplantilla — un set de preguntas que
-          ese tipo de evaluador responde. Los pesos al final controlan cómo
-          se combinan los puntajes en el score final.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', gap: '1rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>
+            Editar plantilla: {data.template.name}
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            Cada tab corresponde a una subplantilla — un set de preguntas que
+            ese tipo de evaluador responde. Los pesos al final controlan cómo
+            se combinan los puntajes en el score final.
+          </p>
+        </div>
+        <button
+          className="btn-ghost"
+          onClick={handleSuggestWithAI}
+          disabled={aiSuggesting}
+          style={{
+            fontSize: '0.85rem',
+            whiteSpace: 'nowrap',
+            border: '1.5px solid var(--accent)',
+            color: 'var(--accent-hover)',
+            padding: '0.5rem 1rem',
+          }}
+        >
+          {aiSuggesting ? '✨ Pensando...' : '✨ Sugerir distribución con IA'}
+        </button>
       </div>
+
+      {/* IA Suggestions preview dialog */}
+      {aiSuggestions && (
+        <div
+          className="card animate-fade-up"
+          style={{
+            padding: '1.5rem',
+            marginBottom: '1.5rem',
+            borderLeft: '4px solid var(--accent)',
+            background: 'rgba(99,102,241,0.04)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+            <div>
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+                ✨ Sugerencias de IA — {aiSuggestions.cycleType}°
+              </h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Revisa las sugerencias antes de aplicar. Las preguntas se
+                AGREGAN (no sobrescriben) a las secciones existentes.
+              </p>
+            </div>
+            <button
+              className="btn-ghost"
+              style={{ fontSize: '0.78rem' }}
+              onClick={() => setAiSuggestions(null)}
+            >
+              Descartar
+            </button>
+          </div>
+
+          {Object.entries(aiSuggestions.suggestions || {}).map(([rel, items]: [string, any]) => (
+            <div key={rel} style={{ marginBottom: '1rem' }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  marginBottom: '0.4rem',
+                  color: 'var(--accent-hover)',
+                }}
+              >
+                {RELATION_LABELS[rel]?.emoji || '📋'} {RELATION_LABELS[rel]?.label || rel} —{' '}
+                {Array.isArray(items) ? items.length : 0} competencias sugeridas
+              </div>
+              <div style={{ paddingLeft: '1rem', fontSize: '0.78rem' }}>
+                {Array.isArray(items) && items.map((item: any, idx: number) => (
+                  <div key={idx} style={{ marginBottom: '0.5rem', borderLeft: '2px solid var(--border)', paddingLeft: '0.6rem' }}>
+                    <div style={{ fontWeight: 600 }}>{item.competencyName}</div>
+                    {item.perspective && (
+                      <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '0.2rem' }}>
+                        {item.perspective}
+                      </div>
+                    )}
+                    <ul style={{ margin: 0, paddingLeft: '1.2rem', color: 'var(--text-secondary)' }}>
+                      {(item.suggestedQuestions || []).map((q: string, qi: number) => (
+                        <li key={qi}>{q}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+            <button
+              className="btn-primary"
+              onClick={handleApplyAiSuggestions}
+              disabled={aiApplying}
+            >
+              {aiApplying ? 'Aplicando...' : 'Aplicar sugerencias'}
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={() => setAiSuggestions(null)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div

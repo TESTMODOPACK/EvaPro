@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, BadRequestException, ServiceUnavailableException, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
+import Anthropic from '@anthropic-ai/sdk';
 import { FormTemplate } from './entities/form-template.entity';
 import { FormSubTemplate } from './entities/form-sub-template.entity';
 import { Competency } from '../development/entities/competency.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { RelationType } from '../evaluations/entities/evaluation-assignment.entity';
+import { AiCallLog } from '../ai-insights/entities/ai-call-log.entity';
+import { AiInsight, InsightType } from '../ai-insights/entities/ai-insight.entity';
+import { AiInsightsService } from '../ai-insights/ai-insights.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import {
@@ -22,6 +26,9 @@ import {
 
 @Injectable()
 export class TemplatesService {
+  private readonly logger = new Logger(TemplatesService.name);
+  private anthropicClient: Anthropic | null = null;
+
   constructor(
     @InjectRepository(FormTemplate)
     private readonly templateRepo: Repository<FormTemplate>,
@@ -31,7 +38,29 @@ export class TemplatesService {
     private readonly competencyRepo: Repository<Competency>,
     @InjectRepository(EvaluationCycle)
     private readonly cycleRepo: Repository<EvaluationCycle>,
+    @InjectRepository(AiCallLog)
+    private readonly aiCallLogRepo: Repository<AiCallLog>,
+    @InjectRepository(AiInsight)
+    private readonly aiInsightRepo: Repository<AiInsight>,
+    @Inject(forwardRef(() => AiInsightsService))
+    private readonly aiInsightsService: AiInsightsService,
   ) {}
+
+  /**
+   * Lazy-init del cliente Anthropic para suggestCompetencyDistribution.
+   * Sin ANTHROPIC_API_KEY → throw ServiceUnavailableException.
+   */
+  private ensureAnthropicClient(): Anthropic {
+    if (this.anthropicClient) return this.anthropicClient;
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'IA no configurada — falta ANTHROPIC_API_KEY en el entorno.',
+      );
+    }
+    this.anthropicClient = new Anthropic({ apiKey });
+    return this.anthropicClient;
+  }
 
   async findAll(tenantId: string, includeAll = false): Promise<FormTemplate[]> {
     if (includeAll) {
@@ -975,5 +1004,312 @@ export class TemplatesService {
     return this.subTemplateRepo.findOne({
       where: { parentTemplateId: parentId, relationType, isActive: true },
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Fase 3 (Opción A) - Bonus IA: sugerencia de distribucion de competencias
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Pide a Claude que sugiera, para cada competencia activa del tenant,
+   * qué tipo(s) de evaluador deberían responderla (y opcionalmente, qué
+   * preguntas ejemplo). El resultado se devuelve como JSON estructurado
+   * SIN persistirse — el admin acepta o ignora las sugerencias en la UI.
+   *
+   * El call queda registrado en `ai_call_logs` (audit trail de tokens).
+   *
+   * @param templateId — el FormTemplate padre para el cual sugerir
+   * @param tenantId — para validar ownership y filtrar competencias
+   * @param userId — quien dispara la generacion (audit)
+   * @returns Sugerencias por relationType: { manager: [{ competencyId,
+   *   competencyName, suggestedQuestions: [...] }, ...], self: [...], etc. }
+   */
+  async suggestCompetencyDistribution(
+    templateId: string,
+    tenantId: string,
+    userId: string,
+  ): Promise<{
+    cycleType: string;
+    relations: string[];
+    suggestions: Record<string, Array<{
+      competencyId: string;
+      competencyName: string;
+      perspective: string;
+      suggestedQuestions: string[];
+    }>>;
+  }> {
+    const template = await this.findById(templateId, tenantId);
+    if (template.tenantId === null) {
+      throw new BadRequestException('No se pueden generar sugerencias para plantillas globales');
+    }
+
+    // ─── Verificar cuota IA del tenant antes de gastar tokens ──────────
+    // Lanza BadRequestException si excedido (90% warning + 100% block).
+    // Comparte la misma logica de quota que ai-insights.service —
+    // descuenta del plan + addon credits del tenant.
+    await this.aiInsightsService.assertAiQuota(tenantId);
+
+    const cycleType = template.defaultCycleType ?? '360';
+    const relations = getRelationsForCycleType(cycleType);
+
+    if (relations.length === 0) {
+      throw new BadRequestException(
+        `Cycle type "${cycleType}" no tiene roles configurados.`,
+      );
+    }
+
+    // Cargar competencias activas del tenant
+    const competencies = await this.competencyRepo.find({
+      where: { tenantId, isActive: true } as any,
+      order: { category: 'ASC', name: 'ASC' },
+    });
+
+    if (competencies.length === 0) {
+      throw new BadRequestException(
+        'No hay competencias activas en el catalogo para sugerir distribucion.',
+      );
+    }
+
+    // ─── Prompt construction ───────────────────────────────────────────
+    const competenciesDesc = competencies
+      .map((c) => `- ${c.id}: "${c.name}" (categoría: ${c.category || 'General'}; descripción: ${c.description || 'sin descripción'})`)
+      .join('\n');
+
+    const relationLabels: Record<string, string> = {
+      self: 'Auto-evaluación (el propio evaluado)',
+      manager: 'Jefe directo (supervisor del evaluado)',
+      peer: 'Pares (compañeros del mismo nivel)',
+      direct_report: 'Reportes directos (subordinados del evaluado)',
+      external: 'Externo (cliente, proveedor, stakeholder)',
+    };
+    const relationsDesc = relations
+      .map((r) => `- "${r}": ${relationLabels[r] || r}`)
+      .join('\n');
+
+    const prompt = `Eres un experto en evaluación de desempeño y diseño de instrumentos 360°.
+
+Te paso una plantilla de evaluación tipo ${cycleType}° con los siguientes evaluadores:
+${relationsDesc}
+
+Y un catálogo de competencias del tenant:
+${competenciesDesc}
+
+Tu tarea: para CADA evaluador, decidir qué competencias del catálogo le corresponden evaluar — basándote en si esa perspectiva puede observar la competencia mejor que las demás. Adicionalmente, sugerir 2 preguntas tipo escala (1-5) por competencia, redactadas DESDE la perspectiva del evaluador.
+
+Reglas:
+- Una competencia puede aparecer en múltiples evaluadores si es observable desde varias perspectivas (ej. "Comunicación" la ven todos).
+- Competencias técnicas: principalmente manager + self.
+- Competencias de liderazgo: principalmente direct_report + manager.
+- Competencias conductuales (trabajo en equipo, etc.): todos.
+- Competencias de auto-reflexión (autocrítica, autodisciplina): solo self.
+- Las preguntas deben ser específicas a la perspectiva (ej. "El colaborador..." para manager; "Considero que mi desempeño en..." para self; "Este compañero..." para peer; "Mi encargado..." para direct_report).
+
+Responde EXCLUSIVAMENTE con un JSON válido (sin markdown, sin texto antes ni después) con la siguiente estructura:
+{
+  "suggestions": {
+    "manager": [
+      {
+        "competencyId": "uuid-de-la-competencia",
+        "competencyName": "nombre",
+        "perspective": "una frase breve explicando por qué este rol la evalúa",
+        "suggestedQuestions": ["Pregunta 1...", "Pregunta 2..."]
+      }
+    ],
+    "self": [...],
+    "peer": [...],
+    "direct_report": [...]
+  }
+}
+
+Solo incluye los relationTypes que aplican a este cycle type (${cycleType}°). Devuelve TODAS las competencias distribuidas — ninguna debe quedar sin asignar a al menos un evaluador.`;
+
+    // ─── Llamar a Claude ───────────────────────────────────────────────
+    const client = this.ensureAnthropicClient();
+    const startTime = Date.now();
+    let parsed: any = null;
+    let parseError: string | null = null;
+    let tokensUsed = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    const model = 'claude-haiku-4-5';
+
+    try {
+      const response = await client.messages.create({
+        model,
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const textBlock = response.content.find((b) => b.type === 'text');
+      const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
+      inputTokens = response.usage?.input_tokens || 0;
+      outputTokens = response.usage?.output_tokens || 0;
+      tokensUsed = inputTokens + outputTokens;
+
+      // Intentar parsear el JSON
+      try {
+        // Strip de markdown fences si hubiera
+        const cleaned = text
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```\s*$/, '')
+          .trim();
+        parsed = JSON.parse(cleaned);
+      } catch (e: any) {
+        parseError = `JSON parse error: ${e.message}. Response prefix: ${text.slice(0, 200)}`;
+      }
+    } catch (err: any) {
+      this.logger.error(`Anthropic API error: ${err.message}`);
+      // Persist call log con error y throw
+      await this.aiCallLogRepo.save(
+        this.aiCallLogRepo.create({
+          tenantId,
+          type: InsightType.SUMMARY, // reusar el enum (no hay un type espec­fico)
+          tokensUsed: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          model,
+          generatedBy: userId,
+          parseSuccess: false,
+          errorMessage: `Anthropic API error: ${err.message}`,
+          insightId: null,
+        }),
+      );
+      if (err.status === 429) {
+        throw new BadRequestException('Límite de IA alcanzado. Intenta en unos minutos.');
+      }
+      if (err.status === 401) {
+        throw new ServiceUnavailableException('Error de autenticación con la API de IA.');
+      }
+      throw new BadRequestException(`Error al comunicarse con la IA: ${err.message}`);
+    }
+
+    // ─── Persistir AiInsight (cuenta como crédito del plan) ──────────────
+    // Si el parse fue OK, guardamos el insight para que cuente contra el
+    // plan limit (mismo comportamiento que cualquier otro insight).
+    let savedInsight: AiInsight | null = null;
+    if (parseError === null && parsed) {
+      savedInsight = await this.aiInsightRepo.save(
+        this.aiInsightRepo.create({
+          tenantId,
+          type: InsightType.SUMMARY, // reusar enum existente (no romper el ENUM con ALTER TYPE)
+          userId: null,
+          cycleId: null,
+          scopeEntityId: templateId, // el template es el scope
+          content: parsed as any,
+          model,
+          tokensUsed,
+          generatedBy: userId,
+        }),
+      );
+    }
+
+    // ─── Persistir audit log SIEMPRE (sucess o fail del parse) ──────────
+    await this.aiCallLogRepo.save(
+      this.aiCallLogRepo.create({
+        tenantId,
+        type: InsightType.SUMMARY,
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        model,
+        generatedBy: userId,
+        parseSuccess: parseError === null,
+        errorMessage: parseError,
+        insightId: savedInsight?.id || null,
+      }),
+    );
+
+    // ─── Track addon usage (descuenta crédito addon si plan agotado) ────
+    // Esto se llama SIEMPRE que el call fue exitoso (parse OK o no), pero
+    // solo decuenta addon si el plan ya esta agotado en el período.
+    if (parseError === null) {
+      await this.aiInsightsService.trackAddonUsage(tenantId);
+    }
+
+    if (parseError !== null || !parsed) {
+      throw new BadRequestException(
+        `La IA respondió con formato inválido. Intenta de nuevo. Detalle: ${parseError || 'parsed=null'}`,
+      );
+    }
+
+    const elapsed = Date.now() - startTime;
+    this.logger.log(
+      `suggestCompetencyDistribution OK: tenant=${tenantId}, template=${templateId}, tokens=${tokensUsed}, elapsed=${elapsed}ms`,
+    );
+
+    // Validar la estructura del response
+    if (!parsed.suggestions || typeof parsed.suggestions !== 'object') {
+      throw new BadRequestException('La IA respondió con estructura inesperada (falta `suggestions`).');
+    }
+
+    return {
+      cycleType,
+      relations,
+      suggestions: parsed.suggestions,
+    };
+  }
+
+  /**
+   * Aplica las sugerencias de IA a las subplantillas: distribuye las
+   * competencias y preguntas sugeridas en cada sub_template del rol
+   * correspondiente. NO sobrescribe contenido existente — solo agrega.
+   */
+  async applySuggestions(
+    templateId: string,
+    tenantId: string,
+    suggestions: Record<string, Array<{
+      competencyId: string;
+      competencyName: string;
+      perspective?: string;
+      suggestedQuestions: string[];
+    }>>,
+  ): Promise<FormSubTemplate[]> {
+    await this.findById(templateId, tenantId); // validar ownership
+    const subs = await this.subTemplateRepo.find({
+      where: { parentTemplateId: templateId },
+    });
+
+    const updated: FormSubTemplate[] = [];
+
+    for (const sub of subs) {
+      const rolSuggestions = suggestions[sub.relationType];
+      if (!Array.isArray(rolSuggestions) || rolSuggestions.length === 0) {
+        continue;
+      }
+
+      const existingSections = Array.isArray(sub.sections) ? [...(sub.sections as any[])] : [];
+      const existingCompIds = new Set(
+        existingSections.map((s: any) => s.competencyId).filter(Boolean),
+      );
+
+      let qIdx = existingSections.reduce(
+        (acc, s) => acc + (Array.isArray(s.questions) ? s.questions.length : 0),
+        0,
+      );
+
+      for (const item of rolSuggestions) {
+        if (existingCompIds.has(item.competencyId)) continue; // skip si ya existe esa competencia
+
+        const questions = (item.suggestedQuestions || []).map((qText) => ({
+          id: `q-ai-${++qIdx}-${Math.random().toString(36).slice(2, 6)}`,
+          text: qText,
+          type: 'scale',
+          scale: { min: 1, max: 5, labels: { 1: 'Deficiente', 2: 'Regular', 3: 'Bueno', 4: 'Muy Bueno', 5: 'Excelente' } },
+          required: true,
+        }));
+
+        existingSections.push({
+          id: `sec-ai-${item.competencyId.slice(0, 8)}`,
+          title: item.competencyName,
+          competencyId: item.competencyId,
+          description: item.perspective || `Evaluación de ${item.competencyName}`,
+          questions,
+        });
+      }
+
+      sub.sections = existingSections;
+      updated.push(await this.subTemplateRepo.save(sub));
+    }
+
+    return updated;
   }
 }

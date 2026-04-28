@@ -256,4 +256,44 @@ export class TemplatesController {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.templatesService.updateWeights(parentId, tenantId, dto);
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Fase 3 (Opción A) - Bonus IA: sugerencia de distribucion
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Pide a Claude que sugiera distribucion de competencias entre los
+   * relationTypes de la plantilla, con preguntas ejemplo por rol.
+   * Retorna las sugerencias SIN persistirlas — el admin decide aplicar.
+   */
+  @Post(':id/suggest-distribution')
+  @Roles('super_admin', 'tenant_admin')
+  suggestDistribution(
+    @Param('id', ParseUUIDPipe) templateId: string,
+    @Request() req: any,
+  ) {
+    return this.templatesService.suggestCompetencyDistribution(
+      templateId,
+      req.user.tenantId,
+      req.user.userId,
+    );
+  }
+
+  /**
+   * Aplica las sugerencias de IA. Body: { suggestions: { manager: [...], ... } }
+   * El admin debio haber editado/aceptado las sugerencias antes de llamar.
+   */
+  @Post(':id/apply-suggestions')
+  @Roles('super_admin', 'tenant_admin')
+  applySuggestions(
+    @Param('id', ParseUUIDPipe) templateId: string,
+    @Body() body: { suggestions: any },
+    @Request() req: any,
+  ) {
+    return this.templatesService.applySuggestions(
+      templateId,
+      req.user.tenantId,
+      body.suggestions,
+    );
+  }
 }
