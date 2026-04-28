@@ -1855,8 +1855,9 @@ export class EvaluationsService {
       await this.validateRequiredAnswers(assignment.cycle.templateId, dto.answers);
     }
 
-    // Calculate overall score from scale answers
-    const overallScore = this.calculateScore(dto.answers, assignment.cycle.templateId);
+    // Calculate overall score from scale answers (parametrizado por escala
+    // del template — ver Fase 1.5 del plan de evaluaciones)
+    const overallScore = await this.calculateScore(dto.answers, assignment.cycle.templateId);
 
     // Save response
     let response = await this.responseRepo.findOne({ where: { assignmentId } });
@@ -1921,25 +1922,70 @@ export class EvaluationsService {
     }
   }
 
-  private calculateScore(answers: any, templateId: string | null): number | null {
+  /**
+   * Calcula el `overallScore` (escala 0-10) a partir de las respuestas
+   * numericas del evaluador.
+   *
+   * Fase 1.5 — parametrizado por escala del template:
+   *
+   *   Antes: hardcoded `(avg / 5) * 10`. Si el template usaba escala 1-10
+   *   (custom), `(8 / 5) * 10 = 16` daba scores fuera de rango. Si usaba
+   *   1-7 daba scores >10. Solo funcionaba para 1-5 (default seed).
+   *
+   *   Ahora: lee `maxScale` del template (toma el max de los `q.scale.max`
+   *   de las preguntas tipo `scale`). Default 5 si no se puede determinar
+   *   (backwards-compat con templates sin metadata).
+   *
+   *   Formula: `(avg / maxScale) * 10`
+   *     - Template 1-5  + avg 4.42 → (4.42 / 5)  * 10 = 8.84
+   *     - Template 1-10 + avg 8.84 → (8.84 / 10) * 10 = 8.84  (sin cambio)
+   *     - Template 1-7  + avg 6.0  → (6.0 / 7)   * 10 = 8.57
+   *
+   * Filtra valores fuera del rango [1, maxScale]. Si todos quedan filtrados,
+   * retorna null (no se puede calcular).
+   *
+   * Es async porque debe consultar el template. El caller (submitResponse)
+   * debe usar `await`.
+   */
+  private async calculateScore(answers: any, templateId: string | null): Promise<number | null> {
     if (!answers || typeof answers !== 'object') return null;
 
-    // Extract numeric answers (handle both number and string-number types)
+    // Determinar maxScale del template
+    let maxScale = 5; // default backwards-compat con templates sin scale config
+    if (templateId) {
+      const template = await this.templateRepo.findOne({ where: { id: templateId } });
+      if (template?.sections && Array.isArray(template.sections)) {
+        const scaleQuestions: any[] = (template.sections as any[]).flatMap(
+          (s: any) => Array.isArray(s.questions) ? s.questions.filter((q: any) => q.type === 'scale') : []
+        );
+        if (scaleQuestions.length > 0) {
+          const maxes = scaleQuestions
+            .map((q: any) => q.scale?.max)
+            .filter((m: any) => typeof m === 'number' && m > 0);
+          if (maxes.length > 0) maxScale = Math.max(...maxes);
+        }
+      }
+    }
+
+    // Extraer valores numericos validos dentro del rango [1, maxScale]
     const numericValues: number[] = [];
     for (const v of Object.values(answers)) {
+      let n: number | null = null;
       if (typeof v === 'number' && !isNaN(v)) {
-        numericValues.push(v);
+        n = v;
       } else if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
-        const n = Number(v);
-        if (n >= 1 && n <= 10) numericValues.push(n);
+        n = Number(v);
+      }
+      if (n !== null && n >= 1 && n <= maxScale) {
+        numericValues.push(n);
       }
     }
 
     if (numericValues.length === 0) return null;
 
     const avg = numericValues.reduce((sum, v) => sum + v, 0) / numericValues.length;
-    // Normalize to 0-10 scale (scale questions may be 1-5)
-    const normalized = (avg / 5) * 10;
+    // Normalize to 0-10 scale (parametrizado por escala del template)
+    const normalized = (avg / maxScale) * 10;
     return Math.round(normalized * 100) / 100;
   }
 
