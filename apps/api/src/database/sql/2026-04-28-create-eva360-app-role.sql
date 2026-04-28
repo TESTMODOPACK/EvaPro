@@ -69,9 +69,13 @@ END $$;
 
 -- ── 2. GRANTs de conexion + schema ─────────────────────────────────
 \echo
-\echo ── 2. GRANT CONNECT + USAGE schema public ─────────────────────────
+\echo ── 2. GRANT CONNECT + USAGE + CREATE schema public ────────────────
 GRANT CONNECT ON DATABASE eva360 TO eva360_app;
 GRANT USAGE ON SCHEMA public TO eva360_app;
+-- CREATE necesario para que cleanup-orphans.ts (corriendo como
+-- eva360_app al startup del API) pueda hacer CREATE TABLE IF NOT EXISTS
+-- de tablas que aun no existen (ej. ai_call_logs en una BD virgen).
+GRANT CREATE ON SCHEMA public TO eva360_app;
 
 -- ── 3. GRANTs en tablas existentes ─────────────────────────────────
 \echo

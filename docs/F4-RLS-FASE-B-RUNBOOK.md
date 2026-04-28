@@ -47,17 +47,28 @@ Por lo tanto, **aplicar `2026-04-27-F4B-enable-rls-evaluation-responses.sql` sol
 
    La password se pasa via env var `EVA360_APP_PASSWORD` (settear en el `.env` antes de ejecutar).
 
-2. **Cambiar `DATABASE_URL` en `.env` del VPS**: del role `eva360` al role `eva360_app`:
+2. **Agregar `DB_APP_USER` y `DB_APP_PASSWORD` al `.env` del VPS**:
+
+   El `.env` del setup actual NO tiene una línea `DATABASE_URL` directa — `docker-compose.yml` la construye automáticamente desde `DB_USER` + `DB_PASSWORD`. Para role separation, hay que agregar 2 variables nuevas:
+
    ```bash
-   # Antes:
-   DATABASE_URL=postgresql://eva360:<password-eva360>@db:5432/eva360
-   # Después:
-   DATABASE_URL=postgresql://eva360_app:<password-eva360-app>@db:5432/eva360
+   nano /docker/eva360/.env
    ```
 
-3. **Restart del API** (sin rebuild):
+   Agregá al final del archivo (o donde tenga sentido):
    ```bash
-   docker compose restart api
+   # F4 Role separation — App connecta como eva360_app non-superuser
+   DB_APP_USER=eva360_app
+   DB_APP_PASSWORD=<la-password-que-generaste-en-el-paso-1>
+   ```
+
+   **NO toques `DB_USER` ni `DB_PASSWORD`** — esos siguen siendo `eva360` superuser para backups/migrations.
+
+   El docker-compose.yml ahora hace fallback automático: si `DB_APP_USER` o `DB_APP_PASSWORD` están vacíos, usa `DB_USER`/`DB_PASSWORD`. Por eso podés tener este commit deployado sin RLS y la app sigue funcionando como antes (con eva360 superuser) hasta que llenes estas variables.
+
+3. **Recreate del API** (force, para que tome las nuevas env vars):
+   ```bash
+   docker compose up -d --force-recreate api
    ```
 
 4. **Smoke test**: login + ver dashboard. Si todo funciona, la app ya conecta como `eva360_app`.
@@ -80,13 +91,19 @@ Por lo tanto, **aplicar `2026-04-27-F4B-enable-rls-evaluation-responses.sql` sol
 ### Rollback role separation (si algo falla)
 
 ```bash
-# Revertir DATABASE_URL al rol eva360 superuser
-sed -i 's/eva360_app:/eva360:/' /docker/eva360/.env
-docker compose restart api
+# Vaciar las variables DB_APP_* del .env (o comentarlas con #).
+# El docker-compose hace fallback a DB_USER/DB_PASSWORD (eva360 superuser).
+nano /docker/eva360/.env
+# Cambiar:
+#   DB_APP_USER=eva360_app          → DB_APP_USER=
+#   DB_APP_PASSWORD=...             → DB_APP_PASSWORD=
 
-# (Opcional) eliminar el rol nuevo
+# Force-recreate para que tome el cambio
+docker compose up -d --force-recreate api
+
+# (Opcional) eliminar el rol nuevo de la BD
 docker compose exec -T db psql -U eva360 -d eva360 \
-  < apps/api/src/database/sql/2026-04-28-drop-eva360-app-role.sql
+  < /docker/eva360/apps/api/src/database/sql/2026-04-28-drop-eva360-app-role.sql
 ```
 
 ## Decisión arquitectónica clave
