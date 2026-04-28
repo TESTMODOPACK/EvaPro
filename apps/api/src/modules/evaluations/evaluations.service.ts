@@ -12,6 +12,7 @@ import { EvaluationAssignment, AssignmentStatus, RelationType } from './entities
 import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { CycleStage, StageType, StageStatus } from './entities/cycle-stage.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
+import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
 import { User } from '../users/entities/user.entity';
 import { PeerAssignment } from './entities/peer-assignment.entity';
 import { filterTemplateForRelation } from './utils/template-filter';
@@ -77,6 +78,8 @@ export class EvaluationsService {
     private readonly responseRepo: Repository<EvaluationResponse>,
     @InjectRepository(FormTemplate)
     private readonly templateRepo: Repository<FormTemplate>,
+    @InjectRepository(FormSubTemplate)
+    private readonly subTemplateRepo: Repository<FormSubTemplate>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(PeerAssignment)
@@ -1773,21 +1776,44 @@ export class EvaluationsService {
       (assignment as any).evaluatorId = null;
     }
 
-    // ─── Filtrar template por relationType del evaluador (Fase 2) ────
+    // ─── Resolver template para el evaluador (Fase 3 Opción A) ──────────
     //
-    // El template puede tener secciones/preguntas con `applicableTo: []`
-    // que restringen quien las responde (ej. solo manager evalua liderazgo,
-    // solo self responde reflexion personal). Sin filtro, el evaluador
-    // veria preguntas que no le corresponden.
+    // Orden de resolución:
+    //   1. Si existe FormSubTemplate ACTIVA para (parent_id, relationType)
+    //      → usar las sections de la subplantilla (modelo Fase 3, modo
+    //      principal). El template padre se "fusiona" pero las sections
+    //      son las del sub_template.
+    //   2. Si NO existe sub_template pero el padre tiene sections con
+    //      applicableTo (legacy Fase 2) → filtrar usando filterTemplateForRelation.
+    //   3. Si NO hay applicableTo (legacy Fase 1) → devolver sections del
+    //      padre tal cual (todos los evaluadores ven todo).
     //
-    // El filtro es backwards-compatible: secciones/preguntas SIN
-    // `applicableTo` aplican a todos los relationTypes (comportamiento
-    // pre-Fase 2). Templates seed actuales no se afectan.
-    if (template && Array.isArray(template.sections)) {
-      template = {
-        ...template,
-        sections: filterTemplateForRelation(template.sections, assignment.relationType),
-      } as typeof template;
+    // Backwards-compat 100%. El path Fase 3 es preferido cuando existe
+    // sub_template; el fallback Fase 2/legacy se usa para plantillas
+    // pre-migración.
+    if (template) {
+      const subTemplate = await this.subTemplateRepo.findOne({
+        where: {
+          parentTemplateId: template.id,
+          relationType: assignment.relationType,
+          isActive: true,
+        },
+      });
+
+      if (subTemplate) {
+        // Path Fase 3: las sections vienen de la subplantilla específica.
+        template = {
+          ...template,
+          sections: subTemplate.sections,
+        } as typeof template;
+      } else if (Array.isArray(template.sections)) {
+        // Path legacy Fase 2: filterTemplateForRelation aplica el filtro
+        // por applicableTo en las sections del padre.
+        template = {
+          ...template,
+          sections: filterTemplateForRelation(template.sections, assignment.relationType),
+        } as typeof template;
+      }
     }
 
     return { assignment, template, response, evaluateeObjectives, evaluateeObjectivesSummary };
@@ -1881,7 +1907,11 @@ export class EvaluationsService {
 
     // Calculate overall score from scale answers (parametrizado por escala
     // del template — ver Fase 1.5 del plan de evaluaciones)
-    const overallScore = await this.calculateScore(dto.answers, assignment.cycle.templateId);
+    const overallScore = await this.calculateScore(
+      dto.answers,
+      assignment.cycle.templateId,
+      assignment.relationType,
+    );
 
     // Save response
     let response = await this.responseRepo.findOne({ where: { assignmentId } });
@@ -1922,23 +1952,31 @@ export class EvaluationsService {
    * Valida que el evaluador haya respondido todas las preguntas marcadas
    * como `required` que SE LE MOSTRARON segun su relationType.
    *
-   * Fase 2 (plan auditoria evaluaciones): el template puede tener preguntas
-   * con `applicableTo` que las restringen a roles especificos. Sin filtrar,
-   * la validacion exigia respuestas a preguntas que el evaluador nunca vio
-   * (porque getAssignmentDetail ya las omite del form). Con el filtro, solo
-   * validamos las preguntas que el evaluador efectivamente vio.
+   * Fase 3 (Opción A): primero busca FormSubTemplate activa para
+   * (templateId, relationType) — si existe, valida contra esas sections.
+   * Fallback al path legacy Fase 2 (filterTemplateForRelation sobre
+   * sections del padre) cuando no hay sub_template.
    */
   private async validateRequiredAnswers(
     templateId: string,
     answers: any,
     relationType: string,
   ): Promise<void> {
-    const template = await this.templateRepo.findOne({ where: { id: templateId } });
-    if (!template || !template.sections) return;
+    // Path Fase 3: sub_template del rol específico.
+    const subTemplate = await this.subTemplateRepo.findOne({
+      where: { parentTemplateId: templateId, relationType: relationType as RelationType, isActive: true },
+    });
 
-    // Filtrar secciones/preguntas segun relationType — solo validar las
-    // que el evaluador vio en el form.
-    const applicableSections = filterTemplateForRelation(template.sections, relationType);
+    let applicableSections: any[];
+
+    if (subTemplate && Array.isArray(subTemplate.sections)) {
+      applicableSections = subTemplate.sections;
+    } else {
+      // Path legacy (Fase 2): filtrar sections del padre por applicableTo
+      const template = await this.templateRepo.findOne({ where: { id: templateId } });
+      if (!template || !template.sections) return;
+      applicableSections = filterTemplateForRelation(template.sections, relationType);
+    }
 
     const missingQuestions: string[] = [];
     for (const section of applicableSections) {
@@ -1993,24 +2031,54 @@ export class EvaluationsService {
    *
    * Es async porque debe consultar el template. El caller (submitResponse)
    * debe usar `await`.
+   *
+   * Fase 3 (Opción A): si existe FormSubTemplate activa para (templateId,
+   * relationType), toma las sections desde ahi. Esto da la escala real
+   * que el evaluador vio (cada subplantilla puede tener escalas distintas
+   * si el admin configuro custom). Fallback al template padre cuando no
+   * hay sub_template.
    */
-  private async calculateScore(answers: any, templateId: string | null): Promise<number | null> {
+  private async calculateScore(
+    answers: any,
+    templateId: string | null,
+    relationType?: string,
+  ): Promise<number | null> {
     if (!answers || typeof answers !== 'object') return null;
 
-    // Determinar maxScale del template
+    // Determinar maxScale: primero sub_template, luego template padre.
     let maxScale = 5; // default backwards-compat con templates sin scale config
+    let scaleQuestions: any[] = [];
+
     if (templateId) {
-      const template = await this.templateRepo.findOne({ where: { id: templateId } });
-      if (template?.sections && Array.isArray(template.sections)) {
-        const scaleQuestions: any[] = (template.sections as any[]).flatMap(
-          (s: any) => Array.isArray(s.questions) ? s.questions.filter((q: any) => q.type === 'scale') : []
-        );
-        if (scaleQuestions.length > 0) {
-          const maxes = scaleQuestions
-            .map((q: any) => q.scale?.max)
-            .filter((m: any) => typeof m === 'number' && m > 0);
-          if (maxes.length > 0) maxScale = Math.max(...maxes);
+      // Path Fase 3: sub_template del rol especifico
+      if (relationType) {
+        const subTemplate = await this.subTemplateRepo.findOne({
+          where: {
+            parentTemplateId: templateId,
+            relationType: relationType as RelationType,
+            isActive: true,
+          },
+        });
+        if (subTemplate?.sections && Array.isArray(subTemplate.sections)) {
+          scaleQuestions = (subTemplate.sections as any[]).flatMap(
+            (s: any) => Array.isArray(s.questions) ? s.questions.filter((q: any) => q.type === 'scale') : []
+          );
         }
+      }
+      // Fallback al template padre (legacy Fase 2 o cuando no hay sub_template)
+      if (scaleQuestions.length === 0) {
+        const template = await this.templateRepo.findOne({ where: { id: templateId } });
+        if (template?.sections && Array.isArray(template.sections)) {
+          scaleQuestions = (template.sections as any[]).flatMap(
+            (s: any) => Array.isArray(s.questions) ? s.questions.filter((q: any) => q.type === 'scale') : []
+          );
+        }
+      }
+      if (scaleQuestions.length > 0) {
+        const maxes = scaleQuestions
+          .map((q: any) => q.scale?.max)
+          .filter((m: any) => typeof m === 'number' && m > 0);
+        if (maxes.length > 0) maxScale = Math.max(...maxes);
       }
     }
 

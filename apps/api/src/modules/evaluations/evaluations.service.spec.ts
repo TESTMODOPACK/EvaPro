@@ -18,6 +18,7 @@ import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { CycleStage } from './entities/cycle-stage.entity';
 import { PeerAssignment } from './entities/peer-assignment.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
+import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
 import { User } from '../users/entities/user.entity';
 import { Objective } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
@@ -67,6 +68,10 @@ describe('EvaluationsService', () => {
         { provide: getRepositoryToken(CycleStage), useValue: stageRepo },
         { provide: getRepositoryToken(PeerAssignment), useValue: peerAssignmentRepo },
         { provide: getRepositoryToken(FormTemplate), useValue: templateRepo },
+        // Pre-fix Fase 3 (Opción A): FormSubTemplate inyectado en
+        // EvaluationsService para resolver template del relationType
+        // (path Fase 3) o caer al legacy filterTemplateForRelation.
+        { provide: getRepositoryToken(FormSubTemplate), useValue: createMockRepository() },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(Objective), useValue: createMockRepository() },
         { provide: getRepositoryToken(KeyResult), useValue: createMockRepository() },
