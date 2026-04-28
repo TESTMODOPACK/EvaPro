@@ -8,6 +8,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { Invoice } from './entities/invoice.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
 import { Subscription } from './entities/subscription.entity';
@@ -22,6 +23,7 @@ import {
   createMockRepository,
   createMockQueryBuilder,
   createMockAuditService,
+  createMockDataSource,
   createMockEmailService,
   createMockNotificationsService,
   createMockPlan,
@@ -58,6 +60,9 @@ describe('InvoicesService', () => {
         { provide: AuditService, useValue: createMockAuditService() },
         { provide: EmailService, useValue: createMockEmailService() },
         { provide: NotificationsService, useValue: createMockNotificationsService() },
+        // Pre-fix Fase 1: agregado DataSource (usado por InvoicesService para
+        // tx en processDunning). Bug pre-existente en el spec.
+        { provide: DataSource, useValue: createMockDataSource() },
       ],
     }).compile();
 

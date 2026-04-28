@@ -20,10 +20,12 @@ import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../notifications/email.service';
 import { SubscriptionsService } from './subscriptions.service';
 import {
   createMockRepository,
   createMockAuditService,
+  createMockEmailService,
   createMockNotificationsService,
   createMockCacheManager,
   createMockPlan,
@@ -55,6 +57,9 @@ describe('SubscriptionsService', () => {
         { provide: getRepositoryToken(EvaluationCycle), useValue: createMockRepository() },
         { provide: AuditService, useValue: createMockAuditService() },
         { provide: NotificationsService, useValue: createMockNotificationsService() },
+        // Pre-fix Fase 1: agregado EmailService (constructor lo inyecta para
+        // emails de welcome/cancelacion). Pre-existente, no causado por Fase 1.
+        { provide: EmailService, useValue: createMockEmailService() },
         { provide: CACHE_MANAGER, useValue: cacheManager },
       ],
     }).compile();

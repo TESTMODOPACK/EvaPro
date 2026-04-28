@@ -13,6 +13,8 @@ import { DataSource } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { RecognitionService } from './recognition.service';
 import { Recognition } from './entities/recognition.entity';
+import { RecognitionComment } from './entities/recognition-comment.entity';
+import { MvpOfTheMonth } from './entities/mvp-of-the-month.entity';
 import { Badge } from './entities/badge.entity';
 import { UserBadge } from './entities/user-badge.entity';
 import { UserPoints } from './entities/user-points.entity';
@@ -25,6 +27,8 @@ import { ChallengeProgress } from './entities/challenge-progress.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../notifications/email.service';
+import { PushService } from '../notifications/push.service';
+import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 import {
   createMockRepository,
   createMockDataSource,
@@ -56,6 +60,11 @@ describe('RecognitionService', () => {
       providers: [
         RecognitionService,
         { provide: getRepositoryToken(Recognition), useValue: recogRepo },
+        // Pre-fix Fase 1: agregados RecognitionComment + MvpOfTheMonth (deps
+        // del constructor que faltaban en el spec). Sin esto, 'Nest can't
+        // resolve dependencies' al compilar el modulo de testing.
+        { provide: getRepositoryToken(RecognitionComment), useValue: createMockRepository() },
+        { provide: getRepositoryToken(MvpOfTheMonth), useValue: createMockRepository() },
         { provide: getRepositoryToken(Badge), useValue: badgeRepo },
         { provide: getRepositoryToken(UserBadge), useValue: createMockRepository() },
         { provide: getRepositoryToken(UserPoints), useValue: createMockRepository() },
@@ -69,7 +78,24 @@ describe('RecognitionService', () => {
         { provide: DataSource, useValue: dataSource },
         { provide: NotificationsService, useValue: createMockNotificationsService() },
         { provide: EmailService, useValue: createMockEmailService() },
+        // Pre-fix: PushService inyectado por RecognitionService.
+        {
+          provide: PushService,
+          useValue: {
+            sendBatch: jest.fn().mockResolvedValue(undefined),
+            send: jest.fn().mockResolvedValue(undefined),
+            sendNotification: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: CACHE_MANAGER, useValue: createMockCacheManager() },
+        // Pre-fix: TenantCronRunner inyectado para crons tenant-scoped (F4 A3).
+        {
+          provide: TenantCronRunner,
+          useValue: {
+            runForEachTenant: jest.fn().mockResolvedValue([]),
+            runAsSystem: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
