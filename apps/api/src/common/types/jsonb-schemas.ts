@@ -182,12 +182,14 @@ export interface CycleSettings {
   calibrationEnabled?: boolean;
   /** Si true, los managers pueden ver auto-evaluaciones de sus reports. */
   managersSeeSelfEvals?: boolean;
-  /** Plantilla/form asociado al ciclo para cada tipo de evaluación. */
-  templates?: {
-    selfEval?: string;
-    peerEval?: string;
-    managerEval?: string;
-  };
+  // ── REMOVIDO: `templates?: { selfEval, peerEval, managerEval }` ────
+  // Era feature ghost — declarada en TS pero NO LEIDA por ningun service.
+  // El sistema actual usa una sola `cycle.templateId` (escalar) para todos
+  // los evaluadores. La diferenciacion real de preguntas por rol se va a
+  // implementar en Fase 2 del plan via `applicableTo: []` en cada
+  // section/question del JSONB de FormTemplate (approach industria,
+  // mas DRY que mantener N templates por ciclo). Ver auditoria de
+  // evaluaciones - Fase 2.
   /** Fechas tope parciales (por etapa) si no se usa CycleStage. */
   deadlines?: Record<string, string>;
 
