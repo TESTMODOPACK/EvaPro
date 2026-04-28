@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -17,6 +18,11 @@ import { AuthGuard } from '@nestjs/passport';
 import { TemplatesService } from './templates.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
+import {
+  CreateSubTemplateDto,
+  UpdateSubTemplateDto,
+  UpdateWeightsDto,
+} from './dto/sub-template.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
@@ -177,5 +183,77 @@ export class TemplatesController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.templatesService.reject(id, tenantId, req.user.userId, body?.note);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Fase 3 (Opción A) — Subplantillas (form_sub_templates)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Devuelve la plantilla padre + sus subplantillas anidadas (ordenadas
+   * por displayOrder). Si la plantilla tiene formato legacy con
+   * applicableTo, lo migra inline al primer GET (one-time, idempotente).
+   *
+   * Usado por el editor con tabs.
+   */
+  @Get(':id/sub-templates')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
+  async getWithSubTemplates(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.findByIdWithSubTemplates(id, tenantId);
+  }
+
+  /** Crea una subplantilla nueva manualmente (ej. agregar `external` después). */
+  @Post(':id/sub-templates')
+  @Roles('super_admin', 'tenant_admin')
+  createSubTemplate(
+    @Param('id', ParseUUIDPipe) parentId: string,
+    @Body() dto: CreateSubTemplateDto,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.createSubTemplate(parentId, tenantId, dto);
+  }
+
+  /** Actualiza una subplantilla específica (sections/weight/displayOrder/isActive). */
+  @Patch('sub-templates/:subId')
+  @Roles('super_admin', 'tenant_admin')
+  updateSubTemplate(
+    @Param('subId', ParseUUIDPipe) subId: string,
+    @Body() dto: UpdateSubTemplateDto,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.updateSubTemplate(subId, tenantId, dto);
+  }
+
+  /** Elimina una subplantilla (hard delete). */
+  @Delete('sub-templates/:subId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('super_admin', 'tenant_admin')
+  deleteSubTemplate(
+    @Param('subId', ParseUUIDPipe) subId: string,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.deleteSubTemplate(subId, tenantId);
+  }
+
+  /**
+   * Update batch de pesos. Body: { weights: { manager: 0.4, self: 0.2, ... } }
+   * Valida que la suma de pesos activos quede en 1.0 ± tolerancia.
+   */
+  @Put(':id/sub-templates/weights')
+  @Roles('super_admin', 'tenant_admin')
+  updateWeights(
+    @Param('id', ParseUUIDPipe) parentId: string,
+    @Body() dto: UpdateWeightsDto,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.updateWeights(parentId, tenantId, dto);
   }
 }

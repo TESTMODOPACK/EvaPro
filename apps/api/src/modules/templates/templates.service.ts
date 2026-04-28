@@ -2,16 +2,31 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { FormTemplate } from './entities/form-template.entity';
+import { FormSubTemplate } from './entities/form-sub-template.entity';
 import { Competency } from '../development/entities/competency.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
+import { RelationType } from '../evaluations/entities/evaluation-assignment.entity';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
+import {
+  CreateSubTemplateDto,
+  UpdateSubTemplateDto,
+  UpdateWeightsDto,
+} from './dto/sub-template.dto';
+import {
+  DEFAULT_WEIGHTS_BY_CYCLE_TYPE,
+  SUB_TEMPLATE_DISPLAY_ORDER,
+  WEIGHT_SUM_TOLERANCE,
+  getRelationsForCycleType,
+} from './constants/sub-template-defaults';
 
 @Injectable()
 export class TemplatesService {
   constructor(
     @InjectRepository(FormTemplate)
     private readonly templateRepo: Repository<FormTemplate>,
+    @InjectRepository(FormSubTemplate)
+    private readonly subTemplateRepo: Repository<FormSubTemplate>,
     @InjectRepository(Competency)
     private readonly competencyRepo: Repository<Competency>,
     @InjectRepository(EvaluationCycle)
@@ -67,17 +82,77 @@ export class TemplatesService {
 
   async create(tenantId: string, userId: string, dto: CreateTemplateDto): Promise<FormTemplate> {
     if (dto.sections) this.validateSectionCompetencies(dto.sections);
+
+    // Fase 3 (Opción A): si NO hay defaultCycleType pero TAMPOCO hay
+    // sections, no podemos crear una plantilla vacia — exige al menos
+    // uno de los dos.
+    if (!dto.sections && !dto.defaultCycleType) {
+      throw new BadRequestException(
+        'Debes proporcionar `sections` (modo legacy) o `defaultCycleType` (modo Fase 3 con auto-creacion de subplantillas).',
+      );
+    }
+
     const template = this.templateRepo.create({
       tenantId,
       name: dto.name,
       description: dto.description,
-      sections: dto.sections,
+      sections: dto.sections ?? [],
+      defaultCycleType: dto.defaultCycleType ?? null,
       isDefault: dto.isDefault ?? false,
       language: dto.language || 'es',
       translations: dto.translations || {},
       createdBy: userId,
     });
-    return this.templateRepo.save(template);
+    const saved = await this.templateRepo.save(template);
+
+    // Fase 3 (Opción A): si trae defaultCycleType, auto-generamos las
+    // subplantillas vacias correspondientes con weights default. El admin
+    // las llenara con preguntas via el editor por tabs.
+    if (dto.defaultCycleType) {
+      await this.autoCreateSubTemplates(saved, dto.defaultCycleType);
+    }
+
+    return saved;
+  }
+
+  /**
+   * Fase 3 (Opción A) — Auto-creación de subplantillas para un template
+   * recien creado. Genera N rows en form_sub_templates segun el cycle
+   * type del padre, con pesos default y secciones vacias.
+   *
+   * Idempotente: si ya existen subplantillas para el padre (race con
+   * otro admin creando en paralelo), no las duplica — usa
+   * upsert vía findOne.
+   */
+  private async autoCreateSubTemplates(
+    parent: FormTemplate,
+    cycleType: string,
+  ): Promise<void> {
+    const weights = DEFAULT_WEIGHTS_BY_CYCLE_TYPE[cycleType];
+    if (!weights) {
+      throw new BadRequestException(
+        `Cycle type "${cycleType}" no esta soportado. Validos: 90, 180, 270, 360.`,
+      );
+    }
+
+    const relations = getRelationsForCycleType(cycleType);
+    for (const rel of relations) {
+      const existing = await this.subTemplateRepo.findOne({
+        where: { parentTemplateId: parent.id, relationType: rel },
+      });
+      if (existing) continue; // race condition / already exists
+
+      const sub = this.subTemplateRepo.create({
+        tenantId: parent.tenantId,
+        parentTemplateId: parent.id,
+        relationType: rel,
+        sections: [],
+        weight: weights[rel] ?? 0,
+        displayOrder: SUB_TEMPLATE_DISPLAY_ORDER[rel] ?? 99,
+        isActive: true,
+      });
+      await this.subTemplateRepo.save(sub);
+    }
   }
 
   /** Get template sections in the requested language (falls back to primary) */
@@ -501,63 +576,404 @@ export class TemplatesService {
 
     const templates: FormTemplate[] = [];
 
+    // ─── Fase 3 (Opción A): el seed crea template padre VACIO + auto-crea
+    // las subplantillas (form_sub_templates) con weights default + LLENA
+    // cada subplantilla con preguntas espec­ficas para ese rol. Asi cada
+    // subplantilla tiene SOLO las preguntas de su rol, sin applicableTo.
+    //
+    // La feedback section va a TODAS las subplantillas (todos los
+    // evaluadores dan feedback abierto sobre fortalezas/mejoras).
     for (const evalType of types) {
-      const sections: any[] = [];
-      let qIdx = 0;
-
-      for (const comp of competencies) {
-        const secId = `sec-${comp.id.slice(0, 8)}`;
-        const questions: any[] = [];
-
-        // Supervisor questions: aplican a todos los cycle types (90/180/270/360
-        // siempre incluyen al manager segun ALLOWED_RELATIONS).
-        for (const q of supervisorQuestions(comp.name)) {
-          questions.push({ id: `q-${++qIdx}`, ...q });
-        }
-        // Self-evaluation questions: 90+ (Fase 1 actualizo ALLOWED_RELATIONS
-        // para incluir SELF tambien en 90).
-        for (const q of selfQuestions(comp.name)) {
-          questions.push({ id: `q-${++qIdx}`, ...q });
-        }
-        // Peer questions: 180+ (Fase 1 incluyo PEER en 180; antes era 270+).
-        if (['180', '270', '360'].includes(evalType.type)) {
-          for (const q of peerQuestions(comp.name)) {
-            questions.push({ id: `q-${++qIdx}`, ...q });
-          }
-        }
-        // Direct report questions: 270+ (Fase 1 incluyo DIRECT_REPORT en 270;
-        // antes era solo 360).
-        if (['270', '360'].includes(evalType.type)) {
-          for (const q of reportQuestions(comp.name)) {
-            questions.push({ id: `q-${++qIdx}`, ...q });
-          }
-        }
-
-        sections.push({
-          id: secId,
-          title: comp.name,
-          competencyId: comp.id,
-          description: comp.description || `Evaluación de la competencia: ${comp.name}`,
-          questions,
-        });
-      }
-
-      // Add feedback section
-      sections.push({ ...feedbackSection, id: `sec-feedback-${evalType.type}`, questions: feedbackSection.questions.map((q, i) => ({ ...q, id: `q-fb-${evalType.type}-${i}` })) });
-
+      // 1. Crear template padre con defaultCycleType (sin sections legacy).
       const template = this.templateRepo.create({
         tenantId,
         name: evalType.name,
         description: evalType.desc,
-        sections,
+        sections: [],
+        defaultCycleType: evalType.type,
         status: 'published',
         language: 'es',
         createdBy: userId,
         isDefault: false,
       });
-      templates.push(await this.templateRepo.save(template));
+      const savedTemplate = await this.templateRepo.save(template);
+
+      // 2. Auto-creación de subplantillas vacias con weights default
+      //    (mismo metodo que usa el create() publico — DRY).
+      await this.autoCreateSubTemplates(savedTemplate, evalType.type);
+
+      // 3. Llenar cada subplantilla con preguntas correspondientes a su rol.
+      const subs = await this.subTemplateRepo.find({
+        where: { parentTemplateId: savedTemplate.id },
+      });
+      let qIdx = 0;
+
+      for (const sub of subs) {
+        const subSections: any[] = [];
+
+        // Banco de preguntas por relationType: cada rol ve preguntas
+        // distintas adaptadas a SU perspectiva sobre la competencia.
+        const questionBank = this.getQuestionBankForRelation(
+          sub.relationType,
+          supervisorQuestions,
+          selfQuestions,
+          peerQuestions,
+          reportQuestions,
+        );
+
+        for (const comp of competencies) {
+          const secId = `sec-${comp.id.slice(0, 8)}`;
+          const questions: any[] = [];
+          for (const q of questionBank(comp.name)) {
+            // Quitar applicableTo (no aplica en sub_templates — cada
+            // subplantilla ya está implícitamente asociada a un rol).
+            const { applicableTo, ...rest } = q as any;
+            questions.push({ id: `q-${++qIdx}`, ...rest });
+          }
+          if (questions.length === 0) continue; // skip si el rol no tiene preguntas para esta competencia
+          subSections.push({
+            id: secId,
+            title: comp.name,
+            competencyId: comp.id,
+            description: comp.description || `Evaluación de la competencia: ${comp.name}`,
+            questions,
+          });
+        }
+
+        // Feedback común — todas las subplantillas reciben las mismas
+        // preguntas abiertas (cada evaluador puede aportar fortalezas/mejoras).
+        subSections.push({
+          ...feedbackSection,
+          id: `sec-feedback-${sub.relationType}`,
+          questions: feedbackSection.questions.map((q, i) => ({
+            ...q,
+            id: `q-fb-${sub.relationType}-${i}`,
+          })),
+        });
+
+        sub.sections = subSections;
+        await this.subTemplateRepo.save(sub);
+      }
+
+      templates.push(savedTemplate);
     }
 
     return templates;
+  }
+
+  /**
+   * Helper de generateSampleTemplates: devuelve la funcion de banco de
+   * preguntas correspondiente al relationType. Centraliza el mapping
+   * rol → banco.
+   */
+  private getQuestionBankForRelation(
+    rel: RelationType,
+    supervisorQ: (n: string) => any[],
+    selfQ: (n: string) => any[],
+    peerQ: (n: string) => any[],
+    reportQ: (n: string) => any[],
+  ): (n: string) => any[] {
+    switch (rel) {
+      case RelationType.MANAGER:
+        return supervisorQ;
+      case RelationType.SELF:
+        return selfQ;
+      case RelationType.PEER:
+        return peerQ;
+      case RelationType.DIRECT_REPORT:
+        return reportQ;
+      case RelationType.EXTERNAL:
+        return () => []; // external no esta en seed default
+      default:
+        return () => [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Fase 3 (Opción A) — CRUD de subplantillas + migración legacy
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Devuelve la plantilla padre + sus subplantillas anidadas (ordenadas
+   * por displayOrder). Si el padre tiene sections legacy con
+   * `applicableTo` y NO tiene subplantillas, ejecuta migración inline
+   * automatica (one-time): crea las form_sub_templates desde sections
+   * filtradas por applicableTo. Idempotente — corre solo una vez.
+   *
+   * Este es el endpoint principal que usa el frontend (editor con tabs).
+   */
+  async findByIdWithSubTemplates(
+    id: string,
+    tenantId: string | undefined,
+  ): Promise<{ template: FormTemplate; subTemplates: FormSubTemplate[] }> {
+    const template = await this.findById(id, tenantId);
+
+    let subTemplates = await this.subTemplateRepo.find({
+      where: { parentTemplateId: id },
+      order: { displayOrder: 'ASC' },
+    });
+
+    // Migración legacy inline: si el template tiene sections con
+    // applicableTo y no tiene subplantillas → migra.
+    if (subTemplates.length === 0 && this.isLegacyMigratable(template)) {
+      subTemplates = await this.migrateLegacyToSubTemplates(template);
+    }
+
+    return { template, subTemplates };
+  }
+
+  /**
+   * Detecta si una plantilla tiene formato legacy migratable: tiene
+   * sections array con al menos UNA pregunta con applicableTo.
+   * Plantillas sin applicableTo no se migran (no hay info para
+   * distribuir entre roles — el admin debe definir manualmente).
+   */
+  private isLegacyMigratable(template: FormTemplate): boolean {
+    if (!Array.isArray(template.sections) || template.sections.length === 0) {
+      return false;
+    }
+    for (const sec of template.sections as any[]) {
+      if (Array.isArray(sec.applicableTo) && sec.applicableTo.length > 0) return true;
+      for (const q of sec.questions || []) {
+        if (Array.isArray(q.applicableTo) && q.applicableTo.length > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Migración legacy → sub_templates. Recorre las sections del padre,
+   * detecta los relationTypes presentes en applicableTo, y crea una
+   * subplantilla por cada uno con SOLO las preguntas que aplican.
+   *
+   * Pesos: si el template ya tiene `defaultCycleType` → usa los pesos
+   * default de ese cycle type. Si no, asigna pesos uniformes (1/N).
+   *
+   * Idempotente: usa findOne + skip si ya existe (race-safe).
+   */
+  private async migrateLegacyToSubTemplates(
+    template: FormTemplate,
+  ): Promise<FormSubTemplate[]> {
+    // 1. Identificar todos los relationTypes presentes en applicableTo.
+    const relationsPresent = new Set<RelationType>();
+    for (const sec of template.sections as any[]) {
+      for (const r of sec.applicableTo || []) relationsPresent.add(r as RelationType);
+      for (const q of sec.questions || []) {
+        for (const r of q.applicableTo || []) relationsPresent.add(r as RelationType);
+      }
+    }
+
+    if (relationsPresent.size === 0) return [];
+
+    // 2. Determinar pesos default. Si el template tiene defaultCycleType,
+    //    usamos ese mapping; si no, usamos pesos uniformes.
+    const cycleType = template.defaultCycleType ?? this.inferCycleTypeFromRelations([...relationsPresent]);
+    const weights = cycleType ? DEFAULT_WEIGHTS_BY_CYCLE_TYPE[cycleType] : null;
+
+    const created: FormSubTemplate[] = [];
+
+    for (const rel of relationsPresent) {
+      const existing = await this.subTemplateRepo.findOne({
+        where: { parentTemplateId: template.id, relationType: rel },
+      });
+      if (existing) {
+        created.push(existing);
+        continue;
+      }
+
+      // 3. Filtrar sections + preguntas que aplican a este rol.
+      const filteredSections: any[] = [];
+      for (const sec of template.sections as any[]) {
+        const secApplicable =
+          !sec.applicableTo ||
+          sec.applicableTo.length === 0 ||
+          sec.applicableTo.includes(rel);
+        if (!secApplicable) continue;
+
+        const filteredQuestions = (sec.questions || []).filter((q: any) => {
+          if (!q.applicableTo || q.applicableTo.length === 0) return true;
+          return q.applicableTo.includes(rel);
+        }).map((q: any) => {
+          // Limpiar applicableTo en el resultado migrado (cada sub_template
+          // ya esta implicitamente para un solo rol).
+          const { applicableTo, ...rest } = q;
+          return rest;
+        });
+
+        if (filteredQuestions.length === 0) continue;
+
+        const { applicableTo: _secAt, ...secRest } = sec as any;
+        filteredSections.push({ ...secRest, questions: filteredQuestions });
+      }
+
+      const weight = weights?.[rel] ?? (1 / relationsPresent.size);
+
+      const sub = this.subTemplateRepo.create({
+        tenantId: template.tenantId,
+        parentTemplateId: template.id,
+        relationType: rel,
+        sections: filteredSections,
+        weight: Math.round(weight * 1000) / 1000,
+        displayOrder: SUB_TEMPLATE_DISPLAY_ORDER[rel] ?? 99,
+        isActive: true,
+      });
+      created.push(await this.subTemplateRepo.save(sub));
+    }
+
+    // 4. Si el template no tenia defaultCycleType, lo seteamos ahora
+    //    (basado en los roles presentes — se infiere).
+    if (!template.defaultCycleType && cycleType) {
+      template.defaultCycleType = cycleType;
+      await this.templateRepo.save(template);
+    }
+
+    return created.sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  /**
+   * Infiere el cycle type a partir de los roles presentes:
+   *   - {self, manager}                                  → 90
+   *   - {self, manager, peer}                            → 180
+   *   - {self, manager, peer, direct_report}             → 270 (default)
+   *   - {self, manager, peer, direct_report, external}   → 360
+   */
+  private inferCycleTypeFromRelations(rels: RelationType[]): string | null {
+    const set = new Set(rels);
+    if (set.has(RelationType.EXTERNAL)) return '360';
+    if (set.has(RelationType.DIRECT_REPORT)) return '270';
+    if (set.has(RelationType.PEER)) return '180';
+    if (set.has(RelationType.MANAGER)) return '90';
+    return null;
+  }
+
+  /** Crea una subplantilla nueva manualmente (admin desde editor). */
+  async createSubTemplate(
+    parentId: string,
+    tenantId: string | undefined,
+    dto: CreateSubTemplateDto,
+  ): Promise<FormSubTemplate> {
+    const parent = await this.findById(parentId, tenantId);
+
+    // Verificar que no exista una sub_template con el mismo relationType
+    const existing = await this.subTemplateRepo.findOne({
+      where: { parentTemplateId: parentId, relationType: dto.relationType },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `Ya existe una subplantilla para el rol "${dto.relationType}" en esta plantilla.`,
+      );
+    }
+
+    const sub = this.subTemplateRepo.create({
+      tenantId: parent.tenantId,
+      parentTemplateId: parentId,
+      relationType: dto.relationType,
+      sections: dto.sections ?? [],
+      weight: dto.weight ?? 0,
+      displayOrder: dto.displayOrder ?? SUB_TEMPLATE_DISPLAY_ORDER[dto.relationType] ?? 99,
+      isActive: dto.isActive ?? true,
+    });
+    return this.subTemplateRepo.save(sub);
+  }
+
+  /** Actualiza una subplantilla (sections, weight, displayOrder, isActive). */
+  async updateSubTemplate(
+    subId: string,
+    tenantId: string | undefined,
+    dto: UpdateSubTemplateDto,
+  ): Promise<FormSubTemplate> {
+    const sub = await this.subTemplateRepo.findOne({ where: { id: subId } });
+    if (!sub) throw new NotFoundException('Subplantilla no encontrada');
+
+    // Verificar tenant ownership via parent
+    const parent = await this.findById(sub.parentTemplateId, tenantId);
+    if (parent.tenantId === null) {
+      throw new BadRequestException('No se pueden editar subplantillas de plantillas globales');
+    }
+
+    if (dto.sections !== undefined) sub.sections = dto.sections;
+    if (dto.weight !== undefined) sub.weight = dto.weight;
+    if (dto.displayOrder !== undefined) sub.displayOrder = dto.displayOrder;
+    if (dto.isActive !== undefined) sub.isActive = dto.isActive;
+
+    return this.subTemplateRepo.save(sub);
+  }
+
+  /** Elimina una subplantilla (hard delete). */
+  async deleteSubTemplate(subId: string, tenantId: string | undefined): Promise<void> {
+    const sub = await this.subTemplateRepo.findOne({ where: { id: subId } });
+    if (!sub) throw new NotFoundException('Subplantilla no encontrada');
+
+    // Verificar tenant ownership via parent
+    const parent = await this.findById(sub.parentTemplateId, tenantId);
+    if (parent.tenantId === null) {
+      throw new BadRequestException('No se pueden eliminar subplantillas de plantillas globales');
+    }
+
+    await this.subTemplateRepo.remove(sub);
+  }
+
+  /**
+   * Update batch de pesos. Aplica los nuevos pesos y valida que la suma
+   * de TODOS los pesos activos sea 1.0 ± tolerancia. Si no, rechaza
+   * con BadRequestException explicando el delta.
+   */
+  async updateWeights(
+    parentId: string,
+    tenantId: string | undefined,
+    dto: UpdateWeightsDto,
+  ): Promise<FormSubTemplate[]> {
+    const parent = await this.findById(parentId, tenantId);
+    if (parent.tenantId === null) {
+      throw new BadRequestException('No se pueden editar pesos de plantillas globales');
+    }
+
+    const allSubs = await this.subTemplateRepo.find({
+      where: { parentTemplateId: parentId },
+      order: { displayOrder: 'ASC' },
+    });
+
+    // Aplicar los nuevos pesos a las subs incluidas en el DTO
+    for (const sub of allSubs) {
+      const newWeight = dto.weights[sub.relationType];
+      if (newWeight !== undefined) sub.weight = newWeight;
+    }
+
+    // Validar suma == 1.0 considerando solo subs activas
+    const totalActive = allSubs
+      .filter((s) => s.isActive)
+      .reduce((sum, s) => sum + Number(s.weight), 0);
+
+    if (Math.abs(totalActive - 1.0) > WEIGHT_SUM_TOLERANCE) {
+      throw new BadRequestException(
+        `La suma de pesos de subplantillas activas debe ser 1.0 (= 100%). Actual: ${totalActive.toFixed(3)}.`,
+      );
+    }
+
+    return Promise.all(allSubs.map((s) => this.subTemplateRepo.save(s)));
+  }
+
+  /**
+   * Devuelve solo las subplantillas de un padre (sin el padre).
+   * Useful cuando ya tenes el padre en memoria.
+   */
+  async getSubTemplates(parentId: string): Promise<FormSubTemplate[]> {
+    return this.subTemplateRepo.find({
+      where: { parentTemplateId: parentId },
+      order: { displayOrder: 'ASC' },
+    });
+  }
+
+  /**
+   * Devuelve la subplantilla activa para un parent + relationType.
+   * Retorna null si no existe (caller decide fallback al legacy).
+   */
+  async getActiveSubTemplateForRelation(
+    parentId: string,
+    relationType: RelationType,
+  ): Promise<FormSubTemplate | null> {
+    return this.subTemplateRepo.findOne({
+      where: { parentTemplateId: parentId, relationType, isActive: true },
+    });
   }
 }
