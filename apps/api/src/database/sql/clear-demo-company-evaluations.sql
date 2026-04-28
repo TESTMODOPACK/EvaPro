@@ -95,10 +95,11 @@ BEGIN
     SELECT id FROM calibration_sessions WHERE tenant_id = v_demo_tenant_id
   );
 
+  -- ai_insights tiene columna cycle_id directa (no metadata)
   SELECT COUNT(*) INTO v_ai_insight_count
   FROM ai_insights
   WHERE tenant_id = v_demo_tenant_id
-    AND (metadata->>'cycleId') = ANY(SELECT unnest(v_cycle_ids)::TEXT);
+    AND cycle_id = ANY(v_cycle_ids);
 
   -- ai_call_logs solo borra los relacionados a cycles del tenant
   -- (sin tenant_id directo en metadata, solo limpiamos por tenant_id)
@@ -140,10 +141,10 @@ BEGIN
   GET DIAGNOSTICS v_talent_count = ROW_COUNT;
   RAISE NOTICE '  ✅ talent_assessments eliminados: %', v_talent_count;
 
-  -- 4.4 ai_insights de ciclos
+  -- 4.4 ai_insights de ciclos (columna cycle_id directa, no metadata)
   DELETE FROM ai_insights
   WHERE tenant_id = v_demo_tenant_id
-    AND (metadata->>'cycleId') = ANY(SELECT unnest(v_cycle_ids)::TEXT);
+    AND cycle_id = ANY(v_cycle_ids);
   GET DIAGNOSTICS v_ai_insight_count = ROW_COUNT;
   RAISE NOTICE '  ✅ ai_insights de ciclos eliminados: %', v_ai_insight_count;
 
