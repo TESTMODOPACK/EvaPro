@@ -349,13 +349,25 @@ export class TemplatesService {
       throw new BadRequestException('No se pueden eliminar plantillas globales');
     }
 
-    // Validate: check if any evaluation cycles are using this template
-    const cyclesUsingTemplate = await this.cycleRepo.count({
-      where: { templateId: id },
-    });
+    // Validate: check if any evaluation cycles ACTIVOS estan usando esta
+    // plantilla. EvaluationCycle.deleteCycle hace soft-delete (status →
+    // 'cancelled'), por lo que un ciclo "eliminado" por el admin sigue
+    // existiendo en BD. El count anterior no filtraba status, lo cual
+    // bloqueaba la eliminacion de plantillas asociadas SOLO a ciclos
+    // cancelados — bug reportado por usuario.
+    //
+    // Bloqueamos solo: draft, active, paused, closed (closed mantiene
+    // referencia para reports historicos; admin debe ser explicito).
+    // NO bloquea: cancelled (soft-deleted ya).
+    const blockingStatuses = ['draft', 'active', 'paused', 'closed'];
+    const cyclesUsingTemplate = await this.cycleRepo
+      .createQueryBuilder('c')
+      .where('c.templateId = :id', { id })
+      .andWhere('c.status IN (:...statuses)', { statuses: blockingStatuses })
+      .getCount();
     if (cyclesUsingTemplate > 0) {
       throw new BadRequestException(
-        `No se puede eliminar esta plantilla porque está siendo utilizada por ${cyclesUsingTemplate} ciclo(s) de evaluación. Desasocie la plantilla de los ciclos antes de eliminarla.`,
+        `No se puede eliminar esta plantilla porque está siendo utilizada por ${cyclesUsingTemplate} ciclo(s) de evaluación activos. Desasocie la plantilla de los ciclos antes de eliminarla.`,
       );
     }
 
