@@ -1252,6 +1252,11 @@ Solo incluye los relationTypes que aplican a este cycle type (${cycleType}°). D
    * Aplica las sugerencias de IA a las subplantillas: distribuye las
    * competencias y preguntas sugeridas en cada sub_template del rol
    * correspondiente. NO sobrescribe contenido existente — solo agrega.
+   *
+   * Defensive: valida que cada competencyId sugerido EXISTE realmente en
+   * el catálogo del tenant — la IA puede alucinar UUIDs (Claude ocasionalmente
+   * inventa IDs que parecen UUIDs válidos). Se omite cualquier sugerencia
+   * con competencyId no encontrado y se loguea para diagnóstico.
    */
   async applySuggestions(
     templateId: string,
@@ -1264,11 +1269,20 @@ Solo incluye los relationTypes que aplican a este cycle type (${cycleType}°). D
     }>>,
   ): Promise<FormSubTemplate[]> {
     await this.findById(templateId, tenantId); // validar ownership
+
+    // Cargar IDs validos del catálogo del tenant (defensive vs IA hallucination).
+    const validCompetencies = await this.competencyRepo.find({
+      where: { tenantId } as any,
+      select: ['id', 'name'],
+    });
+    const validIds = new Set(validCompetencies.map((c) => c.id));
+
     const subs = await this.subTemplateRepo.find({
       where: { parentTemplateId: templateId },
     });
 
     const updated: FormSubTemplate[] = [];
+    let skippedHallucinated = 0;
 
     for (const sub of subs) {
       const rolSuggestions = suggestions[sub.relationType];
@@ -1287,6 +1301,15 @@ Solo incluye los relationTypes que aplican a este cycle type (${cycleType}°). D
       );
 
       for (const item of rolSuggestions) {
+        // Skip si la IA invento un UUID — solo aceptamos competencias del catálogo.
+        if (!validIds.has(item.competencyId)) {
+          skippedHallucinated++;
+          this.logger.warn(
+            `applySuggestions: competencyId hallucinated by IA, skipping. id=${item.competencyId}, name="${item.competencyName}"`,
+          );
+          continue;
+        }
+
         if (existingCompIds.has(item.competencyId)) continue; // skip si ya existe esa competencia
 
         const questions = (item.suggestedQuestions || []).map((qText) => ({
@@ -1308,6 +1331,12 @@ Solo incluye los relationTypes que aplican a este cycle type (${cycleType}°). D
 
       sub.sections = existingSections;
       updated.push(await this.subTemplateRepo.save(sub));
+    }
+
+    if (skippedHallucinated > 0) {
+      this.logger.log(
+        `applySuggestions: ${skippedHallucinated} sugerencia(s) descartadas por competencyId no valido.`,
+      );
     }
 
     return updated;

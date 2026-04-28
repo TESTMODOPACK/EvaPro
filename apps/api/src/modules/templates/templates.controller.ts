@@ -197,7 +197,7 @@ export class TemplatesController {
    * Usado por el editor con tabs.
    */
   @Get(':id/sub-templates')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
+  @Roles('super_admin', 'tenant_admin')
   async getWithSubTemplates(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,

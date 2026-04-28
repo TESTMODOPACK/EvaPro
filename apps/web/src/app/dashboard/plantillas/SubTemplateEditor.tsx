@@ -572,7 +572,14 @@ export function SubTemplateEditor({
                   setSubs((prev) =>
                     prev.map((s) =>
                       s.relationType === activeTab
-                        ? { ...s, isActive: e.target.checked }
+                        ? {
+                            ...s,
+                            isActive: e.target.checked,
+                            // Si se desactiva, peso → 0 (sino el total no
+                            // suma 100% y bloquea el guardado).
+                            // Si se reactiva, dejarle mantener su peso anterior.
+                            weight: e.target.checked ? s.weight : 0,
+                          }
                         : s,
                     ),
                   )
