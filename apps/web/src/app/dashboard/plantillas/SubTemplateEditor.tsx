@@ -25,6 +25,15 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+interface Condition {
+  /** ID de la pregunta que dispara la condición (debe ser scale o multi). */
+  questionId: string;
+  /** Operador de comparación. */
+  operator: 'equals' | 'not_equals' | 'greater_than' | 'less_than';
+  /** Valor de comparación (string — el evalCondition castea a number si scale). */
+  value: string;
+}
+
 interface Question {
   id: string;
   text: string;
@@ -32,6 +41,10 @@ interface Question {
   scale?: { min: number; max: number; labels: Record<string, string> };
   options?: string[];
   required: boolean;
+  /** Lote 4: condicional. Si presente, la pregunta solo se muestra al
+   *  evaluador si la condition se evalúa true. Trigger debe ser una
+   *  pregunta de la MISMA sub (scope local). */
+  condition?: Condition | null;
 }
 
 interface Section {
@@ -40,6 +53,9 @@ interface Section {
   competencyId?: string | null;
   description?: string;
   questions: Question[];
+  /** Lote 4: condicional a nivel sección. Si presente, toda la sección
+   *  (con sus preguntas) se omite cuando no aplica. */
+  condition?: Condition | null;
 }
 
 interface SubTemplate {
@@ -94,6 +110,167 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
   width: '100%',
 };
+
+// ─── ConditionBuilder ──────────────────────────────────────────────────────
+// Lote 4 (Pregunta A): permite configurar condicional "Mostrar solo si…"
+// para una pregunta o sección. Scope LOCAL — solo puede referenciar preguntas
+// dentro de la MISMA subplantilla activa (cada evaluador responde su sub
+// aislada, no puede depender de respuestas de otro rol).
+
+function ConditionBuilder({
+  condition,
+  onChange,
+  availableQuestions,
+}: {
+  condition?: Condition | null;
+  onChange: (c: Condition | null) => void;
+  /** Preguntas elegibles como trigger (scale o multi, no la pregunta misma). */
+  availableQuestions: Question[];
+}) {
+  // Solo scale + multi pueden ser trigger (text es impredecible).
+  const eligible = availableQuestions.filter(
+    (q) => q.type === 'scale' || q.type === 'multi',
+  );
+
+  const triggerQuestion = condition
+    ? eligible.find((q) => q.id === condition.questionId) ?? null
+    : null;
+
+  return (
+    <div style={{ marginTop: '0.6rem' }}>
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+          fontSize: '0.78rem',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={!!condition}
+          style={{ accentColor: 'var(--accent)' }}
+          onChange={(e) => {
+            if (e.target.checked && eligible.length > 0) {
+              onChange({ questionId: eligible[0].id, operator: 'equals', value: '' });
+            } else {
+              onChange(null);
+            }
+          }}
+        />
+        Mostrar solo si...
+      </label>
+
+      {condition && (
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.5rem',
+            marginTop: '0.4rem',
+            paddingLeft: '1.2rem',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          {eligible.length === 0 ? (
+            <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>
+              No hay preguntas tipo escala o múltiple en esta subplantilla
+              que puedan disparar la condición.
+            </span>
+          ) : (
+            <>
+              <select
+                style={{ ...inputStyle, width: 'auto', minWidth: '180px', fontSize: '0.78rem' }}
+                value={condition.questionId}
+                onChange={(e) => {
+                  const newTrigger = eligible.find((q) => q.id === e.target.value);
+                  // Si el nuevo trigger es multi pero el operator era >/<,
+                  // resetear a equals (numericos no tienen sentido para multi).
+                  const isNumericOp = condition.operator === 'greater_than' || condition.operator === 'less_than';
+                  const newOperator = newTrigger?.type !== 'scale' && isNumericOp
+                    ? 'equals'
+                    : condition.operator;
+                  onChange({
+                    ...condition,
+                    questionId: e.target.value,
+                    operator: newOperator,
+                    value: '',
+                  });
+                }}
+              >
+                {eligible.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.text.length > 45 ? q.text.slice(0, 45) + '…' : q.text || `Pregunta (${q.id.slice(0, 4)})`}
+                  </option>
+                ))}
+              </select>
+              <select
+                style={{ ...inputStyle, width: 'auto', minWidth: '140px', fontSize: '0.78rem' }}
+                value={condition.operator}
+                onChange={(e) =>
+                  onChange({ ...condition, operator: e.target.value as Condition['operator'] })
+                }
+              >
+                <option value="equals">es igual a</option>
+                <option value="not_equals">es distinto de</option>
+                {triggerQuestion?.type === 'scale' && (
+                  <>
+                    <option value="greater_than">es mayor que</option>
+                    <option value="less_than">es menor que</option>
+                  </>
+                )}
+              </select>
+              {triggerQuestion?.type === 'scale' ? (
+                <select
+                  style={{ ...inputStyle, width: '80px', fontSize: '0.78rem' }}
+                  value={condition.value}
+                  onChange={(e) => onChange({ ...condition, value: e.target.value })}
+                >
+                  <option value="">—</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
+              ) : triggerQuestion?.type === 'multi' ? (
+                <select
+                  style={{ ...inputStyle, width: 'auto', minWidth: '140px', fontSize: '0.78rem' }}
+                  value={condition.value}
+                  onChange={(e) => onChange({ ...condition, value: e.target.value })}
+                >
+                  <option value="">— elegir opción —</option>
+                  {(triggerQuestion.options || []).map((opt, oi) => (
+                    <option key={oi} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  style={{ ...inputStyle, width: '80px', fontSize: '0.78rem' }}
+                  value={condition.value}
+                  onChange={(e) => onChange({ ...condition, value: e.target.value })}
+                  placeholder="valor"
+                />
+              )}
+            </>
+          )}
+          <button
+            type="button"
+            className="btn-ghost"
+            style={{ fontSize: '0.72rem', color: 'var(--danger)', padding: '0.2rem 0.4rem' }}
+            onClick={() => onChange(null)}
+          >
+            Quitar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -298,6 +475,13 @@ export function SubTemplateEditor({
   );
   const weightOK = Math.abs(totalWeight - 1.0) < 0.001;
 
+  // Lote 4: lista plana de preguntas del activeSub para usar como
+  // candidatas trigger en los ConditionBuilder. Scope local = solo de
+  // esta subplantilla.
+  const activeSubAllQuestions: Question[] = activeSub
+    ? activeSub.sections.flatMap((s) => s.questions)
+    : [];
+
   // ─── State updaters ───────────────────────────────────────────────────────
 
   const updateActiveSubSections = (newSections: Section[]) => {
@@ -368,6 +552,22 @@ export function SubTemplateEditor({
               return;
             }
           }
+          // Lote 4: validar que condition (si esta) tenga value no vacío.
+          // Sin value valido, la condicion siempre evalúa false → la pregunta
+          // nunca se mostraría al evaluador (silent bug).
+          if (q.condition && (!q.condition.value || !String(q.condition.value).trim())) {
+            toast.warning(
+              `En "${subLabel}" la pregunta "${q.text.slice(0, 40)}..." tiene una condición sin valor — completala o quitala antes de guardar`,
+            );
+            return;
+          }
+        }
+        // Validar también condition a nivel sección
+        if (sec.condition && (!sec.condition.value || !String(sec.condition.value).trim())) {
+          toast.warning(
+            `En "${subLabel}" la sección "${sec.title || 'sin título'}" tiene una condición sin valor — completala o quitala antes de guardar`,
+          );
+          return;
         }
       }
     }
@@ -406,7 +606,26 @@ export function SubTemplateEditor({
   const removeSection = (sIdx: number) => {
     if (!activeSub) return;
     if (activeSub.sections.length <= 1) return;
-    updateActiveSubSections(activeSub.sections.filter((_, i) => i !== sIdx));
+    // Lote 4: limpiar condiciones huérfanas — si la sección eliminada
+    // tenía preguntas que eran trigger, otras preguntas/secciones que
+    // las referenciaban quedan apuntando a un id inexistente.
+    const removedQIds = new Set(activeSub.sections[sIdx].questions.map((q) => q.id));
+    updateActiveSubSections(
+      activeSub.sections
+        .filter((_, i) => i !== sIdx)
+        .map((s) => ({
+          ...s,
+          condition:
+            s.condition && removedQIds.has(s.condition.questionId)
+              ? null
+              : s.condition,
+          questions: s.questions.map((q) =>
+            q.condition && removedQIds.has(q.condition.questionId)
+              ? { ...q, condition: null }
+              : q,
+          ),
+        })),
+    );
   };
   const updateSection = (sIdx: number, field: string, value: any) => {
     if (!activeSub) return;
@@ -424,12 +643,20 @@ export function SubTemplateEditor({
   };
   const removeQuestion = (sIdx: number, qIdx: number) => {
     if (!activeSub) return;
+    // Lote 4: limpiar condiciones huérfanas que referenciaban esta pregunta.
+    const removedId = activeSub.sections[sIdx].questions[qIdx].id;
     updateActiveSubSections(
-      activeSub.sections.map((s, i) =>
-        i === sIdx
-          ? { ...s, questions: s.questions.filter((_, qi) => qi !== qIdx) }
-          : s,
-      ),
+      activeSub.sections.map((s, i) => ({
+        ...s,
+        condition:
+          s.condition?.questionId === removedId ? null : s.condition,
+        questions: (i === sIdx
+          ? s.questions.filter((_, qi) => qi !== qIdx)
+          : s.questions
+        ).map((q) =>
+          q.condition?.questionId === removedId ? { ...q, condition: null } : q,
+        ),
+      })),
     );
   };
   const updateQuestion = (sIdx: number, qIdx: number, field: string, value: any) => {
@@ -1112,6 +1339,14 @@ export function SubTemplateEditor({
                 );
               })()}
 
+              {/* Lote 4: condicional a nivel sección */}
+              <ConditionBuilder
+                condition={sec.condition}
+                onChange={(c) => updateSection(si, 'condition', c)}
+                availableQuestions={activeSubAllQuestions}
+              />
+              <div style={{ marginBottom: '1rem' }} />
+
               {/* Questions */}
               {sec.questions.map((q, qi) => (
                 <div
@@ -1350,6 +1585,13 @@ export function SubTemplateEditor({
                       </button>
                     </div>
                   )}
+
+                  {/* Lote 4: condicional a nivel pregunta — excluye la pregunta misma */}
+                  <ConditionBuilder
+                    condition={q.condition}
+                    onChange={(c) => updateQuestion(si, qi, 'condition', c)}
+                    availableQuestions={activeSubAllQuestions.filter((aq) => aq.id !== q.id)}
+                  />
                 </div>
               ))}
 
