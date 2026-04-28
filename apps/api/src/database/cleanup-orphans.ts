@@ -250,9 +250,25 @@ async function main() {
     console.log(`[startup] Column fixes checked (${columnFixes.length} columns)`);
 
     // ── 2. Add enum values (idempotent) ────────────────────────────────
+    // Si la BD se creo con una version vieja del schema, puede faltar
+    // algun valor del enum. Cuando el codigo intenta INSERT con un valor
+    // que el enum no conoce, Postgres lanza "invalid input value for
+    // enum" → la transaccion se aborta → ROLLBACK silencioso de TODOS
+    // los inserts en esa tx (incluso los que ya pasaron).
+    //
+    // El bug clasico: F4 role separation expuso un enum mismatch latente
+    // — `notifications_type_enum` no tenia 'ai_analysis_ready', y al
+    // intentar INSERT a notifications dentro de la tx del interceptor,
+    // perdimos el ai_insight + ai_call_log + addon counter del mismo
+    // request. Postgres `eva360_app` non-superuser hizo visible el
+    // problema (con superuser, parece que algunos paths bypaseaban).
     const enumFixes = [
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'cancelled' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'evaluation_cycles_status_enum')) THEN ALTER TYPE "evaluation_cycles_status_enum" ADD VALUE IF NOT EXISTS 'cancelled'; END IF; END $$;`,
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'requested' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'checkins_status_enum')) THEN ALTER TYPE "checkins_status_enum" ADD VALUE IF NOT EXISTS 'requested'; END IF; END $$;`,
+      // F4 deploy fix: el codigo dispara notificacion 'ai_analysis_ready'
+      // cuando termina una generacion de IA. Sin este value el INSERT
+      // falla y aborta la tx → se pierde el insight + ai_call_log.
+      `ALTER TYPE notifications_type_enum ADD VALUE IF NOT EXISTS 'ai_analysis_ready';`,
     ];
 
     for (const sql of enumFixes) {

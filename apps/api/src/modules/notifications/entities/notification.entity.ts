@@ -37,6 +37,15 @@ export enum NotificationType {
   // la próxima llamada será rechazada (100%).
   AI_QUOTA_WARNING = 'ai_quota_warning',
   AI_QUOTA_EXHAUSTED = 'ai_quota_exhausted',
+  // Notificacion al user que disparo una generacion de IA cuando el
+  // resumen / sugerencias / etc. estan listos. Antes el codigo usaba
+  // `'ai_analysis_ready' as any` (string literal sin enum), lo cual
+  // funcionaba en TS pero rompia la insercion en Postgres porque el
+  // enum_type `notifications_type_enum` no incluia ese valor. Cuando
+  // la INSERT a notifications fallaba, abortaba la transaccion del
+  // interceptor → ROLLBACK silencioso de los inserts a ai_insights y
+  // ai_call_logs. Detectado en deploy de F4 role separation.
+  AI_ANALYSIS_READY = 'ai_analysis_ready',
   SURVEY_INVITATION = 'survey_invitation',
   SURVEY_REMINDER = 'survey_reminder',
   SURVEY_CLOSED = 'survey_closed',
