@@ -3,7 +3,7 @@ import { PlanGate } from '@/components/PlanGate';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import EmptyState from '@/components/EmptyState';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -948,6 +948,11 @@ function ObjetivosPageContent() {
   const [showGuide, setShowGuide] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [collapsedUsers, setCollapsedUsers] = useState<Record<string, boolean>>({});
+  // Aplicar colapso inicial UNA SOLA VEZ cuando los objetivos cargan: dejar
+  // expandido solo el primer colaborador, todos los demas colapsados. Se
+  // controla con un ref para no resetearse cuando el usuario togglea o
+  // cuando cambian los filtros.
+  const initialCollapseApplied = useRef(false);
   const [progressForm, setProgressForm] = useState<{ value: number; notes: string }>({ value: 50, notes: '' });
   const [form, setForm] = useState({ title: '', description: '', type: 'OKR' as ObjType, targetDate: '', userId: '', parentObjectiveId: '', weight: 0, cycleId: '' });
   const [createDeptFilter, setCreateDeptFilter] = useState('');
@@ -972,6 +977,31 @@ function ObjetivosPageContent() {
   }) || [];
   const totalWeight = myObjectives.reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0);
 
+  // Colapsar todos los grupos excepto el primero al cargar (admin/manager).
+  // Se ejecuta UNA VEZ cuando objectives carga; usar ref para detectar
+  // primera ejecucion. Filtros y mutaciones posteriores no resetean.
+  useEffect(() => {
+    if (initialCollapseApplied.current) return;
+    if (!objectives || (objectives as any[]).length === 0) return;
+    if (!showAssignedTo) return; // empleados no ven la agrupacion
+    const uids: string[] = [];
+    const seen = new Set<string>();
+    for (const o of objectives as any[]) {
+      const uid = o.userId || o.user?.id || 'sin_asignar';
+      if (!seen.has(uid)) {
+        seen.add(uid);
+        uids.push(uid);
+      }
+    }
+    initialCollapseApplied.current = true;
+    if (uids.length <= 1) return; // un solo grupo, no hay nada que colapsar
+    const initial: Record<string, boolean> = {};
+    for (let i = 1; i < uids.length; i++) {
+      initial[uids[i]] = true;
+    }
+    setCollapsedUsers(initial);
+  }, [objectives, showAssignedTo]);
+
   // Build unique users from objectives for the user filter dropdown
   const uniqueUsers: { id: string; name: string; department?: string }[] = [];
   if (objectives && showAssignedTo) {
@@ -991,10 +1021,11 @@ function ObjetivosPageContent() {
   const { departments: deptOptions } = useDepartments();
 
   // Filter objectives
-  const filtered = objectives
-    ? objectives.filter((o: any) => {
-        if (filter === 'at_risk') { if (!atRiskIds.has(o.id)) return false; }
-        else if (filter !== 'all' && o.status !== filter) return false;
+  // baseFiltered: aplica TODOS los filtros excepto el de status (pills).
+  // Asi los contadores de cada pill ("Borrador 3", "En curso 12") reflejan
+  // "cuantos veria si hace click aca" — independiente del pill activo.
+  const baseFiltered = objectives
+    ? (objectives as any[]).filter((o: any) => {
         if (userFilter !== 'all') {
           const uid = o.userId || o.user?.id;
           if (uid !== userFilter) return false;
@@ -1010,13 +1041,32 @@ function ObjetivosPageContent() {
           if (!name.includes(q) && !title.includes(q)) return false;
         }
         return true;
-      }).sort((a: any, b: any) => {
-        // Sort by target date ASC — closest deadline first
-        const aDate = a.targetDate ? new Date(a.targetDate).getTime() : Infinity;
-        const bDate = b.targetDate ? new Date(b.targetDate).getTime() : Infinity;
-        return aDate - bDate;
       })
     : [];
+
+  // Contadores por status para mostrar como badge en cada pill.
+  const filterCounts: Record<FilterStatus, number> = {
+    all: baseFiltered.length,
+    draft: baseFiltered.filter((o: any) => o.status === 'draft').length,
+    pending_approval: baseFiltered.filter((o: any) => o.status === 'pending_approval').length,
+    active: baseFiltered.filter((o: any) => o.status === 'active').length,
+    completed: baseFiltered.filter((o: any) => o.status === 'completed').length,
+    abandoned: baseFiltered.filter((o: any) => o.status === 'abandoned').length,
+    at_risk: baseFiltered.filter((o: any) => atRiskIds.has(o.id)).length,
+  };
+
+  const filtered = baseFiltered
+    .filter((o: any) => {
+      if (filter === 'at_risk') { if (!atRiskIds.has(o.id)) return false; }
+      else if (filter !== 'all' && o.status !== filter) return false;
+      return true;
+    })
+    .sort((a: any, b: any) => {
+      // Sort by target date ASC — closest deadline first
+      const aDate = a.targetDate ? new Date(a.targetDate).getTime() : Infinity;
+      const bDate = b.targetDate ? new Date(b.targetDate).getTime() : Infinity;
+      return aDate - bDate;
+    });
 
   // Pagination — reset page when filters change
   const [objPage, setObjPage] = useState(1);
@@ -1549,16 +1599,45 @@ function ObjetivosPageContent() {
       <div className="animate-fade-up" style={{ marginBottom: '1.5rem' }}>
         {/* Status pills row */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.75rem' }}>
-          {filterPills.map((fp) => (
-            <button
-              key={fp.key}
-              className={filter === fp.key ? 'btn-primary' : 'btn-ghost'}
-              style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}
-              onClick={() => setFilter(fp.key)}
-            >
-              {fp.label}
-            </button>
-          ))}
+          {filterPills.map((fp) => {
+            const count = filterCounts[fp.key] ?? 0;
+            const isActive = filter === fp.key;
+            return (
+              <button
+                key={fp.key}
+                className={isActive ? 'btn-primary' : 'btn-ghost'}
+                style={{
+                  fontSize: '0.8rem',
+                  padding: '0.35rem 0.85rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+                onClick={() => setFilter(fp.key)}
+              >
+                <span>{fp.label}</span>
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    minWidth: '20px',
+                    height: '18px',
+                    padding: '0 0.4rem',
+                    borderRadius: '999px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isActive ? 'rgba(255,255,255,0.25)' : 'var(--bg-base)',
+                    color: isActive ? '#fff' : 'var(--text-muted)',
+                    border: isActive ? 'none' : '1px solid var(--border)',
+                  }}
+                  aria-label={`${count} objetivos`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
         {/* Search + additional filters (admin/manager) */}
         {showAssignedTo && (
