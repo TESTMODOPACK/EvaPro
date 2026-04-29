@@ -815,7 +815,7 @@ export class AiInsightsService {
       if (!evaluatorMap[eid].evaluatees.includes(ename)) evaluatorMap[eid].evaluatees.push(ename);
     }
 
-    const evaluatorStats = Object.entries(evaluatorMap).map(([id, data]) => {
+    const evaluatorStatsAll = Object.entries(evaluatorMap).map(([id, data]) => {
       const avg = data.scores.reduce((a, b) => a + b, 0) / data.scores.length;
       const stdDev = data.scores.length > 1
         ? Math.sqrt(data.scores.reduce((sum, s) => sum + Math.pow(s - avg, 2), 0) / data.scores.length)
@@ -832,6 +832,27 @@ export class AiInsightsService {
       };
     });
 
+    // BIAS_INPUT_CAP: en ciclos con 50+ evaluadores el prompt + el JSON
+    // de respuesta superan los 8K tokens de output incluso con
+    // maxTokens=8000. Quedarse con los TOP 30 evaluadores con mayor
+    // |desviacion vs media global| concentra el analisis donde es util
+    // (los sesgos viven en los outliers, no en quien evalua "promedio").
+    // Tambien acorta cada `evaluatees` array a 8 nombres para no inflar
+    // el input. Si despues del cap quedan <3, se desploma el analisis.
+    const BIAS_EVAL_CAP = 30;
+    const BIAS_EVALUATEES_PER_EVAL_CAP = 8;
+    const evaluatorStats = (
+      evaluatorStatsAll.length > BIAS_EVAL_CAP
+        ? [...evaluatorStatsAll]
+            .sort((a, b) => Math.abs(b.avgScore - globalAvg) - Math.abs(a.avgScore - globalAvg))
+            .slice(0, BIAS_EVAL_CAP)
+        : evaluatorStatsAll
+    ).map((e) => ({
+      ...e,
+      evaluatees: e.evaluatees.slice(0, BIAS_EVALUATEES_PER_EVAL_CAP),
+    }));
+    const inputCapped = evaluatorStatsAll.length > BIAS_EVAL_CAP;
+
     // Get score distribution from analytics
     const analytics = await this.reportsService.getAnalytics(tenantId, cycleId);
 
@@ -841,6 +862,9 @@ export class AiInsightsService {
       globalStdDev,
       evaluatorStats,
       scoreDistribution: analytics.scoreDistribution || [],
+      // Avisar a Claude que se selecciono un subconjunto, asi puede
+      // contextualizar el `dataQuality` y `confidenceLevel`.
+      cappedFromTotal: inputCapped ? evaluatorStatsAll.length : null,
     });
 
     const saved = await this.callClaudeAndPersistInsight({
@@ -848,10 +872,10 @@ export class AiInsightsService {
       type: InsightType.BIAS,
       generatedBy,
       prompt,
-      // 4000 (vs default 2000) — bias prompt incluye objeto con array
-      // de evaluadores + biasesDetected; en ciclos con 5+ evaluadores el
-      // JSON output supera 2000 tokens y se truncaba (rompiendo parse).
-      maxTokens: 4000,
+      // 8000 = limite de output de Haiku 4.5. Antes 4000 truncaba en
+      // ciclos 180°/360° con 30+ evaluadores donde cada bias entry pesa
+      // ~250 chars (uuid+name+evidence+affected+recommendation).
+      maxTokens: 8000,
       // Forzar JSON puro: pre-llenar `{` evita preambulos tipo "Aqui esta
       // el analisis:" que Claude a veces inyecta a pesar de la instruccion.
       jsonPrefill: true,

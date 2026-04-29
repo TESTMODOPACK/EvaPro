@@ -13,7 +13,17 @@ export function buildBiasPrompt(data: {
     evaluatees: string[];
   }>;
   scoreDistribution: { range: string; count: number }[];
+  /**
+   * Si el caller filtro la lista de evaluadores (ej. top 30 por
+   * desviacion), pasar el total original aqui para que Claude lo refleje
+   * en `dataQuality` y `confidenceLevel`. `null` = no se filtro.
+   */
+  cappedFromTotal?: number | null;
 }): string {
+  const cappingNote = data.cappedFromTotal
+    ? `\n> NOTA: Se analizan los ${data.evaluatorStats.length} evaluadores con MAYOR desviacion vs la media global (de ${data.cappedFromTotal} totales). El resto fueron evaluadores cercanos al promedio (sin sesgo evidente). Refleja este filtrado en \`dataQuality\`.\n`
+    : '';
+
   return `Eres un experto en psicometría y detección de sesgos en evaluaciones de desempeño laboral.
 
 Analiza los siguientes datos estadísticos de un ciclo de evaluación y detecta posibles sesgos.
@@ -22,7 +32,7 @@ Analiza los siguientes datos estadísticos de un ciclo de evaluación y detecta 
 - Nombre: ${data.cycleName}
 - Puntaje promedio global: ${data.globalAvg.toFixed(2)} (escala 0-10)
 - Desviación estándar global: ${data.globalStdDev.toFixed(2)}
-
+${cappingNote}
 ## Distribución de Puntajes del Ciclo
 ${JSON.stringify(data.scoreDistribution, null, 2)}
 
@@ -51,9 +61,9 @@ Genera un JSON con la siguiente estructura exacta (sin markdown, solo JSON puro)
       "severity": "high|medium|low",
       "evaluatorId": "uuid del evaluador",
       "evaluatorName": "nombre",
-      "evidence": "Evidencia estadística específica",
-      "affectedEvaluatees": ["nombres de evaluados afectados"],
-      "recommendation": "Acción correctiva sugerida"
+      "evidence": "Evidencia estadística específica (1-2 oraciones, sin repetir todos los numeros)",
+      "affectedEvaluatees": ["nombres de evaluados afectados (max 5)"],
+      "recommendation": "Acción correctiva sugerida (1 oracion)"
     }
   ],
   "overallAssessment": "Evaluación general de la calidad de las evaluaciones del ciclo (2-3 oraciones)",
@@ -64,6 +74,9 @@ Genera un JSON con la siguiente estructura exacta (sin markdown, solo JSON puro)
 
 IMPORTANTE:
 - Responde SOLO con JSON válido, sin texto adicional ni markdown
+- **Reporta MÁXIMO 15 sesgos** (los más severos/relevantes). Si detectas más, agrega los de menor severidad como linea unica en \`overallAssessment\`.
+- En \`evidence\` no repitas todos los numeros — describe el patron en 1-2 oraciones cortas.
+- En \`affectedEvaluatees\` lista MÁXIMO 5 nombres por sesgo (los mas afectados).
 - Si no hay suficientes datos para detectar un sesgo con confianza, indícalo
 - No reportes sesgos sin evidencia estadística clara
 - confidenceLevel: 0.0 a 1.0 basado en cantidad y calidad de datos
