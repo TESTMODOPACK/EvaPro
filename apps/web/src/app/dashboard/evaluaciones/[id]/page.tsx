@@ -704,22 +704,13 @@ export default function CycleDetailPage() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {/* Ver plantilla: navega a /dashboard/plantillas?preview=ID
-                  cuando tiene sub_templates (mostrar todas las subs).
-                  Para legacy, usa el toggle inline (preview rapido). */}
-              {hasSubTemplates ? (
-                <Link
-                  href={`/dashboard/plantillas?preview=${template.id}`}
-                  className="btn-ghost"
-                  style={{ fontSize: '0.78rem', textDecoration: 'none' }}
-                >
-                  Ver plantilla
-                </Link>
-              ) : (
-                <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowTemplate(!showTemplate)}>
-                  {showTemplate ? 'Ocultar' : 'Ver plantilla'}
-                </button>
-              )}
+              {/* Ver plantilla: SIEMPRE toggle inline para que el admin vea
+                  como se separaron las preguntas por rol (subplantillas)
+                  sin salir del ciclo. La navegacion al editor es exclusiva
+                  del boton "Editar plantilla". */}
+              <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setShowTemplate(!showTemplate)}>
+                {showTemplate ? 'Ocultar' : 'Ver plantilla'}
+              </button>
               {cycle?.status === 'draft' && template?.id && (
                 <Link
                   href={`/dashboard/plantillas?edit=${template.id}`}
@@ -815,8 +806,124 @@ export default function CycleDetailPage() {
             );
           })()}
 
-          {showTemplate && !hasSubTemplates && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {/* Vista expandida: cuando hay subplantillas, agrupar las secciones
+              POR ROL para que el admin distinga literalmente que set de
+              preguntas vio jefatura, autoevaluacion, peers, etc. Cada rol
+              encabeza con su emoji + nombre + peso. Si NO hay subplantillas
+              (legacy puro), fallback a la vista plana de toda template.sections. */}
+          {showTemplate && subTemplates.length > 0 && (() => {
+            const RELATION_META_FULL: Record<string, { emoji: string; label: string; order: number; color: string }> = {
+              self: { emoji: '🪞', label: 'Autoevaluación', order: 1, color: '#6366f1' },
+              manager: { emoji: '👔', label: 'Evaluación del jefe', order: 2, color: '#C9933A' },
+              peer: { emoji: '👥', label: 'Evaluación de par', order: 3, color: '#10b981' },
+              direct_report: { emoji: '⬇️', label: 'Reporte directo', order: 4, color: '#f59e0b' },
+              external: { emoji: '🌐', label: 'Externo', order: 5, color: '#94a3b8' },
+            };
+            const sortedSubs = [...subTemplates].sort((a: any, b: any) => {
+              const oa = RELATION_META_FULL[a.relationType]?.order ?? 99;
+              const ob = RELATION_META_FULL[b.relationType]?.order ?? 99;
+              return oa - ob;
+            });
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.75rem' }}>
+                {sortedSubs.map((sub: any) => {
+                  const meta = RELATION_META_FULL[sub.relationType] || {
+                    emoji: '📄', label: sub.relationType, order: 99, color: '#94a3b8',
+                  };
+                  const weightPct = Math.round(((Number(sub.weight) || 0) * 100));
+                  const inactive = sub.isActive === false;
+                  const sections = Array.isArray(sub.sections) ? sub.sections : [];
+                  const questionTotal = sections.reduce(
+                    (acc: number, s: any) => acc + (Array.isArray(s.questions) ? s.questions.length : 0),
+                    0,
+                  );
+                  return (
+                    <div
+                      key={sub.id || sub.relationType}
+                      style={{
+                        border: `1px solid ${meta.color}33`,
+                        borderLeft: `4px solid ${meta.color}`,
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'var(--bg-base)',
+                        padding: '0.85rem 1rem',
+                        opacity: inactive ? 0.55 : 1,
+                      }}
+                    >
+                      {/* Header de la subplantilla */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{meta.emoji}</span>
+                          <strong style={{ fontSize: '0.9rem', color: meta.color }}>{meta.label}</strong>
+                          {inactive && (
+                            <span className="badge badge-ghost" style={{ fontSize: '0.62rem' }}>inactiva</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span
+                            style={{
+                              fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.55rem',
+                              borderRadius: '999px', color: '#fff', background: meta.color,
+                            }}
+                            title="Peso de esta subplantilla en el score final del ciclo"
+                          >
+                            {weightPct}%
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {sections.length} {sections.length === 1 ? 'sección' : 'secciones'} · {questionTotal} {questionTotal === 1 ? 'pregunta' : 'preguntas'}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Secciones de la subplantilla */}
+                      {sections.length === 0 ? (
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+                          Sin secciones configuradas para este rol.
+                        </p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                          {sections.map((sec: any, si: number) => (
+                            <div
+                              key={sec.id || si}
+                              style={{
+                                padding: '0.6rem 0.75rem', background: 'var(--bg-surface)',
+                                borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                              }}
+                            >
+                              <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--accent)' }}>
+                                {si + 1}. {sec.title}
+                              </div>
+                              {sec.description && (
+                                <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>{sec.description}</p>
+                              )}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                {(sec.questions || []).map((q: any, qi: number) => (
+                                  <div key={q.id || qi} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.25rem 0', fontSize: '0.78rem' }}>
+                                    <span style={{ color: 'var(--text-muted)', minWidth: '20px', fontSize: '0.7rem' }}>{qi + 1}.</span>
+                                    <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{q.text}</span>
+                                    <span className="badge badge-ghost" style={{ fontSize: '0.62rem', flexShrink: 0 }}>
+                                      {q.type === 'scale' ? `Escala ${q.scale?.min || 1}-${q.scale?.max || 10}` : q.type === 'text' ? 'Texto' : q.type === 'multi' ? 'Opción múltiple' : q.type}
+                                    </span>
+                                    {q.required && <span style={{ color: 'var(--danger)', fontSize: '0.7rem' }}>*</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* Fallback legacy: cuando el fetch de subplantillas TERMINO y
+              no hay subs (template sin applicableTo ni form_sub_templates),
+              mostrar la lista plana del template padre. La condicion
+              `subTemplateData !== undefined` evita el flash de legacy
+              durante el loading inicial. */}
+          {showTemplate && subTemplateData !== undefined && subTemplates.length === 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
               {(template.sections || []).map((sec: any, si: number) => (
                 <div key={sec.id || si} style={{ padding: '0.75rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--accent)' }}>
