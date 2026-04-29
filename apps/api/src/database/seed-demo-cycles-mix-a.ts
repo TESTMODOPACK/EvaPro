@@ -333,11 +333,17 @@ async function main() {
     }
 
     // 8.3 Crear stages
+    // Nota: el enum StageType del modelo NO tiene `direct_report_evaluation`
+    // como stage separada — los direct_reports son simplemente assignments
+    // con relation_type='direct_report' que se completan dentro de las stages
+    // existentes (típicamente junto a peer_evaluation).
     const stages: { name: string; type: string }[] = [];
     if (allowedRelations.includes('self')) stages.push({ name: 'Autoevaluación', type: 'self_evaluation' });
     if (allowedRelations.includes('manager')) stages.push({ name: 'Evaluación Jefatura', type: 'manager_evaluation' });
-    if (allowedRelations.includes('peer')) stages.push({ name: 'Evaluación de Pares', type: 'peer_evaluation' });
-    if (allowedRelations.includes('direct_report')) stages.push({ name: 'Evaluación Reportes Directos', type: 'direct_report_evaluation' });
+    if (allowedRelations.includes('peer') || allowedRelations.includes('direct_report')) {
+      // En 270°/360° la stage cubre tanto peer como direct_report
+      stages.push({ name: 'Evaluación de Pares y Reportes Directos', type: 'peer_evaluation' });
+    }
     if (cycleType === '360') stages.push({ name: 'Calibración', type: 'calibration' });
     stages.push({ name: 'Entrega de Feedback', type: 'feedback_delivery' });
     stages.push({ name: 'Cerrado', type: 'closed' });
