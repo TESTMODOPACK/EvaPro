@@ -224,6 +224,7 @@ export class EvaluationsService {
       select: [
         'id',
         'managerId',
+        'secondaryManagers',
         'departmentId',
         'department',
         'hierarchyLevel',
@@ -258,7 +259,10 @@ export class EvaluationsService {
       userId: u.id,
       tenantId,
       primaryManagerId: u.managerId || null,
-      secondaryManagers: [], // Sprint 4 lo populará (BR-A.4)
+      // Sprint 4 BR-A.4: persistir secondary managers en el snapshot
+      secondaryManagers: Array.isArray((u as any).secondaryManagers)
+        ? ((u as any).secondaryManagers as string[]).filter(Boolean)
+        : [],
       departmentId: u.departmentId || null,
       departmentName: u.departmentId ? deptMap.get(u.departmentId) || u.department || null : u.department || null,
       hierarchyLevel: u.hierarchyLevel ?? null,
@@ -1050,7 +1054,7 @@ export class EvaluationsService {
 
     const users = await this.userRepo.find({
       where: { tenantId, isActive: true },
-      select: ['id', 'managerId', 'role', 'department', 'departmentId', 'firstName', 'lastName', 'hierarchyLevel'],
+      select: ['id', 'managerId', 'role', 'department', 'departmentId', 'firstName', 'lastName', 'hierarchyLevel', 'secondaryManagers'],
     });
 
     // Exclude super_admin and external from evaluatees
@@ -1151,6 +1155,48 @@ export class EvaluationsService {
                 evaluatorId: evaluatee.managerId,
                 relationType: RelationType.MANAGER,
               });
+            }
+
+            // ─── Sprint 4 BR-A.4: secondary managers (matrix reporting) ──
+            // Solo aplica en 180°/270°/360° (NO en 90° por BR-A.4.7).
+            // Cap a 5 secondaries (BR-A.4.5).
+            if (
+              cycleType !== CycleType.DEGREE_90 &&
+              Array.isArray((evaluatee as any).secondaryManagers)
+            ) {
+              const secondaries = ((evaluatee as any).secondaryManagers as string[])
+                .filter((sid) =>
+                  sid &&
+                  sid !== evaluatee.id &&        // no auto-referencia
+                  sid !== evaluatee.managerId    // no duplicar primary
+                )
+                .slice(0, 5);                    // cap
+
+              for (const secondaryId of secondaries) {
+                // Validar que existe + activo + del tenant
+                const secondaryUser = users.find((u) => u.id === secondaryId);
+                if (!secondaryUser) {
+                  exceptions.push({
+                    evaluateeId: evaluatee.id,
+                    evaluateeName: evalName(evaluatee),
+                    department: evaluatee.department,
+                    type: 'SECONDARY_MANAGER_INACTIVE',
+                    message: `Manager secundario ${secondaryId.slice(0, 8)} inactivo o no encontrado`,
+                    relationType: 'manager',
+                  });
+                  continue;
+                }
+                const secKey = `${evaluatee.id}|${secondaryId}|${RelationType.MANAGER}`;
+                if (!existingSet.has(secKey)) {
+                  toCreate.push({
+                    tenantId,
+                    cycleId,
+                    evaluateeId: evaluatee.id,
+                    evaluatorId: secondaryId,
+                    relationType: RelationType.MANAGER,
+                  });
+                }
+              }
             }
           }
         }

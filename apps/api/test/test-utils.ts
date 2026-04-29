@@ -229,6 +229,7 @@ export function createMockUser(overrides: Record<string, any> = {}) {
     position: 'Analista',
     hierarchyLevel: 5,
     managerId: null,
+    secondaryManagers: [], // Sprint 4 BR-A.4
     passwordHash: '$2b$12$mock',
     ...overrides,
   };

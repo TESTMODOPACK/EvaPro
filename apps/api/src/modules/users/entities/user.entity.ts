@@ -49,6 +49,31 @@ export class User {
   @JoinColumn({ name: 'manager_id' })
   manager: User;
 
+  /**
+   * Sprint 4 BR-A.4 — Matrix reporting (dotted-line managers).
+   *
+   * Lista de managers SECUNDARIOS (jefe funcional, jefe de proyecto, etc.).
+   * El primary manager (managerId arriba) es el jefe formal de RRHH.
+   * Los secondary managers son adicionales — empresas matriciales donde
+   * un colaborador reporta a múltiples lideres en distintos roles.
+   *
+   * Reglas (BR-A.4):
+   * - Cap 5 secondary managers (BR-A.4.5).
+   * - No incluir primaryManagerId en este array (BR-A.4.6).
+   * - No incluir el propio userId (BR-A.4.6).
+   * - En 360°/270°: cada secondary se asigna como evaluator role MANAGER
+   *   con peso compartido (cycle.settings.secondaryManagerWeightShare,
+   *   default 0.33 → primary 67%, secondary 33% del peso total de manager).
+   * - En 90° (rapidez): solo primary, no secondary (BR-A.4.7).
+   */
+  @Column({
+    type: 'uuid',
+    array: true,
+    name: 'secondary_managers',
+    default: () => "'{}'::uuid[]",
+  })
+  secondaryManagers: string[];
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   department: string;
 

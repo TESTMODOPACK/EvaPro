@@ -314,6 +314,8 @@ async function main() {
       { table: 'evaluation_cycles', column: 'template_snapshot', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "template_snapshot" jsonb NULL` },
       { table: 'evaluation_cycles', column: 'weights_at_launch', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "weights_at_launch" jsonb NULL` },
       { table: 'evaluation_cycles', column: 'launched_at', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "launched_at" timestamptz NULL` },
+      // Grupo F — Sprint 4 (BR-A.4) matrix reporting (dotted-line managers)
+      { table: 'users', column: 'secondary_managers', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "secondary_managers" uuid[] NOT NULL DEFAULT '{}'::uuid[]` },
     ];
 
     for (const fix of columnFixes) {
