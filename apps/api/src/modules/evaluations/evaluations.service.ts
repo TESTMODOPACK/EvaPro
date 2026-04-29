@@ -12,6 +12,7 @@ import { EvaluationAssignment, AssignmentStatus, RelationType } from './entities
 import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { CycleStage, StageType, StageStatus } from './entities/cycle-stage.entity';
 import { CycleOrgSnapshot } from './entities/cycle-org-snapshot.entity';
+import { CycleEvaluateeWeight } from './entities/cycle-evaluatee-weight.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
 import { User } from '../users/entities/user.entity';
@@ -89,6 +90,8 @@ export class EvaluationsService {
     private readonly stageRepo: Repository<CycleStage>,
     @InjectRepository(CycleOrgSnapshot)
     private readonly orgSnapshotRepo: Repository<CycleOrgSnapshot>,
+    @InjectRepository(CycleEvaluateeWeight)
+    private readonly cewRepo: Repository<CycleEvaluateeWeight>,
     @InjectRepository(Objective)
     private readonly objectiveRepo: Repository<Objective>,
     @InjectRepository(KeyResult)
@@ -301,6 +304,153 @@ export class EvaluationsService {
     );
 
     return { count: snapshots.length };
+  }
+
+  /**
+   * Sprint 2 BR-A.1 — Calcula y persiste pesos EFECTIVOS por evaluado
+   * cuando algún rol del ciclo NO aplica (ej. CEO sin manager).
+   *
+   * Estrategia REDISTRIBUTE_PROPORTIONAL (default y única en Sprint 2):
+   * - Identifica evaluatees que tienen al menos un rol activo asignado
+   *   pero NO TODOS los del cycle.weights_at_launch.
+   * - Para esos, redistribuye el peso del rol(es) faltante(s)
+   *   proporcionalmente entre los roles que SÍ tienen asignación.
+   * - Persiste en cycle_evaluatee_weights.
+   *
+   * Si TODOS los roles aplican al evaluado → no se crea fila (los pesos
+   * default del ciclo aplican directamente — más eficiente).
+   *
+   * Estrategias futuras (no implementadas en Sprint 2):
+   * - EXCLUDE_EVALUATEE: el evaluado se quita del ciclo entero.
+   * - MANUAL_OVERRIDE: admin asigna evaluators manualmente; el
+   *   sistema deduce los effectiveWeights desde los assignments reales.
+   *
+   * @param cycleId — ciclo recién lanzado
+   * @param tenantId — tenant del ciclo
+   * @param manager — EntityManager de la tx de launchCycle (atómico)
+   * @returns Stats: cuántas filas se crearon, cuántos evaluatees tenían
+   *          todos los roles (no requirieron redistribución).
+   */
+  private async computeAndPersistEffectiveWeights(
+    cycleId: string,
+    tenantId: string,
+    weightsAtLaunch: Record<string, number> | null,
+    manager?: import('typeorm').EntityManager,
+  ): Promise<{ redistributed: number; allRolesPresent: number }> {
+    if (!weightsAtLaunch || Object.keys(weightsAtLaunch).length === 0) {
+      // Sin weights configurados → no hay nada que redistribuir.
+      return { redistributed: 0, allRolesPresent: 0 };
+    }
+
+    const conn = manager ?? this.dataSource;
+    const cewRepo = manager ? manager.getRepository(CycleEvaluateeWeight) : this.cewRepo;
+    const assignmentRepo = manager ? manager.getRepository(EvaluationAssignment) : this.assignmentRepo;
+
+    // Cargar TODOS los assignments del ciclo (ya creados al inicio de
+    // launchCycle), agrupados por evaluatee → roles asignados.
+    const assignments = await assignmentRepo.find({
+      where: { cycleId, tenantId },
+      select: ['evaluateeId', 'relationType'],
+    });
+
+    const rolesByEvaluatee = new Map<string, Set<string>>();
+    for (const a of assignments) {
+      if (!rolesByEvaluatee.has(a.evaluateeId)) {
+        rolesByEvaluatee.set(a.evaluateeId, new Set());
+      }
+      rolesByEvaluatee.get(a.evaluateeId)!.add(a.relationType);
+    }
+
+    const configuredRoles = Object.keys(weightsAtLaunch);
+    const totalConfiguredWeight = Object.values(weightsAtLaunch).reduce(
+      (s, w) => s + (Number(w) || 0),
+      0,
+    );
+
+    let redistributed = 0;
+    let allRolesPresent = 0;
+
+    for (const [evaluateeId, presentRoles] of rolesByEvaluatee) {
+      const missingRoles = configuredRoles.filter((r) => !presentRoles.has(r));
+
+      if (missingRoles.length === 0) {
+        allRolesPresent++;
+        continue; // Todos los roles aplican → no se crea fila
+      }
+
+      // Hay roles faltantes → REDISTRIBUTE_PROPORTIONAL
+      // Sumar peso de roles activos para normalizar.
+      const activeWeightSum = Array.from(presentRoles).reduce(
+        (s, r) => s + (weightsAtLaunch[r] || 0),
+        0,
+      );
+
+      if (activeWeightSum <= 0) {
+        // Edge case: el evaluado solo tiene roles con peso 0.
+        // No podemos redistribuir, log warning y skip (fallback al
+        // weights_at_launch normal con pesos huérfanos del rol faltante).
+        this.logger.warn(
+          `computeEffectiveWeights: evaluatee ${evaluateeId.slice(0, 8)} en ciclo ${cycleId.slice(0, 8)} tiene 0 peso activo. Se omite redistribución.`,
+        );
+        continue;
+      }
+
+      // Redistribución proporcional: cada rol activo recibe
+      //   nuevoPeso = pesoOriginal * (totalConfigurado / activeWeightSum)
+      // (i.e. escalado para que la suma de los activos sea totalConfiguredWeight)
+      const effectiveWeights: Record<string, number> = {};
+      for (const role of presentRoles) {
+        const original = weightsAtLaunch[role] || 0;
+        const scaled = (original * totalConfiguredWeight) / activeWeightSum;
+        // Round a 4 decimales para precisión razonable
+        effectiveWeights[role] = Math.round(scaled * 10000) / 10000;
+      }
+
+      // Razón humanmente legible
+      const reason =
+        missingRoles.length === 1 && missingRoles[0] === 'manager'
+          ? 'Sin jefe directo (top of organigrama)'
+          : missingRoles.length === 1 && missingRoles[0] === 'direct_report'
+          ? 'Sin reportes directos asignables'
+          : missingRoles.length === 1 && missingRoles[0] === 'peer'
+          ? 'Pares insuficientes en su scope'
+          : `Roles faltantes: ${missingRoles.join(', ')}`;
+
+      await conn.query(
+        `INSERT INTO cycle_evaluatee_weights (
+          cycle_id, evaluatee_id, tenant_id, effective_weights,
+          strategy_used, missing_roles, reason, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ON CONFLICT (cycle_id, evaluatee_id) DO UPDATE
+        SET effective_weights = EXCLUDED.effective_weights,
+            strategy_used = EXCLUDED.strategy_used,
+            missing_roles = EXCLUDED.missing_roles,
+            reason = EXCLUDED.reason`,
+        [
+          cycleId,
+          evaluateeId,
+          tenantId,
+          JSON.stringify(effectiveWeights),
+          'REDISTRIBUTE_PROPORTIONAL',
+          missingRoles,
+          reason,
+        ],
+      );
+
+      redistributed++;
+    }
+
+    if (redistributed > 0) {
+      this.logger.log(
+        `computeEffectiveWeights: cycle=${cycleId.slice(0, 8)}, redistributed=${redistributed}, allRolesPresent=${allRolesPresent}`,
+      );
+    }
+
+    // Marcar el repo como usado para que el linter no se queje (el repo
+    // se usa via raw query, pero TypeScript lo cuenta como "no usado")
+    void cewRepo;
+
+    return { redistributed, allRolesPresent };
   }
 
   private async generateStagesForCycle(cycle: EvaluationCycle): Promise<void> {
@@ -1318,6 +1468,17 @@ export class EvaluationsService {
       // porque cualquiera puede ser evaluator (en peer assignments custom
       // por ejemplo).
       await this.captureOrgSnapshot(id, effectiveTenantId, queryRunner.manager);
+
+      // ─── Sprint 2 BR-A.1: pesos efectivos por evaluado ──────────────────
+      // Para cada evaluatee con roles faltantes (CEO sin manager, único
+      // del depto sin pares, etc.), persiste effectiveWeights redistribuidos.
+      // Reports leerán de cycle_evaluatee_weights antes que del weights_at_launch.
+      await this.computeAndPersistEffectiveWeights(
+        id,
+        effectiveTenantId,
+        cycle.weightsAtLaunch as Record<string, number> | null,
+        queryRunner.manager,
+      );
 
       await queryRunner.commitTransaction();
 

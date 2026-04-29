@@ -254,6 +254,25 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS idx_cycle_org_snapshot_user ON cycle_org_snapshots(user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_cycle_org_snapshot_cycle_active ON cycle_org_snapshots(cycle_id, is_active)`,
       `CREATE INDEX IF NOT EXISTS idx_cycle_org_snapshot_tenant ON cycle_org_snapshots(tenant_id)`,
+
+      // ── cycle_evaluatee_weights (Sprint 2 BR-A.1 — pesos efectivos) ──
+      // Persiste pesos redistribuidos por evaluado cuando el sistema
+      // aplica REDISTRIBUTE_PROPORTIONAL para roles faltantes (ej. CEO
+      // sin manager). Si todos los roles aplican al evaluado, NO se
+      // crea fila (cycle.weights_at_launch aplica directamente).
+      `CREATE TABLE IF NOT EXISTS cycle_evaluatee_weights (
+        cycle_id uuid NOT NULL REFERENCES evaluation_cycles(id) ON DELETE CASCADE,
+        evaluatee_id uuid NOT NULL,
+        tenant_id uuid NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        effective_weights jsonb NOT NULL,
+        strategy_used varchar(30) NOT NULL,
+        missing_roles varchar[] NOT NULL DEFAULT '{}',
+        reason text NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (cycle_id, evaluatee_id)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_cew_cycle ON cycle_evaluatee_weights(cycle_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_cew_tenant ON cycle_evaluatee_weights(tenant_id)`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }

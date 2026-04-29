@@ -17,6 +17,7 @@ import { EvaluationAssignment } from './entities/evaluation-assignment.entity';
 import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { CycleStage } from './entities/cycle-stage.entity';
 import { CycleOrgSnapshot } from './entities/cycle-org-snapshot.entity';
+import { CycleEvaluateeWeight } from './entities/cycle-evaluatee-weight.entity';
 import { PeerAssignment } from './entities/peer-assignment.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
@@ -71,6 +72,8 @@ describe('EvaluationsService', () => {
         // para captureOrgSnapshot(). Mock simple para que el testing module
         // resuelva las deps.
         { provide: getRepositoryToken(CycleOrgSnapshot), useValue: createMockRepository() },
+        // Sprint 2 BR-A.1: CycleEvaluateeWeight para pesos efectivos por evaluado.
+        { provide: getRepositoryToken(CycleEvaluateeWeight), useValue: createMockRepository() },
         { provide: getRepositoryToken(PeerAssignment), useValue: peerAssignmentRepo },
         { provide: getRepositoryToken(FormTemplate), useValue: templateRepo },
         // Pre-fix Fase 3 (Opción A): FormSubTemplate inyectado en

@@ -17,11 +17,12 @@
 import type { DataSource } from 'typeorm';
 
 /**
- * 70 tablas con `tenant_id`. Ordenadas alfabeticamente para que un
+ * 71 tablas con `tenant_id`. Ordenadas alfabeticamente para que un
  * diff git sea legible cuando se agregue/quite una.
  *
  * 2026-04-28: agregada `form_sub_templates` (Fase 3 plan auditoria - Opción A).
  * 2026-04-28: agregada `cycle_org_snapshots` (Sprint 1 BR-C.1).
+ * 2026-04-28: agregada `cycle_evaluatee_weights` (Sprint 2 BR-A.1).
  */
 export const EXPECTED_TENANT_TABLES: ReadonlyArray<string> = [
   'ai_call_logs',
@@ -36,6 +37,7 @@ export const EXPECTED_TENANT_TABLES: ReadonlyArray<string> = [
   'competencies',
   'contracts',
   'custom_kpis',
+  'cycle_evaluatee_weights',
   'cycle_org_snapshots',
   'cycle_stages',
   'dei_corrective_actions',

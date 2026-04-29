@@ -7,6 +7,7 @@ import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity
 import { EvaluationAssignment, AssignmentStatus, RelationType } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { CycleOrgSnapshot } from '../evaluations/entities/cycle-org-snapshot.entity';
+import { CycleEvaluateeWeight } from '../evaluations/entities/cycle-evaluatee-weight.entity';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
@@ -51,6 +52,8 @@ export class ReportsService {
     private readonly subTemplateRepo: Repository<FormSubTemplate>,
     @InjectRepository(CycleOrgSnapshot)
     private readonly orgSnapshotRepo: Repository<CycleOrgSnapshot>,
+    @InjectRepository(CycleEvaluateeWeight)
+    private readonly cewRepo: Repository<CycleEvaluateeWeight>,
     @InjectRepository(RoleCompetency)
     private readonly roleCompetencyRepo: Repository<RoleCompetency>,
     @InjectRepository(Competency)
@@ -1171,24 +1174,48 @@ export class ReportsService {
       where: { parentTemplateId: template.id, isActive: true },
     });
 
-    // weightsByRelation: prioridad cycle.weights_at_launch (Sprint 1 BR-C.2)
-    // → cycle.settings.weights → sub_template.weight.
+    // weightsByRelation: prioridad Sprint 2 BR-A.1 → BR-C.2 → settings → sub.
     //
-    // BR-C.2: weights_at_launch es el snapshot al lanzar — los reports leen
-    // siempre de aquí cuando el ciclo no es draft, garantizando consistencia
-    // incluso si el admin edita pesos post-launch (no afectan retroactivamente).
-    // Para draft o legacy, fallback a settings.weights (configuración actual).
+    // Cadena:
+    //   1. cycle_evaluatee_weights[evaluateeId] (BR-A.1: pesos redistribuidos
+    //      por roles faltantes, ej. CEO sin manager).
+    //   2. cycle.weights_at_launch (BR-C.2: snapshot al launch).
+    //   3. cycle.settings.weights (configuración actual; aplica solo en draft).
+    //   4. sub.weight (template default).
+    //
+    // BR-B.2 (transparencia): el output expone configuredWeights vs
+    // effectiveWeights + roles sin data + flag redistributionApplied.
     const launchWeights = cycle.weightsAtLaunch as Record<string, number> | null | undefined;
-    const cycleWeights =
+    const baseWeights: Record<string, number> =
       cycle.status !== 'draft' && launchWeights
-        ? launchWeights
-        : ((cycle.settings as any)?.weights as Record<string, number> | undefined);
-    const weightsByRelation: Record<string, number> = {};
-    for (const sub of subTemplates) {
-      const cycleWeight = cycleWeights && typeof cycleWeights[sub.relationType] === 'number'
-        ? cycleWeights[sub.relationType]
-        : null;
-      weightsByRelation[sub.relationType] = cycleWeight ?? (Number(sub.weight) || 0);
+        ? { ...launchWeights }
+        : { ...((cycle.settings as any)?.weights ?? {}) };
+
+    // Sprint 2 BR-A.1: si el evaluado tiene fila en cycle_evaluatee_weights,
+    // usa esos pesos efectivos (overrides los del cycle).
+    const evaluateeOverride = await this.cewRepo.findOne({
+      where: { cycleId, evaluateeId: userId },
+    });
+    const configuredWeights = { ...baseWeights }; // copia para reportar
+    let weightsByRelation: Record<string, number> = baseWeights;
+    let redistributionApplied = false;
+    let missingRoles: string[] = [];
+    let redistributionReason: string | null = null;
+
+    if (evaluateeOverride) {
+      weightsByRelation = { ...evaluateeOverride.effectiveWeights };
+      redistributionApplied = true;
+      missingRoles = evaluateeOverride.missingRoles || [];
+      redistributionReason = evaluateeOverride.reason;
+    } else {
+      // Si no hay override pero hay launchWeights, ése es el conf base.
+      // weightsByRelation queda igual a baseWeights.
+      // Fallback al sub.weight si no hay weight configurado a nivel ciclo.
+      for (const sub of subTemplates) {
+        if (typeof weightsByRelation[sub.relationType] !== 'number') {
+          weightsByRelation[sub.relationType] = Number(sub.weight) || 0;
+        }
+      }
     }
     const hasWeights = Object.values(weightsByRelation).some((w) => w > 0);
 
@@ -1280,55 +1307,145 @@ export class ReportsService {
       return { userId, cycleId, sections: [], message: 'Las evaluaciones completadas aún no tienen respuestas registradas' };
     }
 
-    // ─── SCALE NORMALIZATION (Fix bug #6 auditoria F4) ──────────────────
-    // Todos los averages se normalizan a escala 0-10 para consistencia
-    // con el resto del sistema (overallScore en evaluation_responses ya
-    // viene en 0-10) y para que la IA reciba valores comparables.
-    //
-    //   normalizedAvg = (rawAvg / sourceMaxScale) * 10
-    //
-    // ─── Fase 3: overall PONDERADO por weights de subplantillas ─────────
-    //   Si hay weights, overall = Σ (weight_rel × score_rel) / Σ weights_que_contribuyeron
-    //   Si no hay weights → promedio simple (como antes).
+    // ─── SCALE NORMALIZATION + Sprint 2 BR-B.3 + BR-D.1 ─────────────────
+    // - Normalización a escala 0-10 (igual que antes).
+    // - BR-B.3: si responseRatio del rol bajo umbral, penaliza peso.
+    // - BR-D.1: outlier strategy configurable (NONE | TRIMMED_MEAN_20 | MEDIAN).
+    const settings = (cycle.settings as any) || {};
+    const responseRatioStrategy: 'STRICT' | 'LINEAR' | 'NONE' =
+      settings.responseRatioStrategy || 'LINEAR';
+    const minResponseRatio = typeof settings.minResponseRatio === 'number'
+      ? settings.minResponseRatio
+      : 0.6;
+    const outlierStrategy: 'NONE' | 'TRIMMED_MEAN_20' | 'MEDIAN' =
+      settings.outlierStrategy || 'NONE';
+
+    // Calcular assigned (esperado) y responded (real) por rol para
+    // computar responseRatio (BR-B.3).
+    const assignedByRole = new Map<string, number>();
+    const respondedByRole = new Map<string, number>();
+    for (const a of assignments) {
+      assignedByRole.set(a.relationType, (assignedByRole.get(a.relationType) || 0) + 1);
+      if (responseMap.has(a.id)) {
+        respondedByRole.set(a.relationType, (respondedByRole.get(a.relationType) || 0) + 1);
+      }
+    }
+    const responseRatioByRole: Record<string, number> = {};
+    for (const [rel, assigned] of assignedByRole) {
+      responseRatioByRole[rel] =
+        assigned > 0 ? (respondedByRole.get(rel) || 0) / assigned : 0;
+    }
+
+    // Aplicar penalización al peso por baja respuesta (BR-B.3.1).
+    const adjustedWeights: Record<string, number> = { ...weightsByRelation };
+    if (responseRatioStrategy !== 'NONE') {
+      for (const [rel, w] of Object.entries(weightsByRelation)) {
+        const ratio = responseRatioByRole[rel];
+        if (ratio === undefined) continue;
+        if (responseRatioStrategy === 'STRICT') {
+          // STRICT: <umbral excluye el rol entero.
+          if (ratio < minResponseRatio) adjustedWeights[rel] = 0;
+        } else if (responseRatioStrategy === 'LINEAR') {
+          // LINEAR: peso × max(0.5, ratio) para suavizar
+          if (ratio < minResponseRatio) {
+            adjustedWeights[rel] = w * Math.max(0.5, ratio);
+          }
+        }
+      }
+    }
+
+    /** Helper estadístico (BR-D.1): aplica estrategia de outliers. */
+    const aggregate = (values: number[]): number | null => {
+      if (values.length === 0) return null;
+      if (values.length < 5 || outlierStrategy === 'NONE') {
+        // Fallback: media simple
+        return values.reduce((s, v) => s + v, 0) / values.length;
+      }
+      const sorted = [...values].sort((a, b) => a - b);
+      if (outlierStrategy === 'MEDIAN') {
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 === 1
+          ? sorted[mid]
+          : (sorted[mid - 1] + sorted[mid]) / 2;
+      }
+      if (outlierStrategy === 'TRIMMED_MEAN_20') {
+        const cut = Math.floor(sorted.length * 0.2);
+        const trimmed = sorted.slice(cut, sorted.length - cut);
+        return trimmed.length > 0
+          ? trimmed.reduce((s, v) => s + v, 0) / trimmed.length
+          : null;
+      }
+      return values.reduce((s, v) => s + v, 0) / values.length;
+    };
+
+    /** Detección de outliers (Q1/Q3 + IQR), independiente de la estrategia. */
+    const detectOutliers = (values: number[]): { hasOutliers: boolean; outliers: number[] } => {
+      if (values.length < 4) return { hasOutliers: false, outliers: [] };
+      const sorted = [...values].sort((a, b) => a - b);
+      const q1 = sorted[Math.floor(sorted.length * 0.25)];
+      const q3 = sorted[Math.floor(sorted.length * 0.75)];
+      const iqr = q3 - q1;
+      const lower = q1 - 1.5 * iqr;
+      const upper = q3 + 1.5 * iqr;
+      const outliers = values.filter((v) => v < lower || v > upper);
+      return { hasOutliers: outliers.length > 0, outliers };
+    };
+
     const sections: any[] = [];
     for (const [, sec] of unifiedSections) {
       const sourceMaxScale = sec.sourceMaxScale;
       const normalize = (rawAvg: number) =>
         Math.round(((rawAvg / sourceMaxScale) * 10) * 100) / 100;
 
-      const byRelation: Record<string, { sum: number; count: number }> = {};
+      // valuesByRelation: lista de TODOS los valores de cada respondedor
+      //                    (no agregados aún) para aplicar outlier strategy.
+      const valuesByRelation: Record<string, number[]> = {};
 
       for (const resp of responses) {
         const rel = resp.relationType || 'unknown';
-        // Las preguntas que respondió este evaluador son las de SU
-        // sub_template (o las del bucket '_all' en path legacy).
         const ownQs = sec.questionsByRelation[rel] || sec.questionsByRelation['_all'] || [];
         if (ownQs.length === 0) continue;
 
-        if (!byRelation[rel]) byRelation[rel] = { sum: 0, count: 0 };
+        // Para outlier detection es mejor ver el SCORE PROMEDIO de cada
+        // evaluador (no cada question), porque outliers entre preguntas
+        // del mismo evaluador son normales (algunas más fuertes que otras).
+        let respSum = 0;
+        let respCount = 0;
         for (const q of ownQs) {
           const val = Number(resp.answers[q.id]);
           if (!isNaN(val) && val > 0) {
-            byRelation[rel].sum += val;
-            byRelation[rel].count++;
+            respSum += val;
+            respCount++;
           }
+        }
+        if (respCount > 0) {
+          const respAvg = respSum / respCount;
+          if (!valuesByRelation[rel]) valuesByRelation[rel] = [];
+          valuesByRelation[rel].push(respAvg);
         }
       }
 
-      // relationScores: solo roles con datos (omite count=0).
+      // relationScores: agregado por rol con outlier strategy
       const relationScores: Record<string, number> = {};
-      for (const [rel, data] of Object.entries(byRelation)) {
-        if (data.count === 0) continue;
-        relationScores[rel] = normalize(data.sum / data.count);
+      const relationOutliers: Record<string, { hasOutliers: boolean; count: number }> = {};
+      for (const [rel, vals] of Object.entries(valuesByRelation)) {
+        if (vals.length === 0) continue;
+        const agg = aggregate(vals);
+        if (agg === null) continue;
+        relationScores[rel] = normalize(agg);
+        const ol = detectOutliers(vals);
+        if (ol.hasOutliers) {
+          relationOutliers[rel] = { hasOutliers: true, count: ol.outliers.length };
+        }
       }
 
-      // overall: promedio ponderado (Fase 3) o simple (legacy).
+      // overall: promedio ponderado con adjustedWeights (Sprint 2 BR-B.3).
       let overall = 0;
       if (hasWeights && Object.keys(relationScores).length > 0) {
         let weightedSum = 0;
         let weightTotal = 0;
         for (const [rel, score] of Object.entries(relationScores)) {
-          const w = weightsByRelation[rel] ?? 0;
+          const w = adjustedWeights[rel] ?? 0;
           if (w > 0) {
             weightedSum += score * w;
             weightTotal += w;
@@ -1353,12 +1470,32 @@ export class ReportsService {
         sourceMaxScale,
         byRelation: relationScores,
         questionCount: totalQuestionCount,
-        // Metadata Fase 3: indica si el overall fue ponderado
         weighted: hasWeights,
+        // Sprint 2 BR-D.1: outliers detectados (independiente de strategy)
+        outliers: relationOutliers,
+        outlierStrategy,
       });
     }
 
-    return { userId, cycleId, sections, weighted: hasWeights };
+    // Sprint 2 BR-B.2 + BR-B.3: transparencia completa
+    return {
+      userId,
+      cycleId,
+      sections,
+      weighted: hasWeights,
+      // BR-B.2: pesos transparentes
+      configuredWeights,
+      effectiveWeights: adjustedWeights,
+      redistributionApplied,
+      missingRoles,
+      redistributionReason,
+      // BR-B.3: response ratios + estrategia aplicada
+      responseRatioByRole,
+      responseRatioStrategy,
+      minResponseRatio,
+      // BR-D.1: estrategia de outliers
+      outlierStrategy,
+    };
   }
 
   // ─── C2: Self vs Others comparison ─────────────────────────────────────

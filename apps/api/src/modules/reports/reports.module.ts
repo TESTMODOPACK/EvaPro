@@ -4,6 +4,7 @@ import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { CycleOrgSnapshot } from '../evaluations/entities/cycle-org-snapshot.entity';
+import { CycleEvaluateeWeight } from '../evaluations/entities/cycle-evaluatee-weight.entity';
 import { Objective } from '../objectives/entities/objective.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
@@ -41,6 +42,7 @@ import { UserMovement } from '../users/entities/user-movement.entity';
       EvaluationAssignment,
       EvaluationResponse,
       CycleOrgSnapshot,
+      CycleEvaluateeWeight,
       Objective,
       FormTemplate,
       FormSubTemplate,
