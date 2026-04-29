@@ -3,7 +3,7 @@ import { PlanGate } from '@/components/PlanGate';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 
 import { useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
@@ -11,6 +11,7 @@ import { useToastStore } from '@/store/toast.store';
 import { useDepartments } from '@/hooks/useDepartments';
 import ConfirmModal from '@/components/ConfirmModal';
 import SignatureModal, { SignatureBadge } from '@/components/SignatureModal';
+import useFocusTrap from '@/hooks/useFocusTrap';
 
 function Spinner() {
   return (
@@ -158,6 +159,9 @@ function DesarrolloPageContent() {
   // Create form
   const [showCreate, setShowCreate] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  // Matriz de competencias por cargo en modal — antes vivia colapsable al
+  // final del scroll y los usuarios no la encontraban (feedback prod).
+  const [showMatrixModal, setShowMatrixModal] = useState(false);
   const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
   const [creating, setCreating] = useState(false);
   const [createDeptFilter, setCreateDeptFilter] = useState('');
@@ -483,6 +487,18 @@ function DesarrolloPageContent() {
           <button className="btn-ghost" onClick={() => setShowGuide(!showGuide)} style={{ fontSize: '0.82rem' }}>
             {showGuide ? t('desarrollo.hideGuide') : t('desarrollo.showGuide')}
           </button>
+          {canCreate && (
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setShowMatrixModal(true)}
+              title="Vista informativa de los niveles esperados de competencias por cargo"
+              style={{ fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <span aria-hidden="true">{'🧭'}</span>
+              Matriz por cargo
+            </button>
+          )}
           {canCreate && (
             <button className="btn-primary" onClick={() => setShowCreate(!showCreate)}>
               {showCreate ? t('common.cancel') : t('desarrollo.newPlan')}
@@ -1452,29 +1468,51 @@ function DesarrolloPageContent() {
         onCancel={() => setSignModal(null)}
       />
     )}
-    {/* Matriz Competencias por Cargo (solo lectura — admin + managers) */}
-    {canCreate && <CompetencyMatrixSection />}
+    {/* Matriz Competencias por Cargo (solo lectura — admin + managers).
+        Se abre desde el boton "Matriz por cargo" en el header de la pagina.
+        Antes era colapsable al final del scroll; los usuarios no la veian. */}
+    {canCreate && (
+      <CompetencyMatrixModal
+        open={showMatrixModal}
+        onClose={() => setShowMatrixModal(false)}
+      />
+    )}
     </div>
   );
 }
 
-// ─── Matriz Competencias por Cargo (read-only) ──────────────────────────
+// ─── Matriz Competencias por Cargo (read-only, modal) ──────────────────
 
-function CompetencyMatrixSection() {
+function CompetencyMatrixModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const token = useAuthStore((s) => s.token);
-  const [expanded, setExpanded] = useState(false);
   const [roleComps, setRoleComps] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterCategory, setFilterCategory] = useState('');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open);
 
+  // Carga lazy: solo al abrir el modal. Si se cierra y reabre se refetchea
+  // (siempre datos frescos — el admin pudo modificar en Mantenedores).
   useEffect(() => {
-    if (!expanded || !token) return;
+    if (!open || !token) return;
     setLoading(true);
     api.development.roleCompetencies.list(token)
       .then((data) => setRoleComps(Array.isArray(data) ? data : []))
       .catch(() => setRoleComps([]))
       .finally(() => setLoading(false));
-  }, [expanded, token]);
+  }, [open, token]);
+
+  // Cerrar con Escape — patron consistente con PlanDetailModal.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
 
   // Build matrix: positions as rows, competencies as columns
   const positions = Array.from(new Set(roleComps.map((rc: any) => rc.position))).sort();
@@ -1490,20 +1528,65 @@ function CompetencyMatrixSection() {
   const levelColor = (level: number) => level >= 8 ? '#10b981' : level >= 5 ? '#f59e0b' : level >= 3 ? '#6366f1' : '#94a3b8';
 
   return (
-    <div className="card" style={{ marginTop: '1.5rem' }}>
-      <button onClick={() => setExpanded(!expanded)} style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
-        padding: '1rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-      }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Matriz de Competencias por Cargo</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Vista de los niveles esperados de competencias para cada cargo de la organización.</div>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="competency-matrix-modal-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.5)',
+        zIndex: 200,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="animate-fade-up"
+        style={{
+          maxWidth: '1100px',
+          width: '100%',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          background: 'var(--bg-surface)',
+          borderRadius: 'var(--radius-sm, 8px)',
+          border: '1px solid var(--border)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header del modal */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)',
+        }}>
+          <div>
+            <h2 id="competency-matrix-modal-title" style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+              Matriz de Competencias por Cargo
+            </h2>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              Vista de los niveles esperados de competencias para cada cargo de la organización.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={onClose}
+            aria-label="Cerrar"
+            style={{ fontSize: '1rem', lineHeight: 1, padding: '0.3rem 0.6rem' }}
+          >
+            ✕
+          </button>
         </div>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-      </button>
 
-      {expanded && (
-        <div style={{ padding: '0 1.25rem 1.25rem' }}>
+        {/* Body */}
+        <div style={{ padding: '1.25rem' }}>
           {loading ? <div style={{ textAlign: 'center', padding: '2rem' }}><span className="spinner" /></div> : roleComps.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
               Sin competencias asignadas a cargos. El administrador debe configurar las competencias por cargo en <strong>Mantenedores</strong>.
@@ -1522,7 +1605,7 @@ function CompetencyMatrixSection() {
               )}
 
               {/* Legend */}
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                 <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#10b981', marginRight: 4 }} />Alto (8-10)</span>
                 <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#f59e0b', marginRight: 4 }} />Medio (5-7)</span>
                 <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#6366f1', marginRight: 4 }} />Básico (3-4)</span>
@@ -1534,7 +1617,7 @@ function CompetencyMatrixSection() {
                 <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.78rem' }}>
                   <thead>
                     <tr>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.6rem', borderBottom: '2px solid var(--border)', fontWeight: 700, position: 'sticky', left: 0, background: 'var(--bg-base)', minWidth: 150, zIndex: 1 }}>Cargo</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.6rem', borderBottom: '2px solid var(--border)', fontWeight: 700, position: 'sticky', left: 0, background: 'var(--bg-surface)', minWidth: 150, zIndex: 1 }}>Cargo</th>
                       {filteredCompetencies.map(c => (
                         <th key={c.id} style={{ padding: '0.4rem 0.5rem', borderBottom: '2px solid var(--border)', fontWeight: 600, textAlign: 'center', minWidth: 70, fontSize: '0.7rem', whiteSpace: 'nowrap' }} title={`${c.name} (${c.category})`}>
                           {c.name.length > 12 ? c.name.slice(0, 11) + '…' : c.name}
@@ -1545,7 +1628,7 @@ function CompetencyMatrixSection() {
                   <tbody>
                     {positions.map(pos => (
                       <tr key={pos}>
-                        <td style={{ padding: '0.4rem 0.6rem', borderBottom: '1px solid var(--border)', fontWeight: 600, position: 'sticky', left: 0, background: 'var(--bg-base)', zIndex: 1 }}>{pos}</td>
+                        <td style={{ padding: '0.4rem 0.6rem', borderBottom: '1px solid var(--border)', fontWeight: 600, position: 'sticky', left: 0, background: 'var(--bg-surface)', zIndex: 1 }}>{pos}</td>
                         {filteredCompetencies.map(c => {
                           const level = levelMap.get(`${pos}|${c.id}`);
                           return (
@@ -1568,7 +1651,7 @@ function CompetencyMatrixSection() {
             </>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
