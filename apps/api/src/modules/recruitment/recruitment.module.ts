@@ -5,6 +5,7 @@ import { RecruitmentCandidate } from './entities/recruitment-candidate.entity';
 import { RecruitmentEvaluator } from './entities/recruitment-evaluator.entity';
 import { RecruitmentInterview } from './entities/recruitment-interview.entity';
 import { User } from '../users/entities/user.entity';
+import { UserMovement } from '../users/entities/user-movement.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
@@ -26,6 +27,11 @@ import { RlsModule } from '../../common/rls/rls.module';
       RecruitmentEvaluator,
       RecruitmentInterview,
       User,
+      // S1.2 Hire flow: la transaccion de hireCandidate inserta filas
+      // en user_movements para registrar la cascada (PROMOTION/
+      // LATERAL_TRANSFER/DEPARTMENT_CHANGE/etc.) en interno y "ingreso"
+      // (POSITION_CHANGE con from=null) en externo.
+      UserMovement,
       EvaluationAssignment,
       EvaluationResponse,
       TalentAssessment,

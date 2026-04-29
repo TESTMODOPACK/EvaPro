@@ -1,16 +1,18 @@
 import {
-  Injectable, NotFoundException, BadRequestException,
+  Injectable, NotFoundException, BadRequestException, ConflictException,
   ForbiddenException, Logger,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, In, LessThan } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { runWithCronLock } from '../../common/utils/cron-lock';
 import { RecruitmentProcess, ProcessStatus } from './entities/recruitment-process.entity';
 import { RecruitmentCandidate, CandidateStage } from './entities/recruitment-candidate.entity';
 import { RecruitmentEvaluator } from './entities/recruitment-evaluator.entity';
 import { RecruitmentInterview } from './entities/recruitment-interview.entity';
 import { User } from '../users/entities/user.entity';
+import { UserMovement, MovementType } from '../users/entities/user-movement.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
@@ -35,6 +37,11 @@ export class RecruitmentService {
     @InjectRepository(TalentAssessment) private readonly talentRepo: Repository<TalentAssessment>,
     @InjectRepository(Department) private readonly departmentRepo: Repository<Department>,
     @InjectRepository(Position) private readonly positionRepo: Repository<Position>,
+    // S1.2 Hire flow: para insertar user_movements al ejecutar hire
+    // (interno o externo). Reutilizamos el repo aqui dentro de la
+    // transaccion para garantizar atomicidad (process+candidate+user+
+    // movement todo o nada).
+    @InjectRepository(UserMovement) private readonly movementRepo: Repository<UserMovement>,
     private readonly aiInsightsService: AiInsightsService,
     private readonly auditService: AuditService,
     private readonly dataSource: DataSource,
@@ -583,6 +590,398 @@ export class RecruitmentService {
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
     candidate.stage = stage as CandidateStage;
     return this.candidateRepo.save(candidate);
+  }
+
+  // ─── S1.2 — Hire Candidate (cierre del flow de seleccion) ─────────────────
+
+  /**
+   * Genera un password temporal alfanumerico de longitud `length`. Excluye
+   * caracteres ambiguos (0/O/1/I/l) para que el admin pueda dictarlo si
+   * llega a hacer falta. Se setea con mustChangePassword=true en el User
+   * creado para forzar cambio en primer login.
+   */
+  private generateTempPassword(length = 14): string {
+    const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  /**
+   * Valida y normaliza el payload de hire. Defensivo: el controller pasa
+   * `dto: any` sin class-validator (consistente con el resto del modulo).
+   */
+  private validateHireDto(dto: any): {
+    effectiveDate: string;
+    newDepartmentId: string | null;
+    newPositionId: string | null;
+    newManagerId: string | null;
+    salary: number | null;
+    contractType: 'indefinido' | 'plazo_fijo' | 'honorarios' | 'practicante' | null;
+    notes: string | null;
+  } {
+    if (!dto?.effectiveDate) throw new BadRequestException('effectiveDate es requerido');
+    const ymd = String(dto.effectiveDate).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      throw new BadRequestException('effectiveDate debe ser ISO YYYY-MM-DD');
+    }
+    const parsed = new Date(ymd);
+    if (isNaN(parsed.getTime())) {
+      throw new BadRequestException('effectiveDate invalida');
+    }
+
+    const validContracts = ['indefinido', 'plazo_fijo', 'honorarios', 'practicante'];
+    if (dto.contractType && !validContracts.includes(dto.contractType)) {
+      throw new BadRequestException(`contractType invalido. Valores permitidos: ${validContracts.join(', ')}`);
+    }
+
+    let salary: number | null = null;
+    if (dto.salary !== undefined && dto.salary !== null && dto.salary !== '') {
+      const s = Number(dto.salary);
+      if (isNaN(s) || s < 0) throw new BadRequestException('salary debe ser un numero >= 0');
+      salary = s;
+    }
+
+    return {
+      effectiveDate: ymd,
+      newDepartmentId: dto.newDepartmentId || null,
+      newPositionId: dto.newPositionId || null,
+      newManagerId: dto.newManagerId || null,
+      salary,
+      contractType: dto.contractType || null,
+      notes: dto.notes ? String(dto.notes).slice(0, 1000) : null,
+    };
+  }
+
+  /**
+   * Determina el MovementType a partir de los cambios. Reglas:
+   * - Si hay cambio de cargo Y el nuevo level es MENOR (mas alto en
+   *   jerarquia, ej. nivel 3 → nivel 2) → PROMOTION.
+   * - Si hay cambio de cargo Y el nuevo level es MAYOR → DEMOTION.
+   * - Si cambio dept Y cargo (mismo level) → LATERAL_TRANSFER.
+   * - Solo dept → DEPARTMENT_CHANGE.
+   * - Solo cargo (mismo level — raro, pero posible si renombre) →
+   *   POSITION_CHANGE.
+   */
+  private detectMovementType(opts: {
+    deptChanged: boolean;
+    posChanged: boolean;
+    prevLevel: number | null;
+    newLevel: number | null;
+  }): MovementType {
+    const { deptChanged, posChanged, prevLevel, newLevel } = opts;
+    if (posChanged && prevLevel != null && newLevel != null) {
+      if (newLevel < prevLevel) return MovementType.PROMOTION;
+      if (newLevel > prevLevel) return MovementType.DEMOTION;
+    }
+    if (deptChanged && posChanged) return MovementType.LATERAL_TRANSFER;
+    if (deptChanged) return MovementType.DEPARTMENT_CHANGE;
+    return MovementType.POSITION_CHANGE;
+  }
+
+  /**
+   * S1.2 — Hire Candidate (Sprint 1).
+   *
+   * Cierra el flow de seleccion de personal: marca el candidato como
+   * contratado, actualiza el proceso (status COMPLETED + winning) y
+   * ejecuta la cascada minima sobre `users`:
+   *
+   * - **Interno**: actualiza el User existente con nuevo dept/cargo/manager
+   *   e inserta una fila en `user_movements` con MovementType detectado
+   *   automaticamente (PROMOTION / DEMOTION / LATERAL_TRANSFER /
+   *   DEPARTMENT_CHANGE / POSITION_CHANGE).
+   *
+   * - **Externo**: crea un nuevo User con password temporal +
+   *   `mustChangePassword=true`. Inserta tambien fila en `user_movements`
+   *   semanticamente "joined company" (POSITION_CHANGE con from=null).
+   *   Retorna el `tempPassword` al admin UNA SOLA VEZ (la API responde con
+   *   esto en el body); el admin debe entregarselo al empleado nuevo.
+   *   No persistimos el clear-text en ningun lado; solo se devuelve.
+   *
+   * Cascada de evaluaciones / PDI / objetivos / meetings → S2 (proximo
+   * sprint, event-driven). En S1 solo cubrimos la cascada hacia `users`
+   * y `user_movements` para que la dotacion quede consistente desde el
+   * dia 1.
+   *
+   * Atomicidad: TODO esto va en una transaccion. Si falla cualquier paso
+   * (ej. usuario duplicado por email), todo rollback — el proceso NO
+   * queda como completed sin la cascada ejecutada.
+   *
+   * Idempotencia: si el candidato ya esta en stage=HIRED, lanzamos error
+   * (no permite re-hire). Si el proceso ya esta COMPLETED con un
+   * winningCandidateId distinto, tambien lanzamos.
+   *
+   * @returns process actualizado, candidate actualizado, userId resultado
+   *   (existente para internos, nuevo para externos), y tempPassword
+   *   (solo para externos — null en interno).
+   */
+  async hireCandidate(
+    tenantId: string,
+    processId: string,
+    candidateId: string,
+    rawDto: any,
+    callerUserId: string,
+  ): Promise<{
+    process: RecruitmentProcess;
+    candidate: RecruitmentCandidate;
+    userId: string;
+    tempPassword: string | null;
+  }> {
+    const hireData = this.validateHireDto(rawDto);
+
+    // 1. Validar proceso
+    const process = await this.processRepo.findOne({ where: { id: processId, tenantId } });
+    if (!process) throw new NotFoundException('Proceso no encontrado');
+    if (process.status !== ProcessStatus.ACTIVE) {
+      throw new BadRequestException(
+        `No se puede contratar en un proceso ${process.status}. Debe estar ACTIVE. Reabra el proceso si es necesario.`,
+      );
+    }
+    if (process.winningCandidateId && process.winningCandidateId !== candidateId) {
+      throw new BadRequestException(
+        'Este proceso ya tiene un candidato ganador asignado. Debe revertirse antes de contratar a otro.',
+      );
+    }
+
+    // 2. Validar candidato
+    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    if (candidate.processId !== processId) {
+      throw new BadRequestException('El candidato no pertenece a este proceso');
+    }
+    if (candidate.stage === CandidateStage.HIRED) {
+      throw new BadRequestException('El candidato ya fue contratado');
+    }
+    if (candidate.stage === CandidateStage.REJECTED) {
+      throw new BadRequestException('No se puede contratar a un candidato rechazado');
+    }
+    // Permitimos hire desde INTERVIEWING/SCORED/APPROVED. Bloqueamos
+    // REGISTERED y CV_REVIEW (todavia no fue evaluado).
+    const allowedStages: CandidateStage[] = [
+      CandidateStage.INTERVIEWING,
+      CandidateStage.SCORED,
+      CandidateStage.APPROVED,
+    ];
+    if (!allowedStages.includes(candidate.stage)) {
+      throw new BadRequestException(
+        `Candidato debe estar al menos en stage INTERVIEWING/SCORED/APPROVED para contratar (actual: ${candidate.stage}).`,
+      );
+    }
+
+    const isInternal = candidate.candidateType === 'internal';
+    if (isInternal && !candidate.userId) {
+      throw new BadRequestException('Candidato interno sin userId asociado');
+    }
+    if (!isInternal && (!candidate.firstName || !candidate.lastName || !candidate.email)) {
+      throw new BadRequestException('Candidato externo requiere firstName, lastName y email para contratar');
+    }
+
+    // 3. Resolver dept/pos/manager (con tenant scope)
+    const newDept = hireData.newDepartmentId
+      ? await this.departmentRepo.findOne({ where: { id: hireData.newDepartmentId, tenantId } })
+      : null;
+    if (hireData.newDepartmentId && !newDept) {
+      throw new BadRequestException('Departamento destino no existe en este tenant');
+    }
+    const newPos = hireData.newPositionId
+      ? await this.positionRepo.findOne({ where: { id: hireData.newPositionId, tenantId } })
+      : null;
+    if (hireData.newPositionId && !newPos) {
+      throw new BadRequestException('Cargo destino no existe en este tenant');
+    }
+    let newManager: User | null = null;
+    if (hireData.newManagerId) {
+      newManager = await this.userRepo.findOne({ where: { id: hireData.newManagerId, tenantId } });
+      if (!newManager) {
+        throw new BadRequestException('Manager destino no existe en este tenant');
+      }
+      if (newManager.role !== 'manager' && newManager.role !== 'tenant_admin') {
+        throw new BadRequestException('Manager destino no tiene rol de jefatura (manager o tenant_admin)');
+      }
+    }
+
+    // 4. Pre-check externo: email duplicado dentro del mismo tenant
+    if (!isInternal) {
+      const dup = await this.userRepo.findOne({ where: { email: candidate.email!, tenantId } });
+      if (dup) {
+        throw new ConflictException(
+          `Ya existe un usuario con el email ${candidate.email} en esta organizacion. Debe ingresar como interno o cambiar el email del candidato.`,
+        );
+      }
+    }
+
+    // 5. Para externo, generar password ANTES de la transaccion (hash es
+    //    CPU bound; no queremos bloquear la tx con el bcrypt).
+    let tempPassword: string | null = null;
+    let passwordHash: string | null = null;
+    if (!isInternal) {
+      tempPassword = this.generateTempPassword();
+      passwordHash = await bcrypt.hash(tempPassword, 12);
+    }
+
+    // 6. Transaccion: candidate + process + user + movement (atomico).
+    let resultUserId = '';
+    await this.dataSource.transaction(async (manager) => {
+      const candidateRepo = manager.getRepository(RecruitmentCandidate);
+      const processRepo = manager.getRepository(RecruitmentProcess);
+      const userRepoTx = manager.getRepository(User);
+      const movementRepoTx = manager.getRepository(UserMovement);
+
+      // a. Marcar candidato como contratado.
+      candidate.stage = CandidateStage.HIRED;
+      await candidateRepo.save(candidate);
+
+      // b. Marcar proceso completado.
+      process.status = ProcessStatus.COMPLETED;
+      process.winningCandidateId = candidate.id;
+      process.hireData = hireData;
+      process.autoClosed = false;
+      await processRepo.save(process);
+
+      // c. Cascada a User.
+      if (isInternal) {
+        const user = await userRepoTx.findOne({ where: { id: candidate.userId!, tenantId } });
+        if (!user) throw new NotFoundException('Usuario interno asociado no encontrado');
+
+        const prevDept = user.department;
+        const prevPos = user.position;
+        const prevManagerId = user.managerId;
+        const prevLevel = user.hierarchyLevel;
+
+        // Aplicar cambios (dual-write text + ID)
+        if (newDept) {
+          user.department = newDept.name;
+          user.departmentId = newDept.id;
+        }
+        if (newPos) {
+          user.position = newPos.name;
+          user.positionId = newPos.id;
+          user.hierarchyLevel = newPos.level;
+        }
+        if (newManager) {
+          user.managerId = newManager.id;
+        }
+        await userRepoTx.save(user);
+
+        const deptChanged = !!newDept && prevDept !== user.department;
+        const posChanged = !!newPos && prevPos !== user.position;
+        const managerChanged = !!newManager && prevManagerId !== user.managerId;
+
+        // Solo creamos `user_movement` si hay cambio de DEPT o POSITION
+        // (mismo criterio que UsersService.update). Cambio solo de
+        // managerId queda registrado en audit log mas abajo, no como
+        // movimiento (no hay un MovementType MANAGER_CHANGE en el enum
+        // y forzar POSITION_CHANGE con same-pos seria misleading en
+        // reportes de movilidad).
+        if (deptChanged || posChanged) {
+          const movType = this.detectMovementType({
+            deptChanged,
+            posChanged,
+            prevLevel,
+            newLevel: newPos?.level ?? null,
+          });
+          await movementRepoTx.save(movementRepoTx.create({
+            tenantId,
+            userId: user.id,
+            movementType: movType,
+            effectiveDate: new Date(hireData.effectiveDate),
+            fromDepartment: prevDept || null,
+            toDepartment: user.department || null,
+            fromPosition: prevPos || null,
+            toPosition: user.position || null,
+            reason: `Hire interno desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+            approvedBy: callerUserId,
+          }));
+        }
+        // Cambio de manager se registra implicitamente en el audit log
+        // de hire (recruitment.candidate_hired metadata.hireData.newManagerId).
+        // No referencia explicita aqui porque managerChanged no genera fila
+        // en user_movements por las razones del comentario superior.
+        void managerChanged;
+
+        resultUserId = user.id;
+      } else {
+        // Externo: crear nuevo User
+        const newUser = userRepoTx.create({
+          tenantId,
+          email: candidate.email!,
+          firstName: candidate.firstName!,
+          lastName: candidate.lastName!,
+          passwordHash: passwordHash!,
+          role: 'employee',
+          managerId: newManager?.id ?? null,
+          department: newDept?.name ?? null,
+          departmentId: newDept?.id ?? null,
+          position: newPos?.name ?? null,
+          positionId: newPos?.id ?? null,
+          hierarchyLevel: newPos?.level ?? null,
+          hireDate: new Date(hireData.effectiveDate),
+          isActive: true,
+          mustChangePassword: true,
+          secondaryManagers: [],
+        } as Partial<User>);
+        const savedUser = await userRepoTx.save(newUser) as User;
+
+        // Insertar movimiento "joined company" (from=null) para audit
+        await movementRepoTx.save(movementRepoTx.create({
+          tenantId,
+          userId: savedUser.id,
+          // POSITION_CHANGE con fromPosition=null representa el alta inicial.
+          // En reportes de movilidad este se filtra por effectiveDate +
+          // fromPosition IS NULL para distinguir "ingreso" de movimientos
+          // internos posteriores.
+          movementType: MovementType.POSITION_CHANGE,
+          effectiveDate: new Date(hireData.effectiveDate),
+          fromDepartment: null,
+          toDepartment: savedUser.department || null,
+          fromPosition: null,
+          toPosition: savedUser.position || null,
+          reason: `Contratacion externa desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+          approvedBy: callerUserId,
+        }));
+
+        resultUserId = savedUser.id;
+      }
+    });
+
+    // 7. Audit log post-commit (no bloqueamos la respuesta si falla).
+    try {
+      await this.auditService.log(
+        tenantId, callerUserId,
+        'recruitment.candidate_hired',
+        'recruitment_process', processId,
+        {
+          candidateId,
+          candidateType: candidate.candidateType,
+          userId: resultUserId,
+          processName: process.title,
+          isExternal: !isInternal,
+          hireData: {
+            effectiveDate: hireData.effectiveDate,
+            newDepartmentId: hireData.newDepartmentId,
+            newPositionId: hireData.newPositionId,
+            newManagerId: hireData.newManagerId,
+            contractType: hireData.contractType,
+            // No registramos `salary` en audit metadata por privacidad — el dato vive en hire_data del proceso, accesible solo a admins.
+          },
+        },
+      );
+    } catch (e: any) {
+      this.logger.warn(`Audit log de hire fallo: ${e?.message ?? e}`);
+    }
+
+    // 8. Reload entidades actualizadas.
+    const updatedProcess = await this.processRepo.findOne({ where: { id: processId, tenantId } });
+    const updatedCandidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+
+    return {
+      process: updatedProcess!,
+      candidate: updatedCandidate!,
+      userId: resultUserId,
+      tempPassword, // null para internos, password unico para externos
+    };
   }
 
   async getCandidateProfile(tenantId: string, candidateId: string): Promise<any> {
