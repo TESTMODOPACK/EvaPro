@@ -131,9 +131,25 @@ async function main() {
      ORDER BY created_at ASC`,
     [tenantId],
   );
+  // Helper: detectar cycle type del nombre si default_cycle_type es null.
+  // Usa regex sobre el nombre buscando "90°", "180°", "270°", "360°".
+  const detectCycleType = (tpl: any): string => {
+    if (tpl.default_cycle_type) return tpl.default_cycle_type;
+    const name = (tpl.name || '').toLowerCase();
+    if (name.includes('360')) return '360';
+    if (name.includes('270')) return '270';
+    if (name.includes('180')) return '180';
+    if (name.includes('90')) return '90';
+    return '360'; // fallback default
+  };
+
+  templates.forEach((t: any) => {
+    t.detected_cycle_type = detectCycleType(t);
+  });
+
   console.log(`✓ Found ${templates.length} templates`);
   templates.forEach((t: any, i: number) =>
-    console.log(`  ${i + 1}. "${t.name}" (cycle_type=${t.default_cycle_type || 'sin definir'})`),
+    console.log(`  ${i + 1}. "${t.name}" (cycle_type=${t.detected_cycle_type}${t.default_cycle_type ? '' : ' [detectado por nombre]'})`),
   );
 
   if (templates.length < 4) {
@@ -141,8 +157,16 @@ async function main() {
     process.exit(1);
   }
 
-  // Tomar las primeras 4 (admin creó esas)
-  const templates4 = templates.slice(0, 4);
+  // Preferir 4 plantillas con cycle types distintos (90, 180, 270, 360).
+  // Si no hay diversidad, tomar las primeras 4.
+  const byType: Record<string, any> = {};
+  for (const t of templates) {
+    if (!byType[t.detected_cycle_type]) byType[t.detected_cycle_type] = t;
+  }
+  const diverseTemplates = Object.values(byType).slice(0, 4);
+  const templates4 = diverseTemplates.length >= 4 ? diverseTemplates : templates.slice(0, 4);
+  console.log(`\n→ Usando ${templates4.length} plantillas para los 4 ciclos:`);
+  templates4.forEach((t: any) => console.log(`  • "${t.name}" (${t.detected_cycle_type}°)`));
 
   // ── 3. Get users ────────────────────────────────────────────────────
   const users = await ds.query(
@@ -260,7 +284,7 @@ async function main() {
 
   for (const config of cycleConfigs) {
     const tpl = config.template;
-    const cycleType = tpl.default_cycle_type || '360';
+    const cycleType = tpl.detected_cycle_type || tpl.default_cycle_type || '360';
     const allowedRelations = RELATIONS_BY_CYCLE_TYPE[cycleType] || ['self', 'manager'];
     const weights = DEFAULT_WEIGHTS[cycleType] || { manager: 1.0 };
 
@@ -359,7 +383,8 @@ async function main() {
     stages.push({ name: 'Entrega de Feedback', type: 'feedback_delivery' });
     stages.push({ name: 'Cerrado', type: 'closed' });
 
-    const stageStatus = config.status === 'closed' ? 'completed' : config.status === 'active' ? 'in_progress' : 'pending';
+    // StageStatus enum: pending | active | completed | skipped (NO 'in_progress')
+    const stageStatus = config.status === 'closed' ? 'completed' : config.status === 'active' ? 'active' : 'pending';
     for (let i = 0; i < stages.length; i++) {
       await ds.query(
         `INSERT INTO cycle_stages (id, tenant_id, cycle_id, name, type, stage_order, status, start_date, end_date)
