@@ -14,6 +14,7 @@ import {
 import { usePeerAssignments, useAddPeerAssignment, useRemovePeerAssignment } from '@/hooks/usePeerAssignments';
 import { useUsers } from '@/hooks/useUsers';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useTemplateWithSubTemplates } from '@/hooks/useTemplates';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import Link from 'next/link';
@@ -62,6 +63,12 @@ export default function CycleDetailPage() {
     if (!cycle?.templateId || !token) return;
     api.templates.getById(token, cycle.templateId).then(setTemplate).catch(() => {});
   }, [cycle?.templateId, token]);
+
+  // Fase 3: cargar las subplantillas para mostrar breakdown por rol
+  // (qué plantilla/preguntas se usó para self vs jefe vs par vs reporte directo).
+  // El hook ya tiene enabled:!!id, asi que es safe pasar null cuando no hay templateId.
+  const { data: subTemplateData } = useTemplateWithSubTemplates(cycle?.templateId || null);
+  const subTemplates = (subTemplateData as any)?.subTemplates ?? [];
 
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState('');
@@ -724,6 +731,89 @@ export default function CycleDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Fase 3 — breakdown por subplantilla. Distingue qué set de
+              preguntas vio cada rol (self vs jefe vs par vs reporte directo)
+              y con qué peso entra cada rol al score final del ciclo. Solo
+              se muestra cuando hay subplantillas cargadas. */}
+          {subTemplates.length > 0 && (() => {
+            const RELATION_META: Record<string, { emoji: string; label: string; order: number }> = {
+              self: { emoji: '🪞', label: 'Autoevaluación', order: 1 },
+              manager: { emoji: '👔', label: 'Evaluación del jefe', order: 2 },
+              peer: { emoji: '👥', label: 'Evaluación de par', order: 3 },
+              direct_report: { emoji: '⬇️', label: 'Reporte directo', order: 4 },
+              external: { emoji: '🌐', label: 'Externo', order: 5 },
+            };
+            const sorted = [...subTemplates].sort((a: any, b: any) => {
+              const oa = RELATION_META[a.relationType]?.order ?? 99;
+              const ob = RELATION_META[b.relationType]?.order ?? 99;
+              return oa - ob;
+            });
+            return (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.4rem',
+                  padding: '0.75rem',
+                  background: 'var(--bg-base)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  marginTop: '0.5rem',
+                }}
+              >
+                {sorted.map((sub: any) => {
+                  const meta = RELATION_META[sub.relationType] || {
+                    emoji: '📄',
+                    label: sub.relationType,
+                  };
+                  const sections = Array.isArray(sub.sections) ? sub.sections : [];
+                  const sectionCount = sections.length;
+                  const questionCount = sections.reduce(
+                    (acc: number, s: any) => acc + (Array.isArray(s.questions) ? s.questions.length : 0),
+                    0,
+                  );
+                  const weightPct = Math.round(((Number(sub.weight) || 0) * 100));
+                  const inactive = sub.isActive === false;
+                  return (
+                    <div
+                      key={sub.id || sub.relationType}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem',
+                        fontSize: '0.78rem',
+                        opacity: inactive ? 0.55 : 1,
+                      }}
+                    >
+                      <span style={{ fontSize: '1rem', flexShrink: 0 }}>{meta.emoji}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', minWidth: '170px' }}>
+                        {meta.label}
+                        {inactive && (
+                          <span
+                            className="badge badge-ghost"
+                            style={{ fontSize: '0.62rem', marginLeft: '0.4rem' }}
+                          >
+                            inactiva
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className="badge badge-accent"
+                        style={{ fontSize: '0.68rem', minWidth: '42px', textAlign: 'center' }}
+                        title="Peso de esta subplantilla en el score final del ciclo"
+                      >
+                        {weightPct}%
+                      </span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>
+                        {sectionCount} {sectionCount === 1 ? 'sección' : 'secciones'} · {questionCount} {questionCount === 1 ? 'pregunta' : 'preguntas'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {showTemplate && !hasSubTemplates && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
