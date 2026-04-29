@@ -96,6 +96,9 @@ async function main() {
         : false,
     synchronize: false,
     logging: false,
+    // Forzar pool single-connection para que el SET app.current_tenant_id
+    // persista en la misma sesion durante todo el script (RLS context).
+    extra: { max: 1 },
   });
 
   await ds.initialize();
@@ -111,6 +114,14 @@ async function main() {
   }
   const tenantId = tenantRow[0].id;
   console.log(`✓ Tenant: ${tenantRow[0].name} (${tenantId.slice(0, 8)})`);
+
+  // RLS context — necesario porque el script corre como eva360_app
+  // (no superuser) en producción. Sin esto, las RLS policies
+  // bloquean los INSERTs en evaluation_responses, etc.
+  // Single-connection pool garantiza que este SET persista en TODAS
+  // las queries posteriores.
+  await ds.query(`SET app.current_tenant_id = '${tenantId}'`);
+  console.log('✓ RLS tenant context set');
 
   // ── 2. Find templates ───────────────────────────────────────────────
   const templates = await ds.query(
