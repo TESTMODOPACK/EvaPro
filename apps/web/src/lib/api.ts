@@ -669,6 +669,29 @@ export const api = {
       adjustScore: (token: string, id: string, adjustment: number, justification: string) =>
         request<any>(`/recruitment/candidates/${id}/adjust-score`, { method: "PATCH", body: JSON.stringify({ adjustment, justification }) }, token),
     },
+    /**
+     * S1.2 — Hire candidate (cierre del flow de seleccion).
+     *
+     * Body:
+     *   {
+     *     effectiveDate: 'YYYY-MM-DD',
+     *     newDepartmentId?: uuid, newPositionId?: uuid, newManagerId?: uuid,
+     *     salary?: number, contractType?: 'indefinido'|'plazo_fijo'|'honorarios'|'practicante',
+     *     notes?: string
+     *   }
+     *
+     * Response:
+     *   {
+     *     process, candidate, userId,
+     *     tempPassword: string | null   // SOLO para externos — guardar y mostrar UNA VEZ
+     *   }
+     */
+    hireCandidate: (token: string, processId: string, candidateId: string, data: any) =>
+      request<{ process: any; candidate: any; userId: string; tempPassword: string | null }>(
+        `/recruitment/processes/${processId}/hire/${candidateId}`,
+        { method: "POST", body: JSON.stringify(data) },
+        token,
+      ),
   },
 
   users: {
