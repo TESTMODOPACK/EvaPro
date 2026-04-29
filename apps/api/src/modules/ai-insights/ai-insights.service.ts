@@ -162,7 +162,26 @@ export class AiInsightsService {
     return { planLimit, addonCalls, addonUsed, periodStart, periodEnd, subscriptionStartDate: startDate };
   }
 
-  /** Count AI calls for the current billing period */
+  /**
+   * Count AI calls for the current billing period.
+   *
+   * **Fix 2026-04-28**: cuenta de `ai_call_logs` (single source of truth)
+   * y NO de `ai_insights`. Antes había inconsistencia:
+   *   - getMonthlyCallCount → ai_insights → tenant_admin veía "11 de 1500"
+   *   - getAiUsageLog → ai_call_logs → super_admin veía "0 ejecuciones"
+   *   - trackAddonUsage → ai_call_logs (correcto)
+   *
+   * El bug se reveló post-cleanup de DEMO Company: el SQL borraba
+   * ai_call_logs (todos los del tenant) pero solo borraba ai_insights
+   * vinculados a cycles (los huérfanos tipo agenda_suggestions o
+   * flight_risk con cycleId=null sobrevivieron). Resultado: ai_insights
+   * tenía 11 huérfanos, ai_call_logs tenía 0.
+   *
+   * Source of truth: ai_call_logs persiste cada llamada al API de
+   * Anthropic (incluso cuando parseJson falla), reflejando el costo
+   * real en tokens. ai_insights solo se persiste con parse exitoso —
+   * undercounteaba.
+   */
   private async getMonthlyCallCount(tenantId: string): Promise<{
     planUsed: number; addonUsed: number; totalUsed: number;
     planLimit: number; addonRemaining: number; totalLimit: number;
@@ -170,14 +189,13 @@ export class AiInsightsService {
   }> {
     const { planLimit, addonCalls, addonUsed, periodStart, periodEnd } = await this.getSubscriptionAiInfo(tenantId);
 
-    // Count insights created in current period (plan credits)
-    // Use MoreThanOrEqual to include insights created at exactly period start
-    const periodUsed = await this.insightRepo.count({
+    // Count call_logs created in current period (plan credits) — source of truth.
+    const periodUsed = await this.callLogRepo.count({
       where: { tenantId, createdAt: MoreThanOrEqual(periodStart) },
     });
 
-    // Debug: count ALL insights for this tenant to detect period mismatch
-    const totalAllTime = await this.insightRepo.count({ where: { tenantId } });
+    // Debug: count ALL call_logs for this tenant to detect period mismatch
+    const totalAllTime = await this.callLogRepo.count({ where: { tenantId } });
     if (totalAllTime > 0 && periodUsed === 0) {
       this.logger.warn(`AI period mismatch: tenant=${tenantId.slice(0,8)}, totalAllTime=${totalAllTime}, periodUsed=0, periodStart=${periodStart.toISOString()}, periodEnd=${periodEnd.toISOString()}`);
     }
