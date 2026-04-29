@@ -919,11 +919,75 @@ export default function CycleDetailPage() {
 
           {/* Fallback legacy: cuando el fetch de subplantillas TERMINO y
               no hay subs (template sin applicableTo ni form_sub_templates),
-              mostrar la lista plana del template padre. La condicion
+              mostrar la lista plana del template padre + un BANNER que
+              explica que todos los evaluadores vieron las mismas preguntas
+              (no hubo separacion por rol). La condicion
               `subTemplateData !== undefined` evita el flash de legacy
               durante el loading inicial. */}
-          {showTemplate && subTemplateData !== undefined && subTemplates.length === 0 && (
+          {showTemplate && subTemplateData !== undefined && subTemplates.length === 0 && (() => {
+            const RELATION_LEGACY: Record<string, { emoji: string; label: string; color: string }> = {
+              self: { emoji: '🪞', label: 'Autoevaluación', color: '#6366f1' },
+              manager: { emoji: '👔', label: 'Evaluación del jefe', color: '#C9933A' },
+              peer: { emoji: '👥', label: 'Evaluación de par', color: '#10b981' },
+              direct_report: { emoji: '⬇️', label: 'Reporte directo', color: '#f59e0b' },
+              external: { emoji: '🌐', label: 'Externo', color: '#94a3b8' },
+            };
+            // Roles reales participando en el ciclo (desde assignments).
+            // Si no hay assignments cargadas, fallback por cycle.type.
+            const fallbackByCycleType: Record<string, string[]> = {
+              '90': ['self', 'manager'],
+              '180': ['self', 'manager'],
+              '270': ['self', 'manager', 'peer'],
+              '360': ['self', 'manager', 'peer', 'direct_report'],
+            };
+            const rolesInCycle = uniqueRelations.length > 0
+              ? uniqueRelations
+              : (fallbackByCycleType[cycle.type] || []);
+            return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
+              {/* Banner explicativo: legacy sin separacion */}
+              <div style={{
+                padding: '0.75rem 1rem',
+                background: 'rgba(245,158,11,0.06)',
+                border: '1px solid rgba(245,158,11,0.25)',
+                borderLeft: '4px solid #f59e0b',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.78rem',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.55,
+              }}>
+                <div style={{ fontWeight: 700, color: '#b45309', marginBottom: '0.3rem' }}>
+                  ℹ️ Plantilla sin separación por rol
+                </div>
+                <p style={{ margin: '0 0 0.5rem' }}>
+                  Esta plantilla no fue diferenciada por rol — TODOS los evaluadores del ciclo
+                  respondieron las mismas {(template.sections || []).reduce((acc: number, s: any) => acc + (s.questions?.length || 0), 0)} preguntas
+                  listadas abajo.
+                </p>
+                {rolesInCycle.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center', marginTop: '0.4rem' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Roles que participaron:</span>
+                    {rolesInCycle.map((r) => {
+                      const meta = RELATION_LEGACY[r] || { emoji: '📄', label: r, color: '#94a3b8' };
+                      return (
+                        <span
+                          key={r}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                            fontSize: '0.7rem', padding: '0.15rem 0.55rem',
+                            borderRadius: '999px', fontWeight: 600,
+                            color: '#fff', background: meta.color,
+                          }}
+                        >
+                          <span aria-hidden="true">{meta.emoji}</span>
+                          {meta.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {(template.sections || []).map((sec: any, si: number) => (
                 <div key={sec.id || si} style={{ padding: '0.75rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--accent)' }}>
@@ -947,7 +1011,8 @@ export default function CycleDetailPage() {
                 </div>
               ))}
             </div>
-          )}
+            );
+          })()}
         </div>
         );
       })()}
