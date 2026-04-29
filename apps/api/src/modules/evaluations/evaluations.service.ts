@@ -1039,6 +1039,15 @@ export class EvaluationsService {
 
     const cycleType = cycle.type as CycleType;
     const allowedRelations = this.getAllowedRelations(cycleType);
+
+    // Sprint 3 BR-A.2: minPeerCount configurable (cycle.settings o tenant.settings)
+    const settings = (cycle.settings as any) || {};
+    const minPeerCount: number = Math.max(2, Math.min(20, Number(settings.minPeerCount) || 3));
+
+    // Sprint 3 BR-A.3: peerScopingStrategy configurable
+    const peerScopingStrategy: 'SAME_DEPARTMENT' | 'MANAGER_TREE' | 'SAME_HIERARCHY_LEVEL' | 'ALL_ACTIVE' =
+      settings.peerScopingStrategy || 'SAME_DEPARTMENT';
+
     const users = await this.userRepo.find({
       where: { tenantId, isActive: true },
       select: ['id', 'managerId', 'role', 'department', 'departmentId', 'firstName', 'lastName', 'hierarchyLevel'],
@@ -1185,7 +1194,28 @@ export class EvaluationsService {
       // ALLOWED_RELATIONS, delegamos el control a ese map (single source
       // of truth) — el includes() ya filtra correctamente por tipo de ciclo.
       if (allowedRelations.includes(RelationType.PEER)) {
-        if (!evaluatee.department && !(evaluatee as any).departmentId) {
+        // Sprint 3 BR-A.3: peerScopingStrategy controla quién puede ser peer.
+        // SAME_DEPARTMENT (default) — solo del mismo departmentId.
+        // MANAGER_TREE — comparten manager (independiente de depto).
+        // SAME_HIERARCHY_LEVEL — mismo hierarchyLevel ± 1.
+        // ALL_ACTIVE — todos los users activos del tenant.
+        const matchesPeerScope = (a: any, b: any): boolean => {
+          if (peerScopingStrategy === 'ALL_ACTIVE') return true;
+          if (peerScopingStrategy === 'MANAGER_TREE') {
+            return !!(a.managerId && b.managerId && a.managerId === b.managerId);
+          }
+          if (peerScopingStrategy === 'SAME_HIERARCHY_LEVEL') {
+            if (a.hierarchyLevel == null || b.hierarchyLevel == null) return false;
+            return Math.abs(a.hierarchyLevel - b.hierarchyLevel) <= 1;
+          }
+          // SAME_DEPARTMENT (default)
+          return a.departmentId && b.departmentId
+            ? a.departmentId === b.departmentId
+            : !!(a.department && b.department && a.department === b.department);
+        };
+
+        // SAME_DEPARTMENT exige tener depto; otras strategies no.
+        if (peerScopingStrategy === 'SAME_DEPARTMENT' && !evaluatee.department && !(evaluatee as any).departmentId) {
           exceptions.push({
             evaluateeId: evaluatee.id,
             evaluateeName: evalName(evaluatee),
@@ -1195,27 +1225,23 @@ export class EvaluationsService {
             relationType: 'peer',
           });
         } else {
-          // Candidates: same department (prefer ID, fallback text), not self, not their manager
-          const sameDeptCheck = (a: any, b: any) =>
-            a.departmentId && b.departmentId ? a.departmentId === b.departmentId
-            : !!(a.department && b.department && a.department === b.department);
           const peerCandidates = evaluatees.filter((u) =>
             u.id !== evaluatee.id &&
             u.id !== evaluatee.managerId &&
-            sameDeptCheck(evaluatee, u) &&
+            matchesPeerScope(evaluatee, u) &&
             !existingSet.has(`${evaluatee.id}|${u.id}|${RelationType.PEER}`),
           );
 
-          if (peerCandidates.length < 3) {
+          if (peerCandidates.length < minPeerCount) {
             exceptions.push({
               evaluateeId: evaluatee.id,
               evaluateeName: evalName(evaluatee),
               department: evaluatee.department,
               type: 'INSUFFICIENT_PEERS',
-              message: `Solo ${peerCandidates.length} par(es) disponible(s) en el departamento (mínimo 3)`,
+              message: `Solo ${peerCandidates.length} par(es) disponible(s) en el scope (mínimo ${minPeerCount}) [strategy=${peerScopingStrategy}]`,
               relationType: 'peer',
               available: peerCandidates.length,
-              required: 3,
+              required: minPeerCount,
             });
           } else {
             // Sort by hierarchy level proximity, then by name
@@ -1228,8 +1254,8 @@ export class EvaluationsService {
               return evalName(a).localeCompare(evalName(b));
             });
 
-            // Assign top 3 closest peers
-            for (const peer of sorted.slice(0, 3)) {
+            // Assign top N closest peers (configurable, default 3).
+            for (const peer of sorted.slice(0, minPeerCount)) {
               toCreate.push({
                 tenantId,
                 cycleId,
@@ -1381,18 +1407,21 @@ export class EvaluationsService {
       throw new BadRequestException('Debe configurar al menos una asignación antes de lanzar el ciclo');
     }
 
-    // B1.3: For 270°/360° cycles, ensure at least 3 peer evaluators per evaluatee (anonymity)
+    // B1.3: For 270°/360° cycles, ensure mínimo de peers (Sprint 3 BR-A.2 configurable)
     if (cycle.type === CycleType.DEGREE_270 || cycle.type === CycleType.DEGREE_360) {
+      const launchSettings = (cycle.settings as any) || {};
+      const minPeers: number = Math.max(2, Math.min(20, Number(launchSettings.minPeerCount) || 3));
+
       const evaluateeIds = [...new Set(preAssignments.map((pa) => pa.evaluateeId))];
       for (const evaluateeId of evaluateeIds) {
         const peerCount = preAssignments.filter(
           (pa) => pa.evaluateeId === evaluateeId && pa.relationType === RelationType.PEER,
         ).length;
-        if (peerCount < 3) {
+        if (peerCount < minPeers) {
           const user = await this.userRepo.findOne({ where: { id: evaluateeId }, select: ['id', 'firstName', 'lastName'] });
           const name = user ? `${user.firstName} ${user.lastName}` : evaluateeId;
           throw new BadRequestException(
-            `El evaluado "${name}" tiene solo ${peerCount} evaluador(es) par(es). Se requieren mínimo 3 para garantizar el anonimato en evaluaciones ${cycle.type}.`,
+            `El evaluado "${name}" tiene solo ${peerCount} evaluador(es) par(es). Se requieren mínimo ${minPeers} para garantizar el anonimato en evaluaciones ${cycle.type}.`,
           );
         }
       }

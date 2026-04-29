@@ -1229,6 +1229,7 @@ export class ReportsService {
         title: string;
         questionsByRelation: Record<string, any[]>; // relationType → questions
         sourceMaxScale: number;
+        weight: number; // Sprint 3 BR-B.4: peso de la sección (default 1.0)
       }
     >();
 
@@ -1238,11 +1239,17 @@ export class ReportsService {
       const key = sec.competencyId || sec.title || sec.id || 'unknown';
       const existing = unifiedSections.get(key);
       const sourceMax = Math.max(...scaleQs.map((q: any) => q.scale?.max ?? 10));
+      // Sprint 3 BR-B.4: peso de sección (default 1.0 = uniforme).
+      // Si distintas subs tienen pesos distintos para la misma competencia,
+      // tomamos el max (admin puede haber priorizado distinto por rol).
+      const sectionWeight =
+        typeof sec.weight === 'number' && sec.weight >= 0 ? sec.weight : 1.0;
       if (!existing) {
         unifiedSections.set(key, {
           title: sec.title || sec.id || 'Sin nombre',
           questionsByRelation: { [relationType]: scaleQs },
           sourceMaxScale: sourceMax,
+          weight: sectionWeight,
         });
       } else {
         existing.questionsByRelation[relationType] = [
@@ -1250,6 +1257,7 @@ export class ReportsService {
           ...scaleQs,
         ];
         existing.sourceMaxScale = Math.max(existing.sourceMaxScale, sourceMax);
+        existing.weight = Math.max(existing.weight ?? 1.0, sectionWeight);
       }
     };
 
@@ -1391,6 +1399,46 @@ export class ReportsService {
       return { hasOutliers: outliers.length > 0, outliers };
     };
 
+    /**
+     * Sprint 3 BR-D.4 — Inter-rater reliability score.
+     * Toma sourceMaxScale como parámetro (varía por sección).
+     */
+    const computeReliability = (
+      values: number[],
+      sourceMaxScale: number,
+    ): {
+      consistency: number | null;
+      stddev: number | null;
+      n: number;
+      level: 'high' | 'moderate' | 'low' | null;
+      warning: string | null;
+    } => {
+      const n = values.length;
+      if (n < 3) {
+        return { consistency: null, stddev: null, n, level: null, warning: null };
+      }
+      const mean = values.reduce((s, v) => s + v, 0) / n;
+      const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
+      const stddev = Math.sqrt(variance);
+      const maxStddev = sourceMaxScale >= 10 ? 4 : 2;
+      const consistency = Math.max(0, 1 - stddev / maxStddev);
+      let level: 'high' | 'moderate' | 'low';
+      let warning: string | null = null;
+      if (consistency >= 0.85) level = 'high';
+      else if (consistency >= 0.65) level = 'moderate';
+      else {
+        level = 'low';
+        warning = 'Polarización detectada — los evaluadores difieren significativamente';
+      }
+      return {
+        consistency: Math.round(consistency * 100) / 100,
+        stddev: Math.round(stddev * 100) / 100,
+        n,
+        level,
+        warning,
+      };
+    };
+
     const sections: any[] = [];
     for (const [, sec] of unifiedSections) {
       const sourceMaxScale = sec.sourceMaxScale;
@@ -1428,6 +1476,8 @@ export class ReportsService {
       // relationScores: agregado por rol con outlier strategy
       const relationScores: Record<string, number> = {};
       const relationOutliers: Record<string, { hasOutliers: boolean; count: number }> = {};
+      // Sprint 3 BR-D.4: reliability por rol
+      const relationReliability: Record<string, ReturnType<typeof computeReliability>> = {};
       for (const [rel, vals] of Object.entries(valuesByRelation)) {
         if (vals.length === 0) continue;
         const agg = aggregate(vals);
@@ -1437,6 +1487,10 @@ export class ReportsService {
         if (ol.hasOutliers) {
           relationOutliers[rel] = { hasOutliers: true, count: ol.outliers.length };
         }
+        // Reliability sobre los SCORES NORMALIZADOS por evaluador
+        // (más estable que sobre raw, mantiene escala 0-10).
+        const normalizedVals = vals.map((v) => normalize(v));
+        relationReliability[rel] = computeReliability(normalizedVals, 10);
       }
 
       // overall: promedio ponderado con adjustedWeights (Sprint 2 BR-B.3).
@@ -1474,6 +1528,10 @@ export class ReportsService {
         // Sprint 2 BR-D.1: outliers detectados (independiente de strategy)
         outliers: relationOutliers,
         outlierStrategy,
+        // Sprint 3 BR-D.4: reliability metrics por rol
+        reliability: relationReliability,
+        // Sprint 3 BR-B.4: peso de la sección (default 1.0 = uniforme)
+        sectionWeight: sec.weight ?? 1.0,
       });
     }
 
