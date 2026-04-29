@@ -98,6 +98,48 @@ export class RecruitmentProcess {
   @JoinColumn({ name: 'created_by' })
   creator: User;
 
+  /**
+   * S1 (Sprint 1) — Hire flow:
+   *
+   * `winning_candidate_id` apunta al candidato seleccionado cuando el
+   * admin ejecuta el "Marcar como contratado". Es nullable porque un
+   * proceso puede cerrarse sin contratar (CLOSED) y porque hasta antes
+   * de S1 los procesos COMPLETED no tenian este dato.
+   *
+   * No usamos FK constraint para evitar el ON DELETE chain — si el
+   * candidato se elimina, queremos preservar el registro historico de
+   * "este proceso eligio a X" para auditoria; el id queda dangling pero
+   * lo manejamos en lectura. En la entity solo declaramos la columna.
+   */
+  @Column({ type: 'uuid', name: 'winning_candidate_id', nullable: true })
+  winningCandidateId: string | null;
+
+  /**
+   * `hire_data` JSONB con los datos capturados al ejecutar hire desde
+   * el modal:
+   *   - effectiveDate: fecha de inicio en el nuevo cargo
+   *   - newDepartmentId / newPositionId / newManagerId: estructura
+   *     organizacional resultante (puede diferir del proceso original)
+   *   - salary, contractType: solo persistidos para registro; el modulo
+   *     contracts es la fuente formal del contrato
+   *   - notes: justificacion / contexto del hire
+   *
+   * Nullable porque hasta antes de S1 no existia esta informacion.
+   * Se persiste tambien en user_movements al ejecutar la cascada para
+   * tener un audit trail formal — `hire_data` es la copia "lo que
+   * dijo el admin", `user_movements` es la verdad operativa.
+   */
+  @Column({ type: 'jsonb', name: 'hire_data', nullable: true })
+  hireData: {
+    effectiveDate: string; // ISO date YYYY-MM-DD
+    newDepartmentId?: string | null;
+    newPositionId?: string | null;
+    newManagerId?: string | null;
+    salary?: number | null;
+    contractType?: 'indefinido' | 'plazo_fijo' | 'honorarios' | 'practicante' | null;
+    notes?: string | null;
+  } | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 
