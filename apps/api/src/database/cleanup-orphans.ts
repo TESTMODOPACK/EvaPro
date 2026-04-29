@@ -229,6 +229,31 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS idx_sub_templates_parent ON form_sub_templates(parent_template_id)`,
       `CREATE INDEX IF NOT EXISTS idx_sub_templates_tenant ON form_sub_templates(tenant_id)`,
       `CREATE INDEX IF NOT EXISTS idx_sub_templates_active ON form_sub_templates(parent_template_id, is_active) WHERE is_active = true`,
+
+      // ── cycle_org_snapshots (Sprint 1 BR-C.1 auditoria integridad) ────
+      // Snapshot inmutable del organigrama al lanzar un ciclo. Garantiza
+      // que reports y validaciones se mantengan coherentes incluso si
+      // users.manager_id, department_id, etc. cambian mid-cycle.
+      `CREATE TABLE IF NOT EXISTS cycle_org_snapshots (
+        cycle_id uuid NOT NULL REFERENCES evaluation_cycles(id) ON DELETE CASCADE,
+        user_id uuid NOT NULL,
+        tenant_id uuid NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        primary_manager_id uuid NULL,
+        secondary_managers uuid[] NOT NULL DEFAULT '{}',
+        department_id uuid NULL,
+        department_name varchar(200) NULL,
+        hierarchy_level int NULL,
+        role varchar(50) NULL,
+        is_active boolean NOT NULL,
+        late_addition boolean NOT NULL DEFAULT false,
+        excluded_at timestamptz NULL,
+        excluded_reason text NULL,
+        snapshot_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (cycle_id, user_id)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_cycle_org_snapshot_user ON cycle_org_snapshots(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_cycle_org_snapshot_cycle_active ON cycle_org_snapshots(cycle_id, is_active)`,
+      `CREATE INDEX IF NOT EXISTS idx_cycle_org_snapshot_tenant ON cycle_org_snapshots(tenant_id)`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }

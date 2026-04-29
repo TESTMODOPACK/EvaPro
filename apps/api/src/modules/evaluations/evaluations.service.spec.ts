@@ -16,6 +16,7 @@ import { EvaluationCycle } from './entities/evaluation-cycle.entity';
 import { EvaluationAssignment } from './entities/evaluation-assignment.entity';
 import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { CycleStage } from './entities/cycle-stage.entity';
+import { CycleOrgSnapshot } from './entities/cycle-org-snapshot.entity';
 import { PeerAssignment } from './entities/peer-assignment.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
@@ -66,6 +67,10 @@ describe('EvaluationsService', () => {
         { provide: getRepositoryToken(EvaluationAssignment), useValue: assignmentRepo },
         { provide: getRepositoryToken(EvaluationResponse), useValue: createMockRepository() },
         { provide: getRepositoryToken(CycleStage), useValue: stageRepo },
+        // Sprint 1 BR-C.1: CycleOrgSnapshot inyectado en evaluations.service
+        // para captureOrgSnapshot(). Mock simple para que el testing module
+        // resuelva las deps.
+        { provide: getRepositoryToken(CycleOrgSnapshot), useValue: createMockRepository() },
         { provide: getRepositoryToken(PeerAssignment), useValue: peerAssignmentRepo },
         { provide: getRepositoryToken(FormTemplate), useValue: templateRepo },
         // Pre-fix Fase 3 (Opción A): FormSubTemplate inyectado en

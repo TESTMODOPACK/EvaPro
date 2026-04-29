@@ -11,6 +11,7 @@ import { EvaluationCycle, CycleType, CycleStatus, CyclePeriod } from './entities
 import { EvaluationAssignment, AssignmentStatus, RelationType } from './entities/evaluation-assignment.entity';
 import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { CycleStage, StageType, StageStatus } from './entities/cycle-stage.entity';
+import { CycleOrgSnapshot } from './entities/cycle-org-snapshot.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
 import { User } from '../users/entities/user.entity';
@@ -86,6 +87,8 @@ export class EvaluationsService {
     private readonly peerAssignmentRepo: Repository<PeerAssignment>,
     @InjectRepository(CycleStage)
     private readonly stageRepo: Repository<CycleStage>,
+    @InjectRepository(CycleOrgSnapshot)
+    private readonly orgSnapshotRepo: Repository<CycleOrgSnapshot>,
     @InjectRepository(Objective)
     private readonly objectiveRepo: Repository<Objective>,
     @InjectRepository(KeyResult)
@@ -184,6 +187,122 @@ export class EvaluationsService {
    *   270° → [Autoevaluación, Evaluación Encargado, Evaluación de Pares, Cierre]
    *   360° → [Autoevaluación, Evaluación Encargado, Evaluación de Pares, Calibración, Entrega de Feedback, Cierre]
    */
+  /**
+   * Sprint 1 BR-C.1 — Captura snapshot del organigrama al momento del
+   * launch del ciclo. Persiste TODOS los users activos del tenant en
+   * `cycle_org_snapshots` para que reports y validaciones puedan leer
+   * la estructura "del momento" incluso si users se desactivan o sus
+   * managers cambian post-launch.
+   *
+   * Idempotente: usa upsert (ON CONFLICT) — re-llamarlo en el mismo
+   * ciclo no duplica filas.
+   *
+   * @param cycleId — ciclo recién lanzado
+   * @param tenantId — tenant del ciclo (authoritative del entity)
+   * @param manager — EntityManager de la transacción (de launchCycle)
+   *                  para que el snapshot se commitee atómicamente con
+   *                  el cambio de status del ciclo. Si no se pasa,
+   *                  usa el repositorio normal.
+   */
+  async captureOrgSnapshot(
+    cycleId: string,
+    tenantId: string,
+    manager?: import('typeorm').EntityManager,
+  ): Promise<{ count: number }> {
+    const repo = manager
+      ? manager.getRepository(CycleOrgSnapshot)
+      : this.orgSnapshotRepo;
+    const userRepo = manager ? manager.getRepository(User) : this.userRepo;
+
+    // Cargar TODOS los users activos del tenant (no solo evaluatees:
+    // los evaluators externos también deben quedar en el snapshot).
+    const users = await userRepo.find({
+      where: { tenantId, isActive: true },
+      select: [
+        'id',
+        'managerId',
+        'departmentId',
+        'department',
+        'hierarchyLevel',
+        'role',
+        'isActive',
+      ],
+    });
+
+    if (users.length === 0) {
+      this.logger.warn(`captureOrgSnapshot: tenant ${tenantId.slice(0, 8)} no tiene users activos al lanzar cycle ${cycleId.slice(0, 8)}`);
+      return { count: 0 };
+    }
+
+    // Cargar nombres de departamentos para snapshot (BR-C.1.5: aunque
+    // el dept se renombre o elimine, el snapshot preserva el nombre original).
+    const deptIds = [
+      ...new Set(users.map((u) => u.departmentId).filter(Boolean) as string[]),
+    ];
+    const deptMap = new Map<string, string>();
+    if (deptIds.length > 0) {
+      const depts = await (manager ?? this.dataSource).query(
+        `SELECT id, name FROM departments WHERE id = ANY($1::uuid[])`,
+        [deptIds],
+      );
+      for (const d of depts) deptMap.set(d.id, d.name);
+    }
+
+    // Construir filas. PK compuesto (cycle_id, user_id) → upsert por si
+    // se llama 2 veces (re-lanzamiento de un ciclo cancelado, etc).
+    const snapshots = users.map((u) => ({
+      cycleId,
+      userId: u.id,
+      tenantId,
+      primaryManagerId: u.managerId || null,
+      secondaryManagers: [], // Sprint 4 lo populará (BR-A.4)
+      departmentId: u.departmentId || null,
+      departmentName: u.departmentId ? deptMap.get(u.departmentId) || u.department || null : u.department || null,
+      hierarchyLevel: u.hierarchyLevel ?? null,
+      role: u.role || null,
+      isActive: u.isActive,
+      lateAddition: false,
+      excludedAt: null,
+      excludedReason: null,
+    }));
+
+    // Insert con ON CONFLICT DO NOTHING para idempotencia (si se llama
+    // 2 veces en el mismo ciclo, no duplica). Para re-snapshot completo
+    // se requiere super_admin cancele el ciclo + relanche (BR-C.1.5).
+    const conn = manager ?? this.dataSource;
+    for (const snap of snapshots) {
+      await conn.query(
+        `INSERT INTO cycle_org_snapshots (
+          cycle_id, user_id, tenant_id, primary_manager_id, secondary_managers,
+          department_id, department_name, hierarchy_level, role, is_active,
+          late_addition, excluded_at, excluded_reason, snapshot_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+        ON CONFLICT (cycle_id, user_id) DO NOTHING`,
+        [
+          snap.cycleId,
+          snap.userId,
+          snap.tenantId,
+          snap.primaryManagerId,
+          snap.secondaryManagers,
+          snap.departmentId,
+          snap.departmentName,
+          snap.hierarchyLevel,
+          snap.role,
+          snap.isActive,
+          snap.lateAddition,
+          snap.excludedAt,
+          snap.excludedReason,
+        ],
+      );
+    }
+
+    this.logger.log(
+      `captureOrgSnapshot: tenant=${tenantId.slice(0, 8)}, cycle=${cycleId.slice(0, 8)}, users=${snapshots.length}`,
+    );
+
+    return { count: snapshots.length };
+  }
+
   private async generateStagesForCycle(cycle: EvaluationCycle): Promise<void> {
     const stageMap: Record<string, Array<{ name: string; type: StageType }>> = {
       [CycleType.DEGREE_90]: [
@@ -1012,6 +1131,18 @@ export class EvaluationsService {
       const uniqueEvaluatees = new Set(preAssignments.map((pa) => pa.evaluateeId));
       cycle.totalEvaluated = uniqueEvaluatees.size;
       await queryRunner.manager.save(EvaluationCycle, cycle);
+
+      // ─── Sprint 1 BR-C.1: snapshot del organigrama ─────────────────────
+      // Captura el estado del organigrama en el momento del launch.
+      // Reports y validaciones leerán de esta tabla durante todo el ciclo
+      // de vida, no del estado actual de `users`. Garantiza que cambios
+      // de organigrama mid-cycle no falsifiquen retroactivamente los
+      // resultados.
+      //
+      // Incluimos TODOS los users activos del tenant (no solo evaluados),
+      // porque cualquiera puede ser evaluator (en peer assignments custom
+      // por ejemplo).
+      await this.captureOrgSnapshot(id, effectiveTenantId, queryRunner.manager);
 
       await queryRunner.commitTransaction();
 
