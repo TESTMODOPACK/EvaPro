@@ -1271,11 +1271,27 @@ export class EvaluationsService {
             relationType: 'peer',
           });
         } else {
+          // Bug fix (post-Sprint 4): peer correctamente requiere
+          //   1. NO ser self.
+          //   2. NO ser el jefe del evaluado (es manager, no peer).
+          //   3. NO ser subordinado del evaluado (managerId apunta al
+          //      evaluado → es direct_report, no peer). Sin este filtro
+          //      un Gerente terminaba "evaluado por par" a sus propios
+          //      subordinados — error reportado por usuario en POOL Q1
+          //      180° donde Luis (subordinado) figuraba como peer de
+          //      Carlos (su jefe).
+          //   4. MISMO ROL — un gerente solo es par de otro gerente.
+          //      Esto evita que un Junior aparezca como "par" de un
+          //      Gerente aunque compartan depto/hierarchyLevel.
+          //   5. Scope estructural (peerScopingStrategy).
+          //   6. No estar ya asignado.
           const peerCandidates = evaluatees.filter((u) =>
-            u.id !== evaluatee.id &&
-            u.id !== evaluatee.managerId &&
-            matchesPeerScope(evaluatee, u) &&
-            !existingSet.has(`${evaluatee.id}|${u.id}|${RelationType.PEER}`),
+            u.id !== evaluatee.id &&                                  // 1
+            u.id !== evaluatee.managerId &&                            // 2
+            u.managerId !== evaluatee.id &&                            // 3
+            u.role === evaluatee.role &&                               // 4
+            matchesPeerScope(evaluatee, u) &&                          // 5
+            !existingSet.has(`${evaluatee.id}|${u.id}|${RelationType.PEER}`),  // 6
           );
 
           if (peerCandidates.length < minPeerCount) {

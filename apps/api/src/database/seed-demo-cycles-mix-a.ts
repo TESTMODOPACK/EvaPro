@@ -440,12 +440,29 @@ async function main() {
           if (!evaluatee.manager_id) continue; // CEO sin manager (BR-A.1 captura esto)
           evaluatorId = evaluatee.manager_id;
         } else if (relType === 'peer') {
-          // Mismo depto, no self, no manager
+          // Bug fix: peer verdadero exige
+          //   1. NO ser el propio evaluado (self).
+          //   2. NO ser el jefe del evaluado (es manager, no peer).
+          //   3. NO ser subordinado del evaluado (es direct_report, no peer).
+          //   4. Mismo ROL jerárquico — un gerente solo es par de otro
+          //      gerente, un employee solo de otro employee. Esto evita
+          //      que un Junior aparezca como "par" de un Gerente.
+          //   5. Idealmente mismo depto (organizacionalmente cercanos).
+          //   6. Hierarchy_level ± 1 (proximidad estructural fina).
+          // Si la combinación deja 0 candidatos, la excepción
+          // INSUFFICIENT_PEERS se reporta y BR-A.1 redistribuye pesos.
           const peerCandidates = users.filter(
             (u: any) =>
-              u.id !== evaluatee.id &&
-              u.id !== evaluatee.manager_id &&
-              u.department === evaluatee.department,
+              u.id !== evaluatee.id &&                        // 1
+              u.id !== evaluatee.manager_id &&                 // 2
+              u.manager_id !== evaluatee.id &&                 // 3
+              u.role === evaluatee.role &&                     // 4 — mismo rol
+              u.department === evaluatee.department &&         // 5
+              (                                                // 6
+                evaluatee.hierarchy_level == null ||
+                u.hierarchy_level == null ||
+                Math.abs((u.hierarchy_level as number) - (evaluatee.hierarchy_level as number)) <= 1
+              ),
           );
           if (peerCandidates.length === 0) continue;
           // Si lowResponseRatio: solo asignamos 1 par y luego vamos a "no responde"
