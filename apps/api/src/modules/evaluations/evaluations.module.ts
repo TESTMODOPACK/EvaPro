@@ -12,6 +12,7 @@ import { FormSubTemplate } from '../templates/entities/form-sub-template.entity'
 import { User } from '../users/entities/user.entity';
 import { EvaluationsService } from './evaluations.service';
 import { EvaluationsController } from './evaluations.controller';
+import { UserTransferredListener } from './listeners/user-transferred.listener';
 import { AuditModule } from '../audit/audit.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -41,7 +42,13 @@ import { AuditLog } from '../audit/entities/audit-log.entity';
     NotificationsModule,
   ],
   controllers: [EvaluationsController],
-  providers: [EvaluationsService],
+  providers: [
+    EvaluationsService,
+    // S2.2 — listener async de user.transferred. Se registra como
+    // provider para que NestJS lo instancie y los @OnEvent decorators
+    // queden conectados al event bus al arranque.
+    UserTransferredListener,
+  ],
   exports: [EvaluationsService],
 })
 export class EvaluationsModule {}

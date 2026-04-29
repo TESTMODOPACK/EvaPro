@@ -204,6 +204,24 @@ export interface CycleSettings {
   /** Configuración de anonimato por tipo de evaluación (peer/subordinate). */
   anonymity?: Record<string, boolean>;
 
+  /**
+   * S2.2 — Comportamiento del ciclo cuando un usuario es transferido
+   * (cambia dept/cargo/manager) mientras el ciclo está ACTIVE:
+   *
+   * - 'manual' (default): listener crea notificación al admin para que
+   *   decida caso a caso. NO toca assignments automáticamente.
+   * - 'auto_replace': si el user es evaluatee y su nuevo manager es
+   *   distinto del evaluador asignado (rol manager), se invoca
+   *   replaceEvaluator automáticamente con el nuevo manager.
+   * - 'freeze': respeta el snapshot original del ciclo. No reasigna ni
+   *   notifica. Útil cuando el negocio quiere que el ciclo termine
+   *   reflejando la organización al momento del launch.
+   *
+   * Aplica solo a la rol MANAGER. Para PEER y DIRECT_REPORT el cambio
+   * de área del evaluatee no afecta naturalmente quién evalúa.
+   */
+  cascadeOnTransfer?: 'manual' | 'auto_replace' | 'freeze';
+
   /** Escape hatch para settings específicos del ciclo aún no modelados. */
   [extra: string]: unknown;
 }
