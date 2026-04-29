@@ -946,14 +946,36 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       {/* ─── Tab: Candidatos ───────────────────────────────────────── */}
       {tab === 'candidatos' && (
         <div>
-          {isAdmin && (
+          {/* BUG FIX: agregar candidato solo permitido cuando proceso esta
+              en DRAFT o ACTIVE. Antes el boton + form salian siempre que
+              fuera admin, incluso en procesos COMPLETED/CLOSED — lo que
+              permitia ensuciar procesos cerrados con candidatos nuevos. */}
+          {isAdmin && (process.status === 'draft' || process.status === 'active') && (
             <button className="btn-primary" style={{ marginBottom: '1rem', fontSize: '0.85rem' }} onClick={() => setShowAddForm(!showAddForm)}>
               {t('postulantes.detail.addCandidate')}
             </button>
           )}
 
-          {/* Add candidate form */}
-          {showAddForm && isAdmin && (
+          {/* Banner read-only para procesos cerrados — explica por que no
+              se pueden agregar candidatos y como reabrir si fuera necesario. */}
+          {(process.status === 'completed' || process.status === 'closed') && (
+            <div style={{
+              padding: '0.85rem 1rem',
+              marginBottom: '1rem',
+              background: 'rgba(148,163,184,0.1)',
+              border: '1px solid rgba(148,163,184,0.3)',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.82rem',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.5,
+            }}>
+              <strong>Proceso {process.status === 'completed' ? 'completado' : 'cerrado'}.</strong> Los candidatos de un
+              proceso finalizado son de solo lectura. Si necesita agregar uno, reabra el proceso en la pestaña <em>Configuración</em>.
+            </div>
+          )}
+
+          {/* Add candidate form — gated igual que el boton */}
+          {showAddForm && isAdmin && (process.status === 'draft' || process.status === 'active') && (
             <div className="card" style={{ padding: '1.5rem', marginBottom: '1rem', borderLeft: '4px solid var(--accent)' }}>
               {!isInternal ? (
                 <>
