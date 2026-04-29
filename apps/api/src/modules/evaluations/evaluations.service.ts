@@ -664,6 +664,151 @@ export class EvaluationsService {
 
   // ─── Peer Assignments (pre-launch) ──────────────────────────────────────
 
+  /**
+   * Sprint 1 BR-C.4.3 — Reemplaza el evaluator de un assignment ya
+   * existente (cancelled o pending). Crea un nuevo assignment con el
+   * nuevo evaluator + flag isReplacement, manteniendo el original
+   * para audit.
+   *
+   * Casos de uso:
+   * - Manager que renunció: el admin reemplaza con un manager interim.
+   * - Evaluador con conflicto de interés detectado mid-cycle.
+   *
+   * Requiere razón obligatoria que queda en el audit log.
+   */
+  async replaceEvaluator(
+    assignmentId: string,
+    newEvaluatorId: string,
+    tenantId: string,
+    callerId: string,
+    reason: string,
+  ): Promise<EvaluationAssignment> {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('La razón del reemplazo es obligatoria.');
+    }
+
+    const original = await this.assignmentRepo.findOne({
+      where: { id: assignmentId, tenantId },
+      relations: ['cycle'],
+    });
+    if (!original) {
+      throw new NotFoundException('Assignment no encontrado');
+    }
+
+    if (original.cycle.status === CycleStatus.CLOSED) {
+      throw new BadRequestException(
+        'No se puede reemplazar evaluador en un ciclo cerrado.',
+      );
+    }
+
+    if (original.evaluatorId === newEvaluatorId) {
+      throw new BadRequestException(
+        'El nuevo evaluador es el mismo que el actual.',
+      );
+    }
+
+    // Validar que el nuevo evaluator existe + activo + del mismo tenant
+    const newEvaluator = await this.userRepo.findOne({
+      where: { id: newEvaluatorId, tenantId, isActive: true },
+    });
+    if (!newEvaluator) {
+      throw new NotFoundException(
+        'Nuevo evaluador no encontrado, inactivo, o pertenece a otro tenant',
+      );
+    }
+
+    // Verificar duplicate: si ya existe un assignment con el nuevo evaluator
+    // para el mismo (cycle, evaluatee, relationType), error.
+    const dup = await this.assignmentRepo.findOne({
+      where: {
+        cycleId: original.cycleId,
+        evaluateeId: original.evaluateeId,
+        evaluatorId: newEvaluatorId,
+        relationType: original.relationType,
+      },
+    });
+    if (dup) {
+      throw new BadRequestException(
+        'Ya existe una asignación activa con ese evaluador para esta combinación.',
+      );
+    }
+
+    // Cancelar el original (preserva audit del evaluator viejo)
+    return this.dataSource.transaction(async (manager) => {
+      const assignmentRepo = manager.getRepository(EvaluationAssignment);
+      original.status = AssignmentStatus.CANCELLED;
+      await assignmentRepo.save(original);
+
+      // Crear el nuevo assignment con flag isReplacement (en metadata).
+      // EvaluationAssignment no tiene `isReplacement` columna directa;
+      // lo guardamos en una columna metadata si existe, sino solo audit log.
+      const replacement = assignmentRepo.create({
+        tenantId,
+        cycleId: original.cycleId,
+        evaluateeId: original.evaluateeId,
+        evaluatorId: newEvaluatorId,
+        relationType: original.relationType,
+        status: AssignmentStatus.PENDING,
+        dueDate: original.dueDate,
+      });
+      const saved = await assignmentRepo.save(replacement);
+
+      // Audit log obligatorio
+      await this.auditService.log(tenantId, callerId, 'assignment.replaced_evaluator', 'assignment', original.id, {
+        oldEvaluatorId: original.evaluatorId,
+        newEvaluatorId,
+        replacementId: saved.id,
+        reason,
+        cycleId: original.cycleId,
+        evaluateeId: original.evaluateeId,
+        relationType: original.relationType,
+      });
+
+      // Notificar al cycle owner (creator) sobre el reemplazo
+      if (original.cycle.createdBy && original.cycle.createdBy !== callerId) {
+        this.notificationsService
+          .create({
+            tenantId,
+            userId: original.cycle.createdBy,
+            type: NotificationType.EVALUATION_PENDING,
+            title: 'Evaluador reemplazado',
+            message: `Se reemplazó el evaluador de un assignment en el ciclo "${original.cycle.name}". Razón: ${reason}`,
+            metadata: {
+              cycleId: original.cycleId,
+              assignmentId: saved.id,
+              oldEvaluatorId: original.evaluatorId,
+              newEvaluatorId,
+            },
+          })
+          .catch((err) =>
+            this.logger.warn(`Failed to notify cycle owner of replacement: ${err?.message}`),
+          );
+      }
+
+      // Notificar también al NUEVO evaluador para que sepa de su nueva
+      // asignación (in-app + push si está disponible). Email lo manda
+      // el cron de remindPendingEvaluations en su próximo run.
+      this.notificationsService
+        .create({
+          tenantId,
+          userId: newEvaluatorId,
+          type: NotificationType.EVALUATION_PENDING,
+          title: 'Nueva evaluación asignada',
+          message: `Has sido asignado para evaluar a un colaborador en el ciclo "${original.cycle.name}". Por favor completa antes del cierre.`,
+          metadata: {
+            cycleId: original.cycleId,
+            assignmentId: saved.id,
+            relationType: original.relationType,
+          },
+        })
+        .catch((err) =>
+          this.logger.warn(`Failed to notify new evaluator: ${err?.message}`),
+        );
+
+      return saved;
+    });
+  }
+
   async addPeerAssignment(tenantId: string, cycleId: string, dto: AddPeerAssignmentDto): Promise<PeerAssignment> {
     const cycle = await this.findCycleById(cycleId, tenantId);
     if (cycle.status !== CycleStatus.DRAFT) {
@@ -1124,6 +1269,36 @@ export class EvaluationsService {
 
       // Bulk insert assignments
       await queryRunner.manager.save(EvaluationAssignment, assignments);
+
+      // ─── Sprint 1 BR-C.2: snapshot del template + pesos ────────────────
+      // Capturamos el estado COMPLETO del template (padre + sub_templates)
+      // y los pesos del ciclo. Reports y formularios pendientes leerán de
+      // aquí incluso si el admin edita el template post-launch.
+      const subTemplates = await queryRunner.manager
+        .getRepository(FormSubTemplate)
+        .find({ where: { parentTemplateId: template.id } });
+      cycle.templateSnapshot = {
+        template: {
+          id: template.id,
+          name: template.name,
+          description: template.description,
+          sections: template.sections,
+          defaultCycleType: template.defaultCycleType,
+          language: template.language,
+          translations: template.translations,
+        },
+        subTemplates: subTemplates.map((s) => ({
+          id: s.id,
+          relationType: s.relationType,
+          sections: s.sections,
+          weight: Number(s.weight) || 0,
+          displayOrder: s.displayOrder,
+          isActive: s.isActive,
+        })),
+      };
+      cycle.templateVersionAtLaunch = template.version || 1;
+      cycle.weightsAtLaunch = (cycle.settings as any)?.weights ?? null;
+      cycle.launchedAt = new Date();
 
       // Update cycle status
       cycle.status = CycleStatus.ACTIVE;
@@ -1907,43 +2082,72 @@ export class EvaluationsService {
       (assignment as any).evaluatorId = null;
     }
 
-    // ─── Resolver template para el evaluador (Fase 3 Opción A) ──────────
+    // ─── Resolver template para el evaluador ──────────────────────────
     //
-    // Orden de resolución:
+    // Orden de resolución (Sprint 1 BR-C.2 + Fase 3 Opción A):
+    //   0. Si el ciclo tiene `template_snapshot` (BR-C.2: capturado al
+    //      launch) y NO está en draft → leer las sections de la sub
+    //      desde el snapshot. Garantiza que cambios al template padre
+    //      post-launch NO afecten formularios pendientes.
     //   1. Si existe FormSubTemplate ACTIVA para (parent_id, relationType)
-    //      → usar las sections de la subplantilla (modelo Fase 3, modo
-    //      principal). El template padre se "fusiona" pero las sections
-    //      son las del sub_template.
+    //      → usar las sections de la subplantilla (modelo Fase 3).
     //   2. Si NO existe sub_template pero el padre tiene sections con
-    //      applicableTo (legacy Fase 2) → filtrar usando filterTemplateForRelation.
+    //      applicableTo (legacy Fase 2) → filterTemplateForRelation.
     //   3. Si NO hay applicableTo (legacy Fase 1) → devolver sections del
-    //      padre tal cual (todos los evaluadores ven todo).
+    //      padre tal cual.
     //
-    // Backwards-compat 100%. El path Fase 3 es preferido cuando existe
-    // sub_template; el fallback Fase 2/legacy se usa para plantillas
-    // pre-migración.
+    // Backwards-compat 100%. Templates pre-Sprint 1 usan path Fase 3.
     if (template) {
-      const subTemplate = await this.subTemplateRepo.findOne({
-        where: {
-          parentTemplateId: template.id,
-          relationType: assignment.relationType,
-          isActive: true,
-        },
-      });
+      const cycleSnapshot = assignment.cycle?.templateSnapshot;
+      const cycleStatus = assignment.cycle?.status;
 
-      if (subTemplate) {
-        // Path Fase 3: las sections vienen de la subplantilla específica.
-        template = {
-          ...template,
-          sections: subTemplate.sections,
-        } as typeof template;
-      } else if (Array.isArray(template.sections)) {
-        // Path legacy Fase 2: filterTemplateForRelation aplica el filtro
-        // por applicableTo en las sections del padre.
-        template = {
-          ...template,
-          sections: filterTemplateForRelation(template.sections, assignment.relationType),
-        } as typeof template;
+      // Path Sprint 1 BR-C.2: snapshot disponible y ciclo no-draft
+      if (
+        cycleSnapshot &&
+        cycleStatus !== CycleStatus.DRAFT &&
+        Array.isArray(cycleSnapshot.subTemplates)
+      ) {
+        const snapSub = cycleSnapshot.subTemplates.find(
+          (s: any) => s.relationType === assignment.relationType && s.isActive,
+        );
+        if (snapSub) {
+          template = {
+            ...template,
+            sections: snapSub.sections,
+          } as typeof template;
+        } else if (Array.isArray(cycleSnapshot.template?.sections)) {
+          // Snapshot tiene template padre pero no sub para este rol → usar
+          // sections del padre del snapshot, filtrando por applicableTo.
+          template = {
+            ...template,
+            sections: filterTemplateForRelation(
+              cycleSnapshot.template.sections,
+              assignment.relationType,
+            ),
+          } as typeof template;
+        }
+      } else {
+        // Path Fase 3: lee sub_template actual (caso draft o pre-snapshot)
+        const subTemplate = await this.subTemplateRepo.findOne({
+          where: {
+            parentTemplateId: template.id,
+            relationType: assignment.relationType,
+            isActive: true,
+          },
+        });
+
+        if (subTemplate) {
+          template = {
+            ...template,
+            sections: subTemplate.sections,
+          } as typeof template;
+        } else if (Array.isArray(template.sections)) {
+          // Path legacy Fase 2
+          template = {
+            ...template,
+            sections: filterTemplateForRelation(template.sections, assignment.relationType),
+          } as typeof template;
+        }
       }
     }
 
@@ -2025,14 +2229,16 @@ export class EvaluationsService {
       }
     }
 
-    // B2.1: Validate all required template items are answered before submitting.
-    // Fase 2: pasa relationType para que el validator filtre por applicableTo
-    // (no exigir respuestas a preguntas que el evaluador nunca vio).
+    // B2.1 + Sprint 1 BR-C.2: validar contra el SNAPSHOT del template si
+    // el ciclo no es draft (lo que el evaluador efectivamente vio al
+    // abrir el form). Si no hay snapshot, fallback al template actual.
     if (assignment.cycle.templateId) {
       await this.validateRequiredAnswers(
         assignment.cycle.templateId,
         dto.answers,
         assignment.relationType,
+        assignment.cycle.templateSnapshot,
+        assignment.cycle.status,
       );
     }
 
@@ -2092,21 +2298,45 @@ export class EvaluationsService {
     templateId: string,
     answers: any,
     relationType: string,
+    templateSnapshot?: any,
+    cycleStatus?: string,
   ): Promise<void> {
-    // Path Fase 3: sub_template del rol específico.
-    const subTemplate = await this.subTemplateRepo.findOne({
-      where: { parentTemplateId: templateId, relationType: relationType as RelationType, isActive: true },
-    });
-
     let applicableSections: any[];
 
-    if (subTemplate && Array.isArray(subTemplate.sections)) {
-      applicableSections = subTemplate.sections;
+    // Path Sprint 1 BR-C.2: si hay snapshot y ciclo no es draft, usar el
+    // snapshot (lo que el evaluador efectivamente vio en el form).
+    if (
+      templateSnapshot &&
+      cycleStatus !== CycleStatus.DRAFT &&
+      Array.isArray(templateSnapshot.subTemplates)
+    ) {
+      const snapSub = templateSnapshot.subTemplates.find(
+        (s: any) => s.relationType === relationType && s.isActive,
+      );
+      if (snapSub && Array.isArray(snapSub.sections)) {
+        applicableSections = snapSub.sections;
+      } else if (Array.isArray(templateSnapshot.template?.sections)) {
+        applicableSections = filterTemplateForRelation(
+          templateSnapshot.template.sections,
+          relationType,
+        );
+      } else {
+        applicableSections = [];
+      }
     } else {
-      // Path legacy (Fase 2): filtrar sections del padre por applicableTo
-      const template = await this.templateRepo.findOne({ where: { id: templateId } });
-      if (!template || !template.sections) return;
-      applicableSections = filterTemplateForRelation(template.sections, relationType);
+      // Path Fase 3 actual: sub_template del rol
+      const subTemplate = await this.subTemplateRepo.findOne({
+        where: { parentTemplateId: templateId, relationType: relationType as RelationType, isActive: true },
+      });
+
+      if (subTemplate && Array.isArray(subTemplate.sections)) {
+        applicableSections = subTemplate.sections;
+      } else {
+        // Path legacy Fase 2
+        const template = await this.templateRepo.findOne({ where: { id: templateId } });
+        if (!template || !template.sections) return;
+        applicableSections = filterTemplateForRelation(template.sections, relationType);
+      }
     }
 
     const missingQuestions: string[] = [];

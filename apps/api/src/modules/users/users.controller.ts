@@ -258,16 +258,27 @@ export class UsersController {
     return this.usersService.update(id, tenantId, dto, req.user.role, req.user.userId);
   }
 
-  /** DELETE /users/:id  (soft delete – deactivates) */
+  /**
+   * DELETE /users/:id  (soft delete – deactivates)
+   *
+   * Sprint 1 BR-C.4: si el user tiene assignments activos (pending|in_progress)
+   * en ciclos `active`, el sistema bloquea el delete por default.
+   * Para override: `?force=true&reason=motivo` (audit log obligatorio).
+   */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('super_admin', 'tenant_admin')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
+    @Query('force') force?: string,
+    @Query('reason') reason?: string,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.usersService.remove(id, tenantId, req.user.role);
+    return this.usersService.remove(id, tenantId, req.user.role, {
+      force: force === 'true' || force === '1',
+      reason: reason || undefined,
+    });
   }
 
   // ─── Departure Tracking ────────────────────────────────────────────────────

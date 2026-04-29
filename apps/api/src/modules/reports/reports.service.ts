@@ -6,6 +6,7 @@ import { Repository, In } from 'typeorm';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus, RelationType } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
+import { CycleOrgSnapshot } from '../evaluations/entities/cycle-org-snapshot.entity';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
@@ -48,12 +49,39 @@ export class ReportsService {
     private readonly templateRepo: Repository<FormTemplate>,
     @InjectRepository(FormSubTemplate)
     private readonly subTemplateRepo: Repository<FormSubTemplate>,
+    @InjectRepository(CycleOrgSnapshot)
+    private readonly orgSnapshotRepo: Repository<CycleOrgSnapshot>,
     @InjectRepository(RoleCompetency)
     private readonly roleCompetencyRepo: Repository<RoleCompetency>,
     @InjectRepository(Competency)
     private readonly competencyRepo: Repository<Competency>,
     private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Sprint 1 BR-C.1.3 — Lee el snapshot del organigrama si el ciclo no
+   * está en draft. Retorna un Map<userId, snapshotEntry> para uso eficiente
+   * en reports que cruzan con departamento/manager/hierarchy.
+   *
+   * Si el ciclo está en draft o no tiene snapshot (legacy pre-Sprint 1),
+   * retorna un Map vacío. Los callers deben tener fallback al estado
+   * actual de `users` cuando el Map está vacío.
+   *
+   * Caché in-memory por request (no se hace caché entre requests porque
+   * RLS ya filtra por tenant; un nuevo request es un nuevo cycle/tenant).
+   */
+  private async getCycleOrgSnapshot(
+    cycleId: string,
+    cycleStatus: string,
+  ): Promise<Map<string, CycleOrgSnapshot>> {
+    // En draft, los reports leen del estado actual (no hay snapshot aún).
+    if (cycleStatus === 'draft') return new Map();
+
+    const snapshots = await this.orgSnapshotRepo.find({
+      where: { cycleId },
+    });
+    return new Map(snapshots.map((s) => [s.userId, s]));
+  }
 
   // ─── Shared filter interface ──────────────────────────────────────────
   // Applied to any query that joins the `users` table to filter results.
@@ -1143,11 +1171,18 @@ export class ReportsService {
       where: { parentTemplateId: template.id, isActive: true },
     });
 
-    // weightsByRelation: prioridad cycle.settings.weights → sub_template.weight.
-    // El admin puede sobreescribir los pesos del template a nivel ciclo (ej.
-    // mismo template usado en 2 ciclos con pesos distintos). Si cycle no tiene
-    // weights, fallback al weight de cada sub_template.
-    const cycleWeights = (cycle.settings as any)?.weights as Record<string, number> | undefined;
+    // weightsByRelation: prioridad cycle.weights_at_launch (Sprint 1 BR-C.2)
+    // → cycle.settings.weights → sub_template.weight.
+    //
+    // BR-C.2: weights_at_launch es el snapshot al lanzar — los reports leen
+    // siempre de aquí cuando el ciclo no es draft, garantizando consistencia
+    // incluso si el admin edita pesos post-launch (no afectan retroactivamente).
+    // Para draft o legacy, fallback a settings.weights (configuración actual).
+    const launchWeights = cycle.weightsAtLaunch as Record<string, number> | null | undefined;
+    const cycleWeights =
+      cycle.status !== 'draft' && launchWeights
+        ? launchWeights
+        : ((cycle.settings as any)?.weights as Record<string, number> | undefined);
     const weightsByRelation: Record<string, number> = {};
     for (const sub of subTemplates) {
       const cycleWeight = cycleWeights && typeof cycleWeights[sub.relationType] === 'number'
@@ -1331,10 +1366,14 @@ export class ReportsService {
   async selfVsOthers(cycleId: string, userId: string, tenantId: string) {
     const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
 
-    // Fase 3 (Opción A): cargar weights — cycle.settings.weights gana sobre
-    // sub_template.weight. Permite override por ciclo del template default.
+    // Sprint 1 BR-C.2: prioridad cycle.weights_at_launch → settings.weights → sub.weight.
+    // Reports leen del snapshot del launch para no falsificar retroactivamente.
     const weightsByRelation: Record<string, number> = {};
-    const cycleWeights = (cycle?.settings as any)?.weights as Record<string, number> | undefined;
+    const launchWeights = cycle?.weightsAtLaunch as Record<string, number> | null | undefined;
+    const cycleWeights =
+      cycle && cycle.status !== 'draft' && launchWeights
+        ? launchWeights
+        : ((cycle?.settings as any)?.weights as Record<string, number> | undefined);
     if (cycle?.templateId) {
       const subs = await this.subTemplateRepo.find({
         where: { parentTemplateId: cycle.templateId, isActive: true },
@@ -1517,7 +1556,14 @@ export class ReportsService {
       return { cycleId, message: 'La plantilla no tiene secciones con preguntas definidas. Verifique que la plantilla del ciclo tenga al menos una sección con preguntas de tipo escala.', grid: [], sections: [], departments: [] };
     }
 
-    // 2. Load all responses with evaluatee department
+    // ─── Sprint 1 BR-C.1.3: leer department del snapshot si el ciclo no es draft ──
+    // Si el organigrama cambió post-launch (ej. user cambió de depto), el
+    // heatmap debe seguir mostrando el dept del MOMENTO del lanzamiento.
+    const orgSnapshot = await this.getCycleOrgSnapshot(cycleId, cycle.status);
+    const useSnapshot = orgSnapshot.size > 0;
+
+    // 2. Load all responses with evaluatee department (con fallback al
+    //    snapshot si está disponible).
     const qb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
@@ -1526,9 +1572,19 @@ export class ReportsService {
       .andWhere('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.answers IS NOT NULL')
       .select('r.answers', 'answers')
-      .addSelect('u.department', 'department');
+      .addSelect('u.department', 'department')
+      .addSelect('a.evaluatee_id', 'evaluateeId');
     this.applyUserFilters(qb, filters);
-    const rows = await qb.getRawMany();
+    const rawRows = await qb.getRawMany();
+
+    // Sobreescribir department con valor del snapshot cuando aplica.
+    const rows = useSnapshot
+      ? rawRows.map((r) => ({
+          ...r,
+          department:
+            orgSnapshot.get(r.evaluateeId)?.departmentName || r.department,
+        }))
+      : rawRows;
 
     if (rows.length === 0) {
       return { cycleId, message: 'Sin respuestas disponibles', grid: [], sections: [], departments: [] };
@@ -1545,20 +1601,33 @@ export class ReportsService {
       };
     });
 
-    // 4. Count unique evaluatees per department for privacy check
+    // 4. Count unique evaluatees per department for privacy check.
+    // Sprint 1 BR-C.1: cuando el snapshot existe, contamos por department
+    // del snapshot (consistencia con la query principal).
     const deptEvaluateeCount = new Map<string, number>();
-    const qbCount = this.responseRepo
-      .createQueryBuilder('r2')
-      .innerJoin('r2.assignment', 'a2')
-      .innerJoin(User, 'u2', 'u2.id = a2.evaluatee_id AND u2.tenant_id = a2.tenant_id')
-      .where('a2.cycleId = :cycleId', { cycleId })
-      .andWhere('r2.tenantId = :tenantId', { tenantId })
-      .select('u2.department', 'department')
-      .addSelect('COUNT(DISTINCT u2.id)', 'userCount')
-      .groupBy('u2.department');
-    const deptCounts = await qbCount.getRawMany();
-    for (const dc of deptCounts) {
-      deptEvaluateeCount.set(dc.department || 'Sin departamento', parseInt(dc.userCount));
+    if (useSnapshot) {
+      const evaluateeDeptMap = new Map<string, string>();
+      for (const row of rows) {
+        evaluateeDeptMap.set(row.evaluateeId, row.department || 'Sin departamento');
+      }
+      for (const dept of evaluateeDeptMap.values()) {
+        deptEvaluateeCount.set(dept, (deptEvaluateeCount.get(dept) || 0) + 1);
+      }
+    } else {
+      // Fallback legacy (ciclos pre-Sprint 1 o draft): leer de users.
+      const qbCount = this.responseRepo
+        .createQueryBuilder('r2')
+        .innerJoin('r2.assignment', 'a2')
+        .innerJoin(User, 'u2', 'u2.id = a2.evaluatee_id AND u2.tenant_id = a2.tenant_id')
+        .where('a2.cycleId = :cycleId', { cycleId })
+        .andWhere('r2.tenantId = :tenantId', { tenantId })
+        .select('u2.department', 'department')
+        .addSelect('COUNT(DISTINCT u2.id)', 'userCount')
+        .groupBy('u2.department');
+      const deptCounts = await qbCount.getRawMany();
+      for (const dc of deptCounts) {
+        deptEvaluateeCount.set(dc.department || 'Sin departamento', parseInt(dc.userCount));
+      }
     }
 
     // 5. Calculate avg score per section per department

@@ -558,7 +558,28 @@ export class UsersService {
    * (registerDeparture) hay cascada MÁS completa con PDI + calibration +
    * recruitment. Acá solo lo esencial para un soft-delete "simple".
    */
-  async remove(id: string, tenantId: string | undefined, callerRole?: string): Promise<void> {
+  /**
+   * Sprint 1 BR-C.4 — Soft delete con cascade strict.
+   *
+   * Si el user tiene assignments activos (pending|in_progress) en ciclos
+   * en estado `active`, BLOQUEA el delete por default (HTTP 400 con detalle).
+   *
+   * Para forzar el delete (renuncia, cese, etc.) el caller debe pasar
+   * `options: { force: true, reason: '...' }`. La razón es OBLIGATORIA
+   * cuando force=true (queda en audit log).
+   *
+   * @param id — user a desactivar
+   * @param tenantId — tenant del caller (super_admin → undefined)
+   * @param callerRole — 'super_admin' | 'tenant_admin'
+   * @param options.force — bypass del check de assignments activos
+   * @param options.reason — razón del bypass (obligatoria si force=true)
+   */
+  async remove(
+    id: string,
+    tenantId: string | undefined,
+    callerRole?: string,
+    options?: { force?: boolean; reason?: string },
+  ): Promise<void> {
     const user = await this.findById(id);
     if (callerRole !== 'super_admin' && user.tenantId !== tenantId) {
       throw new NotFoundException('Usuario no encontrado');
@@ -567,6 +588,36 @@ export class UsersService {
     // (audit log, cascade, notifications) deben usar este, no el parámetro tenantId.
     const targetTenantId = user.tenantId;
     const targetUserId = user.id;
+
+    // ─── Sprint 1 BR-C.4.1 — check strict de assignments activos ───────
+    // Cuenta cuántos assignments activos tiene en ciclos active/paused.
+    // Si es >0 y NO se pasó force=true, bloqueamos.
+    const activeAssignmentsCount = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS count, COUNT(DISTINCT ea.cycle_id)::int AS cycles
+       FROM evaluation_assignments ea
+       JOIN evaluation_cycles ec ON ec.id = ea.cycle_id
+       WHERE ea.tenant_id = $1
+         AND (ea.evaluator_id = $2 OR ea.evaluatee_id = $2)
+         AND ea.status IN ('pending', 'in_progress')
+         AND ec.status IN ('active', 'paused')`,
+      [targetTenantId, targetUserId],
+    );
+    const activeCount = activeAssignmentsCount?.[0]?.count ?? 0;
+    const cyclesAffected = activeAssignmentsCount?.[0]?.cycles ?? 0;
+
+    if (activeCount > 0 && !options?.force) {
+      throw new BadRequestException(
+        `Este usuario tiene ${activeCount} evaluación(es) activa(s) en ${cyclesAffected} ciclo(s). ` +
+          `Cierre los ciclos o reasigne los evaluadores antes de desactivarlo. ` +
+          `Para forzar la desactivación, llame al endpoint con ?force=true&reason=<motivo>.`,
+      );
+    }
+
+    if (options?.force && (!options.reason || !options.reason.trim())) {
+      throw new BadRequestException(
+        'Para forzar la desactivación con assignments activos, debe proporcionar una razón (?reason=<motivo>).',
+      );
+    }
 
     // safeExec: ignora errores de "tabla/columna no existe" (primer deploy)
     // pero propaga cualquier otro error para que la transacción haga rollback.
@@ -638,6 +689,11 @@ export class UsersService {
 
     this.auditService.log(targetTenantId, targetUserId, 'user.deactivated', 'user', targetUserId, {
       method: 'soft-delete_with_cascade',
+      // Sprint 1 BR-C.4.2: si fue forzado, queda registrado el bypass + razón
+      forced: !!options?.force,
+      forceReason: options?.reason || null,
+      activeAssignmentsAtRemoval: activeCount,
+      cyclesAffected,
       ...cascadeStats,
     }).catch(() => undefined);
   }

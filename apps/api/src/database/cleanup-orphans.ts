@@ -290,6 +290,11 @@ async function main() {
       // form_templates.default_cycle_type: si está set, al crear la
       // plantilla se auto-generan las form_sub_templates correspondientes.
       { table: 'form_templates', column: 'default_cycle_type', sql: `ALTER TABLE "form_templates" ADD COLUMN IF NOT EXISTS "default_cycle_type" varchar(5) NULL` },
+      // Grupo E — Sprint 1 (BR-C.2) snapshot del template + pesos al launch
+      { table: 'evaluation_cycles', column: 'template_version_at_launch', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "template_version_at_launch" int NULL` },
+      { table: 'evaluation_cycles', column: 'template_snapshot', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "template_snapshot" jsonb NULL` },
+      { table: 'evaluation_cycles', column: 'weights_at_launch', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "weights_at_launch" jsonb NULL` },
+      { table: 'evaluation_cycles', column: 'launched_at', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "launched_at" timestamptz NULL` },
     ];
 
     for (const fix of columnFixes) {

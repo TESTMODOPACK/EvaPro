@@ -193,6 +193,28 @@ export class EvaluationsController {
     return this.evaluationsService.addPeerAssignment(req.user.tenantId, cycleId, dto);
   }
 
+  /**
+   * Sprint 1 BR-C.4.3 — Reemplaza el evaluator de un assignment.
+   * Body: { newEvaluatorId: uuid, reason: string }
+   * Cancela el original (preserva audit), crea uno nuevo PENDING con
+   * el nuevo evaluator. Notifica al cycle owner.
+   */
+  @Post('evaluations/assignments/:id/replace-evaluator')
+  @Roles('super_admin', 'tenant_admin')
+  replaceEvaluator(
+    @Param('id', ParseUUIDPipe) assignmentId: string,
+    @Request() req: any,
+    @Body() body: { newEvaluatorId: string; reason: string },
+  ) {
+    return this.evaluationsService.replaceEvaluator(
+      assignmentId,
+      body.newEvaluatorId,
+      req.user.tenantId,
+      req.user.userId,
+      body.reason,
+    );
+  }
+
   @Post('evaluation-cycles/:cycleId/peer-assignments/bulk')
   @Roles('super_admin', 'tenant_admin')
   bulkAddPeerAssignments(
