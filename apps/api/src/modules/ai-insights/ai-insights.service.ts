@@ -464,23 +464,40 @@ export class AiInsightsService {
   private async callClaude(
     prompt: string,
     maxTokens = 2000,
-  ): Promise<{ text: string; tokensUsed: number; inputTokens: number; outputTokens: number }> {
+    options: { jsonPrefill?: boolean } = {},
+  ): Promise<{ text: string; tokensUsed: number; inputTokens: number; outputTokens: number; truncated: boolean }> {
     const client = this.ensureClient();
 
     try {
+      // jsonPrefill: pre-llena la respuesta con `{` para forzar a Claude
+      // a continuar JSON sin preambulo. Anthropic devuelve solo la
+      // continuacion, asi que reanteponemos `{` antes de retornar.
+      // Util para los prompts que esperan JSON puro (bias, summary, etc).
+      const messages: any[] = [{ role: 'user', content: prompt }];
+      if (options.jsonPrefill) {
+        messages.push({ role: 'assistant', content: '{' });
+      }
+
       const response = await client.messages.create({
         model: MODEL,
         max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }],
+        messages,
       });
 
       const textBlock = response.content.find((b) => b.type === 'text');
-      const text = textBlock ? textBlock.text : '';
+      let text = textBlock ? textBlock.text : '';
+      if (options.jsonPrefill) {
+        text = '{' + text;
+      }
       const inputTokens = response.usage?.input_tokens || 0;
       const outputTokens = response.usage?.output_tokens || 0;
       const tokensUsed = inputTokens + outputTokens;
+      // stop_reason='max_tokens' indica que la respuesta fue truncada por
+      // limite de output. Esto SIEMPRE rompe el JSON parsing porque la
+      // estructura queda incompleta. Detectamos para dar error claro.
+      const truncated = (response as any).stop_reason === 'max_tokens';
 
-      return { text, tokensUsed, inputTokens, outputTokens };
+      return { text, tokensUsed, inputTokens, outputTokens, truncated };
     } catch (error: any) {
       this.logger.error(`Anthropic API error: ${error.message}`, error.stack);
 
@@ -531,14 +548,17 @@ export class AiInsightsService {
     generatedBy: string;
     prompt: string;
     maxTokens?: number;
+    /** Pre-llena `{` en respuesta para forzar JSON-only sin preambulo. */
+    jsonPrefill?: boolean;
     /** Transforma el JSON parseado al `content` que se persiste. Default: identidad. */
     buildContent?: (parsed: any) => any;
     /** Campos extra del AiInsight (userId, cycleId, scopeEntityId). */
     buildInsightFields: (content: any) => Partial<AiInsight>;
   }): Promise<AiInsight> {
-    const { text, tokensUsed, inputTokens, outputTokens } = await this.callClaude(
+    const { text, tokensUsed, inputTokens, outputTokens, truncated } = await this.callClaude(
       opts.prompt,
       opts.maxTokens,
+      { jsonPrefill: opts.jsonPrefill },
     );
 
     let parseSuccess = true;
@@ -550,7 +570,13 @@ export class AiInsightsService {
       finalContent = opts.buildContent ? opts.buildContent(parsed) : parsed;
     } catch (err: any) {
       parseSuccess = false;
-      parseError = (err?.message ?? String(err)).slice(0, 1000);
+      // Persistir error + preview de respuesta cruda para diagnostico
+      // desde getAiUsageLog (super_admin). Sin esto solo veiamos el
+      // mensaje de JSON.parse — ahora vemos QUE devolvio Claude.
+      const baseMsg = (err?.message ?? String(err)).slice(0, 500);
+      const truncMsg = truncated ? '\n[TRUNCATED: max_tokens reached]' : '';
+      const preview = `\n--- RAW RESPONSE (first 1500 chars) ---\n${(text || '').slice(0, 1500)}`;
+      parseError = `${baseMsg}${truncMsg}${preview}`.slice(0, 3000);
     }
 
     let savedInsight: AiInsight | null = null;
@@ -591,6 +617,14 @@ export class AiInsightsService {
     }
 
     if (!parseSuccess) {
+      // Truncamiento es la causa #1 — error claro permite al admin saber
+      // que reintentar no ayudara hasta subir maxTokens en el codigo o
+      // reducir el tamaño del input (ej: ciclo con menos evaluadores).
+      if (truncated) {
+        throw new BadRequestException(
+          'La respuesta de IA fue truncada (limite de tokens alcanzado). El ciclo puede tener demasiados evaluadores para el limite actual. Contacte soporte si persiste.',
+        );
+      }
       throw new BadRequestException(
         'La IA no pudo generar un informe estructurado. Intente nuevamente.',
       );
@@ -814,6 +848,13 @@ export class AiInsightsService {
       type: InsightType.BIAS,
       generatedBy,
       prompt,
+      // 4000 (vs default 2000) — bias prompt incluye objeto con array
+      // de evaluadores + biasesDetected; en ciclos con 5+ evaluadores el
+      // JSON output supera 2000 tokens y se truncaba (rompiendo parse).
+      maxTokens: 4000,
+      // Forzar JSON puro: pre-llenar `{` evita preambulos tipo "Aqui esta
+      // el analisis:" que Claude a veces inyecta a pesar de la instruccion.
+      jsonPrefill: true,
       buildInsightFields: () => ({ userId: null, cycleId }),
     });
 

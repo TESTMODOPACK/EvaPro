@@ -1,11 +1,12 @@
 'use client';
 import { PlanGate } from '@/components/PlanGate';
 import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
+import useFocusTrap from '@/hooks/useFocusTrap';
 // P8-C: import dinámico de Recharts.
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/components/DynamicCharts';
 // useAiBias, useAnalyzeBias moved to analytics/page.tsx
@@ -25,6 +26,12 @@ function CycleComparisonPageContent() {
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  // Modal del resultado IA. Antes el analisis se renderizaba inline al final
+  // de la pagina y los usuarios no se daban cuenta. Ahora abre en modal y
+  // ademas queda un boton "Ver analisis" junto al de Analizar para reabrir.
+  const [showAiModal, setShowAiModal] = useState(false);
+  const aiModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(aiModalRef, showAiModal);
   const [exporting, setExporting] = useState<string | null>(null);
   const [quotaInfo, setQuotaInfo] = useState<any>(null);
   const { isBlocked: aiBlocked } = useAiQuota();
@@ -50,6 +57,7 @@ function CycleComparisonPageContent() {
     });
     setAiAnalysis(null);
     setAnalyzeError(null);
+    setShowAiModal(false);
   };
 
   const selectAll = () => {
@@ -60,7 +68,18 @@ function CycleComparisonPageContent() {
       setSelected(new Set(data.cycles.map((c: any) => c.cycleId)));
     }
     setAiAnalysis(null);
+    setShowAiModal(false);
   };
+
+  // Cerrar modal IA con Escape — UX consistente con otros modales (PlanDetailModal).
+  useEffect(() => {
+    if (!showAiModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowAiModal(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showAiModal]);
 
   const handleAnalyze = async () => {
     if (!token || selected.size < 2) return;
@@ -72,6 +91,9 @@ function CycleComparisonPageContent() {
       // CSRF al desplegar Fase 3 (sin header X-CSRF-Token).
       const result = await api.ai.analyzeCycleComparison(token, Array.from(selected));
       setAiAnalysis(result);
+      // Auto-abrir el modal apenas termine el analisis — antes el resultado
+      // se inyectaba al final del scroll y muchos usuarios no lo veian.
+      if (result?.analysis) setShowAiModal(true);
       // Refresh quota (GET, no necesita CSRF — pero usar wrapper igual
       // para consistencia y para que mande la cookie automaticamente).
       api.ai.getUsage(token).then(setQuotaInfo).catch(() => {});
@@ -241,6 +263,31 @@ function CycleComparisonPageContent() {
         >
           {analyzing ? t('analyticsCiclos.analyzing') : `${t('analyticsCiclos.analyzeCycles')} (${selected.size})`}
         </button>
+        {/* Boton para reabrir el modal con el resultado IA. Solo aparece
+            cuando ya hay un analisis cacheado en estado. Antes el resultado
+            se renderizaba inline al final del scroll y los usuarios no se
+            daban cuenta — ahora lo dejamos visible junto al boton Analizar. */}
+        {aiAnalysis?.analysis && (
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => setShowAiModal(true)}
+            title={t('analyticsCiclos.viewAiAnalysisTitle', { defaultValue: 'Ver análisis de IA' })}
+            style={{
+              fontSize: '0.82rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              border: '1px solid rgba(99,102,241,0.3)',
+              background: 'rgba(99,102,241,0.06)',
+              color: '#6366f1',
+              fontWeight: 600,
+            }}
+          >
+            <span aria-hidden="true">{'✨'}</span>
+            {t('analyticsCiclos.viewAiAnalysis', { defaultValue: 'Ver análisis IA' })}
+          </button>
+        )}
         {selected.size < 2 && (
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t('analyticsCiclos.selectAtLeast2')}</span>
         )}
@@ -334,19 +381,62 @@ function CycleComparisonPageContent() {
         })}
       </div>
 
-      {/* AI Analysis Results */}
-      {aiAnalysis?.analysis && (
-        <div className="card animate-fade-up" style={{ padding: '1.5rem', borderLeft: '4px solid #6366f1' }}>
+      {/* AI Analysis Results — modal abierto desde boton "Ver análisis IA" */}
+      {showAiModal && aiAnalysis?.analysis && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-cycle-analysis-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAiModal(false);
+          }}
+        >
+        <div
+          ref={aiModalRef}
+          className="card animate-fade-up"
+          style={{
+            padding: '1.5rem',
+            borderLeft: '4px solid #6366f1',
+            maxWidth: '860px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            background: 'var(--bg-surface)',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h2 id="ai-cycle-analysis-title" style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {t('analyticsCiclos.aiAnalysis')}
               <span style={{ fontSize: '0.68rem', padding: '0.15rem 0.5rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', borderRadius: '999px', fontWeight: 600 }}>
                 Anthropic Claude
               </span>
             </h2>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              {aiAnalysis.generatedAt ? new Date(aiAnalysis.generatedAt).toLocaleString() : ''} · {aiAnalysis.tokensUsed || 0} tokens
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                {aiAnalysis.generatedAt ? new Date(aiAnalysis.generatedAt).toLocaleString() : ''} · {aiAnalysis.tokensUsed || 0} tokens
+              </span>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setShowAiModal(false)}
+                aria-label={t('analyticsCiclos.closeModal', { defaultValue: 'Cerrar' })}
+                style={{ fontSize: '0.85rem', lineHeight: 1, padding: '0.3rem 0.6rem' }}
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.88rem', lineHeight: 1.6 }}>
@@ -433,6 +523,7 @@ function CycleComparisonPageContent() {
           <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             {t('analyticsCiclos.aiDisclaimer')}
           </div>
+        </div>
         </div>
       )}
       {/* Nota: Detección de Sesgos se movió a Análisis de Ciclo individual */}
