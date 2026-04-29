@@ -17,6 +17,7 @@ import { RecruitmentController } from './recruitment.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuditModule } from '../audit/audit.module';
 import { AiInsightsModule } from '../ai-insights/ai-insights.module';
+import { UsersModule } from '../users/users.module';
 import { RlsModule } from '../../common/rls/rls.module';
 
 @Module({
@@ -42,6 +43,10 @@ import { RlsModule } from '../../common/rls/rls.module';
     SubscriptionsModule,
     AuditModule,
     AiInsightsModule,
+    // S2.1 — para inyectar UsersService.transferUser y centralizar
+    // la cascada de cambio de dept/cargo/manager + emit del evento
+    // user.transferred (listeners reaccionan en otros modulos).
+    UsersModule,
     RlsModule,
   ],
   controllers: [RecruitmentController],

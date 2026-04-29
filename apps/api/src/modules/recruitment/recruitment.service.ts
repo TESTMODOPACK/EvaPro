@@ -20,6 +20,8 @@ import { Department } from '../tenants/entities/department.entity';
 import { Position } from '../tenants/entities/position.entity';
 import { AiInsightsService } from '../ai-insights/ai-insights.service';
 import { AuditService } from '../audit/audit.service';
+import { UsersService } from '../users/users.service';
+import { UserTransferredEvent } from '../users/events/user-transferred.event';
 import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 
 @Injectable()
@@ -47,6 +49,11 @@ export class RecruitmentService {
     private readonly dataSource: DataSource,
     // F4 A3 — para setear app.current_tenant_id en crons.
     private readonly tenantCronRunner: TenantCronRunner,
+    // S2.1 — para delegar la cascada de cambio de dept/cargo/manager
+    // al primitivo `transferUser` que centraliza la logica + emite
+    // `user.transferred` para que listeners (evaluaciones, PDI, etc)
+    // reaccionen automaticamente.
+    private readonly usersService: UsersService,
   ) {}
 
   // ─── Date & status validators (v3.1 — date flow rules) ──────────────────
@@ -822,7 +829,10 @@ export class RecruitmentService {
     }
 
     // 6. Transaccion: candidate + process + user + movement (atomico).
+    //    S2.1 — capturamos el evento `user.transferred` para emitirlo
+    //    POST-COMMIT (asi los listeners ven datos persistidos).
     let resultUserId = '';
+    let pendingTransferEvent: UserTransferredEvent | null = null;
     await this.dataSource.transaction(async (manager) => {
       const candidateRepo = manager.getRepository(RecruitmentCandidate);
       const processRepo = manager.getRepository(RecruitmentProcess);
@@ -842,66 +852,28 @@ export class RecruitmentService {
 
       // c. Cascada a User.
       if (isInternal) {
-        const user = await userRepoTx.findOne({ where: { id: candidate.userId!, tenantId } });
-        if (!user) throw new NotFoundException('Usuario interno asociado no encontrado');
-
-        const prevDept = user.department;
-        const prevPos = user.position;
-        const prevManagerId = user.managerId;
-        const prevLevel = user.hierarchyLevel;
-
-        // Aplicar cambios (dual-write text + ID)
-        if (newDept) {
-          user.department = newDept.name;
-          user.departmentId = newDept.id;
-        }
-        if (newPos) {
-          user.position = newPos.name;
-          user.positionId = newPos.id;
-          user.hierarchyLevel = newPos.level;
-        }
-        if (newManager) {
-          user.managerId = newManager.id;
-        }
-        await userRepoTx.save(user);
-
-        const deptChanged = !!newDept && prevDept !== user.department;
-        const posChanged = !!newPos && prevPos !== user.position;
-        const managerChanged = !!newManager && prevManagerId !== user.managerId;
-
-        // Solo creamos `user_movement` si hay cambio de DEPT o POSITION
-        // (mismo criterio que UsersService.update). Cambio solo de
-        // managerId queda registrado en audit log mas abajo, no como
-        // movimiento (no hay un MovementType MANAGER_CHANGE en el enum
-        // y forzar POSITION_CHANGE con same-pos seria misleading en
-        // reportes de movilidad).
-        if (deptChanged || posChanged) {
-          const movType = this.detectMovementType({
-            deptChanged,
-            posChanged,
-            prevLevel,
-            newLevel: newPos?.level ?? null,
-          });
-          await movementRepoTx.save(movementRepoTx.create({
-            tenantId,
-            userId: user.id,
-            movementType: movType,
-            effectiveDate: new Date(hireData.effectiveDate),
-            fromDepartment: prevDept || null,
-            toDepartment: user.department || null,
-            fromPosition: prevPos || null,
-            toPosition: user.position || null,
+        // S2.1 — delegar la actualizacion del User + insercion del
+        // user_movement al primitivo centralizado `transferUser`. Pasamos
+        // el EntityManager para que la operacion ocurra en la MISMA
+        // transaccion (atomicidad del flow hire). El evento queda
+        // capturado en `pendingTransferEvent` y se emite POST-COMMIT.
+        const transferResult = await this.usersService.transferUser(
+          candidate.userId!,
+          tenantId,
+          {
+            newDepartmentId: hireData.newDepartmentId,
+            newPositionId: hireData.newPositionId,
+            newManagerId: hireData.newManagerId,
+            effectiveDate: hireData.effectiveDate,
             reason: `Hire interno desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
-            approvedBy: callerUserId,
-          }));
-        }
-        // Cambio de manager se registra implicitamente en el audit log
-        // de hire (recruitment.candidate_hired metadata.hireData.newManagerId).
-        // No referencia explicita aqui porque managerChanged no genera fila
-        // en user_movements por las razones del comentario superior.
-        void managerChanged;
-
-        resultUserId = user.id;
+            triggerSource: 'recruitment_hire',
+            cascadePolicy: 'manual', // S2.2 — admin decide caso a caso por defecto
+          },
+          callerUserId,
+          manager,
+        );
+        resultUserId = transferResult.user.id;
+        pendingTransferEvent = transferResult.event;
       } else {
         // Externo: crear nuevo User
         const newUser = userRepoTx.create({
@@ -970,6 +942,14 @@ export class RecruitmentService {
       );
     } catch (e: any) {
       this.logger.warn(`Audit log de hire fallo: ${e?.message ?? e}`);
+    }
+
+    // S2.1 — emitir `user.transferred` POST-COMMIT para que listeners
+    // (evaluaciones, PDI, meetings) reaccionen sobre datos persistidos.
+    // Solo aplica para hires INTERNOS — externos crean usuario nuevo
+    // (no hay "transfer" desde un estado anterior).
+    if (pendingTransferEvent) {
+      this.usersService.emitTransferredEvent(pendingTransferEvent);
     }
 
     // 8. Reload entidades actualizadas.
