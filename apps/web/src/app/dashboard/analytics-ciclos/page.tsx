@@ -401,45 +401,45 @@ function CycleComparisonPageContent() {
             if (e.target === e.currentTarget) setShowAiModal(false);
           }}
         >
-        <div
-          ref={aiModalRef}
-          className="card animate-fade-up"
-          style={{
-            padding: '1.5rem',
-            borderLeft: '4px solid #6366f1',
-            maxWidth: '860px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            background: 'var(--bg-surface)',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <h2 id="ai-cycle-analysis-title" style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {t('analyticsCiclos.aiAnalysis')}
-              <span style={{ fontSize: '0.68rem', padding: '0.15rem 0.5rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', borderRadius: '999px', fontWeight: 600 }}>
-                Anthropic Claude
-              </span>
-            </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                {aiAnalysis.generatedAt ? new Date(aiAnalysis.generatedAt).toLocaleString() : ''} · {aiAnalysis.tokensUsed || 0} tokens
-              </span>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setShowAiModal(false)}
-                aria-label={t('analyticsCiclos.closeModal', { defaultValue: 'Cerrar' })}
-                style={{ fontSize: '0.85rem', lineHeight: 1, padding: '0.3rem 0.6rem' }}
-              >
-                ✕
-              </button>
+          <div
+            ref={aiModalRef}
+            className="card animate-fade-up"
+            style={{
+              padding: '1.5rem',
+              borderLeft: '4px solid #6366f1',
+              maxWidth: '860px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              background: 'var(--bg-surface)',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h2 id="ai-cycle-analysis-title" style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {t('analyticsCiclos.aiAnalysis')}
+                <span style={{ fontSize: '0.68rem', padding: '0.15rem 0.5rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', borderRadius: '999px', fontWeight: 600 }}>
+                  Anthropic Claude
+                </span>
+              </h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  {aiAnalysis.generatedAt ? new Date(aiAnalysis.generatedAt).toLocaleString() : ''} · {aiAnalysis.tokensUsed || 0} tokens
+                </span>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => setShowAiModal(false)}
+                  aria-label={t('analyticsCiclos.closeModal', { defaultValue: 'Cerrar' })}
+                  style={{ fontSize: '0.85rem', lineHeight: 1, padding: '0.3rem 0.6rem' }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.88rem', lineHeight: 1.6 }}>
             {/* Summary */}
             <div>
               <strong>{t('analyticsCiclos.summary')}</strong>
