@@ -316,6 +316,12 @@ async function main() {
       { table: 'evaluation_cycles', column: 'launched_at', sql: `ALTER TABLE "evaluation_cycles" ADD COLUMN IF NOT EXISTS "launched_at" timestamptz NULL` },
       // Grupo F — Sprint 4 (BR-A.4) matrix reporting (dotted-line managers)
       { table: 'users', column: 'secondary_managers', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "secondary_managers" uuid[] NOT NULL DEFAULT '{}'::uuid[]` },
+      // Grupo G — S1 Recruitment hire flow: registrar candidato ganador
+      // y datos del hire ejecutado (effectiveDate, salary, contractType,
+      // newDept/Pos/Manager, notes) en el proceso. El admin abre un modal
+      // al marcar como contratado y persistimos aqui para auditoria.
+      { table: 'recruitment_processes', column: 'winning_candidate_id', sql: `ALTER TABLE "recruitment_processes" ADD COLUMN IF NOT EXISTS "winning_candidate_id" uuid NULL` },
+      { table: 'recruitment_processes', column: 'hire_data', sql: `ALTER TABLE "recruitment_processes" ADD COLUMN IF NOT EXISTS "hire_data" jsonb NULL` },
     ];
 
     for (const fix of columnFixes) {

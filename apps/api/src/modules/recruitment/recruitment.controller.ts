@@ -84,6 +84,43 @@ export class RecruitmentController {
     return this.service.updateCandidateStage(tenantId, id, stage);
   }
 
+  /**
+   * S1.2 Sprint 1 — Hire Candidate.
+   *
+   * Cierra el flow de seleccion: marca candidato como contratado +
+   * proceso como completado + cascada hacia users (interno → update +
+   * user_movement, externo → create + user_movement de ingreso).
+   *
+   * Solo admin puede ejecutar el hire (manager no, por jerarquia y
+   * compliance — el contrato/movimiento es decision corporativa).
+   *
+   * Body esperado:
+   *   {
+   *     effectiveDate: 'YYYY-MM-DD',
+   *     newDepartmentId?: uuid,
+   *     newPositionId?: uuid,
+   *     newManagerId?: uuid,
+   *     salary?: number,
+   *     contractType?: 'indefinido'|'plazo_fijo'|'honorarios'|'practicante',
+   *     notes?: string
+   *   }
+   *
+   * Retorna `tempPassword` SOLO para externos (es la unica oportunidad
+   * de ver el password en clear-text — el frontend debe mostrarlo en el
+   * modal de exito y permitir copiarlo). Para internos retorna null.
+   */
+  @Post('processes/:processId/hire/:candidateId')
+  @Roles('super_admin', 'tenant_admin')
+  hireCandidate(
+    @Request() req: any,
+    @Param('processId', ParseUUIDPipe) processId: string,
+    @Param('candidateId', ParseUUIDPipe) candidateId: string,
+    @Body() dto: any,
+  ) {
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.service.hireCandidate(tenantId, processId, candidateId, dto, req.user.userId);
+  }
+
   @Get('candidates/:id/profile')
   getCandidateProfile(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getCandidateProfile(req.user.tenantId, id);

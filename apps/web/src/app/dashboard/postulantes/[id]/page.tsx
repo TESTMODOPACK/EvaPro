@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useDepartments } from '@/hooks/useDepartments';
 import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useTranslation } from 'react-i18next';
+import { HireCandidateModal } from './HireCandidateModal';
 
 // ─── Internal Candidate Profile (shows Eva360 data) ─────────────────
 
@@ -88,11 +89,13 @@ function InternalCandidateProfile({ userId, user }: { userId: string; user: any 
  */
 function ProcessStatusPanel({
   process,
+  candidates,
   token,
   processId,
   onSaved,
 }: {
   process: any;
+  candidates: any[];
   token: string | null;
   processId: string;
   onSaved: () => void;
@@ -102,6 +105,11 @@ function ProcessStatusPanel({
   const [reopenOpen, setReopenOpen] = useState(false);
   const [newEndDate, setNewEndDate] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  // S1.3 — modal de hire reemplaza el cambio directo de status a completed.
+  // Antes "Completar (contratado)" hacia PATCH directo sin capturar quien
+  // gano ni datos del hire. Ahora abre modal que ejecuta el endpoint
+  // POST /recruitment/processes/:id/hire/:candidateId con cascade real.
+  const [hireModalOpen, setHireModalOpen] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
   const status = process.status as 'draft' | 'active' | 'completed' | 'closed';
@@ -145,7 +153,12 @@ function ProcessStatusPanel({
     callUpdate({ status: 'active' }, 'Proceso activado');
   };
 
-  const complete = () => callUpdate({ status: 'completed' }, 'Proceso marcado como completado');
+  // S1.3 — `complete` ahora abre modal en lugar de PATCH directo. El modal
+  // se encarga de capturar candidato ganador + hire data + invocar el
+  // endpoint dedicado que ejecuta la cascada (proceso → COMPLETED, candidato
+  // → HIRED, user update/create + user_movement). Mantenemos `close` para
+  // cerrar SIN contratar (ningun candidato ganador).
+  const openHireModal = () => setHireModalOpen(true);
   const close = () => callUpdate({ status: 'closed' }, 'Proceso cerrado');
 
   const reopen = () => {
@@ -257,12 +270,12 @@ function ProcessStatusPanel({
           <>
             <button
               className="btn-primary"
-              onClick={complete}
+              onClick={openHireModal}
               disabled={saving}
-              title="Marcar como completado (candidato contratado)"
+              title="Marcar candidato como contratado y ejecutar cascada al empleado"
               style={{ fontSize: '0.85rem' }}
             >
-              {saving ? 'Guardando…' : '✓ Completar (contratado)'}
+              ✓ Marcar como contratado…
             </button>
             <button
               className="btn-ghost"
@@ -349,6 +362,21 @@ function ProcessStatusPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {/* S1.3 — Modal de hire (cierre real del flow). Solo se renderiza
+          cuando el admin lo abre desde "Marcar como contratado…". El modal
+          self-cierra y dispara onSaved() para refrescar el proceso a status
+          completed con winningCandidateId + hireData persistidos. */}
+      {token && (
+        <HireCandidateModal
+          open={hireModalOpen}
+          process={process}
+          candidates={candidates}
+          token={token}
+          onClose={() => setHireModalOpen(false)}
+          onSuccess={() => { onSaved(); }}
+        />
       )}
     </div>
   );
@@ -1705,9 +1733,16 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
           {/* Scoring weights configuration */}
           {isAdmin && <ScoringWeightsEditor process={process} isInternal={isInternal} token={token} processId={params.id} onSaved={fetchProcess} />}
 
-          {/* Status change (admin only) — v3.1 con máquina de estados + fechas */}
+          {/* Status change (admin only) — v3.1 con máquina de estados + fechas
+              + S1.3 modal de hire integrado (recibe candidates para el dropdown). */}
           {isAdmin && (
-            <ProcessStatusPanel process={process} token={token} processId={params.id} onSaved={fetchProcess} />
+            <ProcessStatusPanel
+              process={process}
+              candidates={candidates}
+              token={token}
+              processId={params.id}
+              onSaved={fetchProcess}
+            />
           )}
         </div>
       )}
