@@ -606,16 +606,90 @@ function TurnoverPageContent() {
   );
 }
 
+/* ─── UX helpers compartidos: paginación + agrupación ─────────────────── */
+
+const PAGE_SIZE = 20;
+
+const filterBarStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(200px, 2fr) minmax(150px, 1fr) minmax(120px, 1fr) auto auto',
+  gap: '0.6rem',
+  marginBottom: '1rem',
+  alignItems: 'center',
+};
+
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+  totalItems,
+  pageSize,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (p: number) => void;
+  totalItems: number;
+  pageSize: number;
+}) {
+  if (totalPages <= 1) return null;
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, totalItems);
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages, start + 4);
+  const pages: number[] = [];
+  for (let i = start; i <= end; i++) pages.push(i);
+  return (
+    <div
+      style={{
+        display: 'flex', gap: '0.4rem', alignItems: 'center',
+        justifyContent: 'space-between', marginTop: '1rem', marginBottom: '1.5rem',
+        fontSize: '0.78rem', color: 'var(--text-muted)', flexWrap: 'wrap',
+      }}
+    >
+      <span>Mostrando {from}–{to} de {totalItems}</span>
+      <div style={{ display: 'flex', gap: '0.3rem' }}>
+        <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }} disabled={page === 1} onClick={() => onChange(1)}>‹‹</button>
+        <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }} disabled={page === 1} onClick={() => onChange(page - 1)}>‹</button>
+        {pages.map((p) => (
+          <button key={p} onClick={() => onChange(p)} style={{
+            fontSize: '0.78rem', padding: '0.3rem 0.6rem', minWidth: '32px',
+            borderRadius: 'var(--radius-sm)', border: 'none',
+            background: p === page ? 'var(--accent)' : 'transparent',
+            color: p === page ? '#fff' : 'var(--text-secondary)',
+            fontWeight: p === page ? 700 : 400, cursor: 'pointer',
+          }}>{p}</button>
+        ))}
+        <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }} disabled={page === totalPages} onClick={() => onChange(page + 1)}>›</button>
+        <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }} disabled={page === totalPages} onClick={() => onChange(totalPages)}>››</button>
+      </div>
+    </div>
+  );
+}
+
+function groupByKey<T>(items: T[], keyFn: (item: T) => string | null | undefined): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyFn(item) || 'Sin departamento';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  }
+  return groups;
+}
+
 /* ─── Flight Risk Tab ────────────────────────────────────────────────── */
 function FlightRiskTab() {
   const { data, isLoading, error } = useFlightRisk();
   const { departments } = useDepartments();
   const [search, setSearch] = useState('');
-  // P8-C: debounce para evitar recomputar .filter() en cada keystroke
-  // cuando el dataset es grande (cientos de colaboradores).
   const debouncedSearch = useDebounce(search, 250);
   const [deptFilter, setDeptFilter] = useState('');
   const [riskFilter, setRiskFilter] = useState('');
+  const [groupByDept, setGroupByDept] = useState(false);
+  const [page, setPage] = useState(1);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  // Reset page on filter changes
+  useEffect(() => { setPage(1); }, [debouncedSearch, deptFilter, riskFilter, groupByDept]);
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
   if (error) return (
@@ -623,11 +697,10 @@ function FlightRiskTab() {
       <p style={{ color: 'var(--warning)', fontWeight: 600, marginBottom: '0.5rem' }}>Análisis de riesgo de fuga no disponible</p>
       <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
         Esta funcionalidad requiere un plan que incluya análisis de IA (Pro o Enterprise).
-        El cálculo de riesgo de fuga utiliza datos de evaluaciones, objetivos y feedback para generar un score algorítmico por colaborador.
       </p>
     </div>
   );
-  if (!data || !data.scores) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos disponibles. Se requieren evaluaciones completadas, objetivos y feedback para calcular el riesgo.</div>;
+  if (!data || !data.scores) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos disponibles.</div>;
 
   const filtered = data.scores.filter((s: any) => {
     if (debouncedSearch && !s.name.toLowerCase().includes(debouncedSearch.toLowerCase()) && !(s.department || '').toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
@@ -638,6 +711,37 @@ function FlightRiskTab() {
 
   const riskColor = (level: string) => level === 'high' ? 'var(--danger)' : level === 'medium' ? 'var(--warning)' : 'var(--success)';
   const riskLabel = (level: string) => level === 'high' ? 'Alto' : level === 'medium' ? 'Medio' : 'Bajo';
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = groupByDept ? filtered : filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const grouped = groupByDept ? groupByKey(paged, (s: any) => s.department) : null;
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const renderRow = (s: any) => (
+    <tr key={s.userId} style={{ borderBottom: '1px solid var(--border)' }}>
+      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{s.name}<br /><span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>{s.position || ''}</span></td>
+      <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>{s.department || '—'}</td>
+      <td style={{ padding: '0.6rem 0.75rem' }}><span style={{ fontWeight: 700, color: riskColor(s.riskLevel) }}>{riskLabel(s.riskLevel)}</span></td>
+      <td style={{ padding: '0.6rem 0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ width: '60px', height: '6px', background: 'var(--border)', borderRadius: '999px' }}>
+            <div style={{ height: '100%', width: `${s.riskScore}%`, background: riskColor(s.riskLevel), borderRadius: '999px' }} />
+          </div>
+          <span style={{ fontWeight: 700, fontSize: '0.78rem' }}>{s.riskScore}</span>
+        </div>
+      </td>
+      <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+        {(s.factors || []).filter((f: any) => f.impact === 'negative').map((f: any) => f.label).join(', ') || 'Sin factores negativos'}
+      </td>
+    </tr>
+  );
 
   return (
     <div>
@@ -661,57 +765,98 @@ function FlightRiskTab() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input className="input" placeholder="Buscar por nombre o departamento..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: '200px', fontSize: '0.85rem' }} />
-        <select className="input" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ minWidth: '150px', fontSize: '0.82rem' }}>
+      {/* Filters: una sola línea con CSS grid responsive */}
+      <div style={filterBarStyle} className="filters-grid">
+        <input className="input" placeholder="Buscar por nombre o departamento..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ fontSize: '0.85rem' }} />
+        <select className="input" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ fontSize: '0.82rem' }}>
           <option value="">Todos los deptos.</option>
           {departments.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
-        <select className="input" value={riskFilter} onChange={(e) => setRiskFilter(e.target.value)} style={{ minWidth: '120px', fontSize: '0.82rem' }}>
+        <select className="input" value={riskFilter} onChange={(e) => setRiskFilter(e.target.value)} style={{ fontSize: '0.82rem' }}>
           <option value="">Todo riesgo</option>
           <option value="high">Alto</option>
           <option value="medium">Medio</option>
           <option value="low">Bajo</option>
         </select>
-        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{filtered.length} de {data.scores.length}</span>
+        <button
+          className="btn-ghost"
+          onClick={() => setGroupByDept((v) => !v)}
+          title="Agrupar la lista por departamento"
+          style={{
+            fontSize: '0.78rem', padding: '0.45rem 0.75rem',
+            border: groupByDept ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+            color: groupByDept ? 'var(--accent-hover)' : 'var(--text-secondary)',
+            background: groupByDept ? 'rgba(99,102,241,0.08)' : 'transparent',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {groupByDept ? '▼ Agrupado' : '☰ Agrupar'}
+        </button>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{filtered.length} de {data.scores.length}</span>
       </div>
 
-      {/* Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1.5rem' }}>
-        <div className="table-wrapper" style={{ margin: 0 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-            <thead>
-              <tr>
-                {['Colaborador', 'Departamento', 'Riesgo', 'Puntaje', 'Factores'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '0.6rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.slice(0, 30).map((s: any) => (
-                <tr key={s.userId} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{s.name}<br /><span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>{s.position || ''}</span></td>
-                  <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>{s.department || '—'}</td>
-                  <td style={{ padding: '0.6rem 0.75rem' }}><span style={{ fontWeight: 700, color: riskColor(s.riskLevel) }}>{riskLabel(s.riskLevel)}</span></td>
-                  <td style={{ padding: '0.6rem 0.75rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <div style={{ width: '60px', height: '6px', background: 'var(--border)', borderRadius: '999px' }}>
-                        <div style={{ height: '100%', width: `${s.riskScore}%`, background: riskColor(s.riskLevel), borderRadius: '999px' }} />
-                      </div>
-                      <span style={{ fontWeight: 700, fontSize: '0.78rem' }}>{s.riskScore}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    {(s.factors || []).filter((f: any) => f.impact === 'negative').map((f: any) => f.label).join(', ') || 'Sin factores negativos'}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</td></tr>}
-            </tbody>
-          </table>
+      {/* Table — modo lista plana o agrupado por depto */}
+      {!groupByDept && (
+        <>
+          <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1rem' }}>
+            <div className="table-wrapper" style={{ margin: 0 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr>
+                    {['Colaborador', 'Departamento', 'Riesgo', 'Puntaje', 'Factores'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '0.6rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.map(renderRow)}
+                  {filtered.length === 0 && <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} totalItems={filtered.length} pageSize={PAGE_SIZE} />
+        </>
+      )}
+      {groupByDept && grouped && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          {Array.from(grouped.entries()).map(([dept, items]) => {
+            const isCollapsed = collapsedGroups.has(dept);
+            const highCount = items.filter((s: any) => s.riskLevel === 'high').length;
+            return (
+              <div key={dept} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div
+                  onClick={() => toggleGroup(dept)}
+                  style={{
+                    padding: '0.85rem 1rem', background: 'var(--bg-surface)',
+                    cursor: 'pointer', display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ transition: 'transform 0.15s', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>▼</span>
+                    <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{dept}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>({items.length} colaborador{items.length !== 1 ? 'es' : ''})</span>
+                  </div>
+                  {highCount > 0 && (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--danger)' }}>
+                      {highCount} en riesgo alto
+                    </span>
+                  )}
+                </div>
+                {!isCollapsed && (
+                  <div className="table-wrapper" style={{ margin: 0 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <tbody>{items.map(renderRow)}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {filtered.length === 0 && <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</div>}
         </div>
-      </div>
+      )}
 
       {/* Analysis */}
       <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: `4px solid ${(data.summary?.high || 0) > 3 ? 'var(--danger)' : (data.summary?.high || 0) > 0 ? 'var(--warning)' : 'var(--success)'}` }}>
@@ -730,9 +875,17 @@ function FlightRiskTab() {
 /* ─── Retention Tab ──────────────────────────────────────────────────── */
 function RetentionTab() {
   const { data, isLoading, error } = useRetentionRecommendations();
+  const { departments } = useDepartments();
   const [search, setSearch] = useState('');
-  // P8-C: debounce search en recomendaciones (dataset grande).
   const debouncedSearch = useDebounce(search, 250);
+  const [deptFilter, setDeptFilter] = useState('');
+  const [riskFilter, setRiskFilter] = useState('');
+  const [groupByDept, setGroupByDept] = useState(false);
+  const [page, setPage] = useState(1);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  // Reset page on filter changes
+  useEffect(() => { setPage(1); }, [debouncedSearch, deptFilter, riskFilter, groupByDept]);
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>;
   if (error) return (
@@ -743,12 +896,51 @@ function RetentionTab() {
   );
   if (!data || !data.recommendations) return <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos de retención. Se requiere primero el análisis de riesgo de fuga.</div>;
 
-  const filtered = data.recommendations.filter((r: any) =>
-    !debouncedSearch || r.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) || (r.department || '').toLowerCase().includes(debouncedSearch.toLowerCase())
-  );
+  const filtered = data.recommendations.filter((r: any) => {
+    if (debouncedSearch && !r.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) && !(r.department || '').toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
+    if (deptFilter && r.department !== deptFilter) return false;
+    if (riskFilter && r.riskLevel !== riskFilter) return false;
+    return true;
+  });
 
   const actionTypeLabels: Record<string, string> = { pdi: 'Plan de Desarrollo', coaching: 'Coaching', engagement: 'Compromiso', retention: 'Retención', conversation: 'Conversación' };
   const priorityColor: Record<string, string> = { alta: 'var(--danger)', media: 'var(--warning)', baja: 'var(--text-muted)' };
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = groupByDept ? filtered : filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const grouped = groupByDept ? groupByKey(paged, (r: any) => r.department) : null;
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  /** Render de una card de recomendación (compartido entre lista plana y agrupado). */
+  const renderCard = (r: any, i: number) => (
+    <div key={`${r.userId || r.name}-${i}`} className="card" style={{ padding: '1rem', borderLeft: `3px solid ${r.riskLevel === 'high' ? 'var(--danger)' : 'var(--warning)'}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <div>
+          <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{r.name}</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{r.department || ''}</span>
+        </div>
+        <span style={{ fontWeight: 700, color: r.riskLevel === 'high' ? 'var(--danger)' : 'var(--warning)', fontSize: '0.78rem' }}>
+          Riesgo: {r.riskScore}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        {(r.actions || []).map((a: any, j: number) => (
+          <div key={j} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
+            <span className="badge badge-ghost" style={{ fontSize: '0.68rem' }}>{actionTypeLabels[a.type] || a.type}</span>
+            <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{a.description}</span>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: priorityColor[a.priority] || 'var(--text-muted)' }}>{a.priority}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -768,35 +960,83 @@ function RetentionTab() {
         </div>
       </div>
 
-      {/* Search */}
-      <input className="input" placeholder="Buscar por nombre o departamento..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: '1rem', fontSize: '0.85rem' }} />
-
-      {/* Recommendations */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        {filtered.map((r: any, i: number) => (
-          <div key={i} className="card" style={{ padding: '1rem', borderLeft: `3px solid ${r.riskLevel === 'high' ? 'var(--danger)' : 'var(--warning)'}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <div>
-                <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{r.name}</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{r.department || ''}</span>
-              </div>
-              <span style={{ fontWeight: 700, color: r.riskLevel === 'high' ? 'var(--danger)' : 'var(--warning)', fontSize: '0.78rem' }}>
-                Riesgo: {r.riskScore}
-              </span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              {(r.actions || []).map((a: any, j: number) => (
-                <div key={j} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
-                  <span className="badge badge-ghost" style={{ fontSize: '0.68rem' }}>{actionTypeLabels[a.type] || a.type}</span>
-                  <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{a.description}</span>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: priorityColor[a.priority] || 'var(--text-muted)' }}>{a.priority}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-        {filtered.length === 0 && <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin recomendaciones de retención activas</div>}
+      {/* Filters: misma barra grid que Riesgo de Fuga (BR consistente) */}
+      <div style={filterBarStyle} className="filters-grid">
+        <input className="input" placeholder="Buscar por nombre o departamento..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ fontSize: '0.85rem' }} />
+        <select className="input" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ fontSize: '0.82rem' }}>
+          <option value="">Todos los deptos.</option>
+          {departments.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select className="input" value={riskFilter} onChange={(e) => setRiskFilter(e.target.value)} style={{ fontSize: '0.82rem' }}>
+          <option value="">Todo riesgo</option>
+          <option value="high">Alto</option>
+          <option value="medium">Medio</option>
+        </select>
+        <button
+          className="btn-ghost"
+          onClick={() => setGroupByDept((v) => !v)}
+          title="Agrupar por departamento"
+          style={{
+            fontSize: '0.78rem', padding: '0.45rem 0.75rem',
+            border: groupByDept ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+            color: groupByDept ? 'var(--accent-hover)' : 'var(--text-secondary)',
+            background: groupByDept ? 'rgba(99,102,241,0.08)' : 'transparent',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {groupByDept ? '▼ Agrupado' : '☰ Agrupar'}
+        </button>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{filtered.length} de {data.recommendations.length}</span>
       </div>
+
+      {/* Recommendations: lista plana o agrupada */}
+      {!groupByDept && (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+            {paged.map(renderCard)}
+            {filtered.length === 0 && <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin recomendaciones de retención activas</div>}
+          </div>
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} totalItems={filtered.length} pageSize={PAGE_SIZE} />
+        </>
+      )}
+      {groupByDept && grouped && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          {Array.from(grouped.entries()).map(([dept, items]) => {
+            const isCollapsed = collapsedGroups.has(dept);
+            const highCount = items.filter((r: any) => r.riskLevel === 'high').length;
+            return (
+              <div key={dept}>
+                <div
+                  onClick={() => toggleGroup(dept)}
+                  style={{
+                    padding: '0.75rem 1rem', background: 'var(--bg-surface)',
+                    cursor: 'pointer', display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)', marginBottom: isCollapsed ? 0 : '0.5rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ transition: 'transform 0.15s', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>▼</span>
+                    <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{dept}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>({items.length} con acciones)</span>
+                  </div>
+                  {highCount > 0 && (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--danger)' }}>
+                      {highCount} en riesgo alto
+                    </span>
+                  )}
+                </div>
+                {!isCollapsed && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingLeft: '0.5rem' }}>
+                    {items.map((r: any, i: number) => renderCard(r, i))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {filtered.length === 0 && <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin recomendaciones de retención activas</div>}
+        </div>
+      )}
 
       {/* Analysis */}
       <div className="card animate-fade-up" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>

@@ -508,6 +508,11 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     grid-template-columns: 1fr !important;
   }
 
+  /* Filters grid (Análisis de Dotación) — collapse to single column on mobile */
+  .filters-grid {
+    grid-template-columns: 1fr !important;
+  }
+
   /* P6: Cards — prevent overflow */
   .card {
     min-width: 0;
