@@ -843,6 +843,15 @@ export class RecruitmentService {
     // 6. Transaccion: candidate + process + user + movement (atomico).
     //    S2.1 — capturamos el evento `user.transferred` para emitirlo
     //    POST-COMMIT (asi los listeners ven datos persistidos).
+    //    S2.4 — SELECT FOR UPDATE pesimista sobre el proceso al inicio
+    //    de la tx para serializar hires concurrentes. Sin esto, dos
+    //    admins clickeando "Marcar como contratado" en paralelo veian
+    //    cada uno winningCandidateId=null en su snapshot MVCC, ambos
+    //    procedian, y el segundo COMMIT sobreescribia al primero
+    //    (ambos candidatos quedaban hired pero solo uno como winning).
+    //    Con FOR UPDATE, la 2da tx espera al COMMIT/ROLLBACK de la 1ra
+    //    y reevalua winningCandidateId, encontrandolo ya seteado y
+    //    fallando con el guard correspondiente.
     let resultUserId = '';
     let pendingTransferEvent: UserTransferredEvent | null = null;
     await this.dataSource.transaction(async (manager) => {
@@ -851,18 +860,64 @@ export class RecruitmentService {
       const userRepoTx = manager.getRepository(User);
       const movementRepoTx = manager.getRepository(UserMovement);
 
+      // S2.4 — Re-fetch del proceso CON LOCK + re-validar dentro de la tx.
+      // Si otra tx commiteo un hire en el medio, este findOne va a
+      // devolver el estado actualizado y los guards van a fallar.
+      const lockedProcess = await processRepo
+        .createQueryBuilder('p')
+        .where('p.id = :id', { id: processId })
+        .andWhere('p.tenantId = :tenantId', { tenantId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!lockedProcess) {
+        throw new NotFoundException('Proceso no encontrado (race con delete)');
+      }
+      if (lockedProcess.status !== ProcessStatus.ACTIVE) {
+        throw new BadRequestException(
+          `El proceso cambio de estado durante el hire (ahora ${lockedProcess.status}). Recargue y vuelva a intentar.`,
+        );
+      }
+      if (lockedProcess.winningCandidateId && lockedProcess.winningCandidateId !== candidateId) {
+        throw new BadRequestException(
+          'Otro admin contrato a un candidato distinto en este proceso justo ahora. Recargue para ver el estado actual.',
+        );
+      }
+      // Reusamos `lockedProcess` para los writes — gana sobre el `process`
+      // en memoria leido antes de la tx.
+
       // a. Marcar candidato como contratado.
-      candidate.stage = CandidateStage.HIRED;
-      await candidateRepo.save(candidate);
+      // Re-fetch tambien con lock para evitar race en el candidato (ej.
+      // marcado a 'rejected' por otro admin entre validacion y commit).
+      const lockedCandidate = await candidateRepo
+        .createQueryBuilder('c')
+        .where('c.id = :id', { id: candidateId })
+        .andWhere('c.tenantId = :tenantId', { tenantId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!lockedCandidate) {
+        throw new NotFoundException('Candidato no encontrado (race con delete)');
+      }
+      if (lockedCandidate.stage === CandidateStage.HIRED) {
+        throw new BadRequestException('El candidato ya fue contratado por otro admin justo ahora.');
+      }
+      if (lockedCandidate.stage === CandidateStage.REJECTED) {
+        throw new BadRequestException('El candidato fue rechazado por otro admin durante el hire. Operacion abortada.');
+      }
+      lockedCandidate.stage = CandidateStage.HIRED;
+      await candidateRepo.save(lockedCandidate);
 
-      // b. Marcar proceso completado.
-      process.status = ProcessStatus.COMPLETED;
-      process.winningCandidateId = candidate.id;
-      process.hireData = hireData;
-      process.autoClosed = false;
-      await processRepo.save(process);
+      // b. Marcar proceso completado (sobre el row lockeado).
+      lockedProcess.status = ProcessStatus.COMPLETED;
+      lockedProcess.winningCandidateId = lockedCandidate.id;
+      lockedProcess.hireData = hireData;
+      lockedProcess.autoClosed = false;
+      await processRepo.save(lockedProcess);
 
-      // c. Cascada a User.
+      // c. Cascada a User. S2.4 — usamos lockedCandidate / lockedProcess
+      // para los reads adentro de la tx (userId y title vienen de los
+      // rows lockeados; siguen siendo los mismos datos, pero por
+      // consistencia conceptual leemos del row lockeado y no del
+      // snapshot pre-tx).
       if (isInternal) {
         // S2.1 — delegar la actualizacion del User + insercion del
         // user_movement al primitivo centralizado `transferUser`. Pasamos
@@ -870,14 +925,14 @@ export class RecruitmentService {
         // transaccion (atomicidad del flow hire). El evento queda
         // capturado en `pendingTransferEvent` y se emite POST-COMMIT.
         const transferResult = await this.usersService.transferUser(
-          candidate.userId!,
+          lockedCandidate.userId!,
           tenantId,
           {
             newDepartmentId: hireData.newDepartmentId,
             newPositionId: hireData.newPositionId,
             newManagerId: hireData.newManagerId,
             effectiveDate: hireData.effectiveDate,
-            reason: `Hire interno desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+            reason: `Hire interno desde proceso "${lockedProcess.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
             triggerSource: 'recruitment_hire',
             cascadePolicy: 'manual', // S2.2 — admin decide caso a caso por defecto
           },
@@ -887,12 +942,12 @@ export class RecruitmentService {
         resultUserId = transferResult.user.id;
         pendingTransferEvent = transferResult.event;
       } else {
-        // Externo: crear nuevo User
+        // Externo: crear nuevo User. Usamos lockedCandidate por consistencia.
         const newUser = userRepoTx.create({
           tenantId,
-          email: candidate.email!,
-          firstName: candidate.firstName!,
-          lastName: candidate.lastName!,
+          email: lockedCandidate.email!,
+          firstName: lockedCandidate.firstName!,
+          lastName: lockedCandidate.lastName!,
           passwordHash: passwordHash!,
           role: 'employee',
           managerId: newManager?.id ?? null,
@@ -922,7 +977,7 @@ export class RecruitmentService {
           toDepartment: savedUser.department || null,
           fromPosition: null,
           toPosition: savedUser.position || null,
-          reason: `Contratacion externa desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+          reason: `Contratacion externa desde proceso "${lockedProcess.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
           approvedBy: callerUserId,
         }));
 
