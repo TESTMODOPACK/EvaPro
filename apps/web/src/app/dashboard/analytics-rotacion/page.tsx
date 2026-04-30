@@ -62,18 +62,53 @@ function TurnoverPageContent() {
   const [showGuide, setShowGuide] = useState(false);
   const [activeSection, setActiveSection] = useState<'departures' | 'movements' | 'flight-risk' | 'retention'>('departures');
   const [error, setError] = useState<string | null>(null);
+  // S3.2 — date range filter para Movilidad Interna. Default = ultimos 12m
+  // (mismo periodo que el backend usa por defecto si no se pasan fechas).
+  const [movFrom, setMovFrom] = useState<string>(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 12);
+    return d.toISOString().slice(0, 10);
+  });
+  const [movTo, setMovTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [movLoading, setMovLoading] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     setError(null);
     Promise.all([
       fetch(`${API}/reports/analytics/turnover`, { headers: { Authorization: `Bearer ${token}` } }).then(r => { if (!r.ok) throw new Error('Error al cargar rotación'); return r.json(); }),
-      fetch(`${API}/reports/analytics/movements`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+      fetch(`${API}/reports/analytics/movements?from=${movFrom}&to=${movTo}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
     ]).then(([turnover, movements]) => {
       setData(turnover);
       setMovData(movements);
     }).catch((e) => setError(e.message || 'Error al cargar los datos')).finally(() => setLoading(false));
+    // No depender de movFrom/movTo aqui — esto es la carga inicial.
+    // El refetch al cambiar fechas se maneja explicitamente con el boton.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // S3.2 — refetch on demand cuando el admin aplica un nuevo rango de fechas.
+  const refetchMovements = async () => {
+    if (!token) return;
+    if (movFrom > movTo) {
+      setError('La fecha "Desde" no puede ser posterior a "Hasta"');
+      return;
+    }
+    setMovLoading(true);
+    setError(null);
+    try {
+      const r = await fetch(
+        `${API}/reports/analytics/movements?from=${movFrom}&to=${movTo}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!r.ok) throw new Error('Error al cargar movimientos');
+      const data = await r.json();
+      setMovData(data);
+    } catch (e: any) {
+      setError(e.message || 'Error al cargar movimientos');
+    } finally {
+      setMovLoading(false);
+    }
+  };
 
   const handleExport = async (format: 'pdf' | 'xlsx') => {
     if (!token) return;
@@ -476,6 +511,41 @@ function TurnoverPageContent() {
       {/* ═══════════ MOVEMENTS SECTION ═══════════ */}
       {activeSection === 'movements' && (
         <div>
+          {/* S3.2 — Date range filter para Movilidad Interna. */}
+          <div className="card animate-fade-up" style={{ padding: '1rem', marginBottom: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end' }}>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>Desde</label>
+              <input
+                type="date"
+                value={movFrom}
+                onChange={(e) => setMovFrom(e.target.value)}
+                style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.85rem' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>Hasta</label>
+              <input
+                type="date"
+                value={movTo}
+                onChange={(e) => setMovTo(e.target.value)}
+                style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.85rem' }}
+              />
+            </div>
+            <button
+              className="btn-primary"
+              onClick={refetchMovements}
+              disabled={movLoading}
+              style={{ fontSize: '0.85rem', padding: '0.45rem 1rem' }}
+            >
+              {movLoading ? 'Cargando…' : 'Aplicar'}
+            </button>
+            {movData?.period && (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                Período actual: <strong>{movData.period.from}</strong> a <strong>{movData.period.to}</strong>
+              </span>
+            )}
+          </div>
+
           {!movData ? (
             <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No se pudieron cargar los datos de movimientos internos.</p>
@@ -500,7 +570,65 @@ function TurnoverPageContent() {
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>Cambios de Cargo</div>
                   <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f59e0b' }}>{movData.positionChanges}</div>
                 </div>
+                {/* S3.2 — Hires internos en el periodo (procesos completed
+                    con winning_candidate_id que apunta a candidato interno) */}
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center', borderLeft: '3px solid #10b981' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }} title="Personas que ganaron un proceso de selección interno en el periodo">Hires Internos</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#10b981' }}>{movData.internalHires ?? 0}</div>
+                </div>
+                {/* S3.2 — Tasa de retencion post-movilidad: % de users con
+                    movements >= 12m atras que siguen activos hoy. Indica si
+                    la movilidad interna RETIENE talento. */}
+                <div className="card" style={{ padding: '1.25rem', textAlign: 'center', borderLeft: '3px solid #6366f1' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }} title="De los colaboradores con un movimiento hace ≥12 meses, qué porcentaje sigue activo hoy">Retención post-movilidad</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>
+                    {movData.retention12m?.rate != null ? `${movData.retention12m.rate}%` : '—'}
+                  </div>
+                  {movData.retention12m?.eligibleUsers > 0 && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                      {movData.retention12m.stillActive}/{movData.retention12m.eligibleUsers} activos
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* S3.2 — Tabla de hires internos en el periodo */}
+              {movData.internalHiresList?.length > 0 && (
+                <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+                  <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>
+                    🏆 Procesos de Selección Internos Cerrados con Hire ({movData.internalHires})
+                  </h2>
+                  <div className="table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Colaborador</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Proceso</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Cargo / Depto destino</th>
+                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Fecha efectiva</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {movData.internalHiresList.map((h: any, i: number) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{h.candidateName}</td>
+                            <td style={{ padding: '0.6rem 0.75rem' }}>{h.processTitle}</td>
+                            <td style={{ padding: '0.6rem 0.75rem', fontSize: '0.8rem' }}>
+                              {h.newPosition || '—'}
+                              {h.newDepartment && (
+                                <span style={{ color: 'var(--text-muted)' }}> · {h.newDepartment}</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              {h.effectiveDate ? new Date(h.effectiveDate).toLocaleDateString('es-CL') : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {/* By Type distribution */}
               {movData.byType?.length > 0 && (

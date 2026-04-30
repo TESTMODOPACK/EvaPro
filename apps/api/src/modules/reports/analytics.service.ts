@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, LessThan, In, IsNull, Not } from 'typeorm';
+import { DataSource, Repository, MoreThan, LessThan, In, IsNull, Not } from 'typeorm';
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
 import { User } from '../users/entities/user.entity';
@@ -32,6 +32,9 @@ export class AnalyticsService {
     private readonly responseRepo: Repository<EvaluationResponse>,
     @InjectRepository(EvaluationAssignment)
     private readonly assignmentRepo: Repository<EvaluationAssignment>,
+    // S3.2 — para query raw sobre recruitment_processes (evita circular
+    // dep con RecruitmentModule que importa ReportsModule indirectamente).
+    private readonly dataSource: DataSource,
   ) {}
 
   // ─── 1. Cumplimiento PDI ────────────────────────────────────────────
@@ -458,9 +461,21 @@ export class AnalyticsService {
    * a los de su equipo directo + self. Admin (managerId=undefined) ve
    * movimientos de toda la organización sin filtro.
    */
-  async getInternalMovementAnalysis(tenantId: string, managerId?: string): Promise<any> {
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+  async getInternalMovementAnalysis(
+    tenantId: string,
+    managerId?: string,
+    opts?: { from?: string; to?: string },
+  ): Promise<any> {
+    // S3.2 — date range opcional. Si no se pasa, default = ultimos 12m
+    // (comportamiento previo preservado).
+    const now = new Date();
+    const defaultFrom = new Date(now); defaultFrom.setMonth(defaultFrom.getMonth() - 12);
+    const fromDate = opts?.from ? new Date(opts.from) : defaultFrom;
+    const toDate = opts?.to ? new Date(opts.to) : now;
+    // Sanity check: from <= to
+    if (fromDate > toDate) {
+      throw new BadRequestException('La fecha "from" no puede ser posterior a "to"');
+    }
 
     // Pre-cargar equipo del manager (si aplica).
     let teamIds: string[] | null = null;
@@ -481,7 +496,8 @@ export class AnalyticsService {
       .createQueryBuilder('m')
       .innerJoinAndSelect('m.user', 'u', 'u.tenant_id = m.tenant_id')
       .where('m.tenant_id = :tenantId', { tenantId })
-      .andWhere('m.effective_date > :cutoff', { cutoff: twelveMonthsAgo });
+      .andWhere('m.effective_date >= :from', { from: fromDate })
+      .andWhere('m.effective_date <= :to', { to: toDate });
     if (teamIds) qb.andWhere('m.user_id IN (:...teamIds)', { teamIds });
     const movements = await qb
       .orderBy('m.effective_date', 'DESC')
@@ -521,7 +537,113 @@ export class AnalyticsService {
       reason: m.reason,
     }));
 
+    // S3.2 — Hires internos en el periodo (procesos COMPLETED con
+    // winning_candidate_id que apunta a candidato interno). Distinto de
+    // los movimientos del enum: aqui contamos "personas que ganaron un
+    // proceso de seleccion interna" — alta movilidad cualitativa.
+    let internalHires = 0;
+    let internalHiresList: Array<{
+      candidateName: string;
+      processTitle: string;
+      effectiveDate: string;
+      newPosition: string | null;
+      newDepartment: string | null;
+    }> = [];
+    try {
+      const hiresQb = this.dataSource
+        .createQueryBuilder()
+        .select([
+          'p.id AS process_id',
+          'p.title AS process_title',
+          "p.hire_data->>'effectiveDate' AS effective_date",
+          'c.id AS candidate_id',
+          'c.user_id AS user_id',
+          'u.first_name AS first_name',
+          'u.last_name AS last_name',
+          'u.position AS position',
+          'u.department AS department',
+        ])
+        .from('recruitment_processes', 'p')
+        .innerJoin('recruitment_candidates', 'c', 'c.id = p.winning_candidate_id AND c.tenant_id = p.tenant_id')
+        .innerJoin('users', 'u', 'u.id = c.user_id AND u.tenant_id = p.tenant_id')
+        .where('p.tenant_id = :tenantId', { tenantId })
+        .andWhere('p.status = :status', { status: 'completed' })
+        .andWhere('p.winning_candidate_id IS NOT NULL')
+        .andWhere('c.candidate_type = :ct', { ct: 'internal' })
+        .andWhere(`(p.hire_data->>'effectiveDate')::date >= :from`, { from: fromDate.toISOString().slice(0, 10) })
+        .andWhere(`(p.hire_data->>'effectiveDate')::date <= :to`, { to: toDate.toISOString().slice(0, 10) });
+      if (teamIds) hiresQb.andWhere('c.user_id IN (:...teamIds)', { teamIds });
+      const hires = await hiresQb.getRawMany();
+      internalHires = hires.length;
+      internalHiresList = hires.slice(0, 10).map((h: any) => ({
+        candidateName: `${h.first_name || ''} ${h.last_name || ''}`.trim() || 'N/A',
+        processTitle: h.process_title,
+        effectiveDate: h.effective_date,
+        newPosition: h.position,
+        newDepartment: h.department,
+      }));
+    } catch (e) {
+      // Tabla recruitment_processes puede no existir en tenants viejos
+      // (tabla creada en S1.1). Degradar a 0 sin romper el reporte.
+      internalHires = 0;
+      internalHiresList = [];
+    }
+
+    // S3.2 — Tasa de retencion post-movilidad. De todos los users que
+    // tuvieron AL MENOS UN movimiento >= 12 meses atras (snapshot del
+    // pasado), ¿cuantos siguen activos hoy? Indica si la movilidad
+    // interna RETIENE talento o si los que cambian terminan irse igual.
+    // Solo tiene sentido para "movements" en un horizonte largo, asi
+    // que ignoramos el date range del request — siempre 12m atras.
+    let retention12m: { eligibleUsers: number; stillActive: number; rate: number | null } = {
+      eligibleUsers: 0,
+      stillActive: 0,
+      rate: null,
+    };
+    try {
+      const retentionCutoff = new Date();
+      retentionCutoff.setMonth(retentionCutoff.getMonth() - 12);
+      // Subquery: usuarios distintos con movement antes de la cutoff
+      const eligibleRows = await this.movementRepo
+        .createQueryBuilder('m')
+        .select('DISTINCT m.user_id', 'user_id')
+        .where('m.tenant_id = :tenantId', { tenantId })
+        .andWhere('m.effective_date <= :cutoff', { cutoff: retentionCutoff })
+        .getRawMany();
+      const eligibleIds: string[] = eligibleRows.map((r) => r.user_id).filter(Boolean);
+      if (teamIds) {
+        // Filtrar a equipo del manager si aplica
+        const teamSet = new Set(teamIds);
+        const filtered = eligibleIds.filter((id) => teamSet.has(id));
+        retention12m.eligibleUsers = filtered.length;
+        if (filtered.length > 0) {
+          const stillActive = await this.userRepo.count({
+            where: { tenantId, isActive: true, id: In(filtered) },
+          });
+          retention12m.stillActive = stillActive;
+          retention12m.rate = Number(((stillActive / filtered.length) * 100).toFixed(1));
+        }
+      } else {
+        retention12m.eligibleUsers = eligibleIds.length;
+        if (eligibleIds.length > 0) {
+          const stillActive = await this.userRepo.count({
+            where: { tenantId, isActive: true, id: In(eligibleIds) },
+          });
+          retention12m.stillActive = stillActive;
+          retention12m.rate = Number(((stillActive / eligibleIds.length) * 100).toFixed(1));
+        }
+      }
+    } catch (e) {
+      retention12m = { eligibleUsers: 0, stillActive: 0, rate: null };
+    }
+
     return {
+      // S3.2 — meta del periodo consultado para que el frontend muestre
+      // claramente el rango y permita comparar entre consultas.
+      period: {
+        from: fromDate.toISOString().slice(0, 10),
+        to: toDate.toISOString().slice(0, 10),
+      },
       totalMovements: movements.length,
       promotions: movements.filter(m => m.movementType === 'promotion').length,
       lateralTransfers: movements.filter(m => m.movementType === 'lateral_transfer' || m.movementType === 'department_change').length,
@@ -531,6 +653,10 @@ export class AnalyticsService {
       byMonth: Object.entries(byMonth).map(([month, count]) => ({ month, count })).sort((a, b) => a.month.localeCompare(b.month)),
       departmentFlows: Object.entries(flows).map(([flow, count]) => ({ flow, count })).sort((a, b) => b.count - a.count),
       recent,
+      // S3.2 — nuevos campos
+      internalHires,
+      internalHiresList,
+      retention12m,
     };
   }
 

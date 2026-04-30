@@ -666,11 +666,21 @@ export class ReportsController {
   }
 
   /** Movimientos Internos — tenant_admin + manager.
-   *  P7.1 — Manager ve movimientos solo de su equipo directo. */
+   *  P7.1 — Manager ve movimientos solo de su equipo directo.
+   *  S3.2 — soporta filtro de fechas opcional `from` y `to` (YYYY-MM-DD).
+   *  Si no se pasan, default ultimos 12 meses (comportamiento previo). */
   @Get('analytics/movements')
   @Roles('tenant_admin', 'manager')
-  getInternalMovements(@Request() req: any) {
+  getInternalMovements(
+    @Request() req: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
-    return this.analyticsService.getInternalMovementAnalysis(req.user.tenantId, managerId);
+    return this.analyticsService.getInternalMovementAnalysis(
+      req.user.tenantId,
+      managerId,
+      { from, to },
+    );
   }
 }

@@ -1421,8 +1421,14 @@ export const api = {
       request<any>("/reports/analytics/cycle-comparison", {}, token),
     turnover: (token: string) =>
       request<any>("/reports/analytics/turnover", {}, token),
-    movements: (token: string) =>
-      request<any>("/reports/analytics/movements", {}, token),
+    movements: (token: string, opts?: { from?: string; to?: string }) => {
+      // S3.2 — date range filter opcional. Default backend = ultimos 12m.
+      const params = new URLSearchParams();
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      return request<any>(`/reports/analytics/movements${qs}`, {}, token);
+    },
     pdiCompliance: (token: string) =>
       request<any>("/reports/analytics/pdi-compliance", {}, token),
     pdiHistorical: (token: string) =>
