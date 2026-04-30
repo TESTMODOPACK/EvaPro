@@ -43,7 +43,7 @@ export class RecruitmentController {
   @Roles('super_admin', 'tenant_admin')
   updateProcess(@Request() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.service.updateProcess(tenantId, id, dto);
+    return this.service.updateProcess(tenantId, id, dto, req.user.userId);
   }
 
   // ─── Candidates ───────────────────────────────────────────────────
@@ -57,9 +57,9 @@ export class RecruitmentController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     if (dto.userId) {
-      return this.service.addInternalCandidate(tenantId, processId, dto.userId);
+      return this.service.addInternalCandidate(tenantId, processId, dto.userId, req.user.userId);
     }
-    return this.service.addExternalCandidate(tenantId, processId, dto);
+    return this.service.addExternalCandidate(tenantId, processId, dto, req.user.userId);
   }
 
   @Patch('candidates/:id')
@@ -70,7 +70,7 @@ export class RecruitmentController {
     @Body() dto: any,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.service.updateCandidate(tenantId, id, dto);
+    return this.service.updateCandidate(tenantId, id, dto, req.user.userId);
   }
 
   @Patch('candidates/:id/stage')
@@ -81,7 +81,7 @@ export class RecruitmentController {
     @Body('stage') stage: string,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.service.updateCandidateStage(tenantId, id, stage);
+    return this.service.updateCandidateStage(tenantId, id, stage, req.user.userId);
   }
 
   /**
@@ -159,7 +159,7 @@ export class RecruitmentController {
     @Body('cvUrl') cvUrl: string,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.service.uploadCv(tenantId, id, cvUrl);
+    return this.service.uploadCv(tenantId, id, cvUrl, req.user.userId);
   }
 
   @Post('candidates/:id/analyze-cv')
@@ -182,7 +182,7 @@ export class RecruitmentController {
     @Body('notes') notes: string,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.service.addRecruiterNotes(tenantId, id, notes);
+    return this.service.addRecruiterNotes(tenantId, id, notes, req.user.userId);
   }
 
   // ─── Interviews ───────────────────────────────────────────────────
@@ -220,7 +220,7 @@ export class RecruitmentController {
     @Body() dto: { adjustment: number; justification: string },
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.service.adjustScore(tenantId, id, dto.adjustment, dto.justification);
+    return this.service.adjustScore(tenantId, id, dto.adjustment, dto.justification, req.user.userId);
   }
 
   // ─── Comparative (internal processes) ─────────────────────────────

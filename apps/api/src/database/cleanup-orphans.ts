@@ -322,6 +322,13 @@ async function main() {
       // al marcar como contratado y persistimos aqui para auditoria.
       { table: 'recruitment_processes', column: 'winning_candidate_id', sql: `ALTER TABLE "recruitment_processes" ADD COLUMN IF NOT EXISTS "winning_candidate_id" uuid NULL` },
       { table: 'recruitment_processes', column: 'hire_data', sql: `ALTER TABLE "recruitment_processes" ADD COLUMN IF NOT EXISTS "hire_data" jsonb NULL` },
+      // S4.2 — compliance Chile: archivar CV 24m post-cierre en lugar
+      // de borrarlo. Las nuevas columnas reciben el valor previo de
+      // cv_url al cerrar el proceso; cv_url queda NULL para que la UI
+      // activa lo trate como "sin CV". El cron purgeArchivedCvs los
+      // borra definitivamente cuando vencen los 24m.
+      { table: 'recruitment_candidates', column: 'cv_url_archived', sql: `ALTER TABLE "recruitment_candidates" ADD COLUMN IF NOT EXISTS "cv_url_archived" text NULL` },
+      { table: 'recruitment_candidates', column: 'cv_archived_at', sql: `ALTER TABLE "recruitment_candidates" ADD COLUMN IF NOT EXISTS "cv_archived_at" timestamptz NULL` },
     ];
 
     for (const fix of columnFixes) {
