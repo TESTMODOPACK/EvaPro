@@ -75,11 +75,38 @@ export class RecruitmentCandidate {
   user: User | null;
 
   // Common fields
-  @Column({ type: 'text', name: 'cv_url', nullable: true, comment: 'Base64 data URL del CV (se limpia al cerrar proceso)' })
+  @Column({ type: 'text', name: 'cv_url', nullable: true, comment: 'Base64 data URL del CV activo. Al cerrar proceso se mueve a cv_url_archived (compliance Chile 24m).' })
   cvUrl: string | null;
 
   @Column({ type: 'jsonb', name: 'cv_analysis', nullable: true })
   cvAnalysis: any | null;
+
+  /**
+   * S4.2 — Compliance Chile: el CV de un candidato debe conservarse
+   * 24 meses tras el cierre del proceso (Ley 19.628 + DT 19.628 sobre
+   * datos personales en procesos de seleccion). Antes de S4 borraban
+   * `cv_url` al cerrar — esto rompia compliance.
+   *
+   * Nuevo flow al cerrar/completar proceso:
+   *   1. Mover cv_url → cv_url_archived
+   *   2. Setear cv_archived_at = NOW()
+   *   3. Setear cv_url = NULL (oculto en UI activa)
+   *
+   * Cron `purgeArchivedCvs` (en recruitment.service) borra archived
+   * cuando han pasado 24 meses desde cv_archived_at. Ese paso ya es
+   * deletion permanente — el dato ya cumplio retencion legal.
+   *
+   * `select: false` para que las queries default NO lo traigan:
+   *   - Es PII bajo retencion (no debe estar en vistas activas).
+   *   - Es base64 ~1MB+ (payload bloat enorme en list endpoints).
+   * El acceso explicito requiere addSelect('candidate.cvUrlArchived')
+   * en el QueryBuilder, reservado a auditorias admin.
+   */
+  @Column({ type: 'text', name: 'cv_url_archived', nullable: true, select: false, comment: 'CV archivado tras cierre de proceso. Se purga a los 24m por cron.' })
+  cvUrlArchived: string | null;
+
+  @Column({ type: 'timestamptz', name: 'cv_archived_at', nullable: true })
+  cvArchivedAt: Date | null;
 
   @Column({ type: 'enum', enum: CandidateStage, default: CandidateStage.REGISTERED })
   stage: CandidateStage;

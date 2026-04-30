@@ -454,18 +454,82 @@ export class RecruitmentService {
 
     const saved = await this.processRepo.save(process);
 
-    // Clean up CV data when process is closed or completed (free DB space).
-    // Solo en la transición real a un estado terminal — no en updates que
-    // no cambian status.
-    const statusChanged = dto.status !== undefined && dto.status !== previousStatus;
-    if (statusChanged && (dto.status === 'closed' || dto.status === 'completed')) {
-      await this.candidateRepo
+    // S4.2 — Al reabrir, restaurar CVs archivados (cv_url_archived → cv_url)
+    // para que el recruiter pueda continuar el proceso con los CVs vigentes.
+    // El flow del archivo es:
+    //   close/complete → cv_url goes to cv_url_archived
+    //   reopen        → cv_url_archived comes back to cv_url
+    // Compliance OK: el clock de 24m se reinicia con cada cierre — si el
+    // admin reabre y vuelve a cerrar, contamos desde el ultimo cierre.
+    // Esta regeneracion solo aplica si el CV NO ha sido purgado por el
+    // cron (que solo dispara despues de 24m de archivado).
+    if (
+      dto.status !== undefined &&
+      dto.status !== previousStatus &&
+      (previousStatus === ProcessStatus.COMPLETED || previousStatus === ProcessStatus.CLOSED) &&
+      dto.status === ProcessStatus.ACTIVE
+    ) {
+      const restoreResult = await this.candidateRepo
         .createQueryBuilder()
         .update()
-        .set({ cvUrl: null })
+        .set({
+          cvUrl: () => 'cv_url_archived',
+          cvUrlArchived: null,
+          cvArchivedAt: null,
+        })
+        .where('process_id = :processId AND cv_url_archived IS NOT NULL', { processId: id })
+        .execute();
+      const restored = restoreResult.affected ?? 0;
+      if (restored > 0) {
+        this.logger.log(`Restored ${restored} archived CV(s) on reopen of process ${id}`);
+        this.auditService
+          .log(effectiveTenantId, callerUserId ?? null, 'recruitment.cvs_restored', 'recruitment_process', id, {
+            count: restored,
+          })
+          .catch(() => {});
+      }
+    }
+
+    // S4.2 — Archivar CVs en lugar de borrarlos al cerrar proceso.
+    // Compliance Chile (Ley 19.628): los CV de procesos de seleccion
+    // deben conservarse 24 meses despues del cierre. Antes de S4 esta
+    // misma rama borraba cv_url destruyendo el dato — esto era una
+    // violacion de retencion legal.
+    //
+    // Nuevo comportamiento (solo si la transicion es real a closed/completed):
+    //   - Mueve cv_url → cv_url_archived (preserva el data URL base64).
+    //   - Setea cv_archived_at = NOW().
+    //   - Setea cv_url = NULL (oculto en UI activa, libera referencias).
+    //
+    // El cron `purgeArchivedCvs` (definido mas abajo, corre diario) se
+    // encarga de la deletion final cuando cv_archived_at < NOW() - 24m.
+    //
+    // Idempotente: el WHERE filtra cv_url IS NOT NULL, asi que un re-run
+    // sobre el mismo proceso (que ya archivo) no toca filas. Si ya hay
+    // valor en cv_url_archived no lo pisa porque la query filtra por
+    // cv_url IS NOT NULL — solo afecta candidatos que tienen CV activo.
+    const statusChanged = dto.status !== undefined && dto.status !== previousStatus;
+    if (statusChanged && (dto.status === 'closed' || dto.status === 'completed')) {
+      const result = await this.candidateRepo
+        .createQueryBuilder()
+        .update()
+        .set({
+          cvUrlArchived: () => 'cv_url',
+          cvArchivedAt: () => 'NOW()',
+          cvUrl: null,
+        })
         .where('process_id = :processId AND cv_url IS NOT NULL', { processId: id })
         .execute();
-      this.logger.log(`Cleaned CV data for closed process ${id}`);
+      const affected = result.affected ?? 0;
+      if (affected > 0) {
+        this.logger.log(`Archived ${affected} CV(s) for closed process ${id} (compliance: 24m retention)`);
+        this.auditService
+          .log(effectiveTenantId, callerUserId ?? null, 'recruitment.cvs_archived', 'recruitment_process', id, {
+            count: affected,
+            reason: dto.status,
+          })
+          .catch(() => {});
+      }
     }
 
     // Audit de eventos de cambio de estado (útil para soporte + compliance).
@@ -525,9 +589,13 @@ export class RecruitmentService {
    * distinguirlos en UI (badge "Cerrado automáticamente") y permitir
    * reabrir fácilmente.
    *
-   * Corre a las 01:00 UTC (madrugada en LATAM). No dispara emails ni
-   * limpia CV data — el cierre manual existente ya se encarga de eso
-   * (si necesitamos limpiarlos acá, replicar la query de updateProcess).
+   * Corre a las 01:00 UTC (madrugada en LATAM). No dispara emails.
+   *
+   * S4.2 — Ahora SI archiva CVs al cerrar (compliance Chile 24m). El
+   * comentario antiguo decia "no limpia CV data" porque la limpieza
+   * antigua era destructiva (= violacion); con archivado preservamos
+   * el dato 24m via cv_url_archived + cv_archived_at, asi que es seguro
+   * (y necesario) hacerlo aca tambien.
    *
    * Idempotente por diseño: si corre dos veces el mismo día, la segunda
    * corrida encuentra 0 filas porque todas ya están CLOSED.
@@ -564,10 +632,23 @@ export class RecruitmentService {
                   { id: p.id },
                   { status: ProcessStatus.CLOSED, autoClosed: true },
                 );
+                // S4.2 — Archivar CVs (mismo flow que cierre manual).
+                const archiveResult = await this.candidateRepo
+                  .createQueryBuilder()
+                  .update()
+                  .set({
+                    cvUrlArchived: () => 'cv_url',
+                    cvArchivedAt: () => 'NOW()',
+                    cvUrl: null,
+                  })
+                  .where('process_id = :processId AND cv_url IS NOT NULL', { processId: p.id })
+                  .execute();
+                const archivedCount = archiveResult.affected ?? 0;
                 await this.auditService
                   .log(p.tenantId, null, 'recruitment.process_auto_closed', 'recruitment_process', p.id, {
                     title: p.title,
                     closedAt: new Date().toISOString(),
+                    cvsArchived: archivedCount,
                   })
                   .catch(() => undefined);
               } catch (err: any) {
@@ -582,6 +663,61 @@ export class RecruitmentService {
             );
           },
         );
+      },
+    );
+  }
+
+  /**
+   * S4.2 — Cron diario que purga (deletion permanente) CVs archivados
+   * que ya cumplieron los 24 meses de retención post-cierre. Compliance
+   * Chile: la Ley 19.628 + DT 19.628 establece que los datos personales
+   * de procesos de selección no pueden conservarse mas alla del tiempo
+   * necesario para la finalidad — interpretacion conservadora de la
+   * industria es 24 meses post-decision.
+   *
+   * Despues del purge, queda en BD:
+   *   - Audit log del proceso (no contiene CV, solo metadatos).
+   *   - cv_analysis (ya no es PII si el admin lo limpio; futura mejora:
+   *     borrar cv_analysis tambien).
+   *   - El registro del candidato en si (nombre, email) — esto se evalua
+   *     en otro sprint si requiere purge tambien.
+   *
+   * Corre diario a las 02:00 UTC (despues del autoClose). No requiere
+   * iterar por tenant — es una operacion BD-wide segura porque tenant_id
+   * se preserva en la query y RLS no aplica a CRON connection.
+   *
+   * Idempotente: si corre dos veces el mismo día solo afecta filas con
+   * cv_url_archived IS NOT NULL → la segunda corrida encuentra 0.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async purgeArchivedCvs(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.purgeArchivedCvs',
+      this.dataSource,
+      this.logger,
+      async () => {
+        // Borra cv_url_archived + cv_archived_at de filas cuyo archivado
+        // tiene 24m+. Postgres `INTERVAL '24 months'` es seguro y maneja
+        // años bisiestos correctamente.
+        const result = await this.candidateRepo
+          .createQueryBuilder()
+          .update()
+          .set({
+            cvUrlArchived: null,
+            cvArchivedAt: null,
+          })
+          .where('cv_url_archived IS NOT NULL AND cv_archived_at < NOW() - INTERVAL \'24 months\'')
+          .execute();
+        const affected = result.affected ?? 0;
+        if (affected > 0) {
+          this.logger.log(`[purgeArchivedCvs] CVs purgados (24m retention): ${affected}`);
+          await this.auditService
+            .log(null, null, 'recruitment.cvs_purged', 'recruitment_candidate', null as any, {
+              count: affected,
+              retentionMonths: 24,
+            })
+            .catch(() => undefined);
+        }
       },
     );
   }
@@ -896,6 +1032,25 @@ export class RecruitmentService {
           autoClosed: false,
         },
       );
+
+      // S4.2 — Si el revert reactiva el proceso (COMPLETED → ACTIVE),
+      // restauramos los CVs archivados. Si el proceso no transiciona
+      // a ACTIVE (ya estaba CLOSED por otro motivo), no restauramos
+      // porque los CVs deben quedar archivados hasta el purge.
+      if (newStatus === ProcessStatus.ACTIVE && process.status === ProcessStatus.COMPLETED) {
+        await candRepo
+          .createQueryBuilder()
+          .update(RecruitmentCandidate)
+          .set({
+            cvUrl: () => 'cv_url_archived',
+            cvUrlArchived: null,
+            cvArchivedAt: null,
+          })
+          .where('process_id = :pid', { pid: process.id })
+          .andWhere('tenant_id = :tid', { tid: tenantId })
+          .andWhere('cv_url_archived IS NOT NULL')
+          .execute();
+      }
     });
 
     // Audit log post-commit
@@ -1303,6 +1458,27 @@ export class RecruitmentService {
         .andWhere('stage NOT IN (:...excluded)', {
           excluded: [CandidateStage.REJECTED, CandidateStage.HIRED, CandidateStage.NOT_HIRED],
         })
+        .execute();
+
+      // S4.2 — Archivar CVs del proceso (compliance Chile 24m). Mismo
+      // flow que el cierre via updateProcess: cv_url → cv_url_archived,
+      // cv_archived_at = NOW(), cv_url = NULL. Hire transiciona a
+      // COMPLETED, asi que la regla aplica aca tambien.
+      // Inclusive el CV del candidato contratado: el proceso se cerro,
+      // su CV de seleccion debe archivarse — el contrato laboral es
+      // documentacion separada (modulo contracts), no es el CV de
+      // postulacion.
+      await candidateRepo
+        .createQueryBuilder()
+        .update(RecruitmentCandidate)
+        .set({
+          cvUrlArchived: () => 'cv_url',
+          cvArchivedAt: () => 'NOW()',
+          cvUrl: null,
+        })
+        .where('process_id = :pid', { pid: processId })
+        .andWhere('tenant_id = :tid', { tid: tenantId })
+        .andWhere('cv_url IS NOT NULL')
         .execute();
 
       // c. Cascada a User. Las UPDATEs atomicas anteriores ya garantizan
