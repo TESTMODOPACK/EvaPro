@@ -860,64 +860,86 @@ export class RecruitmentService {
       const userRepoTx = manager.getRepository(User);
       const movementRepoTx = manager.getRepository(UserMovement);
 
-      // S2.4 — Re-fetch del proceso CON LOCK + re-validar dentro de la tx.
-      // Si otra tx commiteo un hire en el medio, este findOne va a
-      // devolver el estado actualizado y los guards van a fallar.
-      const lockedProcess = await processRepo
-        .createQueryBuilder('p')
-        .where('p.id = :id', { id: processId })
-        .andWhere('p.tenantId = :tenantId', { tenantId })
-        .setLock('pessimistic_write')
-        .getOne();
-      if (!lockedProcess) {
-        throw new NotFoundException('Proceso no encontrado (race con delete)');
-      }
-      if (lockedProcess.status !== ProcessStatus.ACTIVE) {
+      // S2.4 fix2 — REMOVIDO el SELECT FOR UPDATE (setLock pesimista) que
+      // causaba 500 Internal Server Error con single-conn pool (max:1):
+      // TypeORM acquireia el lock en la conexion de la tx, pero el save()
+      // posterior generaba un nuevo subject-executor que internamente
+      // intentaba un nuevo queryRunner → segunda conexion no disponible
+      // → statement_timeout en la UPDATE → tx caia.
+      //
+      // Reemplazo: UPDATE ... WHERE con condiciones atomicas de Postgres.
+      // Mismo nivel de proteccion contra race condition (SQL atomico
+      // garantiza una sola tx puede ganar) sin necesidad de lock pesimista.
+      // Ej: UPDATE process SET winning=$1 WHERE id=$2 AND status='active'
+      // AND (winning IS NULL OR winning=$1). result.affected=0 → race
+      // perdida → throw error claro.
+
+      // a. Marcar candidato como contratado (UPDATE atomico con guard).
+      // Solo actualiza si stage es uno de los hireables Y no esta ya hired.
+      const candResult = await candidateRepo.update(
+        {
+          id: candidateId,
+          tenantId,
+          stage: In([CandidateStage.INTERVIEWING, CandidateStage.SCORED, CandidateStage.APPROVED]),
+        },
+        { stage: CandidateStage.HIRED },
+      );
+      if (!candResult.affected || candResult.affected === 0) {
+        // Re-fetch para dar error especifico sobre el estado actual.
+        const current = await candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+        if (!current) {
+          throw new NotFoundException('Candidato no encontrado (race con delete)');
+        }
+        if (current.stage === CandidateStage.HIRED) {
+          throw new BadRequestException('El candidato ya fue contratado por otro admin justo ahora.');
+        }
+        if (current.stage === CandidateStage.REJECTED) {
+          throw new BadRequestException('El candidato fue rechazado por otro admin durante el hire. Operacion abortada.');
+        }
         throw new BadRequestException(
-          `El proceso cambio de estado durante el hire (ahora ${lockedProcess.status}). Recargue y vuelva a intentar.`,
+          `El candidato cambio de estado durante el hire (ahora ${current.stage}). Recargue y vuelva a intentar.`,
         );
       }
-      if (lockedProcess.winningCandidateId && lockedProcess.winningCandidateId !== candidateId) {
-        throw new BadRequestException(
-          'Otro admin contrato a un candidato distinto en este proceso justo ahora. Recargue para ver el estado actual.',
-        );
-      }
-      // Reusamos `lockedProcess` para los writes — gana sobre el `process`
-      // en memoria leido antes de la tx.
 
-      // a. Marcar candidato como contratado.
-      // Re-fetch tambien con lock para evitar race en el candidato (ej.
-      // marcado a 'rejected' por otro admin entre validacion y commit).
-      const lockedCandidate = await candidateRepo
-        .createQueryBuilder('c')
-        .where('c.id = :id', { id: candidateId })
-        .andWhere('c.tenantId = :tenantId', { tenantId })
-        .setLock('pessimistic_write')
-        .getOne();
-      if (!lockedCandidate) {
-        throw new NotFoundException('Candidato no encontrado (race con delete)');
+      // b. Marcar proceso completado (UPDATE atomico).
+      // Condiciones: status='active' Y (winning IS NULL OR winning=candidateId).
+      // Si otro admin marco otro winner en el medio, affected=0 → throw.
+      const procResult = await processRepo
+        .createQueryBuilder()
+        .update(RecruitmentProcess)
+        .set({
+          status: ProcessStatus.COMPLETED,
+          winningCandidateId: candidateId,
+          hireData: hireData as any,
+          autoClosed: false,
+        })
+        .where('id = :id', { id: processId })
+        .andWhere('tenant_id = :tenantId', { tenantId })
+        .andWhere('status = :active', { active: ProcessStatus.ACTIVE })
+        .andWhere('(winning_candidate_id IS NULL OR winning_candidate_id = :cid)', { cid: candidateId })
+        .execute();
+      if (!procResult.affected || procResult.affected === 0) {
+        const current = await processRepo.findOne({ where: { id: processId, tenantId } });
+        if (!current) {
+          throw new NotFoundException('Proceso no encontrado (race con delete)');
+        }
+        if (current.status !== ProcessStatus.ACTIVE) {
+          throw new BadRequestException(
+            `El proceso cambio de estado durante el hire (ahora ${current.status}). Recargue y vuelva a intentar.`,
+          );
+        }
+        if (current.winningCandidateId && current.winningCandidateId !== candidateId) {
+          throw new BadRequestException(
+            'Otro admin contrato a un candidato distinto en este proceso justo ahora. Recargue para ver el estado actual.',
+          );
+        }
+        throw new BadRequestException('El proceso no pudo actualizarse (race condition). Recargue.');
       }
-      if (lockedCandidate.stage === CandidateStage.HIRED) {
-        throw new BadRequestException('El candidato ya fue contratado por otro admin justo ahora.');
-      }
-      if (lockedCandidate.stage === CandidateStage.REJECTED) {
-        throw new BadRequestException('El candidato fue rechazado por otro admin durante el hire. Operacion abortada.');
-      }
-      lockedCandidate.stage = CandidateStage.HIRED;
-      await candidateRepo.save(lockedCandidate);
 
-      // b. Marcar proceso completado (sobre el row lockeado).
-      lockedProcess.status = ProcessStatus.COMPLETED;
-      lockedProcess.winningCandidateId = lockedCandidate.id;
-      lockedProcess.hireData = hireData;
-      lockedProcess.autoClosed = false;
-      await processRepo.save(lockedProcess);
-
-      // c. Cascada a User. S2.4 — usamos lockedCandidate / lockedProcess
-      // para los reads adentro de la tx (userId y title vienen de los
-      // rows lockeados; siguen siendo los mismos datos, pero por
-      // consistencia conceptual leemos del row lockeado y no del
-      // snapshot pre-tx).
+      // c. Cascada a User. Las UPDATEs atomicas anteriores ya garantizan
+      // que el estado en BD es consistente; usamos las variables pre-tx
+      // `candidate` y `process` para leer userId, email, title (datos
+      // inmutables que no cambian con un hire).
       if (isInternal) {
         // S2.1 — delegar la actualizacion del User + insercion del
         // user_movement al primitivo centralizado `transferUser`. Pasamos
@@ -925,14 +947,14 @@ export class RecruitmentService {
         // transaccion (atomicidad del flow hire). El evento queda
         // capturado en `pendingTransferEvent` y se emite POST-COMMIT.
         const transferResult = await this.usersService.transferUser(
-          lockedCandidate.userId!,
+          candidate.userId!,
           tenantId,
           {
             newDepartmentId: hireData.newDepartmentId,
             newPositionId: hireData.newPositionId,
             newManagerId: hireData.newManagerId,
             effectiveDate: hireData.effectiveDate,
-            reason: `Hire interno desde proceso "${lockedProcess.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+            reason: `Hire interno desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
             triggerSource: 'recruitment_hire',
             cascadePolicy: 'manual', // S2.2 — admin decide caso a caso por defecto
           },
@@ -942,12 +964,12 @@ export class RecruitmentService {
         resultUserId = transferResult.user.id;
         pendingTransferEvent = transferResult.event;
       } else {
-        // Externo: crear nuevo User. Usamos lockedCandidate por consistencia.
+        // Externo: crear nuevo User.
         const newUser = userRepoTx.create({
           tenantId,
-          email: lockedCandidate.email!,
-          firstName: lockedCandidate.firstName!,
-          lastName: lockedCandidate.lastName!,
+          email: candidate.email!,
+          firstName: candidate.firstName!,
+          lastName: candidate.lastName!,
           passwordHash: passwordHash!,
           role: 'employee',
           managerId: newManager?.id ?? null,
@@ -977,7 +999,7 @@ export class RecruitmentService {
           toDepartment: savedUser.department || null,
           fromPosition: null,
           toPosition: savedUser.position || null,
-          reason: `Contratacion externa desde proceso "${lockedProcess.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+          reason: `Contratacion externa desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
           approvedBy: callerUserId,
         }));
 

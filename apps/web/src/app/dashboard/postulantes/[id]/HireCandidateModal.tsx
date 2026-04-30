@@ -124,6 +124,30 @@ export function HireCandidateModal({
     }
   }, [candidateId, hireableCandidates, newManagerId]);
 
+  // S2-UX (post-bug fix) — Auto-poblar jefatura cuando cambia el dept,
+  // si el dept tiene UN solo manager configurado (head implicito). Si hay
+  // varios managers en el dept, dejamos vacio para que el admin elija.
+  // Solo se ejecuta cuando newDepartmentId cambia Y newManagerId no fue
+  // explicitamente seleccionado por el usuario (heuristica: si el manager
+  // actual ya pertenece a ese dept, no pisamos nada).
+  useEffect(() => {
+    if (!newDepartmentId) return;
+    if (!eligibleManagers.length) return;
+    // Filtrar managers que pertenezcan al dept seleccionado
+    const deptName = (departmentRecords || []).find((d: any) => d.id === newDepartmentId)?.name;
+    const candidatesForDept = eligibleManagers.filter(
+      (u: any) => u.departmentId === newDepartmentId || (deptName && u.department === deptName),
+    );
+    // Si el manager actualmente seleccionado YA pertenece al dept, no tocamos
+    if (newManagerId && candidatesForDept.some((u: any) => u.id === newManagerId)) return;
+    // Si solo hay UN candidato natural para el dept → auto-popular
+    if (candidatesForDept.length === 1) {
+      setNewManagerId(candidatesForDept[0].id);
+      return;
+    }
+    // Si hay varios o ninguno, dejar al admin que decida (no pisamos)
+  }, [newDepartmentId, eligibleManagers, departmentRecords, newManagerId]);
+
   // Cierre con Escape — patron consistente con otros modales.
   useEffect(() => {
     if (!open) return;
@@ -415,11 +439,18 @@ function FormView(props: any) {
             disabled={submitting}
           >
             <option value="">— Sin cambio / sin asignar —</option>
-            {eligibleManagers.map((u: any) => (
-              <option key={u.id} value={u.id}>
-                {u.firstName} {u.lastName} ({u.role === 'tenant_admin' ? 'admin' : 'jefatura'})
-              </option>
-            ))}
+            {eligibleManagers.map((u: any) => {
+              // Etiqueta enriquecida: "Nombre Apellido — Cargo · Depto (admin)".
+              // Si el cargo o dept no estan, los omitimos sin romper layout.
+              const roleSuffix = u.role === 'tenant_admin' ? ' (admin)' : '';
+              const positionPart = u.position ? ` — ${u.position}` : '';
+              const deptPart = u.department ? ` · ${u.department}` : '';
+              return (
+                <option key={u.id} value={u.id}>
+                  {u.firstName} {u.lastName}{positionPart}{deptPart}{roleSuffix}
+                </option>
+              );
+            })}
           </select>
         </Field>
 
