@@ -73,6 +73,11 @@ export function createMockQueryBuilder<T extends ObjectLiteral = any>(): Partial
     'orderBy', 'addOrderBy', 'groupBy', 'addGroupBy',
     'skip', 'take', 'offset', 'limit',
     'having', 'setParameter', 'setParameters',
+    // S5.3 — soporte para Update/Insert/Delete builders. Estos pueden
+    // surgir desde createQueryBuilder().update().set().where()... y deben
+    // tambien ser fluent (chain-aware) terminando en .execute().
+    'update', 'insert', 'delete', 'set', 'values', 'returning',
+    'from', 'into', 'whereInIds',
   ];
   for (const method of chainMethods) {
     qb[method] = jest.fn().mockReturnValue(qb);
