@@ -1170,15 +1170,37 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         )}
                       </div>
 
-                      {/* Stage selector (only for final decisions) */}
+                      {/* Stage selector (only for final decisions).
+                          IMPORTANTE: 'hired' YA NO se puede seleccionar
+                          desde aqui — pasar a hired ejecuta cascada
+                          (User update + user_movement + audit) que solo
+                          puede dispararse desde el modal "Marcar como
+                          contratado" del panel de Configuracion. Si el
+                          candidato ya esta hired (legacy o flow corregido),
+                          el dropdown sigue mostrando el valor pero NO
+                          permite reseleccionarlo. Si el admin selecciona
+                          otro stage estando en hired, esta "revirtiendo"
+                          el hire — caso valido para datos inconsistentes
+                          previos al fix. */}
                       {isAdmin && (c.stage === 'scored' || c.stage === 'approved' || c.stage === 'rejected' || c.stage === 'hired') && (
                         <select className="input" value={c.stage} onChange={(e) => {
-                          if (token) api.recruitment.candidates.updateStage(token, c.id, e.target.value).then(() => fetchProcess());
+                          const newStage = e.target.value;
+                          if (newStage === 'hired') {
+                            // Bounce + guiar al usuario al flow correcto.
+                            toast(
+                              'Para contratar al candidato use el botón "Marcar como contratado" en la pestaña Configuración. Eso ejecuta la cascada completa (actualiza el empleado, registra movimiento, audita).',
+                              'info',
+                            );
+                            return;
+                          }
+                          if (token) api.recruitment.candidates.updateStage(token, c.id, newStage).then(() => fetchProcess());
                         }} style={{ fontSize: '0.75rem', width: 'auto', padding: '0.2rem 0.4rem' }}>
                           <option value="scored">{stageLabel('scored')}</option>
                           <option value="approved">{stageLabel('approved')}</option>
                           <option value="rejected">{stageLabel('rejected')}</option>
-                          <option value="hired">{stageLabel('hired')}</option>
+                          {c.stage === 'hired' && (
+                            <option value="hired" disabled>{stageLabel('hired')}</option>
+                          )}
                         </select>
                       )}
                     </div>

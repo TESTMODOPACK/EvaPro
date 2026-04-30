@@ -585,6 +585,18 @@ export class RecruitmentService {
   }
 
   async updateCandidateStage(tenantId: string | undefined, candidateId: string, stage: string): Promise<RecruitmentCandidate> {
+    // S1.2 / fix: el cambio a stage='hired' DEBE pasar por hireCandidate
+    // (POST /processes/:id/hire/:candidateId) que ejecuta la cascada
+    // completa al User + user_movements + audit. Permitir setearlo aqui
+    // dejaria datos inconsistentes (candidato hired sin proceso completed
+    // y sin actualizar el registro de empleado). El frontend ya bloquea
+    // este path desde el dropdown, esto es defense-in-depth para llamadas
+    // directas al API.
+    if (stage === CandidateStage.HIRED || stage === 'hired') {
+      throw new BadRequestException(
+        'Para contratar use el endpoint POST /recruitment/processes/:id/hire/:candidateId, que ejecuta la cascada al empleado. Cambiar a hired desde aqui dejaria datos inconsistentes.',
+      );
+    }
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
