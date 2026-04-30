@@ -1219,25 +1219,14 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           el hire — caso valido para datos inconsistentes
                           previos al fix. */}
                       {isAdmin && (c.stage === 'scored' || c.stage === 'approved' || c.stage === 'rejected' || c.stage === 'hired' || c.stage === 'not_hired') && (
-                        // En proceso completed/closed: mostrar el stage como
-                        // badge readonly (no select editable). Si necesita
-                        // cambiar, debe reabrir el proceso desde Configuracion.
-                        isReadOnly ? (
-                          <span
-                            className={`badge ${stageInfo.badge || 'badge-ghost'}`}
-                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
-                            title="Solo lectura — proceso finalizado"
-                          >
-                            {stageLabel(c.stage)}
-                          </span>
-                        ) : c.stage === 'hired' ? (
-                          // S3.x — En proceso ACTIVE pero candidato HIRED
-                          // (caso post-hire antes de cerrar): mostrar boton
-                          // "Revertir contratación" en lugar de dropdown.
-                          // Cambiar via dropdown dejaria inconsistencia
-                          // (winningCandidateId, hireData, cascada user).
-                          // El boton dispara el flow completo de rollback.
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        // S3.x — Caso especial: candidato HIRED. El boton
+                        // "Revertir contratación" SIEMPRE visible (sin
+                        // importar si proceso esta active/completed/closed)
+                        // porque el rollback que dispara incluye reabrir el
+                        // proceso si esta cerrado. Es la unica via UX para
+                        // deshacer un hire con cascada al empleado.
+                        c.stage === 'hired' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                             <span
                               className="badge badge-success"
                               style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
@@ -1257,7 +1246,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                                   '',
                                   'Esto ejecutará el rollback completo:',
                                   '  • Candidato volverá a estado "Aprobado"',
-                                  '  • Proceso volverá a "Activo" (status active)',
+                                  '  • Proceso volverá a "Activo" (si estaba completado)',
                                   '  • Se limpiará el ganador y los datos del hire',
                                   '  • Los demás candidatos en "No contratado" volverán a "Aprobado"',
                                 ];
@@ -1284,11 +1273,22 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                                     toast(err?.message || 'Error al revertir contratación', 'error');
                                   });
                               }}
-                              title="Revertir contratación: deshace el hire y restaura el estado previo"
+                              title="Revertir contratación: deshace el hire y restaura el estado previo (incluye reabrir el proceso si estaba cerrado)"
                             >
                               ↺ Revertir contratación
                             </button>
                           </div>
+                        ) : isReadOnly ? (
+                          // Para los demas stages (no hired) en proceso
+                          // completed/closed: solo badge readonly. Si admin
+                          // necesita cambiar, debe reabrir el proceso.
+                          <span
+                            className={`badge ${stageInfo.badge || 'badge-ghost'}`}
+                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                            title="Solo lectura — proceso finalizado"
+                          >
+                            {stageLabel(c.stage)}
+                          </span>
                         ) : (
                           <select className="input" value={c.stage} onChange={(e) => {
                             const newStage = e.target.value;
