@@ -1077,7 +1077,15 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('postulantes.detail.noCandidates') || 'No hay candidatos en este proceso'}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {/* S3.x — cuando el proceso esta completed/closed, los
+                  candidatos son SOLO LECTURA (banner ya lo dice). Aqui
+                  derivamos el flag para deshabilitar / ocultar las
+                  acciones mutadoras (subir CV, re-analizar, editar,
+                  cambiar stage). Si el admin necesita editar, debe
+                  reabrir el proceso desde Configuracion. */}
+              {(() => null)()}
               {candidates.map((c: any) => {
+                const isReadOnly = process.status === 'completed' || process.status === 'closed';
                 const stageInfo = STAGES.find((s) => s.key === c.stage) || STAGES[0];
                 const name = c.candidateType === 'internal' && c.user
                   ? c.user.firstName + ' ' + c.user.lastName
@@ -1149,12 +1157,20 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
                           onClick={() => loadScorecard(c.id)}>{t('postulantes.detail.scorecard.viewScorecard')}</button>
                         {showCv && (
-                          <button className="btn-ghost" onClick={() => { setExpandedCvPanel(expandedCvPanel === c.id ? null : c.id); setEditingCandidate(null); }}
-                            style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}>
-                            {expandedCvPanel === c.id ? t('postulantes.detail.cv.closeCv') : (cvStatus === 'none' ? t('postulantes.detail.cv.uploadCv') : t('postulantes.detail.cv.viewCv'))}
-                          </button>
+                          // En procesos closed/completed: solo permitir VER el CV existente, no subir/cambiar.
+                          // Si no hay CV (cvStatus='none') y el proceso es readonly, ocultar el boton entero.
+                          (!isReadOnly || cvStatus !== 'none') && (
+                            <button className="btn-ghost" onClick={() => { setExpandedCvPanel(expandedCvPanel === c.id ? null : c.id); setEditingCandidate(null); }}
+                              style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
+                              title={isReadOnly ? 'Solo lectura — proceso finalizado' : undefined}
+                            >
+                              {expandedCvPanel === c.id
+                                ? t('postulantes.detail.cv.closeCv')
+                                : (isReadOnly ? t('postulantes.detail.cv.viewCv') : (cvStatus === 'none' ? t('postulantes.detail.cv.uploadCv') : t('postulantes.detail.cv.viewCv')))}
+                            </button>
+                          )
                         )}
-                        {isAdmin && (
+                        {isAdmin && !isReadOnly && (
                           <button className="btn-ghost" onClick={() => {
                             if (editingCandidate === c.id) { setEditingCandidate(null); } else {
                               setEditingCandidate(c.id); setExpandedCvPanel(null);
@@ -1183,25 +1199,38 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           el hire — caso valido para datos inconsistentes
                           previos al fix. */}
                       {isAdmin && (c.stage === 'scored' || c.stage === 'approved' || c.stage === 'rejected' || c.stage === 'hired') && (
-                        <select className="input" value={c.stage} onChange={(e) => {
-                          const newStage = e.target.value;
-                          if (newStage === 'hired') {
-                            // Bounce + guiar al usuario al flow correcto.
-                            toast(
-                              'Para contratar al candidato use el botón "Marcar como contratado" en la pestaña Configuración. Eso ejecuta la cascada completa (actualiza el empleado, registra movimiento, audita).',
-                              'info',
-                            );
-                            return;
-                          }
-                          if (token) api.recruitment.candidates.updateStage(token, c.id, newStage).then(() => fetchProcess());
-                        }} style={{ fontSize: '0.75rem', width: 'auto', padding: '0.2rem 0.4rem' }}>
-                          <option value="scored">{stageLabel('scored')}</option>
-                          <option value="approved">{stageLabel('approved')}</option>
-                          <option value="rejected">{stageLabel('rejected')}</option>
-                          {c.stage === 'hired' && (
-                            <option value="hired" disabled>{stageLabel('hired')}</option>
-                          )}
-                        </select>
+                        // En proceso completed/closed: mostrar el stage como
+                        // badge readonly (no select editable). Si necesita
+                        // cambiar, debe reabrir el proceso desde Configuracion.
+                        isReadOnly ? (
+                          <span
+                            className={`badge ${stageInfo.badge || 'badge-ghost'}`}
+                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                            title="Solo lectura — proceso finalizado"
+                          >
+                            {stageLabel(c.stage)}
+                          </span>
+                        ) : (
+                          <select className="input" value={c.stage} onChange={(e) => {
+                            const newStage = e.target.value;
+                            if (newStage === 'hired') {
+                              // Bounce + guiar al usuario al flow correcto.
+                              toast(
+                                'Para contratar al candidato use el botón "Marcar como contratado" en la pestaña Configuración. Eso ejecuta la cascada completa (actualiza el empleado, registra movimiento, audita).',
+                                'info',
+                              );
+                              return;
+                            }
+                            if (token) api.recruitment.candidates.updateStage(token, c.id, newStage).then(() => fetchProcess());
+                          }} style={{ fontSize: '0.75rem', width: 'auto', padding: '0.2rem 0.4rem' }}>
+                            <option value="scored">{stageLabel('scored')}</option>
+                            <option value="approved">{stageLabel('approved')}</option>
+                            <option value="rejected">{stageLabel('rejected')}</option>
+                            {c.stage === 'hired' && (
+                              <option value="hired" disabled>{stageLabel('hired')}</option>
+                            )}
+                          </select>
+                        )
                       )}
                     </div>
 
@@ -1234,7 +1263,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                                 ? 'Este colaborador no tiene CV en su perfil. Puedes subir uno para este proceso.'
                                 : t('postulantes.detail.cv.uploadDesc')}
                             </p>
-                            {canManageCv && (
+                            {canManageCv && !isReadOnly && (
                               <label className="btn-primary" style={{ cursor: 'pointer', fontSize: '0.85rem' }}>
                                 {uploadingCv ? t('postulantes.detail.cv.uploading') : t('postulantes.detail.cv.selectFile')}
                                 <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
@@ -1252,7 +1281,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                               <a href={c.user.cvUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}>
                                 {c.user.cvFileName || 'Ver CV'} →
                               </a>
-                              {canManageCv && (
+                              {canManageCv && !isReadOnly && (
                                 <label className="btn-ghost" style={{ cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
                                   {uploadingCv ? 'Subiendo...' : 'Subir CV actualizado'}
                                   <input type="file" accept=".pdf" onChange={(e) => handleCvUpload(c.id, e)} style={{ display: 'none' }} />
@@ -1270,7 +1299,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                               {t('postulantes.detail.cv.aiDesc')}
                             </p>
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                              {canManageCv && (
+                              {canManageCv && !isReadOnly && (
                                 <>
                                   <button className="btn-primary" onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId || aiBlocked} style={{ fontSize: '0.85rem' }}>
                                     {analyzingCvId === c.id ? t('postulantes.detail.cv.analyzing') : aiBlocked ? t('postulantes.detail.cv.noCredits') : t('postulantes.detail.cv.analyzeBtn')}
@@ -1288,7 +1317,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                               <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>{t('postulantes.detail.cv.analysisResult')}</span>
-                              {canManageCv && (
+                              {canManageCv && !isReadOnly && (
                                 <div style={{ display: 'flex', gap: '0.35rem' }}>
                                   <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
                                     onClick={() => handleAnalyzeCv(c.id)} disabled={!!analyzingCvId || aiBlocked}>
@@ -1704,16 +1733,43 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                       {isInternal && <th>{t('postulantes.detail.comparative.history')}</th>}
                       {isInternal && <th>{t('postulantes.detail.comparative.seniority')}</th>}
                       <th>{t('postulantes.detail.comparative.finalScore')}</th>
+                      {/* S3.x — columna Estado para que se vea claramente
+                          quien fue contratado / aprobado / rechazado en
+                          la comparativa, especialmente en procesos cerrados. */}
+                      <th>Estado</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(comparative.rows || []).map((row: any) => {
                       const c = row.candidate;
                       const name = c.user ? c.user.firstName + ' ' + c.user.lastName : (c.firstName || '') + ' ' + (c.lastName || '');
+                      const isWinner = process.winningCandidateId === c.id;
+                      const stageBadgeColor: Record<string, string> = {
+                        hired: '#10b981',
+                        approved: '#10b981',
+                        rejected: '#ef4444',
+                        scored: '#f59e0b',
+                        interviewing: '#6366f1',
+                        cv_review: '#94a3b8',
+                        registered: '#94a3b8',
+                      };
+                      const sBadge = stageBadgeColor[c.stage] || '#94a3b8';
                       return (
-                        <tr key={c.id}>
+                        <tr
+                          key={c.id}
+                          style={{
+                            // Row destacada para el ganador del proceso.
+                            background: isWinner ? 'rgba(16,185,129,0.06)' : undefined,
+                            borderLeft: isWinner ? '3px solid #10b981' : undefined,
+                          }}
+                        >
                           <td>
                             <span style={{ fontWeight: 600 }}>{name}</span>
+                            {isWinner && (
+                              <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 700, marginLeft: '0.4rem' }} title="Candidato contratado">
+                                🏆 GANADOR
+                              </span>
+                            )}
                             {c.candidateType === 'internal' && <span style={{ fontSize: '0.68rem', color: '#6366f1', fontWeight: 700, marginLeft: '0.4rem' }}>INTERNO</span>}
                           </td>
                           <td style={{ textAlign: 'center', fontWeight: 600 }}>{row.interviewAvg != null ? row.interviewAvg + '/10' : '--'}</td>
@@ -1721,6 +1777,21 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           {isInternal && <td style={{ textAlign: 'center', fontSize: '0.82rem' }}>{row.internalProfile?.user?.tenureMonths != null ? (row.internalProfile.user.tenureMonths >= 12 ? Math.floor(row.internalProfile.user.tenureMonths / 12) + 'a ' + (row.internalProfile.user.tenureMonths % 12) + 'm' : row.internalProfile.user.tenureMonths + 'm') : '--'}</td>}
                           <td style={{ textAlign: 'center', fontWeight: 800, fontSize: '1.1rem', color: 'var(--success)' }}>
                             {c.finalScore != null ? Number(c.finalScore).toFixed(1) : '--'}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '999px',
+                                fontSize: '0.7rem',
+                                fontWeight: 600,
+                                background: `${sBadge}18`,
+                                color: sBadge,
+                              }}
+                            >
+                              {stageLabel(c.stage)}
+                            </span>
                           </td>
                         </tr>
                       );
@@ -1747,6 +1818,50 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
               {process.endDate && <div><span style={{ color: 'var(--text-muted)' }}>{t('postulantes.detail.config.end')}:</span> <strong>{new Date(process.endDate).toLocaleDateString('es-CL')}</strong></div>}
             </div>
             {process.description && <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.75rem' }}>{process.description}</p>}
+
+            {/* S3.x — banner de contratacion. Si el proceso tiene un
+                winningCandidateId, mostrar destacado en verde quien fue
+                contratado, con la fecha efectiva (de hireData) cuando esta. */}
+            {process.winningCandidateId && (() => {
+              const winner = candidates.find((c: any) => c.id === process.winningCandidateId);
+              if (!winner) return null;
+              const winnerName = winner.candidateType === 'internal' && winner.user
+                ? `${winner.user.firstName} ${winner.user.lastName}`
+                : `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
+              const effDate = process.hireData?.effectiveDate;
+              return (
+                <div
+                  style={{
+                    marginTop: '1rem',
+                    padding: '0.85rem 1rem',
+                    background: 'rgba(16,185,129,0.08)',
+                    border: '1px solid rgba(16,185,129,0.3)',
+                    borderLeft: '4px solid #10b981',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                    <span style={{ fontSize: '1rem' }} aria-hidden="true">🏆</span>
+                    <strong style={{ color: '#059669', fontSize: '0.9rem' }}>Candidato contratado</strong>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>{winnerName}</strong>
+                    {winner.candidateType === 'internal' ? ' (interno)' : ' (externo)'}
+                    {effDate && (
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {' — Fecha efectiva: '}
+                        <strong style={{ color: 'var(--text-secondary)' }}>{new Date(effDate).toLocaleDateString('es-CL')}</strong>
+                      </span>
+                    )}
+                  </div>
+                  {process.hireData?.notes && (
+                    <p style={{ margin: '0.4rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      {process.hireData.notes}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {requirements.length > 0 && (
