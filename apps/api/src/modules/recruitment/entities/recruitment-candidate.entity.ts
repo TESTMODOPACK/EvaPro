@@ -13,6 +13,15 @@ export enum CandidateStage {
   APPROVED = 'approved',
   REJECTED = 'rejected',
   HIRED = 'hired',
+  /**
+   * S3.x — Estado terminal para candidatos NO contratados cuando otro
+   * gano el proceso. Se setea automaticamente en hireCandidate sobre
+   * todos los demas candidatos del proceso (excepto los ya REJECTED).
+   * Diferente de REJECTED: este es el outcome de "no fue elegido pero
+   * no fue rechazado activamente"; util para reportes de movilidad
+   * (medir cuantos finalistas quedaron sin contratar).
+   */
+  NOT_HIRED = 'not_hired',
 }
 
 @Entity('recruitment_candidates')

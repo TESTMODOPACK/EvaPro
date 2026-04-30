@@ -272,10 +272,10 @@ function ProcessStatusPanel({
               className="btn-primary"
               onClick={openHireModal}
               disabled={saving}
-              title="Marcar candidato como contratado y ejecutar cascada al empleado"
+              title="Generar contratación: ejecuta cascada al registro del empleado y cierra el proceso"
               style={{ fontSize: '0.85rem' }}
             >
-              ✓ Marcar como contratado…
+              ✓ Generar contratación
             </button>
             <button
               className="btn-ghost"
@@ -383,8 +383,14 @@ function ProcessStatusPanel({
 }
 
 // ─── Scoring Weights Editor (stateful component) ─────────────────────
-function ScoringWeightsEditor({ process, isInternal, token, processId, onSaved }: {
+function ScoringWeightsEditor({ process, isInternal, token, processId, onSaved, readOnly = false }: {
   process: any; isInternal: boolean; token: string | null; processId: string; onSaved: () => void;
+  /**
+   * S3.x — true cuando el proceso esta completed/closed. Los inputs y el
+   * boton "Guardar pesos y recalcular" se deshabilitan. Al reabrir el
+   * proceso (volver a ACTIVE), readOnly pasa a false y se re-activa.
+   */
+  readOnly?: boolean;
 }) {
   const toast = useToastStore((s) => s.toast);
   const defaultW = isInternal
@@ -426,14 +432,22 @@ function ScoringWeightsEditor({ process, isInternal, token, processId, onSaved }
 
   return (
     <div className="card" style={{ padding: '1.5rem' }}>
-      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Ponderación del Puntaje Final</h3>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+        Ponderación del Puntaje Final
+        {readOnly && (
+          <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginLeft: '0.5rem', padding: '0.15rem 0.5rem', background: 'var(--bg-surface)', borderRadius: '999px' }}>
+            Solo lectura
+          </span>
+        )}
+      </h3>
       <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-        Define qué porcentaje aporta cada componente al puntaje final. La suma debe ser 100%.
-        Al guardar, se recalculan automáticamente los puntajes de todos los candidatos.
+        {readOnly
+          ? 'El proceso está finalizado. Los pesos quedan congelados como referencia histórica de cómo se calcularon los puntajes finales. Si necesita modificarlos, reabra el proceso desde el panel "Estado del Proceso" arriba.'
+          : 'Define qué porcentaje aporta cada componente al puntaje final. La suma debe ser 100%. Al guardar, se recalculan automáticamente los puntajes de todos los candidatos.'}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
         {fields.map((f) => (
-          <div key={f.key} style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+          <div key={f.key} style={{ padding: '0.6rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', opacity: readOnly ? 0.7 : 1 }}>
             <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.3rem' }}>{f.label}</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input
@@ -443,7 +457,8 @@ function ScoringWeightsEditor({ process, isInternal, token, processId, onSaved }
                 max={100}
                 value={weights[f.key] || 0}
                 onChange={(e) => setWeights((prev) => ({ ...prev, [f.key]: Number(e.target.value) || 0 }))}
-                style={{ width: '70px', fontSize: '0.85rem', textAlign: 'center' }}
+                disabled={readOnly}
+                style={{ width: '70px', fontSize: '0.85rem', textAlign: 'center', cursor: readOnly ? 'not-allowed' : undefined }}
               />
               <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>%</span>
             </div>
@@ -455,14 +470,16 @@ function ScoringWeightsEditor({ process, isInternal, token, processId, onSaved }
         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: total === 100 ? 'var(--success)' : 'var(--danger)' }}>
           Total: {total}% {total !== 100 ? '(debe ser 100%)' : '✓'}
         </span>
-        <button
-          className="btn-primary"
-          disabled={total !== 100 || saving}
-          onClick={handleSave}
-          style={{ fontSize: '0.82rem', padding: '0.4rem 1rem', opacity: total !== 100 ? 0.5 : 1 }}
-        >
-          {saving ? 'Guardando...' : 'Guardar pesos y recalcular'}
-        </button>
+        {!readOnly && (
+          <button
+            className="btn-primary"
+            disabled={total !== 100 || saving}
+            onClick={handleSave}
+            style={{ fontSize: '0.82rem', padding: '0.4rem 1rem', opacity: total !== 100 ? 0.5 : 1 }}
+          >
+            {saving ? 'Guardando...' : 'Guardar pesos y recalcular'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -482,6 +499,9 @@ const STAGES = [
   { key: 'approved', badge: 'badge-success' },
   { key: 'rejected', badge: 'badge-danger' },
   { key: 'hired', badge: 'badge-success' },
+  // S3.x — not_hired: candidato que no fue elegido cuando otro gano el
+  // proceso. Distinto de rejected (rechazo activo).
+  { key: 'not_hired', badge: 'badge-ghost' },
 ];
 
 function getCategoryLabel(key: string, t: (k: string) => string): string {
@@ -1198,7 +1218,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           otro stage estando en hired, esta "revirtiendo"
                           el hire — caso valido para datos inconsistentes
                           previos al fix. */}
-                      {isAdmin && (c.stage === 'scored' || c.stage === 'approved' || c.stage === 'rejected' || c.stage === 'hired') && (
+                      {isAdmin && (c.stage === 'scored' || c.stage === 'approved' || c.stage === 'rejected' || c.stage === 'hired' || c.stage === 'not_hired') && (
                         // En proceso completed/closed: mostrar el stage como
                         // badge readonly (no select editable). Si necesita
                         // cambiar, debe reabrir el proceso desde Configuracion.
@@ -1216,7 +1236,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             if (newStage === 'hired') {
                               // Bounce + guiar al usuario al flow correcto.
                               toast(
-                                'Para contratar al candidato use el botón "Marcar como contratado" en la pestaña Configuración. Eso ejecuta la cascada completa (actualiza el empleado, registra movimiento, audita).',
+                                'Para contratar al candidato use "Generar contratación" en la pestaña Configuración. Eso ejecuta la cascada completa (actualiza el empleado, registra movimiento, audita).',
                                 'info',
                               );
                               return;
@@ -1228,6 +1248,9 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             <option value="rejected">{stageLabel('rejected')}</option>
                             {c.stage === 'hired' && (
                               <option value="hired" disabled>{stageLabel('hired')}</option>
+                            )}
+                            {c.stage === 'not_hired' && (
+                              <option value="not_hired" disabled>{stageLabel('not_hired')}</option>
                             )}
                           </select>
                         )
@@ -1748,6 +1771,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                         hired: '#10b981',
                         approved: '#10b981',
                         rejected: '#ef4444',
+                        not_hired: '#94a3b8',  // S3.x — gris neutro: no fue elegido pero no rechazado
                         scored: '#f59e0b',
                         interviewing: '#6366f1',
                         cv_review: '#94a3b8',
@@ -1807,6 +1831,21 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
       {/* ─── Tab: Configuración ────────────────────────────────────── */}
       {tab === 'configuracion' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* S3.x — Estado del Proceso movido al INICIO de Configuracion.
+              Era el ultimo elemento (ScoringWeightsEditor + Estado abajo);
+              ahora arranca con la accion mas relevante: el boton "Generar
+              contratacion". El admin entra a Configuracion para gestionar
+              el cierre, no para mirar requisitos. */}
+          {isAdmin && (
+            <ProcessStatusPanel
+              process={process}
+              candidates={candidates}
+              token={token}
+              processId={params.id}
+              onSaved={fetchProcess}
+            />
+          )}
+
           <div className="card" style={{ padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>{t('postulantes.detail.config.processInfo')}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.85rem' }}>
@@ -1889,18 +1928,19 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             </div>
           </div>
 
-          {/* Scoring weights configuration */}
-          {isAdmin && <ScoringWeightsEditor process={process} isInternal={isInternal} token={token} processId={params.id} onSaved={fetchProcess} />}
-
-          {/* Status change (admin only) — v3.1 con máquina de estados + fechas
-              + S1.3 modal de hire integrado (recibe candidates para el dropdown). */}
+          {/* Scoring weights configuration. S3.x — solo editable cuando
+              el proceso esta DRAFT o ACTIVE. En completed/closed se muestra
+              en modo readonly (los pesos finales son los que se aplicaron
+              al ultimo recalculo, no se deberian poder cambiar
+              retroactivamente). Al reabrir el proceso, se re-habilita. */}
           {isAdmin && (
-            <ProcessStatusPanel
+            <ScoringWeightsEditor
               process={process}
-              candidates={candidates}
+              isInternal={isInternal}
               token={token}
               processId={params.id}
               onSaved={fetchProcess}
+              readOnly={process.status === 'completed' || process.status === 'closed'}
             />
           )}
         </div>

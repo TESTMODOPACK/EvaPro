@@ -1252,7 +1252,8 @@
       "scored": "Pontuado",
       "approved": "Aprovado",
       "rejected": "Rejeitado",
-      "hired": "Contratado"
+      "hired": "Contratado",
+      "not_hired": "Não contratado"
     },
     "new": {
       "title": "Novo Processo de Seleção",

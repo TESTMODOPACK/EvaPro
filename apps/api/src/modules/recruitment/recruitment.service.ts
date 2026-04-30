@@ -419,6 +419,31 @@ export class RecruitmentService {
         dto.status === ProcessStatus.ACTIVE
       ) {
         process.autoClosed = false;
+        // S3.x — Si el proceso se reabre y tenia un winning, lo devolvemos
+        // a candidato regular (no asume que sigue ganando). Tambien
+        // revertimos los 'not_hired' a 'approved' para que vuelvan a ser
+        // candidatos viables. El admin puede ahora elegir uno distinto via
+        // el nuevo modal de hire o cambiar stages manualmente.
+        if (process.winningCandidateId) {
+          // Revertir candidato ganador a 'approved' (era hire)
+          await this.candidateRepo
+            .createQueryBuilder()
+            .update(RecruitmentCandidate)
+            .set({ stage: CandidateStage.APPROVED })
+            .where('id = :wid', { wid: process.winningCandidateId })
+            .andWhere('stage = :hired', { hired: CandidateStage.HIRED })
+            .execute();
+          process.winningCandidateId = null;
+          process.hireData = null as any;
+        }
+        // Revertir todos los not_hired del proceso a approved
+        await this.candidateRepo
+          .createQueryBuilder()
+          .update(RecruitmentCandidate)
+          .set({ stage: CandidateStage.APPROVED })
+          .where('process_id = :pid', { pid: id })
+          .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
+          .execute();
       }
     }
 
@@ -935,6 +960,21 @@ export class RecruitmentService {
         }
         throw new BadRequestException('El proceso no pudo actualizarse (race condition). Recargue.');
       }
+
+      // S3.x — Marcar a TODOS los demas candidatos del proceso como
+      // 'not_hired'. Solo aplica a stages activos (no toca rejected ni
+      // hired existentes). Es UPDATE atomico bulk: 1 query.
+      await candidateRepo
+        .createQueryBuilder()
+        .update(RecruitmentCandidate)
+        .set({ stage: CandidateStage.NOT_HIRED })
+        .where('process_id = :pid', { pid: processId })
+        .andWhere('tenant_id = :tid', { tid: tenantId })
+        .andWhere('id != :winningId', { winningId: candidateId })
+        .andWhere('stage NOT IN (:...excluded)', {
+          excluded: [CandidateStage.REJECTED, CandidateStage.HIRED, CandidateStage.NOT_HIRED],
+        })
+        .execute();
 
       // c. Cascada a User. Las UPDATEs atomicas anteriores ya garantizan
       // que el estado en BD es consistente; usamos las variables pre-tx

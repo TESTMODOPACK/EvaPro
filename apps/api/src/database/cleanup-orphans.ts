@@ -354,6 +354,10 @@ async function main() {
       // cuando termina una generacion de IA. Sin este value el INSERT
       // falla y aborta la tx → se pierde el insight + ai_call_log.
       `ALTER TYPE notifications_type_enum ADD VALUE IF NOT EXISTS 'ai_analysis_ready';`,
+      // S3.x — nuevo stage 'not_hired' para candidatos que no fueron
+      // seleccionados cuando otro gano el proceso. Se setea automaticamente
+      // en hireCandidate. Distinto de 'rejected' (rechazo activo).
+      `ALTER TYPE recruitment_candidates_stage_enum ADD VALUE IF NOT EXISTS 'not_hired';`,
     ];
 
     for (const sql of enumFixes) {

@@ -1270,7 +1270,8 @@
       "scored": "Scored",
       "approved": "Approved",
       "rejected": "Rejected",
-      "hired": "Hired"
+      "hired": "Hired",
+      "not_hired": "Not hired"
     },
     "new": {
       "title": "New Recruitment Process",
