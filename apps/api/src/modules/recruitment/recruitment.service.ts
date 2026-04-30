@@ -26,6 +26,8 @@ import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
+import { EmailService } from '../notifications/email.service';
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 @Injectable()
 export class RecruitmentService {
@@ -60,6 +62,10 @@ export class RecruitmentService {
     // S4.3 — para notificar tenant_admins de procesos legacy con
     // posibles cascadas pendientes (pre-S1).
     private readonly notificationsService: NotificationsService,
+    // S5.1 — para enviar email de bienvenida al ganador externo
+    // tras el hire (con tempPassword + URL de login).
+    private readonly emailService: EmailService,
+    @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
   ) {}
 
   // ─── Date & status validators (v3.1 — date flow rules) ──────────────────
@@ -1382,6 +1388,7 @@ export class RecruitmentService {
     candidate: RecruitmentCandidate;
     userId: string;
     tempPassword: string | null;
+    emailSent: boolean;
   }> {
     const hireData = this.validateHireDto(rawDto);
 
@@ -1755,6 +1762,54 @@ export class RecruitmentService {
       this.usersService.emitTransferredEvent(pendingTransferEvent);
     }
 
+    // S5.1 — Email de bienvenida al ganador externo (post-commit).
+    // Solo para externos — internos ya tienen cuenta y conocen la
+    // plataforma; ademas, el listener de `user.transferred` ya dispara
+    // notificaciones internas para ellos.
+    //
+    // Diseño:
+    //   - Sincrono (await) para que la respuesta incluya emailSent
+    //     true/false. El admin sabe inmediatamente si necesita copiar
+    //     y enviar el password manualmente.
+    //   - try/catch agresivo: cualquier fallo de email NO debe romper
+    //     el hire (que ya commiteo). El password queda en la response
+    //     como fallback.
+    //   - Audit log captura outcome (recruitment.hire_email_sent o
+    //     recruitment.hire_email_failed) con metadata para soporte.
+    let emailSent = false;
+    if (!isInternal && tempPassword && candidate.email) {
+      try {
+        const tenantRow = await this.tenantRepo.findOne({
+          where: { id: tenantId },
+          select: ['id', 'name'],
+        });
+        await this.emailService.sendInvitation(candidate.email, {
+          firstName: candidate.firstName ?? candidate.email.split('@')[0],
+          orgName: tenantRow?.name ?? 'Eva360',
+          tempPassword,
+          tenantId,
+        });
+        emailSent = true;
+        await this.auditService
+          .log(tenantId, callerUserId, 'recruitment.hire_email_sent', 'recruitment_candidate', candidateId, {
+            email: candidate.email,
+            processId,
+          })
+          .catch(() => undefined);
+      } catch (e: any) {
+        this.logger.warn(
+          `[hireCandidate] email a ${candidate.email} fallo: ${e?.message ?? e}`,
+        );
+        await this.auditService
+          .log(tenantId, callerUserId, 'recruitment.hire_email_failed', 'recruitment_candidate', candidateId, {
+            email: candidate.email,
+            processId,
+            error: String(e?.message ?? e).slice(0, 200),
+          })
+          .catch(() => undefined);
+      }
+    }
+
     // 8. Reload entidades actualizadas.
     const updatedProcess = await this.processRepo.findOne({ where: { id: processId, tenantId } });
     const updatedCandidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
@@ -1764,7 +1819,118 @@ export class RecruitmentService {
       candidate: updatedCandidate!,
       userId: resultUserId,
       tempPassword, // null para internos, password unico para externos
+      emailSent, // S5.1: true si email se envio; false si fallo o no aplica (interno)
     };
+  }
+
+  /**
+   * S5.1 — Reenviar email de bienvenida a candidato externo contratado.
+   *
+   * Casos de uso:
+   *   - El email original fallo (mostrado en modal post-hire).
+   *   - El candidato no recibio el email (spam, typo en email del User
+   *     creado, etc.) y el admin actualizo el email manualmente.
+   *
+   * Genera SIEMPRE un nuevo `tempPassword` y rota el password del User:
+   * el password viejo deja de ser valido. Esto evita compromiso si el
+   * password original quedo expuesto en historial de WhatsApp/SMS, y
+   * ademas garantiza idempotencia (cada resend == nueva credencial).
+   *
+   * Solo aplica a candidatos:
+   *   - candidateType === 'external'
+   *   - stage === 'hired'
+   *   - linkedUserId existe (la cuenta fue creada en el hire)
+   *
+   * Audit log `recruitment.welcome_email_resent` o `_resend_failed`.
+   *
+   * No retorna el tempPassword en la respuesta — solo emailSent. El
+   * password viaja unicamente por email; el admin no debe verlo en el
+   * resend para reducir superficie de exposicion.
+   */
+  async resendWelcomeEmail(
+    tenantId: string,
+    candidateId: string,
+    callerUserId: string,
+  ): Promise<{ emailSent: boolean }> {
+    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    if (candidate.candidateType !== 'external') {
+      throw new BadRequestException(
+        'Reenvio de email de bienvenida solo aplica a candidatos externos. Internos ya tienen cuenta activa.',
+      );
+    }
+    if (candidate.stage !== CandidateStage.HIRED) {
+      throw new BadRequestException(
+        `El candidato debe estar contratado (hired) para reenviar el email. Estado actual: ${candidate.stage}.`,
+      );
+    }
+    if (!candidate.email) {
+      throw new BadRequestException('El candidato no tiene email registrado.');
+    }
+
+    // Buscar el User creado al hire (match por email + tenant).
+    const user = await this.userRepo.findOne({
+      where: { tenantId, email: candidate.email },
+      select: ['id', 'firstName', 'email'],
+    });
+    if (!user) {
+      throw new NotFoundException(
+        'No se encontro la cuenta del candidato. Si el hire fue pre-S1, debe gestionarse manualmente.',
+      );
+    }
+
+    const newPassword = this.generateTempPassword();
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    // Rotacion atomica: actualizar password + forzar cambio en primer
+    // login. Si el email falla despues, el password viejo ya no vale —
+    // pero el admin puede reintentar el resend (rota de nuevo).
+    await this.userRepo.update(
+      { id: user.id, tenantId },
+      {
+        passwordHash: newHash,
+        mustChangePassword: true,
+      } as any,
+    );
+
+    let emailSent = false;
+    try {
+      const tenantRow = await this.tenantRepo.findOne({
+        where: { id: tenantId },
+        select: ['id', 'name'],
+      });
+      await this.emailService.sendInvitation(candidate.email, {
+        firstName: user.firstName ?? candidate.firstName ?? candidate.email.split('@')[0],
+        orgName: tenantRow?.name ?? 'Eva360',
+        tempPassword: newPassword,
+        tenantId,
+      });
+      emailSent = true;
+      await this.auditService
+        .log(tenantId, callerUserId, 'recruitment.welcome_email_resent', 'recruitment_candidate', candidateId, {
+          email: candidate.email,
+          processId: candidate.processId,
+        })
+        .catch(() => undefined);
+    } catch (e: any) {
+      this.logger.warn(
+        `[resendWelcomeEmail] email a ${candidate.email} fallo: ${e?.message ?? e}`,
+      );
+      await this.auditService
+        .log(tenantId, callerUserId, 'recruitment.welcome_email_resend_failed', 'recruitment_candidate', candidateId, {
+          email: candidate.email,
+          processId: candidate.processId,
+          error: String(e?.message ?? e).slice(0, 200),
+        })
+        .catch(() => undefined);
+      // El password ya rolo. Lanzamos para que el frontend muestre error
+      // — pero la cuenta queda con password nuevo, asi que un retry del
+      // admin no falla por inconsistencia.
+      throw new BadRequestException(
+        'No se pudo enviar el email. La cuenta queda con un password temporal nuevo. Intente nuevamente o contacte soporte.',
+      );
+    }
+    return { emailSent };
   }
 
   async getCandidateProfile(tenantId: string, candidateId: string): Promise<any> {

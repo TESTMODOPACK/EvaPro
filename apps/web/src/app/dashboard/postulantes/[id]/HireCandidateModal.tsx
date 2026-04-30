@@ -88,11 +88,15 @@ export function HireCandidateModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Estado post-exito: si fue externo, mostrar el tempPassword una vez.
+  // S5.1 — `emailSent` indica si el email automatico se mando OK; el
+  // password se muestra como fallback solo si emailSent=false.
   const [successData, setSuccessData] = useState<{
     isExternal: boolean;
     tempPassword: string | null;
     employeeName: string;
     employeeEmail: string;
+    emailSent: boolean;
+    candidateId: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -200,6 +204,8 @@ export function HireCandidateModal({
         tempPassword: result.tempPassword,
         employeeName,
         employeeEmail,
+        emailSent: !!result.emailSent,
+        candidateId,
       });
       // No cerramos el modal aun — el admin debe ver el tempPassword si externo.
       // Para internos podriamos cerrar inmediatamente, pero mostramos la
@@ -292,6 +298,7 @@ export function HireCandidateModal({
               copied={copied}
               onCopyPassword={handleCopyPassword}
               onClose={handleClose}
+              token={token}
             />
           ) : (
             <FormView
@@ -567,7 +574,24 @@ function FormView(props: any) {
 // ─── Success view ──────────────────────────────────────────────────────
 
 function SuccessView(props: any) {
-  const { data, copied, onCopyPassword, onClose } = props;
+  const { data, copied, onCopyPassword, onClose, token } = props;
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+
+  const handleResend = async () => {
+    setResending(true);
+    setResendError(null);
+    try {
+      await api.recruitment.resendWelcomeEmail(token, data.candidateId);
+      setResent(true);
+    } catch (e: any) {
+      setResendError(e?.message || 'No se pudo reenviar el email.');
+    } finally {
+      setResending(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <div style={{
@@ -586,7 +610,42 @@ function SuccessView(props: any) {
         </div>
       </div>
 
-      {data.isExternal && data.tempPassword && (
+      {/* S5.1 — Email enviado OK: mensaje confirmatorio + opcion explicita
+          de reenvio (por si el ganador reporta no recibirlo). */}
+      {data.isExternal && data.emailSent && (
+        <div style={{
+          padding: '1rem',
+          background: 'rgba(16,185,129,0.06)',
+          border: '1px solid rgba(16,185,129,0.25)',
+          borderRadius: 'var(--radius-sm)',
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: '0.45rem', color: 'var(--success)' }}>
+            ✉️ Email de bienvenida enviado
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0 0 0.6rem', lineHeight: 1.5 }}>
+            Se envió un email a <strong>{data.employeeEmail}</strong> con el link de acceso y la contraseña
+            temporal. Si el empleado reporta no haberlo recibido, puedes reenviarlo (rota la contraseña).
+          </p>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={handleResend}
+            disabled={resending || resent}
+            style={{ fontSize: '0.78rem' }}
+          >
+            {resent ? '✓ Reenviado (password rotado)' : resending ? 'Reenviando…' : 'Reenviar email'}
+          </button>
+          {resendError && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
+              {resendError}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* S5.1 — Email FALLO: mostrar password como fallback manual. El
+          mensaje resalta que es vista unica + ofrece reintentar envio. */}
+      {data.isExternal && !data.emailSent && data.tempPassword && (
         <div style={{
           padding: '1rem',
           background: 'rgba(245,158,11,0.08)',
@@ -594,11 +653,12 @@ function SuccessView(props: any) {
           borderRadius: 'var(--radius-sm)',
         }}>
           <div style={{ fontWeight: 700, marginBottom: '0.45rem', color: '#b45309' }}>
-            ⚠ Password temporal — guárdalo ahora
+            ⚠ Email no se envió — usa el password como fallback
           </div>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0 0 0.6rem', lineHeight: 1.5 }}>
-            Este es el único momento en que puedes ver el password en texto plano. Entrégaselo al empleado
-            por un canal seguro. Será forzado a cambiarlo en su primer login.
+            El sistema no pudo enviar el email automático. Puedes reintentar (rota el password) o
+            entregar este password al empleado por un canal seguro. Será forzado a cambiarlo en su
+            primer login. <strong>Esta es la única vez que verás el password en texto plano.</strong>
           </p>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <code style={{
@@ -624,6 +684,22 @@ function SuccessView(props: any) {
               {copied ? '✓ Copiado' : 'Copiar'}
             </button>
           </div>
+          <div style={{ marginTop: '0.7rem', display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleResend}
+              disabled={resending || resent}
+              style={{ fontSize: '0.78rem' }}
+            >
+              {resent ? '✓ Email reenviado (password nuevo)' : resending ? 'Reintentando…' : '↻ Reintentar envío'}
+            </button>
+          </div>
+          {resendError && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--danger)' }}>
+              {resendError}
+            </div>
+          )}
         </div>
       )}
 

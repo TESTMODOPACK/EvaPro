@@ -144,6 +144,28 @@ export class RecruitmentController {
     return this.service.revertHire(tenantId, candidateId, req.user.userId);
   }
 
+  /**
+   * S5.1 — Reenviar email de bienvenida al ganador externo. Rota
+   * tempPassword (el viejo deja de servir) y manda email nuevo. Solo
+   * aplica a candidatos external + stage='hired'.
+   *
+   * Uso: el modal post-hire muestra este boton si emailSent=false, o
+   * el admin puede invocarlo manualmente desde el detalle del candidato
+   * si el ganador reporta no haber recibido el email.
+   */
+  @Post('candidates/:candidateId/resend-welcome-email')
+  @Roles('super_admin', 'tenant_admin')
+  resendWelcomeEmail(
+    @Request() req: any,
+    @Param('candidateId', ParseUUIDPipe) candidateId: string,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico para reenviar el email.');
+    }
+    return this.service.resendWelcomeEmail(tenantId, candidateId, req.user.userId);
+  }
+
   @Get('candidates/:id/profile')
   getCandidateProfile(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getCandidateProfile(req.user.tenantId, id);

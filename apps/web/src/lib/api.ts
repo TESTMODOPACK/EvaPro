@@ -687,7 +687,7 @@ export const api = {
      *   }
      */
     hireCandidate: (token: string, processId: string, candidateId: string, data: any) =>
-      request<{ process: any; candidate: any; userId: string; tempPassword: string | null }>(
+      request<{ process: any; candidate: any; userId: string; tempPassword: string | null; emailSent: boolean }>(
         `/recruitment/processes/${processId}/hire/${candidateId}`,
         { method: "POST", body: JSON.stringify(data) },
         token,
@@ -699,6 +699,16 @@ export const api = {
     revertHire: (token: string, candidateId: string) =>
       request<{ process: any; candidate: any }>(
         `/recruitment/candidates/${candidateId}/revert-hire`,
+        { method: "POST" },
+        token,
+      ),
+    /**
+     * S5.1 — Reenviar email de bienvenida al ganador externo. Rota
+     * tempPassword (el viejo deja de servir).
+     */
+    resendWelcomeEmail: (token: string, candidateId: string) =>
+      request<{ emailSent: boolean }>(
+        `/recruitment/candidates/${candidateId}/resend-welcome-email`,
         { method: "POST" },
         token,
       ),

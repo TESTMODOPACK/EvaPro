@@ -12,6 +12,7 @@ import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { Competency } from '../development/entities/competency.entity';
 import { Department } from '../tenants/entities/department.entity';
 import { Position } from '../tenants/entities/position.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { RecruitmentService } from './recruitment.service';
 import { RecruitmentController } from './recruitment.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
@@ -40,6 +41,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
       Competency,
       Department,
       Position,
+      // S5.1 — para resolver tenantName en el email de bienvenida
+      // del hire externo.
+      Tenant,
     ]),
     SubscriptionsModule,
     AuditModule,

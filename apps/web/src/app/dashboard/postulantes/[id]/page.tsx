@@ -1277,6 +1277,36 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             >
                               ↺ Revertir contratación
                             </button>
+                            {/* S5.1 — Reenviar email de bienvenida (solo externos hired). */}
+                            {c.candidateType === 'external' && c.email && (
+                              <button
+                                className="btn-ghost"
+                                style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                                onClick={() => {
+                                  if (!token) return;
+                                  const ok = window.confirm(
+                                    `Reenviar email de bienvenida a ${c.email}?\n\n` +
+                                    'Esto rota la contraseña del empleado: el password actual queda invalidado y se envía uno nuevo en el email.',
+                                  );
+                                  if (!ok) return;
+                                  api.recruitment.resendWelcomeEmail(token, c.id)
+                                    .then((r) => {
+                                      toast(
+                                        r.emailSent
+                                          ? `Email reenviado a ${c.email}`
+                                          : 'El email no se pudo enviar — revisar logs.',
+                                        r.emailSent ? 'success' : 'error',
+                                      );
+                                    })
+                                    .catch((err: any) => {
+                                      toast(err?.message || 'Error al reenviar email', 'error');
+                                    });
+                                }}
+                                title="Reenviar email de bienvenida (rota la contraseña). Útil si el ganador reporta no haberlo recibido."
+                              >
+                                ✉ Reenviar email
+                              </button>
+                            )}
                           </div>
                         ) : isReadOnly ? (
                           // Para los demas stages (no hired) en proceso
