@@ -1,6 +1,6 @@
 import {
   Controller, Post, Get, Patch, Body, Param, Query,
-  ParseUUIDPipe, UseGuards, Request,
+  ParseUUIDPipe, UseGuards, Request, BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RecruitmentService } from './recruitment.service';
@@ -119,6 +119,29 @@ export class RecruitmentController {
   ) {
     const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
     return this.service.hireCandidate(tenantId, processId, candidateId, dto, req.user.userId);
+  }
+
+  /**
+   * S3.x — Revertir contratación. Operacion opuesta a hireCandidate:
+   * - candidato HIRED → APPROVED
+   * - proceso COMPLETED → ACTIVE + limpia winningCandidateId/hireData
+   * - otros candidatos NOT_HIRED → APPROVED
+   * - cascada user (si interno): restaura dept/cargo/manager + borra
+   *   el user_movement creado por el hire
+   *
+   * Solo admin. Requiere candidato en stage='hired'.
+   */
+  @Post('candidates/:candidateId/revert-hire')
+  @Roles('super_admin', 'tenant_admin')
+  revertHire(
+    @Request() req: any,
+    @Param('candidateId', ParseUUIDPipe) candidateId: string,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico para revertir una contratacion.');
+    }
+    return this.service.revertHire(tenantId, candidateId, req.user.userId);
   }
 
   @Get('candidates/:id/profile')

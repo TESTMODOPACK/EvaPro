@@ -632,8 +632,178 @@ export class RecruitmentService {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    // S3.x — Bloquear cambio DESDE 'hired' hacia cualquier otro stage.
+    // Si el admin quiere revertir una contratacion, debe usar "Reabrir
+    // proceso" en Configuracion, lo cual ejecuta el rollback completo:
+    // limpia winningCandidateId + hireData del proceso, y revierte
+    // candidatos no_hired→approved. Permitir el cambio aqui dejaria
+    // candidato en stage 'approved' pero process.winningCandidateId
+    // todavia apuntando a el — banner de "contratado" no desaparece y
+    // el modal no permite contratar a otro porque cree que ya hay
+    // ganador. Defense-in-depth para calls API directos.
+    if (candidate.stage === CandidateStage.HIRED) {
+      throw new BadRequestException(
+        'No se puede cambiar el estado de un candidato contratado directamente. Para revertir la contratación, use "Reabrir proceso" en Configuración → Estado del Proceso. Eso ejecuta el rollback completo (libera el proceso, revierte cascada al empleado).',
+      );
+    }
     candidate.stage = stage as CandidateStage;
     return this.candidateRepo.save(candidate);
+  }
+
+  /**
+   * S3.x — Revertir contratación de un candidato.
+   *
+   * Operación opuesta a hireCandidate: el admin marcó accidentalmente
+   * a alguien como contratado o quiere cambiar el ganador. Este metodo
+   * deshace el flow del hire en una transacción atómica:
+   *
+   * 1. candidate.stage HIRED → APPROVED
+   * 2. process.status COMPLETED → ACTIVE (solo si esta completed por
+   *    este hire — si esta closed por otro motivo no tocamos)
+   * 3. process.winningCandidateId → NULL, process.hireData → NULL
+   * 4. Otros candidatos del proceso en stage NOT_HIRED → APPROVED
+   *    (vuelven a ser candidatos viables)
+   *
+   * **Lo que NO revierte (limitación documentada en el frontend):**
+   * - users.department / position / manager del candidato — quedaron
+   *   actualizados al hire. Si el admin necesita revertir el cambio del
+   *   empleado, debe editar desde Mantenedores → Usuarios manualmente.
+   * - users_movements row insertada — se preserva como historial
+   *   inmutable (si la persona realmente cambio de area aunque sea por
+   *   horas, queda registro). Si fue puro error de admin, puede borrar
+   *   la fila desde Mantenedores → Movimientos (futuro).
+   *
+   * Audit log: 'recruitment.hire_reverted' con metadata.
+   *
+   * @returns { candidate, process } actualizados.
+   */
+  async revertHire(
+    tenantId: string,
+    candidateId: string,
+    callerUserId: string,
+  ): Promise<{ candidate: RecruitmentCandidate; process: RecruitmentProcess }> {
+    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    if (candidate.stage !== CandidateStage.HIRED) {
+      throw new BadRequestException(
+        `Solo se puede revertir contrataciones. Este candidato esta en stage '${candidate.stage}', no 'hired'.`,
+      );
+    }
+
+    const process = await this.processRepo.findOne({ where: { id: candidate.processId, tenantId } });
+    if (!process) throw new NotFoundException('Proceso del candidato no encontrado');
+
+    // S3.x — Snapshot del state previo capturado al hire (solo internos).
+    // Si existe, en la tx revertimos los cambios al User y borramos el
+    // user_movement insertado por el hire.
+    const previousUserState = (process.hireData as any)?.previousUserState ?? null;
+    const hireEffectiveDate = (process.hireData as any)?.effectiveDate ?? null;
+    const isInternalHire = candidate.candidateType === 'internal' && !!candidate.userId;
+
+    await this.dataSource.transaction(async (manager) => {
+      const candRepo = manager.getRepository(RecruitmentCandidate);
+      const procRepo = manager.getRepository(RecruitmentProcess);
+      const userRepoTx = manager.getRepository(User);
+      const movementRepoTx = manager.getRepository(UserMovement);
+
+      // 1. candidate.stage HIRED → APPROVED (atomico, valida que no haya
+      //    cambiado entre el findOne pre-tx y este UPDATE).
+      const c1 = await candRepo.update(
+        { id: candidateId, tenantId, stage: CandidateStage.HIRED },
+        { stage: CandidateStage.APPROVED },
+      );
+      if (!c1.affected) {
+        throw new BadRequestException(
+          'El candidato cambió de estado durante la reversión. Recargue y vuelva a intentar.',
+        );
+      }
+
+      // 2. Otros candidatos del proceso en NOT_HIRED → APPROVED (vuelven
+      //    a ser viables). Bulk update.
+      await candRepo
+        .createQueryBuilder()
+        .update(RecruitmentCandidate)
+        .set({ stage: CandidateStage.APPROVED })
+        .where('process_id = :pid', { pid: candidate.processId })
+        .andWhere('tenant_id = :tid', { tid: tenantId })
+        .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
+        .execute();
+
+      // 3. ROLLBACK CASCADA AL USER (solo internos con previousUserState).
+      // Restauramos dept/cargo/manager al estado pre-hire. Si no tenemos
+      // snapshot (procesos hireados antes de S3.x), saltamos esta parte
+      // y dejamos que el admin ajuste manualmente desde Mantenedores.
+      if (isInternalHire && previousUserState) {
+        await userRepoTx.update(
+          { id: candidate.userId!, tenantId },
+          {
+            departmentId: previousUserState.departmentId as any,
+            department: previousUserState.department as any,
+            positionId: previousUserState.positionId as any,
+            position: previousUserState.position as any,
+            managerId: previousUserState.managerId as any,
+            hierarchyLevel: previousUserState.hierarchyLevel as any,
+          },
+        );
+
+        // 4. Borrar el user_movement insertado por el hire. Match por
+        //    userId + effectiveDate (de hireData). Si hay multiples
+        //    movements en la misma fecha (improbable), borramos el mas
+        //    reciente (created_at DESC LIMIT 1).
+        if (hireEffectiveDate) {
+          const moveToDelete = await movementRepoTx
+            .createQueryBuilder('m')
+            .where('m.user_id = :uid', { uid: candidate.userId })
+            .andWhere('m.tenant_id = :tid', { tid: tenantId })
+            .andWhere('m.effective_date = :ed', { ed: hireEffectiveDate })
+            .orderBy('m.created_at', 'DESC')
+            .limit(1)
+            .getOne();
+          if (moveToDelete) {
+            await movementRepoTx.delete({ id: moveToDelete.id });
+          }
+        }
+      }
+
+      // 5. process: limpiar winning + hireData. Si esta completed,
+      //    pasarlo a active. Si esta closed (cierre manual sin hire),
+      //    no tocamos status.
+      const newStatus = process.status === ProcessStatus.COMPLETED
+        ? ProcessStatus.ACTIVE
+        : process.status;
+      await procRepo.update(
+        { id: process.id, tenantId },
+        {
+          winningCandidateId: null as any,
+          hireData: null as any,
+          status: newStatus,
+          autoClosed: false,
+        },
+      );
+    });
+
+    // Audit log post-commit
+    try {
+      await this.auditService.log(
+        tenantId, callerUserId,
+        'recruitment.hire_reverted',
+        'recruitment_candidate', candidateId,
+        {
+          processId: process.id,
+          processTitle: process.title,
+          previousStatus: process.status,
+          newStatus: process.status === ProcessStatus.COMPLETED ? 'active' : process.status,
+          winningCandidateId: process.winningCandidateId,
+        },
+      );
+    } catch (e: any) {
+      this.logger.warn(`Audit log de revertHire fallo: ${e?.message ?? e}`);
+    }
+
+    // Reload + return
+    const updatedCandidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    const updatedProcess = await this.processRepo.findOne({ where: { id: candidate.processId, tenantId } });
+    return { candidate: updatedCandidate!, process: updatedProcess! };
   }
 
   // ─── S1.2 — Hire Candidate (cierre del flow de seleccion) ─────────────────
@@ -926,6 +1096,36 @@ export class RecruitmentService {
         );
       }
 
+      // S3.x — Capturar el estado PREVIO del User para hire interno,
+      // antes de la cascada de transferUser. Se persiste en hireData.
+      // Necesario para que revertHire pueda hacer rollback del cambio
+      // a users.{department,position,manager} y borrar el user_movement.
+      let previousUserState: {
+        departmentId: string | null;
+        department: string | null;
+        positionId: string | null;
+        position: string | null;
+        managerId: string | null;
+        hierarchyLevel: number | null;
+      } | null = null;
+      if (isInternal && candidate.userId) {
+        const userBefore = await userRepoTx.findOne({
+          where: { id: candidate.userId, tenantId },
+          select: ['id', 'departmentId', 'department', 'positionId', 'position', 'managerId', 'hierarchyLevel'],
+        });
+        if (userBefore) {
+          previousUserState = {
+            departmentId: userBefore.departmentId,
+            department: userBefore.department,
+            positionId: userBefore.positionId,
+            position: userBefore.position,
+            managerId: userBefore.managerId,
+            hierarchyLevel: userBefore.hierarchyLevel,
+          };
+        }
+      }
+      const fullHireData = { ...hireData, previousUserState };
+
       // b. Marcar proceso completado (UPDATE atomico).
       // Condiciones: status='active' Y (winning IS NULL OR winning=candidateId).
       // Si otro admin marco otro winner en el medio, affected=0 → throw.
@@ -935,7 +1135,7 @@ export class RecruitmentService {
         .set({
           status: ProcessStatus.COMPLETED,
           winningCandidateId: candidateId,
-          hireData: hireData as any,
+          hireData: fullHireData as any,
           autoClosed: false,
         })
         .where('id = :id', { id: processId })

@@ -484,6 +484,23 @@ async function main() {
       `ALTER TYPE "notifications_type_enum" ADD VALUE IF NOT EXISTS 'ai_quota_warning'`,
       `ALTER TYPE "notifications_type_enum" ADD VALUE IF NOT EXISTS 'ai_quota_exhausted'`,
 
+      // S3.x — Reparacion de inconsistencias en recruitment_processes:
+      // limpia winningCandidateId y hireData en procesos cuyo "ganador"
+      // ya no esta en stage='hired' (caso reportado: admin cambio stage
+      // via dropdown desde hired antes del fix que bloquea ese path).
+      // Idempotente: no afecta procesos consistentes (winning hired) ni
+      // procesos sin winning. Tambien limpia procesos donde el candidato
+      // ganador fue eliminado (FK no constraint, dangling id).
+      `UPDATE "recruitment_processes" p
+        SET "winning_candidate_id" = NULL, "hire_data" = NULL
+       WHERE p."winning_candidate_id" IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM "recruitment_candidates" c
+           WHERE c."id" = p."winning_candidate_id"
+             AND c."stage" = 'hired'
+             AND c."tenant_id" = p."tenant_id"
+         )`,
+
       // super_admin no pertenece a ningún tenant: tenant_id debe aceptar NULL
       // para ese único registro. Antes se creaba el super_admin con tenantId=
       // demoTenantId, lo que habilitaba una fuga cross-tenant (ver fix en

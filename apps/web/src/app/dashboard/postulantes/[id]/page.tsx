@@ -1230,6 +1230,65 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           >
                             {stageLabel(c.stage)}
                           </span>
+                        ) : c.stage === 'hired' ? (
+                          // S3.x — En proceso ACTIVE pero candidato HIRED
+                          // (caso post-hire antes de cerrar): mostrar boton
+                          // "Revertir contratación" en lugar de dropdown.
+                          // Cambiar via dropdown dejaria inconsistencia
+                          // (winningCandidateId, hireData, cascada user).
+                          // El boton dispara el flow completo de rollback.
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span
+                              className="badge badge-success"
+                              style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                            >
+                              {stageLabel('hired')}
+                            </span>
+                            <button
+                              className="btn-ghost"
+                              style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', borderColor: '#ef4444', color: '#ef4444' }}
+                              onClick={() => {
+                                const isInternal = c.candidateType === 'internal';
+                                const userName = isInternal && c.user
+                                  ? `${c.user.firstName} ${c.user.lastName}`
+                                  : `${c.firstName || ''} ${c.lastName || ''}`.trim();
+                                const lines = [
+                                  `¿Confirma revertir la contratación de ${userName}?`,
+                                  '',
+                                  'Esto ejecutará el rollback completo:',
+                                  '  • Candidato volverá a estado "Aprobado"',
+                                  '  • Proceso volverá a "Activo" (status active)',
+                                  '  • Se limpiará el ganador y los datos del hire',
+                                  '  • Los demás candidatos en "No contratado" volverán a "Aprobado"',
+                                ];
+                                if (isInternal) {
+                                  lines.push(
+                                    '',
+                                    '⚠ Cascada al empleado (interno):',
+                                    `  • Departamento, cargo y jefatura de ${userName} se restauran a sus valores ANTERIORES al hire`,
+                                    '  • Se eliminará el registro en historial de movimientos creado por este hire',
+                                  );
+                                }
+                                lines.push(
+                                  '',
+                                  'Esta acción no se puede deshacer fácilmente. Continuar?',
+                                );
+                                if (!window.confirm(lines.join('\n'))) return;
+                                if (!token) return;
+                                api.recruitment.revertHire(token, c.id)
+                                  .then(() => {
+                                    toast('Contratación revertida correctamente', 'success');
+                                    fetchProcess();
+                                  })
+                                  .catch((err: any) => {
+                                    toast(err?.message || 'Error al revertir contratación', 'error');
+                                  });
+                              }}
+                              title="Revertir contratación: deshace el hire y restaura el estado previo"
+                            >
+                              ↺ Revertir contratación
+                            </button>
+                          </div>
                         ) : (
                           <select className="input" value={c.stage} onChange={(e) => {
                             const newStage = e.target.value;
@@ -1246,9 +1305,6 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             <option value="scored">{stageLabel('scored')}</option>
                             <option value="approved">{stageLabel('approved')}</option>
                             <option value="rejected">{stageLabel('rejected')}</option>
-                            {c.stage === 'hired' && (
-                              <option value="hired" disabled>{stageLabel('hired')}</option>
-                            )}
                             {c.stage === 'not_hired' && (
                               <option value="not_hired" disabled>{stageLabel('not_hired')}</option>
                             )}

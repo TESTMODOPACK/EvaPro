@@ -692,6 +692,16 @@ export const api = {
         { method: "POST", body: JSON.stringify(data) },
         token,
       ),
+    /**
+     * S3.x — Revertir contratacion: deshace el hire y restaura el estado
+     * previo del candidato + proceso + user (interno).
+     */
+    revertHire: (token: string, candidateId: string) =>
+      request<{ process: any; candidate: any }>(
+        `/recruitment/candidates/${candidateId}/revert-hire`,
+        { method: "POST" },
+        token,
+      ),
   },
 
   users: {

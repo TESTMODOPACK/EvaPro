@@ -138,6 +138,21 @@ export class RecruitmentProcess {
     salary?: number | null;
     contractType?: 'indefinido' | 'plazo_fijo' | 'honorarios' | 'practicante' | null;
     notes?: string | null;
+    /**
+     * S3.x — Estado del User ANTES del hire, capturado al ejecutar la
+     * cascada (solo internos). Se usa para revertir si el admin hace
+     * "Revertir contratación": deshace el cambio en `users` y borra el
+     * `user_movement` que creo el hire. Para externos no aplica (era
+     * alta inicial — no hay estado previo que recuperar).
+     */
+    previousUserState?: {
+      departmentId: string | null;
+      department: string | null;
+      positionId: string | null;
+      position: string | null;
+      managerId: string | null;
+      hierarchyLevel: number | null;
+    } | null;
   } | null;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
