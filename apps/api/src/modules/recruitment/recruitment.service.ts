@@ -11,6 +11,7 @@ import { RecruitmentProcess, ProcessStatus } from './entities/recruitment-proces
 import { RecruitmentCandidate, CandidateStage } from './entities/recruitment-candidate.entity';
 import { RecruitmentEvaluator } from './entities/recruitment-evaluator.entity';
 import { RecruitmentInterview } from './entities/recruitment-interview.entity';
+import { RecruitmentCandidateStageHistory } from './entities/recruitment-candidate-stage-history.entity';
 import { User } from '../users/entities/user.entity';
 import { UserMovement, MovementType } from '../users/entities/user-movement.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
@@ -38,6 +39,9 @@ export class RecruitmentService {
     @InjectRepository(RecruitmentCandidate) private readonly candidateRepo: Repository<RecruitmentCandidate>,
     @InjectRepository(RecruitmentEvaluator) private readonly evaluatorRepo: Repository<RecruitmentEvaluator>,
     @InjectRepository(RecruitmentInterview) private readonly interviewRepo: Repository<RecruitmentInterview>,
+    // S6.1 — historial de transiciones de stage para metricas.
+    @InjectRepository(RecruitmentCandidateStageHistory)
+    private readonly stageHistoryRepo: Repository<RecruitmentCandidateStageHistory>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationAssignment) private readonly evalAssignmentRepo: Repository<EvaluationAssignment>,
     @InjectRepository(EvaluationResponse) private readonly evalResponseRepo: Repository<EvaluationResponse>,
@@ -897,6 +901,120 @@ export class RecruitmentService {
     );
   }
 
+  /**
+   * S6.1 — Backfill de stage_history desde audit_logs para candidatos
+   * legacy (creados antes de S6.1).
+   *
+   * Estrategia:
+   *   1. Encuentra candidatos cuyo set de filas en
+   *      recruitment_candidate_stage_history este vacio.
+   *   2. Para cada uno, lee audit_logs.recruitment.candidate_stage_changed
+   *      ordenado por created_at (cronologico) y reconstruye el historial.
+   *   3. Tambien inserta la transicion inicial null → registered usando
+   *      el `created_at` del candidato (mejor aproximacion al momento
+   *      del create).
+   *
+   * Idempotente: si un candidato ya tiene >=1 fila, se skipea. Esto
+   * evita doble-backfill si el cron corre 2x.
+   *
+   * Corre diario a las 04:00 UTC. Despues de la primera corrida que
+   * limpia el backlog, las corridas siguientes son no-op excepto si se
+   * agregan candidatos directo en BD (caso raro pero posible en
+   * imports masivos).
+   *
+   * Limitado a 100 candidatos por corrida para no consumir recursos en
+   * tenants con miles de candidatos legacy. Eventualmente todos se
+   * cubren en N dias.
+   */
+  @Cron('0 04 * * *')
+  async backfillStageHistoryFromAudit(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.backfillStageHistoryFromAudit',
+      this.dataSource,
+      this.logger,
+      async () => {
+        await this.tenantCronRunner.runForEachTenant(
+          'recruitment.backfillStageHistoryFromAudit',
+          async (tenantId) => {
+            // Identificar candidatos sin history.
+            const candidatesWithoutHistory = await this.dataSource.query(
+              `SELECT c.id, c.stage, c.created_at, c.tenant_id
+               FROM recruitment_candidates c
+               WHERE c.tenant_id = $1
+                 AND NOT EXISTS (
+                   SELECT 1 FROM recruitment_candidate_stage_history h
+                   WHERE h.candidate_id = c.id
+                 )
+               ORDER BY c.created_at ASC
+               LIMIT 100`,
+              [tenantId],
+            );
+
+            if (candidatesWithoutHistory.length === 0) return;
+
+            const auditRepo = this.dataSource.getRepository(AuditLog);
+            for (const cand of candidatesWithoutHistory) {
+              try {
+                // 1. Stage inicial (null → registered) usando candidate.created_at.
+                // Asumimos que el primer stage al crear era 'registered' (default
+                // del enum en el momento de la insercion). Si el candidato ya
+                // estaba en otro stage al ser creado (caso raro), igual la
+                // primer fila representa el momento del create — el stage
+                // verdadero queda capturado en las filas siguientes derivadas
+                // del audit log.
+                await this.stageHistoryRepo.save(
+                  this.stageHistoryRepo.create({
+                    candidateId: cand.id,
+                    tenantId: cand.tenant_id,
+                    fromStage: null,
+                    toStage: 'registered',
+                    changedAt: cand.created_at,
+                    changedBy: null,
+                    source: 'backfill',
+                  }),
+                );
+
+                // 2. Para cada audit log de candidate_stage_changed, insertar
+                //    una fila reconstruida.
+                const audits = await auditRepo.find({
+                  where: {
+                    tenantId,
+                    action: 'recruitment.candidate_stage_changed',
+                    entityType: 'recruitment_candidate',
+                    entityId: cand.id,
+                  },
+                  order: { createdAt: 'ASC' },
+                });
+                if (audits.length > 0) {
+                  const rows = audits.map((a) =>
+                    this.stageHistoryRepo.create({
+                      candidateId: cand.id,
+                      tenantId: cand.tenant_id,
+                      fromStage: (a.metadata as any)?.from ?? null,
+                      toStage: (a.metadata as any)?.to ?? cand.stage,
+                      changedAt: a.createdAt,
+                      changedBy: a.userId ?? null,
+                      source: 'backfill',
+                    }),
+                  );
+                  await this.stageHistoryRepo.save(rows);
+                }
+              } catch (e: any) {
+                this.logger.warn(
+                  `[backfillStageHistoryFromAudit] candidato ${cand.id} fallo: ${e?.message ?? e}`,
+                );
+              }
+            }
+
+            this.logger.log(
+              `[backfillStageHistoryFromAudit] tenant=${tenantId.slice(0, 8)} backfill: ${candidatesWithoutHistory.length} candidatos`,
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ─── Candidates ───────────────────────────────────────────────────────
 
   async addExternalCandidate(
@@ -936,6 +1054,15 @@ export class RecruitmentService {
         firstName: saved.firstName, lastName: saved.lastName, email: saved.email,
       })
       .catch(() => {});
+    // S6.1 — registro de stage inicial.
+    await this.recordStageTransition({
+      candidateId: saved.id,
+      tenantId: effectiveTenantId,
+      fromStage: null,
+      toStage: saved.stage,
+      changedBy: callerUserId ?? null,
+      source: 'candidate_created',
+    });
     return saved;
   }
 
@@ -973,6 +1100,15 @@ export class RecruitmentService {
         userId, firstName: user.firstName, lastName: user.lastName,
       })
       .catch(() => {});
+    // S6.1 — registro de stage inicial.
+    await this.recordStageTransition({
+      candidateId: saved.id,
+      tenantId: effectiveTenantId,
+      fromStage: null,
+      toStage: saved.stage,
+      changedBy: callerUserId ?? null,
+      source: 'candidate_created',
+    });
     return saved;
   }
 
@@ -1051,6 +1187,15 @@ export class RecruitmentService {
           processId: candidate.processId,
         })
         .catch(() => {});
+      // S6.1 — historial de transicion.
+      await this.recordStageTransition({
+        candidateId: saved.id,
+        tenantId: candidate.tenantId,
+        fromStage: previousStage,
+        toStage: saved.stage,
+        changedBy: callerUserId ?? null,
+        source: 'manual',
+      });
     }
     return saved;
   }
@@ -1129,13 +1274,29 @@ export class RecruitmentService {
       // 2. Restaurar otros candidatos a su estado previo (de
       //    previousCandidateStages). Si no hay snapshot, fallback al
       //    comportamiento anterior: NOT_HIRED → APPROVED.
+      const stageHistoryRepoTx = manager.getRepository(RecruitmentCandidateStageHistory);
+      // Acumulamos rows de historial para insertarlas en bulk al final.
+      const revertHistoryRows: RecruitmentCandidateStageHistory[] = [];
+      // Winner: HIRED → winnerPrevStage (siempre cambia, salvo edge case
+      // donde winnerPrevStage === HIRED — no posible porque previo al hire
+      // era hireable).
+      revertHistoryRows.push(
+        stageHistoryRepoTx.create({
+          candidateId,
+          tenantId,
+          fromStage: CandidateStage.HIRED,
+          toStage: winnerPrevStage,
+          changedBy: callerUserId,
+          source: 'revert_hire',
+        }),
+      );
       if (previousCandidateStages && Object.keys(previousCandidateStages).length > 0) {
         // Para cada otro candidato con snapshot, restaurarlo a su stage
         // previo SOLO si esta actualmente en NOT_HIRED (no pisar cambios
         // posteriores al hire que pudieran existir).
         for (const [cid, prevStage] of Object.entries(previousCandidateStages)) {
           if (cid === candidateId) continue; // ya manejado arriba
-          await candRepo
+          const r = await candRepo
             .createQueryBuilder()
             .update(RecruitmentCandidate)
             .set({ stage: prevStage as CandidateStage })
@@ -1143,10 +1304,23 @@ export class RecruitmentService {
             .andWhere('tenant_id = :tid', { tid: tenantId })
             .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
             .execute();
+          // Solo registramos history si efectivamente se actualizo (affected>0).
+          if ((r.affected ?? 0) > 0) {
+            revertHistoryRows.push(
+              stageHistoryRepoTx.create({
+                candidateId: cid,
+                tenantId,
+                fromStage: CandidateStage.NOT_HIRED,
+                toStage: prevStage,
+                changedBy: callerUserId,
+                source: 'revert_hire',
+              }),
+            );
+          }
         }
       } else {
         // Backward compat: hires viejos sin snapshot → fallback a APPROVED
-        await candRepo
+        const fallbackResult = await candRepo
           .createQueryBuilder()
           .update(RecruitmentCandidate)
           .set({ stage: CandidateStage.APPROVED })
@@ -1154,6 +1328,18 @@ export class RecruitmentService {
           .andWhere('tenant_id = :tid', { tid: tenantId })
           .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
           .execute();
+        if ((fallbackResult.affected ?? 0) > 0) {
+          // No tenemos los IDs en bulk update — para audit basta saber
+          // que pasaron N candidatos a APPROVED via revert. Detallamos
+          // a nivel candidato solo cuando hay snapshot. Esto es legacy
+          // path por diseño.
+          this.logger.log(
+            `[revertHire] backfill legacy: ${fallbackResult.affected} candidatos NOT_HIRED → APPROVED (sin history individual por falta de snapshot)`,
+          );
+        }
+      }
+      if (revertHistoryRows.length > 0) {
+        await stageHistoryRepoTx.save(revertHistoryRows);
       }
 
       // 3. ROLLBACK CASCADA AL USER (solo internos con previousUserState).
@@ -1267,6 +1453,46 @@ export class RecruitmentService {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return result;
+  }
+
+  /**
+   * S6.1 — Helper para registrar una transicion de stage en el historial.
+   *
+   * Acepta opcionalmente un EntityManager (para correr dentro de una
+   * transaccion existente, como en hireCandidate). Si no se pasa, usa
+   * el repo inyectado (autocommit).
+   *
+   * No lanza nunca: el historial es side-effect informativo, un fallo no
+   * debe romper la transicion principal del candidato.
+   */
+  private async recordStageTransition(opts: {
+    candidateId: string;
+    tenantId: string;
+    fromStage: string | null;
+    toStage: string;
+    changedBy?: string | null;
+    source?: string;
+    manager?: import('typeorm').EntityManager;
+  }): Promise<void> {
+    try {
+      const repo = opts.manager
+        ? opts.manager.getRepository(RecruitmentCandidateStageHistory)
+        : this.stageHistoryRepo;
+      await repo.save(
+        repo.create({
+          candidateId: opts.candidateId,
+          tenantId: opts.tenantId,
+          fromStage: opts.fromStage,
+          toStage: opts.toStage,
+          changedBy: opts.changedBy ?? null,
+          source: opts.source ?? 'manual',
+        }),
+      );
+    } catch (e: any) {
+      this.logger.warn(
+        `[recordStageTransition] no se pudo registrar transicion ${opts.fromStage} → ${opts.toStage} para candidato ${opts.candidateId}: ${e?.message ?? e}`,
+      );
+    }
   }
 
   /**
@@ -1635,6 +1861,41 @@ export class RecruitmentService {
           excluded: [CandidateStage.REJECTED, CandidateStage.HIRED, CandidateStage.NOT_HIRED],
         })
         .execute();
+
+      // S6.1 — historial de transiciones del hire (winner + losers).
+      // Usamos los snapshots de previousCandidateStages para los losers.
+      const stageHistoryRepoTx = manager.getRepository(RecruitmentCandidateStageHistory);
+      const winnerPrevStage = previousCandidateStages[candidateId] ?? candidate.stage;
+      await stageHistoryRepoTx.save(
+        stageHistoryRepoTx.create({
+          candidateId,
+          tenantId,
+          fromStage: winnerPrevStage,
+          toStage: CandidateStage.HIRED,
+          changedBy: callerUserId,
+          source: 'hire',
+        }),
+      );
+      const losersHistoryRows = Object.entries(previousCandidateStages)
+        .filter(([cid, prev]) =>
+          cid !== candidateId &&
+          prev !== CandidateStage.REJECTED &&
+          prev !== CandidateStage.HIRED &&
+          prev !== CandidateStage.NOT_HIRED,
+        )
+        .map(([cid, prev]) =>
+          stageHistoryRepoTx.create({
+            candidateId: cid,
+            tenantId,
+            fromStage: prev,
+            toStage: CandidateStage.NOT_HIRED,
+            changedBy: callerUserId,
+            source: 'hire',
+          }),
+        );
+      if (losersHistoryRows.length > 0) {
+        await stageHistoryRepoTx.save(losersHistoryRows);
+      }
 
       // S4.2 — Archivar CVs del proceso (compliance Chile 24m). Mismo
       // flow que el cierre via updateProcess: cv_url → cv_url_archived,
@@ -2045,6 +2306,17 @@ export class RecruitmentService {
         stageAdvanced: previousStage !== saved.stage ? { from: previousStage, to: saved.stage } : null,
       })
       .catch(() => {});
+    // S6.1 — historial de transicion si auto-advance disparado.
+    if (previousStage !== saved.stage) {
+      await this.recordStageTransition({
+        candidateId: saved.id,
+        tenantId: candidate.tenantId,
+        fromStage: previousStage,
+        toStage: saved.stage,
+        changedBy: callerUserId ?? null,
+        source: 'auto_advance_cv',
+      });
+    }
     return saved;
   }
 
@@ -2171,9 +2443,22 @@ export class RecruitmentService {
     const saved = await this.interviewRepo.save(interview);
 
     // Auto-advance stage
+    let interviewAutoAdvanceFrom: CandidateStage | null = null;
     if (candidate.stage === CandidateStage.REGISTERED || candidate.stage === CandidateStage.CV_REVIEW) {
+      interviewAutoAdvanceFrom = candidate.stage;
       candidate.stage = CandidateStage.INTERVIEWING;
       await this.candidateRepo.save(candidate);
+    }
+    // S6.1 — historial de transicion auto_advance_interview.
+    if (interviewAutoAdvanceFrom) {
+      await this.recordStageTransition({
+        candidateId: candidate.id,
+        tenantId: candidate.tenantId,
+        fromStage: interviewAutoAdvanceFrom,
+        toStage: CandidateStage.INTERVIEWING,
+        changedBy: evaluatorId,
+        source: 'auto_advance_interview',
+      });
     }
 
     // Recalculate candidate final score + auto-advance to scored
@@ -2416,11 +2701,25 @@ export class RecruitmentService {
     candidate.finalScore = Number(Math.max(0, Math.min(10, finalScore)).toFixed(2));
 
     // Auto-advance to 'scored' if there's a score and still in interviewing
+    let scoreAutoAdvanceFrom: CandidateStage | null = null;
     if (candidate.finalScore > 0 && candidate.stage === CandidateStage.INTERVIEWING) {
+      scoreAutoAdvanceFrom = candidate.stage;
       candidate.stage = CandidateStage.SCORED;
     }
 
     await this.candidateRepo.save(candidate);
+
+    // S6.1 — historial de transicion auto_advance_score.
+    if (scoreAutoAdvanceFrom) {
+      await this.recordStageTransition({
+        candidateId: candidate.id,
+        tenantId: candidate.tenantId,
+        fromStage: scoreAutoAdvanceFrom,
+        toStage: CandidateStage.SCORED,
+        changedBy: null,
+        source: 'auto_advance_score',
+      });
+    }
   }
 
   /** Recalculate finalScore for ALL candidates with stale scores.

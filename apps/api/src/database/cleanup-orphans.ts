@@ -273,6 +273,24 @@ async function main() {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_cew_cycle ON cycle_evaluatee_weights(cycle_id)`,
       `CREATE INDEX IF NOT EXISTS idx_cew_tenant ON cycle_evaluatee_weights(tenant_id)`,
+      // S6.1 — historial de transiciones de stage de candidatos.
+      // Cada fila representa un cambio de candidate.stage. Permite a S6.3
+      // calcular avgDaysInStage, conversionRate y time-to-hire sin perder
+      // resolucion temporal (audit_logs lo registra pero la tabla
+      // dedicada es mas eficiente para metricas).
+      `CREATE TABLE IF NOT EXISTS recruitment_candidate_stage_history (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        candidate_id uuid NOT NULL,
+        tenant_id uuid NOT NULL,
+        from_stage varchar(30) NULL,
+        to_stage varchar(30) NOT NULL,
+        changed_at timestamptz NOT NULL DEFAULT now(),
+        changed_by uuid NULL,
+        source varchar(30) NOT NULL DEFAULT 'manual',
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_rcsh_candidate_changed ON recruitment_candidate_stage_history(candidate_id, changed_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_rcsh_tenant_changed ON recruitment_candidate_stage_history(tenant_id, changed_at)`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }
